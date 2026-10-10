@@ -22,16 +22,18 @@ investigate turn searches that material as files instead of digesting it
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import Notebook, RemError, read_json, state_path, write_json
+from .config import read_config
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import timestamp
 
 # Correspondents of the last two weeks are investigated before anyone older (owner, 2026-09-30).
 RECENT_DAYS = 14
 # The window a page is read over when it has not been investigated from new mail.
-FIRST_WINDOW_DAYS = 150
+FIRST_WINDOW_DAYS = 730  # two years: a real contact went back to July 2025, 38 mails; 150 days read 13 (2026-10-01)
 # Measured on the owner's machine, 2026-09-30 (docs/cli/rem-people-pages.md):
 # one full investigation of a 157-mail person, the #1850 baseline subject.
 MEASURED = {"mails": 157, "input_tokens": 1_931_414, "minutes": 15}
@@ -155,6 +157,36 @@ def handles(root: Path, record: str) -> tuple[str, list[str]]:
     return title, list(dict.fromkeys([*known, title.split(" (")[0]]))
 
 
+def fill_companies(root: Path) -> list[str]:
+    """People whose `Company: Unknown` has an organisation page for their own mail domain (#2349).
+
+    The first run writes people and organisations in one queue, so a person
+    often promotes before their employer's page exists: 28 of 53 unknown
+    companies on a real notebook. No model; the saved mail is the citation.
+    """
+    from .fact_extract import extract
+    from .investigate import org_domains
+    from .mail_archive import person_material
+    from .page_review import company_from_domain
+    notebook = Notebook(root)
+    domains = {domain for org in notebook.list("orgs") for domain in org_domains(notebook.read(org))}
+    filled = []
+    for record in notebook.list("people"):
+        text = notebook.read(record)
+        if not re.search(r"^- Company: Unknown", text, re.M):
+            continue
+        name, found = handles(root, record)
+        mine = {handle.rpartition("@")[2].casefold() for handle in found if "@" in handle}
+        if not any(own == domain or own.endswith("." + domain) for own in mine for domain in domains):
+            continue
+        material = person_material(root, record, handles=found)
+        items = [item for group in (material[0].values() if material else []) for item in group]
+        rows = extract(items, [name, *found], timezone=read_config(root)["schedule"]["timezone"])
+        if notebook.write(record, company_from_domain(notebook, record, text, rows)):
+            filled.append(record)
+    return filled
+
+
 def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: dict, max_calls=None,
                        progress=None, stage_progress=None) -> dict:
     """One person through the investigation #1942 made: gathered by our code, searched by one turn."""
@@ -164,7 +196,9 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     try:
         result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
                                            subscriptions=subscriptions, max_calls=max_calls, progress=progress,
-                                           stage_progress=stage_progress)
+                                           stage_progress=stage_progress,
+                                           fetch_attachments=row.get("attachments", True),
+                                           rounds=row.get("rounds"), read_before=row.get("read_before", ""))
     except investigation.NothingNew:
         # The window was read and held nothing: mail before `started` is not
         # new next run, or the same person is gathered again every run (#1984).
@@ -174,13 +208,43 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     return result
 
 
+def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict) -> int:
+    """Fetch a person's older mail into the local archive, without a model turn.
+
+    The first run reads only the mapped window, already on disk, so no page
+    waits on the provider; this fetches the rest of FIRST_WINDOW_DAYS alongside
+    it (owner, 2026-10-08), and the attachments the first pass leaves to it.
+    Returns how many items the first pass did not read: older mail and attachments.
+    """
+    from . import investigate as investigation
+    from .files import MAP_DAYS
+    title, names = handles(root, row["record"])
+    # Mail only: the first pass already read coding sessions, and scanning them
+    # again for two years held every page behind the session lock (1.9.1b4).
+    mail = {name: sub for name, sub in subscriptions.items() if sub.get("kind", name) in investigation.MAIL_KINDS}
+    items, _ = investigation.gather(title, names, days=FIRST_WINDOW_DAYS, clients=clients, subscriptions=mail,
+                                    attachments_dir=root / ".state" / "attachments", archive_root=root,
+                                    record=row["record"])
+    cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
+    for item in items:
+        if item.get("role") == "attachment":
+            older += 1
+            continue
+        try:
+            older += timestamp(item["timestamp"]) < cutoff
+        except (RemError, KeyError):  # an unreadable date is that mail's gap (#2013)
+            continue
+    return older
+
+
 def mark_investigated(root: Path, record: str, when: datetime) -> None:
     """When the gather for this page started: mail after it is new for the next run."""
     folder = state_path(root, "people")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    done = read_json(folder / "investigated.json", {})
-    done[record] = when.isoformat()
-    write_json(folder / "investigated.json", done)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):  # people finishing together each rewrite this file
+        done = read_json(folder / "investigated.json", {})
+        done[record] = when.isoformat()
+        write_json(folder / "investigated.json", done)
 
 
 def correspondents_since(root: Path, clients: dict, *, since: datetime, now: datetime | None = None) -> dict:
@@ -223,22 +287,38 @@ def correspondents_since(root: Path, clients: dict, *, since: datetime, now: dat
     return {"records": sorted(found), "listed": listed}
 
 
-def write_pages(rows: list[dict], *, write, gate=None, on_page=None) -> dict:
-    """Investigate `rows` one after another; `gate()` says why not to start the next, or ''.
+def write_pages(rows: list[dict], *, write, gate=None, on_page=None, workers: int = 1) -> dict:
+    """Investigate `rows` with bounded concurrency; gate before each submission.
 
     A refused or failed page does not stop the others; it stays in the queue.
     """
-    done, stopped = [], ""
-    for number, row in enumerate(rows, 1):
-        stopped = gate() if gate else ""
-        if stopped:
-            break
-        if on_page:
-            on_page(number, len(rows), row)
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    def one(row):
         try:
             write(row)
-            done.append({"page": row["record"], "mode": row["mode"], "outcome": "accepted"})
+            return {"page": row["record"], "mode": row["mode"], "outcome": "accepted"}
         except RemError as error:
-            done.append({"page": row["record"], "mode": row["mode"],
-                         "outcome": "refused" if "rejected" in str(error) else "failed", "why": str(error)[:300]})
+            return {"page": row["record"], "mode": row["mode"],
+                    "outcome": "refused" if "rejected" in str(error) else "failed", "why": str(error)[:300]}
+
+    done, stopped, pending, running = [], "", iter(rows), {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while True:
+            while len(running) < workers and not stopped:
+                row = next(pending, None)
+                if row is None:
+                    break
+                stopped = gate() if gate else ""
+                if not stopped:
+                    running[pool.submit(one, row)] = row
+            if not running:
+                break
+            finished, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in finished:
+                row = running.pop(future)
+                outcome = future.result()
+                done.append(outcome)
+                if on_page:
+                    on_page(len(done), len(rows), row, outcome)
     return {"pages": done, **({"stopped": stopped} if stopped else {})}

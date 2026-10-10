@@ -1,5 +1,7 @@
 """The census: what the sources already list, handed over as signals."""
 
+import ssl
+
 import pytest
 
 from connectonion.rem.scan import _display_name, scan_people
@@ -37,6 +39,74 @@ def test_one_sent_mail_maps_every_recipient_without_duplicate_person_counts():
              "cc": ["b@g.com"], "date": "2026-09-10", "subject": "plan"}]
     people = scan_people({"outlook": Box("me@x.y", rows)}, days=30, own_addresses=set())
     assert {p["address"]: p["mails"] for p in people} == {"a@g.com": 1, "b@g.com": 1}
+
+
+@pytest.mark.parametrize("reply_first", [False, True])
+def test_a_named_corecipient_can_identify_an_existing_outgoing_contact(reply_first):
+    sent = [{"id": str(n), "from": "me@x.y", "to": ["a@school.example"], "cc": [],
+             "date": "2026-09-10", "subject": "project"} for n in (1, 2)]
+    reply = {"id": "reply", "from": "Mentor <mentor@school.example>",
+             "to": ["me@x.y", "Alex Chen <a@school.example>"],
+             "cc": ["Unrelated Guest <guest@school.example>"], "date": "2026-09-11", "subject": "Re: project"}
+    rows = [reply, *sent] if reply_first else [*sent, reply]
+    people = {p["address"]: p for p in scan_people({"outlook": Box("me@x.y", rows)}, 30, set())}
+    assert people["a@school.example"]["name"] == "Alex Chen"
+    assert (people["a@school.example"]["mails"], people["a@school.example"]["sent"],
+            people["a@school.example"]["received"]) == (2, 2, 0)
+    assert "guest@school.example" not in people
+    assert "me@x.y" not in people
+
+
+def test_all_history_finds_old_people_and_splits_full_provider_listings():
+    class Capped(Box):
+        def list_between(self, start, end, n):
+            return super().list_between(start, end, n)[:n]
+
+    rows = [{"id": "old", "from": "Old Friend <old@example.org>", "to": ["me@x.y"],
+             "cc": [], "date": "1998-06-01T00:00:00+00:00", "subject": "hello"}]
+    rows += [{"id": f"recent-{n}", "from": "New Friend <new@example.org>", "to": ["me@x.y"],
+              "cc": [], "date": f"2025-02-{1 + n % 25:02d}T00:00:00+00:00", "subject": "hello"}
+             for n in range(211)]
+    observed, windows = [], []
+    people = scan_people({"gmail": Capped("me@x.y", rows)}, 90, set(),
+                         on_row=lambda provider, row: observed.append(row["id"]),
+                         on_window=lambda *args: windows.append(args), all_history=True)
+    assert {row["address"]: row["mails"] for row in people} == {
+        "old@example.org": 1, "new@example.org": 211}
+    assert len(observed) == len(set(observed)) == 212
+    assert any(window[1].startswith("1998") for window in windows)
+
+
+@pytest.mark.parametrize("failure", [ssl.SSLError, ConnectionError])
+def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure):
+    from connectonion.rem.map import _mail_rows
+
+    class Interrupted(Box):
+        def list_between(self, start, end, n):
+            if start[:4] >= "1999":
+                raise failure("connection lost")
+            return super().list_between(start, end, n)
+
+    old = {"id": "old", "from": "Old Friend <old@example.org>", "to": ["me@x.y"],
+           "cc": [], "date": "1998-06-01T00:00:00+00:00", "subject": "hello"}
+    other = {"id": "other", "from": "Other Friend <other@example.org>", "to": ["me2@x.y"],
+             "cc": [], "date": "1998-07-01T00:00:00+00:00", "subject": "hello"}
+    class Inventory:
+        def __init__(self): self.windows = []
+        def mail(self, *args): pass
+        def window(self, *args): self.windows.append(args)
+
+    errors, coverage = [], []
+    inventory = Inventory()
+    people, _ = _mail_rows({"outlook": Interrupted("me@x.y", [old]),
+                            "gmail": Box("me2@x.y", [other])}, 36500, set(),
+                           coverage, errors, inventory=inventory, all_history=True)
+    assert {person["address"]: person["mails"] for person in people} == {
+        "old@example.org": 1, "other@example.org": 1}
+    assert len(errors) == 1 and errors[0]["stage"] == "metadata-window"
+    assert errors[0]["start"].startswith("1999")
+    assert any("outlook" in note and "incomplete" in note for note in coverage)
+    assert any(row[0] == "outlook" and row[-1] is False for row in inventory.windows)
 
 
 def test_signals_are_handed_over_and_verdicts_are_not():
@@ -133,7 +203,7 @@ def test_the_runner_is_a_choice_between_the_two_harnesses(tmp_path):
     from connectonion.rem.config import prepare, read_config, set_config
     from connectonion.rem.files import RemError
     root = tmp_path / "rem"; prepare(root)
-    assert read_config(root)["runner"] == "codex"
+    assert read_config(root)["runner"] == "claude-code"
     set_config(root, ["runner", "coai"])
     assert read_config(root)["runner"] == "coai"
     with pytest.raises(RemError) as caught:
@@ -167,7 +237,7 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
         from pathlib import Path
         # Read while the turn runs: a finished task keeps no copy of it (#1958).
         handed.extend(__import__("json").loads(next(Path(cwd).glob("investigate-*/material.json")).read_text()))
-        candidate = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        candidate = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         candidate.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]").replace(
             '- (none yet)', '- [W1] https://example.org/contact — observed 2026-09-19')
             .replace('- Unknown — not investigated yet', '- Unknown'))
@@ -215,6 +285,13 @@ def test_a_personal_mailbox_is_never_an_organisation():
     people += [{"address": "a@hotmail.com", "name": "A", "mails": 5, "last": "2026-09-10"},
                {"address": "b@hotmail.com", "name": "B", "mails": 5, "last": "2026-09-10"}]
     assert scan_orgs(people) == []
+
+
+def test_a_short_provider_address_or_a_home_internet_mailbox_is_not_an_organisation():
+    """1.9.2b1 wrote orgs/pm-me (Proton's short addresses) and orgs/xtra-co-nz (Spark NZ home mail)."""
+    from connectonion.rem.scan import personal_mailbox
+    assert all(map(personal_mailbox, ["pm.me", "xtra.co.nz", "tpg.com.au", "iinet.net.au", "comcast.net"]))
+    assert not personal_mailbox("unsw.edu.au")
 
 
 def test_a_single_person_on_a_work_domain_stays_a_field_unless_asked_for():
@@ -314,6 +391,9 @@ def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
     ("您好， 请以本邮件中的版本为准", ""),
     ("Hi, Attached is the report", ""),
     ("check worker", ""),
+    # 1.9.2b1: a one-word reply above the quote made a person called "On Fri".
+    ("hi On Fri, May 8, 2026 at 5:06 PM openonion ai wrote:", ""),
+    ("Hi On 2026-05-08, Ody wrote:", ""),
 ])
 def test_the_owners_greeting_names_the_person_they_wrote_to(snippet, name):
     people = scan_people({"gmail": Box("me@x.y", [_sent(["p@q.com"], snippet)])}, days=30, own_addresses=set())

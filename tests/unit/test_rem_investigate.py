@@ -38,16 +38,115 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
-def test_quick_evidence_bounds_the_first_turn_and_keeps_source_diversity():
+def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
+    import threading
+    from datetime import datetime, timedelta, timezone
+
+    together = threading.Barrier(4, timeout=5)
+
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_with(self, address, start, finish):
+            return [{"id": str(n), "date": (datetime.now(timezone.utc) - timedelta(days=5 - n)).isoformat(),
+                     "from": "friend@example.org", "to": ["me@example.org"], "subject": "Hi"}
+                    for n in range(1, 5)]
+        def get_email_body(self, message_id):
+            together.wait()
+            return f"Body {message_id}"
+
+    items, coverage = inv.gather("Friend", ["friend@example.org"], days=30,
+                                 clients={"gmail": Mail()}, subscriptions={})
+    assert [item["text"] for item in items if item["source"].startswith("gmail:")] == [
+        "Body 1", "Body 2", "Body 3", "Body 4"]
+    assert any("4 bodies read" in line for line in coverage)
+
+
+def test_quick_evidence_keeps_complete_gathered_sources():
     items = [{'source': 'gmail:old', 'timestamp': '2026-09-20', 'text': 'a' * 9000},
              *[{'source': f'codex:{i}', 'timestamp': f'2026-09-{21 + i:02d}',
                 'text': 'b' * 9000} for i in range(4)],
              {'source': 'outlook:new', 'timestamp': '2026-09-26', 'text': 'c' * 9000}]
-    selected = inv.quick_evidence(items, max_items=3, chars_per_item=100)
-    assert len(selected) == 3
+    selected = inv.quick_evidence(items)
+    assert len(selected) == len(items)
     assert {item['source'].split(':')[0] for item in selected} == {'gmail', 'codex', 'outlook'}
-    assert all(len(item['text']) < 200 for item in selected)
-    assert all(item['text'].endswith('[truncated for quick first-pass review]') for item in selected)
+    assert selected == items and all(len(item['text']) == 9000 for item in selected)
+
+
+def test_owner_work_packet_exposes_dated_decision_sources_without_claiming_completion():
+    items = [
+        {'source': 'codex:old', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-09-28',
+         'text': 'Use a static owner page for this first pass.'},
+        {'source': 'codex:choice', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-10-01',
+         'text': 'Instead, switch to a cited model investigation after the quick pass.'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-10-02',
+         'text': 'Check the owner page with real source material before releasing.'},
+        {'source': 'outlook:invite', 'role': 'user', 'project': '', 'timestamp': '2026-10-02',
+         'text': 'Maybe attend a talk in November.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert packet.index('codex:old') < packet.index('codex:choice') < packet.index('codex:new')
+    assert 'outlook:invite' not in packet
+    assert 'not a digest or evidence of completion' in packet
+
+
+def test_owner_work_packet_follows_a_repeated_topic_inside_a_mixed_workspace():
+    items = [
+        {'source': 'codex:unrelated', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-27',
+         'text': 'Choose the event venue and send the invitation.'},
+        {'source': 'codex:old', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-28',
+         'text': 'REM先不要让模型写首次页面，保留静态模板。'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-01',
+         'text': '现在REM应该用模型写有来源的首次页面。'},
+        {'source': 'codex:latest', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-02',
+         'text': 'Check the REM init page against the real notebook.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert 'topic REM' in packet
+    assert all(source in packet for source in ('codex:old', 'codex:new', 'codex:latest'))
+    assert 'codex:unrelated' not in packet
+
+
+def test_owner_work_packet_follows_init_across_a_renamed_memory_product():
+    items = [
+        {'source': 'claude-code:old', 'role': 'user', 'project': '/work/connectonion',
+         'timestamp': '2026-09-27', 'text': 'Maybe co wiki init should start from a static page.'},
+        {'source': 'codex:reversal', 'role': 'user', 'project': '/work',
+         'timestamp': '2026-10-01', 'text': '不对，init 不启动模型是错的，应该在 init 用模型调查。'},
+        {'source': 'codex:latest', 'role': 'user', 'project': '/work',
+         'timestamp': '2026-10-02', 'text': 'Check the REM init page against real data.'},
+        {'source': 'claude-code:unrelated', 'role': 'user', 'project': '/work/connectonion',
+         'timestamp': '2026-10-01', 'text': 'Choose a venue for the student event.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert 'topic init' in packet
+    assert all(source in packet for source in ('claude-code:old', 'codex:reversal', 'codex:latest'))
+    assert 'claude-code:unrelated' not in packet
+
+
+def test_full_owner_pass_compares_sources_already_cited_by_the_quick_page(tmp_path, monkeypatch):
+    from datetime import date
+
+    root = _notebook(tmp_path, 'codex')
+    book = inv.Notebook(root)
+    page = book.read('people/vern.md').replace('· not investigated yet',
+                                               f'· investigated {date.today().isoformat()} (codex)')
+    page = page.replace('## Sources\n- (none yet)', '## Sources\n- [1] codex:old')
+    book.write('people/vern.md', page)
+    messages = [
+        {'source': 'codex:old', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-29',
+         'text': 'Maybe init should keep the static page for now.'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-02',
+         'text': 'No, init should investigate with a model before the first page.'},
+    ]
+    monkeypatch.setattr(inv, 'gather', lambda *args, **kwargs: (messages, ['codex: 2 messages']))
+    seen = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=5,
+                    clients={}, subscriptions={}, sent_only=True,
+                    runner=lambda notebook, items, config, stage: seen.extend(items) or {'changed': []})
+    assert not any(item.get('source') == 'codex:old' for item in seen)
+    packet = next(item for item in seen if item['role'] == 'owner-work-evidence')
+    assert packet['sources'] == ['codex:old', 'codex:new']
+    assert 'Maybe init' in packet['text'] and 'No, init' in packet['text']
 
 
 def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, monkeypatch):
@@ -65,13 +164,14 @@ def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, mo
                              clients={}, subscriptions={}, runner=runner, quick=True,
                              extractor=lambda *a: pytest.fail('quick pass must fit one model turn'))
     assert result['quick'] is True and result['items_available'] == 30
-    assert result['items'] == 24
+    assert result['items'] == 1  # all 30 originals are in the evidence index
     assert any('Quick first pass' in text for text in result['coverage'])
-    assert len(received) == 27  # page, coverage, quick-scope marker, 24 source items
+    assert len(received) == 4  # page, coverage, quick-scope marker, evidence index
     assert received[2]['role'] == 'quick-first-pass'
+    assert len(received[3]['sources']) == 30
 
 
-def test_quick_owner_fetches_only_recent_mail_bodies():
+def test_quick_owner_fetches_all_matching_mail_bodies():
     class Mailbox:
         def __init__(self):
             self.fetched = []
@@ -92,8 +192,8 @@ def test_quick_owner_fetches_only_recent_mail_bodies():
     items, coverage = inv.gather('Me', ['me@example.org'], days=5,
                                  clients={'outlook': box}, subscriptions={},
                                  sent_only=True, quick=True)
-    assert len(items) == 12 and box.fetched == [str(i) for i in range(8, 20)]
-    assert any('20 matched, 12 bodies read (recent quick sample)' in line for line in coverage)
+    assert len(items) == 20 and sorted(box.fetched, key=int) == [str(i) for i in range(20)]
+    assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
 @pytest.fixture
@@ -105,7 +205,7 @@ def co_ai(monkeypatch):
         calls.append(argv)
         import re
         from pathlib import Path
-        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
         # The least a finished page is (#2008): one cited fact, every other section a bare Unknown.
         path.write_text(page.replace("## Who they are\n- Unknown — not investigated yet",
@@ -129,13 +229,14 @@ def _notebook(tmp_path, runner):
     return root
 
 
-def test_runner_codex_is_co_ai_delegating_to_codex_in_the_workspace_sandbox(tmp_path, co_ai):
+def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_ai):
     root = _notebook(tmp_path, "codex")
+    set_config(root, ["model", "gpt-6-luna"])
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
-    assert argv[3:9] == ["--harness", "codex", "--sandbox", "workspace-write",
+    assert argv[3:9] == ["--harness", "codex", "--sandbox", "danger-full-access",
                          "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
@@ -177,17 +278,12 @@ def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp
     assert inv.project_file_inventory(cited, max_files=2) == leads
 
 
-# The whole command line before the prompt, pinned per executor. Investigation
-# puts correspondents' mail and attachments in front of the model, and the same
-# page is investigated unattended by the daily job `co rem start` installs.
-# Codex used to get danger-full-access and Claude bypassPermissions here, so
-# anyone who could email the user could hand instructions to an agent with a
-# shell, the network and the user's mailbox. Our code fetches the mail; the
-# model only reads the material and writes candidate.md in its task directory.
+# The whole command line before the prompt, pinned per executor for both
+# attended and scheduled investigation runs.
 PINNED = {
-    "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "workspace-write",
+    "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "danger-full-access",
               "--model", "gpt-5.6-luna", "--timeout", "1200"],
-    "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "acceptEdits",
+    "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "bypassPermissions",
                     "--model", "sonnet", "--timeout", "1200"],
 }
 
@@ -200,7 +296,7 @@ def _pinned_notebook(tmp_path, runner):
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner):
+def test_an_investigation_the_user_starts_has_tools_authorized(tmp_path, co_ai, runner):
     root = _pinned_notebook(tmp_path, runner)
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
@@ -208,7 +304,7 @@ def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner)
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkeypatch, runner):
+def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner):
     from connectonion.rem.daily import run_daily
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
     monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
@@ -336,8 +432,9 @@ def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
 def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(tmp_path, monkeypatch):
     """#1850: summarising everything first cost the owner's page 39 digest calls
     and 75 minutes. Over the limit, the material becomes files the one turn
-    searches; no digest call is made."""
+    searches; no digest call is made. Since #2314 that is the one-round setting."""
     root = _notebook(tmp_path, "codex")
+    set_config(root, ["limits.investigation_rounds", "1"])
     config = read_config(root)
     original = inv.Notebook(root).read("people/vern.md")
     items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
@@ -615,7 +712,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
 
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
-        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Vern works at UNSW. [W1]", 1)
@@ -679,7 +776,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
 
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
-        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
         page = re.sub(r'^- Email: .*$', '- Email: vern.chan@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
         page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
@@ -728,6 +825,62 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
     assert not any("co auth" in line for line in coverage)
 
 
+def test_project_gather_withholds_unnamed_followup_after_other_project_in_same_session(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:session:12", "project": "/work/other",
+         "timestamp": stamp, "text": "Build the Other product's reply listener."},
+        {"role": "user", "source": "claude-code:session:50", "project": "/work/tide",
+         "timestamp": stamp, "text": "Why no reply?"},
+        {"role": "user", "source": "claude-code:session:90", "project": "/work/tide",
+         "timestamp": stamp, "text": "Tide: fix the parser."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, coverage = inv.gather("Tide", ["/work/tide", "Tide"], days=7, clients={},
+                                 subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path),
+                                                           "enabled": True}}, record="projects/tide.md")
+    assert [item["source"] for item in items] == ["claude-code:session:90"]
+    assert any("1 unnamed follow-up(s) withheld" in line for line in coverage)
+
+
+def test_project_writer_does_not_receive_collector_coverage_as_evidence(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    messages = [{"role": "user", "source": "codex:session:10", "project": str(repo),
+                 "timestamp": "2026-10-02T00:00:00+00:00", "text": "Check Tide's local log."}]
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: (messages, ["codex: one input read"]))
+    seen = []
+    result = inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                             clients={}, subscriptions={},
+                             runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert "codex: one input read" in result["coverage"]
+
+
+def test_repository_only_project_investigation_records_zero_session_coverage(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.project_material import page_state
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    write_json(state_path(root, "projects/tide/state.json"), {"messages": 5})
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], ["no session inputs assigned"]))
+    seen = []
+    inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert any(item.get("role") == "project-input-scope" and item.get("inputs_read") == 0 for item in seen)
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert page_state(root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 0, "inputs_available": 5, "days": 7, "scope": "archived"}
+
+
 def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     """#1962: pages were stamped `(outlook, gmail, codex, claude-code, evidence)`;
     evidence is how the material was laid out, not where it came from."""
@@ -745,6 +898,34 @@ def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     ]
 
     assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
+
+
+def test_an_accepted_investigation_refreshes_the_index(tmp_path):
+    from connectonion.rem import store
+    notebook = inv.Notebook(tmp_path)
+    notebook.stub_person("people/river.md", "River", ["river@example.test"], email="river@example.test")
+    store.refresh(tmp_path)
+    assert not store.person(tmp_path, "people/river.md")["written"]
+    notebook.write("people/river.md", notebook.read("people/river.md").replace("- Role: Unknown", "- Role: Designer [1]"))
+    inv.record_result(tmp_path, notebook, "people/river.md", [], ["gmail"], changed=True)
+    indexed = store.person(tmp_path, "people/river.md")
+    assert indexed["written"]
+    assert indexed["role"] == "Designer"
+
+
+def test_project_investigation_retains_its_partial_input_window(tmp_path):
+    from connectonion.rem.project_material import page_state
+    from connectonion.rem.reader import snapshot
+    notebook = inv.Notebook(tmp_path)
+    record = "projects/tide.md"
+    notebook.stub_project(record, "Tide", ["/work/tide"])
+    inv.record_result(tmp_path, notebook, record, [], ["codex"],
+                      project_coverage={"inputs_read": 3, "inputs_available": 5, "days": 150,
+                                        "scope": "archived"})
+    assert page_state(tmp_path, record)["last_page_coverage"]["inputs_read"] == 3
+    shown = next(row for row in snapshot(tmp_path)["records"] if row["path"] == record)
+    assert shown["project_coverage"] == {"inputs_read": 3, "inputs_available": 5, "days": 150,
+                                         "scope": "archived"}
 
 
 def test_an_accepted_investigation_drops_the_map_s_mail_count_from_history():
@@ -765,7 +946,7 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     from datetime import date, timedelta
     root = _notebook(tmp_path, "codex")
     notebook = inv.Notebook(root)
-    assert inv.window_since(notebook.read("people/vern.md")) == 150        # never investigated
+    assert inv.window_since(notebook.read("people/vern.md")) == 730        # never investigated: two years
     ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
     page = notebook.read("people/vern.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
     notebook.write("people/vern.md", page)
@@ -782,7 +963,8 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
 
     out = inv.investigate(root, "people/vern.md", "Vern", ["vern@x.y"], days=11, clients={}, subscriptions={},
                           runner=write)
-    assert f"Page last updated from its sources {ten_days_ago}" in seen["coverage"]
+    assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
+    assert "Newly supplied originals may predate that run" in seen["coverage"]
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
@@ -976,7 +1158,8 @@ def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path
                     runner=lambda notebook, items, config, stage: received.extend(items) or
                     {'changed': [], 'usage': None})
     state = next(item for item in received if item['role'] == 'checkout-state')
-    assert state['source'] == f'git:{repo}' and 'older than the newest session' in state['text']
+    assert state['origin'] == f'git:{repo}:checkout-state' and state['source'].startswith('project-source:')
+    assert 'older than the newest session' in state['text']
 
 
 # ------------------------------------------------ #1984: an empty since-window calls no model
@@ -1024,15 +1207,111 @@ def test_mail_the_page_already_cites_is_not_new_material(tmp_path, monkeypatch):
     assert 'already cited on the page' in str(caught.value)
 
 
+def test_new_reply_keeps_exact_cited_request_outside_update_window(tmp_path):
+    import hashlib
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.evidence import write_evidence
+
+    root = _notebook(tmp_path, 'codex')
+    record = 'people/vern.md'
+    now = datetime.now(timezone.utc)
+    write_json(state_path(root, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook', 'gmail'], 'owner_addresses': ['me@example.org'],
+        'range_start': (now - timedelta(days=90)).isoformat(), 'range_end': now.isoformat()})
+    rows = [('outlook', 'ask', 'scope', ['vern.chan@unsw.edu.au'], 'Please approve integration A only.', 30),
+            ('outlook', 'reply', 'scope', [], 'Approved integration A only.', 0.1),
+            ('outlook', 'other-ask', 'other-scope', ['vern.chan@unsw.edu.au'], 'Please approve B.', 30),
+            ('gmail', 'provider-collision', 'scope', ['vern.chan@unsw.edu.au'], 'Please approve C.', 30),
+            ('outlook', 'unthreaded', '', ['vern.chan@unsw.edu.au'], 'Please approve D.', 30)]
+    for provider, native, thread, cc, body, days in rows:
+        retain_message(root, provider, {'id': native, 'thread_id': thread, 'from': 'lead@school.example',
+            'to': ['me@example.org'], 'cc': cc, 'subject': 'Scope approval',
+            'date': (now - timedelta(days=days)).isoformat()}, body, fetched_at=now.isoformat())
+    source = lambda provider, native: provider + ':' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    _investigated(root, record, 2)
+    notebook = inv.Notebook(root)
+    cited = '\n'.join(f'- [{i}] {source(provider, native)}' for i, (provider, native, *_) in enumerate(rows, 1)
+                      if native != 'reply')
+    before = notebook.read(record).replace('- [1] gmail:0123456789ab', cited)
+    notebook.write(record, before)
+    received = []
+
+    def runner(notebook, items, config, stage):
+        received.extend(items)
+        return {'changed': [], 'usage': None}
+
+    result = inv.investigate(root, record, 'Vern', ['vern.chan@unsw.edu.au'], days=3,
+                             clients={}, subscriptions={}, runner=runner)
+    mail = {i['source']: i for i in received if i['source'].startswith(('outlook:', 'gmail:'))}
+    assert set(mail) == {source('outlook', 'ask'), source('outlook', 'reply')}
+    request, reply = mail[source('outlook', 'ask')], mail[source('outlook', 'reply')]
+    assert request['text'] == 'Please approve integration A only.'
+    assert request['thread'] == reply['thread'] == 'mail:outlook:scope'
+    assert request['comparison_scope'] and not request.get('relationship_scope')
+    assert reply['relationship_scope'] and not reply.get('comparison_scope')
+    assert request['input_scope'] and request['captured_at'] and request['retained_at']
+    assert not any(i.get('role') == 'facts' for i in received)
+    assert any('1 previously cited mail source(s)' in line for line in result['coverage'])
+    assert not any('it already reflects material before' in line for line in result['coverage'])
+    assert notebook.read(record).partition('\nInvestigation:')[0] == before.partition('\nInvestigation:')[0]
+    packet = write_evidence(tmp_path / 'comparison', list(mail.values()))
+    rendered = '\n'.join(p.read_text() for p in packet['index'].parent.rglob('*.md'))
+    assert 'Provider thread: mail:outlook:scope' in rendered and 'Comparison scope:' in rendered
+
+
+def test_attachment_citation_does_not_mean_carrier_mail_was_read(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    _investigated(root, 'people/vern.md', 1)
+    notebook = inv.Notebook(root)
+    notebook.write('people/vern.md', notebook.read('people/vern.md').replace(
+        'gmail:0123456789ab', 'gmail:0123456789ab:agreement.pdf'))
+    carrier = {'source': 'gmail:0123456789ab', 'timestamp': '2026-09-30T09:00:00+00:00',
+               'text': 'The terms in this email differ from the attached agreement.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([carrier], ['gmail: 1 bodies read']))
+    received = []
+    inv.investigate(root, 'people/vern.md', 'Vern', ['vern'], days=3, clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or {'changed': []})
+    assert carrier in received
+
+
+@pytest.mark.parametrize('fresh', [[], [{'source': 'outlook:new', 'role': 'attachment', 'thread': 'mail:outlook:t'}],
+                                  [{'source': 'codex:new', 'thread': 'mail:outlook:t'}],
+                                  [{'source': 'outlook:new', 'thread': ''}]])
+def test_comparison_needs_new_threaded_mail_not_attachment_or_chat(tmp_path, monkeypatch, fresh):
+    monkeypatch.setattr('connectonion.rem.mail_archive.person_material',
+                        lambda *a, **kw: pytest.fail('no archive reread without new threaded mail'))
+    assert inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, {'outlook:old'}, {}) == []
+
+
+def test_comparison_preserves_context_scope_owner_filter_and_unsubscribe(tmp_path, monkeypatch):
+    old = [{'source': 'outlook:other', 'role': 'other', 'thread': 'mail:outlook:t',
+            'relationship_scope': 'Not this person’s statement or contact.'},
+           {'source': 'outlook:own', 'role': 'user', 'thread': 'mail:outlook:t'}]
+    monkeypatch.setattr('connectonion.rem.mail_archive.person_material', lambda *a, **kw: ({'outlook': old}, None, None))
+    fresh = [{'source': 'outlook:new', 'role': 'user', 'thread': 'mail:outlook:t'}]
+    cited = {i['source'] for i in old}
+    comparison = inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, cited, {})
+    assert comparison[0]['relationship_scope'] == old[0]['relationship_scope']
+    own = inv._mail_comparison(tmp_path, 'people/me.md', [], [], fresh, cited, {}, sent_only=True)
+    assert [i['source'] for i in own] == ['outlook:own']
+    assert inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, cited,
+                                {'outlook': {'unsubscribed': True}}) == []
+
+
 def test_a_project_s_file_list_alone_is_not_new_material_for_a_page_investigated_before(tmp_path, monkeypatch):
-    """A project page always has files to list; with no session or mail since
-    its last investigation the turn would only re-read what the page reflects."""
+    """A file list is not new when its captured contents are already represented."""
     root = _notebook(tmp_path, 'codex')
     folder = tmp_path / 'work' / 'tide'
     folder.mkdir(parents=True)
     (folder / 'README.md').write_text('# Tide\n')
     inv.Notebook(root).stub_project('projects/tide.md', 'Tide', [str(folder)])
     _investigated(root, 'projects/tide.md', 5)
+    from connectonion.rem.project_pages import repository_snapshots
+    source = repository_snapshots(inv.project_file_texts([str(folder / 'README.md')]))[0]['source']
+    notebook = inv.Notebook(root)
+    notebook.write('projects/tide.md', notebook.read('projects/tide.md').replace('gmail:0123456789ab', source))
     monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
     with pytest.raises(inv.NothingNew):
         inv.investigate(root, 'projects/tide.md', 'Tide', [str(folder)], days=6, clients={}, subscriptions={},
@@ -1092,6 +1371,21 @@ def test_a_refused_investigation_is_not_retried_on_the_same_material(tmp_path, m
         inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
                         runner=lambda *a, **kw: pytest.fail('no model call for material already refused'))
     assert 'waits for newer material' in str(caught.value) and '20,000 limit' in str(caught.value)
+    assert 'co rem investigate people/vern.md --retry-refused' in str(caught.value)
+
+
+def test_an_explicit_retry_can_use_material_that_was_refused(tmp_path, monkeypatch):
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    mail = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([mail], ['gmail: 1 matched']))
+    args = dict(days=4, clients={}, subscriptions={})
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], runner=_refusing, **args)
+    called = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], retry_refused=True, **args,
+                    runner=lambda *a, **kw: called.append(1) or {'changed': [], 'usage': None})
+    assert called == [1] and inv.refused_for(root, 'people/vern.md') == {}
 
 
 def test_newer_material_after_a_refusal_runs_again_and_clears_it(tmp_path, monkeypatch):
@@ -1126,7 +1420,7 @@ def test_a_failure_that_is_not_a_refusal_is_retried(tmp_path, monkeypatch):
     assert inv.refused_for(root, 'people/vern.md') == {}
 
 
-def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tmp_path, monkeypatch):
+def test_a_quick_pass_reports_coverage_limits_in_the_reply_not_on_the_page(tmp_path, monkeypatch):
     """#1975: coverage stays off the page; the runner records it and the model says it in its reply."""
     root = _notebook(tmp_path, 'codex')
     monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
@@ -1139,7 +1433,7 @@ def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tm
     assert 'Uncertainties' not in scope and 'final reply' in scope
     from connectonion.rem.runner import task_prompt
     prompt = task_prompt(tmp_path, received, 'investigate')
-    assert 'explicit coverage limits' not in prompt and 'states the sampling limit' in prompt
+    assert 'Search the evidence index and relevant local archives' in prompt
 
 
 def test_investigate_me_marks_the_page_as_the_owners_and_drops_the_how_the_user_writes_heading(tmp_path, monkeypatch):
@@ -1189,7 +1483,7 @@ def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp
             "text": "kept", "source": "gmail:a"}
     naive = {**good, "_mail_id": "b", "timestamp": "2026-07-09T01:50:17", "text": "undated", "source": "gmail:b"}
     monkeypatch.setattr("connectonion.rem.mail_archive.person_material",
-                        lambda root, record: ({"gmail": [good, naive]}, now - timedelta(days=30), now))
+                        lambda root, record, *, handles=(): ({"gmail": [good, naive]}, now - timedelta(days=30), now))
 
     items, coverage = inv.gather("Me", ["me@x.y"], days=7, clients={}, subscriptions={},
                                  archive_root=tmp_path, record="people/me.md")
@@ -1214,7 +1508,8 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
         {"name": "old-thing", "record": "projects/old.md", "sessions": 40, "first": "2026-06-01",
          "last": "2026-07-01"}]})
     monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
-        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "ship the reader"}], ["codex: 1"]))
+        {"source": "codex:s:1", "role": "user", "project": "/work/connectonion",
+         "timestamp": "2026-09-01", "text": "Decide how the reader presents a verified change."}], ["codex: 1"]))
     seen = []
 
     def runner(notebook, items, config, stage):
@@ -1228,10 +1523,12 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     assert lines == ["- connectonion (projects/connectonion.md): 158 sessions, 2026-09-07 to 2026-09-30",
                      "- browser (projects/browser.md): 17 sessions, 2026-08-30 to 2026-09-27"]
     assert "old-thing" not in recent and "working on now" in recent
+    assert "codex:s:1" in next(item for item in seen if item["role"] == "owner-work-evidence")["text"]
     seen.clear()
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
                     runner=runner)
     assert not any(item["role"] == "recent-projects" for item in seen)
+    assert not any(item["role"] == "owner-work-evidence" for item in seen)
 
 
 def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch):
@@ -1256,3 +1553,477 @@ def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(t
     assert refused.startswith("Refused people/y.md: Candidate rejected: over 20,000 characters")
     assert len(refused) < 200 and refused.endswith("…")
     assert outcome_line({"page": "people/z.md", "outcome": "nothing_new", "why": "long"}) == "Nothing new for people/z.md"
+
+def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch):
+    """A real first run (2026-10-01) re-read 1,300 session files for every
+    person; six threads under one GIL took 13 minutes a person. The window's
+    sessions are read once and each subject picks its own from them."""
+    from connectonion.rem.source import Batch
+    seen = []
+
+    def collect(sub, cursor, *limits):
+        seen.append(cursor)
+        if not cursor:
+            return Batch([{"text": "odi accepted the terms", "timestamp": "2026-09-01", "source": "codex:1"}],
+                         {"offset": 40})
+        if cursor == {"offset": 40}:
+            return Batch([{"text": "vern booked the room", "timestamp": "2026-09-02", "source": "codex:2"}],
+                         {"offset": 80})
+        return Batch([], cursor)
+
+    monkeypatch.setattr(inv, "collect", collect)
+    subs = {"codex": {"kind": "codex", "root": str(tmp_path)}}
+    ody, _ = inv.gather("Ody Zhou", ["odi"], days=30, clients={}, subscriptions=subs)
+    vern, coverage = inv.gather("Vern Chan", ["vern"], days=30, clients={}, subscriptions=subs)
+    assert [i["source"] for i in ody] == ["codex:1"] and [i["source"] for i in vern] == ["codex:2"]
+    assert seen == [{}, {"offset": 40}, {"offset": 80}]
+    assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
+
+
+def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypatch):
+    """A second CLI run reads no unchanged transcript, but sees a newly appended turn."""
+    from contextlib import contextmanager
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import source
+
+    sessions, notebook = tmp_path / "sessions", tmp_path / "book"
+    sessions.mkdir()
+    old, current = sessions / "rollout-old.jsonl", sessions / "rollout-current.jsonl"
+    now = datetime.now(timezone.utc)
+
+    def rollout(path, when, words):
+        meta = {"type": "session_meta", "payload": {"id": path.stem, "cwd": "/work/demo"}}
+        row = {"type": "response_item", "timestamp": when.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": words}]}}
+        path.write_text(json.dumps(meta) + "\n" + json.dumps(row) + "\n")
+
+    rollout(old, now - timedelta(days=5), "Vern's earlier decision")
+    rollout(current, now - timedelta(minutes=30), "Vern's current decision")
+    reads, original = [], source._read_rollout
+
+    @contextmanager
+    def counted(*args):
+        reads.append(args[0])
+        with original(*args) as opened:
+            yield opened
+
+    monkeypatch.setattr(source, "_read_rollout", counted)
+    subs = {"codex": {"kind": "codex", "root": str(sessions)}}
+
+    first, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                          archive_root=notebook)
+    assert {item["text"] for item in first} == {"Vern's earlier decision", "Vern's current decision"}
+    assert len(reads) == 2
+
+    inv._WINDOWS.clear()  # each gather below is a later CLI run; the in-run memo is per process
+    recent, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                           archive_root=notebook)
+    assert [item["text"] for item in recent] == ["Vern's current decision"]
+    assert len(reads) == 2
+
+    with current.open("a") as output:
+        output.write(json.dumps({"type": "response_item", "timestamp": now.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern's new input"}]}}) + "\n")
+    inv._WINDOWS.clear()
+    updated, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                            archive_root=notebook)
+    assert {item["text"] for item in updated} == {"Vern's current decision", "Vern's new input"}
+    assert next(item["source"] for item in updated if item["text"] == "Vern's current decision") == recent[0]["source"]
+    assert reads == [old, current, current]
+
+    added = sessions / "rollout-added.jsonl"
+    rollout(added, now, "Vern's separate new session")
+    inv._WINDOWS.clear()
+    with_new_file, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                                  archive_root=notebook)
+    assert {item["text"] for item in with_new_file} == {
+        "Vern's current decision", "Vern's new input", "Vern's separate new session"}
+    assert reads == [old, current, current, added]
+
+    old.unlink()
+    inv._WINDOWS.clear()
+    after_deletion, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                                   archive_root=notebook)
+    assert {item["text"] for item in after_deletion} == {item["text"] for item in with_new_file}
+
+
+def test_historical_person_gather_keeps_legacy_and_current_codex_messages(tmp_path, monkeypatch):
+    legacy = [{"id": "legacy", "timestamp": "2025-11-04T15:24:50Z", "instructions": "Harness"},
+              {"type": "message", "id": "old-user", "role": "user",
+               "content": [{"type": "input_text", "text": "Vern asked about the placement"}]}]
+    current = [{"type": "session_meta", "payload": {"id": "current", "cwd": "/work/demo"}},
+               {"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                "payload": {"type": "message", "role": "user",
+                            "content": [{"type": "input_text", "text": "Vern needs revised scope"}]}}]
+    current += [{"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                 "payload": {"type": "message", "role": "user", "content": [
+                     {"type": "input_text", "text": f"Vern follow-up {index}"}]}} for index in range(450)]
+    current.append({"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                    "payload": {"type": "message", "role": "user", "future_field": True,
+                                "content": [{"type": "input_text", "text": "Vern hidden by unknown format"}]}})
+    for name, rows in (("legacy", legacy), ("current", current)):
+        (tmp_path / f"rollout-{name}.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    calls, original = [], inv.collect
+    def counted(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(inv, 'collect', counted)
+    items, coverage = inv.gather("Vern", ["Vern"], days=730, clients={}, subscriptions={
+        "codex": {"kind": "codex", "root": str(tmp_path)}})
+    assert {item["text"] for item in items} == {"Vern asked about the placement", "Vern needs revised scope",
+                                               *(f"Vern follow-up {index}" for index in range(450))}
+    assert len(calls) <= 3, "full-window gathering must not repeatedly re-hash hundreds of tiny batches"
+    assert any("1 related legacy message(s)" in line and "individual message times" in line for line in coverage)
+    assert any("1 user-slot message(s) in an unfamiliar format were not read" in line for line in coverage)
+    assert not any("unreadable" in line for line in coverage)
+
+
+@pytest.mark.parametrize('tier', ['agent', 'summary'])
+def test_file_only_investigation_keeps_exact_cited_snapshot_after_live_file_changes(tmp_path, monkeypatch, tier):
+    from connectonion.rem import project_pages
+    from connectonion.rem.reader_model import cited_context
+    root = _notebook(tmp_path, 'codex')
+    set_config(root, ['limits.investigation_rounds', '1'])  # the snapshot, not how it is read
+    repo = tmp_path / 'project'
+    repo.mkdir()
+    original = '# Tide\n' + 'a' * 300000 + '\nThe full source ends here.'
+    live = repo / 'README.md'
+    live.write_text(original)
+    notebook = inv.Notebook(root)
+    record = 'projects/tide.md'
+    notebook.stub_project(record, 'Tide', [str(repo)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions']))
+    monkeypatch.setattr('connectonion.rem.tier.current', lambda *a: tier)
+    seen = {}
+
+    def runner(book, items, config, stage):
+        index = next((i for i in items if i['role'] == 'evidence-index'), None)
+        if tier == 'agent':
+            assert index is not None
+            source = next(s for s in index['sources'] if s.startswith('project-source:'))
+            material = '\n'.join(p.read_text() for p in Path(index['file']).parent.rglob('*.md'))
+            assert 'The full source ends here.' in material
+        else:
+            item = next(i for i in items if i['role'] == 'project-file')
+            source = item['source']
+            assert item['text'].endswith('[truncated]') and 'The full source ends here.' not in item['text']
+        seen['source'] = source
+        live.write_text('# Tide\nChanged while the page is written.')
+        page = book.read(record).replace('- (none yet)', '- [1] ' + source)
+        book.write(record, page)
+        return {'changed': [record], 'usage': None}
+
+    inv.investigate(root, record, 'Tide', [str(repo)], days=30, clients={}, subscriptions={}, runner=runner)
+    saved = project_pages.repository_context(root, seen['source'])
+    expected = original if tier == 'agent' else original[:2000] + '\n[truncated]'
+    assert saved and saved['excerpt'] == expected.strip()[:project_pages.REPOSITORY_EXCERPT_CHARS]
+    retained = next((root / '.state/project-sources').glob('*.json'))
+    body = json.loads(retained.read_text())
+    assert body['text'] == expected and body['origin'] == 'file:' + str(live)
+    assert body['captured_at'] and body['file_modified_at']
+    assert retained.stat().st_mode & 0o777 == 0o600
+    assert cited_context(root, [{'text': '- [1] ' + seen['source']}])[seen['source']]['excerpt'] == saved['excerpt']
+    assert not list((root / '.state/evidence').rglob('*.md'))
+
+
+def test_explicit_project_keeps_only_cited_live_session_input_for_reader(tmp_path, monkeypatch):
+    from connectonion.rem.reader_model import cited_context
+    root = _notebook(tmp_path, 'codex')
+    repo = tmp_path / 'tide'
+    repo.mkdir()
+    record = 'projects/tide.md'
+    notebook = inv.Notebook(root)
+    notebook.stub_project(record, 'Tide', [str(repo)])
+    cited = 'claude-code:session-123:42'
+    other = 'claude-code:session-123:84'
+    long_input = 'Background. ' * 80 + 'The Tide release still needs a hook fix.'
+    messages = [{'role': 'user', 'source': source, 'timestamp': '2026-10-01T12:00:00+00:00',
+                 'project': str(repo), 'text': body} for source, body in
+                [(cited, long_input),
+                 (other, 'Unrelated session input.')]]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (messages, ['claude-code: 2 sessions']))
+
+    def runner(book, items, config, stage):
+        book.write(record, book.read(record) + f'\n- [1] {cited} — 2026-10-01\n')
+        return {'changed': [record], 'usage': None}
+
+    inv.investigate(root, record, 'Tide', [str(repo)], days=30, clients={}, subscriptions={}, runner=runner)
+    contexts = cited_context(root, [{'text': f'- [1] {cited} — 2026-10-01'}])
+    assert contexts[cited]['excerpt'] == messages[0]['text']
+    assert 'Your input only' in contexts[cited]['input_scope']
+    assert len(list((root / '.state/session-sources').glob('*.json'))) == 1
+
+
+def test_file_inventory_includes_package_manifest_without_all_json_data(tmp_path):
+    (tmp_path / 'package.json').write_text('{"name":"tide"}')
+    (tmp_path / 'customers.json').write_text('{"private":"data"}')
+    page = '# Tide\n\n## Paths\n- ' + str(tmp_path)
+    assert inv.project_file_inventory(page) == [str(tmp_path / 'package.json')]
+
+
+@pytest.mark.parametrize('outcome', ['unchanged', 'rejected', 'digest'])
+def test_file_snapshot_retention_follows_the_successful_run_and_keeps_original_before_digest(tmp_path, monkeypatch, outcome):
+    root = _notebook(tmp_path, 'codex')
+    folder = tmp_path / 'work' / 'tide'
+    folder.mkdir(parents=True)
+    (folder / 'README.md').write_text('# Tide\nThe original README body.')
+    (folder / 'uncited.md').write_text('This was supplied but not cited.')
+    record = 'projects/tide.md'
+    notebook = inv.Notebook(root)
+    notebook.stub_project(record, 'Tide', [str(folder)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions']))
+    seen = {}
+    if outcome == 'digest':
+        monkeypatch.setattr('connectonion.rem.tier.current', lambda *a: 'summary')
+        from connectonion.rem.runner import instructions
+        overhead = len(instructions('investigate', page_kind='project')) + len(notebook.read(record)) + 4000
+        monkeypatch.setattr('connectonion.rem.runner.INLINE_LIMIT', overhead + 1500)
+        (folder / 'README.md').write_text('# Tide\nThe original README body.' + 'a' * 1900)
+        (folder / 'uncited.md').write_text('b' * 1900)
+
+    def extractor(items, config, kind):
+        source = next(i['source'] for i in items if i.get('origin') == 'file:' + str(folder / 'README.md'))
+        seen['source'] = source
+        return {'notes': 'A summary-only claim [' + source + ']', 'usage': None}
+
+    def runner(book, items, config, stage):
+        if outcome == 'rejected':
+            raise inv.RemError('candidate rejected')
+        if outcome == 'digest':
+            assert any('summary-only' in i['text'] for i in items)
+            book.write(record, book.read(record).replace('- (none yet)', '- [1] ' + seen['source']))
+            return {'changed': [record], 'usage': None}
+        return {'changed': [], 'usage': None}
+
+    if outcome == 'rejected':
+        with pytest.raises(inv.RemError, match='rejected'):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner)
+        with pytest.raises(inv.NothingNew):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={},
+                            runner=lambda *a, **kw: pytest.fail('same rejected file material'))
+    else:
+        inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner,
+                        extractor=extractor)
+    saved = list((root / '.state/project-sources').glob('*.json'))
+    if outcome == 'digest':
+        assert len(saved) == 1
+        body = json.loads(saved[0].read_text())
+        assert 'original README body' in body['text'] and 'summary-only' not in body['text']
+    else:
+        assert saved == []
+    if outcome == 'unchanged':
+        # Even uncited, previously supplied files must not trigger repeated paid investigations.
+        with pytest.raises(inv.NothingNew):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={},
+                            runner=lambda *a, **kw: pytest.fail('identical supplied material'))
+        (folder / 'README.md').write_text('# Tide\nChanged without any new session.')
+        inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner)
+
+
+def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_path, monkeypatch):
+    """#2314: laid out in files, the model read 3.6-8.7% of a large page's
+    evidence. In rounds each part travels whole in the prompt, each round edits
+    the page the last one left, and a refused round costs only that round."""
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, "codex")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    turns = []
+
+    def write(notebook, material, config, **kw):
+        note = next(i for i in material if i["role"] == "round")["text"]
+        sources = [i["source"] for i in material if i.get("source", "").startswith("outlook:")]
+        turns.append((note, sources, material[0]["text"]))
+        assert not any(i["role"] == "evidence-index" for i in material)
+        if len(turns) == 2:
+            raise RunFailed("Candidate rejected: one bad citation", {"input_tokens": 1})
+        page = notebook.path("people/vern.md")
+        page.write_text(page.read_text() + f"\nRound {len(turns)} line.\n")
+        return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5},
+                "report": f"lead {len(turns)} — searched — found — next"}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
+
+    read = [source for _, sources, _ in turns for source in sources]
+    assert sorted(read) == sorted(i["source"] for i in items) and len(read) == len(items)  # every item, once
+    assert read == sorted(read, key=lambda s: int(s.split(":")[1]))  # oldest first
+    assert len(turns) >= 3 and turns[-1][0].startswith("Final round") and not turns[-1][1]
+    assert "Round 1 line." in turns[2][2]  # the next round builds on the last accepted page
+    assert "lead 1" in turns[2][0]  # and gets the leads from earlier rounds
+    page = inv.Notebook(root).read("people/vern.md")
+    assert "Round 1 line." in page and f"Round {len(turns)} line." in page
+    assert out["usage"]["input_tokens"] == 5 * (len(turns) - 1) + 1
+    assert any(line.startswith("rounds: ") for line in out["coverage"])
+
+
+def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
+    """One provider call per archived mail, in sequence, was most of a heavy
+    page's 15-minute gather on a real 1.9.0 init (2026-10-08)."""
+    calls = []
+
+    class Mail:
+        def download_attachments(self, email_id, out_dir):
+            calls.append(email_id)
+            if email_id == "with":
+                (Path(out_dir) / "offer.pdf").write_bytes(b"%PDF")
+                return [str(Path(out_dir) / "offer.pdf")]
+            return []
+
+    first = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
+    again = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
+    assert calls == ["with", "without"]
+    assert [paths for _, paths, _ in again] == [paths for _, paths, _ in first]
+    assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
+
+
+def test_a_search_the_provider_refuses_is_reported_not_fatal():
+    """An Ody pass in rounds asked Outlook for a lead; Graph answered HTTP 400
+    and the whole investigation failed (2026-10-08)."""
+    from connectonion.provider_credentials import ProviderCredentialError
+
+    class Outlook:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            if '"' in query:
+                raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 400).",
+                                              "co outlook inbox", status=400)
+            return [{"id": "m1", "from": "ody@x.y", "date": "2026-10-01", "subject": "Deck"}]
+
+        def get_email_body(self, message_id):
+            return "--- Email Body ---\nThe deck is done."
+
+    found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
+    assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
+    assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]
+
+
+def test_an_organisation_is_enriched_from_its_own_site_and_a_dead_site_is_a_note():
+    """#2315: what a company does, in its own words, cited by URL."""
+    from connectonion.useful_tools.page_fetch import FetchError
+    pages = {"https://fernhill.io/": {"url": "https://fernhill.io/", "title": "Fernhill", "redirect": None,
+             "markdown": "Climate data for insurers. [About us](https://fernhill.io/about) [Blog](https://fernhill.io/blog) "
+                         "[Partner](https://other.example/about)"},
+             "https://fernhill.io/about": {"url": "https://fernhill.io/about", "title": "About", "redirect": None,
+                                           "markdown": "Founded in Wellington in 2021."}}
+
+    def fetch(url):
+        if url not in pages:
+            raise FetchError(f"{url} unreachable", "")
+        return pages[url]
+
+    items, coverage = inv.website_items(["fernhill.io", "gone.example"], fetch=fetch)
+    assert [i["source"] for i in items] == ["https://fernhill.io/", "https://fernhill.io/about"]
+    assert "Founded in Wellington" in items[1]["text"] and items[0]["role"] == "website"
+    assert any("gone.example" in line and "could not be read" in line for line in coverage)
+
+
+def test_a_kept_mail_body_is_read_from_disk_not_fetched_again(tmp_path):
+    """A background backfill keeps older mail; the deepening pass must not ask
+    the provider for the same bodies again (2026-10-08)."""
+    from connectonion.rem.mail_archive import retain_message
+
+    class Mail:
+        calls = 0
+
+        def get_email_body(self, message_id):
+            Mail.calls += 1
+            return "--- Email Body ---\nfresh"
+
+    retain_message(tmp_path, "gmail", {"id": "m1", "date": "2025-01-02", "from": "a@x.y"},
+                   "--- Email Body ---\nkept", fetched_at="2026-10-08T00:00:00Z")
+    assert "kept" in inv._mail_body(Mail(), "m1", kind="gmail", root=tmp_path) and Mail.calls == 0
+    assert "fresh" in inv._mail_body(Mail(), "m2", kind="gmail", root=tmp_path) and Mail.calls == 1
+
+
+def test_a_throttled_provider_is_waited_for_not_a_lost_page(monkeypatch):
+    """UNSW's page failed on Graph's HTTP 429 during a 16-worker init (2026-10-08)."""
+    from connectonion.provider_credentials import ProviderCredentialError
+    waits, calls = [], []
+    monkeypatch.setattr("time.sleep", waits.append)
+
+    def listing():
+        calls.append(1)
+        if len(calls) < 3:
+            raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 429).", "co outlook inbox",
+                                          status=429)
+        return ["ok"]
+
+    assert inv._patient(listing) == ["ok"] and waits == [5, 10]
+
+
+def test_the_first_pass_reads_no_attachments_and_the_backfill_counts_them(tmp_path, monkeypatch):
+    """A fresh notebook's first pass asked the provider for every archived mail's attachments."""
+    from connectonion.rem import people_pages
+    seen = {}
+    monkeypatch.setattr(people_pages, "handles", lambda root, record: ("Vern", ["vern@x.y"]))
+    monkeypatch.setattr(inv, "investigate", lambda *a, **kw: seen.update(kw) or {})
+    monkeypatch.setattr(people_pages, "mark_investigated", lambda *a: None)
+    people_pages.investigate_person(tmp_path, {"record": "people/vern.md", "days": 180, "attachments": False},
+                                    clients={}, subscriptions={})
+    assert seen["fetch_attachments"] is False
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([{"role": "attachment", "timestamp": "2026-10-01T00:00:00Z"},
+                                                          {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
+                                                          {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], []))
+    asked = {}
+    real_gather = inv.gather
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: asked.update(kw) or real_gather_items)
+    real_gather_items = ([{"role": "attachment", "timestamp": "2026-10-01T00:00:00Z"},
+                          {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
+                          {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], [])
+    subs = {"gmail": {"kind": "gmail"}, "codex": {"kind": "codex", "root": "/x"}}
+    assert people_pages.backfill_person(tmp_path, {"record": "people/vern.md"}, clients={}, subscriptions=subs) == 2
+    assert list(asked["subscriptions"]) == ["gmail"]  # mail only; sessions were read by the first pass
+
+
+def test_one_run_scans_its_sessions_once_for_every_person(tmp_path, monkeypatch):
+    """1.9.1b3: 350 of a 363-second first-pass gather was re-hashing every session
+    file for each person in turn, under the lock; the window is kept for the run."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import source
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    now = datetime.now(timezone.utc)
+    meta = {"type": "session_meta", "payload": {"id": "r", "cwd": "/work/demo"}}
+    row = {"type": "response_item", "timestamp": (now - timedelta(days=2)).isoformat(), "payload": {
+        "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern and Ody decided"}]}}
+    (sessions / "rollout-a.jsonl").write_text(json.dumps(meta) + "\n" + json.dumps(row) + "\n")
+    calls, original = [], source.collect
+    monkeypatch.setattr(inv, "collect", lambda *a, **k: calls.append(1) or original(*a, **k))
+    subs = {"codex": {"kind": "codex", "root": str(sessions)}}
+    scans = []
+    # A 180-day person, a 730-day organisation, a person again: one scan (1.9.1b4
+    # threw the window away whenever a wider request came in).
+    for name, days in (("Vern", 10), ("Ody", 700), ("Vern", 10)):
+        items, _ = inv.gather(name, [name], days=days, clients={}, subscriptions=subs, archive_root=tmp_path / "book")
+        assert [i["text"] for i in items] == ["Vern and Ody decided"]
+        scans.append(len(calls))
+    assert scans[0] > 0 and scans[2] == scans[1] == scans[0]  # later pages read the kept window
+
+
+def test_a_capped_first_run_reads_the_newest_parts_and_a_deepen_reads_the_ones_before_the_window():
+    """2026-10-09: a 45-minute first run reads three parts per page; the rest stay searchable."""
+    from connectonion.rem.investigate import rounds_to_read
+    parts = [[{"timestamp": f"2026-0{month}-01T00:00:00+00:00"}] for month in range(1, 9)]
+    read, rest = rounds_to_read(parts, 3)
+    assert read == parts[5:] and rest == parts[:5]
+    read, rest = rounds_to_read(parts, 3, read_before="2026-05-15")
+    assert read == parts[2:5] and rest == parts[:2] + parts[5:]
+
+
+def test_a_deepen_with_nothing_before_the_window_is_nothing_new_not_a_failure(tmp_path, monkeypatch):
+    """1.9.2b2 trial: seven people's second pass found only material inside the
+    mapped window and failed with "list index out of range"."""
+    root = _notebook(tmp_path, "codex")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    with pytest.raises(inv.NothingNew, match="2026-04-12"):
+        inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                        extractor=lambda *a: pytest.fail("no digest pass"), rounds=3, read_before="2026-04-12",
+                        runner=lambda *a, **kw: pytest.fail("no model turn"))

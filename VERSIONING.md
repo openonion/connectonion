@@ -400,7 +400,478 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a12
+## Current Version: 1.9.2b3
+
+1.9.2b3 is a 1.9.2 beta; stable remains 1.9.1. It includes the unpublished
+1.9.2b2. A first run you can read straight away: sources are numbered 1, 2, 3,
+a person's Company links the organisation page for their mail domain, probable
+duplicate people are named with the merge command, `co rem show` finds a
+person by name, alias or email, pages speak in one voice,
+and a missing required section is added as Unknown instead of the page being
+refused. The reader keeps Facts labels and addresses on whole words and
+shortens 64-character ids. See [1.9.2b3 notes](docs/releases/1.9.2b3.md).
+
+- 1.9.2b3 (A first run you can read straight away).
+- 1.9.2b2 (A first run that loses fewer pages; built, not published).
+- 1.9.2b1 (Each pass improves the page, not only grows it).
+
+## Stable release: 1.9.1
+
+Stable 1.9.1 makes co rem's first run investigate rather than skim. It reads
+180 days of mail sixteen pages at a time, fetches two years in the background
+and deepens every person with older material, works through large evidence in
+rounds that edit the page in place, and ends with decisions and principles.
+Person pages lead with contact facts, cited mail opens as a message, and cited
+documents open from the page. The public 1.9.1rc1 wheel ran a full 180-day
+first run on the owner's real mail in 133 minutes with no lock-wait failures;
+six of 338 investigations did not land (five review refusals, one network
+timeout). See [1.9.1 notes](docs/releases/1.9.1.md).
+
+- 1.9.1 (A first run that investigates, deepens and edits in place).
+
+## Previous preview: 1.9.1rc1
+
+1.9.1rc1 is the 1.9.1 release candidate; stable remains 1.9.0. After the 1.9.1b5
+real first run (all 280 pages in 82 minutes, 55 people deepened, 5 decisions and
+a principle), writes of finished work wait up to ten minutes for the notebook
+lock and token refreshes two minutes for the credential file. See
+[1.9.1rc1 notes](docs/releases/1.9.1rc1.md).
+
+- 1.9.1rc1 (Locks that wait long enough for sixteen workers).
+
+## Previous preview: 1.9.1b5
+
+1.9.1b5 is a 1.9.1 beta; stable remains 1.9.0. A first run builds its coding-
+session window once over two years and every page filters it by date, instead
+of rescanning whenever a wider window is asked for; the background backfill
+reads mail only. See [1.9.1b5 notes](docs/releases/1.9.1b5.md).
+
+- 1.9.1b5 (One session scan per run, whatever the window).
+
+## Previous preview: 1.9.1b4
+
+1.9.1b4 is a 1.9.1 beta; stable remains 1.9.0. A first run scans the local
+coding-session window once and shares it across people for half an hour,
+instead of re-hashing every transcript for each person behind a lock. See
+[1.9.1b4 notes](docs/releases/1.9.1b4.md).
+
+- 1.9.1b4 (Coding sessions scanned once per run).
+
+## Previous preview: 1.9.1b3
+
+1.9.1b3 is a 1.9.1 beta; stable remains 1.9.0. The first pass reads no
+attachments (the background backfill fetches and counts them for the deepening
+pass), HTTP 429 backs off and retries, and Outlook is read four messages at a
+time. See [1.9.1b3 notes](docs/releases/1.9.1b3.md).
+
+- 1.9.1b3 (No network for people in the first pass; throttling waits).
+
+## Previous preview: 1.9.1b2
+
+1.9.1b2 is a 1.9.1 beta; stable remains 1.9.0. The first run's first pass reads
+each person's mapped window from disk while four background workers fetch the
+rest of two years into the archive; people with older mail are then deepened
+from disk. The project writer drops an untraceable citation's lines instead of
+refusing the page. See [1.9.1b2 notes](docs/releases/1.9.1b2.md).
+
+- 1.9.1b2 (Local-first first pass, background two-year backfill, deepening; project writer keeps pages).
+
+## Previous preview: 1.9.1b1
+
+1.9.1b1 is the first 1.9.1 beta; stable remains 1.9.0. After the 1.9.1a2 real
+180-day first run (84 of 84 people, 14 of 20 projects, every project refusal one
+citation), a project page's untraceable citation drops its lines after repairs,
+init ends by drawing decisions and principles, a page lists the documents it
+cites, init runs 16 pages at a time with one mail pool per mailbox, and the
+synthesis round keeps every thread and searches for missing outcomes. See
+[1.9.1b1 notes](docs/releases/1.9.1b1.md).
+
+- 1.9.1b1 (One citation is not a page; decisions and principles from init; Documents; 16 workers).
+
+## Previous preview: 1.9.1a2
+
+1.9.1a2 is a preview; stable remains 1.9.0. co rem investigations read a large
+page's whole evidence in rounds, each editing the page the last left, with a
+reporter's Skill that follows leads and finds how threads ended; a final round
+writes one line per thread. Pages are edited, not rewritten. Organisations are
+enriched from their own site; project and skill pages are repaired instead of
+refused for run citations; attachments are fetched once. The reader shows a
+person's contact facts first and opens a cited mail as a message. See
+[1.9.1a2 notes](docs/releases/1.9.1a2.md).
+
+- 1.9.1a2 (Investigations in rounds, edited in place, reporter's Skill; contact facts first; mail as a message).
+
+## Previous preview: 1.9.1a1
+
+1.9.1a1 is a preview; stable remains 1.9.0. co rem's first map covers the last
+180 days instead of 90, and the reader names its generated files honestly: the
+people, project and organisation maps and the skill run reports move from Notes
+to a new Run logs category, and `notes/` is shown as AI notes. Existing
+notebooks move those files on their next command, and skill pages keep their
+links. See [1.9.1a1 notes](docs/releases/1.9.1a1.md).
+
+- 1.9.1a1 (180-day first map; Run logs and AI notes in the reader).
+
+## Previous stable: 1.9.0
+
+Stable 1.9.0 promotes co rem after the 90-day installed-package first-run,
+reader, and scheduled-upkeep acceptance recorded in
+[the release notes](docs/releases/1.9.0.md). Init investigates every eligible
+mapped page without a REM quota cap, reports progress by category, checks model
+access before dispatch, and leaves failed work visible. Rewritten coding-session
+prefixes remain protected while unaffected sessions continue. Remaining quality
+and recovery work is tracked for 1.9.1.
+
+- 1.9.0 (Complete the mapped first run, make progress and upkeep health visible).
+
+## Previous preview: 1.9.0a43
+
+1.9.0a43 makes failed investigations visible on Home, with classified reasons
+and a keyboard-accessible route to the run record. Init's overview now explains
+that it offers nightly upkeep after source/schedule approval. Public a42 real
+init confirmed scheduling, but the five-page writing sample failed with four
+timeouts and one model authentication refusal. This preview fixes reporting;
+it does not restore model access or establish full historical memory quality.
+Stable remains 1.8.10. See [1.9.0a43 notes](docs/releases/1.9.0a43.md).
+
+- 1.9.0a43 (Show failed memory writing on Home and explain init nightly upkeep).
+
+## Previous preview: 1.9.0a42
+
+1.9.0a42 brings the historical contact directory ahead of a long mapped
+People roster. On the owner's local real-data reader, its collapsed entrance
+moved from y=1314 to y=515 at 390px width, and from y=1067 to y=249 at
+1440px width. The published a41 release carried the historical census and
+directory, but not this reachability fix. The a41 visual evidence manifest,
+missing from its tagged source, is recorded as an append-only documentation
+repair alongside a42's own before-and-after evidence. This remains a preview:
+the metadata census does not establish the quality of all written memories.
+The public a41 wheel also exposed a late-connection failure that discarded
+completed mail years; a42 retains those correspondents and marks the remainder
+incomplete. Durable checkpointed retries remain in #2298.
+Stable remains 1.8.10. See [1.9.0a42 notes](docs/releases/1.9.0a42.md).
+
+- 1.9.0a42 (Keep completed mail years after failure and make the contact directory reachable).
+
+## Previous preview: 1.9.0a41
+
+1.9.0a41 makes historical mail contacts discoverable in the People reader,
+forecasts the full mapped first run without model work, and offers the nightly
+REM schedule after init's foreground pass. Gmail history uses bounded direct
+metadata reads so a connected mailbox is not silently absent from the census.
+The reader gains phone-sized contact cards and contained citation tips. This
+is a preview: a metadata census is not a verified memory of every person, and
+the all-person investigation remains to be measured on the owner's account.
+New notebooks now run on Claude Code with Sonnet (`claude-sonnet-5-5`), and
+ten first-run workers no longer lock each other out on that runner; saved
+configurations keep their runner.
+Stable remains 1.8.10. See [1.9.0a41 notes](docs/releases/1.9.0a41.md).
+
+- 1.9.0a41 (Historical contacts, first-run forecast, nightly upkeep, Sonnet default).
+
+## Previous preview: 1.9.0a40
+
+1.9.0a40 labels Skill usage as coding-session matches by invocation name,
+separates retained evaluation attempts from those matches, and keeps the
+mapped Skill investigation command inside the phone's first screen. Skill
+roster links now have full-size touch targets. These are bounded reader and
+label changes; saved invocation identities are unchanged. Stable remains
+1.8.10. See [1.9.0a40 notes](docs/releases/1.9.0a40.md).
+
+- 1.9.0a40 (Skill usage scope and mapped-page action).
+
+## Previous preview: 1.9.0a39
+
+1.9.0a39 gives cited Skill findings a direct 44-pixel source link beside the
+lead statement, keeps keyboard focus visible on the dark lead card, and hides
+labelled private finding links when private passages are hidden. The reader
+changes presentation only. Stable remains 1.8.10. See
+[1.9.0a39 notes](docs/releases/1.9.0a39.md).
+
+- 1.9.0a39 (Skill finding source access on phones).
+
+## Previous preview: 1.9.0a38
+
+1.9.0a38 adds Find and Next match inside long archived REM source excerpts.
+The dialog names truncation, and search stays inside the private source
+section. Existing saved memories and source bodies are unchanged. Stable
+remains 1.8.10. See [1.9.0a38 notes](docs/releases/1.9.0a38.md).
+
+- 1.9.0a38 (Find within long archived sources).
+
+## Previous preview: 1.9.0a37
+
+1.9.0a37 puts a short, source-backed Project purpose on changed Home cards,
+keeps each cited purpose source directly openable beside the clipped phone and
+desktop preview, and gives the desktop privacy control a 44-pixel target. The
+reader changes presentation only; saved memories and sources are unchanged.
+Stable remains 1.8.10. See
+[1.9.0a37 notes](docs/releases/1.9.0a37.md).
+
+- 1.9.0a37 (Project purpose and source access in the reader).
+
+## Previous preview: 1.9.0a36
+
+1.9.0a36 keeps Outlook HTML mail's paragraph, table-field and participant-role separators in
+provider-rendered text. In a synthetic cancellation source, the phone reader
+shows event time, reason and follow-up as separate lines; one privately
+re-read affected Outlook message went from 8 to 34 lines with the same
+non-whitespace characters. Previously retained mail is not rewritten. Stable
+remains 1.8.10. See
+[1.9.0a36 notes](docs/releases/1.9.0a36.md).
+
+- 1.9.0a36 (Outlook HTML source separators).
+
+## Previous preview: 1.9.0a35
+
+1.9.0a35 places the full-size source action beside the useful lead on written
+REM pages and keeps it inside the first 375×812 viewport on the five sampled
+page types. Full memory remains visible. Stable remains 1.8.10. See
+[1.9.0a35 notes](docs/releases/1.9.0a35.md).
+
+- 1.9.0a35 (phone first-fold source action).
+
+## Previous preview: 1.9.0a34
+
+1.9.0a34 keeps a private parsed window of typed coding-session input so a
+scoped investigation checks source changes without rereading every unchanged
+transcript in a new CLI process. A 90-day local source-only trial read 4,957
+messages in 103.5 seconds, then the same count in 2.1 seconds in another
+process. Stable remains 1.8.10. See
+[1.9.0a34 notes](docs/releases/1.9.0a34.md).
+
+- 1.9.0a34 (incremental scoped session reading across CLI runs).
+
+## Previous preview: 1.9.0a33
+
+1.9.0a33 leaves first contact unknown when the earliest retained reply points
+to an earlier exchange, and keeps the People index tied to explicit page facts.
+It aligns first-run cost and quota guidance with measured samples and configured
+limits, and runs release building beside the test matrix while keeping
+publication gated on both. Stable remains 1.8.10. See
+[1.9.0a33 notes](docs/releases/1.9.0a33.md).
+
+- 1.9.0a33 (Person first-contact provenance, first-run cost guidance, release latency).
+
+## Previous preview: 1.9.0a32
+
+1.9.0a32 keeps Skill invocation names stable across investigations, opens the
+full bounded cited run part and local artifacts in the owner-only reader, and
+separates an intended Skill outcome from observed output. Stable remains
+1.8.10. See [1.9.0a32 notes](docs/releases/1.9.0a32.md).
+
+- 1.9.0a32 (Skill source access, artifact-grounded findings, stable Skill identity).
+
+## Previous preview: 1.9.0a31
+
+1.9.0a31 checks Project claims against retained originals before a page is
+replaced, adds a deliberate retry for refused pages, and improves the reader's
+first screen. It includes the full-cohort concurrency work tagged as a30.
+Stable remains 1.8.10. See [1.9.0a31 notes](docs/releases/1.9.0a31.md).
+
+- 1.9.0a31 (Project source audit, explicit retry, reader evidence clarity).
+
+## Previous tag: 1.9.0a30
+
+1.9.0a30 implements full-cohort concurrent onboarding and CLI investigations,
+running across a 10-worker thread pool with thread-safe client isolation and
+zero dry-run capping. Stable remains 1.8.10. See
+[1.9.0a30 notes](docs/releases/1.9.0a30.md).
+
+The a30 release workflow failed before publishing GitHub Release or PyPI;
+[#2253](https://github.com/openonion/connectonion/issues/2253) tracks the
+order-sensitive concurrent fetch test. The a30 tag remains unchanged.
+
+- 1.9.0a30 (full-cohort onboarding, 10-worker thread pool, thread-safe mail client isolation).
+
+## Previous preview: 1.9.0a29
+
+1.9.0a29 brings the mapped page's investigation action into the phone's first
+screen, explains what a mapped project does and does not yet know, and makes the
+phone privacy action easier to tap. Stable remains 1.8.10. See
+[1.9.0a29 notes](docs/releases/1.9.0a29.md).
+
+- 1.9.0a29 (mapped first-screen action, honest project lead, phone privacy target).
+
+## Previous preview: 1.9.0a28
+
+1.9.0a28 implements context over control in `co rem investigate`:
+pre-authorizes local search and shell tools upfront, supplies live project
+repository paths, and records full audit provenance. Stable remains 1.8.10. See
+[1.9.0a28 notes](docs/releases/1.9.0a28.md).
+
+- 1.9.0a28 (context over control, live repository paths, full investigation provenance).
+
+## Previous preview: 1.9.0a27
+
+1.9.0a27 keeps institutional and service desk correspondents out of `people/`
+and requires project evidence before dated scratchpad folders or prompt
+fragments enter `projects/`. Stable remains 1.8.10. See
+[1.9.0a27 notes](docs/releases/1.9.0a27.md).
+
+- 1.9.0a27 (#2201, #2202; institutional correspondents and project entry gate).
+
+## Previous preview: 1.9.0a26
+
+1.9.0a26 makes written REM notebooks faster to reopen, clarifies that existing
+memories remain available when background updates are off, and checks that the
+package's preview install command matches the version being shipped. The full
+CLI help audit now runs once per test workflow. Stable remains 1.8.10. See
+[1.9.0a26 notes](docs/releases/1.9.0a26.md).
+
+- 1.9.0a26 (#2214, #2215, #2216, #2218; reader speed, status copy, release guidance).
+
+## Previous preview: 1.9.0a25
+
+1.9.0a25 makes a completed `co rem init` source map visible on the reader's
+first screen, reconciles held People counts, and keeps the Last contact heading
+legible on a real large phone roster. A new map aggregates each person's first
+and last mail dates across addresses; mapped-only notebooks render much faster.
+Stable remains 1.8.10. See [1.9.0a25 notes](docs/releases/1.9.0a25.md).
+
+- 1.9.0a25 (#2205, #2210, #2211, #2212; first-map reader and date fixes).
+
+## Previous preview: 1.9.0a24
+
+1.9.0a24 adds `co rem merge KEPT OLD` to fold duplicate pages and preserve
+aliases. Written sections are merged, citations are renumbered, OLD is archived,
+and references across all pages are relinked. Stable remains 1.8.10. See
+[1.9.0a24 notes](docs/releases/1.9.0a24.md).
+
+- 1.9.0a24 (#2200; manual page merge and alias relinking).
+
+## Previous preview: 1.9.0a23
+
+1.9.0a23 clarifies map-derived contact dates in the reader and keeps table
+headers visible beside the sticky Name column during horizontal scroll on
+mobile. When a person note lacks a confirmed contact date, the reader shows the
+mapped email date with an explicit source label, explains the distinction in
+expanded Facts, and preserves readable headers beside the sticky Name column
+during horizontal scroll on 375px screens. Stable remains 1.8.10. See
+[1.9.0a23 notes](docs/releases/1.9.0a23.md).
+
+- 1.9.0a23 (#2199, #2205; map-derived contact dates and mobile table header visibility).
+
+## Previous preview: 1.9.0a22
+
+1.9.0a22 leads project pages with a current, source-backed finding when one is
+supported; otherwise it shows the sourced project purpose and says current
+work is unknown. The full statement stays visible on phones. Partial session
+coverage, private-mode
+placeholders and per-source navigation make the rendered page's limits easier
+to see. Accepted explicit investigations retain the live coding inputs they
+cite even when the older map did not archive them. Skill pages use retained
+originals for cited instructions and runs. A 730-day discovery trial
+found more historical pages but took 16.5 minutes before model writing; the
+default remains 90 days while [#2176](https://github.com/openonion/connectonion/issues/2176)
+tracks a resumable, affordable path. Stable remains 1.8.10. See
+[1.9.0a22 notes](docs/releases/1.9.0a22.md).
+
+- 1.9.0a22 (project insight and source navigation, partial coverage, live-session citations).
+
+## Previous preview: 1.9.0a21
+
+1.9.0a21 opens Full memory and its citations without a disclosure click. On
+phones the original note precedes auxiliary Facts and Usage, source jumps and
+privacy controls have been rechecked, and the mobile rail shows its snapshot
+state with larger navigation targets. Project pages lead with a lasting
+Pattern finding when present. REM's routine investigation budget rises to 35
+points of the Codex week and stops at 90% used; the first-run target is
+advisory. Historical correspondent discovery and whole-notebook usefulness
+remain open. Stable remains 1.8.10. See
+[1.9.0a21 notes](docs/releases/1.9.0a21.md).
+
+- 1.9.0a21 (visible full memory, mobile reader review, higher REM budget).
+
+## Previous preview: 1.9.0a20
+
+1.9.0a20 corrected the reader's visible co rem labels: the morning overview,
+recall prompt, empty states and source dialogs use the command name. The
+private reader's data and signed protocol are unchanged. The paired O Chat
+fix opens bookmarked notes inside the sandbox, while the docs sample uses
+current labels and keeps trial installation steps clear of promotions.
+Stable remains 1.8.10. See [1.9.0a20 notes](docs/releases/1.9.0a20.md).
+
+- 1.9.0a20 (reader labels found by independent rendered-page review).
+
+## Previous preview: 1.9.0a19
+
+1.9.0a19 completes the public co rem rename. Live reader links open
+`/<address>/rem`; the deployed O Chat reader redirects old `/wiki` links.
+The README introduces co rem and pins this opt-in preview without allowing
+pre-release dependencies. The homepage and docs use the same command name.
+Signed reader messages and existing notebook migrations remain compatible.
+Stable remains 1.8.10. See [1.9.0a19 notes](docs/releases/1.9.0a19.md).
+
+- 1.9.0a19 (#2148; canonical co rem reader URLs, shared branding and README introduction).
+
+## Previous preview: 1.9.0a18
+
+1.9.0a18 gives REM's first-run owner page a source-backed change of decision
+and a visible next step. The full pass receives bounded excerpts from the
+owner's dated coding messages, including items used by the quick pass. The
+reader puts the owner change and next step first and links cited project
+mentions. A fresh private five-day init completed both passes; the owner page
+had three cited Insight bullets and six internal links. This is one AHA slice,
+not completion of the owner-page or REM maturity gates. Stable remains 1.8.10.
+See [1.9.0a18 notes](docs/releases/1.9.0a18.md).
+
+- 1.9.0a18 (#2128, #2130; owner decision evidence, reader hierarchy and fact citation reliability).
+
+## Previous preview: 1.9.0a17
+
+1.9.0a17 gives REM's first written project page bounded, separately citable
+local repository evidence and removes unsupported optional fields. A private
+five-day candidate init wrote one project page with 14 headings, one `Unknown`
+fields and three cited Insight bullets. This is a project-page quality slice;
+cross-page links and owner-page history remain open. Stable remains 1.8.10.
+See [1.9.0a17 notes](docs/releases/1.9.0a17.md).
+
+- 1.9.0a17 (#2122; project-page evidence and density).
+
+## Previous preview: 1.9.0a16
+
+1.9.0a16 bounds Gmail API reads and avoids fetching message headers in a full
+listing window that REM must split. A real 90-day first run listed and archived
+3,202 messages, then completed all 36 selected pages with citations. Stable
+remains 1.8.10. See [1.9.0a16 notes](docs/releases/1.9.0a16.md).
+
+- 1.9.0a16 (Gmail first-run scan reliability and performance).
+
+## Previous preview: 1.9.0a15
+
+1.9.0a15 keeps REM's first-run project count consistent with the map shown
+before model work. Session folders discovered afterward remain candidates;
+only mapped projects enter the first-run writing queue. The larger project
+eligibility and overnight-memory issues remain open. Stable remains 1.8.10.
+See [1.9.0a15 notes](docs/releases/1.9.0a15.md).
+
+- 1.9.0a15 (#2079; first-run project map consistency).
+
+## Previous preview: 1.9.0a14
+
+1.9.0a14 makes REM's first run investigate the owner's page and a selected
+recent cohort of people, projects and related organizations by default. The
+20% weekly allowance target is advisory; the selected investigation can finish
+beyond it, subject to the configured safety floor. It carries parallel-run
+reliability fixes, two-year person searches and privacy labels in the reader,
+alongside the connected memory reader from 1.9.0a13.
+The first-run estimate now counts both owner turns and parallel tail latency.
+Stable remains 1.8.10. See [1.9.0a14 notes](docs/releases/1.9.0a14.md).
+
+- 1.9.0a14 (#1943, #1972, #2008, #2040; first-run investigation and privacy labels).
+
+## Previous preview: 1.9.0a13
+
+1.9.0a13 turns the REM snapshot into a connected, task-first reader: compact
+record views, source-aware links, open threads, archived source and conversation
+drilldown, and cited field changes kept distinct from page rewrites. The
+read-only snapshot remains an opt-in preview; stable is 1.8.10. See
+[1.9.0a13 notes](docs/releases/1.9.0a13.md).
+
+- 1.9.0a13 (#2060, #2065, #2066, #2096, #2098, #2103–#2107; connected reader preview).
+
+## Earlier preview: 1.9.0a12
 
 1.9.0a12 repairs local REM snapshot opening on Windows. The reader writes a
 private temporary file and replaces the predictable snapshot name without

@@ -98,6 +98,30 @@ def test_two_waiting_clients_refresh_same_account_only_once(selected):
     assert env.read_env_file(selected)["MICROSOFT_REFRESH_TOKEN"] == "rotated-refresh"
 
 
+def test_clients_of_a_record_without_an_email_survive_this_process_rotating_its_token(selected):
+    """A real co rem first run (2026-10-01): twelve threads read one Microsoft
+    record that had no EMAIL; one refreshed and the grant rotated its refresh
+    token, and the next thread called that an account change."""
+    save_authorization("microsoft", selected, grant("microsoft", microsoft_email=None))
+    stale, waiting = (resolve_provider_credentials("microsoft") for _ in range(2))
+    rotated = grant("microsoft", microsoft_email=None, access_token="rotated-access", refresh_token="rotated-refresh")
+    assert refresh_credentials(stale, backend="https://broker.invalid", api_key="synthetic",
+                               post=lambda *a, **k: httpx.Response(200, json=rotated)) == "rotated-access"
+    waiting.values["MICROSOFT_TOKEN_EXPIRES_AT"] = "2000-01-01T00:00:00+00:00"  # it too sees an expired token
+    assert refresh_credentials(waiting, backend="https://broker.invalid", api_key="synthetic",
+                               post=lambda *a, **k: pytest.fail("already refreshed")) == "rotated-access"
+
+
+def test_a_record_without_an_email_replaced_by_another_grant_is_still_refused(selected):
+    save_authorization("microsoft", selected, grant("microsoft", microsoft_email=None))
+    record = resolve_provider_credentials("microsoft")
+    save_authorization("microsoft", selected, grant("microsoft", microsoft_email=None, refresh_token="someone-else"))
+    with pytest.raises(ProviderCredentialError) as error:
+        refresh_credentials(record, backend="https://broker.invalid", api_key="synthetic",
+                            post=lambda *a, **k: pytest.fail("a different grant must not refresh"))
+    assert error.value.code == "record_changed"
+
+
 @pytest.mark.parametrize("status,detail,code,next_command", [
     (401, "Invalid token", "broker_auth_failed", "co auth"),
     (401, {"error": "reauth_required"}, "reauth_required", "auth google"),
@@ -217,3 +241,32 @@ def test_new_authorization_cannot_leave_the_previous_accounts_metadata(selected)
     assert record.scopes == set()
     assert "GOOGLE_EMAIL" not in os.environ
     assert "GOOGLE_SCOPES" not in os.environ
+
+
+def test_a_refresh_waits_for_other_workers_refreshing_the_same_file(tmp_path, monkeypatch):
+    """1.9.1b5: 20 mail workers, a 30-second lock wait, 'Credential file is busy', one page lost."""
+    from contextlib import contextmanager
+    from connectonion import provider_credentials as pc
+    waits = []
+
+    @contextmanager
+    def lock(path, timeout=30.0):
+        waits.append(timeout)
+        yield
+
+    monkeypatch.setattr(pc, "env_lock", lock)
+    record = pc.ProviderCredentials("google", {"GOOGLE_REFRESH_TOKEN": "r"}, tmp_path / "keys.env")
+    monkeypatch.setattr(pc, "_latest", lambda record: record)
+    monkeypatch.setattr(pc, "_fresh", lambda record: False)
+    monkeypatch.setattr(pc, "_validated_values", lambda latest, data: {"GOOGLE_ACCESS_TOKEN": "a"})
+    monkeypatch.setattr(pc, "write_env_unlocked", lambda path, values: None)
+    monkeypatch.setattr(pc, "publish_values", lambda values, managed: None)
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {}
+
+    pc.refresh_credentials(record, backend="https://x", api_key="k", post=lambda *a, **k: Response())
+    assert waits == [pc.REFRESH_WAIT_SECONDS] and pc.REFRESH_WAIT_SECONDS >= 60

@@ -1,5 +1,6 @@
 """The terms are in the contract, not the mail that carried it."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from connectonion.rem.attachments import extract_text
@@ -92,7 +93,8 @@ def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypat
         def list_between(self, s, e, n):
             # window-aware, like a provider: one mail, in one week, not once per week
             rows = [{"id": "m1", "from": "Emma <szh526@gmail.com>", "to": ["me@x.y"], "cc": [],
-                     "date": "2026-08-06T00:00:00+00:00", "subject": "contract v9"}]
+                     "date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+                     "subject": "contract v9"}]
             return [r for r in rows if s[:10] <= r["date"][:10] < e[:10]]
         def get_email_body(self, i): return "--- Email Body ---\nplease see attached"
         def download_attachments(self, email_id, out_dir):
@@ -161,3 +163,24 @@ def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, mo
     path = tmp_path / "terms.xlsx"
     path.write_bytes(b"PK")
     assert "pip install 'connectonion[rem]'" in extract_text(path)
+
+
+def test_pdf_annotation_text_is_not_mistaken_for_blank_party_fields(tmp_path):
+    from pypdf import PdfWriter
+    from pypdf.annotations import FreeText
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    writer.add_annotation(0, FreeText(text='Example Client Ltd', rect=(100, 300, 300, 340)))
+    writer.add_annotation(0, FreeText(text='Sam Example, Director', rect=(100, 240, 300, 280)))
+    writer.add_annotation(0, DictionaryObject({
+        NameObject('/Subtype'): NameObject('/Stamp'),
+        NameObject('/Rect'): ArrayObject([FloatObject(v) for v in (100, 180, 200, 210)]),
+    }))
+    path = tmp_path / 'returned agreement.pdf'
+    writer.write(path)
+    text = extract_text(path, limit=None)
+    assert 'Example Client Ltd' in text and 'Sam Example, Director' in text
+    assert 'PDF page 1' in text and 'stamp' in text.lower()
+    assert 'appearance not read' in text

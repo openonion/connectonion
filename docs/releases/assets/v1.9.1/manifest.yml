@@ -1,0 +1,44 @@
+version: v1.9.1
+images:
+- file: run-logs-desktop.png
+  alt: Desktop Today with the Run logs category
+  caption: Generated maps and skill run reports are listed under Run logs, so Notes is left for the AI's own notes.
+  scenario: Invented fixture notebook after prepare() moved generated files to logs/
+  viewport: 1440x900, light
+  commit: 4f50ea10
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08 (first published with 1.9.1a1)
+- file: before-person-phone.png
+  alt: Person page before the contact strip (phone)
+  caption: Email and phone sat in the Facts card further down the page.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 390x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08 (first published with 1.9.1a2)
+- file: after-person-phone.png
+  alt: Person page with the contact strip (phone)
+  caption: Email, phone, other names, company and role sit under the headline, copyable.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 390x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08 (first published with 1.9.1a2)
+- file: before-source-desktop.png
+  alt: Cited mail before the message view (desktop)
+  caption: A cited mail opened as metadata lines and a quote.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 1440x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08 (first published with 1.9.1a2)
+- file: after-source-desktop.png
+  alt: Cited mail as a message (desktop)
+  caption: The sender, address and time head the message; recipients follow; the body is a bubble.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 1440x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08 (first published with 1.9.1a2)
+- file: after-documents-desktop.png
+  alt: Person page with its Documents section (desktop)
+  caption: The page lists the documents it cites; each opens from the page.
+  scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
+  viewport: 1440x900, light
+  commit: 9e350a25
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08 (first published with 1.9.1b1)

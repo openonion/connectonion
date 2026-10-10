@@ -15,6 +15,70 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from pypdf import PdfWriter
+    from pypdf.annotations import FreeText
+    from connectonion.rem.files import state_path
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    source = 'outlook:123456789abc:Returned client agreement.pdf'
+    attachment = state_path(root, 'attachments/outlook/123456789abc/Returned client agreement.pdf')
+    attachment.parent.mkdir(parents=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    writer.add_annotation(0, FreeText(text='Example Client Ltd', rect=(20, 350, 220, 390)))
+    writer.write(str(attachment))
+    Notebook(root).write('people/mentor.md', '# Mentor\n\nThe returned copy names a collaborator [15].\n\n'
+                        f'## Sources\n- [15] {source} — 2026-04-13\n')
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 375, 'height': 812})
+        page.goto(path.as_uri() + '#r=people%2Fmentor.md')
+        assert page.locator('.focus-source').evaluate('e => e.getBoundingClientRect().height >= 44')
+        assert page.locator('.block-sources .id').inner_text() == source
+        cite = page.locator('a.cite[href$="h=src-15"]').first
+        cite.click()
+        dialog = page.locator('#evidence-dialog')
+        assert 'Example Client Ltd' in dialog.locator('blockquote').inner_text()
+        assert 'Original capture time' in dialog.inner_text()
+        assert 'signature appearances are not verified' in dialog.inner_text()
+        assert not dialog.locator('.evidence-participants').count()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not dialog.locator('blockquote').is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert dialog.locator('blockquote').is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+
+
+def test_absolute_skill_artifact_links_open_as_local_files(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    artifact = tmp_path / 'draft.md'
+    artifact.write_text('# Draft\n')
+    Notebook(root).write('skills/catalog/writer.md',
+                         '# writer\n\n## What it does\n\n'
+                         f'[Read the draft]({artifact})\n\n## Sources\n')
+    page_path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page()
+        page.goto(page_path.as_uri() + '#r=skills%2Fcatalog%2Fwriter.md')
+        link = page.get_by_role('link', name='Read the draft')
+        assert link.get_attribute('href') == artifact.as_uri()
+        assert not page.locator('.dead-link').count()
+        browser.close()
+
+
 def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
 
@@ -23,7 +87,9 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     prepare(root)
     notebook = Notebook(root)
     notebook.write("projects/aurora.md", "# Aurora\n\nA synthetic project.\n\n"
-                   "Related: [Storage](../decisions/storage.md)\nSources: codex:test:1\n")
+                   "Related: [Storage](../decisions/storage.md)\nSources: codex:test:1\n\n"
+                   "## Open threads\n- No confirmed pending work is recorded; "
+                   "the status of historical requests is Unknown.\n")
     notebook.write("decisions/storage.md", "# Storage\n\nMarkdown for inspectability.\n\n"
                    "<script>window.wikiInjected=true</script>\nSources: codex:test:2\n")
     page_path = write_reader(root)
@@ -40,9 +106,13 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.get_by_role("heading", name="What REM carried forward").wait_for()
+            page.get_by_role("heading", name="What co rem carried forward").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
+            assert page.locator(".next-exchanges").count() == 0
+            page.goto(page_path.as_uri() + "#view=open")
+            assert "nothing open" in page.locator("#main").inner_text().lower()
+            page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
@@ -50,6 +120,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.locator("input[type=search]").fill("inspectability")
             page.locator("#main").get_by_role("link", name="Storage", exact=True).wait_for()
             page.set_viewport_size({"width": 375, "height": 812})
+            page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
+            assert page.locator(".next-exchanges").count() == 0
             page.screenshot(path=str(shots / "rem-mobile.png"), full_page=True)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors, errors
@@ -76,7 +148,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.get_by_role("heading", name="What REM carried forward").wait_for()
+        frame.get_by_role("heading", name="What co rem carried forward").wait_for()
         assert frame.get_by_role("link", name="Example").first.is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
@@ -91,7 +163,7 @@ def reader_page(tmp_path):
 
     literal = "Before\nSources: literal source\n\n\nRelated: literal relation\nAfter"
     diagram = "+------------" * 18 + "+\n" + "| stage      " * 18 + "|"
-    text = ("# Layout fixture\n\n## Overview\n\nSynthetic notes.\n\n"
+    text = ("# Layout fixture\n\n## Overview\n\nSynthetic notes. A family plan stays here. [personal] [1]\n\n"
             "```text\n" + literal + "\n```\n\n"
             "~~~python\ndef hello():\n    return '<safe>'\n~~~\n\n"
             "````text\n```\nSources: still code\n````\n\n"
@@ -160,6 +232,17 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
     assert page.locator(".note script, .note img").count() == 0
 
 
+def test_private_sentences_can_be_hidden_and_restored(reader_page):
+    page, _, _ = reader_page
+    private = page.locator(".note .private")
+    assert private.count() == 1 and private.is_visible()
+    assert "family plan" in private.inner_text()
+    page.get_by_role("button", name="Hide labelled passages").click()
+    assert not private.is_visible()
+    page.get_by_role("button", name="Show labelled passages").click()
+    assert private.is_visible()
+
+
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
@@ -176,7 +259,7 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
     page.locator(".brand").click()
-    page.get_by_role("heading", name="What REM carried forward").wait_for()
+    page.get_by_role("heading", name="What co rem carried forward").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")

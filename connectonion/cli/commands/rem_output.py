@@ -116,15 +116,49 @@ class StageProgress:
             self.bar = None
 
 
+class FirstRunProgress:
+    """One live counter for the selected page queue; page workers never write to it."""
+
+    LABELS = {"me": "You", "people": "People", "projects": "Projects",
+              "orgs": "Organisations", "skills": "Skills"}
+
+    def __init__(self, totals: dict, stream=None, quiet=False):
+        self.totals = totals
+        self.completed = {kind: 0 for kind in totals}
+        self.total = sum(totals.values())
+        stream = stream or sys.stderr
+        self.bar = (style.progress(_terminal(stream))
+                    if self.total and not quiet and getattr(stream, "isatty", lambda: False)() else None)
+        if self.bar is not None:
+            self.bar.start()
+            self.task = self.bar.add_task("Investigating pages", total=self.total)
+
+    def finish(self, kind: str) -> str:
+        self.completed[kind] += 1
+        done = sum(self.completed.values())
+        parts = [f"{self.LABELS[key]} {self.completed[key]}/{total}"
+                 for key, total in self.totals.items() if total]
+        summary = " · ".join(parts)
+        if self.bar is not None:
+            self.bar.update(self.task, description=summary, completed=done, refresh=True)
+        return f"[{done}/{self.total}] {summary} ·"
+
+    def close(self):
+        if self.bar is not None:
+            self.bar.stop()
+            self.bar = None
+
+
 class Turn:
     """One model turn, which can take ten minutes: in a terminal a spinner with the time so far
     ("Writing your page… 3:12", #1996); anywhere else one line per stage, as before."""
 
-    def __init__(self, label, stream=None):
-        self.label, self.stream = label, stream or sys.stderr
+    def __init__(self, label, stream=None, quiet=False):
+        """`quiet`: several turns run at once (init's first pages) and each says one line when done."""
+        self.label, self.stream, self.quiet = label, stream or sys.stderr, quiet
         self.bar = None
-        if getattr(self.stream, "isatty", lambda: False)():
-            self.bar = Progress(SpinnerColumn(), TextColumn("{task.description}"),
+        if not quiet and getattr(self.stream, "isatty", lambda: False)():
+            self.bar = Progress(SpinnerColumn(style="co.command"), TextColumn("{task.description}"),
                                 TimeElapsedColumn(), console=_terminal(self.stream), transient=True)
 
     def __enter__(self):
@@ -136,14 +170,14 @@ class Turn:
         return self
 
     def stage(self, text):
-        if self.bar is None:
+        if self.bar is None and not self.quiet:
             # A stage once, not once per count: "gathering codex sessions: 40
             # scanned" printed about 25 times with nothing new (#2044).
             name = re.sub(r"[:(]\s*[\d,/]+.*$", "", text).strip()
             if name != getattr(self, "said", None):
                 self.said = name
                 typer.echo(f"Investigation: {text}", err=True)
-        else:
+        elif self.bar is not None:
             self.bar.update(self.task, description=f"{self.label} {style.muted('(' + text + ')')}")
 
     def __exit__(self, *exc):
@@ -229,8 +263,9 @@ def _init_text(value: dict, failed: bool) -> str:
 
     def labelled(label, text):
         return label + ' ' * (COLUMN - len(label)) + text
+    scope = ('all available history' if value.get('all_history') else f"{value.get('days', '?')} days")
     title = 'co rem init' + (' — needs attention' if failed else
-                             f" · {value.get('phase', 'unknown')} · {value.get('days', '?')} days")
+                             f" · {value.get('phase', 'unknown')} · {scope}")
     lines = [title, '', *(labelled(label, f"{number:,}".rjust(wide) + tail) for label, number, tail in counts),
              labelled('Detailed map', '.state/map.json in this notebook, or rerun with --json')]
     for error in value.get('errors') or []:
@@ -247,12 +282,35 @@ def _init_text(value: dict, failed: bool) -> str:
     return '\n'.join(lines)
 
 
+def _investigation_text(value: dict, failed: bool) -> str:
+    """Summarize a batch whose per-page progress was already printed."""
+    category, pages = value['category'], value.get('pages') or []
+    title = f"co rem investigate {category}" + (' — needs attention' if failed else '')
+    if not pages and not value.get('stopped'):
+        return f"{title}\n\nAll pending pages in {category} are current."
+    counts = {outcome: sum(row['outcome'] == outcome for row in pages)
+              for outcome in ('accepted', 'refused', 'failed', 'nothing_new')}
+    summary = ', '.join(f"{count} {name}" for name, count in counts.items() if count) or 'none started'
+    lines = [title, '', f"Completed: {summary}.", f"Left: {value['left']}"]
+    lines += [f"{row['page']}: {row['outcome']} — {row.get('why', '')}".rstrip(' —')
+              for row in pages if row['outcome'] not in ('accepted', 'nothing_new')]
+    if failed and (accepted := next((row['page'] for row in pages if row['outcome'] == 'accepted'), '')):
+        lines.append(f"Read accepted: {value.get('show_accepted') or accepted}")
+    if value.get('skipped_recent'):
+        lines.append(f"Skipped recent: {len(value['skipped_recent'])}")
+    if value.get('stopped'):
+        lines.append(f"Stopped: {value['stopped']}")
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
     elif command == 'init' and isinstance(value, dict):
         text = _init_text(value, failed)
+    elif command == 'investigate' and isinstance(value, dict) and 'pages' in value and 'category' in value:
+        text = _investigation_text(value, failed)
     else:
         title = 'co rem ' + ('status' if command == 'rem' else command.replace('-', ' '))
         if command in ('status', 'rem') and isinstance(value, dict):

@@ -100,7 +100,7 @@ def points_spent(logs: list[dict], now: dict) -> float:
     Summed per run, not "now minus the first reading", because the owner's own
     coding moves the same meter between runs.
     """
-    if "unknown" in now:
+    if "unknown" in now or "resets_at" not in now:
         return 0
     window_start = now["resets_at"] - now["window_minutes"] * 60
     spent = 0.0
@@ -129,13 +129,23 @@ def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:
 
 def blocks(reading: dict, spent: int, limits: dict) -> str:
     """Why no new investigation page may start now, or '' when one may."""
+    floor_reason = floor_block(reading, limits)
+    if floor_reason:
+        return floor_reason
     if "unknown" in reading:
         return ""  # no meter: the daily call cap is the only bound, as before #1843
+    budget = limits["investigation_quota_points"]
+    if spent >= budget:
+        return f"investigation has used {spent} of its {budget}-point weekly budget"
+    return ""
+
+
+def floor_block(reading: dict, limits: dict) -> str:
+    """The weekly safety floor shared by daily and first-run investigations."""
+    if "unknown" in reading:
+        return ""
     floor = limits["quota_floor_percent"]
     if reading["used_percent"] >= floor:
         return (f"the Codex week is at {reading['used_percent']}%, at or past the {floor}% "
                 "floor kept for your own work")
-    budget = limits["investigation_quota_points"]
-    if spent >= budget:
-        return f"investigation has used {spent} of its {budget}-point weekly budget"
     return ""

@@ -160,8 +160,14 @@ def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
         text = text[:at].rstrip("\n") + "\n\n## Facts\n" + _block(record, []) + "\n\n" + text[at:].lstrip("\n")
     else:
         body = text[span[0]:span[1]]
+        original = body
+        for label in labels:
+            plain = rf"(?m)^{re.escape(label)}:[ \t]*(.*)$"
+            if re.search(plain, body):
+                body = re.sub(rf"(?m)^- {re.escape(label)}:[ \t]*Unknown[ \t]*\n?", "", body)
+                body = re.sub(plain, rf"- {label}: \1", body)
         present = set(re.findall(r"(?m)^- ([^:\n]{1,40}):", body))
-        if not set(labels) <= present:
+        if body != original or not set(labels) <= present:
             block = _block(record, body.strip("\n").splitlines())
             text = text[:span[0]] + "\n" + block + "\n\n" + text[span[1]:].lstrip("\n")
     if kind(record) in ("people", "projects") and _bounds(text, "Insight") is None:
@@ -181,12 +187,19 @@ def _on_page(row: dict, text: str) -> bool:
     return row["value"].casefold().rstrip("/") in text.casefold()
 
 
+def _source_number(text: str, source: str) -> str | None:
+    from .reader_model import SOURCE
+    tail = text.partition("\n## Sources\n")[2]
+    return next((number for number, identity in SOURCE.findall(tail)
+                 if identity == source and number.isdecimal()), None)
+
+
 def _cite(text: str, row: dict) -> tuple[str, str]:
     """The number of the Sources entry for this row's source, adding one if the page has none."""
     head, marker, tail = text.partition("\n## Sources\n")
-    found = re.search(rf"(?m)^\s*- \[(\d+)\][^\n]*{re.escape(row['source'])}", tail)
-    if found:
-        return text, found[1]
+    number = _source_number(text, row["source"])
+    if number:
+        return text, number
     number = str(max([int(n) for n in re.findall(r"\[(\d+)\]", text)] or [0]) + 1)
     entry = f"- [{number}] {row['source']} — {row['date']}\n"
     if not marker:
@@ -195,6 +208,26 @@ def _cite(text: str, row: dict) -> tuple[str, str]:
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, "")
     sources = re.sub(r"(?m)^- \(none yet\)\n?", "", sources).rstrip("\n")
     return head + marker + (sources + "\n" if sources else "") + entry + ("\n" + rest if rest else ""), number
+
+
+def _correct_contact_date(text: str, row: dict) -> str:
+    """A bare date citing this exact mail uses its extracted notebook-calendar day."""
+    if row["field"] not in ("First contact", "Last contact"):
+        return text
+    span = _bounds(text, "Facts") or _bounds(text, LEGACY)
+    if not span:
+        return text
+    line = re.search(rf"(?m)^- {re.escape(row['field'])}:[ \t]*(.*)$", text[span[0]:span[1]])
+    if not line:
+        return text
+    current = values(line[1])
+    number = _source_number(text, row["source"])
+    if (len(current) != 1 or not number or current[0]["citations"] != [number]
+            or current[0]["qualifier"] or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", current[0]["value"])
+            or current[0]["value"] == row["value"]):
+        return text
+    start, end = span[0] + line.start(), span[0] + line.end()
+    return text[:start] + f"- {row['field']}: {row['value']} [{number}]" + text[end:]
 
 
 def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[str]]:
@@ -227,12 +260,20 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
     """Put back a certain fact the extractor found that appears nowhere on the page.
 
     Only into an `Unknown` field, or beside the model's values in a field that
-    holds several; a date or role the model wrote is its reading of the
-    material and stays. Returns the page and the rows put back.
+    holds several. A bare contact date citing the exact extracted original uses
+    its notebook-calendar day; other interpretations stay. Returns the page and
+    the rows restored or corrected.
     """
     restored = []
     for row in rows:
-        if row["field"] not in RESTORABLE or row["field"] not in fields(record) or _on_page(row, text):
+        if row["field"] not in RESTORABLE or row["field"] not in fields(record):
+            continue
+        corrected = _correct_contact_date(text, row)
+        if corrected != text:
+            text = corrected
+            restored.append(row)
+            continue
+        if _on_page(row, text):
             continue
         line = re.search(rf"(?m)^- {re.escape(row['field'])}:[ \t]*(.*)$", text)
         if not line or (values(line[1]) and row["field"] not in MULTI):
@@ -244,3 +285,19 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
         text = text[:line.start()] + f"- {row['field']}: {joined}" + text[line.end():]
         restored.append(row)
     return text, restored
+
+
+def names_not_addresses(record: str, text: str) -> str:
+    """Also known as holds names; an address there only repeats the Email line.
+
+    The map once seeded every handle into it, and a turn copies the Email line
+    across, so the reader showed Ody's address three times (1.9.2b3 review).
+    A half address (`name@gmail`) goes too.
+    """
+    if kind(record) != "people":
+        return text
+    match = re.search(r"(?m)^- Also known as:[ \t]*(.*)$", text)
+    if not match or "@" not in match[1]:
+        return text
+    names = [part for part in _split(match[1]) if "@" not in part]
+    return text[:match.start(1)] + ("; ".join(names) or "Unknown") + text[match.end(1):]

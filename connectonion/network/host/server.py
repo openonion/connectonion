@@ -1183,6 +1183,14 @@ def host(
     # Before anything is printed: a banner announcing http://localhost:<port>
     # followed by uvicorn's raw "[Errno 48] address already in use" told the
     # user their agent was up at an address it would never serve.
+    # After `pip install -U` nobody re-runs co init, but the agent starts
+    # again: refresh the command index for co that Codex and Claude Code read (#2113).
+    # Silent when current or when neither ~/.codex nor ~/.claude exists,
+    # which is every server with no human on it.
+    from ...cli.commands.agent_index import refresh
+    for path, old, new in refresh():
+        print(f"Refreshed the command index for co in {path} ({old or 'none'} → {new})")
+
     if _port_in_use(port):
         raise SystemExit(_port_taken_message(port, co_dir))
 

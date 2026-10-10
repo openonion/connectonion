@@ -120,8 +120,15 @@
   .rail .foot { margin-top: auto; font: 11px/1.6 var(--mono); color: var(--ink-3); display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
   .theme-switch { display: inline-flex; background: var(--well); border-radius: 6px; padding: 2px; gap: 2px; align-self: flex-start; }
   .theme-btn { background: none; border: none; padding: 3px 9px; font: 11.5px var(--ui); color: var(--ink-2); border-radius: 4px; cursor: pointer; }
+  .rail .foot > .theme-btn { min-height: 44px; text-align: left; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+  .privacy-tag { font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 0 5px; margin: 0 2px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-3); background: var(--well); white-space: nowrap; }
+  .privacy-tag.sensitive { border-color: var(--ink-3); color: var(--ink); font-weight: 600; }
+  :root.hide-private .private, :root.hide-private li.private-item { display: none; }
+  :root.hide-private .privacy-only .privacy-content { display: none; }
+  .private-hidden-notice { display: none; }
+  :root.hide-private .private-hidden-notice { display: block; }
 
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 40px 56px 96px; max-width: 1180px; }
@@ -184,6 +191,11 @@
   .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
   .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
   .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .inspection-link { display: inline-block; margin-top: 14px; padding: 0; border: 0; background: none; color: #fff; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+  .first-map-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  .first-map-actions a, .first-map-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid rgba(194, 205, 255, .42); border-radius: 7px; background: transparent; color: #f4f5fb; font: 600 13px var(--ui); text-decoration: none; cursor: pointer; }
+  .first-map-actions a { background: #f4f5fb; color: #111931; }
+  .first-map-held { margin: 16px 0 0; color: #b3bfed; font-size: 12.5px; }
   .memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
   .memory-card { min-width: 0; padding: 24px 22px 12px 0; }
   .memory-card + .memory-card { border-left: 1px solid rgba(194, 205, 255, .18); padding-left: 22px; }
@@ -191,7 +203,8 @@
   .memory-card h3 { font: 500 20px/1.25 var(--display); margin: 9px 0 10px; }
   .memory-card h3 a, .memory-card .open { color: #fff; }
   .memory-card p { margin: 0 0 12px; color: #d4daf2; font: 15px/1.5 var(--text); }
-  .memory-card .open { display: inline-block; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; }
+  .memory-card .project-purpose { color: #b3bfed; font-size: 13.5px; }
+  .memory-card .open { display: inline-flex; min-height: 44px; align-items: center; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; }
   .memory-empty { margin: 22px 0 0; color: #c8d0ed; font: 16px/1.5 var(--text); }
   .memory-connection { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 1px solid rgba(194, 205, 255, .18); padding-top: 17px; margin-top: 8px; font-size: 13px; }
   .memory-connection .label { color: #b3bfed; font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
@@ -227,6 +240,7 @@
   .week .s { flex-basis: 100%; font: 14px/1.45 var(--text); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ---- open threads: who owes whom ---- */
   .bands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; margin-top: 12px; }
+  .bands > .band:last-child:nth-child(3) { grid-column: 1 / -1; }
   .band h3 { display: flex; justify-content: space-between; align-items: baseline; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
   .band .threads .thread { grid-template-columns: 76px minmax(0, 1fr) auto; padding: 11px 14px; }
   .band-none { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
@@ -250,6 +264,7 @@
   .hits .t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .hits .t > span:first-child { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
   .hits .t a { color: var(--ink); font-weight: 600; font-size: 15px; }
+  .hits.skills .t a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; overflow-wrap: anywhere; }
   .hits .t a:hover { color: var(--blue); }
   .hits .t .meta { font-size: 12.5px; color: var(--ink-3); }
   .hits .when { font: 11.5px var(--mono); color: var(--ink-3); white-space: nowrap; }
@@ -292,12 +307,18 @@
   table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
   table.runs td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
   table.runs td:first-child { color: var(--ink); }
+  .run-trace { margin: 8px 0; border-bottom: 1px solid var(--line-2); }
+  .run-trace > summary { cursor: pointer; padding: 8px 0; font: 12px var(--mono); color: var(--ink-2); }
+  .run-trace h3 { font: 600 12px var(--ui); margin: 12px 0 4px; }
+  .run-trace ul { padding-left: 20px; margin: 4px 0 12px; }
+  .run-trace li, .run-trace pre { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .run-trace pre { max-height: 240px; overflow: auto; }
 
   /* ---- a page ---- */
   .page-head { margin-bottom: 26px; }
   .standfirst { font: 400 20px/1.55 var(--text); color: var(--ink); margin: 6px 0 0; max-width: 62ch; }
   .page-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 56px; }
-  .page-grid > .side { order: -1; margin: 0 0 26px; max-width: 66ch; }
+  .page-grid > .side { margin: 26px 0 0; max-width: 66ch; }
   .panel { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; }
   .panel + .panel { margin-top: 12px; }
   .panel h3 { font: 600 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
@@ -345,6 +366,9 @@
   .cite { display: inline-block; position: relative; vertical-align: super; font: 600 9.5px/1 var(--mono); color: var(--blue); background: var(--blue-soft); border-radius: 3px; padding: 2px 3px 1px; margin: 0 1px; text-decoration: none !important; }
   .cite:hover, .cite:focus-visible { background: var(--blue); color: var(--sheet); }
   .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: pre-line; text-align: left; box-shadow: var(--shadow); }
+  @media (max-width: 600px) {
+    .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { position: fixed; left: 16px; right: 16px; bottom: 16px; transform: none; width: auto; max-width: none; overflow-wrap: anywhere; white-space: pre-wrap; }
+  }
 
   /* open threads on a page: the visual centre */
   .block-threads { margin: 0 0 8px; }
@@ -360,17 +384,18 @@
   .timeline li::before { content: ""; position: absolute; left: 101px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--sheet); box-shadow: 0 0 0 1.5px var(--blue); }
   .timeline li::after { content: ""; position: absolute; left: 104px; top: 20px; bottom: -2px; width: 1px; background: var(--line); }
   .timeline li:last-child::after { display: none; }
-  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: nowrap; }
+  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: pre-line; }
   .timeline .e { padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
   .timeline li.undated .d { visibility: hidden; }
   .timeline li.undated::before { box-shadow: 0 0 0 1.5px var(--line); }
 
   /* sources: a compact footnote list */
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
-  .block-sources li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
+  .block-sources li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
   .block-sources li:target, .block-sources li.flash { background: var(--blue-soft); }
   .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
   .block-sources .n { font: 600 11px/1.9 var(--mono); color: var(--blue); }
+  .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; vertical-align: baseline; font: 600 11px var(--mono); }
   .block-sources .id { font: 11.5px var(--mono); color: var(--ink); }
 
   /* where it stands: a status block */
@@ -382,6 +407,8 @@
   .code-block { position: relative; margin: 0 0 1.3em; }
   .note pre { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; overflow-x: auto; font: 12.5px/1.55 var(--mono); max-width: 100%; tab-size: 4; margin: 0; color: var(--ink); }
   .code-block.diagram pre { background-color: var(--sheet); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 14px 14px; background-position: 7px 7px; padding: 22px 22px 20px; }
+  .pan-hint { display: none; font: 11px var(--mono); color: var(--ink-3); margin-top: 5px; }
+  @media (max-width: 600px) { .code-block.diagram .pan-hint { display: block; } }
   .code-block .cap { position: absolute; left: 12px; top: -8px; font: 600 9.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); padding: 3px 6px; border-radius: 3px; }
   .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
   .code-copy { position: absolute; top: 8px; right: 8px; font: 11px var(--mono); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; opacity: 0; cursor: pointer; }
@@ -398,9 +425,10 @@
   .missing.primary .lead { font-size: 11px; }
   .missing.primary .why { margin: 4px 0 8px; font: 16px/1.5 var(--text); color: var(--ink); }
   .missing.primary .names { color: var(--ink-2); font-size: 13px; }
-  .btn-primary { font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+  .btn-primary { min-height: 44px; font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
   .btn-primary:hover { filter: brightness(1.1); }
   .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .missing.primary .cmd { margin-top: 0; }
   .missing code, .empty code { font: 12.5px var(--mono); color: var(--ink); background: var(--well); border-radius: 4px; padding: 3px 8px; overflow-wrap: anywhere; }
   .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
   .aside .k { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 4px; }
@@ -444,6 +472,7 @@
   .review button { font: 12px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; margin-bottom: 6px; }
 
   .nav-toggle { display: none; }
+  .mobile-status { display: none; }
   .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--sheet); padding: 10px; }
   .skip:focus { top: 8px; }
   .mobile-back { display: none; margin-bottom: 14px; }
@@ -461,6 +490,8 @@
   .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .seg button.on .n { color: var(--paper); opacity: 0.7; }
   .sheet-count { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -18px 0 20px; color: var(--ink-3); font-size: 12.5px; }
+  .held-note button { min-height: 44px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink-2); font: 600 12px var(--ui); cursor: pointer; }
   .sheet-scroll { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
   table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
   .sheet th { position: sticky; top: 0; z-index: 2; background: var(--well); text-align: left; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -484,6 +515,7 @@
   .name-cell { display: flex; flex-direction: column; gap: 2px; }
   .name-cell .nm { display: flex; align-items: center; gap: 7px; font-weight: 600; }
   .name-cell .nm a { color: var(--ink); }
+  .mobile-status-label { display: none; }
   .name-cell .sum { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sheet .open-col { min-width: 220px; max-width: 320px; }
   .open-cell { display: flex; gap: 7px; align-items: baseline; }
@@ -493,6 +525,47 @@
   .open-cell .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
   .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
+
+  .contact-directory { margin: 18px 0 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); overflow: hidden; }
+  .contact-directory summary { cursor: pointer; padding: 15px 18px; font-weight: 650; color: var(--ink); }
+  .contact-directory summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+  .contact-directory .directory-body { padding: 0 18px 18px; }
+  .contact-directory .directory-note { margin: 0 0 12px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .contact-directory .directory-note.warn { color: var(--lamp); }
+  .contact-directory .directory-find { width: 100%; max-width: 420px; margin: 3px 0 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--sheet); color: var(--ink); font: inherit; }
+  .contact-directory .directory-scroll { overflow-x: auto; }
+  .contact-directory table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .contact-directory th, .contact-directory td { padding: 8px 9px; border-bottom: 1px solid var(--line); text-align: left; }
+  .contact-directory th { color: var(--ink-3); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+  .contact-directory td:last-child, .contact-directory th:last-child { text-align: right; }
+  .contact-directory .candidate-name { font-weight: 600; }
+  .contact-directory .candidate-email { color: var(--ink-2); font: 12px var(--mono); }
+  .contact-directory button { cursor: pointer; }
+  .contact-directory td button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--blue); border-radius: 5px; background: var(--blue-soft); color: var(--blue); font: 600 12px var(--ui); white-space: nowrap; }
+  .contact-directory td button:hover, .contact-directory td button:focus-visible { background: var(--blue); color: var(--sheet); }
+  .contact-directory td button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .contact-directory .directory-more { margin-top: 10px; border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; background: var(--well); color: var(--ink); }
+  .contact-directory .directory-action td { padding: 12px; text-align: left; background: var(--well); color: var(--ink-2); font-size: 13px; }
+  .contact-directory .directory-action code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--sheet); color: var(--ink); font: 11px/1.45 var(--mono); text-align: left; }
+  .contact-directory .directory-action button { display: block; margin-top: 8px; }
+  @media (max-width: 600px) {
+    .contact-directory .directory-body { padding: 0 12px 14px; }
+    .contact-directory .directory-scroll { overflow-x: visible; }
+    .contact-directory table, .contact-directory tbody { display: block; width: 100%; }
+    .contact-directory thead { display: none; }
+    .contact-directory tbody > tr:not(.directory-action) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 12px; margin: 0 0 9px; border: 1px solid var(--line); border-radius: 7px; }
+    .contact-directory tbody > tr:not(.directory-action) > td { display: block; padding: 0; border: 0; min-width: 0; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(1) { grid-column: 1 / -1; font-size: 15px; overflow-wrap: anywhere; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(2) { grid-column: 1 / -1; overflow-wrap: anywhere; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(3) { grid-column: 1; color: var(--ink-3); }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(3)::before { content: "Last · "; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(4) { grid-column: 2; text-align: right; color: var(--ink-3); }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(4)::after { content: " mail"; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(5) { grid-column: 1 / -1; text-align: left; margin-top: 5px; }
+    .contact-directory td button { min-height: 44px; }
+    .contact-directory .directory-action { display: block; margin: -9px 0 9px; }
+    .contact-directory .directory-action td { display: block; border: 1px solid var(--line); border-radius: 0 0 7px 7px; }
+  }
 
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
   @media (min-width: 821px) { main.wide { padding-left: 28px; padding-right: 28px; } }
@@ -504,8 +577,8 @@
   .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 112px; }
   .sheet .c-email { max-width: 140px; }
   .sheet .trunc { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sheet .c-phone { min-width: 128px; }
-  .sheet .c-phone .mono { white-space: nowrap; }
+  .sheet .c-phone { min-width: 128px; max-width: 180px; white-space: normal; }
+  .sheet .c-phone .mono { white-space: normal; overflow-wrap: anywhere; }
   .open-cell { flex-wrap: wrap; row-gap: 2px; }
   .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
   .name-cell .st { display: inline-flex; }
@@ -527,6 +600,13 @@
   .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+  .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
+  .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
+  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--night-2); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { color: var(--night-ink); background: rgba(255, 255, 255, .12); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--blue); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--night-ink); outline-offset: 2px; }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
@@ -544,8 +624,8 @@
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: 11px; color: var(--ink-3); }
-  .factlist { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 8px 7px 0; border-top: 1px solid var(--line-2); }
+  .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
+  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 12px 7px 0; border-top: 1px solid var(--line-2); overflow-wrap: normal; }
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
@@ -567,30 +647,200 @@
   .fact.missing-fact { background: repeating-linear-gradient(135deg, var(--sheet) 0 7px, var(--paper) 7px 8px); }
   .fact.missing-fact .v { color: var(--ink-3); font: italic 13px var(--text); }
 
+  /* The memory surface: answer, connections, and activity before the full note. */
+  .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .scope-note { grid-column: 1 / -1; margin: 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--well); color: var(--ink-2); font: 13px/1.5 var(--ui); }
+  .focus-head { grid-column: 1 / -1; min-height: 170px; padding: 26px 32px; border-radius: 16px; color: var(--night-ink); background: var(--night); position: relative; overflow: hidden; }
+  .focus-head::after { content: ""; position: absolute; width: 420px; height: 420px; border: 1px solid var(--night-line); border-radius: 50%; right: -100px; top: -296px; box-shadow: 0 0 0 45px rgba(105, 128, 217, .035), 0 0 0 90px rgba(105, 128, 217, .025); pointer-events: none; }
+  .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
+  .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
+  .focus-limit { position: relative; z-index: 1; max-width: 64ch; margin: 12px 0 0; font: 13px/1.5 var(--ui); color: var(--night-2); }
+  .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--night-line); border-radius: 8px; color: var(--night-ink); background: rgba(255, 255, 255, .06); font: 600 12px var(--ui); }
+  .focus-source:hover { color: var(--night-ink); background: rgba(255, 255, 255, .12); text-decoration: none; }
+  .focus-source:focus-visible { outline-color: var(--night-ink); }
+  .focus-command { cursor: pointer; margin-right: 8px; }
+  .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
+  .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
+  .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
+  .focus-more { position: relative; z-index: 1; display: block; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more[hidden] { display: none; }
+  .focus-section.next-exchanges { grid-column: 1 / -1; }
+  .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .project-workspace.single { grid-template-columns: 1fr; }
+  .project-workspace .focus-section { min-width: 0; }
+  .project-workspace p, .project-workspace li { font: 15px/1.5 var(--text); }
+  .project-workspace p { margin: 0; }
+  .project-workspace ul { margin: 0; padding-left: 18px; }
+  .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .focus-section { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; min-width: 0; }
+  .focus-section h2 { margin: 0 0 14px; font: 600 17px var(--ui); }
+  .focus-section .threads { margin: 0; padding: 0; }
+  .focus-section .thread { margin: 0 0 8px; }
+  .focus-section .thread:last-child { margin-bottom: 0; }
+  .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 14px 20px; margin: 0; background: var(--blue-soft); border: 1px solid var(--blue-line); border-radius: 10px; }
+  .focus-fact { min-width: 0; }
+  .focus-facts dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
+  .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .contact-strip dd { display: block; }
+  .contact-strip .contact-what { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-2); }
+  .contact-strip .copy { margin-left: 8px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
+  .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
+  .relation-entry { min-width: 0; }
+  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 3px; overflow-wrap: anywhere; }
+  .relation-provenance .cite { margin-left: 4px; }
+  .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
+  .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); background: var(--paper); border-radius: 8px; text-decoration: none !important; transition: border-color .16s ease, transform .16s ease; }
+  .relation-card:hover, .relation-card:focus-visible { border-color: var(--blue); transform: translateY(-2px); }
+  .relation-card strong { font: 600 14px var(--ui); color: var(--ink); }
+  .relation-kind { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
+  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 13px/1.5 var(--ui); color: var(--ink-2); }
+  .more-relations { margin-top: 10px; }
+  .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
+  .more-relations .relation-list { margin-top: 10px; }
+  .related-records { grid-column: 1 / -1; }
+  .conversation-view, .documents { grid-column: 1 / -1; }
+  .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
+  .conversation-open { flex: 1 1 210px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .conversation-open:hover, .conversation-open:focus-visible { border-color: var(--blue); }
+  .conversation-open strong { display: block; font: 600 14px var(--ui); }
+  .conversation-open span { display: block; margin-top: 5px; font: 11px var(--mono); color: var(--ink-3); }
+  .conversation-message { border-top: 1px solid var(--line); padding: 14px 0; }
+  .conversation-message p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.5 var(--text); }
+  .activity-view { grid-column: 1 / -1; }
+  .activity-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .activity-note { font: 11px var(--mono); color: var(--ink-3); }
+  .activity-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .activity-filters button { font: 12px var(--ui); padding: 6px 10px; background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+  .activity-filters button.active { background: var(--night); color: var(--night-ink); border-color: var(--night); }
+  .activity-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow: auto; }
+  .activity-list li { display: grid; grid-template-columns: 105px 105px minmax(0, 1fr); gap: 12px; padding: 11px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
+  .activity-list li[hidden] { display: none; }
+  .activity-day { font: 11px var(--mono); color: var(--ink-3); }
+  .activity-type { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
+  .activity-text { font: 14px/1.5 var(--text); }
+  .deep-note { max-width: 1120px; border-top: 1px solid var(--line); margin-top: 18px; }
+  .deep-head { display: flex; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
+  .deep-head h2 { margin: 0; font: 600 17px var(--ui); color: var(--ink); }
+  .deep-hint { font: 11px var(--mono); color: var(--ink-3); }
+  .deep-note .page-grid { padding-top: 22px; }
+  .claim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 20px 0; }
+  .claim-grid.standalone { max-width: 980px; }
+  .claim-card { padding: 16px 18px; border-radius: 10px; border: 1px solid var(--blue-line); background: var(--sheet); color: var(--ink); }
+  .claim-kind { font: 600 10px var(--mono); color: var(--blue); text-transform: uppercase; letter-spacing: .07em; }
+  .claim-card h3 { font: 600 16px var(--ui); margin: 9px 0; }
+  .claim-card .before { color: var(--ink-3); text-decoration: line-through; }
+  .claim-card .after { font: 16px/1.45 var(--text); }
+  .claim-card p { margin: 7px 0; }
+  .claim-card > a:last-child { font-size: 12px; }
+  .memory-card > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+  .memory-card > p.project-purpose { -webkit-line-clamp: 2; }
+  .category-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 9px; margin: 15px 0 25px; }
+  .category-card { border: 1px solid var(--line); border-radius: 9px; padding: 14px; background: var(--sheet); text-decoration: none !important; }
+  .category-card:hover, .category-card:focus-visible { border-color: var(--blue); }
+  .category-card strong { display: block; color: var(--ink); font: 600 14px var(--ui); }
+  .category-card span { display: block; margin-top: 6px; color: var(--ink-3); font: 11px var(--mono); }
+  .task-band { max-width: 980px; margin: 30px 0; }
+  .task-band .threads { padding: 0; }
+  .evidence-dialog { width: min(680px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); overflow: auto; padding: 26px; border: 1px solid var(--blue-line); border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 80px rgba(0,0,0,.28); }
+  .evidence-dialog::backdrop { background: rgba(5, 9, 25, .7); }
+  .evidence-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; position: sticky; top: 0; z-index: 1; background: var(--sheet); box-shadow: 0 -26px 0 var(--sheet), 0 8px 0 var(--sheet); }
+  .evidence-top .focus-kicker { color: var(--blue); }
+  .evidence-close { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 7px 10px; min-height: 44px; border-radius: 6px; cursor: pointer; }
+  .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
+  .evidence-summary { color: var(--ink-2); }
+  .evidence-summary, .evidence-meta { overflow-wrap: anywhere; }
+  .evidence-source-id { margin: 8px 0; font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-source-id summary { cursor: pointer; }
+  .evidence-source-id code { display: block; overflow-wrap: anywhere; margin-top: 6px; }
+  .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
+  .evidence-original .focus-kicker { color: var(--blue); }
+  .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-participants > summary { cursor: pointer; padding: 12px 0; }
+  .evidence-original blockquote { margin: 12px 0 0; padding: 14px 18px; border-left: 3px solid var(--blue); background: var(--blue-soft); font: 16px/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .evidence-find { position: sticky; top: 44px; z-index: 1; display: grid; gap: 8px; margin-top: 16px; padding: 8px 0; background: var(--sheet); }
+  .evidence-find label { font: 600 13px var(--ui); }
+  .evidence-find-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .evidence-find input { flex: 1 1 180px; min-width: 0; min-height: 44px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: 16px var(--ui); }
+  .evidence-find button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .evidence-find input:focus-visible, .evidence-find button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .evidence-find button:disabled { opacity: .5; cursor: default; }
+  .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
+  .evidence-original mark { background: #ffe083; color: #171717; }
+  .evidence-unavailable { color: var(--ink-2); }
+  .document-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .document-list a { font: 600 14px var(--ui); overflow-wrap: anywhere; }
+  .evidence-open-file { display: inline-block; margin: 8px 0 4px; font: 600 13px var(--ui); }
+  .msg { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px 18px; }
+  .msg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .msg-time { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .msg-from { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  .msg-address { font: 12px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .msg-person { display: inline-flex; align-items: center; gap: 8px; margin: 3px 12px 3px 0; color: var(--ink); font: 600 14px var(--ui); text-decoration: none; }
+  a.msg-person:hover span:last-child { text-decoration: underline; }
+  .msg-avatar { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: hsl(var(--hue) 45% 88%); color: hsl(var(--hue) 45% 28%); font: 600 11px var(--ui); letter-spacing: .02em; }
+  .msg-subject { margin: 12px 0 6px; font: 600 16px var(--ui); color: var(--ink); overflow-wrap: anywhere; }
+  .msg-people { display: grid; gap: 4px; margin: 6px 0 4px; }
+  .msg-row { display: flex; flex-wrap: wrap; align-items: center; }
+  .msg-row .msg-person { font-weight: 500; font-size: 13px; }
+  .msg-row .msg-avatar { width: 22px; height: 22px; font-size: 9px; }
+  .msg-label { width: 30px; font: 11px var(--mono); color: var(--ink-3); }
+  .msg-body blockquote { margin: 12px 0 0; border-left: 0; border-radius: 10px; }
+  @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
+
   @media (min-width: 1180px) {
     .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 320px; }
     .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
   }
   @media (min-width: 821px) and (max-width: 1179px) {
-    .page-grid > .side { order: -1; margin: 0 0 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: start; }
+    .page-grid > .side { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: start; }
     .page-grid > .side .panel + .panel { margin-top: 0; }
   }
   @media (max-width: 1100px) { .hits.cols { grid-template-columns: 1fr; } }
   @media (max-width: 820px) {
+    .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    .focus-head { padding: 20px; min-height: 0; }
+    .focus-statement { font-size: 22px; }
+    .focus-source { display: flex; }
+    .focus-more { margin-left: 0; }
+    .record-focus.people { gap: 8px; }
+    .record-focus.people .focus-head { padding: 16px; }
+    .record-focus.people .focus-statement { font-size: 20px; margin-top: 12px; }
+    .record-focus.people .focus-statement.clamped { -webkit-line-clamp: 5; }
+    .focus-section { padding: 16px; }
+    .focus-facts, .related-records, .activity-view, .conversation-view, .documents, .project-workspace { grid-column: 1; }
+    .project-workspace { grid-template-columns: 1fr; }
+    .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .focus-facts dd { margin: 0; }
+    .activity-list li { grid-template-columns: 76px minmax(0, 1fr); gap: 3px 9px; }
+    .activity-list { max-height: none; }
+    .activity-list .activity-text { grid-column: 2; }
+    .activity-note { display: none; }
+    .deep-head { display: block; }
+    .deep-hint { display: block; margin-top: 3px; }
+    .evidence-dialog { padding: 18px; }
     .app { grid-template-columns: 1fr; align-content: start; }
     .rail { padding: 14px 16px; gap: 10px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
     .brand svg { width: 22px; height: 22px; }
     .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
-    .rail[data-open="true"] .foot { display: flex; }
-    .nav-toggle { display: flex; justify-content: space-between; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
+    .rail[data-open="true"] .foot { display: flex; padding: 0 0 12px; }
+    .rail[data-open="true"] .foot > .theme-btn { min-height: 44px; text-align: left; }
+    .rail[data-open="true"] #nav { padding-bottom: 64px; }
+    .rail[data-open="true"] #privacy-toggle { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
+      min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet);
+      box-shadow: var(--shadow); text-align: center; }
+    .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
     .nav-toggle::after { content: "▾"; color: var(--ink-3); }
     .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
     #nav { display: none; }
     .rail[data-open="true"] #nav { display: flex; }
     nav a { min-height: 44px; align-items: center; }
-    .search input { font-size: 16px; }
+    .search input { font-size: 16px; min-height: 44px; padding-right: 44px; }
+    .search-clear { right: 0; min-width: 44px; min-height: 44px; }
+    .mobile-status { display: block; font: 11px/1.4 var(--mono); color: var(--ink-3); }
     h1 { font-size: 30px; }
     .standfirst { font-size: 18px; }
     h2.section { display: block; }
@@ -614,6 +864,7 @@
     .timeline .d { font-size: 11px; padding-right: 16px; }
     .timeline .e { padding-left: 14px; font-size: 15px; }
     .mobile-back { display: block; }
+    .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
     .maint > summary .n { display: none; }
     .side .toc-panel { display: none; }
@@ -623,7 +874,38 @@
     .fact { padding: 9px 11px 10px; }
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
     .sheet-count { margin-left: 0; }
-    .sheet .name { min-width: 170px; }
+    .sheet .name { box-sizing: border-box; width: 170px; min-width: 170px; max-width: 170px; }
+    .sheet .name .nm a { overflow-wrap: anywhere; }
+    .sheet th.c-last button { gap: 0; padding-right: 2px; }
+    .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
+  }
+  @media (max-width: 600px) {
+    main { padding-top: 18px; }
+    .mobile-back { margin-bottom: 8px; }
+    .page-head { margin-bottom: 4px; }
+    .leadrow { margin-top: 8px; }
+    .lead-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
+      gap: 4px 10px; width: 100%; box-sizing: border-box; }
+    .lead-open .dir, .lead-open .txt { grid-column: 1 / -1; }
+    .lead-open .txt { max-width: none; }
+    .lead-open .age { grid-column: 1; }
+    .lead-open .more { grid-column: 2; justify-self: end; }
+    .lead-meta.usage { display: block; width: 100%; }
+    .lead-meta.usage .bar { display: none; }
+    .record-focus, .record-focus.people { margin-top: 4px; }
+    .focus-head { padding-top: 16px; }
+    .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
+    .focus-head.purpose-lead .focus-more:not([hidden]) { display: inline-block; vertical-align: middle; margin-right: 14px; }
+    .focus-head.purpose-lead .project-purpose-cites { display: inline-flex; width: auto; vertical-align: middle; margin-top: 4px; }
+    .focus-head.purpose-lead .focus-limit { margin-top: 8px; }
+    .focus-head.purpose-lead .focus-source { margin-top: 4px; }
+    .record-focus.people .focus-head { padding-top: 12px; }
+    .focus-source { margin-top: 8px; }
+    .record-focus.skills { margin-top: 0; }
+    .record-focus.skills .focus-head { padding-top: 12px; }
+    .record-focus.skills .focus-statement { margin-top: 10px; }
+    .record-focus.skills .skill-finding-cites { margin-top: 4px; }
+    .record-focus.skills .skill-finding-cites + .focus-source { margin-top: 4px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
@@ -637,7 +919,7 @@
 <div class="app">
   <aside class="rail">
     <a class="brand" href="#" aria-label="co rem, contents">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--night)"></rect><path d="M19.5 7.5a9 9 0 1 0 5 15.6A10.5 10.5 0 0 1 19.5 7.5z" fill="var(--night-ink)"></path><circle cx="23.5" cy="9.5" r="1.3" fill="var(--night-lamp)"></circle></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--night)"></rect><path d="M4.5 16c3.2-5.1 7.1-7.6 11.5-7.6S24.3 10.9 27.5 16c-3.2 5.1-7.1 7.6-11.5 7.6S7.7 21.1 4.5 16Z" fill="none" stroke="var(--night-ink)" stroke-width="1.65"></path><circle cx="16" cy="16" r="4" fill="var(--night-ink)"></circle><path d="M8.5 25.5c4.8 3 11.6 3 16.1-.6" fill="none" stroke="var(--night-lamp)" stroke-width="1.65" stroke-linecap="round"></path></svg>
       <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
     <div class="search">
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
@@ -646,6 +928,7 @@
       <span class="kbd" aria-hidden="true">/</span>
     </div>
     <button class="nav-toggle" aria-expanded="false" aria-controls="nav" type="button">Browse notebook</button>
+    <div class="mobile-status" id="mobile-status"></div>
     <nav id="nav" aria-label="Categories"></nav>
     <div class="foot" id="foot"></div>
   </aside>
@@ -655,6 +938,25 @@
 "use strict";
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
+
+// Private sentences are visible until the reader chooses to hide them.
+(function() {
+  try {
+    if (location.protocol === "file:" && localStorage.getItem("co-rem-private") === "hidden")
+      document.documentElement.classList.add("hide-private");
+  } catch (_) { /* storage blocked in an embedded preview */ }
+})();
+
+function togglePrivate() {
+  const hidden = document.documentElement.classList.toggle("hide-private");
+  try {
+    if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
+  } catch (_) { /* choice lasts this view only */ }
+  const button = document.getElementById("privacy-toggle");
+  button.classList.toggle("active", hidden);
+  button.setAttribute("aria-pressed", String(hidden));
+  button.textContent = hidden ? "Show labelled passages" : "Hide labelled passages";
+}
 
 // Theme: auto follows the system; light or dark is remembered for file:// only.
 (function() {
@@ -694,7 +996,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "Notes"
+  agenda: "Agenda", notes: "AI notes", logs: "Run logs"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -707,7 +1009,8 @@ const CATEGORY_ASK = {
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
   agenda: "promises, waiting on others, dates that matter",
-  notes: "everything durable that fits nowhere else"
+  notes: "the AI's own working notes: reflections and open questions",
+  logs: "what co rem recorded while it worked: maps and skill run counts"
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }
@@ -715,24 +1018,38 @@ function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
-function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
+function peopleExclusions() {
+  const people = REM.records.filter(r => r.category === "people");
+  return { held: people.filter(r => r.needs_review).length,
+    service: people.filter(r => r.service && !r.needs_review).length };
+}
+function remCommand(args) { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args; }
+function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
+function calendarDay(iso) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: REM.status?.timezone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const part = type => parts.find(p => p.type === type).value;
+  return part("year") + "-" + part("month") + "-" + part("day");
+}
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
-  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const day = calendarDay(iso), d = new Date(day + "T00:00:00Z");
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
 }
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
 }
 function shortDate(day) {
   if (!day) return "";
-  const d = new Date(day + "T00:00:00");
+  const d = new Date(day + "T00:00:00Z");
   if (isNaN(d)) return day;
-  const sameYear = d.getFullYear() === new Date(REM.as_of || Date.now()).getFullYear();
-  return d.toLocaleDateString(undefined, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+  const sameYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
+  return d.toLocaleDateString(undefined, { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
 }
 function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
 function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
@@ -747,6 +1064,8 @@ function resolve(from, path) {
 function safeHref(from, raw) {
   const target = raw.trim();
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
+  if (target.startsWith("/") && !target.startsWith("//"))
+    return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
   if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
   if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
     const path = resolve(from, target.split("#")[0]);
@@ -779,10 +1098,10 @@ function citeRun(ns, from) {
   return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
     '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
 }
-function citeChip(n, from) {
-  const tip = from === CITES.from ? CITES.sources[n] : "";
+function citeChip(n, from, showDescription = true, visibleLabel = false) {
+  const tip = showDescription && from === CITES.from ? CITES.sources[n] : "";
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
-    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
+    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + (visibleLabel ? "Source " : "") + n + "</a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -798,15 +1117,24 @@ function plural(verb) {
   if (/(?:sh|ch|x|z|o)es$/i.test(verb)) return verb.slice(0, -2);
   return verb.slice(0, -1);
 }
+// "the user" opening a clause is its subject, so a second verb after "and"/"but"
+// agrees too: "the user runs events and has asked" reads "you run events and have
+// asked" (1.9.2b1). Only verbs that are never plural nouns: "invoices and receipts" stays.
+const CLAUSE_START = /(?:^|[.;:!?(—–,>]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
+const ALSO_VERBS = new Set([...Object.keys(YOU_VERBS), "owes", "says", "asks", "wants", "expects", "prefers", "agrees", "replies", "writes", "thinks", "knows", "seems"]);
 function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
   return String(text)
     .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
-    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word, at, all) => {
       const verb = plural(word.replace("’", "'"));
-      return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
+      const subject = CLAUSE_START.test(all.slice(0, at)) ? "\u0004" : "";
+      return cap(t, "you") + subject + " " + (adverb ? adverb + " " : "") + (verb || word);
     })
-    .replace(/\b([Tt])he user\b/g, (m, t) => cap(t, "you"));
+    .replace(/\u0004((?:(?!\b(?:and|but|or|yet)\b)[^.;!?\u0004])*?\b(?:and|but|or|yet) (?:(?:still|also|now|then|already|never|[a-z]+ly) )?)([a-z]+(?:['’]t)?)\b/g,
+      (m, between, word) => between + (ALSO_VERBS.has(word.replace("’", "'").toLowerCase()) ? plural(word.replace("’", "'")) : word))
+    .replace(/\u0004/g, "")
+    .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
 }
 function inline(text, from) {
   let s = esc(text);
@@ -821,6 +1149,11 @@ function inline(text, from) {
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
   });
+  // Link targets and inline code can contain dots without ending a sentence.
+  // Do not consume the preceding boundary: adjacent labelled sentences share it.
+  s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)([.!?。]?)/g,
+    (m, sentence, level, cites, ending) => '<span class="private" data-level="' + level + '">' + sentence +
+      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + ending + '</span>');
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
   s = youify(s);
   const runs = [];
@@ -830,10 +1163,17 @@ function inline(text, from) {
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
-  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
+    : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
   return s;
 }
+// A 40+ character digest is an id to copy, not to read: show its first 12 characters.
+function shortHash(text) {
+  return text.replace(/\b([0-9a-f]{12})[0-9a-f]{28,}\b/gi, "$1…");
+}
 const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
+// Only the placeholder: "Unknown — not verified. The latest session, 2026-06-09, …" is a finding (1.9.2b1).
+const UNFILLED_LINE = /^Unknown\s*—\s*(?:not investigated yet|not verified)[.;]?\s*(?:\[W?\d+\]\s*)*$/i;
 
 function markdownList(lines, start, from) {
   const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
@@ -874,7 +1214,8 @@ function codeBlock(code, info) {
   const cap = diagram ? "Diagram" : lang && lang !== "text" ? lang : "";
   return '<div class="code-block' + (diagram ? " diagram" : "") + '">' + (cap ? '<span class="cap" aria-hidden="true">' + esc(cap) + "</span>" : "") +
     '<pre tabindex="0" aria-label="' + (diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
-    '</code></pre><button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
+    '</code></pre>' + (diagram ? '<span class="pan-hint">Swipe diagram sideways to see all steps →</span>' : '') +
+    '<button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
 }
 
 function markdown(text, from) {
@@ -983,7 +1324,7 @@ function sourceChips(text) {
 // that fills it, and lists rank by last contact instead of by the first
 // character of an email address. An unknown answer written as a bare line
 // (a mapped skill's sections) is dropped the same as one written as a bullet.
-const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
+const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
 const MECHANICAL = new Set(["facts", "contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
@@ -1006,7 +1347,12 @@ function known(r) {
     const head = /^## ([^\n]*)\n?/.exec(part);
     // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
     if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
-    const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
+    const text = part.slice(head[0].length).split("\n").filter(line => {
+      // Keep a specific missing outcome readable, without promoting it to a task.
+      const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
+        && !UNFILLED_LINE.test(line.replace(/^\s*[-*]\s*/, ""));
+      return (!UNKNOWN_LINE.test(line) || explanation) && !PLACEHOLDER.test(line) && !repeatsTitle(line);
+    }).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
     else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
   }
@@ -1021,13 +1367,15 @@ function known(r) {
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
-  const last = r.last_activity !== undefined ? r.last_activity
-    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
+  const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
+  const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
+    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
   const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
 }
+function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
   const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -1044,7 +1392,8 @@ function byActivity(a, b) {
 }
 function statusPill(r) {
   const st = known(r).status;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || st }, [moon(st), st]);
+  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
 }
 
 // ---------- reading a page's parts ----------
@@ -1056,11 +1405,15 @@ function owing() {
   if (OWING) return OWING;
   const owner = REM.owner && byPath(REM.owner);
   const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
-  const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
+  // "User owes pickup of the card" (1.9.2b1) names the owner without "the".
+  const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
+  // The owner asking or waiting on someone is their debt: "Aaron asked Adi to arrange a call" (1.9.2b3).
+  const chasing = "\\b" + me + "\\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|is waiting (?:on|for)|was waiting (?:on|for))\\s+(?!" + me + "\\b)";
   OWING = {
-    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|^\\s*" + me + "\\s*:|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
-    theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
+    // An offer of something ("offered Mara a trial") is optional; an offer to do something is owed.
+    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered to|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
+      "|^\\s*" + me + "\\s*:|\\b(?:asks?|asked|requests?|requested|wants|invited)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+    theirs: new RegExp(chasing + "|\\b(?:owes?|owed) (?:the user|you)\\b|\\bwaiting (?:on|for) (?:them|him|her|their)\\b|\\bunanswered\\b|\\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\\b|\\bno reply\\b|\\b[A-Z][\\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\\b|\\bpromised\\b")
   };
   return OWING;
 }
@@ -1079,25 +1432,44 @@ function listItems(text) {
   }
   return items;
 }
+// A line saying nothing is open, in the words pages use for it (1.9.2b1 showed
+// "None identified" and "No explicit open request" as OPEN for 30 days).
+function isCalm(t) {
+  return /^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)/i
+    .test(t.replace(/\*/g, "").trim());
+}
 function threads(r) {
   const s = section(r, "open threads");
   if (!s) return { items: [], calm: "" };
   const all = listItems(s.text);
-  const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
-  // A past date is when the thread opened; a future one is when it is due.
-  const today = String(REM.as_of || "").slice(0, 10);
-  const items = all.filter(t => t !== calm).map(text => {
+  const calm = all.find(isCalm) || "";
+  const today = calendarDay(REM.as_of);
+  const items = all.filter(t => t !== calm && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
-    return { text, dir: direction(text), since: days.find(d => !today || d <= today) || "", due: days.find(d => today && d > today) || "" };
+    // A stated deadline stays a deadline after it passes. Other event dates
+    // do not establish a due date merely because they are in the future.
+    const due = /\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1] || "";
+    const requested = /\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
+    return { text, dir: direction(text), since: requested || days.find(d => d !== due && (!today || d <= today)) || "", due };
   });
   return { items, calm };
 }
 function historyItems(text) {
   return listItems(text).map(t => {
-    // A range is one date: Ody's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
-    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?(?:\s*[–-]\s*(?:\d{2}-)?\d{2})?)(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
-    return m ? { day: m[1], text: m[2] } : { day: "", text: t };
+    // A range is one entry dated by its start: "2026-07-05–17", "2026-07-29–08-04" (#2059),
+    // "2026-08-26–2026-08-28" and "2026-09-23 to 2026-10-09" (1.9.2b1).
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\s*(?:[–-]|to)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?!\d))?(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    if (!m) return { day: "", end: "", text: t };
+    return { day: m[1], end: m[2] ? m[1].slice(0, m[1].length - m[2].length) + m[2] : "", text: m[3] };
   });
+}
+// A range on two lines so it fits the date column: "Aug 26" over "– 28", or
+// "Jul 29" over "– Aug 4". A month alone is "Oct 2025", not the 1st of it.
+function dayLabel(item) {
+  const one = d => d.length === 7 ? new Date(d + "-01T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC", month: "short", year: "numeric" }) : shortDate(d);
+  if (!item.end || item.end === item.day) return one(item.day);
+  const sameMonth = item.end.length === 10 && item.end.slice(0, 7) === item.day.slice(0, 7);
+  return one(item.day) + "\n– " + (sameMonth ? String(Number(item.end.slice(8))) : one(item.end));
 }
 // "- [n] id — what it shows; confidence; observed date" -> {n: "id — what it shows ..."}
 function rawSection(r, name) {
@@ -1112,6 +1484,9 @@ function sourceList(r) {
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
   }
   return out;
+}
+function sourceId(text) {
+  return /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
 }
 const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
 // A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
@@ -1145,9 +1520,14 @@ function contactFields(r) {
 // A skill's Usage history line (skill_usage.py usage_line).
 function skillUsage(r) {
   const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.text);
-  if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4], tools: m[5] || "" };
+  if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4],
+    tools: (m[5] || "").replace(/\b(Claude Code|Codex|co ai) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
   const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
+}
+function usageCaption(u) {
+  return u.count ? u.count + " skill-name " + (u.count === 1 ? "match" : "matches") + " · last " + fmtDate(u.last) + " · version unverified"
+    : "0 skill-name matches in " + u.days + " days · version unverified";
 }
 let MAX_USAGE = null;
 function maxUsage() {
@@ -1171,12 +1551,12 @@ function company(r) {
 const FACTS = new Map();
 function facts(r) {
   if (FACTS.has(r.path)) return FACTS.get(r.path);
-  const k = known(r), contact = {};
-  // A cell holds the values alone: qualifiers and claim numbers stay on the page.
-  for (const [label, items] of parseFacts(r)) contact[label.toLowerCase()] = items.map(i => i.value).join("; ");
+  const k = known(r), contact = {}, parsed = parseFacts(r);
+  // Preserve qualifications, especially historical roles and affiliations.
+  for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
   const text = r.text.replace(COMMENT, "");
   const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
-  const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.day).sort();
+  const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.end || i.day).sort();
   const observed = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2})/.exec(text);
   const paths = listItems(rawSection(r, "Paths"));
   const field = re => (paths.map(p => re.exec(p)).find(Boolean) || [])[1] || "";
@@ -1194,20 +1574,26 @@ function facts(r) {
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
     domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
-    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text).length,
+    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
+      .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
   };
-  // The notebook's index (#2067), when the snapshot carries a row for this page, is the
-  // first source for each column; the page's fields above fill whatever it leaves empty.
+  // The index (#2067) supplies derived columns; explicit page Company/Role fields
+  // remain authoritative, including Unknown and historical qualifications.
   const x = r.index;
   if (x) {
     const take = (key, value) => { if (value != null && value !== "" && !(Array.isArray(value) && !value.length)) f[key] = value; };
     take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
-    take("phone", x.phone); take("company", x.company); take("role", x.role); take("language", x.language);
+    take("phone", x.phone); take("language", x.language);
+    // Reviewed page fields, including explicit Unknown, supersede derived index values.
+    if (!parsed.has("Company")) take("company", x.company);
+    if (!parsed.has("Role")) take("role", x.role);
     take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
     take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
-    take("how", x.how_known); take("first", x.first_contact); take("last", x.last_contact);
+    take("how", x.how_known); take("first", x.first_contact);
+    // The page census owns activity dates; an older index must not contradict it.
+    take("last", r.last_activity === undefined ? x.last_contact : k.last);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
   FACTS.set(r.path, f);
@@ -1223,11 +1609,26 @@ function openCell(f) {
   return el("span", { class: "open-cell " + t.dir, title: plainLine(t.text) }, [el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
-function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
-function textCell(v) { return v ? el("span", { class: "clamp", title: plainLine(v), html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
+function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
+  text: shortDate(day) + (fromMap ? " · map" : "") }) : el("span", { class: "unk", text: "—" }); }
+function privateFallback(node) {
+  const visible = node.cloneNode(true);
+  visible.querySelectorAll(".private").forEach(span => span.remove());
+  if (node.querySelector(".private") && !/[\p{L}\p{N}]/u.test(visible.textContent)) {
+    const content = el("span", { class: "privacy-content" });
+    while (node.firstChild) content.appendChild(node.firstChild);
+    node.append(content, el("span", { class: "private-hidden-notice", text: "Hidden labelled passage" }));
+    node.classList.add("privacy-only");
+  }
+  return node;
+}
+function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
+  title: /\[(?:personal|sensitive)\]/i.test(v) ? "" : plainLine(v),
+  html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
+    r.category === "projects" ? el("span", { class: "mobile-status-label", text: k.status }) : null,
     withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
 }
 const COLUMNS = {
@@ -1240,7 +1641,7 @@ const COLUMNS = {
     { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
     { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,;\s]/)[0], class: "mono trunc", title: plainValue(f.email), text: plainValue(f.email) }) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
-    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
     { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
   ],
   orgs: [
@@ -1254,8 +1655,8 @@ const COLUMNS = {
   projects: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
-    { key: "last", label: "Last active", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
-    { key: "sessions", label: "Sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
+    { key: "last", label: "Last mapped session", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
 };
@@ -1355,7 +1756,9 @@ function lastPass() {
   const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
   const failed = runs.filter(run => FAILED.test(String(run.outcome || "")));
   const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
-  return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items };
+  const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
+    .filter(claim => byPath(claim.record) && (claim.sources || []).length);
+  return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items, claims };
 }
 function weekChanges() {
   const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
@@ -1444,11 +1847,18 @@ function nightBand() {
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
-  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"), reviews: params.has("reviews") };
+  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
+    view: params.get("view"), reviews: params.has("reviews") };
 }
 function railActive() {
-  const { record: r, category: c, query, reviews } = route();
-  return reviews ? "reviews" : c || (r ? r.split("/")[0] : (query ? "search" : null));
+  const { record: r, category: c, query, view, reviews } = route();
+  return reviews ? "reviews" : view || c || (r ? r.split("/")[0] : (query ? "search" : "today"));
+}
+function scheduleState(s) {
+  const state = s.state || "";
+  return REM.records.length && /^Not started/.test(state)
+    ? "Background updates off — run `co rem start` to enable"
+    : state;
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -1456,8 +1866,12 @@ function renderRail(active) {
   const owner = REM.owner && byPath(REM.owner);
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
     el("span", {}, [moon(known(owner).status), " You"]), el("span", { class: "n", text: owner.title })]));
-  nav.appendChild(el("div", { class: "label", text: "Notebook" }));
-  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(listedRecords().length) })]));
+  nav.appendChild(el("div", { class: "label", text: "Your day" }));
+  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Open threads", "#view=open"],
+    ["changes", "Memory changes", "#view=changes"]])
+    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title })]));
+  nav.appendChild(el("div", { class: "label", text: "Explore memory" }));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: "All records" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of REM.categories) {
     const n = inCategory(c).length;
     if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
@@ -1480,9 +1894,21 @@ function renderRail(active) {
     themeSwitch.appendChild(btn);
   }
   foot.appendChild(themeSwitch);
+  const hidden = document.documentElement.classList.contains("hide-private");
+  const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
+    "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
+    title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
+  privacy.onclick = togglePrivate;
+  foot.appendChild(privacy);
+  foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
-  foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
+  const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
+    : s.next_run ? "Next pass " + fmtTime(s.next_run)
+    : (scheduleState(s) || "No pass scheduled");
+  foot.appendChild(el("div", { text: plainLine(schedule) }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
+  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of) + " · " + schedule)
+    .replace(/`([^`]+)`/g, (_, command) => command.replaceAll(" ", "\u00a0"));
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
 
@@ -1499,7 +1925,7 @@ function row(r, opts) {
   const open = threads(r).items[0];
   if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: u.count ? (u.count === 1 ? "used once" : "used " + u.count + "×") + " in " + u.days + " days · last " + shortDate(u.last) : "not used in " + u.days + " days" })]));
+  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
   return li;
 }
@@ -1508,7 +1934,7 @@ function threadRow(r, t, withPage) {
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
-    el("span", { class: "when" + (t.since && daysSince(t.since) === 0 ? " today" : ""), title: (t.since ? "since " + fmtDate(t.since) : "") + (t.due ? " · due " + fmtDate(t.due) : ""), text: threadAge(t) })]);
+    el("span", { class: "when" + (threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + fmtDate(t.since) : "") + (t.due ? " · due " + fmtDate(t.due) : ""), text: threadAge(t) })]);
 }
 
 function sectionHead(title, note) {
@@ -1517,10 +1943,13 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  const line = lines.find(item => /^Changed:/i.test(item)) || lines.find(item => /^Now:/i.test(item))
+  // Lead project pages with the current finding; the full note preserves patterns.
+  const preferred = r.path === REM.owner ? ["Changed", "Now"]
+    : r.category === "projects" ? ["Now", "At stake", "Changed", "Pattern"] : ["Now", "Changed"];
+  const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
-  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake):\s*/i, "") : current?.text || known(r).summary);
+  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
   return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
 }
 function memoryConnection(records) {
@@ -1539,34 +1968,142 @@ function memoryConnection(records) {
   }
   return null;
 }
+function changeCard(claim) {
+  const r = byPath(claim.record);
+  if (!r) return null;
+  const card = el("article", { class: "claim-card" }, [
+    el("span", { class: "claim-kind", text: claim.kind === "newly recorded" ? "Newly recorded · supported" : "Revised in memory · supported" }),
+    el("h3", {}, [el("a", { href: href(r), text: r.title }), " / " + claim.field]),
+    claim.before ? el("p", { class: "before", text: "Before: " + claim.before }) : null,
+    el("p", { class: "after", text: "Now: " + claim.after }),
+    el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
+      text: "Open the page and source →" })]);
+  return card;
+}
+function firstMapBrief() {
+  const counts = Object.values(REM.counts || {});
+  const mapped = counts.reduce((n, row) => n + (row.mapped || 0), 0);
+  const written = counts.reduce((n, row) => n + (row.written || 0), 0);
+  if (lastPass() || !mapped || written) return null;
+  const people = inCategory("people").length;
+  const { held, service } = peopleExclusions();
+  const preview = el("button", { type: "button", text: "Copy investigation preview" });
+  preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, "Copied — paste it in a terminal");
+  const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
+    el("div", { class: "morning-top" }, [el("div", {}, [
+      el("span", { class: "morning-kicker", text: "co rem / source map" }),
+      el("h2", { text: mapped + " records mapped" })]),
+      el("span", { class: "morning-time", text: "0 memories written" })]),
+    el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
+    el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
+  if (held || service) brief.appendChild(el("p", { class: "first-map-held", text:
+    (held ? held + " possible contacts are held for review and excluded from the People count." : "") +
+    (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") }));
+  return brief;
+}
 function morningBrief() {
   const pass = lastPass();
   const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
+  const failed = pass?.failed || [];
   const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
   changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
-  const brief = el("section", { class: "morning", "aria-label": "What REM carried forward" });
+  const brief = el("section", { class: "morning", "aria-label": "What co rem carried forward" });
   const top = el("div", { class: "morning-top" }, [
-    el("div", {}, [el("span", { class: "morning-kicker", text: "REM / latest pass" }),
+    el("div", {}, [el("span", { class: "morning-kicker", text: "co rem / latest pass" }),
       el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
-        ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
+        ? "The context to carry into today" : "The context from the last pass") : failed.length ? "The last pass needs attention" : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
   brief.appendChild(top);
+  if (failed.length) {
+    // Classify failures without surfacing private runner output in the morning brief.
+    const errors = failed.map(run => String(run.error || "")).join("\n");
+    const reasons = [];
+    if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
+    if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
+    if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
+    brief.appendChild(el("p", { class: "memory-empty", text: failed.length + " investigation" + (failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") }));
+    const review = el("button", { type: "button", text: "Review failed runs →" });
+    review.onclick = () => {
+      const maintenance = document.querySelector("details.maint");
+      if (!maintenance) return;
+      maintenance.open = true;
+      const failedRun = maintenance.querySelector(".runs tr.failed-run");
+      const target = failedRun || maintenance.querySelector(":scope > summary");
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    brief.appendChild(el("div", { class: "first-map-actions" }, [review]));
+  }
+  if ((REM.logs || []).some(run => run.evidence?.length || run.report || run.pages?.some(page => page.evidence?.length || page.report))) {
+    const trail = el("button", { type: "button", class: "inspection-link", text: "View recent inspection trail →" });
+    trail.onclick = () => {
+      const maintenance = document.querySelector("details.maint");
+      const trace = maintenance?.querySelector("details.run-trace");
+      if (!maintenance) return;
+      maintenance.open = true;
+      if (trace) trace.open = true;
+      (trace || maintenance).scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    brief.appendChild(trail);
+  }
+  if (pass?.claims?.length) {
+    const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
+      pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
+    brief.appendChild(found);
+  }
   if (!changed.length) {
     brief.appendChild(el("p", { class: "memory-empty", text: pass
-      ? "The last pass did not update a page. Your existing context is still in the library below."
-      : "REM has not completed a pass yet. Once it has, the pages it updates will appear here." }));
+      ? failed.length ? "No memory pages were written in the last pass. Your source map and existing pages remain available below. Review the failed runs before retrying." : "The last pass did not update a page. Your existing context is still in the library below."
+      : "co rem has not completed a pass yet. Once it has, the pages it updates will appear here." }));
     return brief;
   }
   const cards = el("div", { class: "memory-grid" });
-  for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
-    el("span", { class: "kind", text: singular(r.category) + " · Updated in the latest pass" }),
-    el("h3", {}, [el("a", { href: href(r), text: r.title })]),
-    el("p", { text: memoryStatement(r) || "This page was updated. Open it to see the current context." }),
-    el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
+  for (const r of changed.slice(0, 3)) {
+    const purpose = r.category === "projects" ? section(r, "what it is") : null;
+    const purposeLine = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+    const purposePreview = purposeLine.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
+    cards.appendChild(el("article", { class: "memory-card" }, [
+      el("span", { class: "kind", text: singular(r.category) + " · Page rewritten" +
+        (r.category === "projects" && known(r).last ? " · last mapped session " + fmtDate(known(r).last) : "") }),
+      el("h3", {}, [el("a", { href: href(r), text: r.title })]),
+      purposePreview && !/^\s*-?\s*Unknown\b/i.test(purposePreview)
+        ? el("p", { class: "project-purpose" }, [el("strong", { text: "What this is · " }), el("span", { html: inline(purposePreview, r.path) })]) : null,
+      el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
+      el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
+  }
   brief.appendChild(cards);
   const connection = memoryConnection(changed);
   if (connection) brief.appendChild(connection);
   return brief;
+}
+function taskView(kind) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow", text: "co rem / Today" }));
+  if (kind === "changes") {
+    const pass = lastPass();
+    main.appendChild(el("h1", { text: "Memory changes" }));
+    main.appendChild(el("p", { class: "lede", text: "Source-backed changes from the latest pass. Page rewrites are listed separately." }));
+    const claims = pass?.claims || [];
+    if (claims.length) main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
+    else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No verified claim change in this pass" }),
+      "The pass may have refreshed pages; that alone is not a new memory."]));
+    if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
+      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true })))]));
+    return;
+  }
+  main.appendChild(el("h1", { text: "Open threads" }));
+  main.appendChild(el("p", { class: "lede", text: "What needs your answer, and what you are waiting to hear back." }));
+  const entries = listedRecords().flatMap(r => threads(r).items.map(t => ({ r, t })))
+    .sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir]
+      || (a.t.since || "9999").localeCompare(b.t.since || "9999"));
+  if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
+    "No supported open loop is in this snapshot."]));
+  else for (const [title, dir] of [["Waiting on you", "mine"], ["Waiting on others", "theirs"], ["Other open context", "plain"]]) {
+    const items = entries.filter(row => row.t.dir === dir);
+    if (items.length) main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(items.length)),
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true)))]));
+  }
 }
 function recallPrompt() {
   const changed = new Set((lastPass()?.changed || []).map(r => r.path));
@@ -1586,9 +2123,9 @@ function recallPrompt() {
     button.setAttribute("aria-expanded", String(!answer.hidden));
     button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
   };
-  card.append(el("span", { class: "label", text: "Remember with REM" }),
+  card.append(el("span", { class: "label", text: "Remember with co rem" }),
     el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
-    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page REM already wrote." }), button, answer);
+    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
   return card;
 }
 function connectionReview() {
@@ -1606,13 +2143,15 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "REM / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What REM carried forward" }));
+  const firstMap = firstMapBrief();
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
+  main.appendChild(el("h1", { text: firstMap ? "Your source map" : "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once REM has read your permitted sources, it will bring back the context worth keeping." :
+  main.appendChild(el("p", { class: "lede", text: firstMap ? "Your sources are mapped. Investigate a person or project to add source-backed findings." :
+    n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
     "A short return to what changed, what is still open, and what is worth remembering." }));
-  main.appendChild(morningBrief());
+  main.appendChild(firstMap || morningBrief());
   const recall = recallPrompt();
   if (recall) main.appendChild(recall);
   const review = connectionReview();
@@ -1624,16 +2163,18 @@ function overview() {
     for (const t of threads(r).items) open.push({ r, t });
   open.sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir] || byActivity(a.r, b.r));
   if (open.length) {
-    // Two bands: what you owe (oldest first), and what others owe you.
+    // Keep unassigned context separate from obligations in either direction.
     const oldest = (x, y) => (x.t.since || "9999").localeCompare(y.t.since || "9999") || byActivity(x.r, y.r);
     const mine = open.filter(o => o.t.dir === "mine").sort(oldest);
-    const others = [...open.filter(o => o.t.dir === "theirs").sort(oldest), ...open.filter(o => o.t.dir === "plain")];
+    const others = open.filter(o => o.t.dir === "theirs").sort(oldest);
+    const plain = open.filter(o => o.t.dir === "plain");
     main.appendChild(sectionHead("Open threads", open.length + " open · " + mine.length + " waiting on you"));
     const band = (title, note, rows) => el("section", { class: "band" }, [el("h3", {}, [el("span", { text: title }), el("span", { class: "mono", text: note })]),
-      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 6).map(o => threadRow(o.r, o.t, true)))
+      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 3).map(o => threadRow(o.r, o.t, true)))
         : el("p", { class: "band-none", text: "Nothing here." }),
-      rows.length > 6 ? el("p", { class: "band-none", text: "+" + (rows.length - 6) + " more on their pages" }) : null]);
-    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others)]));
+      rows.length > 3 ? el("p", { class: "band-none" }, [el("a", { href: "#view=open", text: "View all " + rows.length + " open threads →" })]) : null]);
+    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others),
+      plain.length ? band("Other open context", String(plain.length), plain) : null]));
   }
 
   // This week: what the nightly passes rewrote, newest first, each with its one line.
@@ -1646,7 +2187,7 @@ function overview() {
         known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
   }
 
-  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How REM processed the last pass" }), nightBand()]);
+  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
   main.appendChild(processing);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
@@ -1657,37 +2198,21 @@ function overview() {
     main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
   }
 
-  const shelves = el("div", { class: "shelves" });
-  for (const c of REM.categories) {
-    const items = inCategory(c).sort(byActivity);
-    if (!items.length) continue;
-    const counts = (REM.counts || {})[c];
-    const shelf = el("section", { class: "shelf" });
-    shelf.appendChild(el("h3", {}, [el("a", { href: "#c=" + c, text: label(c) }), el("span", { class: "mono", text: counts ? counts.written + " / " + counts.mapped + " written" : String(items.length) })]));
-    shelf.appendChild(el("p", { class: "ask", text: CATEGORY_ASK[c] || "" }));
-    const titleCounts = {};
-    for (const item of items) titleCounts[item.title] = (titleCounts[item.title] || 0) + 1;
-    const ul = el("ul", { class: "toc" });
-    for (const r of items.slice(0, 8)) {
-      const hint = titleCounts[r.title] > 1 ? el("span", { class: "path-hint", text: r.path.split("/").pop().replace(/\.md$/, "") })
-        : el("span", { class: "when", text: shortDate(known(r).last) });
-      ul.appendChild(el("li", {}, [moon(known(r).status), el("a", { href: href(r), text: r.title }), hint]));
-    }
-    if (items.length > 8) ul.appendChild(el("li", {}, [el("a", { class: "more", href: "#c=" + c, text: "all " + items.length + " " + label(c).toLowerCase() + " →" })]));
-    shelf.appendChild(ul);
-    shelves.appendChild(shelf);
-  }
-  if (shelves.childNodes.length) {
+  const categories = REM.categories.map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
+  if (categories.length) {
     main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
-    main.appendChild(shelves);
+    main.appendChild(el("div", { class: "category-cards" }, categories.map(({ c, count }) =>
+      el("a", { class: "category-card", href: "#c=" + c }, [el("strong", { text: label(c) }),
+        el("span", { text: count + (count === 1 ? " record" : " records") })]))));
   }
   main.appendChild(maintenance(s));
 }
 
 function maintenance(s) {
   const maint = el("details", { class: "maint" });
-  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: s.state ? plainLine(s.state).slice(0, 80) : "" })]));
-  maint.appendChild(el("p", { class: "state", html: inline(s.state || "", "") }));
+  const state = scheduleState(s);
+  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: state ? plainLine(state).slice(0, 80) : "" })]));
+  maint.appendChild(el("p", { class: "state", html: inline(state, "") }));
   const usage = s.usage_today || {};
   const cells = el("div", { class: "row" });
   const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
@@ -1713,7 +2238,7 @@ function maintenance(s) {
       const u = run.usage || {};
       const outcome = String(run.outcome || "");
       const ok = /^(completed|pass)$/i.test(outcome);
-      table.appendChild(el("tr", {}, [
+      table.appendChild(el("tr", FAILED.test(outcome) ? { class: "failed-run", tabindex: "-1" } : {}, [
         el("td", { text: fmtTime(run.started_at) }),
         el("td", {}, [el("span", { class: "pill" + (ok ? "" : FAILED.test(outcome) ? " warn" : " quiet"), text: outcome })]),
         el("td", { text: String(run.items ?? "") }),
@@ -1723,35 +2248,138 @@ function maintenance(s) {
         el("td", { text: run.seconds == null ? "—" : String(run.seconds) })]));
     }
     maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
+    for (const run of REM.logs.slice(0, 8)) {
+      const pages = run.pages?.length ? run.pages : [run];
+      if (!pages.some(page => page.evidence?.length || page.report)) continue;
+      const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
+      const trace = el("details", { class: "run-trace" }, [el("summary", {
+        text: fmtTime(run.started_at) + " · " + count + " supplied items · inspection report"
+      })]);
+      trace.addEventListener("toggle", () => {
+        if (!trace.open || trace.dataset.loaded) return;
+        trace.dataset.loaded = "true";
+        for (const page of pages) {
+          const record = page.page || page.record;
+          if (record) trace.appendChild(el("h3", {}, [el("a", { href: "#r=" + encodeURIComponent(record), text: record })]));
+          if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
+          if (!page.evidence?.length) continue;
+          trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
+          const sources = el("ul");
+          for (const item of page.evidence) sources.appendChild(el("li", { text: [
+            item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
+            item.captured_at && "captured: " + item.captured_at,
+            item.paths?.join(", ")].filter(Boolean).join(" · ") }));
+          trace.appendChild(sources);
+        }
+      });
+      maint.appendChild(trace);
+    }
   }
   return maint;
+}
+
+function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }
+function contactDirectory() {
+  const candidates = REM.contact_candidates || [];
+  const coverage = REM.contact_coverage || {};
+  if (!candidates.length && !coverage.incomplete) return null;
+  const details = el("details", { class: "contact-directory" });
+  details.appendChild(el("summary", { text: candidates.length + " other contacts found in mail" }));
+  const body = el("div", { class: "directory-body" });
+  body.appendChild(el("p", { class: "directory-note", text:
+    "Found in " + (coverage.scope || "mail") + ". These headers have not established a person or a memory page. Search here before deciding whom REM should investigate." }));
+  if (coverage.incomplete) body.appendChild(el("p", { class: "directory-note warn", text:
+    "Coverage is incomplete: " + coverage.mailbox_errors + " mailbox scan error(s). Retry init before treating this as every contact." }));
+  const find = el("input", { type: "search", class: "directory-find", "aria-label": "Search other contacts", placeholder: "Find a name or email…" });
+  const count = el("span", { class: "mono", "aria-live": "polite" });
+  const table = el("table");
+  table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: name })))]));
+  const tbody = el("tbody"); table.appendChild(tbody);
+  const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": "Other contacts table" }, [table]);
+  const action = el("tr", { class: "directory-action" }, [el("td", { colspan: "5" })]);
+  const more = el("button", { type: "button", class: "directory-more", text: "Show more contacts" });
+  let limit = 100;
+  const draw = () => {
+    const needle = find.value.trim().toLowerCase();
+    const matched = candidates.filter(row => !needle || (row.name + " " + row.email).toLowerCase().includes(needle));
+    tbody.textContent = "";
+    for (const row of matched.slice(0, limit)) {
+      const name = row.name || row.email;
+      const prepare = el("button", { type: "button", text: "Prepare in terminal", "aria-label": "Show the command to prepare a memory for " + name });
+      prepare.onclick = () => {
+        const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
+          + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
+        const cell = action.firstChild;
+        cell.textContent = "Run this in a terminal, then follow the next investigation command:";
+        const copy = el("button", { type: "button", text: "Copy command" });
+        copy.onclick = () => copyToClipboard(command, copy, "Copied — paste in a terminal");
+        cell.appendChild(copy);
+        cell.appendChild(el("code", { text: command }));
+        const selected = prepare.closest("tr");
+        selected.after(action);
+      };
+      tbody.appendChild(el("tr", {}, [
+        el("td", { class: "candidate-name", text: name }),
+        el("td", {}, [el("a", { class: "candidate-email", href: "mailto:" + row.email, text: row.email })]),
+        el("td", { text: row.last ? shortDate(row.last) : "—" }),
+        el("td", { text: String(row.mails) }), el("td", {}, [prepare])]));
+    }
+    if (!matched.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: "5", text: "No contact matches this search." })]));
+    count.textContent = " · " + matched.length + " found";
+    more.hidden = matched.length <= limit;
+  };
+  find.addEventListener("input", () => { limit = 100; draw(); });
+  more.onclick = () => { limit += 100; draw(); };
+  body.append(find, count, scroller, more);
+  details.appendChild(body); draw();
+  return details;
 }
 
 function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
-  const items = inCategory(c);
+  const items = c === "all" ? listedRecords() : inCategory(c);
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
-  main.appendChild(el("h1", { text: label(c) }));
-  const lede = (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
-  main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
-  if (!items.length) {
+  main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
+  const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
+  const other = c === "people" ? (REM.contact_candidates || []).length : 0;
+  main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
+    items.length || other ? el("span", { class: "mono", text: (counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
+      + (other ? " · " + other + " other contacts" : "") }) : null]));
+  const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
+  if (held || service) {
+    const note = el("p", { class: "held-note" }, [el("span", { text:
+      (held ? held + " possible contacts are held for review, outside this list." : "") +
+      (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") })]);
+    if (held) {
+      const review = el("button", { type: "button", text: "Copy review list command" });
+      review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
+      note.appendChild(review);
+    }
+    main.appendChild(note);
+  }
+  if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
-      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
+      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
-  if (COLUMNS[c]) main.appendChild(sheet(c, items));
-  else main.appendChild(el("ul", { class: "hits" }, items.sort(byActivity).map(r => row(r))));
+  if (c === "people") {
+    const directory = contactDirectory();
+    if (directory) main.appendChild(directory);
+  }
+  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
 
 // ---------- a page ----------
 // Which sections lead: what is open first on a relationship, the state of play on a project.
 const LEADING = {
   people: ["insight", "open threads"], orgs: ["open threads"],
-  projects: ["insight", "what it is", "where it stands", "overview", "open threads"]
+  projects: ["insight", "what it is", "where it stands", "overview", "open threads"],
+  skills: ["insight", "what it does", "when to use", "how to use"]
 };
 // Shown as the fact card, not as a section of prose (#2068; legacy pages have Contact).
 const CARD_SECTIONS = new Set(["facts", "contact"]);
@@ -1782,17 +2410,19 @@ function sectionBody(r, s) {
     const items = historyItems(s.text);
     if (items.some(i => i.day)) {
       return el("div", { class: "block-history" }, [el("ol", { class: "timeline" }, items.map(i => el("li", { class: i.day ? "" : "undated" }, [
-        el("span", { class: "d", text: i.day ? shortDate(i.day.length === 7 ? i.day + "-01" : i.day) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
+        el("span", { class: "d", text: i.day ? dayLabel(i) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
     }
   }
   if (name === "sources") {
     const list = sourceList(r);
     if (list.length) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
-        const id = /\b([a-z][a-z-]*:[\w./-]{4,})/i.exec(src.text);
-        const rest = id ? src.text.replace(id[1], "").replace(/^\s*[—–-]\s*/, "") : src.text;
-        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("span", { class: "n", text: "[" + src.n + "]" }),
-          el("span", {}, [id ? el("span", { class: "id", text: id[1] }) : null, id ? " " : "", rest])]);
+        const id = sourceId(src.text);
+        const rest = id ? src.text.replace(id, "").replace(/^\s*[—–-]\s*/, "") : src.text;
+        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("a", { class: "n cite source-open",
+          href: href(r) + "&h=src-" + src.n.toLowerCase(), "aria-label": "Open source " + src.n,
+          text: "[" + src.n + "]" }),
+          el("span", {}, [id ? el("span", { class: "id", text: shortHash(id), title: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
   }
@@ -1812,8 +2442,8 @@ function legacyFact(r, label) {
   const f = facts(r), k = known(r);
   const v = {
     "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? f.last : "", "Email": f.email,
-    "Last activity": r.category === "projects" ? k.last : "", "Started": r.category === "projects" ? f.first : "",
-    "Repository": f.repo, "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
+    "Last activity": r.category === "projects" ? k.last : "",
+    "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
     "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
   }[label];
   return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
@@ -1829,6 +2459,17 @@ function factValue(item, from) {
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
     item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
 }
+// A long address or path wraps after '@' or before '.' and '/', never mid-word.
+function softBreaks(node) {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  for (const text of texts.filter(t => /[^\s]{16,}/.test(t.data))) {
+    const parts = text.data.split(/(\s+)/).flatMap(token => token.length < 16 ? [token]
+      : token.split(/(?<=@)|(?=\.\w)|(?<=\/)/).flatMap((part, i) => i ? [document.createElement("wbr"), part] : [part]));
+    text.replaceWith(...parts);
+  }
+  return node;
+}
 // The facts a reader came for: labels in small caps, values cited, a missing one visibly empty.
 function factList(r) {
   const labels = FACT_LABELS[r.category];
@@ -1838,15 +2479,17 @@ function factList(r) {
   const dl = el("dl", { class: "factlist" });
   let filled = 0;
   for (const label of order) {
-    const items = (parsed.get(label) || []).length ? parsed.get(label) : legacyFact(r, label);
+    const items = parsed.has(label) ? parsed.get(label) : legacyFact(r, label);
     if (items.length) filled++;
-    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: "— not found" })]);
+    const missing = label === "Last contact" && mappedContact(r) && known(r).last
+      ? "— map date shown above" : "— not found";
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    dl.append(el("dt", { text: label }), dd);
+    dl.append(el("dt", { text: label }), softBreaks(dd));
   }
   if (r.category === "people" && r.mail) {
     dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
@@ -1854,28 +2497,46 @@ function factList(r) {
   return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
 }
 function daysSince(day) {
-  const ms = new Date(REM.as_of || Date.now()).getTime() - new Date(day + "T00:00:00").getTime();
+  const today = calendarDay(REM.as_of || new Date().toISOString());
+  const ms = new Date(today + "T00:00:00Z").getTime() - new Date(day + "T00:00:00Z").getTime();
   return isNaN(ms) ? null : Math.max(0, Math.floor(ms / DAY_MS));
 }
 function age(day) {
   const n = daysSince(day);
   return n == null ? "" : n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
 }
-// How long a thread has been open, or when it falls due if the page gives only that.
-function threadAge(t) { return t.since ? age(t.since) : t.due ? "due " + shortDate(t.due) : ""; }
+// Show an explicit deadline first, without inferring whether it was met.
+function threadAge(t) {
+  if (t.due) return "due " + (t.due === calendarDay(REM.as_of) ? "today" : shortDate(t.due));
+  return t.since ? (daysSince(t.since) === 0 ? "opened today" : "open for " + age(t.since)) : "";
+}
+function threadPreview(text) {
+  const summary = plainLine(text).replace(/\s*[—–-]\s.*$/, "");
+  return summary.length > 100 ? summary.slice(0, 97).replace(/\s+\S*$/, "") + "…" : summary;
+}
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
   const k = known(r), t = threads(r), row = el("div", { class: "leadrow" });
   if (t.items.length) {
     const first = t.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
-      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: plainLine(first.text).replace(/\s*[—–-]\s.*$/, "") }),
-      threadAge(first) ? el("span", { class: "age mono" + (first.since && daysSince(first.since) === 0 ? " today" : ""), text: threadAge(first) }) : null,
+      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: threadPreview(first.text) }),
+      threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  const hasProjectFinding = r.category === "projects" && !/^\s*-?\s*Unknown\b/i.test(section(r, "insight")?.text.trim() || "Unknown");
+  const purpose = r.category === "projects" && k.status !== "Mapped" && hasProjectFinding ? section(r, "what it is") : null;
+  const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+  if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead)) {
+    const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
+    row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
+    const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
+  } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: u.count ? "used " + (u.count === 1 ? "once" : u.count + "×") + " in " + u.days + " days · last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "not used in " + u.days + " days" })]));
+  if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
+    el("span", { class: "lead-meta usage-scope", text: "Coding-session name matches; retained eval attempts are counted separately." }));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
   return row;
 }
@@ -1886,15 +2547,17 @@ function sidePanels(r, k) {
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
-  if (k.last) add(r.category === "people" ? "Last contact" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  if (k.last) add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "skills" ? "Last name match" : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
-  if (sessions) add("Sessions", el("span", { class: "mono", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
+  if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
     const u = skillUsage(r);
-    if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: (u.count === 1 ? "invocation" : "invocations") + " in " + u.days + " days" })]),
-      el("div", { class: "usage" }, [usageBar(u)]), el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no recent use" })]));
+    if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: "name " + (u.count === 1 ? "match" : "matches") + " in " + u.days + " days" })]),
+      el("div", { class: "usage" }, [usageBar(u)]),
+      el("p", { text: "Matched by skill name in coding sessions and co ai runs; the co ai runs are the ones listed under Run evidence. Neither confirms this installed version or task outcome." }),
+      el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no name match found" })]));
     if (r.installation) {
       const file = el("dl", {});
       file.append(el("dt", { text: "File" }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
@@ -1907,6 +2570,303 @@ function sidePanels(r, k) {
   const factsPanel = factList(r);
   if (factsPanel) panels.unshift(factsPanel); else panels.unshift(panel("At a glance", [glance]));
   return panels;
+}
+
+function refreshFocusExpansion() {
+  const statement = document.querySelector(".focus-statement");
+  const more = document.querySelector(".focus-more");
+  if (!statement || !more) return;
+  more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
+}
+function relationCard(link) {
+  const other = byPath(link.path), origin = byPath(link.via);
+  const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
+    "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
+  const entry = el("div", { class: "relation-entry" }, [
+    el("a", { class: "relation-card", href: href(other) }, [
+      el("span", { class: "relation-kind", text: singular(other.category) + " · " + (labels[link.kind] || link.kind) }),
+      el("strong", { text: other.title }),
+      el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Notebook link") })])]);
+  if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
+    el("span", { text: "On " }), el("a", { href: href(origin), text: origin.title }),
+    el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
+  return entry;
+}
+function relationDisclosure(links, label, className = "") {
+  return links.length ? el("details", { class: "more-relations " + className }, [
+    el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(relationCard))]) : null;
+}
+function connectedContext(r) {
+  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
+  if (!related.length) return null;
+  const explicit = link => link.kind === "linked" || link.kind === "linked from";
+  const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
+    || link.path.startsWith("skills/catalog/") && !link.path.endsWith("/index.md");
+  const links = related.filter(link => explicit(link) && page(link));
+  const notes = related.filter(link => explicit(link) && !page(link));
+  const mentions = related.filter(link => !explicit(link));
+  return el("div", { class: "focus-section related-records" }, [
+    el("h2", { text: "Connected context" }),
+    links.length ? el("p", { class: "relation-description", text: "Explicit links between notebook pages." }) : null,
+    links.length ? el("div", { class: "relation-list" }, links.slice(0, 6).map(relationCard)) : null,
+    relationDisclosure(links.slice(6), "Show " + (links.length - 6) + " more notebook links"),
+    relationDisclosure(notes, "Other notebook links · " + notes.length, "notebook-links"),
+    mentions.length ? el("details", { class: "more-relations mention-hints" }, [
+      el("summary", { text: "Text mentions · " + mentions.length }),
+      el("p", { class: "relation-description", text: "Name matches help navigate the notebook. A mention alone does not establish a relationship." }),
+      el("div", { class: "relation-list" }, mentions.map(relationCard))]) : null]);
+}
+function investigateCommand(r) {
+  return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
+}
+// Who they are and how to reach them, first on a person (#2104): the owner
+// asked to see email, phone, what to call them and the company at a glance.
+function contactStrip(r) {
+  const parsed = parseFacts(r);
+  // The parts of one field, put back together: "OpenOnion (internship; 2026)" is one value.
+  const value = label => (parsed.get(label) || []).map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
+  // Role and Company through facts(): a reviewed "Unknown" outranks an older index value.
+  const f = facts(r), company = f.company ? String(f.company) : "";
+  const org = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
+  const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
+  const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
+  const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
+  const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
+    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => v);
+  if (!rows.length) return null;
+  return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
+    const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
+    if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
+    if (copyable) {
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
+      dd.appendChild(btn);
+    }
+    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), softBreaks(dd)]);
+  }));
+}
+// A mapped project's hero says it waits and how much there is to read, not its
+// folder: "WHERE THE WORK STANDS /Users/…/LayeredVisions" on the busiest project (#2349).
+function mappedProjectLine(r) {
+  const paths = section(r, "paths")?.text || "";
+  const sessions = (/^-\s*Sessions:\s*(\d+)/m.exec(paths) || [])[1];
+  const last = (/^-\s*Last seen:\s*([0-9-]+)/m.exec(paths) || [])[1];
+  return "Not written yet" + (sessions ? ": " + sessions + " session" + (sessions === "1" ? "" : "s") +
+    (last ? ", last on " + last : "") : "") + ".";
+}
+function recordFocus(r) {
+  const k = known(r), out = el("section", { class: "record-focus " + r.category,
+    "aria-label": "At a glance" });
+  const privateMapped = r.private_project && k.status === "Mapped";
+  const projectMapped = r.category === "projects" && k.status === "Mapped" && !privateMapped;
+  const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
+  const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
+  const projectInsight = r.category === "projects" ? section(r, "insight") : null;
+  const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
+  const projectDescription = plainLine(projectPurposeLine);
+  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
+    (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
+  const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
+  const finding = plainLine(findingLine);
+  const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : projectMapped ? mappedProjectLine(r)
+    : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
+    : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
+  const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
+    (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
+    skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
+  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : "") }, [el("span", { class: "focus-kicker", text: question })]);
+  const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
+    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
+  focusHead.appendChild(statementNode);
+  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
+    const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
+      r.category === "orgs" ? "Read complete relationship" : "Read full context";
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
+    more.onclick = () => {
+      const clamped = statementNode.classList.toggle("clamped");
+      more.setAttribute("aria-expanded", String(!clamped));
+      more.textContent = clamped ? label : "Show less";
+      refreshFocusExpansion();
+    };
+    focusHead.appendChild(more);
+  }
+  if (r.category === "skills" && k.status === "Mapped") {
+    const copy = el("button", { type: "button", class: "focus-source focus-command", text: "Copy investigation command" });
+    copy.onclick = () => copyToClipboard(investigateCommand(r), copy, "Copied — paste it in a terminal");
+    focusHead.appendChild(copy);
+  }
+  if (finding) {
+    const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
+      role: "group", "aria-label": "Finding sources" },
+      [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
+        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
+  }
+  if (projectNeedsContext) {
+    const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
+    const days = r.project_coverage?.days;
+    const limit = r.project_coverage?.inputs_read === 0
+      ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
+      : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
+    focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
+  }
+  if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
+  if (r.path === REM.owner) {
+    const insight = section(r, "insight");
+    const items = insight ? listItems(insight.text) : [];
+    const changed = items.some(item => /^Changed:/i.test(item));
+    const next = changed && items.find(item => /^Now:/i.test(item));
+    if (next) {
+      const step = next.replace(/^Now:\s*/i, "");
+      focusHead.appendChild(el("div", { class: "focus-next" }, [
+        el("span", { class: "k", text: "Next step" }),
+        el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
+    }
+  }
+  out.appendChild(focusHead);
+  const person = r.category === "people" && r.path !== REM.owner;
+  const strip = person && contactStrip(r);
+  if (strip) out.appendChild(strip);
+  const coverage = r.category === "projects" ? r.project_coverage : null;
+  const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
+    ? el("p", { class: "scope-note", text: coverage.scope === "queued"
+      ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
+        " queued inputs were supplied. Older queued inputs were left out."
+      : coverage.inputs_read === 0
+      ? "No session inputs were supplied in this " + (coverage.days ? coverage.days + "-day " : "") +
+        "investigation; " + coverage.inputs_available + " inputs are archived for this workspace. " +
+        "Current project activity is unknown."
+      : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
+        (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
+        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
+  const open = threads(r).items;
+  if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
+    el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
+      open.slice(0, 3).map(t => threadRow(r, t, false)))]));
+  if (r.category === "projects") {
+    const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
+    const blocks = [];
+    if (purpose && !projectNeedsContext) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
+      privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
+    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
+      el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
+      el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
+    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
+  }
+  if (coverageNote) out.appendChild(coverageNote);
+  const f = facts(r);
+  const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
+    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
+    : r.category === "projects" ? [["Last mapped session", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
+      : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
+      : r.category === "skills" ? [["Skill-name matches", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last name match", f.last]] : [];
+  const shown = labels.filter(([, value]) => value).slice(0, 3);
+  if (shown.length && !person) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
+    el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+  // Enrich (#2315): the documents this page cites, each one click from its file.
+  const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
+    .filter(([, c]) => c?.source === "attachment" && c.file);
+  if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
+    el("h2", { text: "Documents" }),
+    el("ul", { class: "document-list" }, documents.map(([source, c]) => el("li", {}, [
+      el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
+      el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
+  const conversations = [...new Set(sourceList(r).map(source => {
+    const id = sourceId(source.text);
+    return id && (REM.source_context || {})[id]?.thread;
+  }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
+  if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
+    el("h2", { text: "Cited conversations" }),
+    el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
+      const button = el("button", { type: "button", class: "conversation-open" }, [
+        el("strong", { text: byPath(value.subject)?.title || value.subject }),
+        el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+      button.onclick = () => openConversation(id, button);
+      return button;
+    })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
+      el("summary", { text: "Show " + (conversations.length - 3) + " more cited conversations" }),
+      el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
+        const button = el("button", { type: "button", class: "conversation-open" }, [
+          el("strong", { text: byPath(value.subject)?.title || value.subject }),
+          el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+        button.onclick = () => openConversation(id, button);
+        return button;
+      }))]) : null]));
+  const related = connectedContext(r);
+  if (related) out.appendChild(related);
+  const activity = activityPanel(r);
+  if (activity) out.appendChild(activity);
+  return out;
+}
+
+function inputScopeText(scope) {
+  if (/^Historical citation recovery/.test(scope)) return "Recovered later. Original retrieval time unknown; Archived marks retention, not original investigation coverage. Initial window unchanged; provider thread unknown.";
+  if (/voice transcription/i.test(scope)) return "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.";
+  if (/Older native Codex Desktop turn/.test(scope)) return "Older Desktop input. The app did not record how this input was supplied.";
+  if (/^Skill instructions;/.test(scope)) return "Instructions describe intended behavior, not a verified result." + (/Recovered from/.test(scope) ? " This excerpt was recovered from matching file content." : "");
+  return scope;
+}
+function openConversation(id, trigger) {
+  const conversation = (REM.conversations || {})[id];
+  if (!conversation) return;
+  let dialog = document.getElementById("conversation-dialog");
+  if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": "Conversation" }); document.body.appendChild(dialog); }
+  dialog.textContent = "";
+  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close conversation" });
+  close.onclick = () => dialog.close();
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / archived conversation" }), close]),
+    el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
+    el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
+  const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
+  if (commonScope) dialog.appendChild(el("p", { class: "evidence-input-scope private", text: inputScopeText(commonScope) }));
+  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
+  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
+    el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
+    ...(message.input_scope && message.input_scope !== commonScope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
+    el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
+  dialog.addEventListener("close", () => trigger.focus(), { once: true });
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+  close.focus();
+}
+function activityType(text) {
+  if (/\b(decid|agreed|chose|approved|rejected)\w*/i.test(text)) return "Decision";
+  if (/\b(promis|owe|waiting|due)\w*/i.test(text)) return "Commitment";
+  return "Conversation";
+}
+function activityPanel(r) {
+  const history = section(r, "history");
+  if (!history) return null;
+  const items = historyItems(history.text).filter(item => item.day);
+  if (!items.length) return null;
+  const box = el("section", { class: "focus-section activity-view", "aria-label": "Activity" });
+  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: "Activity" }),
+    el("span", { class: "activity-note", text: "From this page's dated history" })]));
+  const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
+  const list = el("ol", { class: "activity-list" });
+  const rows = items.slice().sort((a, b) => b.day.localeCompare(a.day)).map(item => {
+    const type = activityType(item.text);
+    const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day }),
+      el("span", { class: "activity-type", text: type }),
+      el("span", { class: "activity-text", html: inline(item.text, r.path) })]);
+    list.appendChild(row);
+    return row;
+  });
+  for (const name of ["All", "Conversation", "Commitment", "Decision"]) {
+    const count = name === "All" ? rows.length : rows.filter(row => row.dataset.type === name).length;
+    if (!count) continue;
+    const button = el("button", { type: "button", class: name === "All" ? "active" : "",
+      "aria-pressed": String(name === "All"), text: name + " " + count });
+    button.onclick = () => {
+      for (const b of filters.querySelectorAll("button")) { b.classList.toggle("active", b === button); b.setAttribute("aria-pressed", String(b === button)); }
+      for (const row of rows) row.hidden = name !== "All" && row.dataset.type !== name;
+    };
+    filters.appendChild(button);
+  }
+  box.append(filters, list);
+  return box;
 }
 
 function record(path, heading) {
@@ -1922,18 +2882,14 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
-    statusPill(r), el("span", { class: "when", text: (k.last ? "last activity " + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
+    statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
-  // The lead is the standfirst: who this is to you, what is open, last contact (#2068:
-  // a person's first sentence states the balance; a project's, where you stopped).
+  // Keep the original prose in the full note. The first screen uses the
+  // structured status, actions, facts and connections above that note.
   let intro = k.intro;
-  if (intro && ["people", "orgs", "projects"].includes(r.category)) {
-    const [first, ...rest] = intro.split(/\n\s*\n/);
-    // Only a plain paragraph: a list, fence, quote or table stays in the body as written.
-    if (!/^\s*(?:#|[-*+]\s|\d+[.)]\s|```|~~~|>|\|)/.test(first) && !/^\s*(`{3,}|~{3,})/m.test(first)) { head.appendChild(el("p", { class: "standfirst", html: inline(first.replace(/\n/g, " "), r.path) })); intro = rest.join("\n\n"); }
-  }
   head.appendChild(leadRow(r));
   main.appendChild(head);
+  main.appendChild(recordFocus(r));
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
@@ -1951,6 +2907,12 @@ function record(path, heading) {
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
   }
+
+  note.querySelectorAll("li").forEach(li => {
+    const rest = li.cloneNode(true);
+    rest.querySelectorAll(".private").forEach(span => span.remove());
+    if (li.querySelector(".private") && !rest.textContent.trim()) li.classList.add("private-item");
+  });
 
   const headings = [...note.querySelectorAll("h2, h3, h4, h5, h6")];
   const ids = new Set(), toc = [];
@@ -1971,7 +2933,10 @@ function record(path, heading) {
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
   const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
-  main.appendChild(grid);
+  const deep = el("section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
+    el("div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: "Full memory and sources" }),
+      el("span", { class: "deep-hint", text: "Original note · all fields · citations" })]), grid]);
+  main.appendChild(deep);
   const column = grid.firstChild;
 
   if (parts.related || parts.sources) {
@@ -1997,18 +2962,21 @@ function record(path, heading) {
   }
 
   if (k.missing.length) {
-    const command = "co rem investigate '" + r.path.replace(/'/g, "'\\''") + "'";
+    const command = investigateCommand(r);
     const mapped = k.status === "Mapped";
     const copyCmd = el("button", { class: mapped ? "btn-primary" : "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
     copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " section" : " sections") + " still to learn" }),
-      mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
-      el("div", { class: "names", text: "Not investigated yet: " + youify(k.missing.join(", ")) + "." }),
-      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
-    if (mapped) grid.parentNode.insertBefore(box, grid); else column.appendChild(box);
+      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
+      mapped ? el("div", { class: "cmd" }, [el("code", { text: command }), r.category === "skills" ? null : copyCmd]) : null,
+      mapped ? el("p", { class: "why", text: r.private_project
+        ? "Automatic investigation skips this private project. To request a write, run the command for this page."
+        : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
+      el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
+      mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
+    if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
@@ -2044,6 +3012,19 @@ function highlight(line, needle) {
 function search(q) {
   const main = document.getElementById("main");
   main.textContent = "";
+  if (/\b(who\s+(?:do\s+i\s+)?owe|what\s+do\s+i\s+owe|waiting\s+on\s+me|open\s+threads)\b/i.test(q)) { taskView("open"); return; }
+  if (/\b(what\s+changed|memory\s+changes|learned\s+(?:last\s+night|overnight))\b/i.test(q)) { taskView("changes"); return; }
+  const connected = /\b(?:connected|related)\s+to\s+(.+)/i.exec(q);
+  if (connected) {
+    const target = listedRecords().find(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    if (target) {
+      main.appendChild(el("div", { class: "eyebrow", text: "Search / connected context" }));
+      main.appendChild(el("h1", { text: "Connected to " + target.title }));
+      const card = recordFocus(target).querySelector(".related-records");
+      main.appendChild(card || el("div", { class: "empty", text: "No supported links in this snapshot." }));
+      return;
+    }
+  }
   const needle = q.toLowerCase();
   const hits = [];
   const grouped = new Map();
@@ -2099,10 +3080,10 @@ function bestMatch(r) {
   const f = facts(r), k = known(r), parsed = parseFacts(r);
   const first = l => ((parsed.get(l) || [])[0] || {}).value || "";
   const cells = r.category === "people"
-    ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
+    ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], [mappedContact(r) ? "Last contact in map" : "Last contact", k.last ? fmtDate(k.last) : ""]]
     : r.category === "orgs"
       ? [["What they do", plainValue(first("What they do") || f.what)], ["Website", plainValue(first("Website") || f.domain)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
-      : [["Repository", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
+      : [[first("Repository") ? "Repository" : "Local path", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
   const open = f.open[0];
   return el("section", { class: "best" }, [
     el("div", { class: "best-head" }, [el("span", { class: "lead", text: "Best match" }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
@@ -2143,7 +3124,7 @@ function reviewPage() {
 
 function render() {
   if (!REM) return;
-  const { record: r, category: c, query, heading, reviews } = route();
+  const { record: r, category: c, query, heading, view, reviews } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
@@ -2153,11 +3134,151 @@ function render() {
   if (reviews) reviewPage();
   else if (query) search(query);
   else if (r) record(r, heading);
+  else if (view === "open" || view === "changes") taskView(view);
   else if (c) category(c);
   else overview();
-  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query : c ? label(c) : "Contents") + " · co rem";
+  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query :
+    view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
+  refreshFocusExpansion();
 }
+
+function sourceFind(excerpt, quote) {
+  const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": "Find in archived source" });
+  const next = el("button", { type: "button", text: "Next match", disabled: "" });
+  const status = el("span", { class: "evidence-find-status", role: "status" });
+  let matches = [], current = 0, term = "";
+  function show() {
+    const at = matches[current];
+    const mark = el("mark", { text: excerpt.slice(at, at + term.length) });
+    quote.replaceChildren(document.createTextNode(excerpt.slice(0, at)), mark,
+      document.createTextNode(excerpt.slice(at + term.length)));
+    status.textContent = "Match " + (current + 1) + " of " + matches.length + " in the archived excerpt";
+    mark.scrollIntoView({ block: "center" });
+  }
+  input.oninput = () => {
+    term = input.value.trim();
+    matches = [];
+    quote.textContent = excerpt;
+    next.disabled = true;
+    if (!term) { status.textContent = ""; return; }
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matches = [...excerpt.matchAll(new RegExp(escaped, "gi"))].map(match => match.index);
+    if (!matches.length) { status.textContent = "No match in the archived excerpt"; return; }
+    current = 0;
+    next.disabled = matches.length < 2;
+    show();
+  };
+  next.onclick = () => { current = (current + 1) % matches.length; show(); };
+  input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); if (!next.disabled) next.click(); } };
+  return el("div", { class: "evidence-find" }, [
+    el("label", { for: "evidence-find-input", text: "Find a word or phrase in this source" }),
+    el("div", { class: "evidence-find-controls" }, [input, next]), status]);
+}
+
+// A mail as a message (#2106): who wrote it, to whom, when, then the words.
+function mailbox(text) {
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(text || "");
+  const address = (m ? m[2] : text || "").trim().toLowerCase();
+  return { name: (m && m[1].trim()) || address.split("@")[0], address };
+}
+let PEOPLE_BY_ADDRESS = null;
+function personByAddress(address) {
+  if (!PEOPLE_BY_ADDRESS) {
+    PEOPLE_BY_ADDRESS = new Map();
+    for (const r of REM.records.filter(r => r.category === "people"))
+      for (const field of ["Email", "Handles"])
+        for (const i of parseFacts(r).get(field) || [])
+          for (const address of i.value.toLowerCase().match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || [])
+            if (!PEOPLE_BY_ADDRESS.has(address) || r.path === REM.owner) PEOPLE_BY_ADDRESS.set(address, r);
+  }
+  return PEOPLE_BY_ADDRESS.get(address);
+}
+function avatar(name) {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/);
+  const initials = (words.length > 1 ? words[0][0] + words.at(-1)[0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+  let hue = 0;
+  for (const c of name) hue = (hue * 31 + c.codePointAt(0)) % 360;
+  return el("span", { class: "msg-avatar", "aria-hidden": "true", style: "--hue:" + hue, text: initials });
+}
+function personChip(text) {
+  const who = mailbox(text), page = personByAddress(who.address);
+  const name = page ? page.title : who.name;
+  return el(page ? "a" : "span", { class: "msg-person", title: who.address, ...(page ? { href: href(page) } : {}) },
+    [avatar(name), el("span", { text: name })]);
+}
+function mailMessage(context, quote) {
+  const headers = context.participants || {};
+  const list = value => (Array.isArray(value) ? value : value ? String(value).split(/,\s*(?=[^,]*@)/) : []).filter(Boolean);
+  const from = list(headers.from)[0] || context.sender || "";
+  const rows = [["To", list(headers.to)], ["Cc", list(headers.cc)]].filter(([, people]) => people.length);
+  return el("article", { class: "msg" }, [
+    el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
+        el("span", { class: "msg-address", text: mailbox(from).address })]),
+      el("time", { class: "msg-time", text: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
+    ...(context.subject ? [el("p", { class: "msg-subject evidence-subject", text: context.subject })] : []),
+    ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
+      el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: label }), ...people.map(personChip)])))] : []),
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      : el("div", { class: "msg-body" }, [quote])]);
+}
+function openEvidence(r, number, trigger) {
+  const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
+  if (!source) return false;
+  const id = sourceId(source.text);
+  const context = (REM.source_context || {})[id];
+  const mail = /^(gmail|outlook)$/.test(context?.source || "");
+  const headers = context?.participants;
+  const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
+  const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
+    : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
+  let dialog = document.getElementById("evidence-dialog");
+  if (!dialog) { dialog = el("dialog", { id: "evidence-dialog", class: "evidence-dialog", "aria-label": "Source context" }); document.body.appendChild(dialog); }
+  dialog.textContent = "";
+  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
+  close.onclick = () => dialog.close();
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
+    el("h2", { text: "Why this appears on " + r.title }),
+    el("p", { class: "evidence-summary private", text: revision ? origin : source.text }));
+  if (revision) dialog.appendChild(el("details", { class: "evidence-source-id private" }, [
+    el("summary", { text: "Full source ID" }), el("code", { text: id })]));
+  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
+  if (context) {
+    const excerpt = context.excerpt + (context.truncated ? "…" : "");
+    const quote = el("blockquote", { text: excerpt });
+    dialog.append(el("div", { class: "evidence-original private" }, [
+    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
+    ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
+    el("p", { class: "evidence-meta", text: [context.source, mail ? "" : context.sender,
+      context.time && !mail ? fmtTime(context.time) : "",
+      context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
+      context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
+    ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
+    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener",
+      text: "Open " + (context.filename || "the file") + " →" })] : []),
+    ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
+    ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
+    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
+    ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
+    mail ? mailMessage(context, quote)
+      : context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      : quote]));
+  }
+  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
+  dialog.addEventListener("close", () => trigger.focus(), { once: true });
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+  close.focus();
+  return true;
+}
+document.addEventListener("click", e => {
+  const citation = e.target.closest("a.cite");
+  if (!citation) return;
+  const url = new URL(citation.href);
+  const params = new URLSearchParams(url.hash.slice(1));
+  const path = params.get("r"), number = (params.get("h") || "").replace(/^src-/, "");
+  const r = byPath(path);
+  if (r && openEvidence(r, number, citation)) e.preventDefault();
+});
 
 const qInput = document.getElementById("q");
 const qClear = document.getElementById("q-clear");
@@ -2192,6 +3313,7 @@ document.addEventListener("keydown", e => {
   }
 });
 window.addEventListener("hashchange", render);
+window.addEventListener("resize", refreshFocusExpansion);
 render();
 </script>
 </body>

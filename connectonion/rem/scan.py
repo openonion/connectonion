@@ -34,6 +34,15 @@ AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|c
                             r"|accounts?|orders?|welcome|members?)@",
                             re.IGNORECASE)
 
+INSTITUTIONAL_NAME = re.compile(
+    r"(?:Centre|Center|Institute|Foundation|Hub|Labs?|Department|Society|Association|"
+    r"Initiative|Council|Office|Team|Club)(?![A-Za-z])|中心|会议|学院|学会|委员会", re.I)
+
+
+def institutional_name(name: str) -> bool:
+    """A display name for an institution or desk rather than a person."""
+    return bool(INSTITUTIONAL_NAME.search(name))
+
 # Mailbox providers, not employers. A domain here says where someone keeps their
 # mail; every other domain says who they answer to, which is why 168 of 182 real
 # correspondents over 180 days carried one.
@@ -42,6 +51,9 @@ PERSONAL_MAILBOX = frozenset({
     "hotmail.co.uk", "live.com", "live.com.au", "msn.com", "yahoo.com", "yahoo.com.au", "yahoo.co.jp",
     "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me", "gmx.com",
     "qq.com", "163.com", "126.com", "foxmail.com", "sina.com", "bigpond.com", "optusnet.com.au",
+    # Short provider addresses and home-internet mail: orgs/pm-me and orgs/xtra-co-nz on 1.9.2b1.
+    "pm.me", "xtra.co.nz", "bigpond.net.au", "tpg.com.au", "iinet.net.au", "internode.on.net", "ozemail.com.au",
+    "dodo.com.au", "comcast.net", "verizon.net", "att.net", "btinternet.com", "sky.com", "virginmedia.com",
 })
 # A provider's name under any country suffix is the same provider: yahoo.com.hk
 # became an organisation on the 1.9.0a5 acceptance map (#2018).
@@ -114,7 +126,8 @@ def _greeting_name(row: dict, address: str, mine: set) -> str:
         return ""
     match = _GREETING.match(html.unescape(str(row.get("snippet") or "")))
     name = (match.group(1) or match.group(2)) if match else ""
-    if not name or name.casefold() in _NOT_A_NAME:
+    # "hi" above a quote: "hi On Fri, May 8, 2026 at 5:06 PM … wrote:" (1.9.2b1).
+    if not name or name.casefold() in _NOT_A_NAME or re.search(r"(?i)\b(?:mon|tue|wed|thu|fri|sat|sun)\b", name):
         return ""
     return name[0].upper() + name[1:] if name.islower() else name
 
@@ -156,7 +169,8 @@ def _count_owner_names(row: dict, own: bool, mine: set, names: dict) -> None:
 
 
 def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
-                on_row=None, on_window=None, own_names=None) -> list[dict]:
+                on_row=None, on_window=None, own_names=None, *, all_history: bool = False,
+                on_error=None, own_addresses_complete: bool = False) -> list[dict]:
     """Every correspondent across every mailbox, with the signals a Skill ranks by.
 
     `own_names`, {"addressed": Counter, "sent": Counter}, is given what the
@@ -166,22 +180,49 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
     it on every sent mail; correspondents wrote "Aaron Xie".
     """
     mine = {a.lower() for a in own_addresses}
-    for client in clients.values():
-        mine |= {a.lower() for a in client.my_addresses()}
+    if not own_addresses_complete:
+        for client in clients.values():
+            mine |= {a.lower() for a in client.my_addresses()}
     end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
+    start = datetime(1970, 1, 1, tzinfo=timezone.utc) if all_history else end - timedelta(days=days)
+    # A year at a time keeps a lifetime scan observable. The provider's 200
+    # item cap is still split recursively by _list_all.
+    window = timedelta(days=366 if all_history else 7)
     people = collections.defaultdict(lambda: {"names": collections.Counter(), "greetings": collections.Counter(),
                                               "mails": 0, "sent": 0,
                                               "received": 0, "first": "", "last": "", "boxes": set(),
                                               "subjects": collections.Counter()})
+    # Co-recipient headers can name an existing contact without being mail from them.
+    recipient_names = collections.defaultdict(collections.Counter)
     for kind, client in clients.items():
         cursor = start
         while cursor < end:
-            stop = min(cursor + timedelta(days=7), end)
+            stop = min(cursor + window, end)
             # Both providers cap a listing at 200, but at opposite ends of the
             # window. Reuse the importer that bisects a full window until every
             # message in this interval has been enumerated.
-            rows = _list_all(client, cursor, stop)
+            failed = []
+            def error_window(since, until, error):
+                failed.append((since, until))
+                if on_error is not None:
+                    on_error(kind, since, until, error)
+            try:
+                rows = _list_all(client, cursor, stop,
+                                 on_error=error_window if all_history and on_error is not None else None)
+            except Exception as error:
+                if not all_history or on_error is None:
+                    raise
+                # Completed years are already mapped. A timeout can be local to
+                # one year; a broken connection may affect everything after it.
+                timed_out = 'timeout' in type(error).__name__.lower()
+                failed_until = stop if timed_out else end
+                on_error(kind, cursor, failed_until, error)
+                if on_window:
+                    on_window(kind, cursor.isoformat(), failed_until.isoformat(), 0, 200, False)
+                if not timed_out:
+                    break
+                cursor = stop
+                continue
             for row in rows:
                 if on_row:
                     on_row(kind, row)
@@ -191,6 +232,10 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 # One sent message can be relevant to several people. Map each
                 # recipient, while the body archive still stores it only once.
                 recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))
+                for address in dict.fromkeys(recipients):
+                    name = _display_name(row, address)
+                    if name and address not in mine:
+                        recipient_names[address][name] += 1
                 whos = dict.fromkeys(recipients if own and recipients else [correspondent(row, mine)])
                 for who in whos:
                     if "@" not in who or who in mine:
@@ -214,13 +259,14 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
             if progress:
                 progress(kind, stop, len(people))
             if on_window:
-                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, True)
+                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, not failed)
             cursor = stop
     saved = _contact_names(clients)
     out = []
     for address, e in people.items():
-        # Their own name first, then the owner's saved contact, then the owner's greeting.
+        # Direct header name, saved contact, co-recipient header, then greeting.
         name = (e["names"].most_common(1)[0][0] if e["names"] else "") or saved.get(address, "") \
+            or (recipient_names[address].most_common(1)[0][0] if recipient_names[address] else "") \
             or (e["greetings"].most_common(1)[0][0] if e["greetings"] else "")
         out.append({"address": address,
                     "name": name,
@@ -274,7 +320,7 @@ def project_exclusion(path: Path) -> str:
                         return "multi-repository workspace container"
         except OSError:
             pass
-    if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
+    if (normalized.rstrip('/') + '/').startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
         return "temporary execution directory"
     if not path.is_dir() and "/.codex/worktrees/" in normalized:
         return "removed Codex worktree"
@@ -332,6 +378,21 @@ def _beside(parent: str, name: str) -> str:
 # A turn of one short session: a one-off chat, not a project (#1974).
 SHORT_SESSION_TURNS = 3
 SHORT_SESSION = "one short session outside a repository"
+ONE_OFF_TASK = "a one-off scratch task folder without a project manifest"
+DATED_SCRATCH = re.compile(r"(?:^|/)(?:Documents/Codex|[Ss]cratchpad|[Ss]cratch)/\d{4}-\d{2}-\d{2}/")
+PROJECT_MANIFESTS = ("pyproject.toml", "package.json", "Cargo.toml", "go.mod", "Makefile")
+PROMPT_FRAGMENT = re.compile(r"(?:create|make|install|set-up|fix|add|update|write|build|please|pls)(?:-[a-z0-9]+)+", re.I)
+
+
+def scratch_without_manifest(path: Path) -> bool:
+    """A dated scratch task has no project file in its folder or dated parent."""
+    match = DATED_SCRATCH.search(path.as_posix())
+    if not match:
+        return False
+    dated = Path(path.as_posix()[:match.end() - 1])
+    return not any((folder / manifest).is_file()
+                   for folder in (path, *path.parents) if folder.is_relative_to(dated)
+                   for manifest in PROJECT_MANIFESTS)
 
 
 def home_or_above(path: Path) -> bool:
@@ -350,7 +411,8 @@ def not_a_project(row: dict) -> str:
     first prompt ("create-a-scheduled-task-called-weekday"), for plugin-install
     folders, and for build output under a hidden folder -- each with one session
     and no repository. A repository is always a project; so is a folder the user
-    came back to, or talked in for more than a few turns. `row` is a
+    came back to, or talked in for more than a few turns. Dated scratch task
+    folders also need a project manifest. `row` is a
     `scan_projects` row: `path`, `repo`, `sessions`, and `turns` when counted.
     """
     path = Path(row["path"])
@@ -358,6 +420,10 @@ def not_a_project(row: dict) -> str:
         return "home directory"
     if row.get("repo") or main_checkout(row["path"]) or (path / ".git").exists():
         return ""
+    if DATED_SCRATCH.search(path.as_posix()):
+        return ONE_OFF_TASK if scratch_without_manifest(path) else ""
+    if PROMPT_FRAGMENT.fullmatch(path.name) and not any((path / name).is_file() for name in PROJECT_MANIFESTS):
+        return "prompt-fragment folder without a project manifest"
     parts = path.parts
     if any(part in ("scheduled-tasks", "scheduled_tasks") for part in parts):
         return "scheduled-task folder"

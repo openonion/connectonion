@@ -105,7 +105,7 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
             assert nb.path(person).is_file()
         assert row['record'] in result['created']
     assert 'mailbox-provider list is not exhaustive' in ' '.join(result['coverage'])
-    assert nb.path('notes/orgs-map.md').is_file()
+    assert nb.path('logs/orgs-map.md').is_file()
     record = orgs['example.org']['record']
     curated = nb.read(record).replace('not investigated yet', 'reviewed by user') + '\nUser correction.\n'
     nb.write(record, curated)
@@ -135,15 +135,16 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
     from connectonion.rem.scan import scan_projects
     sessions = tmp_path / 'sessions'
     sessions.mkdir()
-    paths = ['/private/tmp/wiki187/notebook', '/tmp/co-rem-extract-demo',
+    paths = ['/private/tmp', '/tmp', '/private/var/folders', '/var/folders',
+             '/private/tmp/wiki187/notebook', '/tmp/co-rem-extract-demo',
              '/private/var/folders/xx/session/T/pytest-123/rem',
              '/Users/fictional/.codex/worktrees/1234/browser',
-             '/projects/team-a/browser', '/projects/team-b/browser']
+             '/projects/team-a/browser', '/projects/team-b/browser', '/projects/team/tmp']
     for i, cwd in enumerate(paths):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
     rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
-    assert {r['path'] for r in rows} == set(paths[-2:])
+    assert {r['path'] for r in rows} == set(paths[-3:])
 
 
 def test_project_scan_does_not_turn_rem_runs_into_a_project(tmp_path, monkeypatch):
@@ -206,7 +207,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
         {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
-         'one_way': False, 'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
+         'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
          'one_way': True},
@@ -230,7 +231,12 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
     assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
     assert ody['mails'] == 34
+    assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
+    from connectonion.rem.reader import mail_facts
+    facts = mail_facts(tmp_path)[ody['record']]
+    assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
     page = Notebook(tmp_path).read(ody['record'])
+    assert 'Last contact: 2026-09-29' in page
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
@@ -323,10 +329,31 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
                      'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
     result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
     coverage = '\n'.join(result['coverage'])
-    assert ('gmail: metadata only, 90 days; a seven-day window at the 200-message listing cap is '
+    assert ('gmail: metadata only, 180 days; a seven-day window at the 200-message listing cap is '
             'split until every message in it is listed; no correspondents in this window') in coverage
     assert f'codex: {missing} — no session directory at this path; nothing to scan' in coverage
     assert f'claude-code: {off} — disabled; not scanned' in coverage
+
+
+def test_transient_account_timeout_does_not_hide_a_mailbox(tmp_path, monkeypatch):
+    from connectonion.rem.map import _mail_rows
+    monkeypatch.setattr('time.sleep', lambda seconds: None)
+
+    class Mail:
+        calls = 0
+        def my_addresses(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError('temporary')
+            return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return []
+
+    mail, coverage, errors = Mail(), [], []
+    rows, own = _mail_rows({'gmail': mail}, 1, set(), coverage, errors)
+    assert rows == [] and own == {'me@example.org'}
+    assert mail.calls == 2 and not errors
+    assert 'no correspondents in this window' in coverage[0]
 
 
 def test_the_map_reports_the_absence_reason_it_was_given(tmp_path):
@@ -498,19 +525,22 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
     investigated = notebook.read('projects/notebook-2.md').replace(
         'not investigated yet', 'investigated 2026-09-20 (codex)')
     notebook.write('projects/notebook-2.md', investigated)                     # someone's work: kept
-    notebook.stub_project('projects/rvc-a.md', 'realtime-voice-chat',
-                          ['/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat'])
-    notebook.stub_project('projects/rvc-b.md', 'realtime-voice-chat-2',
-                          ['/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2'])
+    scratch_a = tmp_path / 'Documents/Codex/2026-08-17/acme-project'
+    scratch_b = tmp_path / 'Documents/Codex/2026-08-22/acme-project-2'
+    for path in (scratch_a, scratch_b):
+        path.mkdir(parents=True)
+        (path / 'package.json').write_text('{"name": "acme-project"}')
+    notebook.stub_project('projects/rvc-a.md', 'acme-project', [str(scratch_a)])
+    notebook.stub_project('projects/rvc-b.md', 'acme-project-2', [str(scratch_b)])
     notebook.stub_person('people/dora-by-address.md', 'dora@example.org', ['dora@example.org'],
                          email='dora@example.org')
     people = [{'name': 'Dora Chen', 'address': 'dora@example.org', 'mails': 40, 'sent': 20, 'received': 20,
                'one_way': False, 'boxes': ['gmail']}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [
-        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat',
+        {'origin': '', 'repo': '', 'path': str(scratch_a),
          'sessions': 2, 'first': '2026-08-17', 'last': '2026-08-17'},
-        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2',
+        {'origin': '', 'repo': '', 'path': str(scratch_b),
          'sessions': 2, 'first': '2026-08-22', 'last': '2026-08-22'}])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert len(result['projects']) == 1                                       # one scratch project, not two
@@ -1063,19 +1093,22 @@ def test_a_new_person_page_states_the_last_contact_in_its_lead_and_leaves_histor
     assert '## History\n- Unknown — not investigated yet' in page
 
 
-def test_a_one_off_codex_task_folder_is_not_a_project_and_returning_work_is():
-    """#2079: `Documents/Codex/2026-08-17/install-github-cli-gh-on-this`, 2 sessions,
-    became a project page; realtime-voice-chat's dated folders held 23."""
+def test_a_one_off_codex_task_folder_is_not_a_project_and_manifest_work_is(tmp_path):
     from connectonion.rem.map import ONE_OFF_TASK, project_groups
 
     def row(path, sessions):
-        return {'path': path, 'sessions': sessions, 'turns': sessions * 5, 'first': '2026-08-01',
+        return {'path': str(path), 'sessions': sessions, 'turns': sessions * 5, 'first': '2026-08-01',
                 'last': '2026-09-01', 'repo': '', 'origin': ''}
+    base = tmp_path / 'Documents/Codex'
+    for date in ('2026-08-22', '2026-08-26'):
+        path = base / date / 'acme-project'
+        path.mkdir(parents=True)
+        (path / 'pyproject.toml').write_text('[project]\nname = "acme-project"\n')
     dropped = []
-    groups = project_groups([row('/Users/me/Documents/Codex/2026-08-17/install-github-cli-gh-on-this', 2),
-                             row('/Users/me/Documents/Codex/2026-08-22/realtime-voice-chat', 12),
-                             row('/Users/me/Documents/Codex/2026-08-26/realtime-voice-chat', 11)], dropped)
-    assert [group['name'] for group in groups.values()] == ['realtime-voice-chat']
+    groups = project_groups([row(base / '2026-08-17/install-a-tool-for-me', 2),
+                             row(base / '2026-08-22/acme-project', 12),
+                             row(base / '2026-08-26/acme-project', 11)], dropped)
+    assert [group['name'] for group in groups.values()] == ['acme-project']
     assert [entry['reason'] for entry in dropped] == [ONE_OFF_TASK]
 
 

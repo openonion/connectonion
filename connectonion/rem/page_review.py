@@ -12,6 +12,14 @@ from .files import Notebook, RemError
 # The owner's own page has no "How the user writes to them" (#2008): it said
 # "Not applicable" on a real owner page, a heading for nothing.
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
+PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
+                'Open threads', 'Uncertainties', 'Sources')
+SKILL_CORE = ('What it does', 'Insight', 'When to use', 'Current status', 'How to use',
+              'Inputs and outputs', 'Usage history', 'Limitations', 'Uncertainties', 'Source', 'Sources')
+SKILL_SECTIONS = ('What it does', 'Insight', 'When to use', 'Current status', 'Example result', 'How to use',
+                  'Inputs and outputs', 'Usage history', 'Performance', 'Limitations', 'Maintenance',
+                  'Related projects', 'Open threads', 'Uncertainties', 'Source', 'Sources')
+SECTION_HEADING_RE = re.compile(r'^## ([^\r\n]+)\r?$', re.M)
 
 
 def headings(record: str, owner: bool = False) -> tuple[str, ...]:
@@ -19,16 +27,26 @@ def headings(record: str, owner: bool = False) -> tuple[str, ...]:
         return ('Facts', 'Insight',
                 *(h for h in Notebook.PERSON_SECTIONS if not (owner and h == NOT_ON_OWNER_PAGE)), 'Sources')
     if record.startswith('projects/'):
-        return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
+        return PROJECT_CORE
     if record.startswith('orgs/'):
         return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
+    if record.startswith('skills/catalog/'):
+        return SKILL_CORE
     return ()
+
+
+def _canonical_headings(record: str, owner: bool = False) -> tuple[str, ...]:
+    if record.startswith('projects/'):
+        return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
+    if record.startswith('skills/catalog/'):
+        return SKILL_SECTIONS
+    return headings(record, owner)
 
 
 def prose(text: str) -> str:
     """Ignore headings and citation-looking text inside fenced examples."""
     lines, fence = [], None
-    for line in text.splitlines():
+    for line in text.splitlines(keepends=True):
         match = re.match(r'^\s*(`{3,}|~{3,})', line)
         if match:
             token = match[1]
@@ -36,10 +54,10 @@ def prose(text: str) -> str:
                 fence = token
             elif token[0] == fence[0] and len(token) >= len(fence):
                 fence = None
-            lines.append(' ' * len(line))
+            lines.append(re.sub(r'[^\r\n]', ' ', line))
             continue
-        lines.append(line if fence is None else ' ' * len(line))
-    return '\n'.join(lines)
+        lines.append(line if fence is None else re.sub(r'[^\r\n]', ' ', line))
+    return ''.join(lines)
 
 
 def normalize(record: str, text: str, owner: bool = False) -> str:
@@ -50,11 +68,14 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     # A page from before #2068: `## Contact` becomes `## Facts`, and the turn is
     # handed an Insight it must fill, not a bare Unknown it may leave.
     text = facts.upgrade(record, text, insight=f'- {PLACEHOLDER}')
-    matches = list(re.finditer(r'^## (.+)$', prose(text), re.M))
+    matches = list(SECTION_HEADING_RE.finditer(prose(text)))
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
         raise RemError('Existing page has duplicate sections; reconcile them before investigation')
-    if found == list(required):
+    canonical = _canonical_headings(record, owner)
+    expected = [h for h in canonical if h in found or h in required]
+    expected[-1:-1] = [h for h in found if h not in canonical]
+    if found == expected:
         return text
     prefix = text[:matches[0].start()] if matches else text
     status = re.findall(r'^Investigation:.*$', text, re.M)
@@ -63,11 +84,34 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         sections[match[1]] = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
     prefix = re.sub(r'^Investigation:.*$', '', prefix, flags=re.M).strip()
-    order = [*required[:-1], *(h for h in found if h not in required), 'Sources']
+    order = expected
     output = [prefix]
     for heading in order:
         output += [f'## {heading}', sections.get(heading, '- Unknown — not investigated yet')]
     return '\n\n'.join(output + status) + '\n'
+
+
+def compact_page(record: str, text: str) -> str:
+    """Hide empty optional headings after a project or skill has been investigated.
+
+    The map keeps its full scaffold until a write. A written page carries only
+    supported detail plus the core needed to resume and audit it (#2122).
+    """
+    visible = prose(text)
+    matches = list(SECTION_HEADING_RE.finditer(visible))
+    if not matches:
+        return text
+    removable = set(_canonical_headings(record)) - set(headings(record))
+    spans = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
+        if (match[1] in removable and not re.search(r'\[W?\d+\]', content)
+                and re.fullmatch(r'(?:- )?(?:Unknown|未知|尚未确认)[^\n]*', content)):
+            spans.append((match.start(), end))
+    for start, end in reversed(spans):
+        text = text[:start].rstrip('\r\n') + '\n\n' + text[end:].lstrip('\r\n')
+    return text
 
 
 def _local_reference(value: str, original: str, items: list[dict]) -> bool:
@@ -143,6 +187,15 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """
     if not original:
         return candidate
+    if record.startswith('skills/catalog/'):
+        mapped = re.search(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)', original)
+        if mapped:
+            candidate = re.sub(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)',
+                               lambda _: mapped[0], candidate, count=1)
+        usage = re.search(r'(?s)<!-- rem-usage -->.*?<!-- /rem-usage -->', original)
+        if usage:
+            candidate = re.sub(r'(?s)<!-- rem-usage -->.*?<!-- /rem-usage -->\s*', '', candidate)
+            candidate = candidate.replace('## Usage history\n', '## Usage history\n' + usage[0] + '\n', 1)
     status = re.search(r'^Investigation:.*$', original, re.M)
     if status:
         candidate = (re.sub(r'^Investigation:.*$', lambda _: status.group(0), candidate, count=1, flags=re.M)
@@ -175,10 +228,83 @@ def drop_uncited_sources(text: str) -> str:
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     if after:
         sources, rest = tail[:after.start()], tail[after.start():]
-    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    # Counted as validate counts them, in prose: a [9] only inside a diagram's
+    # code block left its source "unused" and refused a real project page (2026-10-08).
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', prose(head + rest)))
     kept = [line for line in sources.splitlines(keepends=True)
             if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
     return head + marker + ''.join(kept) + rest
+
+
+CODE = re.compile(r'```.*?```|`[^`\n]*`', re.S)
+
+
+def renumber_sources(text: str) -> str:
+    """Number the kept Sources 1, 2, 3... and their citations to match.
+
+    Dropping uncited sources left gaps the reader showed as they were: 40 of
+    123 pages in a real 1.9.2b3 notebook. Code is not prose, so `rows[5]`
+    keeps its index; web sources ([W1]) keep their own numbering.
+    """
+    sources = text.partition('\n## Sources\n')[2]
+    listed = [int(n) for n in re.findall(r'^\s*(?:- )?\[(\d+)\]', sources, re.M)]
+    order = {old: new for new, old in enumerate(sorted(set(listed)), 1)}
+    if all(old == new for old, new in order.items()):
+        return text
+    swap = lambda prose: re.sub(r'\[(\d+)\](?!\()',  # noqa: E731
+                                lambda m: f'[{order.get(int(m[1]), m[1])}]', prose)
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [swap(text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(text[last:])
+
+
+RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
+                             "investigation:project-repositories"),
+               # The same refusal on a skill page (title-refine, 2026-10-08).
+               "skills/": ("skill-runs:", "investigation:page")}
+MAPPED_LINE = re.compile(r'^- (Sessions|First seen|Last seen): [0-9-]+$', re.M)
+
+
+def repair_run_citations(record: str, text: str, original: str) -> str:
+    """Fix the two refusals of a project page that need no model.
+
+    A 1.9.0 Codex init refused 4 of its first 8 project pages whole: they cited
+    the run's own coverage note, or folded the mapped Sessions / First seen /
+    Last seen lines into one. A line resting only on the run is dropped, a run
+    citation beside a real one is removed, and the mapped lines are put back.
+    """
+    kind = next((prefix for prefix in RUN_SOURCES if record.startswith(prefix)), None)
+    if not kind:
+        return text
+    if kind == "skills/" and "<!-- rem-skill-runs:start -->" in text:
+        # Edited in place, a skill page kept the collector's Run evidence block
+        # and the model added the heading again above it (linkedin-engagement).
+        before, marker, after = text.partition("<!-- rem-skill-runs:start -->")
+        before = re.sub(r"(?ms)^## Run evidence\n.*?(?=^## |\Z)", "", before)
+        text = before.rstrip("\n") + "\n\n" + marker + after
+    head, marker, tail = text.partition('\n## Sources\n')
+    run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES[kind])) + r')',
+                         tail, re.M)) if marker else set()
+    if run:
+        lines = []
+        for line in head.splitlines(keepends=True):
+            cites = re.findall(r'\[(W?\d+)\](?!\()', line)
+            if cites and set(cites) <= run:
+                continue
+            lines.append(re.sub(r'\[(W?\d+)\](?!\()', lambda m: '' if m[1] in run else m[0], line))
+        head = ''.join(lines)
+    text = drop_uncited_sources(head + marker + tail)
+    mapped = MAPPED_LINE.findall(prose(original))
+    if mapped and MAPPED_LINE.findall(prose(text)) != mapped:
+        lines = ''.join(m[0] + '\n' for m in MAPPED_LINE.finditer(original))
+        text = MAPPED_LINE.sub('', text).replace('\n\n\n', '\n\n')
+        paths = re.search(r'(?ms)^## Paths\n.*?(?=\n## |\Z)', text)
+        at = paths.end() if paths else len(text.partition('\n## Sources\n')[0])
+        rest = text[at:].lstrip('\n')
+        text = text[:at].rstrip('\n') + '\n' + lines + ('\n' + rest if rest else '')
+    return text
 
 
 def normalize_numbered_sources(text: str) -> str:
@@ -201,25 +327,34 @@ def normalize_numbered_sources(text: str) -> str:
     return head + marker + sources + rest
 
 
-IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
+IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
+
+
+def _identity_key(value: str) -> str:
+    """A phone compares by its last nine digits (+61 435 ... is 0435 ...); anything else by case-folded text."""
+    value = re.sub(r"\s*\[W?\d+\]", "", value).strip()   # a part's own citation is not its digits
+    digits = re.sub(r"\D", "", re.sub(r"\(.*?\)", "", value))
+    return digits[-9:] if len(digits) >= 8 else value.casefold()
 
 
 def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
-    """Take the account owner's own addresses off someone else's identity lines.
+    """Take the account owner's own addresses and phones off someone else's identity lines.
 
     Mail between the user and a person carries both addresses, and a real page
-    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle.
-    Which addresses are the owner's is known, so this is removed mechanically
-    rather than asked of the model; the rest of the page is kept.
+    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle;
+    1.9.2b1 gave Weiwei the user's phone from his own quoted signature
+    (2026-10-09), though the instructions forbid it. Which values are the
+    owner's is known, so they are removed mechanically; the rest of the page is kept.
     """
+    owner = {_identity_key(value) for value in owner}
     removed = []
 
     def clean(match):
         head, value = match.groups()
         body, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', value).groups()
         parts = [part.strip() for part in re.split(r'[;,]', body) if part.strip()]
-        kept = [part for part in parts if part.casefold() not in owner]
-        removed.extend(part for part in parts if part.casefold() in owner)
+        kept = [part for part in parts if _identity_key(part) not in owner]
+        removed.extend(part for part in parts if _identity_key(part) in owner)
         if kept == parts:
             return match.group(0)
         return head + ('; '.join(kept) + cites if kept else 'Unknown')
@@ -227,18 +362,51 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
     return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
 
 
+
+PHONE_LINE = re.compile(r'^(- Phone: )(.*)$', re.M)
+
+
+def drop_others_phones(text: str, others: list[str], own: list[str]) -> tuple[str, list[str]]:
+    """Take a number off a contact's page when it is in someone else's own signature (#2348).
+
+    1.9.2b1 put another person's number on 6 of 25 people, each from a signature
+    quoted in the thread. Keeping only numbers from the person's own signature
+    went too far: it took 7 right ones, a number given in their own words among
+    them. A number that is theirs too (`own`) stays.
+    """
+    keys = {_identity_key(value) for value in others} - {_identity_key(value) for value in own}
+    removed = []
+
+    def clean(match):
+        parts = [part.strip() for part in match.group(2).split(';') if part.strip()]
+        kept = [part for part in parts if _identity_key(part) not in keys]
+        removed.extend(part for part in parts if part not in kept)
+        return match.group(0) if kept == parts else match.group(1) + ("; ".join(kept) or "Unknown")
+
+    return PHONE_LINE.sub(clean, text), removed
+
+
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
-                   "investigation:project-inventory", "investigation:original-evidence",
-                   "investigation:org-pages", "investigation:facts")
+                   "investigation:project-inventory", "investigation:project-repositories",
+                   "investigation:original-evidence",
+                   "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
 def _known_sources(items: list[dict]) -> set:
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index")
+    # Fact extraction reads all gathered mail before a quick turn samples it.
+    # A restored field may cite mail outside that sample; its provenance is in
+    # the facts item even though the raw mail is absent from this turn.
+    known.update(row['source'] for item in items if item.get('role') == 'facts'
+                 for row in item.get('facts', []) if row.get('source'))
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
                for source in i.get("sources", [])]
     known.update(derived)
+    # Numbered pieces are one original record. A citation to the whole record
+    # remains traceable when the model omits the layout-only part suffix.
+    known.update(re.sub(r':part-\d+$', '', source) for source in derived)
     # A coding session is one transcript file; citing the session rather than
     # one line of it is coarse but traceable. Dora's page cited
     # `claude-code:<session>` for an account digested from that session.
@@ -247,7 +415,19 @@ def _known_sources(items: list[dict]) -> set:
     return known
 
 
+# An assistant's memory and transcript folders hold its own notes, not material.
+# Ian's page cited the owner's Claude memory file, which sat beside a supplied
+# transcript (1.9.2b1). A session is cited by its id, `claude-code:<id>`.
+PRIVATE_STORE = re.compile(r'/\.claude/projects/|/\.codex/(?:sessions|archived_sessions|memories)/')
+
+
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
+    if PRIVATE_STORE.search(value):
+        return False
+    if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
+        from .project_pages import live_source_snapshot
+        source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+        return value.strip() in old_sources or live_source_snapshot(original, source) is not None
     return bool(any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
                 or prior_context_reference(value, record, items, original)
@@ -267,6 +447,10 @@ def _identifiable(value: str, *, known, record, original, old_sources, items, pa
 
 def _material(value: str, *, known, record, original, old_sources, items) -> bool:
     """Does this Sources entry name something about the subject, not the run's own context?"""
+    if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
+        from .project_pages import live_source_snapshot
+        source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+        return value.strip() in old_sources or live_source_snapshot(original, source) is not None
     if '.state/map.json' in value or 'Enumeration metadata' in value:
         return False
     material = known - set(CONTEXT_SOURCES)
@@ -331,8 +515,9 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
     return '\n'.join(kept) + marker + tail, removed
 
 
-# History is milestones (#2059): Ody Zhou's held 17 bullets, five of them "sent report X".
-HISTORY_LIMIT = 8
+# History is threads and how they ended (#2059, #2314): Ody Zhou's once held 17
+# bullets, five of them "sent report X"; eight then squeezed out how threads ended.
+HISTORY_LIMIT = 16
 
 
 def _history(text: str) -> list[str]:
@@ -345,7 +530,7 @@ def history_note(page: str) -> str:
     lines = len(_history(page))
     if not lines:
         return ""
-    return (f"History holds at most {HISTORY_LIMIT} dated milestones; it has {lines}"
+    return (f"History holds at most {HISTORY_LIMIT} dated lines, one per thread with how it ended; it has {lines}"
             + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
 
 
@@ -354,8 +539,8 @@ def history_errors(candidate: str, original: str) -> list[str]:
     lines, before = len(_history(candidate)), len(_history(original))
     if lines <= HISTORY_LIMIT or lines <= before:
         return []
-    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated milestones: '
-            'fold the oldest into one line per year, and drop sends, reminders and newsletters']
+    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated lines, one per thread '
+            'with how it ended: fold the oldest into one line per year, and drop sends, reminders and newsletters']
 
 
 def size_errors(candidate: str, original: str) -> list[str]:
@@ -386,8 +571,14 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
+    if record.startswith('skills/catalog/'):
+        old_title = re.search(r'^# (.+)$', prose(original), re.M)
+        new_title = re.search(r'^# (.+)$', body, re.M)
+        if old_title and new_title and old_title[1] != new_title[1]:
+            errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
-    errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
+    errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
+               for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
@@ -398,7 +589,22 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = _known_sources(items)
     if record.startswith('projects/'):
+        from .project_pages import live_source_snapshot
+        carried = original.partition('\n## Sources\n')[2]
+        for _, value in definitions:
+            source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+            if source.startswith(('file:', 'git:')) and value.strip() not in carried:
+                if live_source_snapshot(original, source):
+                    known.add(source)
+                else:
+                    errors.append(f'Cited file needs a hash or exact Git commit in a mapped repository: {source}')
+    if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
+        if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
+            for heading in ('Insight', 'Open threads'):
+                section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
+                if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
+                    errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
             pattern = r'^- ' + re.escape(label) + r': [0-9-]+$'
             previous = re.findall(pattern, prose(original), re.M)
@@ -406,6 +612,18 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 errors.append(f'Preserve mapped project metadata: {label}')
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
+        if record.startswith('projects/') and value.strip().startswith('/') and value.strip() not in old_sources:
+            errors.append(f'Cited local file needs a file: source ID and SHA-256: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-inventory'):
+            errors.append(f'Candidate file inventory is not a citable original: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-repositories'):
+            errors.append(f'Project paths are reading leads, not citable originals: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:coverage'):
+            errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
+            errors.append(f'Project input scope is not a citable original: {key}')
+        if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
+            errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
         if len(files) > 1:
             errors.append(f'Citation bundles multiple files: {key}')
@@ -452,6 +670,19 @@ CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for labels in fact
                                              for label in labels) + r'):')
 
 
+def unresolved_findings(text: str, citations: list[str]) -> list[str]:
+    """Do not silently discard the findings the user came to read."""
+    bad, section, found = set(citations), 'Lead', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+        marks = set(CITATION.findall(line))
+        if section in ('Lead', 'Insight', 'Current status', 'Open threads') and marks and marks <= bad:
+            found.setdefault(section, set()).update(marks)
+    return [f'Finding has unresolved citations in {section}: ' + ', '.join(f'[{n}]' for n in sorted(marks))
+            for section, marks in found.items()]
+
+
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],
                     pages=frozenset()) -> tuple[str, dict]:
     """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
@@ -493,6 +724,23 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     sources = ''.join(line for line in sources.splitlines(keepends=True)
                       if not ((match := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) and match[1] in bad))
     return head + marker + sources + rest, {'citations': sorted(bad), 'lines': dropped}
+
+
+def add_missing_sections(record: str, text: str, owner: bool = False) -> str:
+    """A required section the turn left out is added as Unknown, in its place.
+
+    1.9.2b3 trial: a project page without Open threads and a skill page
+    without Limitations were refused whole, after every other section was
+    written. Unknown is what the page knows about the missing one.
+    """
+    required = headings(record, owner)
+    for index, heading in enumerate(required):
+        if re.search(rf'^## {re.escape(heading)}[ \t]*$', text, re.M):
+            continue
+        later = (re.search(rf'^## {re.escape(h)}[ \t]*$', text, re.M) for h in required[index + 1:])
+        at = next((m.start() for m in later if m), len(text))
+        text = text[:at] + f'## {heading}\n- Unknown\n\n' + text[at:]
+    return text
 
 
 def _fill_emptied_sections(head: str) -> str:
@@ -558,6 +806,39 @@ def link_people(record: str, text: str, names: dict) -> str:
     return '\n'.join(lines) + marker + tail
 
 
+def project_names(notebook) -> dict[str, str]:
+    """Only unique, specific project titles are safe to link from the owner's page."""
+    seen = {}
+    for record in notebook.list('projects'):
+        title = next((line[2:].strip() for line in notebook.read(record).splitlines()
+                      if line.startswith('# ')), '')
+        if len(title) >= 4 or (len(title) >= 2 and title.isupper()):
+            seen.setdefault(title.casefold(), []).append((title, record))
+    return {title: records[0][1] for title, records in seen.items() if len(records) == 1}
+
+
+def link_projects(text: str, names: dict[str, str]) -> str:
+    """Link the first exact project name on the owner's page, outside fields and sources."""
+    head, marker, tail = text.partition('\n## Sources\n')
+    lines = head.split('\n')
+    for title, target in sorted(names.items(), key=lambda item: -len(item[0])):
+        pattern = re.compile(r'(?<![\w\[/])' + re.escape(title) + r'(?![\w\]])', re.I)
+        if re.search(r'\]\(\.\./' + re.escape(target) + r'\)', head):
+            continue
+        for index, line in enumerate(lines):
+            if (line.startswith(('#', 'Investigation:')) or CONTACT_LINE.match(line)
+                    or not re.search(r'\[W?\d+\]', line)):
+                continue
+            linked = [match.span() for match in re.finditer(r'\[[^\]]*\]\([^)]*\)', line)]
+            found = next((match for match in pattern.finditer(line)
+                          if not any(start <= match.start() < end for start, end in linked)), None)
+            if found:
+                name = line[found.start():found.end()]
+                lines[index] = line[:found.start()] + f'[{name}](../{target})' + line[found.end():]
+                break
+    return '\n'.join(lines) + marker + tail
+
+
 def link_company(notebook, record: str, text: str) -> str:
     """`Company:` naming an organisation the notebook has a page for links to it (#1974).
 
@@ -575,4 +856,35 @@ def link_company(notebook, record: str, text: str) -> str:
         title = next((line[2:].strip() for line in notebook.read(org).splitlines() if line.startswith('# ')), '')
         if title.casefold() == name.casefold():
             return text[:match.start()] + f'- Company: [{name}](../{org}){cites}' + text[match.end():]
+    return text
+
+
+def _named_orgs(notebook) -> list[tuple[str, str, list[str]]]:
+    """(record, title, domains) of each organisation page whose title is a name, not its domain."""
+    from .investigate import org_domains
+    found = []
+    for org in notebook.list('orgs'):
+        page = notebook.read(org)
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')
+        if title and title.casefold() not in org_domains(page):
+            found.append((org, title, org_domains(page)))
+    return found
+
+
+def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> str:
+    """`Company: Unknown` takes the organisation page whose Domains hold the person's own mail domain (#2349).
+
+    28 of 53 unknown companies on a real notebook wrote from a domain it had a
+    page for. The newest mail from that domain is the citation. A page still
+    titled by its domain is the map's stub: its name is not known yet.
+    """
+    match = re.search(r'^- Company: (.*)$', text, re.M)
+    if not record.startswith('people/') or not match or not match.group(1).casefold().startswith('unknown'):
+        return text
+    for row in (row for row in rows if row['field'] == 'Company domain'):
+        for org, title, domains in _named_orgs(notebook):
+            if any(row['value'] == domain or row['value'].endswith('.' + domain) for domain in domains):
+                text, number = facts._cite(text, row)
+                match = re.search(r'^- Company: (.*)$', text, re.M)
+                return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
     return text

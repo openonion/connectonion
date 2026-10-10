@@ -10,12 +10,146 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_a_fact_restored_from_mail_outside_the_quick_sample_keeps_its_source():
+    candidate = '# Owner\n\nA dated fact [1].\n\n## Sources\n- [1] outlook:older — 2026-09-29\n'
+    items = [{'role': 'facts', 'source': 'investigation:facts',
+              'facts': [{'field': 'Time zone', 'value': 'Australia/Sydney',
+                         'source': 'outlook:older', 'date': '2026-09-29'}]}]
+    errors = validate('people/owner.md', candidate, '# Owner\n', items, owner=True)
+    assert not any('Citation has no identifiable source' in error for error in errors)
+    invented = candidate.replace('outlook:older', 'outlook:invented')
+    assert any('Citation has no identifiable source' in error for error in
+               validate('people/owner.md', invented, '# Owner\n', items, owner=True))
+
+
+def test_an_owner_work_excerpt_keeps_its_original_citation_after_quick_filtering():
+    candidate = '# Owner\n\nA decision was reversed [1].\n\n## Sources\n- [1] codex:old — 2026-09-29\n'
+    items = [{'role': 'owner-work-evidence', 'source': 'investigation:owner-work-evidence',
+              'sources': ['codex:old'], 'text': '### codex:old — 2026-09-29\nEarlier choice'}]
+    errors = validate('people/owner.md', candidate, '# Owner\n', items, owner=True)
+    assert not any('Citation has no identifiable source' in error for error in errors)
+
+
+def test_project_cannot_cite_the_candidate_file_list_as_file_evidence():
+    candidate = '# Atlas\n\nA reminder script is present [1].\n\n## Sources\n- [1] investigation:project-inventory — today\n'
+    items = [{'role': 'project-inventory', 'source': 'investigation:project-inventory',
+              'text': 'Candidate local evidence files: remind.py'}]
+    assert 'Candidate file inventory is not a citable original: 1' in validate(
+        'projects/atlas.md', candidate, '# Atlas\n', items)
+
+
+def test_project_cannot_cite_the_run_coverage_as_subject_evidence():
+    candidate = '# Atlas\n\nNo matching messages were found [1].\n\n## Sources\n- [1] investigation:coverage — today\n'
+    items = [{'role': 'coverage', 'source': 'investigation:coverage',
+              'text': 'No related coding messages in seven days'}]
+    assert 'Investigation coverage belongs in the run report, not page Sources: 1' in validate(
+        'projects/atlas.md', candidate, '# Atlas\n', items)
+
+
+def test_project_with_no_assigned_session_input_cannot_claim_current_work():
+    candidate = ('# Atlas\n\n## Insight\n- Now: branch merge is pending. [1]\n'
+                 '\n## Open threads\n- Merge the branch. [1]\n'
+                 '\n## Sources\n- [1] investigation:project-scope — today\n')
+    items = [{'role': 'project-input-scope', 'source': 'investigation:project-scope',
+              'inputs_read': 0}]
+    errors = validate('projects/atlas.md', candidate, '# Atlas\n', items)
+    assert 'No assigned project session inputs: keep Insight Unknown' in errors
+    assert 'No assigned project session inputs: keep Open threads Unknown' in errors
+    assert 'Project input scope is not a citable original: 1' in errors
+
+
+def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
+    candidate = ('# abstract\n\n## Sources\n- [1] skill-runs:abstract — sampled runs\n'
+                 '- [2] investigation:page — old note\n')
+    errors = validate('skills/catalog/abstract.md', candidate, '# abstract\n', [
+        {'source': 'skill-runs:abstract'}, {'source': 'investigation:page'}])
+    assert 'Skill run summaries and carried pages are not citable originals: 1' in errors
+    assert 'Skill run summaries and carried pages are not citable originals: 2' in errors
+
+
+def test_written_skill_keeps_the_invocation_title_needed_for_reinvestigation(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'skills/catalog/example.md'
+    notebook.stub_skill(record, 'example', '/tmp/example/SKILL.md')
+    original = notebook.read(record)
+    candidate = original.replace('# example\n', '# Example result reviewer\n', 1)
+    assert 'Preserve the exact skill invocation name as the page title' in validate(
+        record, candidate, original, [])
+
+
+def test_owner_links_a_unique_project_name_without_linking_sources_or_partial_words(tmp_path):
+    from connectonion.rem.page_review import link_projects, project_names
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/harbour.md', 'Harbour', sessions=2,
+                          first_seen='2026-09-01', last_seen='2026-10-01')
+    notebook.stub_project('projects/rem.md', 'REM', sessions=2,
+                          first_seen='2026-09-01', last_seen='2026-10-01')
+    page = ('# Owner\n\nHarbour is an uncited mention.\nHarbour has an open format decision [1].\n'
+            'REM has an open recall decision [1].\nHarbouring is unrelated.\n'
+            '\n## Sources\n- [1] codex:harbour — Harbour discussion\n')
+    linked = link_projects(page, project_names(notebook))
+    assert 'Harbour is an uncited mention' in linked
+    assert '[Harbour](../projects/harbour.md) has' in linked
+    assert '[REM](../projects/rem.md) has' in linked
+    assert 'Harbouring is unrelated' in linked
+    assert '- [1] codex:harbour — Harbour discussion' in linked
+    assert link_projects(linked, project_names(notebook)) == linked
+
+
 def test_legacy_project_gets_missing_sections_without_losing_content():
     old = '# Atlas\n\n## What it is\nA demo.\n\n## Sources\n- [1] source:1\n\nInvestigation: mapped today\n'
     new = normalize('projects/atlas.md', old)
     assert 'A demo.' in new
-    assert all(new.count('## '+h+'\n') == 1 for h in Notebook.PROJECT_SECTIONS)
+    assert all(new.count('## '+h+'\n') == 1 for h in ('What it is', 'Where it stands', 'Paths',
+                                                      'Open threads', 'Uncertainties'))
+    assert '## Architecture map\n' not in new
     assert normalize('projects/atlas.md', new) == new
+
+
+def test_written_project_drops_empty_optional_sections_and_keeps_supported_detail(tmp_path):
+    from connectonion.rem.page_review import compact_page
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas', sessions=2,
+                    first_seen='2026-09-01', last_seen='2026-09-19')
+    mapped = nb.read('projects/atlas.md')
+    candidate = mapped.replace('## What it is\n- Unknown — not investigated yet',
+                               '## What it is\nA local demo. [1]')
+    candidate = candidate.replace('## Key decisions\n- Unknown — not investigated yet',
+                                  '## Key decisions\n2026-09-19: chose local storage. [1]')
+    candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
+    candidate = candidate.replace('## Sources\n', '## Sources\n- [1] fixture:readme — 2026-09-19\n')
+    compact = compact_page('projects/atlas.md', candidate)
+    assert '## Key decisions\n2026-09-19: chose local storage. [1]' in compact
+    assert '## Overview\n' not in compact
+    assert '## Try it\n' not in compact
+    assert '## Paths\n' in compact and '- Sessions:' in compact
+    assert normalize('projects/atlas.md', compact) == compact
+    errors = validate('projects/atlas.md', compact, mapped, [{'source': 'fixture:readme'}])
+    assert not [error for error in errors if 'Section must occur once' in error]
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
+    from connectonion.rem.page_review import compact_page, prose
+    page = newline.join([
+        '# Atlas', '## Facts', '- Local project [1]', '## Insight', '- A decision is open [1]',
+        '## What it is', 'A local demo [1]', '## Where it stands', '- Active [1]',
+        '## Overview', '```text', '## This is a diagram, not a section', 'box -> arrow', '```',
+        '## Try it', '- Unknown', '## Paths', '- /tmp/atlas', '## Open threads', '- None known [1]',
+        '## Uncertainties', '- Outcome unverified [1]', '## Sources', '- [1] fixture:readme', '',
+    ])
+    assert len(prose(page)) == len(page)
+    compact = compact_page('projects/atlas.md', page)
+    assert '## Try it' not in compact
+    assert '```text' + newline + '## This is a diagram, not a section' + newline + 'box -> arrow' in compact
+    assert '## Paths' + newline + '- /tmp/atlas' in compact
+    assert '## Sources' + newline + '- [1] fixture:readme' in compact
+    if newline == '\r\n':
+        assert '\r\n\n## Paths' not in compact
 
 
 def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
@@ -25,6 +159,22 @@ def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
     assert max(map(len, readable.splitlines())) <= 400
     assert json.loads((tmp_path / 'material.json').read_text())[0]['text'] == item['text']
     assert 'material.md' in prompt or '<material>' in prompt
+
+
+@pytest.mark.parametrize('padding', ['', 'x' * 110_000])
+def test_indexed_evidence_is_explicitly_readable_in_inline_and_file_tasks(tmp_path, padding):
+    items = [{'role': 'page', 'record': 'people/mia.md', 'text': '# Mia\n' + padding},
+             {'role': 'evidence-index', 'source': 'investigation:evidence',
+              'file': str(tmp_path / 'evidence/index.md'), 'sources': ['outlook:abc'],
+              'text': 'One archived email body in evidence/01.md; the index is not its contents.'}]
+    prompt = task_prompt(tmp_path, items, 'investigate')
+    assert 'Read and search the evidence files named by that index before writing findings.' in prompt
+    assert 'Do not read' not in prompt
+    if not padding:
+        assert '<material>' in prompt
+        assert 'not the evidence bodies' in prompt
+    else:
+        assert 'Read all source material at' in prompt
 
 
 def test_numbered_source_list_is_normalized_without_changing_claims():
@@ -60,8 +210,41 @@ def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):
     assert any('citation: 9' in e for e in errors)
 
 
+def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'skills/catalog/example.md'
+    nb.stub_skill(record, 'example', '/observed/SKILL.md')
+    old = nb.read(record)
+    candidate = re.sub(r'(?m)^(?:- )?Unknown — not investigated yet$',
+                       'Unknown', normalize(record, old))
+    candidate = re.sub(r'(?ms)^## Insight\n.*?(?=^## )',
+                       '## Insight\nThe requested artifact was absent from the reported output. [1]\n\n', candidate)
+    candidate = re.sub(r'(?ms)^## Sources\n.*?(?=^Investigation:|\Z)',
+                       '## Sources\n- [1] skill-eval:abc123 — 2026-09-19\n\n', candidate)
+    def run(directory, prompt, config, stage):
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(candidate)
+        return {'usage': {'input_tokens': 7}}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    items = [{'role': 'page', 'record': record, 'text': old},
+             {'role': 'evidence-index', 'source': 'investigation:skill-records',
+              'sources': ['skill-eval:abc123:part-1', 'skill-eval:abc123:part-2'],
+              'text': 'Two pieces of a retained evaluation record.'}]
+    result = run_stage(nb, items, default_config(), stage='investigate')
+    assert result['changed'] == [record]
+    assert 'artifact was absent' in nb.read(record)
+    assert '- [1] skill-eval:abc123' in nb.read(record)
+    from connectonion.rem.page_review import _known_sources
+    assert 'skill-eval:abc123' in _known_sources(items)
+    assert 'skill-eval:abc' not in _known_sources(items)
+
+
 @pytest.mark.parametrize('invalid', [False, True])
 def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, invalid):
+    from connectonion.rem import project_claim_review
+
+    monkeypatch.setattr(project_claim_review, 'review', lambda *_, **__: (
+        {'verdict': 'pass', 'findings': []}, {'input_tokens': 3}))
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
@@ -70,11 +253,11 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     candidate = candidate.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
     candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     if invalid:
-        candidate += '\n## Overview\nDuplicate\n'
+        candidate += '\n## What it is\nDuplicate\n'
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
-        assert 'Successfully' in write(str(path), candidate)
+        path.write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
@@ -83,8 +266,11 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
             run_stage(nb, items, default_config(), stage='investigate')
         assert nb.read('projects/atlas.md') == old
     else:
-        assert run_stage(nb, items, default_config(), stage='investigate')['changed'] == ['projects/atlas.md']
-        assert nb.read('projects/atlas.md') == candidate
+        result = run_stage(nb, items, default_config(), stage='investigate')
+        assert result['changed'] == ['projects/atlas.md']
+        assert result['usage']['input_tokens'] == 10
+        from connectonion.rem.page_review import compact_page
+        assert nb.read('projects/atlas.md') == compact_page('projects/atlas.md', candidate)
 
 
 def test_local_citations_require_existing_files_under_supplied_paths(tmp_path):
@@ -138,20 +324,22 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
     def run(directory, prompt, config, stage):
         assert directory != nb.root
         working = next(directory.glob('investigate-*/notebook'))
-        assert (working / record).read_text() == original
+        first_turn = 'Your previous turn ended without editing' not in prompt
+        assert not first_turn or (working / record).read_text() == original
         assert 'Write notebook Markdown pages directly' not in prompt
         if action == 'wrong_target':
             (working / record).write_text('# Accidental direct edit')
         else:
             nb.write(record, original + '\nConcurrent user correction.\n')
-            Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(original)
+            Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(original + '\nA new fact.\n')
         return {'usage': {'input_tokens': 5}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     with pytest.raises(RunFailed):
         run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
     assert nb.read(record) == original + ('\nConcurrent user correction.\n' if action == 'concurrent_update' else '')
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5
+    turns = 2 if action == 'wrong_target' else 1  # candidate untouched: one more turn, both charged
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5 * turns
     assert result['duration_seconds'] >= 0
     assert result['instructions_chars'] > 0 and result['material_chars'] > 0
 
@@ -207,7 +395,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
     page = page.replace('- (none yet)', '- [1] fixture:readme')
     def execute(directory, prompt, config, stage):
-        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(page)
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     with pytest.raises(RunFailed, match='Project Overview'):
@@ -462,6 +650,23 @@ def test_company_links_to_the_organisation_page_when_there_is_one(tmp_path):
     assert link_company(notebook, 'people/mia.md', other) == other
 
 
+def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_domain(tmp_path):
+    """28 of 53 `Company: Unknown` pages on a real 1.9.2b2 notebook wrote from a
+    domain the notebook has an organisation page for (#2349)."""
+    from connectonion.rem.page_review import company_from_domain
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    rows = [{'field': 'Company domain', 'value': 'gmail.example', 'qualifier': '', 'source': 'gmail:aaa', 'date': '2026-09-02'},
+            {'field': 'Company domain', 'value': 'student.unsw.edu.au', 'qualifier': '',
+             'source': 'outlook:bbb', 'date': '2026-08-01'}]
+    filled = company_from_domain(notebook, 'people/mia.md', original, rows)
+    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-08-01$', filled, re.M)[1]
+    assert f'- Company: [UNSW Sydney](../orgs/unsw-1234.md) [{number}]' in filled
+    named = original.replace('- Company: Unknown', '- Company: Acme [1]')
+    assert company_from_domain(notebook, 'people/mia.md', named, rows) == named
+    assert company_from_domain(notebook, 'people/mia.md', original, rows[:1]) == original
+
+
 def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
     """#2008: project pages came back after 0.6-0.9M tokens with five and six
     sections still saying "Unknown — not investigated yet"."""
@@ -491,11 +696,39 @@ def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tm
     assert 'A local demo. [1]' in nb.read('projects/atlas.md')
 
 
-def test_the_project_skills_ask_for_the_overview_and_no_placeholder_and_never_guess_a_dictated_name():
+def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
+    """A bad file citation must not leave an uncited diagram behind."""
+    import hashlib
+    from connectonion.rem import runner
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    mapped = tmp_path / 'mapped'
+    mapped.mkdir()
+    outside = tmp_path / 'outside.md'
+    outside.write_text('A -> B\n')
+    nb.stub_project('projects/atlas.md', 'Atlas', paths=[str(mapped)])
+    old = nb.read('projects/atlas.md')
+    source = f'file:{outside}@{hashlib.sha256(outside.read_bytes()).hexdigest()}'
+    candidate = (old.replace('- Unknown — not investigated yet', '- Unknown')
+                 .replace('## Insight\n- Unknown', '## Insight\n- Changed: collect first. [2]')
+                 .replace('## Overview\n- Unknown',
+                          '## Overview\nAn unsupported architecture. [1]\n```text\nA -> B\n```')
+                 .replace('- (none yet)', f'- [1] {source} — inspected file\n- [2] codex:abc — user request'))
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+    items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
+             {'source': 'codex:abc', 'text': 'Collect first.'}]
+    with pytest.raises(runner.RunFailed, match='Cited file needs a hash or exact Git commit in a mapped repository'):
+        runner._promote_candidate(nb, 'projects/atlas.md', path, old, items, tmp_path, None)
+    assert nb.read('projects/atlas.md') == old
+    assert path.read_text() == candidate
+
+
+def test_the_project_skills_require_evidence_for_overview_and_no_placeholder_or_guessed_name():
     from connectonion.rem import project_pages
     from connectonion.rem.runner import instructions
     for text in (project_pages.instructions(), instructions('investigate', page_kind='project')):
-        assert 'is required' in text and 'Overview' in text
+        assert 'Overview' in text and 'evidence' in text
         assert 'refused' in text and 'misheard' in text and 'never guess' in text.lower()
 
 
@@ -561,14 +794,15 @@ def _with_history(lines: int) -> str:
     return f'# P\n\n## History\n{rows}\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
 
 
-def test_a_history_past_eight_milestones_may_not_grow_and_may_come_down():
-    """Ody Zhou's History held 17 bullets, five of them "sent report X"."""
+def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
+    """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
+    eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
     from connectonion.rem.page_review import history_errors, history_note
-    assert history_errors(_with_history(9), _with_history(8))
-    assert 'at most 8' in history_errors(_with_history(9), _with_history(3))[0]
-    assert history_errors(_with_history(8), _with_history(3)) == []
-    assert history_errors(_with_history(12), _with_history(17)) == []          # coming down in steps
-    assert 'fold the oldest' in history_note(_with_history(17))
+    assert history_errors(_with_history(17), _with_history(16))
+    assert 'at most 16' in history_errors(_with_history(17), _with_history(3))[0]
+    assert history_errors(_with_history(16), _with_history(3)) == []
+    assert history_errors(_with_history(18), _with_history(20)) == []          # coming down in steps
+    assert 'fold the oldest' in history_note(_with_history(20))
     assert history_note('# P\n\n## History\n- Unknown — not investigated yet\n') == ''
 
 
@@ -593,3 +827,169 @@ def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
     assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
     assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
     assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
+
+
+def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
+    """4 of the first 8 project pages of a real 1.9.0 Codex init were refused
+    whole for these two, each fixable without the model (2026-10-08)."""
+    from connectonion.rem.page_review import repair_run_citations
+    original = ('# Atlas\n\n## Paths\n- `/src/atlas` — mapped project directory\n- Sessions: 30\n'
+                '- First seen: 2026-07-29\n- Last seen: 2026-10-07\n')
+    candidate = ('# Atlas\n\n## Where it stands\n- The importer ships nightly. [1]\n'
+                 '- No sessions mention the exporter. [2]\n- The CLI was renamed. [1][2]\n\n'
+                 '## Paths\n- `/src/atlas` — mapped project directory; Sessions: 30; First seen: 2026-07-29; '
+                 'Last seen: 2026-10-07.\n\n## Sources\n- [1] codex:abc — 2026-10-01\n'
+                 '- [2] investigation:coverage — today\n')
+    repaired = repair_run_citations('projects/atlas.md', candidate, original)
+    assert 'The importer ships nightly. [1]' in repaired
+    assert 'exporter' not in repaired and 'investigation:coverage' not in repaired
+    assert '- The CLI was renamed. [1]\n' in repaired
+    assert '- Sessions: 30\n- First seen: 2026-07-29\n- Last seen: 2026-10-07\n' in repaired
+    items = [{'role': 'session', 'source': 'codex:abc', 'text': 'importer ships nightly'}]
+    errors = validate('projects/atlas.md', repaired, original, items)
+    assert not [e for e in errors if 'coverage' in e or 'mapped project metadata' in e]
+    assert repair_run_citations('people/x.md', candidate, original) == candidate
+
+
+def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(tmp_path, monkeypatch):
+    """49 of 63 real Codex investigations wrote the page from scratch; UNSW's
+    People-here list fell from 20 linked people to 4 and was accepted (2026-10-08)."""
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'projects/atlas.md'
+    nb.stub_project(record, 'Atlas')
+    original = nb.read(record)
+    seen = []
+
+    def run(directory, prompt, config, stage):
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        seen.append(path.read_text())
+        assert 'Do not rewrite the page from scratch' in prompt
+        return {'usage': {'input_tokens': 1}, 'result': 'Nothing new. NO CHANGE'}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    result = run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
+    assert seen == [original]  # one turn: the page as it stands, and no follow-up for an honest NO CHANGE
+    assert result['changed'] == []
+
+
+def test_a_skill_page_is_not_refused_for_citing_its_run_summary():
+    from connectonion.rem.page_review import repair_run_citations
+    candidate = ('# title-refine\n\n## Insight\n- Run 14 times in a month. [2]\n- It rewrites titles to name a fact. [1]\n\n'
+                 '## Sources\n- [1] skill-source:title-refine — 2026-10-01\n- [2] skill-runs:title-refine — today\n')
+    repaired = repair_run_citations('skills/catalog/title-refine.md', candidate, '# title-refine\n')
+    assert 'Run 14 times' not in repaired and 'skill-runs:' not in repaired
+    assert 'It rewrites titles to name a fact. [1]' in repaired
+
+
+def test_a_source_cited_only_inside_a_diagram_is_dropped_not_left_to_refuse_the_page():
+    from connectonion.rem.page_review import drop_uncited_sources
+    text = ('# GTM\n\n## How it works\n```\nlead -> rank [6][9]\n```\n- Ranks prospects. [6]\n\n'
+            '## Sources\n- [6] codex:a:1 — 2026-07-16\n- [9] codex:b:2 — 2026-07-16\n')
+    out = drop_uncited_sources(text)
+    assert '- [6] codex:a:1' in out and 'codex:b:2' not in out
+
+
+def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
+    from connectonion.rem.page_review import repair_run_citations
+    text = ('# x\n\n## Limitations\n- None known.\n\n## Run evidence\n<!-- rem-skill-runs:start -->\n## Run evidence\n\n'
+            '- Retained evaluation attempts: 2\n<!-- rem-skill-runs:end -->\n\nInvestigation: mapped\n')
+    out = repair_run_citations('skills/catalog/x.md', text, '# x\n')
+    assert out.count('## Run evidence') == 1 and '- None known.' in out and 'attempts: 2' in out
+
+
+def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page():
+    """1.9.2b1 (2026-10-09) gave Weiwei the user's phone from his own signature, against the instructions."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Email: weiwei.lei@rmit.edu.au\n- Phone: +61 435 525 634 [2]\n- Role: Professor [1]\n"
+    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0435 525 634 (work)"})
+    assert "- Phone: Unknown\n" in text and removed == ["+61 435 525 634"]
+    assert "- Email: weiwei.lei@rmit.edu.au" in text
+    other = page.replace("+61 435 525 634", "+61 400 111 222")
+    assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])
+
+
+def test_the_owners_phone_is_found_when_each_number_carries_its_own_citation():
+    """1.9.2b2 (2026-10-09) kept the user's phone on Sasha's page: `[48]` was read as two more digits."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Phone: +61-0435525634 (work) [48]; +61 2 9065 4432 (work) [49]\n"
+    text, removed = drop_owner_addresses(page, {"0435 525 634"})
+    assert "- Phone: +61 2 9065 4432 (work) [49]\n" in text and "0435525634" not in text
+    assert removed == ["+61-0435525634 (work) [48]"]
+
+
+def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
+    """#2348, as narrowed by the 1.9.2b3 trial: only a number known to be someone else's goes."""
+    from connectonion.rem.page_review import drop_others_phones
+    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9065 4432 (work) [49]\n- Role: Lead [1]\n"
+    text, removed = drop_others_phones(page, ["+61 2 9065 4432"], [])
+    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9065 4432 (work) [49]"]
+    assert drop_others_phones(page, ["+61 2 9065 4432"], ["02 9065 4432"]) == (page, [])   # theirs too
+    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290654432"], [])[0]
+
+
+def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
+    """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
+    from connectonion.rem.runner import _searched_turn
+    (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
+    first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
+
+    def never(*args):
+        raise AssertionError("no search should run")
+    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
+    assert out["result"] == "edited" and "not valid JSON" in out["report"]
+
+
+def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(tmp_path):
+    """1.9.2b1: Ian's page cited the owner's Claude memory file by path. It sat in
+    the folder of a supplied session transcript, so it passed as a local file."""
+    from connectonion.rem.page_review import drop_unresolved
+    folder = tmp_path / '.claude/projects/-work'
+    (folder / 'memory').mkdir(parents=True)
+    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_ian.md'
+    transcript.write_text('{}')
+    memory.write_text('Ian: MBA at UNSW')
+    items = [{'role': 'owner-work-evidence', 'file': str(transcript), 'sources': ['claude-code:s1']}]
+    text = ('# Ian\n\nIan asked about pricing [1].\n\n## Who they are\nIan studies an MBA [2].\n\n'
+            f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
+    kept, dropped = drop_unresolved('people/ian.md', text, '', items)
+    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
+
+
+def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
+    # 40 of 123 pages in a real 1.9.2b3 notebook listed [1], [2], [5], [9]...
+    # after uncited sources were dropped; the reader showed the gaps.
+    from connectonion.rem.page_review import renumber_sources
+    text = ("# Ada\n\nShe runs the lab [2] and signed [5][W1].\n\n"
+            "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+            "## Sources\n- [2] outlook:aaa — observed 2026-07-10\n- [5] outlook:bbb — observed 2026-07-11\n"
+            "- [W1] https://lab.test\n")
+    assert renumber_sources(text) == (
+        "# Ada\n\nShe runs the lab [1] and signed [2][W1].\n\n"
+        "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+        "## Sources\n- [1] outlook:aaa — observed 2026-07-10\n- [2] outlook:bbb — observed 2026-07-11\n"
+        "- [W1] https://lab.test\n")
+
+
+def test_sources_already_in_order_are_unchanged():
+    from connectonion.rem.page_review import renumber_sources
+    text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
+    assert renumber_sources(text) == text
+
+
+def test_a_required_section_the_turn_left_out_is_added_as_unknown():
+    # 1.9.2b3 trial: a project page without "Open threads" and a skill page
+    # without "Limitations" were refused whole, reported as "must occur once".
+    from connectonion.rem.page_review import add_missing_sections, headings
+    page = ('# startup\n\n## Facts\n- Status: active [1]\n\n## Insight\nIt ships [1].\n\n'
+            '## What it is\nA shop [1].\n\n## Where it stands\nLive [1].\n\n## Paths\n- /work/startup [1]\n\n'
+            '## Uncertainties\n- Unknown\n\n## Sources\n- [1] claude-code:s1 — 2026-08-11\n')
+    fixed = add_missing_sections('projects/startup.md', page)
+    assert re.findall(r'^## (.+)$', fixed, re.M) == list(headings('projects/startup.md'))
+    assert '## Paths\n- /work/startup [1]\n\n## Open threads\n- Unknown\n\n## Uncertainties' in fixed
+
+
+def test_a_missing_section_is_reported_as_missing_not_as_a_duplicate():
+    page = '# A\n\n## Facts\n- Status: Unknown\n\n## Sources\n- [1] claude-code:s1\n'
+    errors = validate('projects/a.md', page, '', [])
+    assert 'Missing section: Open threads' in errors
+    assert not any('must occur once: Open threads' in e for e in errors)

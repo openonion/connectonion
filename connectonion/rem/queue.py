@@ -178,9 +178,7 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
     return rows
 
 
-# The kinds `all` spans. Skills are left out: their investigation reads eval
-# records, not the owner's mail and sessions, and is not what fills the map.
-ALL = ("people", "projects", "orgs")
+ALL = ("people", "projects", "orgs", "skills")
 
 
 def order_all(root) -> list[dict]:

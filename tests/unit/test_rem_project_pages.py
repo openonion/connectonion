@@ -8,6 +8,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -103,6 +104,24 @@ def test_only_what_the_user_typed_is_kept_and_filed_under_its_page(world):
     assert "swell" not in json.dumps(report)
 
 
+@pytest.mark.parametrize('lock_held', [False, True])
+def test_full_project_refresh_reindexes_older_insertions_before_source_read(world, lock_held):
+    from contextlib import nullcontext
+    from connectonion.rem import store
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.reader_model import cited_context
+    path = world.codex / 'rollout-index.jsonl'
+    codex(path, '/work/tide', [('user', 'Original cited request.', 1)])
+    extract(world.root, world.subs, full=True)
+    store.refresh(world.root)
+    source = stored(world.root, 'projects/tide.md')[0]['source']
+    codex(path, '/work/tide', [('user', 'Earlier newly recovered request.', 2)])
+    with maintenance_lock(world.root) if lock_held else nullcontext():
+        report = extract(world.root, world.subs, full=True, lock_held=lock_held)
+    assert cited_context(world.root, [{'text': '- [1] ' + source}])[source]['excerpt'] == 'Original cited request.'
+    assert 'sessions' in report['store']['rebuilt']
+
+
 def test_the_material_is_private(world):
     codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "private words", 1)])
     extract(world.root, world.subs)
@@ -180,6 +199,14 @@ def test_a_written_page_waits_for_new_messages_and_then_gets_only_those(world):
     assert "This is an update" in items[1]["text"]
 
 
+def test_a_small_update_does_not_hide_older_inputs_omitted_from_the_page(world):
+    record = "projects/tide.md"
+    mark_written(world.root, record, "2026-09-20T00:00:00+00:00", inputs_read=3, inputs_available=5)
+    mark_written(world.root, record, "2026-09-21T00:00:00+00:00", inputs_read=1, inputs_available=1)
+    assert page_state(world.root, record)["last_page_coverage"] == {
+        "inputs_read": 3, "inputs_available": 5, "scope": "queued"}
+
+
 def test_one_call_carries_the_newest_messages_that_fit_and_says_what_it_left_out(world, monkeypatch):
     monkeypatch.setattr(project_pages, "PROMPT_CHARS", 25)
     codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide",
@@ -190,6 +217,67 @@ def test_one_call_carries_the_newest_messages_that_fit_and_says_what_it_left_out
     assert "1 older messages did not fit" in items[1]["text"]
     assert through == stored(world.root, "projects/tide.md")[-1]["timestamp"]
     assert PROMPT_CHARS == 60_000  # the documented cap
+
+
+def test_first_write_has_bounded_citable_checkout_evidence_without_secret_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(project_material, "project_exclusion", lambda path: "")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("# Tide\nWarn surfers when the swell rises.\n"
+                                    "Example key sk-live-51Hq8ZzExampleSecretKey0042\n")
+    (repo / "pyproject.toml").write_text('[project]\nname = "tide"\nversion = "0.2.0"\n')
+    (repo / ".env").write_text("PRIVATE_PASSWORD=never-read-this")
+    workflows = repo / ".github/workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "seo-gate.yml").write_text("name: SEO\njobs:\n  check:\n    steps:\n      - run: node scripts/check-seo.mjs\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "README.md", "pyproject.toml", ".github/workflows/seo-gate.yml"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Add swell warning prototype"], check=True)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    source = tmp_path / "codex" / "2026/10/02/rollout-a.jsonl"
+    codex(source, str(repo), [("user", "Did the swell warning ship? Check SEO in CI/CD.", 1)])
+    extract(root, {"codex": {"kind": "codex", "root": str(tmp_path / "codex"), "enabled": True}})
+
+    items, _ = project_pages.material(root, "projects/tide.md")
+    files = [item for item in items if item["role"] == "project-file"]
+    assert any(item["origin"].endswith(":pyproject.toml") for item in files)
+    assert all(item["source"].startswith("project-source:") for item in files)
+    assert any(item["role"] == "readme" and "Warn surfers" in item["text"] for item in items)
+    assert all(item["source"] and len(item["text"]) <= 2_100 for item in files)
+    assert any(item["role"] == "checkout-state" for item in items)
+    assert any(item["role"] == "recent-commits" and "Add swell warning prototype" in item["text"]
+               for item in items)
+    assert "never-read-this" not in json.dumps(items)
+    assert "sk-live" not in json.dumps(items)
+    assert any(item.get("origin", "").endswith(":.github/workflows/seo-gate.yml") for item in items)
+    assert sum(len(item["text"]) for item in items if item["source"].startswith("project-source:")) <= project_pages.REPOSITORY_EVIDENCE_CHARS
+    packet = project_pages._repository_evidence(Notebook(root).read("projects/tide.md"), NOW.isoformat(), NOW.isoformat())
+    assert not any(".github/workflows" in item["source"] for item in packet)
+    # A moving ref must not relabel newer contents as the already-resolved commit.
+    from connectonion.rem import investigate
+    git = investigate._git
+    original = git(str(repo), "rev-parse", "HEAD")
+    (repo / "README.md").write_text("# Tide\nA later unrelated direction.\n")
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Change direction later"], check=True)
+    later = git(str(repo), "rev-parse", "HEAD")
+    subprocess.run(["git", "-C", str(repo), "reset", "--hard", original], check=True, capture_output=True)
+
+    def moving_ref(folder, *args):
+        result = git(folder, *args)
+        if args == ("rev-parse", "HEAD^{commit}"):
+            subprocess.run(["git", "-C", folder, "reset", "--hard", later], check=True, capture_output=True)
+        return result
+
+    monkeypatch.setattr(investigate, "_git", moving_ref)
+    packet = project_pages._repository_evidence(Notebook(root).read("projects/tide.md"), NOW.isoformat(), NOW.isoformat())
+    assert next(item for item in packet if item["role"] == "readme")["source"].endswith(f":{original}:README.md")
+    assert "Warn surfers" in next(item for item in packet if item["role"] == "readme")["text"]
+    assert "Change direction later" not in next(item for item in packet if item["role"] == "recent-commits")["text"]
 
 
 def _fake_runner(page_from):
@@ -203,6 +291,41 @@ def _fake_runner(page_from):
         return {"outcome": "natural", "result": "read 1 message", "usage": {"input_tokens": 100}}
     run.calls = calls
     return run
+
+
+def test_repository_context_survives_mutable_file_changes_and_rejects_tampering(tmp_path):
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.files import maintenance_lock
+    item = project_pages.repository_snapshots([{"role": "readme", "source": "file:/repo/README.md",
+        "text": "# Tide\nWarn surfers.", "timestamp": "2026-10-02T01:00:00Z"}])[0]
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, [item], set()) == 0
+        assert project_pages.retain_repository_context(tmp_path, [item], {item["source"]}) == 1
+    later = project_pages.repository_snapshots([{**item, "source": item["origin"], "text": "# Tide\nNew direction."}])[0]
+    assert later["source"] != item["source"]
+    context = cited_context(tmp_path, [{"text": "- [1] " + item["source"]}])[item["source"]]
+    assert context["excerpt"] == "# Tide\nWarn surfers."
+    assert context["time"] == "" and context["captured_at"] == item["timestamp"]
+    assert context["origin"] == item["origin"]
+    path = tmp_path / ".state/project-sources" / (item["source"].split(":")[1] + ".json")
+    assert path.stat().st_mode & 0o777 == 0o600
+    saved = json.loads(path.read_text())
+    path.write_text(json.dumps({**saved, "text": "Wrong body."}))
+    assert cited_context(tmp_path, [{"text": "- [1] " + item["source"]}]) == {}
+
+
+def test_repository_context_shows_a_cited_note_deep_in_a_large_file(tmp_path):
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.reader_model import cited_context
+    original = "Background.\n" * 4_500 + "This dated note records the pending branch.\n"
+    item = project_pages.repository_snapshots([{
+        "role": "project-file", "snapshot_kind": "git-file", "source": "git:/repo:" + "a" * 40 + ":NOW.md",
+        "text": original, "timestamp": "2026-07-24T00:00:00Z"}])[0]
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, [item], {item["source"]}) == 1
+    context = cited_context(tmp_path, [{"text": "- [1] " + item["source"]}])[item["source"]]
+    assert "pending branch" in context["excerpt"]
+    assert not context["truncated"]
 
 
 def _page_citing(source):
@@ -231,6 +354,12 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
+    assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
+    from connectonion.rem import store
+    indexed = store._rows(world.root, "select * from projects where record = ?", ("projects/tide.md",))
+    assert indexed[0]["written"] is True
+    assert indexed[0]["name"] == "tide"
     assert queue(world.root) == [] or "projects/tide.md" not in [r["record"] for r in queue(world.root)]
     prompt = run.calls[0]
     assert "# A project page from the user's own messages" in prompt and "# A project's page" in prompt
@@ -376,6 +505,7 @@ def test_a_project_page_is_also_given_the_start_of_its_readme(tmp_path):
     Notebook(root).stub_project("projects/tide.md", "tide", [str(folder)])
     [readme] = project_pages._readme(Notebook(root).read("projects/tide.md"), NOW.isoformat())
     assert readme["source"] == f"file:{folder / 'README.md'}"                # citable by its path
+    assert "README.md" in readme["text"] and str(folder) not in readme["text"]
     assert "A swell warning tool for surfers." in readme["text"]
     assert len(readme["text"]) < project_pages.README_CHARS + 200            # the start, not the file
     Notebook(root).stub_project("projects/bare.md", "bare", [str(tmp_path / "work" / "bare")])
@@ -388,7 +518,137 @@ def test_the_material_carries_the_readme_beside_the_messages(world, monkeypatch)
     readme = {"role": "readme", "source": "file:/work/tide/README.md", "timestamp": "t", "text": "Tide."}
     monkeypatch.setattr(project_pages, "_readme", lambda page, stamp: [readme])
     items, _ = project_pages.material(world.root, "projects/tide.md")
-    assert readme in items and sum(1 for item in items if item["role"] == "user") == 1
+    packet = next(item for item in items if item["role"] == "readme")
+    assert packet["origin"] == readme["source"] and packet["text"] == readme["text"]
+    assert sum(1 for item in items if item["role"] == "user") == 1
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_only_an_accepted_project_keeps_its_cited_repository_packet(world, monkeypatch, accepted):
+    codex(world.codex / "rollout-packet.jsonl", "/work/tide", [("user", "What does Tide do?", 1)])
+    extract(world.root, world.subs)
+    item = {"role": "readme", "source": "file:/work/tide/README.md", "timestamp": "2026-10-02T01:00:00Z",
+            "text": "A swell warning tool for surfers."}
+    monkeypatch.setattr(project_pages, "_repository_evidence", lambda *args, **kwargs: [item])
+    source = project_pages.repository_snapshots([item])[0]["source"]
+    run = _fake_runner(lambda prompt: _page_citing(source if accepted else "codex:made-up:1"))
+    if accepted:
+        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        assert project_pages.repository_context(world.root, source)["excerpt"] == item["text"]
+    else:
+        with pytest.raises(RemError, match="rejected"):
+            write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        assert not list((world.root / ".state/project-sources").glob("*.json"))
+
+
+def test_project_items_keep_where_workspace_input_was_supplied():
+    item = project_pages._message_items([{"source": "codex:test:1", "timestamp": "2026-10-02T01:00:00Z",
+        "tool": "codex", "cwd": "/work/docs-site", "typed_in": "/work/platform", "text": "Add a backend API."}])[0]
+    assert item["folder"] == "/work/docs-site" and item["typed_in"] == "/work/platform"
+
+
+def test_initial_writer_can_search_fixed_implementation_and_declared_cli(tmp_path):
+    repo = tmp_path / "invoice"
+    (repo / "src/app").mkdir(parents=True)
+    (repo / "README.md").write_text("Download PDF at /api/invoice.pdf")
+    (repo / "package.json").write_text('{"bin":{"invoice-pdf":"invoice-pdf"}}')
+    (repo / "invoice-pdf").write_text("#!/bin/sh\nexec node scripts/render.ts\n")
+    (repo / "fixture.json").write_text('{"expected":"example"}')
+    (repo / "verify.sh").write_text("#!/bin/sh\nnode scripts/check.ts")
+    original = '\n  const href = "/api/invoice.pdf";\n' + "// padding\n" * 1200
+    (repo / "src/app/page.tsx").write_text(original)
+    (repo / "src/app/link.tsx").symlink_to("page.tsx")
+    (repo / ".env").write_text("PASSWORD=must-not-read")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Add invoice"], check=True)
+    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    (repo / "src/app/page.tsx").write_text("uncommitted different implementation")
+    packet = project_pages.repository_snapshots(project_pages._repository_evidence(
+        "## Paths\n- " + str(repo) + "\n", NOW.isoformat(), NOW.isoformat()))
+    code = [item for item in packet if item.get("snapshot_kind") == "git-file"]
+    assert any(item["origin"].endswith(f":{revision}:invoice-pdf") for item in code)
+    assert any(item["origin"].endswith(":fixture.json") for item in code)
+    assert any(item["origin"].endswith(":verify.sh") for item in code)
+    page = next(item for item in code if item["origin"].endswith(":src/app/page.tsx"))
+    assert len(page["text"]) > 9000 and "/api/invoice.pdf" in page["text"]
+    assert page["text"] == original
+    assert "uncommitted" not in page["text"]
+    assert not any(item["origin"].endswith(":src/app/link.tsx") for item in code)
+    assert "must-not-read" not in json.dumps(packet)
+    tree = next(item for item in code if item["origin"].endswith(":tracked-files"))
+    assert "src/app/page.tsx" in tree["text"] and "src/app/api" not in tree["text"]
+    task = tmp_path / "task"
+    task.mkdir()
+    prompt = project_pages.prompt(task, packet, task / "candidate.md")
+    assert page["text"] not in prompt and "source index" in prompt.lower()
+    index = task / "repository/index.md"
+    assert index.exists() and "src/app/page.tsx" in index.read_text()
+    assert "do not read any other file" not in prompt
+    from connectonion.rem.files import maintenance_lock
+    with maintenance_lock(tmp_path / "rem"):
+        assert project_pages.retain_repository_context(tmp_path / "rem", code, {page["source"]}) == 1
+    context = project_pages.repository_context(tmp_path / "rem", page["source"])
+    assert context["excerpt"] == page["text"].strip()[:project_pages.REPOSITORY_EXCERPT_CHARS]
+    assert context["time"] == "" and context["captured_at"] == NOW.isoformat()
+
+
+def test_written_project_paths_still_resolve_after_markdown_formatting():
+    from connectonion.rem.investigate import project_paths
+    page = "## Paths\n- `/work/invoice project` — project repository. [1]\n- /work/other [2][3]\n"
+    assert project_paths(page) == ["/work/invoice project", "/work/other"]
+
+
+def test_large_project_selection_keeps_full_descriptions_entry_and_requested_feature(tmp_path, monkeypatch):
+    repo = tmp_path / "large"
+    (repo / "pkg/rem").mkdir(parents=True)
+    for name in ("a.py", "b.py", "c.py"):
+        (repo / name).write_text("print('unrelated')\n")
+    (repo / "README.md").write_text("# Large\n" + "logo wall\n" * 400 + "Important product flow below the first prefix.\n")
+    (repo / "pyproject.toml").write_text('[project]\nname="large"\n' + "# dependencies\n" * 140
+        + '[project.scripts]\nco="pkg.main:cli"\n')
+    (repo / "pkg/main.py").write_text("def cli():\n    return 'entry'\n")
+    (repo / "pkg/rem/writer.py").write_text("def write():\n    return 'requested'\n")
+    (repo / "docs").mkdir()
+    (repo / "docs/lock.md").write_text("Later mention, supporting documentation.\n")
+    (repo / "tests").mkdir()
+    (repo / "tests/test_lock.py").write_text("def test_lock():\n    assert True\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Large source index"], check=True)
+    monkeypatch.setattr(project_pages, "IMPLEMENTATION_FILES", 4)
+    items = project_pages._repository_evidence("## Paths\n- " + str(repo) + "\n", NOW.isoformat(), NOW.isoformat(),
+                                              requests="Check REM, then lock.")
+    indexed = [item for item in items if item.get("snapshot_kind") == "git-file" and item["subject"] != "tracked-files"]
+    assert {item["subject"] for item in indexed} == {"README.md", "pyproject.toml", "pkg/main.py", "pkg/rem/writer.py"}
+    assert "Important product flow" in next(item["text"] for item in indexed if item["subject"] == "README.md")
+    assert '[project.scripts]' in next(item["text"] for item in indexed if item["subject"] == "pyproject.toml")
+
+
+def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_path, monkeypatch):
+    repo = tmp_path / "bounded"
+    repo.mkdir()
+    (repo / "a.py").write_text("# " + "x" * 300)
+    (repo / "b.py").write_text("print('second')\n")
+    (repo / "package-lock.json").write_text('{"ignored":"dependency metadata"}')
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Bounded sources"], check=True)
+    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    monkeypatch.setattr(project_pages, "IMPLEMENTATION_FILES", 1)
+    # A deliberately small byte cap for the selected body; tree uses the real retention limit.
+    monkeypatch.setattr(project_pages, "FILE_SNAPSHOT_CHARS", 256)
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert len(items) == 1  # first selected file is too large, rather than supplied partially
+    assert "0 of 2 eligible" in items[0]["text"]
+    assert "[truncated]" in items[0]["text"]  # this deliberately tiny cap also bounds the tree
+    monkeypatch.setattr(project_pages, "FILE_SNAPSHOT_CHARS", 1_000_000)
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert len(items) == 2 and "a.py" in items[0]["text"] and "b.py" in items[0]["text"]
+    assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
 
 
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
@@ -415,3 +675,82 @@ def test_a_private_folder_is_mapped_but_never_queued(world):
     assert not project_pages.private("projects/beta.md", world.notebook.read("projects/beta.md"))  # macOS temp
     from connectonion.rem.queue import order
     assert "projects/journal.md" not in [r["path"] for r in order(world.root, "projects")]
+
+def test_a_project_turn_that_writes_no_candidate_gets_one_more_turn(world):
+    """iter9 (2026-10-01): docs-site was lost to 'did not write candidate.md'
+    after the investigation path had learned to ask again; project pages run
+    their own turn and had not."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    writes = _fake_runner(lambda prompt: _page_citing(source))
+    calls = []
+
+    def run(workdir, prompt, config, stage):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return {"outcome": "natural", "result": "cannot write there", "usage": {"input_tokens": 100}}
+        return writes(workdir, prompt, config, stage)
+
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    assert len(calls) == 2 and "writable" in calls[1]
+    assert "A swell warning tool for surfers. [1]" in world.notebook.read("projects/tide.md")
+
+
+def test_full_file_retention_does_not_expand_packet_bound_or_ignore_private_tail(tmp_path):
+    from connectonion.rem.files import maintenance_lock
+    items = project_pages.repository_snapshots([
+        {'role': 'readme', 'source': 'file:/repo/README.md', 'text': 'a' * 9001},
+        {'role': 'project-file', 'source': 'file:/repo/api.ts', 'snapshot_kind': 'local-file',
+         'text': 'a' * 12000 + '\nA private plan [personal]'},
+    ])
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 0
+    assert not list((tmp_path / '.state/project-sources').glob('*.json'))
+
+
+def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
+    """1.9.1b1's first real project page was refused for one untraceable
+    citation; this writer had no repair, so the page was lost whole."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
+                                        "A swell warning tool for surfers. [1]\n\nIt pages the lifeguards. [2]")
+    page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved
+    assert "lifeguards" not in saved and "made-up" not in saved
+
+
+def test_a_written_page_citing_a_number_it_never_listed_keeps_the_rest(world):
+    """1.9.2b1 lost LayeredVisions (300 sessions, the busiest project) and
+    1.9.2b3 lost browser to 'Missing or duplicate citation': a marker with no
+    Sources line, beside a good one. The page stayed 'not investigated yet'."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
+                                        "A swell warning tool for surfers. [1][2]")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved and "[2]" not in saved
+
+
+def test_a_written_finding_resting_on_one_untraceable_citation_does_not_cost_the_page(world):
+    """1.9.2b3 refused linkedin-workshop for 'Finding has unresolved citations
+    in Insight: [11]'. This writer has no repair turn, so refusing threw away
+    every other cited section with it."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("## Open threads\n- Unknown", "## Open threads\n- Lifeguards want an SMS alert. [2]")
+    page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved
+    assert "Lifeguards" not in saved and re.search(r"## Open threads\n+- Unknown", saved)

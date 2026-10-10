@@ -90,9 +90,8 @@ def test_what_the_client_adds_to_the_user_turn_is_skipped():
         assert read(desktop(text, kinds)) is SKIPPED, kinds
 
 
-def test_a_message_with_no_kinds_is_the_clients_own():
-    """Measured: of the plain-text user-slot messages with no kinds, 13% held Chinese
-    against 64% of the typed ones. They are the harness, not the owner."""
+def test_missing_kinds_with_modern_creation_metadata_are_not_guessed_as_typed():
+    """Only the observed older turn_id-only native shape has a fallback."""
     assert read(desktop("Continue from where you left off.", kinds=())) is SKIPPED
     assert read(desktop("Continue from where you left off.", kinds=None)) is SKIPPED
 
@@ -125,6 +124,65 @@ def test_claude_code_history_imported_into_desktop_is_not_read_twice():
     assert read(bare("Merge it once CI is green.")) is SKIPPED
     cli = _codex_meta({"type": "session_meta", "payload": {"id": "c", "cwd": "/w", "originator": "codex_cli_rs"}})
     assert _codex_message(bare("Merge it once CI is green."), EVER, cli)["text"] == "Merge it once CI is green."
+
+
+def test_null_passthrough_without_id_retains_cli_requests_but_not_imports_or_workers(tmp_path):
+    def nullable(text):
+        row = bare(text)
+        row['payload']['internal_chat_message_metadata_passthrough'] = None
+        return row
+
+    rollout(tmp_path / 'rollout-cli.jsonl', [nullable('Ask Vern about the revised placement.'),
+            nullable('<environment_context>Injected repository context')],
+            meta={'originator': 'codex_cli_rs'})
+    rollout(tmp_path / 'rollout-import.jsonl', [nullable('Imported Claude history')])
+    rollout(tmp_path / 'rollout-worker.jsonl', [nullable('Parent assigned this task')],
+            meta={'source': SPAWNED})
+    batch = collect(subscription(tmp_path), {}, 20, 100_000)
+    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert batch.skipped == 3 and batch.unrecognised == 0
+
+
+def test_desktop_kinds_still_classify_messages_without_optional_id():
+    typed, injected = desktop('Keep the investor introduction.'), desktop('Injected', ('goal.internal_context',))
+    del typed['payload']['id']
+    del injected['payload']['id']
+    assert read(typed)['text'] == 'Keep the investor introduction.'
+    assert read(injected) is SKIPPED
+
+
+def test_skill_mentions_missed_by_the_old_optional_id_reader_are_recounted(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.skill_usage import usage
+
+    row = bare('Use $ship-feature for this release.')
+    row['payload']['internal_chat_message_metadata_passthrough'] = None
+    path = rollout(tmp_path / 'sessions/rollout-cli.jsonl', [row], meta={'originator': 'codex_cli_rs'})
+    root = tmp_path / 'rem'
+    stat = path.stat()
+    write_json(state_path(root, 'skill-usage.json'), {'version': 2, 'files': {
+        str(path): {'stamp': [stat.st_size, stat.st_mtime_ns], 'events': []}}})
+    report = usage({'codex': {'kind': 'codex', 'root': str(path.parent), 'enabled': True}},
+                   ['ship-feature'], root=root, days=30)
+    assert report['counts']['ship-feature']['count'] == 1
+
+
+def test_old_interactive_cli_turn_metadata_retains_intent_but_not_exec_imports(tmp_path):
+    def turn(text):
+        row = bare(text)
+        row['payload']['internal_chat_message_metadata_passthrough'] = {'turn_id': 'turn-1'}
+        return row
+
+    rollout(tmp_path / 'rollout-tui.jsonl', [turn('Ask Vern about the revised placement.'),
+            turn('<environment_context>Injected context')], meta={'originator': 'codex-tui', 'source': 'cli'})
+    rollout(tmp_path / 'rollout-exec.jsonl', [turn('Agent-generated worker prompt')],
+            meta={'originator': 'codex_exec', 'source': 'exec'})
+    rollout(tmp_path / 'rollout-import.jsonl', [turn('Imported client input')], meta={'source': 'exec'})
+    rollout(tmp_path / 'rollout-worker.jsonl', [turn('Parent-assigned task')],
+            meta={'originator': 'codex-tui', 'source': SPAWNED})
+    batch = collect(subscription(tmp_path), {}, 20, 100_000)
+    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert batch.skipped == 4 and batch.unrecognised == 0
 
 
 def test_a_row_judged_without_its_file_is_read_as_the_cli_would_write_it():
@@ -185,4 +243,117 @@ def test_skill_usage_counts_a_mention_the_way_sync_reads_the_message(tmp_path):
                    root=tmp_path / "rem", days=30)
     assert report["counts"]["ship-feature"]["count"] == 2  # the typed mention and the worker's load
     cache = json.loads((tmp_path / "rem/.state/skill-usage.json").read_text())
-    assert cache["version"] == 2  # counts cached under the old reading are recounted
+    assert cache["version"] == 4  # counts cached under the old reading are recounted
+
+
+def test_older_native_desktop_turn_only_inputs_are_read_without_importing_automation():
+    row = desktop('Find the workshop registration link.')
+    row['payload']['internal_chat_message_metadata_passthrough'] = {'turn_id': 'native-turn'}
+    result = read(row)
+    assert result['text'] == 'Find the workshop registration link.'
+    assert 'content kinds were not recorded' in result['input_scope']
+    assert read(row, {'source': 'exec'}) is SKIPPED
+    assert read(row, {'source': SPAWNED}) is SKIPPED
+    row['payload']['content'][0]['text'] = 'Automation: social review\nAutomation ID: social-review\nReview ten posts.'
+    assert read(row) is SKIPPED
+    assert read(desktop(row['payload']['content'][0]['text'])) is SKIPPED
+
+
+def test_native_desktop_voice_reads_only_explicit_input_with_its_scope():
+    text = ('<realtime_delegation>\n<input>Keep the original folder unchanged.</input>\n'
+            '<transcript_delta>assistant: I moved it.\nuser: Duplicate context.</transcript_delta>\n'
+            '</realtime_delegation>')
+    result = read(desktop(text))
+    assert result['text'] == 'Keep the original folder unchanged.'
+    assert 'voice transcription' in result['input_scope']
+    assert 'transcript delta omitted' in result['input_scope']
+    assert read(desktop(text), {'source': SPAWNED}) is SKIPPED
+    assert read(desktop(text), {'source': 'exec'}) is SKIPPED
+    assert read(desktop(text), {'originator': 'codex_cli_rs', 'source': 'cli'}) is SKIPPED
+
+
+def test_voice_tail_flush_and_unknown_wrapper_shapes_are_not_user_input():
+    for text in [
+        '<realtime_delegation><source>transcript_tail_flush</source><input>The user ended.</input>'
+        '<transcript_delta>user: Earlier input</transcript_delta></realtime_delegation>',
+        '<realtime_delegation><input>Keep it.</input></realtime_delegation>',
+        '<realtime_delegation><input>First.</input><input>Second.</input>'
+        '<transcript_delta>mixed</transcript_delta></realtime_delegation>',
+        '<realtime_delegation><input> </input><transcript_delta>assistant: generated</transcript_delta>'
+        '</realtime_delegation>',
+    ]:
+        assert read(desktop(text)) is SKIPPED
+
+
+def test_recovered_input_scope_survives_project_storage_and_investigator_evidence(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.project_material import extract, stored
+    from connectonion.rem.project_pages import material
+    from connectonion.rem.evidence import write_evidence
+
+    root, sessions = tmp_path / 'rem', tmp_path / 'sessions'
+    prepare(root)
+    Notebook(root).stub_project('projects/demo.md', 'demo', ['/work/demo'])
+    voice = desktop('<realtime_delegation><input>Keep the original folder unchanged.</input>'
+                    '<transcript_delta>assistant: Already moved.</transcript_delta></realtime_delegation>')
+    old = desktop('Find the workshop registration link.')
+    old['payload']['internal_chat_message_metadata_passthrough'] = {'turn_id': 'old-turn'}
+    rollout(sessions / 'rollout-inputs.jsonl', [voice, old])
+    extract(root, {'codex': subscription(sessions)}, full=True, now=NOW)
+    messages = stored(root, 'projects/demo.md')
+    assert len(messages) == 2 and all(message['input_scope'] for message in messages)
+    assert 'Already moved.' not in '\n'.join(message['text'] for message in messages)
+    items, _ = material(root, 'projects/demo.md', now=NOW)
+    inputs = [item for item in items if item['role'] == 'user']
+    assert {item['input_scope'] for item in inputs} == {message['input_scope'] for message in messages}
+    write_evidence(tmp_path / 'evidence', inputs)
+    evidence_files = list((tmp_path / 'evidence/codex').glob('*.md'))
+    assert len(evidence_files) == 1
+    assert all('Input scope:' in path.read_text() for path in evidence_files)
+    assert 'Input scope:' in next((root / '.state/projects').rglob('messages.md')).read_text()
+
+
+def test_reader_preserves_voice_scope_in_source_and_conversation(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path, write_json, atomic_write
+    from connectonion.rem.store import refresh
+    from connectonion.rem.reader_model import cited_context, cited_conversations
+    root = tmp_path / 'rem'
+    prepare(root)
+    record = 'projects/demo.md'
+    folder = state_path(root, 'projects/demo')
+    folder.mkdir(parents=True)
+    scope = 'Codex Desktop voice transcription; transcript delta omitted'
+    source = 'codex:session:100'
+    write_json(folder / 'state.json', {'record': record})
+    atomic_write(folder / 'messages.jsonl', json.dumps({'source': source, 'tool': 'codex', 'text': 'Keep it unchanged.',
+                 'timestamp': ago(1), 'input_scope': scope}) + '\n')
+    refresh(root)
+    context = cited_context(root, [{'text': '## Sources\n- [1] ' + source}])
+    assert context[source]['excerpt'] == 'Keep it unchanged.' and context[source]['input_scope'] == scope
+    thread = cited_conversations(root, context)[context[source]['thread']]
+    assert thread['messages'][0]['input_scope'] == scope
+
+
+def test_cited_desktop_message_keeps_a_table_cell_after_640_chars(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path, write_json, atomic_write
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    folder = state_path(tmp_path, 'projects/demo')
+    folder.mkdir(parents=True)
+    write_json(folder / 'state.json', {'record': 'projects/demo.md'})
+    source = 'codex:session:100'
+    message = 'Earlier table rows. ' * 35 + '| Last row | branch only | hard filter |'
+    atomic_write(folder / 'messages.jsonl', json.dumps({
+        'source': source, 'tool': 'codex', 'text': message,
+        'timestamp': ago(1), 'input_scope': 'Owner input only'}) + '\n')
+    refresh(tmp_path)
+
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert len(message) > 640
+    assert context['excerpt'] == message
+    assert not context['truncated']

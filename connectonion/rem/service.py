@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import socket
+import sys
 import threading
 import uuid
 from contextlib import contextmanager
@@ -376,11 +377,24 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
         # the original's --root. A copy said "Running in background" and doctor
         # said "ok schedule" for a schedule that never ran it (#1964).
         from .schedule import Launchd
-        if not Launchd().installed(root):
+        launcher = Launchd()
+        if not launcher.installed(root):
             return ("Not scheduled here — the saved schedule belongs to another notebook or was removed; "
                     "`co rem start` schedules this one"), None
+        if sys.platform == "darwin":
+            launched = launcher.describe(root)
+            if not launched["loaded"]:
+                return "Background needs attention — launchd job is not loaded; run `co rem start`", None
+            if launched.get("last_exit_code") not in (None, "0", "(never exited)"):
+                return ("Background needs attention — last launchd exit code "
+                        f"{launched['last_exit_code']}; run `co rem doctor`"), None
     if worker.get("enabled"):
         slot = next_slot(config, zone)
+        if worker.get("last_scheduled_warning") or worker.get("last_scheduled_outcome") == "failed":
+            reason = (worker.get("last_scheduled_reason") if worker.get("last_scheduled_outcome") == "failed"
+                      else worker.get("last_scheduled_warning"))
+            return ("Background needs attention — " + (reason or "the last scheduled pass failed")
+                    + "; run `co rem logs`"), slot
         return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
     return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
 
@@ -566,7 +580,7 @@ def consent_summary(root: Path) -> dict:
                           "asleep runs once on wake); co rem stop removes it"}
 
 
-def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
+def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -600,7 +614,7 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
     # notebook lock, with the one the user is watching likely to lose.
-    first_batch = run_sync(root, runner=runner) if first else None
+    first_batch = run_sync(root, runner=runner) if first and run_first_batch else None
     try:
         installed = scheduler.install(root, read_config(root))
     except RemError:
@@ -767,7 +781,12 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             record = {"outcome": "budget_exhausted", "reason": "the day's runner calls are spent"}
         # Any recorded outcome serves the slot; a refusal to start (busy) raised
         # above this line and leaves it owed for the next tick.
-        write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
+        write_json(state_path(root, "worker.json"), {
+            **worker_state(root), "last_scheduled_slot": slot.isoformat(),
+            "last_scheduled_outcome": record.get("outcome"),
+            "last_scheduled_reason": record.get("reason") or record.get("error") or "",
+            "last_scheduled_warning": record.get("warning") or "",
+        })
         return record
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
@@ -843,6 +862,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     from .runner import maintenance_instructions, run_stage
 
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
+    source_skips = []
     kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
@@ -888,6 +908,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
         else:
             batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
+        source_skips.extend({"source": name, "file": path, "reason": "processed prefix changed"}
+                            for path in batch.changed_files)
         if getattr(batch, "unreadable", False):
             unrecognised[name] = batch.unrecognised
         for item in batch.items:
@@ -917,8 +939,11 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
               # transcript format, and closed is silent. A pass that passed over a pile
               # of user-slot messages it did not recognise says so, by source.
               "unrecognised": unrecognised,
-              "warning": ("; ".join(f"{name}: {count} messages in an unfamiliar format were not read"
-                                    for name, count in unrecognised.items()) or ""),
+              "source_skips": source_skips,
+              "warning": "; ".join([*(f"{name}: {count} messages in an unfamiliar format were not read"
+                                      for name, count in unrecognised.items()),
+                                    *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "
+                                       "other sessions continue; inspect co rem logs"] if source_skips else [])]),
               "usage_by_stage": {}, "items_by_source": counts,
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None}
     path = state_path(root, f"runs/{record['id']}.json")
@@ -1070,6 +1095,10 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
+        if record["outcome"] == "completed" and record.get("changed"):
+            from .claim_changes import material_changes
+            after = {page: notebook.read(page) for page in record["changed"] if notebook.path(page).is_file()}
+            record["claim_changes"] = material_changes(before, after, record["changed"])
         record["quota"]["after"] = quota.read(config)
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
                                    - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)

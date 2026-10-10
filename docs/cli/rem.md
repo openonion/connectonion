@@ -1,14 +1,42 @@
-# co rem — current branch contract
+# co rem — 1.9.0 stable guide
 
-Updated 2026-09-24. co rem ships in the opt-in 1.8.8 previews and becomes
-long-term supported in 1.9.0 (#1664 names it first). The command surface and
-every `--help` page are the agreed design in #1656; the pages themselves live
-in `connectonion/cli/commands/rem_help.md` and a test holds them to the code.
+**Start in one command:** `co rem init` maps the last 180 days and investigates
+every eligible page. Run `co rem status` to see coverage and `co rem open` to
+read it. A refused page stays visible in the run history with its retry command.
+
+Jump to [Start here](#start-here) · [Commands](#commands) ·
+[Source controls](#source) · [Scheduling](#scheduling-and-accounting) ·
+[Reader layout](#what-the-reader-shows).
+
+Updated 2026-10-07 for stable **1.9.0**. The exact commands are
+also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
-`unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
+`unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
 
-See the [2026-09-17 progress review](rem-progress.md) for the feature inventory,
-current CI blockers and remaining work.
+## What it is
+
+**co rem enables decentralized context flow.** It connects context from your
+mail (connected with `co auth google` or `co auth microsoft`) and your local
+Codex and Claude Code sessions in linked Markdown pages about people,
+projects and tools. Those pages stay on your machine, with links back to
+the evidence. You and your agents can read and reuse them in the next task.
+Memory keeps context available over time; carrying context through your
+work is the purpose.
+
+The notebook is a folder on your machine, `~/.co/rem`. Saved mail bodies stay
+in its owner-only `.state/` and never go into a page; a model reads them only
+through the login you choose. By default it runs on your own Claude Code plan
+(Sonnet, `claude-sonnet-5-5`) and spends no OpenOnion credits. Notebooks made
+before 1.9.0a41 keep the runner saved in their `config.yaml`.
+
+What it costs, measured: the first run writes up to 16 pages at a time. An earlier
+real notebook trial wrote 198 of 242 people, project and organisation pages in
+about 25 minutes. Init has no REM page or weekly quota cap; the scheduled daily
+round still uses a 35-point budget and a 90% weekly safety floor. The model
+provider may enforce its own limits. `co rem status` shows the routine limits.
+Investigating a very large subject can still cost millions of tokens; searching
+instead of summarising is
+[#1850](https://github.com/openonion/connectonion/issues/1850).
 
 ## Coming from co wiki (1.8.8–1.8.9)
 
@@ -28,43 +56,79 @@ current CI blockers and remaining work.
 ## Start here
 
 ```bash
-co rem init                 # Build the map (no model), show your own page, then write it (one model turn)
+co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
-co rem start                # Keep it current: approve sources, turn on the daily round
+co rem start                # Reapprove changed sources or resume a stopped daily round
 ```
 
-The first run is one command (#1943). `init` is a script: it maps 90 days of
+The first run is one command (#1943). `init` first maps 180 days of
 mail and your local Codex / Claude Code sessions, saves the private mail
 material, and prints your own page's facts — who you write to most, how much
 mail, which projects you have been coding in — with the page's path, within the
-first minutes. Then, in a terminal, it writes your own page by itself: the whole
+first minutes. Then it uses the configured model to write your own page: the whole
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-Next come the 3 people you wrote to most in the last 14 days, one turn each,
-reading the run's own `--days` of their mail (not the 150 days a full
-investigation reads), and then your 3 most recently active projects, from the
-messages you typed in their Codex and Claude Code sessions (the
-`co rem projects write` pass, #1947). `--first-people N` and
-`--first-projects N` change the counts (0 for none).
+It writes a quick first pass of your page in about 4 minutes, then the whole
+page alongside the selected pages. Next come all eligible mapped people, recent
+first, each investigated from up to two years of their mail; queued projects
+already listed in the map, recent first; all pending mapped organisations; and
+installed skills from source and retained run evidence: 16 pages at a time.
+Session folders discovered after the map summary remain
+unmapped candidates during this first run. They do not silently add project
+pages or change the project count the owner just saw.
+Init rereads the retained project-message window against the current map. If
+you widen `--days`, older newly mapped folders get their existing messages;
+message IDs prevent duplicates. Daily extraction stays incremental.
+An earlier whole-notebook experiment wrote 199 of 242 pages in about 30 minutes
+and moved the Codex week by one point. A person page
+read 150 days at the time; a real contact went back 15 months, so the window is
+now two years. The mail is searched, not pasted: a wider window widens what the
+model can find, not what every turn reads. `--first-people N`,
+`--first-projects N`, `--first-orgs N` and `--first-skills N` cap a kind (0 for none).
+
+For a historical census, `co rem init --all-history --investigate-all
+--estimate-only` lists connected mail metadata since 1970 and local session
+history, then forecasts every mapped person and project without a model turn
+or body archive. Yearly mail listings still split past the provider cap; a
+timeout is retried in smaller windows and any missing day is marked incomplete.
+Completed years remain in a lower-bound map if a later connection fails; the
+failed remainder is marked incomplete and a retry may still rescan it.
+The People reader also shows one-off correspondents in a separate searchable
+directory, labelled as unreviewed contacts rather than as established people.
+`--investigate-all` also enables the historical map when used alone. Without
+`--estimate-only` it selects all eligible mapped pages without a REM quota stop.
+Each person currently retains its
+per-page source window; reading back to the first mapped message is tracked in
+draft PR #2209. An all-history map archives only the most recent 180 days of
+mail bodies; older material is fetched for a selected investigation.
 
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
-completed runs of that kind (`.state/runs/`); before there are any, the
-defaults measured on the owner's real notebook on 2026-10-01: your page 680k and
-~6 minutes (measured 678k, 6m17s), a person 425k and ~5 minutes (150k–700k), a
-project 750k and ~4.5 minutes (614k and 922k, 4–5 minutes). 1.9.0a5 said "~90k
-and about a minute" per project and wrote every project active in the window.
-The whole first run stops starting pages once it has used 5 points of the Codex
-week (half the notebook's weekly 10), or at the weekly floor. Ctrl-C stops it,
-says which pages were written, keeps the map and every page, and names the
-command that continues. It skips the model steps, with a one-line reason, when
+completed runs of that kind (`.state/runs/`); before there are any, planning
+rates from a sampled 90-day concurrent run and separate full Person/Skill reads:
+each owner turn 1.16M and ~7 minutes (quick and full are both counted), a
+person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
+120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
+interrupted, so these rates do not predict every retry or refusal. Minutes are
+wall clock: after the quick owner turn, the
+full turn and selected pages share up to 16 workers. The estimate simulates
+that queue so a slow last page is not hidden by an average. Init starts every
+selected page and keeps going after individual refusals; there is no REM quota
+gate on this foreground run. A model provider may still refuse new turns at its
+own limit. Before the first page, init runs one source-free turn against the
+selected model. If access is denied, it keeps the map and mail archive, reports
+the login or model change to make, and leaves background upkeep off. If access
+expires while pages are running, in-flight pages finish and the remaining queue
+stops. The input-token estimate includes cached tokens
+and is not weekly quota points. Ctrl-C stops it, says which pages
+were written, keeps the map and every page, and names the command that
+continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
-already written, or when there is no terminal (scripts and `--json`) unless
-`--investigate` is given. `--no-investigate` builds the map only. Older
-projects wait for `co rem projects write`; more people for
-`co rem investigate people`.
+already written. `--json` and non-terminal runs investigate by default too.
+`--no-investigate` explicitly builds the map only. Later new evidence can be
+investigated with `co rem investigate all`.
 
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
@@ -75,8 +139,10 @@ account the configured name was "Aaron x", and Outlook stamps it on every sent
 mail too; correspondents wrote "Aaron Xie". A new notebook names the file after
 you (`people/aaron-xie-….md`); an existing page keeps its path.
 
-Progress is one line per stage (updated in place in a terminal); every step is
-kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
+Progress shows the mail scan and body archive counts, then a live total bar and
+completed counts for You, People, Projects, Organisations and Skills. Each page
+prints a result line. The scan steps are kept in `.state/init-progress.log`.
+Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
 you keep: `co rem init --mine a@example.org,b@example.org`. Mailboxes init read
 are subscribed, so `co rem start`'s summary lists them as sources to read; start
@@ -92,6 +158,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co rem investigate          # What is left to investigate, by category; no model
+co rem investigate PAGE --retry-refused  # Retry a refused Person/Project/Org page on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
 co rem sync --dry-run       # Inspect pending metadata, without running a model
@@ -125,15 +192,22 @@ Piping human output does not hide the next step. Grouped help covers:
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
-`start` explicitly authorizes collection and installs background maintenance
-plus at most one unfinished-page investigation per local day when the day's
-call budget allows;
-`init` does neither. A mapped page is not an investigated or quality-approved page.
+After the first run, `init` offers the same source and schedule approval as
+`start`, then installs background maintenance without repeating the first sync.
+In a script, `init --yes` supplies that approval; without it the foreground
+result remains available and scheduling is deferred. `init --no-start` leaves
+background work off, and `init --estimate-only` never grants consent or schedules.
+If a selected page fails or is refused, init reports a nonzero exit and leaves
+nightly upkeep off until the unfinished pages are repaired.
+`start` can reapprove changed sources or resume a stopped schedule. The daily
+round investigates at most one unfinished page per local day when its call
+budget allows.
+A mapped page is not an investigated or quality-approved page.
 For an initial trial, `co rem init --days 5` investigates your page over the same
 five-day window. `investigate me --quick` is the older bounded pass: it samples
 recent evidence, takes one synthesis turn, and marks its coverage as partial.
-init no longer uses it, since #1850's evidence files let one turn search
-everything you sent.
+init uses the quick pass first so a useful owner page arrives early, then runs
+the full pass with the other selected pages.
 
 ## Installed-skill skeletons at initialization
 
@@ -209,6 +283,11 @@ not a completed run: `Current status` and `Performance` still wait for run
 evidence. Counts are cached per session file under `.state/skill-usage.json`,
 so a rerun reads only what changed.
 
+The reader calls these **skill-name matches**: invocation attempts in coding
+sessions matched by name. `Run evidence` counts retained evaluation attempts
+separately; it may show zero even when coding sessions contain name matches.
+Neither count proves that this installed version ran or that the task succeeded.
+
 Rerunning the map (`init`, `sync`'s map, or `map-skills`) moves an older
 notebook to this shape. Pages made one per copy are merged into the name's page:
 a page with written content keeps it (sections are merged line by line, citations
@@ -226,7 +305,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](../../connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -270,7 +349,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co rem init` | Discover accounts and local sources, build People/Organizations/Projects/Skills pages with no model, print your own page's facts, then (in a terminal) write your own page with one model turn. `--no-investigate` stops after the map. |
+| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, all eligible people, queued projects, pending mapped organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
 | `co rem scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co rem scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co rem scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
@@ -301,9 +380,10 @@ Every command returns a next command, including in JSON and through a pipe.
 Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before
 O Chat served that route, so the page never loaded (#1828). O Chat serves it
 since openonion/oo-chat#246; opening locally stays the default because it works
-offline and needs no Host, and the live view is asked for with `--live`. The
-route and both switches live in `connectonion/rem/reader.py` (`LIVE_WIKI_URL`,
-`LIVE_WIKI_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
+offline and needs no Host, and the live view is asked for with `--live`.
+New live links use `https://chat.openonion.ai/<address>/rem`; old `/wiki` links
+redirect to `/rem`. The route and both switches live in `connectonion/rem/reader.py` (`LIVE_REM_URL`,
+`LIVE_REM_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
 means the snapshot. If the live view says co rem is not yours, add the
 browser's address as an admin of the Host: `co trust admin add <address>`.
 
@@ -316,20 +396,24 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
-### What the reader shows (next preview candidate)
+### What the reader shows
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
+When pages already exist but no background schedule is authorized, its status
+says **Background updates off** and offers `co rem start`; the written pages
+remain available. A wholly empty notebook still says **Not started**.
 
-- **Home** opens with up to three pages changed in the latest pass, showing
-  their current context and links to their sources. An explicit page link is
-  shown as connected context; a proposed link appears separately as a question
-  for the owner to review. **Remember with REM** asks about an older page and
-  reveals what that page already says on request. **Open threads** keeps
-  *Waiting on you* (oldest first) beside *Waiting on others*. **This week**
-  follows. The last pass's counts and hypnogram are available in **How REM
-  processed the last pass** below the memories. The owner's page is pinned as
-  **You** at the top of the navigation.
+- **Home** opens with up to three pages changed in the latest pass, labeling
+  their statements as current context. A changed Project card shows its purpose
+  separately from its latest finding. When the new run log has cited Facts or
+  Contact value changes, they appear separately as old and new values. A page
+  rewrite alone is not described as a new fact. **Remember with REM** asks
+  about an older page and reveals what it says on request. **Open threads**
+  previews three items in each direction and links to the full action view.
+  **This week** follows. Compact category cards replace the long contents
+  shelves. The last pass's counts and hypnogram are available in **How REM
+  processed the last pass**. The owner's page is pinned as **You**.
 - **People, Organisations and Projects** open as a sheet: one row per page,
   the facts in columns (people: what's open next to the name, then company,
   role, email, phone, last contact, mails; status is the moon beside the
@@ -343,19 +427,33 @@ older page before showing its answer. It remains a point-in-time snapshot.
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.
-- **A page** opens on its lead, then a row with the first open thread
-  (*You owe* / *They owe*, and for how long), the last contact, and a `?`
-  when the page lists uncertainties. Its `## Facts` (or a legacy page's
-  `## Contact`) sits beside the prose as a list: every label shown, values
-  cited, a qualifier such as *mobile* as a small tag, Email, Phone and Links
-  copyable, and a missing value shown as "— not found". `## Insight` lines
-  carry *Now*, *Changed*, *At stake* or *Pattern* as a badge. History is a
-  dated spine, Sources a footnote list, and a claim number `[n]` is a chip
-  that names its source on hover or focus; three or more in a row read as
-  "3 sources". An ASCII diagram is set on a dotted plate. A page only mapped
-  from metadata says so at the top, with the one command that investigates
-  it.
-- **Search** answers first: when a person's or organisation's name matches,
+- **A page** opens on a focused status, next exchanges, compact facts, related
+  records and filterable dated Activity. Project pages add purpose and a
+  recorded decision when supported. A project opens on its current supported
+  finding; on a phone, its purpose citations remain directly openable beside
+  the displayed purpose. When only part of its queued or archived session history was read,
+  the page says how many inputs were supplied. Explicit links and unambiguous name
+  mentions make cross-page cards and backlinks; their labels distinguish a
+  link from a mention. The original prose, every Facts/Contact field,
+  Insight, History and Sources stay under the always-visible **Full memory and
+  sources** section. A claim
+  number `[n]` opens its source description and, when locally archived, an
+  original excerpt. Grouped citations keep the page compact; each numbered
+  row under Sources can also open its own original on a phone. An accepted
+  explicit investigation retains the live coding-session inputs it cites,
+  even when they were absent from the older map. Cited mail bodies show up to
+  4,096 characters, retained coding inputs up to 4,096, and repository
+  snapshots up to 65,536, with truncation
+  marked. Cited conversations show up to twelve recent archived
+  messages with the total count. Missing original bodies are labeled, never
+  replaced by a generated summary. A page only mapped from metadata says so
+  and gives the command to investigate it.
+- **Open threads** shows all supported obligations with direct record links.
+  **Memory changes** keeps cited field changes separate from page rewrites.
+  Older run logs have no claim-level comparison; they show an empty state.
+- **Search** routes common requests such as “who do I owe?”, “what changed?”
+  and “connected to Mara Ostrowski” to task views. Literal search also answers
+  first: when a person's or organisation's name matches,
   a *Best match* card gives the email, phone, last contact and what is open.
   The rest is grouped by kind, people first, one snippet a page, never a
   local path.
@@ -373,8 +471,8 @@ To see every view on an invented notebook, light and dark, desktop and phone:
 `tests/fixtures/rem_reader_notebook.py`; `--root COPY` renders a copy of a
 real notebook, and those screenshots stay local).
 
-`init` is the foreground Skill workflow. `start` remains the explicit
-background lifecycle command; initialization does not install a schedule.
+`init` is the foreground Skill workflow and offers the background schedule at
+the end. `start` remains the explicit command to resume or change that schedule.
 Map is a stage inside rem-init, not a separate model runner.
 
 Map reads known information before leaving basic fields unknown. It uses the
@@ -492,6 +590,13 @@ an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
+The first investigation saves the parsed, typed coding messages it scanned in
+the notebook's private `.state/session-windows/` directory. Later CLI runs
+check the local session files and read only changed files, then select messages
+within the requested page window. The cache contains message text and source
+IDs, but not whole tool-output transcripts. It is not included in reader
+exports. Deleting that directory forces the next investigation to rebuild it.
+
 What counts as a message you typed to Codex (#1978). Codex Desktop puts every
 message in the user slot under a metadata block, typed or injected, and says
 in `content_item_kinds` what each part is. A message whose parts are all
@@ -565,25 +670,30 @@ below is good to about one point.
   read) now counts `(input − cached input + output) / 1,000,000` points, to one
   decimal: about a million tokens the model had to read fresh or write is one
   point. A run that did move the meter counts what the meter says.
-- **Investigation has a weekly budget**, `limits.investigation_quota_points`,
-  default **10** points of the weekly window (owner, 2026-09-27). The
+- **Scheduled investigation has a weekly budget**, `limits.investigation_quota_points`,
+  default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **Manual investigation counts too** (#1842). `co rem investigate PAGE`,
-  `me` and CATEGORY runs record the meter like the round does, and their
-  points count toward the same weekly budget. A CATEGORY run stops starting
-  pages when the weekly budget is spent, when its own `--budget N` is spent, or
-  at the floor, and says which; the page in flight finishes.
-- **The first pass after init** is `co rem investigate all --budget 10`: one
-  queue over people, projects and organisations by weight (the same order the
-  round uses), until 10 points of the week are spent. `--list` shows that
+- **The initial investigation has no REM quota gate.** It attempts the whole
+  selected cohort, even when the weekly meter passes the routine budget or
+  safety floor. The runner provider can still enforce its own account limit.
+  Claude Code and other runners without a readable weekly meter show an
+  estimate; the CLI cannot claim to have measured their plan usage.
+- **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
+  `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
+  by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.
+  It stops starting pages when its explicit `--budget N` is spent or at the
+  safety floor. Pages already in flight finish.
+- **After init**, `co rem investigate all --budget 10` works whatever init left:
+  one queue over people, projects and organisations by weight (the same order
+  the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
-- **A floor protects your own coding.** No investigation page starts once the
-  week is at `limits.quota_floor_percent` or more, default **70%**, however much
-  of co rem's budget is left. co rem shares this quota with your real work.
+- **A floor protects your own coding during routine and manual runs.** These
+  start no new investigation page once the week is at
+  `limits.quota_floor_percent` or more, default **90%**. Init is the exception.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0.7 of 10 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
@@ -600,32 +710,34 @@ investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
 the run before, at most 5 pages. Both stop at the weekly budget or the floor and
-record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization currently builds the map without a model call; manual
+record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
 The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
 
-See [acceptance evidence](../testing/rem-acceptance.md).
-
-### Inspect one skill's retained run evidence
+### Investigate an installed skill
 
 ```bash
 co rem --root /path/to/rem investigate skills/catalog/example.md --eval-dir /path/to/.co/evals
 ```
 
-Skill pages dispatch to a local, deterministic collector instead of the mail/model
-investigation pipeline. Omit `--eval-dir` to use `~/.co/evals`; repeat it for
+Skill pages first collect local run evidence, then use the configured runner
+to write a cited page from the installed source instructions and those records.
+The skill is never executed merely to document it, and mail is not read. Omit `--eval-dir` to use `~/.co/evals`; repeat it for
 additional summary directories. The collector reads immediate summary YAML files
 (up to 1,000 per directory, 4 MB each), matches exact `/skill-name` inputs, and
 deduplicates retained run/turn identities. It writes a linked note containing
 inputs, retained outputs, reported tool calls, recorded evaluations and coverage.
-The skill page gets a managed `Run evidence` block; curated sections and the
-existing investigation stamp are preserved. This is evidence gathering, not
-a completed quality assessment.
+The skill page gets a managed `Run evidence` block and an `Insight` describing
+a concrete use, mismatch or limitation that changes the reader's next action.
+The map-owned source provenance is preserved. The investigation stamp records
+that the page was reviewed; it does not certify execution success. Without
+reviewed artifacts, reliability remains unverified. Unsupported optional
+sections are omitted after investigation.
 
-Counts describe observed invocation attempts, not proven starts or lifetime runs.
+Counts describe retained evaluation attempts, not proven starts or lifetime runs.
 Tool-invoked skills and other harnesses are not yet covered. Historical outputs
 may be missing, current summary model labels may not establish each run's model,
 and same-name installed copies cannot be attributed. Goal achievement and
@@ -633,14 +745,14 @@ verified changes stay unassessed until actual artifacts are checked.
 
 ### 1.8.7 integration update
 
-`co rem --root '<root>' init --days 150` now builds people, projects and installed
-skill maps deterministically. The map invokes no model. (Since #1943 init then
-writes your own page in a terminal; see Start here.)
+`co rem --root '<root>' init --days 150` first builds people, projects and installed
+skill maps deterministically. That map phase invokes no model. Current init then
+investigates the owner and selected pages, recent first; see Start here.
 Only enabled mail sources are read. Use `subscriptions` and explicit `subscribe`
 commands to select sources first. The map records counts, dates and coverage in
 `.state/map.json` and writes people/project indexes under `notes/`; it leaves
-classification unassessed. The `rem-init` Skill can subsequently rank that map.
-Run `investigate <record>` explicitly for one page.
+classification unassessed. The `rem-init` Skill runs init and checks its result.
+Use `investigate <record>` to revisit or retry one page.
 
 Investigation reads a normalized skeleton and writes a new candidate under
 `.state/tasks/`. Only a candidate with valid structure and reference definitions
@@ -649,9 +761,9 @@ establish factual correctness. Full source JSON is retained; a readable copy use
 reversible text chunks so line-limited tools can read all of it.
 
 The requirement-to-code/test checklist and remaining decisions are in
-[rem-187-checklist.md](rem-187-checklist.md). This update supersedes earlier
-references to init launching a model or investigating the owner in the same run;
-#1943 later brought back that one step, for the owner's page only, by the owner's decision.
+[rem-187-checklist.md](rem-187-checklist.md). This historical note covered the
+map stage; the current first run also investigates the owner, eligible
+people, projects, related organizations and installed skills.
 
 ### First-run People and installed Skills
 
@@ -664,15 +776,21 @@ to add People. To restrict mapping to a specific mailbox:
 co rem init --mail outlook
 # or: co rem init --mail gmail
 co rem init --days 5       # small first-run trial
+co rem init --all-history --investigate-all --estimate-only  # historical census and cost preview
 co rem open
 ```
 
-This lists 90 days of mail by default: correspondent metadata plus the short
+This lists 180 days of mail by default: correspondent metadata plus the short
 preview the provider lists with each message. A seven-day window that fills the
 provider's 200-message listing cap is split until every message in it is
-listed, so a busy week is no longer cut off at 200 without a word. Init does not
-install a schedule. It subscribes the mailboxes it read, so `start` offers them,
-but nothing is read in the background until `start` is approved.
+listed, so a busy week is no longer cut off at 200 without a word. Init offers
+the schedule after its first run and subscribes the mailboxes it read. Nothing
+is read in the background until that source and schedule summary is approved.
+
+The historical census may take several minutes and can be a lower bound when
+one mailbox is unavailable. The status and private source inventory name every
+failed mailbox or time window. A contact seen only once remains findable in the
+reader's unreviewed directory without creating an empty person page.
 
 #### Private mail materials
 
@@ -810,6 +928,10 @@ the block as a card.
   A value may be a Markdown link.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
+- `First contact` needs evidence of the relationship's beginning. The earliest
+  retained message is an observed mail date, not automatically first contact;
+  the Person writer and People index leave this fact Unknown when it cannot be
+  established.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
@@ -819,10 +941,11 @@ the block as a card.
 
 `facts.parse(page)` returns `{"Phone": [{"value": "+61 2 5550 0142",
 "qualifier": "work", "citations": ["1"]}, …], "Location": [], …}` (an empty
-list is `Unknown`), so the reader, the People table and a later database
-(#2067) read the same thing. A page written before 1.9.0a9 has `## Contact`
-instead: `facts.upgrade` renames it and adds the missing labels as `Unknown`
-the next time an investigation or maintenance writes the page; `facts.parse`
+list is `Unknown`), so the reader and indexed views (#2067) use the same
+parsed values where they display these fields. A page written before 1.9.0a9
+has `## Contact` instead: `facts.upgrade` renames it and adds the missing
+labels as `Unknown` the next time an investigation or maintenance writes the
+page; `facts.parse`
 reads either.
 
 ### Extracted before prose
@@ -1123,8 +1246,9 @@ without review.
 preparation, extraction chunk counts when the material exceeds one model turn,
 and candidate writing in its run log and terminal. A failed model or provider
 call exits nonzero and keeps the page unchanged. Project investigations may
-inspect a bounded set of files in the page's recorded local Paths; the file
-inventory is a lead, not proof of file contents. Review the candidate and its
+inspect a fixed, bounded snapshot of files collected from the page's recorded
+local Paths; the candidate file inventory is a lead, not a citable original or
+proof of file contents. Review the candidate and its
 citations before treating it as a verified notebook page.
 Completed extraction chunks are checkpointed under `.state/extracts/investigate/`;
 rerunning the same evidence and model settings can reuse them after an

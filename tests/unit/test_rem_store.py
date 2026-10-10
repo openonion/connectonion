@@ -114,11 +114,34 @@ def test_the_people_table_has_the_crm_columns_and_the_census_count(tmp_path):
     ody = next(row for row in rows if row["record"] == "people/ody.md")
     assert ody["name"] == "Ody Zhou" and ody["emails"] == ["ody@acme.test"]
     assert (ody["company"], ody["phone"], ody["role"]) == ("Acme", "+61 400 000 000", "")   # cited, Unknown is empty
-    assert ody["mails"] == 3 and ody["first_contact"] == "2026-07-01"
+    assert ody["mails"] == 3 and ody["first_contact"] == ""
     assert ody["last_contact"] == "2026-09-21"          # the page's own, later than the map's 2026-09-20
     assert ody["open_threads"] == 2 and ody["written"] and ody["listed"]
     assert [row["record"] for row in rows][0] == "people/ody.md"        # most recent contact first
     assert os.stat(state_path(root, "rem.db")).st_mode & 0o777 == 0o600
+
+
+def test_first_contact_column_needs_a_written_fact_not_the_earliest_mapped_mail(tmp_path):
+    from connectonion.rem import store
+    root = notebook(tmp_path)
+    page = Notebook(root)
+    store.refresh(root)
+    assert store.person(root, "people/ody.md")["first_contact"] == ""
+    page.write("people/ody.md", page.read("people/ody.md").replace(
+        "- First contact: Unknown", "- First contact: 2026-06-20 [1]"))
+    store.refresh(root)
+    assert store.person(root, "people/ody.md")["first_contact"] == "2026-06-20"
+
+
+def test_an_older_index_cannot_reintroduce_a_false_first_contact(tmp_path):
+    from connectonion.rem import store
+    root = notebook(tmp_path)
+    store.refresh(root)
+    with sqlite3.connect(store.db_path(root)) as db:
+        db.execute("update people set first_contact = '2026-07-01' where record = 'people/ody.md'")
+    assert store.person(root, "people/ody.md")["first_contact"] == ""
+    assert next(row for row in store.people_table(root, sort="first_contact")
+                if row["record"] == "people/ody.md")["first_contact"] == ""
 
 
 def test_a_facts_block_wins_and_every_labelled_fact_is_kept(tmp_path):
@@ -169,6 +192,24 @@ def test_a_coding_session_is_a_thread_too(tmp_path):
     store.refresh(root)
     messages = store.thread(root, "session:codex:s1", bodies=True)
     assert [m["body"] for m in messages] == ["build the parser", "now the tests"]
+
+
+def test_stale_session_line_never_returns_another_messages_body(tmp_path):
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context, cited_conversations
+    root = notebook(tmp_path)
+    store.refresh(root)
+    context = cited_context(root, [{'text': '- [1] codex:s1:1'}])
+    assert context['codex:s1:1']['excerpt'] == 'build the parser'
+    assert 'Assistant replies and tool results are not included' in context['codex:s1:1']['input_scope']
+    conversation = cited_conversations(root, context)['session:codex:s1']
+    assert all('does not verify what was completed' in row['input_scope'] for row in conversation['messages'])
+    path = state_path(root, 'projects/atlas/messages.jsonl')
+    saved = [json.loads(line) for line in path.read_text().splitlines()]
+    _jsonl(path, [{'source': 'codex:s1:new', 'text': 'Unrelated earlier input'}, *saved])
+    assert all(row['body'] is None for row in store.thread(root, 'session:codex:s1', bodies=True))
+    assert cited_context(root, [{'text': '- [1] codex:s1:1'}]) == {}
+    assert cited_conversations(root, context) == {}
 
 
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
@@ -272,6 +313,41 @@ def test_co_rem_list_people_table_prints_the_crm_columns(tmp_path):
     assert "Ody Zhou" in plain.output and "Acme" in plain.output and "Next:" in plain.output
     data = json.loads(runner.invoke(app, ["rem", "--root", str(root), "--json", "list", "people", "--table"]).output)
     assert data["data"][0]["record"] == "people/ody.md" and data["data"][0]["company"] == "Acme"
+    assert data["data"][0]["first_contact"] == ""
+
+
+def test_rem_full_gmail_window_defers_headers_until_after_split():
+    from connectonion.useful_tools.gmail import Gmail
+
+    gets = []
+
+    class Call:
+        def __init__(self, result): self.result = result
+        def execute(self, num_retries=0): return self.result
+
+    class Messages:
+        def list(self, **kw): return Call({"messages": [{"id": "a"}, {"id": "b"}]})
+        def get(self, **kw):
+            gets.append(kw["id"])
+            return Call({"payload": {"headers": []}})
+
+    class Users:
+        def messages(self): return Messages()
+
+    class Service:
+        def users(self): return Users()
+
+    gmail = Gmail.__new__(Gmail)
+    gmail._get_service = lambda: Service()
+    gmail._mailbox_get = lambda path, **kw: (
+        {"messages": [{"id": "a"}, {"id": "b"}]} if path == "messages"
+        else gets.append(path) or {"payload": {"headers": []}})
+    window = gmail.list_between_for_rem("2026-09-01T00:00:00+00:00",
+                                        "2026-09-08T00:00:00+00:00", 2)
+    assert window == [{"id": "a"}, {"id": "b"}]
+    assert gets == []
+    gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-08T00:00:00+00:00", 2)
+    assert gets == ["a", "b"]
 
 
 def test_the_provider_thread_id_reaches_the_inventory(monkeypatch):

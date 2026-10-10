@@ -1,0 +1,58 @@
+version: v1.9.1a2
+images:
+- file: before-person-desktop.png
+  alt: Person page before the contact strip (desktop)
+  caption: Email and phone sat in the Facts card further down the page.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 1440x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: before-person-phone.png
+  alt: Person page before the contact strip (phone)
+  caption: Email and phone sat in the Facts card further down the page.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 390x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: before-source-desktop.png
+  alt: Cited mail before the message view (desktop)
+  caption: A cited mail opened as metadata lines and a quote.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 1440x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: before-source-phone.png
+  alt: Cited mail before the message view (phone)
+  caption: A cited mail opened as metadata lines and a quote.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 390x900, light
+  commit: c038a12c
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: after-person-desktop.png
+  alt: Person page with the contact strip (desktop)
+  caption: Email, phone, other names, company and role sit under the headline, copyable.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 1440x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: after-person-phone.png
+  alt: Person page with the contact strip (phone)
+  caption: Email, phone, other names, company and role sit under the headline, copyable.
+  scenario: Invented fixture notebook, Mara Ostrowski's page
+  viewport: 390x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: after-source-desktop.png
+  alt: Cited mail as a message (desktop)
+  caption: The sender, address and time head the message; recipients follow; the body is a bubble.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 1440x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08
+- file: after-source-phone.png
+  alt: Cited mail as a message (phone)
+  caption: The sender, address and time head the message; recipients follow; the body is a bubble.
+  scenario: Invented fixture notebook, Mara Ostrowski's page with a mail citation opened
+  viewport: 390x900, light
+  commit: a746d94d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py; invented contacts; 2026-10-08

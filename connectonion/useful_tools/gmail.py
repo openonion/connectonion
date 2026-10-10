@@ -54,9 +54,14 @@ Example:
 
 import base64
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
+import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -68,6 +73,14 @@ from ._attachment_files import path_of_open_file
 from .gmail_mailbox import GmailMailbox
 
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
+GOOGLE_API_TIMEOUT_SECONDS = 30
+
+
+def _authorized_http(credentials: Credentials) -> AuthorizedHttp:
+    # A stalled Gmail socket blocked a real 90-day REM init indefinitely. The
+    # Google client retries timed-out reads, but only when the transport has a
+    # timeout in the first place.
+    return AuthorizedHttp(credentials, http=httplib2.Http(timeout=GOOGLE_API_TIMEOUT_SECONDS))
 
 
 
@@ -130,6 +143,7 @@ class Gmail(GmailMailbox):
             )
 
         self._service = None
+        self._local = threading.local()
         self._scopes = scopes
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
@@ -147,8 +161,11 @@ class Gmail(GmailMailbox):
         since /google/credentials returns expires_at: null when the stored row
         has no expiry. That produced 401s that looked like broken auth.
         """
-        if self._service:
-            return self._service
+        if not hasattr(self, "_local"):
+            self._local = threading.local()
+        service = getattr(self._local, "service", None)
+        if service:
+            return service
 
         self._credentials.require_configured()
         access_token = self._credentials.get("ACCESS_TOKEN")
@@ -167,8 +184,10 @@ class Gmail(GmailMailbox):
             refresh_handler=self._refresh_handler,
         )
 
-        self._service = build('gmail', 'v1', credentials=creds)
-        return self._service
+        service = build('gmail', 'v1', http=_authorized_http(creds))
+        self._local.service = service
+        self._service = service
+        return service
 
     def _token_expiry(self) -> datetime | None:
         expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
@@ -1213,8 +1232,49 @@ class Gmail(GmailMailbox):
         first, and reports the Date header in RFC 2822; co rem importer wants
         the opposite of all three, so it is normalised here.
         """
+        return self._list_between(start, end, max_results, defer_full=False)
+
+    def list_between_for_rem(self, start: str, end: str, max_results: int = 200) -> list:
+        """List REM metadata with bounded direct reads and split full windows early.
+
+        The Google SDK transport can time out before a historical scan begins.
+        REM needs the same bound and account binding as GmailMailbox's direct
+        reads, and its contact scan benefits from independent metadata calls.
+        """
+        first = int(datetime.fromisoformat(start).timestamp())
+        last = int(datetime.fromisoformat(end).timestamp())
+        page = self._mailbox_get('messages', params={
+            'q': f'after:{first} before:{last}', 'maxResults': max_results})
+        self._last_message_page = page
+        stubs = page.get('messages', [])
+        if len(stubs) >= max_results:
+            return [{'id': row['id']} for row in stubs]
+
+        def fetch(stub):
+            message = self._mailbox_get(f'messages/{quote(stub["id"], safe="")}', params={
+                'format': 'metadata',
+                'metadataHeaders': ['From', 'To', 'Cc', 'Subject', 'Date']},
+                ensure_service=False)
+            headers = message.get('payload', {}).get('headers', [])
+            def value(name):
+                return next((h['value'] for h in headers if h['name'].lower() == name), '')
+
+            cc = value('cc')
+            return {'id': stub['id'], 'thread_id': stub.get('threadId', ''),
+                    'from': value('from'), 'to': [value('to')],
+                    'cc': [cc] if cc else [],
+                    'subject': value('subject'), 'date': _iso_date(value('date'), start),
+                    'snippet': message.get('snippet', ''),
+                    'unread': 'UNREAD' in message.get('labelIds', [])}
+
+        if not stubs:
+            return []
+        with ThreadPoolExecutor(max_workers=min(8, len(stubs))) as pool:
+            rows = list(pool.map(fetch, stubs))
+        return sorted(rows, key=lambda row: (row['date'], row['id']))
+
+    def _list_between(self, start: str, end: str, max_results: int, *, defer_full: bool) -> list:
         from datetime import datetime
-        from email.utils import parsedate_to_datetime
         first = int(datetime.fromisoformat(start).timestamp())
         last = int(datetime.fromisoformat(end).timestamp())
         # co rem files the user's own mail under the person it went to, so the
@@ -1222,6 +1282,11 @@ class Gmail(GmailMailbox):
         page = self._get_service().users().messages().list(
             userId='me', q=f"after:{first} before:{last}", maxResults=max_results).execute(num_retries=3)
         self._last_message_page = page
+        # REM bisects every full window to avoid losing mail at the provider's
+        # cap. Fetching 200 headers here only to throw them away and fetch them
+        # again in the halves made a real 201-message week take minutes.
+        if defer_full and len(page.get('messages', [])) >= max_results:
+            return [{'id': message['id']} for message in page['messages']]
         rows = self._email_dicts(page.get('messages', []), max_results, recipients=True)
         # The listing names each message's conversation; co rem's thread view groups by it (#2067).
         threads = {message['id']: message.get('threadId', '') for message in page.get('messages', [])}
@@ -1232,9 +1297,8 @@ class Gmail(GmailMailbox):
 
     def my_addresses(self) -> set:
         """Primary address plus send-as aliases, lower-cased; what counts as the user's own mail."""
-        service = self._get_service()
-        addresses = {service.users().getProfile(userId='me').execute().get('emailAddress', '').lower()}
-        for alias in service.users().settings().sendAs().list(userId='me').execute().get('sendAs', []):
+        addresses = {self._mailbox_get('profile').get('emailAddress', '').lower()}
+        for alias in self._mailbox_get('settings/sendAs').get('sendAs', []):
             if alias.get('sendAsEmail'):
                 addresses.add(alias['sendAsEmail'].lower())
         return {address for address in addresses if address}
@@ -1247,7 +1311,8 @@ class Gmail(GmailMailbox):
         which co rem treats as "no contacts" rather than a failed map.
         """
         from googleapiclient.discovery import build
-        people = build('people', 'v1', credentials=self._get_service()._http.credentials, cache_discovery=False)
+        people = build('people', 'v1', http=_authorized_http(self._get_service()._http.credentials),
+                       cache_discovery=False)
         names = {}
         for listing, key, params in ((people.people().connections(), 'connections',
                                       {'resourceName': 'people/me', 'personFields': 'names,emailAddresses'}),

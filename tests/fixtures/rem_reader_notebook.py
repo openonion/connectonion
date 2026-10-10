@@ -8,6 +8,7 @@ Run logs are written relative to `now`, so "last night" is always last night.
 """
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -292,6 +293,9 @@ def _runs(now: datetime) -> list[dict]:
     runs.append({"started_at": start.isoformat(), "finished_at": (start + timedelta(minutes=22)).isoformat(),
                  "outcome": "completed", "items": 46, "sources": ["outlook", "gmail", "codex"],
                  "changed": ["people/mara-ostrowski.md", "projects/harbour.md", "orgs/fernhill-labs.md"],
+                 "claim_changes": [{"record": "people/mara-ostrowski.md", "field": "role",
+                                    "before": "Partnerships lead", "after": "Head of Partnerships",
+                                    "sources": ["2"], "kind": "revised record"}],
                  "usage": {"input_tokens": 212000, "output_tokens": 9400}, "seconds": 1320})
     return runs
 
@@ -313,10 +317,41 @@ def build(root: Path, now: datetime | None = None) -> Path:
              "first": _day(now, first), "last": _day(now, last), "one_way": False}
             for address, record, received, sent, first, last in mail]
     (root / ".state").mkdir(exist_ok=True)
-    (root / ".state" / "map.json").write_text(json.dumps({"people": rows, "owner": {"record": "people/avery-lin.md"}}))
+    other = [{"address": "leah@old-friends.example", "name": "Leah Bell", "mails": 1,
+              "sent": 1, "received": 0, "last": _day(now, 610)},
+             {"address": "ivy@fieldwork.example", "name": "Ivy Chen", "mails": 1,
+              "sent": 0, "received": 1, "last": _day(now, 390)},
+             {"address": "hello@single-note.example", "name": "", "mails": 1,
+              "sent": 1, "received": 0, "last": _day(now, 950)}]
+    (root / ".state" / "map.json").write_text(json.dumps({
+        "people": rows, "without_page": other, "all_history": True,
+        "automated_correspondents": [{"address": "notice@robot.example"}],
+        "owner": {"record": "people/avery-lin.md"}}))
     runs = root / ".state" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     for i, run in enumerate(_runs(now)):
         run["id"] = f"run_{i:032x}"
         (runs / f"{run['id']}.json").write_text(json.dumps(run))
+    # An invented archived conversation exercises source and thread drilldown.
+    # Other fixture citations deliberately have no archived body.
+    from connectonion.rem.store_build import SCHEMA, SCHEMA_VERSION
+    evidence = root / ".state" / "evidence"
+    evidence.mkdir()
+    messages = [
+        ("outlook:e4a2c1907bd3", "Mara", _day(now, 9), "Please sign the addendum before the renewal call."),
+        ("outlook:77c09ad1e3f0", "Mara", _day(now, 4), "I will send the usage export by Friday."),
+        ("gmail:0f9be4c12a55", "Mara", _day(now, 1), "Could the renewal include a fourth seat?"),
+    ]
+    with sqlite3.connect(root / ".state" / "rem.db") as db:
+        db.executescript(SCHEMA)
+        db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
+        for number, (source, sender, day, body) in enumerate(messages):
+            path = evidence / f"message-{number}.json"
+            provider, native = source.split(":", 1)
+            path.write_text(json.dumps({"provider": provider, "id": native, "body": body,
+                                       "body_format": "provider-rendered text, not original MIME"}))
+            db.execute("insert into messages (id, source, thread, sender, recipients, time, subject, body_path) "
+                       "values (?, ?, ?, ?, ?, ?, ?, ?)",
+                       (source, source.split(":")[0], "mail:fixture:harbour-renewal", sender,
+                        json.dumps(["Avery"]), day + "T09:00:00+00:00", "Harbour renewal", str(path.relative_to(root / ".state"))))
     return root

@@ -140,9 +140,14 @@ def _save_unique(directory: Path, filename: str, data: bytes) -> Path:
 class GmailMailbox:
     """Provider methods shared by Gmail's SDK and machine-readable CLI."""
 
-    def _mailbox_get(self, path: str, *, params: dict | None = None) -> dict:
+    def _mailbox_get(self, path: str, *, params: dict | None = None,
+                     ensure_service: bool = True) -> dict:
         # Reuse the bound record and broker refresh; never load a second account.
-        self._get_service()
+        # REM's parallel metadata reads follow a successful list call on this
+        # same client. Initialising a fresh SDK service in each worker would
+        # refresh the token eight times per window and discard that service.
+        if ensure_service:
+            self._get_service()
         for attempt in range(2):
             with requests.get(f'https://gmail.googleapis.com/gmail/v1/users/me/{path}',
                     params=params, headers={'Authorization': f'Bearer {self._credentials.get("ACCESS_TOKEN")}'},

@@ -1811,3 +1811,32 @@ class TestReplyAll:
         urls = [c.args[1] for c in mock_httpx.request.call_args_list]
         assert urls[0].endswith("/me/messages/msg-1/createReplyAll")
         assert urls[2].endswith("/me/messages/draft-1/send")
+
+
+def test_person_search_preserves_provider_threads_and_named_recipients(monkeypatch):
+    from connectonion.useful_tools.outlook import Outlook
+
+    client = object.__new__(Outlook)
+    requests = []
+    messages = [
+        {'id': 'older-ask', 'conversationId': 'scope-a',
+         'from': {'emailAddress': {'address': 'member@example.org'}},
+         'toRecipients': [{'emailAddress': {'name': 'Owner', 'address': 'owner@example.org'}}],
+         'ccRecipients': [{'emailAddress': {'name': 'Reviewer', 'address': 'reviewer@example.org'}}],
+         'subject': 'Scope', 'receivedDateTime': '2026-05-01T10:00:00Z'},
+        {'id': 'other-ask', 'conversationId': 'scope-b',
+         'from': {'emailAddress': {'address': 'member@example.org'}},
+         'toRecipients': [], 'ccRecipients': [],
+         'subject': 'Scope', 'receivedDateTime': '2026-05-02T10:00:00Z'},
+    ]
+
+    def graph(method, endpoint, params=None):
+        requests.append(params)
+        return {'value': messages}
+
+    monkeypatch.setattr(client, '_request', graph)
+    rows = client.list_with('member@example.org', '2026-01-01T00:00:00Z', '2026-06-01T00:00:00Z')
+    assert [r.get('thread_id') for r in rows] == ['scope-a', 'scope-b']
+    assert 'conversationId' in requests[0]['$select'].split(',')
+    assert rows[0]['to'] == ['Owner <owner@example.org>']
+    assert rows[0]['cc'] == ['Reviewer <reviewer@example.org>']

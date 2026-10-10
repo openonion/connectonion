@@ -14,11 +14,13 @@ this source.
 ## Where the user's words are
 
 `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl`, one JSONL file per
-session. Only lines with `type == "response_item"`, `payload.type == "message"`,
-`payload.role == "user"` and payload keys exactly `{role, type, content}` reach
-you; harness-injected text (AGENTS.md, replayed reviewer transcripts, goals) is
-already removed. A small batch is normal: every item is something the user
-typed.
+session. The importer recognizes native CLI and Desktop user-input shapes;
+harness context, imported history, subagents and scheduled automation prompts
+are excluded. An `input_scope` may identify an older Desktop turn without client
+content kinds, or an explicit voice transcription with the mixed transcript
+omitted. Preserve those limits: transcribed wording can contain recognition
+errors. `timestamp_scope` marks legacy session-start dates. A session folder
+is context, not proof of the product's identity.
 
 ## The store
 

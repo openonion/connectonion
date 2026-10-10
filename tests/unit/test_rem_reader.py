@@ -7,7 +7,7 @@ import pytest
 
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
-from connectonion.rem.reader import open_reader, reader_path, render, write_reader
+from connectonion.rem.reader import contact_candidates, open_reader, reader_path, render, write_reader
 
 HOSTILE = "# Alice\n\nSaid: <script>alert(1)</script> and </script><img src=x onerror=alert(2)>\n"
 
@@ -23,6 +23,33 @@ def test_render_embeds_records_and_neutralizes_markup(tmp_path):
     assert "<img src=x" not in page
     assert page.count("</script>") == page.count("<script")
     assert "as_of" in page
+
+
+def test_render_does_not_export_uncited_session_window_text(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    Notebook(tmp_path).write("people/alice.md", "# Alice\n\nA short, cited page.\n")
+    cache = state_path(tmp_path, "session-windows/example.json")
+    write_json(cache, {"items": [{"source": "codex:example:123", "text": "private uncited session marker"}]})
+
+    assert "private uncited session marker" not in render(tmp_path)
+
+
+def test_reader_lists_unreviewed_mail_contacts_without_making_empty_pages(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, "map.json"), {
+        "all_history": True, "people": [],
+        "without_page": [{"address": "leah@example.org", "name": "Leah Bell", "mails": 1,
+                          "sent": 1, "received": 0, "last": "1998-06-01", "subject": "private subject"}],
+        "errors": [{"source": "outlook", "stage": "metadata-window", "error": "ReadTimeout"}]})
+    rows, coverage = contact_candidates(tmp_path)
+    assert rows == [{"name": "Leah Bell", "email": "leah@example.org", "last": "1998-06-01",
+                     "mails": 1, "sent": 1, "received": 0}]
+    assert coverage["incomplete"] and coverage["scope"] == "all available history since 1970"
+    assert "private subject" not in render(tmp_path)
+    assert Notebook(tmp_path).list("people") == []
 
 
 def test_render_is_self_contained_with_no_remote_assets(tmp_path):

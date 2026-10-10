@@ -148,7 +148,7 @@ def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_p
     assert "In force: summary" in shown and shown.rstrip().endswith(f"Next: co rem --root {root} status")
     invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
     shown = invoke(root, "config").output
-    assert "last checked for codex gpt-7-nova" in shown
+    assert "last checked for claude-code gpt-7-nova" in shown
     # The check is named in the tier's note; Next no longer reads as "set the model" (#1974).
     assert f"co rem --root {root} config set model gpt-7-pico (one or two model calls)" in shown
     assert shown.rstrip().endswith(f"Next: co rem --root {root} status")
@@ -292,7 +292,7 @@ def test_live_with_the_host_online_opens_the_live_url(tmp_path, monkeypatch):
     result = runner.invoke(app, ["rem", "open", "--live", "--no-launch"])
     assert result.exit_code == 0, result.output
     assert asked == [OWNER] and opened == []
-    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+    assert f"https://chat.openonion.ai/{OWNER}/rem" in _plain(result.output)
 
 
 def test_live_with_the_host_reachable_only_through_the_relay_opens_the_live_url(tmp_path, monkeypatch):
@@ -302,7 +302,7 @@ def test_live_with_the_host_reachable_only_through_the_relay_opens_the_live_url(
     result = runner.invoke(app, ["rem", "open", "--live", "--no-launch"])
     assert result.exit_code == 0, result.output
     assert asked == [OWNER] and opened == []
-    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+    assert f"https://chat.openonion.ai/{OWNER}/rem" in _plain(result.output)
 
 
 def test_live_on_a_custom_root_says_why_and_opens_the_snapshot(tmp_path, monkeypatch):
@@ -379,6 +379,32 @@ def test_start_yes_then_stop(lifecycle):
     stopped = invoke(root, "stop")
     assert stopped.exit_code == 0, stopped.output
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
+
+
+def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):
+    root, sessions, calls = lifecycle
+    monkeypatch.setattr("connectonion.rem.service.run_sync", lambda *a, **kw: pytest.fail("init repeated sync"))
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("runner unavailable", "install runner"))
+    deferred = invoke(root, "--json", "init", "--no-investigate")
+    assert deferred.exit_code == 0, deferred.output
+    assert json.loads(deferred.stdout)["data"]["background"]["started"] is False
+    assert not (root / ".state" / "consent.json").exists()
+    approved = invoke(root, "--json", "init", "--no-investigate", "--yes")
+    assert approved.exit_code == 0, approved.output
+    assert json.loads(approved.stdout)["data"]["background"]["started"] is True
+    assert (root / ".state" / "consent.json").is_file()
+    assert _CliScheduler.installed[-1] == root.resolve() and calls == []
+
+
+def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
+    root, sessions, calls = lifecycle
+    _CliScheduler.installed.clear()
+    for args in (("--estimate-only", "--yes"), ("--no-investigate", "--no-start", "--yes")):
+        result = invoke(root, "--json", "init", *args)
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)["data"]["background"]["started"] is False
+    assert _CliScheduler.installed == []
+    assert not (root / ".state" / "consent.json").exists()
 
 
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):
@@ -533,7 +559,7 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)['data']
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
-    for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
+    for record in ('logs/people-map.md', 'logs/projects-map.md', 'logs/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
     assert (tmp_path / '.state/source-inventory.md').is_file()
     assert (tmp_path / '.state/source-inventory.jsonl').is_file()
@@ -546,6 +572,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
 
 def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
+    # The archive is under test, not the runner: no model turn whatever is installed.
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Claude Code is not installed', 'npm install -g @anthropic-ai/claude-code'))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -588,6 +616,8 @@ def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, mon
 
 def test_init_reports_failed_body_without_claiming_complete_archive(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
+    # The archive is under test, not the runner: no model turn whatever is installed.
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Claude Code is not installed', 'npm install -g @anthropic-ai/claude-code'))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -604,13 +634,15 @@ def test_init_reports_failed_body_without_claiming_complete_archive(tmp_path, mo
     skills = tmp_path / 'empty-skills'
     skills.mkdir()
     result = invoke(tmp_path, '--json', 'init', '--days', '1', '--skills-dir', str(skills))
-    assert result.exit_code == 1
+    # A missing body is a cache miss, not a mapping error: a real first run
+    # (2026-10-01) lost every page to 1 of 1,880 bodies timing out.
+    assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
-    assert data['phase'] == 'partial'
     assert data['mail_archive']['phase'] == 'partial'
     assert data['mail_archive']['failed'] == 1
     assert (tmp_path / '.state/mail/archive.json').exists()
-    assert any(row['source'] == 'mail-archive' for row in data['errors'])
+    assert not any(row['source'] == 'mail-archive' for row in data['errors'])
+    assert any('could not be saved' in tip for tip in data['tips'])
 
 
 def test_init_human_output_summarizes_map_instead_of_dumping_contacts():
@@ -782,6 +814,31 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'investigation_this_week', 'quota', 'investigation_quota'}
 
 
+@pytest.mark.parametrize('ordinary_pending', [False, True])
+def test_status_keeps_private_projects_mapped_without_suggesting_automatic_writes(tmp_path, monkeypatch,
+                                                                             ordinary_pending):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.stub_project('projects/journal.md', 'Journal', ['/Users/me/journal'])
+    book.stub_project('projects/atlas.md', 'Atlas', ['/Users/me/atlas'])
+    if not ordinary_pending:
+        book.note_investigation('projects/atlas.md', 'codex')
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    result = invoke(tmp_path, 'status')
+    assert result.exit_code == 0, result.output
+    assert 'Private projects 1 unwritten; write only when you name the page' in result.output
+    assert '2 projects pages not written' not in result.output
+    if ordinary_pending:
+        assert 'To write next  1 projects page not written' in result.output
+        assert result.output.rstrip().endswith(' investigate projects')
+    else:
+        assert '1 of 2' in result.output
+        assert 'To write next' not in result.output
+        assert result.output.rstrip().endswith(' start')
+    payload = json.loads(invoke(tmp_path, '--json', 'status').output)
+    assert payload['next'].endswith(' investigate projects' if ordinary_pending else ' start')
+
+
 def test_unfinished_tip_names_an_existing_page_and_preserves_root(tmp_path):
     import shlex
     root = tmp_path / 'co rem with spaces'
@@ -862,6 +919,25 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
     assert result.exit_code == 0, result.output
     assert calls == ['people/ody-123.md']
     assert result.output.rstrip().endswith('show people/ody-123.md')
+
+
+def test_retry_refused_is_forwarded_only_for_one_page(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'])
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
+    calls = []
+
+    def run(root, record, *args, **kwargs):
+        calls.append(kwargs['retry_refused'])
+        return {'record': record, 'changed': []}
+
+    monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
+    result = invoke(tmp_path, 'investigate', 'people/ody-123.md', '--retry-refused')
+    assert result.exit_code == 0, result.output
+    assert calls == [True]
+    invalid = invoke(tmp_path, 'investigate', 'people', '--retry-refused')
+    assert invalid.exit_code == 1 and 'needs one page' in invalid.output
+    assert calls == [True]
 
 
 def test_nothing_new_is_a_finished_run_not_an_error(tmp_path, monkeypatch):
@@ -1298,3 +1374,15 @@ def test_an_investigation_off_a_terminal_says_each_stage_once():
         typer.echo = original
     assert seen == ["Investigation: gathering codex sessions: 40 scanned",
                     "Investigation: gathering outlook mail (10/30)", "Investigation: writing investigation"]
+
+
+@pytest.mark.parametrize('args', [(), ('--help',)])
+def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
+    result = invoke(tmp_path / 'notebook', *args)
+    assert result.exit_code == 0, result.output
+    text = ' '.join(result.output.split())
+    assert 'Init offers nightly upkeep after the first run' in text
+    assert '--yes' in text and '--no-start' in text
+    assert 'It starts no background work' not in text
+    assert 'do not treat it as an initialization step' not in text
+    assert not (tmp_path / 'notebook').exists()

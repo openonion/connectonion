@@ -1,0 +1,46 @@
+version: v1.9.0a20
+images:
+- file: before-desktop.png
+  alt: 'Before: the invented notebook morning overview, recall prompt and source labels
+    at desktop width'
+  caption: 'Before: the invented notebook morning overview, recall prompt and source
+    labels at desktop width'
+  scenario: Real reader templates with identical invented rem_reader_notebook fixture;
+    no private notebook data
+  viewport: 1440x900, light
+  commit: c8b556d864adafed5f4ef1399be0d8341da48672
+  source_run: Playwright Chromium; before.html and after.html beside this manifest
+    record the rendered source and identical fixture.
+- file: before-phone.png
+  alt: 'Before: the invented notebook morning overview, recall prompt and source labels
+    at phone width'
+  caption: 'Before: the invented notebook morning overview, recall prompt and source
+    labels at phone width'
+  scenario: Real reader templates with identical invented rem_reader_notebook fixture;
+    no private notebook data
+  viewport: 390x844, light
+  commit: c8b556d864adafed5f4ef1399be0d8341da48672
+  source_run: Playwright Chromium; before.html and after.html beside this manifest
+    record the rendered source and identical fixture.
+- file: after-desktop.png
+  alt: 'After: the invented notebook morning overview, recall prompt and source labels
+    at desktop width'
+  caption: 'After: the invented notebook morning overview, recall prompt and source
+    labels at desktop width'
+  scenario: Real reader templates with identical invented rem_reader_notebook fixture;
+    no private notebook data
+  viewport: 1440x900, light
+  commit: ba62ec1ea5ae0bbed2041fe73341b6b995e3fa14
+  source_run: Playwright Chromium; before.html and after.html beside this manifest
+    record the rendered source and identical fixture.
+- file: after-phone.png
+  alt: 'After: the invented notebook morning overview, recall prompt and source labels
+    at phone width'
+  caption: 'After: the invented notebook morning overview, recall prompt and source
+    labels at phone width'
+  scenario: Real reader templates with identical invented rem_reader_notebook fixture;
+    no private notebook data
+  viewport: 390x844, light
+  commit: ba62ec1ea5ae0bbed2041fe73341b6b995e3fa14
+  source_run: Playwright Chromium; before.html and after.html beside this manifest
+    record the rendered source and identical fixture.

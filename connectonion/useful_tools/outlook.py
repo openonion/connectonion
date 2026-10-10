@@ -490,13 +490,22 @@ class Outlook:
                 body_content,
                 flags=re.DOTALL | re.IGNORECASE,
             )
+            # Mail tables and paragraphs carry meaning: joining their cells
+            # turned event time, cancellation reason and follow-up into one line.
+            body_content = re.sub(r'<br\b[^>]*>|</?(?:p|div|li|tr|td|th|h[1-6]|blockquote)\b[^>]*>',
+                                  '\n', body_content, flags=re.IGNORECASE)
+            # Outlook event cards put the name and role in adjacent spans.
+            body_content = re.sub(r'<span\b[^>]*>\s*(Organizer|Guest)\s*</span>',
+                                  r'\n\1', body_content, flags=re.IGNORECASE)
             # Everything that is markup, but not the `<scheme://…>` the step
             # above just wrote — `<[^>]+>` cannot tell those apart and ate the
             # very addresses it was meant to preserve.
             body_content = re.sub(r'<(?![a-zA-Z][a-zA-Z0-9+.-]*://)[^>]+>', '',
                                   body_content)
             body_content = unescape(body_content)
-            body_content = re.sub(r'\s+', ' ', body_content).strip()
+            body_content = re.sub(r'[^\S\n]+', ' ', body_content)
+            body_content = re.sub(r' *\n *', '\n', body_content)
+            body_content = re.sub(r'\n+', '\n', body_content).strip()
 
         output = [
             f"From: {from_addr}",
@@ -991,7 +1000,7 @@ class Outlook:
         params = {
             "$search": f'"participants:{address} AND received>={start[:10]}"',
             "$top": 250,
-            "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         raw, endpoint = [], "/me/messages"
         while endpoint and len(raw) < max_results:
@@ -1002,8 +1011,9 @@ class Outlook:
         raw = [m for m in raw if start <= str(m.get("receivedDateTime", "")) < end][:max_results]
         rows = self._email_dicts(raw)
         for row, msg in zip(rows, raw):
-            row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
-            row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
+            row['thread_id'] = msg.get('conversationId', '')
+            row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
+            row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
         return sorted(rows, key=lambda row: (str(row.get('date', '')), row['id']))
 
     def list_between(self, start: str, end: str, max_results: int = 200,

@@ -39,12 +39,13 @@ class SourceInventory:
                complete: bool = False) -> None:
         self.windows.append({"source": provider, "start": start, "end": end,
                              "observed": count, "limit": limit,
+                             "incomplete": not complete,
                              "possibly_truncated": count >= limit and not complete,
                              "subdivided": count >= limit and complete})
         if self.snapshot_report is not None:
             self.save(self.snapshot_report)
-        note = (" (split past the listing cap)" if count >= limit and complete else
-                " (cap reached, window incomplete)" if count >= limit else "")
+        note = (" (window incomplete)" if not complete else
+                " (split past the listing cap)" if count >= limit else "")
         self.progress(f"listed {provider} mail {start[:10]} to {end[:10]}{note}", count)
 
     def session(self, subscription: str, path: Path, stamp: datetime, cwd: str) -> None:
@@ -64,18 +65,25 @@ class SourceInventory:
         session_count = sum(row["type"] == "session" for row in self.records)
         capped = sum(row["possibly_truncated"] for row in self.windows)
         subdivided = sum(row["subdivided"] for row in self.windows)
+        incomplete = sum(row["incomplete"] for row in self.windows)
+        scope = ("all available history since 1970" if report.get("all_history")
+                 else f"last {report['days']} days")
         lines = ["# co rem source inventory", "", f"Observed at: {report['started']}",
-                 f"Window: last {report['days']} days", "",
+                 f"Window: {scope}", "",
                  f"- Mail metadata rows observed: {mail_count}",
                  f"- Local session pointers observed: {session_count}",
                  f"- Installed skill metadata entries: {len(report.get('skills', {}).get('skills', []))}",
                  f"- Mail windows at the {self.windows[0]['limit'] if self.windows else 200}-item cap: {capped}",
                  f"- Mail windows split past that cap: {subdivided}",
-                 "- Mailbox lifetime total: unknown (this is a window-limited scan)",
+                 f"- Mail windows incomplete: {incomplete}",
+                 ("- Mailbox lifetime total: observed since 1970; check incomplete windows and provider errors below"
+                  if report.get("all_history") else
+                  "- Mailbox lifetime total: unknown (this is a window-limited scan)"),
                  "- Contents: private metadata pointers only; no mail bodies, attachments, or session text", "",
                  "## Mail windows", ""]
         lines += [f"- {row['source']}: {row['start'][:10]} to {row['end'][:10]} — "
-                  f"{row['observed']} observed" + ("; possibly truncated" if row['possibly_truncated'] else
+                  f"{row['observed']} observed" + ("; incomplete, possibly truncated" if row['possibly_truncated'] else
+                                                   "; incomplete" if row['incomplete'] else
                                                    "; split past cap" if row['subdivided'] else "")
                   for row in self.windows] or ["- No connected mail source was scanned."]
         lines += ["", "## Coverage and errors", ""]
@@ -87,4 +95,5 @@ class SourceInventory:
                 "records": str(records.relative_to(self.root)),
                 "mail_observed": mail_count, "sessions_observed": session_count,
                 "capped_mail_windows": capped, "split_mail_windows": subdivided,
+                "incomplete_mail_windows": incomplete,
                 "mailbox_total": "unknown"}

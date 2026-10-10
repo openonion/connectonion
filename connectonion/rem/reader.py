@@ -15,7 +15,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import CATEGORIES, Notebook
+from .files import CATEGORIES, MAP_DAYS, Notebook
 from .service import run_logs, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
@@ -65,9 +65,37 @@ def index_rows(root: Path) -> dict:
     return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
 
 
+def contact_candidates(root: Path) -> tuple[list[dict], dict]:
+    """Mail correspondents without a memory page, plus honest scan coverage.
+
+    The map intentionally omits one-off addresses from Markdown pages. They
+    must still be findable, without pretending a header established a person.
+    Subjects and message bodies never enter the reader's directory.
+    """
+    from .files import read_json, state_path
+    mapped = read_json(state_path(root, "map.json"), {})
+    seen, rows = set(), []
+    for row in mapped.get("without_page", []):
+        address = str(row.get("address") or "").strip()
+        if not address or address.casefold() in seen:
+            continue
+        seen.add(address.casefold())
+        rows.append({"name": str(row.get("name") or ""), "email": address,
+                     "last": str(row.get("last") or ""),
+                     "mails": row.get("mails") if type(row.get("mails")) is int else 0,
+                     "sent": row.get("sent") if type(row.get("sent")) is int else 0,
+                     "received": row.get("received") if type(row.get("received")) is int else 0})
+    rows.sort(key=lambda row: (-row["mails"], row["email"].casefold()))
+    errors = [row for row in mapped.get("errors", []) if row.get("source") in ("gmail", "outlook")]
+    return rows, {"scope": "all available history since 1970" if mapped.get("all_history") else
+                   f"last {mapped.get('days', MAP_DAYS)} days", "incomplete": bool(errors),
+                   "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
+
+
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
+    from .project_pages import private
     from .reviews import listing
     notebook = Notebook(root)
     records = []
@@ -93,6 +121,10 @@ def snapshot(root: Path) -> dict:
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
+        if record["category"] == "projects":
+            record["private_project"] = private(record["path"], record["text"])
+            from .project_material import page_state
+            record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":
@@ -105,8 +137,24 @@ def snapshot(root: Path) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
+    from .reader_model import cited_context, cited_conversations, relationships
+    links = relationships(records)
+    for record in records:
+        record["relations"] = links.get(record["path"], [])
+    contexts = cited_context(root, records)
+    from .project_material import stored
+    for record in records:
+        if record["category"] != "projects":
+            continue
+        for message in stored(root, record["path"]):
+            context = contexts.get(message["source"])
+            if context:
+                context.setdefault("mapped_session_folder", message["cwd"])
+    candidates, contact_coverage = contact_candidates(root)
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
+            "contact_candidates": candidates, "contact_coverage": contact_coverage,
+            "source_context": contexts, "conversations": cited_conversations(root, contexts),
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}
@@ -169,12 +217,10 @@ def open_reader(root: Path, *, launch: bool = True) -> Path:
 
 # The live view: O Chat reads the default notebook from the owner's `co ai` Host
 # over OIP (`WIKI_READ`, #1637). The route and whether it exists live here only.
-LIVE_WIKI_URL = "https://chat.openonion.ai/{address}/wiki"
+LIVE_REM_URL = "https://chat.openonion.ai/{address}/rem"
 
-# Does O Chat serve LIVE_WIKI_URL? Yes since openonion/oo-chat#246 was deployed
-# (2026-09-27); before that /<address>/wiki was read as a chat session named
-# "rem", which is how `co rem open` came to open a page that never loads (#1828).
-LIVE_WIKI_SERVED = True
+# The /rem route is paired with O Chat; old /wiki links redirect there.
+LIVE_REM_SERVED = True
 
 # Is the live view what a bare `co rem open` opens? No, by the owner's decision
 # (2026-09-27, #1828): opening locally is the default and works offline; the
@@ -231,11 +277,11 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         return open_snapshot(root, launch=launch, live=(
             f"your Host {address[:10]}... is not online, so the live view would not load. "
             "Start it with `co ai`, then run `co rem open --live` again"))
-    url = LIVE_WIKI_URL.format(address=address)
+    url = LIVE_REM_URL.format(address=address)
     if launch:
         webbrowser.open(url)
     result = {"page": url, "link": url, "launched": launch}
-    if not LIVE_WIKI_SERVED:
+    if not LIVE_REM_SERVED:
         result["warning"] = ("O Chat does not serve this route yet (openonion/oo-chat#246); "
                              "until it is deployed the page opens as an empty chat")
     return result

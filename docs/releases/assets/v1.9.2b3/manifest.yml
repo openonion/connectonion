@@ -1,0 +1,30 @@
+version: v1.9.2b3
+images:
+- file: before-project-phone.png
+  alt: A project's Sources and Facts in 1.9.2b1 on a phone
+  caption: "The Facts label column was 80px wide, so REPOSITORY and ORGANISATION broke mid-word."
+  scenario: Invented notebook (Harbour project, fernhill.example) with an unfilled Facts list
+  viewport: 390x844, light
+  commit: 229d4382
+  source_run: Chrome capture of an invented notebook rendered by the 1.9.2b1 reader; 2026-10-10
+- file: after-project-phone.png
+  alt: The same project in 1.9.2b3 on a phone
+  caption: The label column sizes to the longest label word; every label sits on one line.
+  scenario: Invented notebook (Harbour project, fernhill.example) with an unfilled Facts list
+  viewport: 390x844, light
+  commit: aef224de
+  source_run: Chrome capture of the same invented notebook rendered by the 1.9.2b3 reader; 2026-10-10
+- file: before-skill-phone.png
+  alt: A skill page's Sources and Usage in 1.9.2b1 on a phone
+  caption: "A 64-character run-record id filled three lines of the Sources list."
+  scenario: Invented notebook (weekly-brief skill) with one run-record source
+  viewport: 390x844, light
+  commit: 229d4382
+  source_run: Chrome capture of an invented notebook rendered by the 1.9.2b1 reader; 2026-10-10
+- file: after-skill-phone.png
+  alt: The same skill page in 1.9.2b3 on a phone
+  caption: "The id shows its first 12 characters with an ellipsis (full id on hover), and Usage says co ai runs are counted."
+  scenario: Invented notebook (weekly-brief skill) with one run-record source
+  viewport: 390x844, light
+  commit: aef224de
+  source_run: Chrome capture of the same invented notebook rendered by the 1.9.2b3 reader; 2026-10-10

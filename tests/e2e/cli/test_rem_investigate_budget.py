@@ -81,25 +81,25 @@ def test_a_budget_stops_new_pages_once_this_run_has_spent_it(tmp_path, monkeypat
 def test_nothing_starts_once_the_week_is_at_the_floor(tmp_path, monkeypatch):
     root = _notebook(tmp_path)
     _queue(monkeypatch, {"people": [("people/ada.md", 3)]})
-    state = {"used": 70, "done": []}
+    state = {"used": 90, "done": []}
     _meter(monkeypatch, state)
     result = invoke(root, "--json", "investigate", "people", "--days", "5")
     assert result.exit_code == 0, result.output
     assert state["done"] == []
-    assert "70%" in json.loads(result.stdout)["data"]["stopped"]
+    assert "90%" in json.loads(result.stdout)["data"]["stopped"]
 
 
 def test_the_weekly_budget_already_spent_stops_a_category_run(tmp_path, monkeypatch):
     root = _notebook(tmp_path)
     _queue(monkeypatch, {"people": [("people/ada.md", 3)]})
-    state = {"used": 30, "done": []}
+    state = {"used": 45, "done": []}
     resets = _meter(monkeypatch, state)
     week = {"window_minutes": WEEK, "resets_at": resets}
     write_json(state_path(root, "runs/run_earlier.json"), {
         "id": "run_earlier", "started_at": "2099-01-01T00:00:00+00:00", "phase": "investigate",
-        "quota": {"before": {**week, "used_percent": 10}, "after": {**week, "used_percent": 20}}})
+        "quota": {"before": {**week, "used_percent": 10}, "after": {**week, "used_percent": 45}}})
     result = invoke(root, "--json", "investigate", "people", "--days", "5")
-    assert state["done"] == []
+    assert state["done"] == []  # 35 points spent: the default weekly budget
     assert "weekly budget" in json.loads(result.stdout)["data"]["stopped"]
 
 

@@ -10,17 +10,28 @@ import hashlib
 import json
 import os
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
+from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
+# Shared by every page in flight, one pool per mailbox: Gmail takes many
+# concurrent reads; Microsoft Graph allows four per mailbox (8 drew HTTP 429). One shared
+# 10 left half of a 10-page init waiting on mail (2026-10-08).
+MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threading.BoundedSemaphore(4)}
+
+
+def _fetch_slot(kind: str):
+    return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
 DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 DOMAIN_RESULTS = 10_000
 
@@ -87,7 +98,8 @@ def _forget_refusal(root: Path, record: str) -> None:
 def _refused_again(record: str, subject: str, refusal: dict) -> NothingNew:
     return NothingNew(f"Nothing new since this material was refused on {refusal['at'][:10]} for {subject} "
                       f"({refusal.get('why', '')}). No model was called; {record} is unchanged and waits for "
-                      "newer material.")
+                      f"newer material. To try these sources again, run "
+                      f"`co rem investigate {record} --retry-refused`.")
 
 
 def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
@@ -100,6 +112,13 @@ def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool =
     return NothingFound(f"Not written: {why} for {subject} ({searched or 'no source searched'}). {record} "
                         f"was not changed and is not marked investigated. Name another address or name with "
                         f"`co rem investigate {target} --handle {handle}`.", usage)
+
+
+def org_domains(text: str) -> list[str]:
+    """Mail domains from the page, even after its title becomes a company name."""
+    section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
+    values = [line[2:].split()[0].casefold() for line in section.splitlines() if line.startswith("- ") and line[2:].strip()]
+    return sorted({match[1] for value in values if (match := DOMAIN_HANDLE.fullmatch(value))})
 
 
 def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int = 40) -> list[str]:
@@ -117,9 +136,7 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
     for org in notebook.list("orgs"):
         text = notebook.read(org)
         title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), org)
-        section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
-        domains = [re.sub(r"\s*\[W?\d+\].*$", "", line[2:]).strip().casefold()
-                   for line in section.splitlines() if line.startswith("- ")]
+        domains = org_domains(text)
         if record.startswith("projects/"):
             found.append(f"{org} — {title}")
             continue
@@ -130,33 +147,81 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
     return found[:limit]
 
 
-def quick_evidence(items: list[dict], *, max_items: int = 24,
-                   chars_per_item: int = 2500) -> list[dict]:
-    """A bounded first look, with source diversity and recent items.
+WEBSITE_PAGES = 3
+WEBSITE_CHARS = 12_000
+WEBSITE_LINK = re.compile(r"\[([^\]]{1,80})\]\((https?://[^)\s]+)\)")
+WEBSITE_WORDS = re.compile(r"about|company|who-we-are|what-we-do|product|platform|solution|service|team|people", re.I)
 
-    This is explicitly partial evidence. A quick onboarding turn should not
-    quietly spawn a sequence of expensive extraction agents for the owner.
+
+def website_items(domains: list[str], fetch=None) -> tuple[list[dict], list[str]]:
+    """Enrich (#2315): what an organisation says about itself, from its own site.
+
+    The home page of each mail domain and up to three of its own about,
+    product, service or team pages, as citable public sources. A site that
+    cannot be read is a coverage note, not the page's end.
     """
-    latest = list(reversed(items))
-    chosen, seen = [], set()
-    for item in latest:
-        source = item.get("source", "").split(":", 1)[0]
-        if source not in seen:
-            chosen.append(item)
-            seen.add(source)
-    for item in latest:
-        if len(chosen) >= max_items:
-            break
-        if item not in chosen:
-            chosen.append(item)
-    selected = []
-    for item in sorted(chosen[:max_items], key=lambda row: row["timestamp"]):
-        copy = dict(item)
-        body = copy.get("text", "")
-        if len(body) > chars_per_item:
-            copy["text"] = body[:chars_per_item] + "\n[truncated for quick first-pass review]"
-        selected.append(copy)
-    return selected
+    from urllib.parse import urlparse
+
+    import httpx
+
+    from ..useful_tools.page_fetch import FetchError, fetch_page
+    fetch = fetch or fetch_page
+    items, coverage = [], []
+    now = datetime.now(timezone.utc).isoformat()
+    for domain in domains:
+        try:
+            home = fetch(f"https://{domain}/")
+        except (FetchError, httpx.HTTPError) as error:
+            coverage.append(f"web: https://{domain}/ could not be read ({type(error).__name__})")
+            continue
+        host = urlparse(home["url"]).netloc
+        links = [url for text, url in WEBSITE_LINK.findall(home["markdown"])
+                 if urlparse(url).netloc == host and WEBSITE_WORDS.search(url + " " + text)]
+        pages = [home]
+        for url in list(dict.fromkeys(links))[:WEBSITE_PAGES]:
+            try:
+                pages.append(fetch(url))
+            except (FetchError, httpx.HTTPError):
+                continue
+        for page in pages:
+            if page.get("redirect") or not page.get("markdown"):
+                continue
+            items.append({"role": "website", "source": page["url"], "timestamp": now, "captured_at": now,
+                          "subject": page.get("title", ""), "speaker": host,
+                          "text": "Public web page, the organisation's own words, fetched " + now[:10]
+                                  + ":\n\n" + page["markdown"][:WEBSITE_CHARS]})
+        coverage.append(f"web: read {sum(1 for i in items if urlparse(i['source']).netloc == host)} page(s) of {host}")
+    return items, coverage
+
+
+def org_contact_context(notebook: Notebook, record: str) -> dict:
+    """Other domain pages sharing a canonical contact: leads to verify, not identity proof."""
+    if not record.startswith("orgs/"):
+        return {"domains": [], "addresses": [], "candidates": []}
+    rows = read_json(state_path(notebook.root, "map.json"), {}).get("orgs", [])
+    own = next((row for row in rows if row.get("record") == record), {})
+    people = set(own.get("people", []))
+    roster = {person["path"]: person for person in notebook.people()} if people else {}
+    candidates, addresses = [], set()
+    for row in rows:
+        shared = people.intersection(row.get("people", []))
+        other = row.get("record")
+        if not shared or not other or other == record or not notebook.path(other).is_file():
+            continue
+        domains = row.get("domains") or [row.get("domain", "")]
+        contacts = [{"record": person, "addresses": [email for email in roster.get(person, {}).get("emails", [])
+                     if on_domains({"from": email}, domains)]} for person in sorted(shared)]
+        found = {email for contact in contacts for email in contact["addresses"]}
+        if found:
+            addresses.update(found)
+            candidates.append({"record": other, "domains": domains, "shared_contacts": contacts})
+    return {"domains": own.get("domains") or ([own["domain"]] if own.get("domain") else []),
+            "addresses": sorted(addresses), "candidates": candidates}
+
+
+def quick_evidence(items: list[dict]) -> list[dict]:
+    """Keep every gathered original for the quick writer's one model turn."""
+    return list(items)
 
 
 def project_paths(page: str) -> list[str]:
@@ -170,7 +235,10 @@ def project_paths(page: str) -> list[str]:
 
 
 def _listed_path(line: str) -> str:
-    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip()) if line.startswith("- /") else ""
+    quoted = re.match(r"^- `(/[^`]+)`(?:\s|$)", line)
+    if quoted:
+        return quoted[1]
+    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip().split(" — ", 1)[0]) if line.startswith("- /") else ""
 
 
 def collapse_worktree_paths(page: str) -> str:
@@ -215,7 +283,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
             dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
                              and not (Path(current) / d).is_symlink()) if depth < 4 else []
             for name in sorted(files):
-                if name.startswith(".") or Path(name).suffix.lower() not in suffixes:
+                if name.startswith(".") or (Path(name).suffix.lower() not in suffixes and name != "package.json"):
                     continue
                 if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
                     continue
@@ -237,19 +305,22 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
 
 
 def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
-    """The summary tier's project evidence: Python reads the files an agent would open.
-
-    A plain model cannot open the inventory's files itself, so their text is
-    handed over, within the agent's own bound of twelve files. Each file is
-    its own source, cited by its path.
-    """
+    """Bounded file snapshots; capture time is separate from file modification time."""
     items = []
     for name in paths[:max_files]:
         path = Path(name)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        items.append({"role": "project-file", "source": name, "file": name,
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            raw = handle.read(chars_per_file + 1)
+        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        truncated = len(raw) > chars_per_file or len(text) > chars_per_file
+        captured = datetime.now(timezone.utc).isoformat()
+        items.append({"role": "project-file", "source": "file:" + name, "file": name,
+                      "snapshot_kind": "local-file", "captured_at": captured,
                       "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
-                      "text": text[:chars_per_file] + ("\n[truncated]" if len(text) > chars_per_file else "")})
+                      "timestamp_scope": "File modification time, not project activity or release time.",
+                      "input_scope": ("Local file snapshot, " + ("bounded prefix" if truncated else "complete supplied file")
+                                      + "; files do not verify tests, publication or deployment."),
+                      "text": text[:chars_per_file] + ("\n[truncated]" if truncated else "")})
     return items
 
 
@@ -317,7 +388,7 @@ def _newest_session(root: Path, record: str, page: str) -> str:
     return max([*seen, str(page_state(root, record).get("last_activity") or "")[:10]])
 
 
-def _patient(call, *args, attempts: int = 4):
+def _patient(call, *args, attempts: int = 5):
     """One transient timeout must not end a ten-minute gather.
 
     The owner's first investigation died on the 300th body fetch with a
@@ -331,11 +402,26 @@ def _patient(call, *args, attempts: int = 4):
             return call(*args)
         except Exception as error:  # noqa: BLE001 -- the providers raise their own timeout types
             name = type(error).__name__.lower()
-            transient = any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
+            # Graph's HTTP 429 lost UNSW's page on a 16-worker init (2026-10-08): throttling waits, it does not fail.
+            throttled = getattr(error, "status", None) == 429 or "HTTP 429" in str(error)
+            transient = throttled or any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
                 or "timed out" in str(error).lower()
             if not transient or attempt == attempts - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2 ** attempt * (5 if throttled else 1))
+
+
+def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None) -> str:
+    if root is not None:
+        # Already kept (the first-run archive, or a background backfill): read
+        # it from disk instead of asking the provider again.
+        from .mail_archive import message_path, observed_message_path
+        for path in (message_path(root, kind, message_id), observed_message_path(root, kind, message_id)):
+            body = read_json(path, {}).get("body") if path.is_file() else None
+            if isinstance(body, str):
+                return body
+    with _fetch_slot(kind):
+        return _patient(client.get_email_body, message_id)
 
 
 def _download(client, email_id: str, folder: str):
@@ -351,6 +437,23 @@ def _download(client, email_id: str, folder: str):
     if "all_attachments" in parameters:
         return client.download_attachments(email_id, folder, all_attachments=True)
     return client.download_attachments(email_id, folder)
+
+
+def _attachment_files(client, kind: str, message_id: str, attachments_dir: Path) -> tuple[str, list[str], str]:
+    """A message's saved attachments, asking the provider only the first time."""
+    short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+    folder = attachments_dir / kind / short
+    done = folder / ".fetched"
+    if done.is_file():
+        return short, sorted(str(p) for p in folder.iterdir() if p.is_file() and p.name != ".fetched"), ""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        with _fetch_slot(kind):
+            paths = _saved_paths(_patient(_download, client, message_id, str(folder))) or []
+    except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
+        return short, [], type(error).__name__
+    done.touch()
+    return short, paths, ""
 
 
 def _saved_paths(result) -> list[str]:
@@ -405,10 +508,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
-        archived = person_material(archive_root, record)
+        archived = person_material(archive_root, record, handles=handles)
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
-        archived = domain_material(archive_root, domains)
+        archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
@@ -418,12 +522,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     # the bodies it holds and the mailbox is still listed, but nothing saved is
     # fetched again: 2,693 of 3,152 were saved and went unread (#2042).
     complete, share = True, ""
+    complete_kinds = set(cached_by_provider)
     if archived and archive_root is not None:
         from .files import read_json, state_path
         from .mail_archive import saved_share
         manifest = read_json(state_path(archive_root, "mail/archive.json"), {})
         own_addresses.update(address.casefold() for address in manifest.get("owner_addresses", []))
         complete = manifest.get("phase") == "complete"
+        complete_kinds = set(manifest.get("providers", [])) if complete else set()
         if not complete:
             on_disk, target = saved_share(archive_root, manifest)
             share = f" ({on_disk:,} of {target:,} bodies saved so far)"
@@ -449,41 +555,36 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 local.append(item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
-        if quick:
-            local = sorted(local, key=lambda item: item["timestamp"])[-12:]
         items.extend(local)
         attached = 0
 
-        def add_attachments(message_id: str, sender: str, stamp: str, subject: str) -> None:
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
+                            fetched=None) -> None:
             nonlocal attached
             if attachments_dir is None or not hasattr(client, "download_attachments"):
                 return
             from .attachments import extract_text
-            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
-            folder = attachments_dir / kind / short
-            try:
-                folder.mkdir(parents=True, exist_ok=True)
-                paths = _saved_paths(_patient(_download, client, message_id, str(folder)))
-            except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-                paths = []
-                coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
-            for saved in paths or []:
+            short, paths, error = fetched or _attachment_files(client, kind, message_id, attachments_dir)
+            if error:
+                coverage.append(f"{kind}:{short}: attachments could not be saved ({error})")
+            for saved in paths:
                 attached += 1
                 items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
                               "subject": f"{subject} — {Path(saved).name}",
                               "text": extract_text(Path(saved), limit=None), "file": saved,
-                              "source": f"{kind}:{short}:{Path(saved).name}"})
+                              "source": f"{kind}:{short}:{Path(saved).name}",
+                              **({"relationship_scope": scope} if scope else {})})
 
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
-        if archived and kind in cached_by_provider and complete:
+        if archived and kind in cached_by_provider and kind in complete_kinds:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
             intervals += ([(max(start, cached_end), end)] if cached_end < end else [])
             intervals = [(begin, finish) for begin, finish in intervals if begin < finish]
         if archived and kind in cached_by_provider:
             covered_kinds.add(kind)
         hit, taken = [], set(seen)
-        searched = f"{len(local)} loaded from private init archive{share}"
+        searched = f"{len(local)} loaded from private mail archive{share}"
         if client is None:
             if intervals:
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
@@ -491,8 +592,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
                                 "attachments unavailable without provider")
             continue
-        for item in local:
-            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
+        # One server call per archived mail, in sequence, was most of a heavy
+        # page's 15-minute gather (2026-10-08); fetched once, then read from disk.
+        if attachments_dir is not None and hasattr(client, "download_attachments") and local:
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                found = pool.map(lambda item: _attachment_files(client, kind, item["_mail_id"], attachments_dir), local)
+                for item, fetched in zip(local, found):
+                    add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
+                                    item.get("relationship_scope", ""), fetched)
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
@@ -509,7 +616,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     rows = [r for term in terms
                             for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
                                                term, begin.isoformat(), finish.isoformat()) or [])
-                            if _matches(r, handles, mine)]
+                            if on_domains(r, domains) or set(participants(r)).intersection(emails)]
                 except ProviderCredentialError as error:
                     # One mailbox failing is that mailbox's gap, not the page's:
                     # a Graph 500 used to end the whole investigation before
@@ -533,7 +640,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     if progress:
                         progress(kind, stop, len(rows))
                     cursor = stop
-                rows = [r for r in rows if _matches(r, handles, mine)]
+                rows = [r for r in rows if (on_domains(r, domains) or set(participants(r)).intersection(emails)
+                        if domains else _matches(r, handles, mine))]
                 searched += f"; scanned {len(rows)} matched mails"
             for row in rows:
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
@@ -547,24 +655,40 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
-        if quick:
-            mail_to_read = mail_to_read[-12:]
-        for number, r in enumerate(mail_to_read, 1):
-            body = _patient(client.get_email_body, r["id"])
-            head, _, rest = body.partition("--- Email Body ---")
-            body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
-            own = _address(r["from"]) in mine or "@" not in _address(r["from"])
-            short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-            items.append({"role": "user" if own else "other", "speaker": r["from"],
-                          "text": body, "timestamp": str(r["date"]),
-                          "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
-            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""))
-            if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
-                stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
+        with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
+            bodies = pool.map(partial(_mail_body, client, kind=kind, root=archive_root),
+                              (row["id"] for row in mail_to_read))
+            for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
+                provenance = {}
+                if archive_root is not None:
+                    from .mail_archive import retain_message
+                    saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
+                    body = saved["body"]
+                    provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
+                    if saved.get("fetched_at"):
+                        provenance["captured_at"] = saved["fetched_at"]
+                    r = {**r, **{key: saved[key] if key in saved else r.get(key)
+                                for key in ("date", "from", "to", "cc", "subject")}}
+                head, _, rest = body.partition("--- Email Body ---")
+                body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                own = _address(r["from"]) in mine or "@" not in _address(r["from"])
+                short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
+                scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+                thread = r.get("thread_id") or r.get("thread") or ""
+                items.append({"role": "user" if own else "other", "speaker": r["from"],
+                              "text": body, "timestamp": str(r["date"]),
+                              "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
+                                               for key in ("from", "to", "cc")},
+                              "subject": r.get("subject", ""), "source": f"{kind}:{short}",
+                              **provenance,
+                              **({"thread": f"mail:{kind}:{thread}"} if thread else {}),
+                              **({"relationship_scope": scope} if scope else {})})
+                add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
+                if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
+                    stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
-                        + (" (recent quick sample)" if quick else "")
-                        + (f", {len(local)} of them from the private init archive" if local else "")
+                        + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments read")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:
@@ -592,7 +716,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             coverage.append(f"{name}: source directory unavailable, not searched")
             continue
         scoped = {**sub, "enabled": True, "consented": True, "since": start.isoformat()}
-        cursor, scanned, picked = {}, 0, []
+        scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
         read = collect_chat if chat else collect
 
@@ -607,36 +731,201 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if chat:
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
-        told = 0
         try:
-            while True:
-                batch = read(scoped, cursor, 40, 200_000)
-                scanned += len(batch.items)
-                picked.extend(i for i in batch.items if related(i))
-                if batch.progress == cursor:
-                    break
-                cursor = batch.progress
-                # The count goes in the line itself: the CLI prints a count only
-                # beside a total, and sessions have none, so a real run printed
-                # 24 identical lines. A batch that added nothing is not news.
-                if stage_progress and scanned > told:
-                    told = scanned
-                    stage_progress(f"gathering {name} {'chats' if chat else 'sessions'}: {scanned:,} scanned", scanned)
+            window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}",
+                                               stage_progress, archive_root)
+            scanned, picked = len(window), [i for i in window if related(i)]
+            if unfamiliar:
+                coverage.append(f"{name}: {unfamiliar} user-slot message(s) in an unfamiliar format were not read")
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
-        if quick:
-            picked = picked[-12:]
+        if record.startswith("projects/") and not chat:
+            picked, withheld = _project_session_inputs(window, picked, subject)
+            if withheld:
+                coverage.append(f"{name}: {withheld} unnamed follow-up(s) withheld: earlier user input "
+                                "in the same session used another project folder")
+        legacy = sum(bool(item.get("timestamp_scope")) for item in picked)
+        if legacy:
+            coverage.append(f"{name}: {legacy} related legacy message(s) have only a session-start date; "
+                            "individual message times were not recorded")
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
                         f"{len(picked)} read"
-                        + (" (recent quick sample)" if quick else "")
                         + (" (account owner's own messages)" if is_owner or (chat and sent_only)
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
+    if archive_root is not None:
+        from .mail_archive import mail_metadata
+        threads = {f"{row['source']}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}":
+                   f"mail:{row['source']}:{row['thread']}" if row.get("thread") else ""
+                   for row in mail_metadata(archive_root)}
+        for item in items:
+            if item.get("source") in threads:
+                item.pop("thread", None)
+                if threads[item["source"]]:
+                    item["thread"] = threads[item["source"]]
     for item in items:
         item.pop("_mail_id", None)
     return items, coverage
+
+
+def _project_session_inputs(window: list[dict], picked: list[dict], subject: str) -> tuple[list[dict], int]:
+    """Withhold unnamed follow-ups after the same session used another project folder."""
+    sessions = {}
+    for item in window:
+        source = str(item.get("source", ""))
+        if item.get("role") == "user" and source.rpartition(":")[2].isdigit():
+            sessions.setdefault(source.rpartition(":")[0], []).append(item)
+    named = re.compile(rf"(?<!\w){re.escape(subject.strip())}(?!\w)", re.IGNORECASE)
+    kept = []
+    for item in picked:
+        source = str(item.get("source", ""))
+        session, _, offset = source.rpartition(":")
+        crossed = offset.isdigit() and any(
+            int(row["source"].rpartition(":")[2]) < int(offset)
+            and row.get("project") and row.get("project") != item.get("project")
+            for row in sessions.get(session, []))
+        if not crossed or named.search(item.get("text", "")):
+            kept.append(item)
+    return kept, len(picked) - len(kept)
+
+
+# Share non-persisted windows within one run. Real notebook investigations use
+# the disk-backed session window below and check for changed files on each call.
+_WINDOWS: dict = {}
+_WINDOWS_LOCK = threading.Lock()
+SESSION_REUSE_SECONDS = 600
+
+
+def _window_items(read, scoped: dict, label: str, stage_progress=None,
+                  archive_root: Path | None = None) -> tuple[list[dict], int]:
+    """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
+    if read is collect and archive_root is not None:
+        with _WINDOWS_LOCK:
+            return _session_window(scoped, label, stage_progress, archive_root)
+    key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
+    with _WINDOWS_LOCK:
+        kept = _WINDOWS.get(key)
+        if kept and time.monotonic() - kept[0] < SESSION_REUSE_SECONDS:
+            return kept[1]
+        items, cursor, told, unfamiliar = [], {}, 0, 0
+        while True:
+            # This is a full-window gather, not a model input batch. Tiny batches
+            # repeatedly re-hash large rollout prefixes while retaining the same
+            # eventual window in memory.
+            batch = read(scoped, cursor, 4_000, 20_000_000)
+            items.extend(batch.items)
+            unfamiliar += getattr(batch, 'unrecognised', 0)
+            if batch.progress == cursor:
+                break
+            cursor = batch.progress
+            # The count goes in the line itself: the CLI prints a count only
+            # beside a total, and sessions have none, so a real run printed
+            # 24 identical lines. A batch that added nothing is not news.
+            if stage_progress and len(items) > told:
+                told = len(items)
+                stage_progress(f"gathering {label}: {told:,} scanned", told)
+        result = items, unfamiliar
+        _WINDOWS[key] = (time.monotonic(), result)
+        return result
+
+
+SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it accepts.
+# A first run is hours long; re-verifying every rollout each ten minutes held all
+# its workers behind one three-minute scan. Half an hour stale is fine for it.
+SESSION_MEMO_SECONDS = 1800
+SESSION_WIDEST_DAYS = 730  # the longest window a first run asks of coding sessions
+
+
+def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
+    """Reuse typed session messages across CLI runs; collect reads only changed files.
+
+    Within one run the window is kept in memory for SESSION_MEMO_SECONDS: even
+    unchanged, collect re-hashes every rollout's prefix to catch a rewrite, about
+    three minutes on the owner's Mac, and each of a 16-worker init's people paid
+    it in turn under the lock (1.9.1b3: 350 of a 363-second gather).
+    """
+    identity = json.dumps({key: value for key, value in scoped.items() if key != "since"},
+                          sort_keys=True, default=str)
+    memo = ("session-window", str(root), identity)
+    kept = _WINDOWS.get(memo)
+    if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS and kept[1] <= timestamp(scoped["since"]):
+        since = timestamp(scoped["since"])
+        return [item for item in kept[2] if timestamp(item["timestamp"]) >= since], kept[3]
+    # Built once over the widest window any page asks for: a 180-day person and a
+    # 730-day org alternating each threw the other's window away and re-scanned
+    # behind the lock (1.9.1b4 first run, people stuck 400+ seconds).
+    requested = timestamp(scoped["since"])
+    widest = min(requested, datetime.now(timezone.utc) - timedelta(days=SESSION_WIDEST_DAYS))
+    scoped = {**scoped, "since": widest.isoformat()}
+    cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
+    saved = read_json(cache_path, {})
+    since = timestamp(scoped["since"])
+    if (saved.get("version") != SESSION_WINDOW_VERSION or saved.get("subscription") != identity
+            or timestamp(saved["since"]) > since
+            or any(not (Path(scoped["root"]) / name).is_file() for name in saved["progress"])):
+        saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
+                 "items": [], "progress": {}, "unfamiliar": 0}
+    items, cursor = saved["items"], saved["progress"]
+    unfamiliar, told = saved["unfamiliar"], len(items)
+    while True:
+        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000)
+        items.extend(batch.items)
+        unfamiliar += batch.unrecognised
+        if stage_progress and len(items) > told:
+            told = len(items)
+            stage_progress(f"gathering {label}: {told:,} scanned", told)
+        if batch.progress == cursor:
+            break
+        cursor = batch.progress
+    if saved["progress"] != cursor or not cache_path.is_file():
+        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar})
+    _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar)
+    if timestamp(saved["since"]) < requested:
+        items = [item for item in items if timestamp(item["timestamp"]) >= requested]
+    return items, unfamiliar
+
+
+SEARCH_RESULTS = 20
+
+
+def mail_search(clients: dict):
+    """Read-only mail searches the model may ask for after its first turn (2026-10-01).
+
+    The owner asked that a gap the gathered mail leaves (how two people met, a
+    role) can be searched for. The model has no network; this runs its queries
+    with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
+    the gathered mail's shape and source ids, so they cite like the rest.
+    """
+    def search(queries: list[str]) -> list[dict]:
+        found, seen = [], set()
+        for query in queries:
+            for kind, client in clients.items():
+                mine = {a.lower() for a in client.my_addresses()}
+                try:
+                    rows = _patient(client.list_search, query, 10) or []
+                except ProviderCredentialError as error:
+                    # A query the provider will not parse is that query's answer, not
+                    # the page's end: Graph's 400 on one lead lost a whole Ody pass.
+                    if error.status != 400 and error.code != "provider_unavailable":
+                        raise
+                    found.append({"role": "search-failure", "source": "", "query": query,
+                                  "text": f"{kind} refused this search (HTTP {error.status or '?'}); rephrase it"})
+                    continue
+                for row in rows:
+                    if row["id"] in seen or len(found) >= SEARCH_RESULTS:
+                        continue
+                    seen.add(row["id"])
+                    body = _patient(client.get_email_body, row["id"])
+                    head, _, rest = body.partition("--- Email Body ---")
+                    body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                    own = _address(row["from"]) in mine or "@" not in _address(row["from"])
+                    found.append({"role": "user" if own else "other", "speaker": row["from"], "text": body,
+                                  "timestamp": str(row["date"]), "subject": row.get("subject", ""), "query": query,
+                                  "source": f"{kind}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}"})
+        return found
+    return search
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):
@@ -726,6 +1015,97 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
+    """Oldest first, each round small enough to travel in the prompt, every item whole or split.
+
+    Laid out in files, the model read 3.6-8.7% of a large page's evidence
+    (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
+    """
+    from .runner import readable_material
+    measure = lambda parts: len(readable_material(parts).encode("utf-8"))
+    rounds, current, size = [], [], 0
+    for item in sorted(items, key=lambda i: str(i.get("timestamp") or "")):
+        for part in _split_item(item, room_bytes, measure):
+            weight = measure([part])
+            if current and size + weight > room_bytes:
+                rounds.append(current)
+                current, size = [], 0
+            current.append(part)
+            size += weight
+    if current:
+        rounds.append(current)
+    return rounds
+
+
+def rounds_to_read(parts: list[list[dict]], cap: int, read_before: str = "") -> tuple[list, list]:
+    """The newest `cap` parts (of those dated before `read_before`, when given), and the rest, both oldest first."""
+    eligible = [n for n, part in enumerate(parts)
+                if not read_before or min(str(i.get("timestamp") or "") for i in part) < read_before]
+    keep = set(eligible[-cap:])
+    return ([part for n, part in enumerate(parts) if n in keep],
+            [part for n, part in enumerate(parts) if n not in keep])
+
+
+ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
+              "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
+              "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
+              "The page should get better, not only longer. Then follow the leads it raises.")
+SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
+                  "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
+                  "superseded statements and doubts that do not change what the user does next; merge what "
+                  "is said twice. Insight says what matters now; History has one line per thread -- date, what "
+                  "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
+                  "most five, each one that would change the next step. For a thread whose outcome is not "
+                  "established, request a mail search for the reply before writing so. Keep each cited fact you "
+                  "keep with its citation; add no claim without a citation on the page or from a search.")
+
+
+def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
+    """Bytes left for one part once the page, its context and the round note are in the prompt."""
+    from .runner import INLINE_LIMIT, instructions, page_kind_of, readable_material
+    used = (len(instructions("investigate", page_kind=page_kind_of(record), owner=owner).encode("utf-8"))
+            + len(readable_material(fixed).encode("utf-8")) + 8000)
+    return max(INLINE_LIMIT - used, 20_000)
+
+
+def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
+               config: dict, stage_progress=None) -> dict:
+    """One turn per part, each on the page the last one left, then a synthesis turn.
+
+    A refused round loses that round, not the page: the next part builds on
+    the last accepted page. Leads a round names in its reply go to the next.
+    """
+    from .runner import RunFailed
+    usage, changed, ledgers, refused = {}, [], [], []
+    total = len(rounds)
+    for number, part in enumerate([*rounds, []], 1):
+        dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
+        note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
+                                  last=max(dates, default="?"))
+                if part else SYNTHESIS_NOTE.format(total=total))
+        leads = ("\n\nLeads from earlier rounds:\n" + "\n\n".join(ledgers)[-6000:]) if ledgers else ""
+        items = [page_item(notebook.read(record)), *context,
+                 {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
+        if stage_progress:
+            stage_progress(f"investigation round {number} of {total + 1}")
+        try:
+            out = runner(notebook, items, config, stage="investigate")
+        except RunFailed as error:
+            refused.append(str(error))
+            for key, value in (error.usage or {}).items():
+                usage[key] = usage.get(key, 0) + value
+            continue
+        for key, value in (out.get("usage") or {}).items():
+            usage[key] = usage.get(key, 0) + value
+        changed = sorted({*changed, *out.get("changed", [])})
+        if out.get("report"):
+            ledgers.append(f"Round {number}: {str(out['report']).strip()}")
+    if refused and not changed:
+        raise RunFailed(refused[-1], usage)
+    return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers),
+            "rounds": total + 1, "refused_rounds": refused}
+
+
 def searched_sources(coverage: list[str]) -> list[str]:
     """The sources this code searched, for the page's status line.
 
@@ -772,7 +1152,7 @@ def last_investigated(page: str):
     return max(date.fromisoformat(d) for d in days) if days else None
 
 
-def window_since(page: str, default: int = 150) -> int:
+def window_since(page: str, default: int = 730) -> int:
     """Days to gather for a page: since its last investigation, else `default`.
 
     The script already read everything before that date into the page; asking
@@ -785,6 +1165,70 @@ def window_since(page: str, default: int = 150) -> int:
 
 RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
+
+
+def owner_work_evidence(items: list[dict]) -> str:
+    """Put a few dated, citable coding messages beside the owner's full source index.
+
+    A large first run lays out the rest in files. Without these anchors the
+    investigation can follow the quick page into recent mail and never compare
+    earlier work with later choices. These are excerpts, not conclusions.
+    """
+    from collections import Counter
+
+    sessions = [item for item in items if item.get("role") == "user"
+                and str(item.get("source", "")).split(":", 1)[0] in ("codex", "claude-code")
+                and len(str(item.get("text", "")).strip()) >= 8]
+    if not sessions:
+        return ""
+    # A cwd can hold several unrelated jobs. A named task in the latest typed
+    # messages is a safer first filter than the directory alone. Keep short
+    # Chinese messages: one explicit reversal was only 184 characters.
+    recent = sorted(sessions, key=lambda item: item.get("timestamp", ""))[-24:]
+    focus = ""
+    for term, pattern in (("init", r"(?<![A-Za-z0-9])init(?![A-Za-z0-9])|初始化"),
+                          ("reader", r"(?<![A-Za-z0-9])reader(?![A-Za-z0-9])"),
+                          ("sync", r"(?<![A-Za-z0-9])sync(?![A-Za-z0-9])")):
+        if any(re.search(pattern, item["text"], re.I) for item in recent[-5:]):
+            matched = [item for item in sessions if re.search(pattern, item["text"], re.I)]
+            if len(matched) >= 2:
+                focus, sessions = term, matched
+                break
+    noise = {"AI", "UI", "PR", "CI", "API", "CLI", "JSON", "URL", "PDF", "AHA"}
+    names = Counter(name for item in recent
+                    for name in set(re.findall(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,7}(?![A-Za-z0-9])",
+                                               item["text"]))
+                    if name not in noise)
+    if not focus:
+        focus = next((name for name, count in names.most_common() if count >= 2), "")
+    if focus and focus not in ("init", "reader", "sync"):
+        matched = [item for item in sessions if re.search(r"(?<![A-Za-z0-9])" + re.escape(focus) + r"(?![A-Za-z0-9])",
+                                                       item["text"], re.I)]
+        if len(matched) >= 2:
+            sessions = matched
+    counts = Counter(str(item.get("project") or "") for item in sessions)
+    projects = [name for name, _ in counts.most_common(2)]
+    selected = []
+    choice = re.compile(r"\b(?:choose|chose|decid(?:e|ed)|instead|switch(?:ed)?|revert(?:ed)?|stop|remove)\b|决定|选择|改成|改为|不要|撤回", re.I)
+    for project in projects:
+        rows = sorted((item for item in sessions if str(item.get("project") or "") == project),
+                      key=lambda item: item.get("timestamp", ""))
+        candidates = [rows[0], rows[len(rows) // 2],
+                      *[item for item in rows if choice.search(item["text"])][-2:], rows[-1]]
+        for item in candidates:
+            if item not in selected and len(selected) < 6:
+                selected.append(item)
+    selected.sort(key=lambda item: item.get("timestamp", ""))
+    lines = ["Exact excerpts from the owner's dated coding messages, selected for temporal contrast"
+             + (f" on the repeated recent topic {focus}" if focus else "") + ". "
+             "They are candidate leads, not a digest or evidence of completion; verify against the "
+             "original sources before claiming a change. Compare earlier and later choices before "
+             "writing the lead. Cite the original source IDs:"]
+    for item in selected:
+        body = str(item["text"]).strip()
+        excerpt = body[:1200] + (" [excerpt truncated]" if len(body) > 1200 else "")
+        lines.append(f"### {item['source']} — {str(item.get('timestamp', ''))[:10]} — {item.get('project', '')}\n{excerpt}")
+    return "\n\n".join(lines)
 
 
 def recent_projects(root: Path) -> str:
@@ -824,11 +1268,44 @@ def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -
             notebook.write(record, kept)
 
 
+def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, *, sent_only=False):
+    """Previously cited originals for a newly supplied exact mail thread, including older asks."""
+    threads = {item["thread"] for item in fresh if item.get("thread")
+               and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"}
+    if not record.startswith(("people/", "orgs/")) or not threads:
+        return []
+    from .mail_archive import domain_material, person_material
+    if record.startswith("people/"):
+        archived = person_material(root, record, handles=handles)
+    else:
+        domains = [match[1] for handle in handles if (match := DOMAIN_HANDLE.fullmatch(handle))]
+        archived = domain_material(root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
+    available = {item["source"]: item for item in items if item.get("source")}
+    for provider, saved in archived[0].items() if archived else []:
+        if not (subscriptions.get(provider) or {}).get("unsubscribed"):
+            for item in saved:
+                item.pop("_mail_id", None)
+                available.setdefault(item["source"], item)
+    return [{**item, "comparison_scope": "Previously cited original retained to compare a newly supplied "
+             "message in this exact provider thread. It may predate the requested window; it is old "
+             "evidence, not new correspondence or additional initial-window coverage."}
+            for source, item in available.items() if source in cited and item.get("thread") in threads
+            and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"
+            and (not sent_only or item.get("role") == "user")]
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False) -> dict:
-    """Fill the page's gaps from everything gathered; the page itself is the first input."""
+                quick: bool = False, retry_refused: bool = False, website=None,
+                fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "") -> dict:
+    """Fill the page's gaps from everything gathered; the page itself is the first input.
+
+    `rounds` caps the parts read in full (the first run's time budget), and
+    `read_before` reads the parts dated before it -- a deepen pass, whose newer
+    parts the first pass already read. The parts not read stay searchable in files.
+    """
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
@@ -839,10 +1316,22 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner_module.check_skill(root, "investigate")
     if stage_progress:
         stage_progress("gathering sources")
-    items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
-                             progress=progress, attachments_dir=root / ".state" / "attachments",
+    related = org_contact_context(notebook, record)
+    own_domains = (related["domains"] or org_domains(notebook.read(record))) if record.startswith("orgs/") else []
+    search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
+    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=subscriptions,
+                             progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    if own_domains and not quick:
+        if stage_progress:
+            stage_progress("reading the organisation's website")
+        web, web_coverage = website_items(own_domains, fetch=website)
+        items, coverage = [*items, *web], [*coverage, *web_coverage]
+    # Build the bounded comparison before a full pass drops items already cited
+    # by its quick page. That citation only says the first pass saw them; the
+    # final writer still needs the earlier and later words side by side.
+    owner_packet = owner_work_evidence(items) if sent_only and not quick else ""
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
@@ -850,49 +1339,69 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Ody's phone sat in a signature it never opened (#2068). A mail the
     # page already cites still has its signature. On a page investigated
-    # before, the window is not the whole history, so its first date is not
-    # the first contact.
+    # before, the window is not the whole history. Even a first full window's
+    # earliest retained mail cannot establish when this relationship began.
     from . import facts
     from .fact_extract import extract, facts_item
+    config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract(items, handles, owner=sent_only) if not (last and row["field"] == "First contact")]
+        row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
+                               owner=sent_only, timezone=config["schedule"]["timezone"])
+        if not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another
         # re-gathers the mail the page already cites: 102k tokens to be told
-        # it was "already represented as source [21]" (#2015). What the page
-        # cites, it has read.
-        cited = notebook.read(record).partition("\n## Sources\n")[2]
+        # it was "already represented as source [21]" (#2015). Retain cited
+        # originals only when new exact-thread mail needs comparison.
+        from .reader_model import _source_ids
+        cited = _source_ids([{"text": notebook.read(record).partition("\n## Sources\n")[2]}])
         fresh = [item for item in items if not item.get("source") or item["source"] not in cited]
-        if len(fresh) < len(items):
-            coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
-        items = fresh
-    if last and not items:
+        if related["candidates"] and any(item.get("relationship_scope") for item in fresh):
+            coverage.append("Related-domain comparison: previously cited primary correspondence retained "
+                            "to check offer dates and terms against the newly gathered contact context")
+        else:
+            comparison = _mail_comparison(root, record, search_handles, items, fresh, cited, subscriptions,
+                                          sent_only=sent_only)
+            compared = {item["source"] for item in comparison}
+            skipped = sum(item.get("source") in cited and item.get("source") not in compared for item in items)
+            if skipped:
+                coverage.append(f"{skipped} gathered item(s) already cited on the page, not re-read")
+            if comparison:
+                coverage.append(f"Update material: {len(fresh)} newly supplied source(s), "
+                                f"{len(comparison)} previously cited mail source(s) retained for exact "
+                                "provider-thread comparison; comparison is old evidence, not new contact")
+            items = [*fresh, *comparison]
+    if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
-    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
-        raise _refused_again(record, subject, refusal)
     if last:
-        # The page already reflects what came before; say so where the turn
-        # reads it, so it adds the new material instead of rewriting the page.
-        coverage.append(f"Page last updated from its sources {last.isoformat()}: it already reflects "
-                        "material before that date; add only what this material says that is new.")
+        coverage.append(f"Page last investigated {last.isoformat()}: the existing page is prior context, "
+                        "not primary evidence. Newly supplied originals may predate that run. Compare "
+                        "exact requests and replies, correct contradicted claims and preserve supported history; "
+                        "comparison originals are old evidence, not new contact. Unavailable originals or "
+                        "unknown provider threads remain unreviewed; the page is not a substitute original.")
     available_items = len(items)
+    project_inputs = (sum(item.get("role") == "user" and str(item.get("source", "")).split(":", 1)[0]
+                          in ("codex", "claude-code") for item in items)
+                      if record.startswith("projects/") else 0)
     if quick:
         items = quick_evidence(items)
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
-                        "individual texts capped at 2,500 characters. Other material was not evaluated; "
+                        "check the local archives for anything not fetched in this pass; "
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
     gathered_items = len(items)
     leads = []
+    project_roots = []
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
         # stale copy it would otherwise quote as current (#1955).
         corrected = collapse_worktree_paths(notebook.read(record))
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
+        project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
         leads = project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
@@ -900,26 +1409,23 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
         newest = _newest_session(root, record, corrected)
-        for path in project_paths(corrected)[:4]:
+        for path in project_roots:
             state = checkout_state(path, newest)
             if state:
-                items.append({"role": "checkout-state", "source": f"git:{path}", "text": state,
+                items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
-    if not gathered_items and not leads:
+    if not gathered_items and not leads and not project_roots:
         # Nothing about the subject, so nothing to write from: the page and the
         # coverage note are not material (#1974).
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    config = read_config(root)
     from .inquiry import routing
     original_material = None
     if routing(root):
         import uuid
 
-        from .files import state_path, write_json
         original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
-        write_json(original_material, items)
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, page_kind_of, run_stage
     # The instructions this page's turn is actually given (task_prompt), not
@@ -927,15 +1433,33 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # reference and left ~33k characters less room for material.
     overhead = (len(instructions("investigate", page_kind=page_kind_of(record), owner=sent_only))
                 + len(notebook.read(record)) + 4000)
-    room = config["limits"]["input_chars_per_batch"] - overhead
+    room = config["limits"]["input_chars_per_batch"] - overhead - len(owner_packet)
     from .tier import current
     summary = current(root, config) == "summary"
     if summary:
         # A plain model reads nothing it is not handed: the page's whole
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
-        room = min(room, INLINE_LIMIT - overhead)
-        items += project_file_texts(leads)
+        room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
+    repository_items = []
+    if record.startswith("projects/"):
+        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        states = [item for item in items if item.get("role") == "checkout-state"]
+        items = [item for item in items if item.get("role") != "checkout-state"]
+        files = project_file_texts(leads) if summary else project_file_texts(
+            leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
+        repository_items = repository_snapshots(states + files)
+        if last and not gathered_items:
+            supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
+            previous = supplied.get("provided_sources")
+            same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
+                item["source"] in cited for item in repository_items)
+            if same:
+                raise _nothing_new(record, subject, coverage, last)
+        items += repository_items
+    gathered_sources.update(item["source"] for item in repository_items)
+    if not retry_refused and refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
+        raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
@@ -944,7 +1468,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
+    original_items = items
+    evidence_items = items
     evidence_dir = None
+    in_rounds = False
     if gathered_chars > room and summary:
         # A summary-tier model cannot search files (#1847), so it is handed
         # digests of the material in order, the shape investigation had before #1850.
@@ -959,6 +1486,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             # would have only the page and this note to write from.
             raise _nothing_found(record, subject, coverage, me=sent_only, digested=True,
                                  usage=usage_by_stage["extract"] or None)
+    elif gathered_chars > room and not quick and (rounds or config["limits"]["investigation_rounds"]) > 1:
+        # Read in rounds once the turn's context is known, below (#2314).
+        in_rounds = True
+        coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
+                        f"{room:,}-char room for one turn; read in rounds, every item in full")
     elif gathered_chars > room:
         if stage_progress:
             stage_progress("writing evidence files")
@@ -971,7 +1503,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         import uuid
 
         from .evidence import write_evidence
-        from .files import state_path
         evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
         shutil.rmtree(evidence_dir, ignore_errors=True)
         laid_out = write_evidence(evidence_dir, items)
@@ -983,7 +1514,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
                            f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
-                           "a chat, under 40k characters: read the files that matter whole, newest first, rather "
+                           "a chat, normally grouped near 40k characters (one large source may be longer): read the files that matter whole, newest first, rather "
                            "than many small pieces (every tool call re-sends this whole turn); use rg to find "
                            "which files. Cite the source id from the `###` heading of each entry you rely on. "
                            "In your final reply, list the files you read and the questions left open.\n\n"
@@ -992,16 +1523,35 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
     from .page_review import normalize
+    if original_material:
+        write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
-    current_page = normalize(record, notebook.read(record), owner=sent_only)
-    prompt_items = [
-        {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
-         "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                 f"has moved, keep what is right:\n\n{current_page}",
-         "timestamp": now, "source": "investigation:page"},
-        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
-                                     + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
+    def page_item(text):
+        return {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
+                "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
+                        f"has moved, keep what is right:\n\n{normalize(record, text, owner=sent_only)}",
+                "timestamp": now, "source": "investigation:page"}
+
+    prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
+           "paths": project_roots, "timestamp": now,
+           "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
+                   ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
+                   "cite verifiable source IDs and revisions."}]
+         if project_roots else []) + (
+        [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
+           "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
+           "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
+           "threads as bare Unknown; describe historical file notes with their dates in Where it stands. "
+           "This is run scope, not an original source; do not cite it."}]
+         if record.startswith("projects/") and project_inputs == 0 else []) + ([] if record.startswith("projects/") else [
+        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(search_handles) + ":\n"
+                             + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
+    ]) + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,
+           "candidates": related["candidates"], "text": "These domain pages share a canonical contact candidate. "
+           "The map may have grouped addresses by display name; this is not proof of common person, company "
+           "or legal identity. Compare the dated primary messages before using cross-domain terms or closing "
+           "threads. Notebook links are context, not evidence; keep distinct offers and unresolved identity explicit."}]
+         if related["candidates"] else []) + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
            "text": "Organisation pages this notebook already has"
                    + (" for the subject's mail domains" if record.startswith("people/") else "")
                    + ". Where the material shows the subject belongs to one, write its field (Company, or "
@@ -1010,10 +1560,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          if (linkable := org_pages(notebook, record, handles)) else []) + (
         [{"role": "recent-projects", "source": "investigation:recent-projects", "timestamp": now, "text": recent}]
          if sent_only and (recent := recent_projects(root)) else []) + (
+        [{"role": "owner-work-evidence", "source": "investigation:owner-work-evidence",
+          "timestamp": now, "text": owner_packet,
+          "sources": re.findall(r"(?m)^### (\S+) —", owner_packet)}] if owner_packet else []) + (
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
-           "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
-                                     "state the sampling limit in your final reply, not on the page."}]
-         if quick else []) + ([facts_item(fact_rows)] if fact_rows else []) + items
+           "timestamp": now, "text": "This is a partial first pass. Inspect relevant local sources "
+                                     "and state remaining coverage limits in your final reply, not on the page."}]
+         if quick else []) + ([facts_item(fact_rows, config["schedule"]["timezone"])] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
@@ -1022,11 +1575,32 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = run_stage
+        runner = partial(run_stage, search=mail_search(clients)) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
     try:
-        result = runner(notebook, prompt_items, config, stage="investigate")
+        if in_rounds:
+            context = prompt_items[1:len(prompt_items) - len(items)]
+            parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
+            parts, older = rounds_to_read(parts, rounds or config["limits"]["investigation_rounds"], read_before)
+            if not parts:
+                raise NothingNew(f"Nothing dated before {read_before} for {subject}. No model was called; "
+                                 f"{record} is unchanged.")
+            if older:
+                # Past the round cap, the rest of the material is still searchable from the first round.
+                import uuid
+                from .evidence import write_evidence
+                evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+                laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
+                parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
+                                    "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                                    "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
+                                            f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
+            coverage.append(f"rounds: {len(parts)} parts read in full" + (
+                f", {sum(map(len, older))} other items searchable in files" if older else ""))
+            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
+        else:
+            result = runner(notebook, prompt_items, config, stage="investigate")
     except RemError as error:
         if "rejected" in str(error):
             _remember_refusal(root, record, list(gathered_sources), str(error))
@@ -1052,20 +1626,69 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = searched_sources(coverage)
-    with maintenance_lock(root):
-        from .reviews import ingest
-        ingest(root, result.get("review_candidates", []))
-        if record in result.get("changed", []):
-            page = notebook.read(record)
-            if drop_map_count(page) != page:
-                notebook.write(record, drop_map_count(page))
-        notebook.note_investigation(record, ", ".join(searched))
+    from .project_material import page_state
+    record_result(root, notebook, record, result.get("review_candidates", []),
+                  searched_sources(coverage), changed=record in result.get("changed", []),
+                  repository_items=repository_items,
+                  session_items=original_items,
+                  project_coverage={"inputs_read": project_inputs,
+                                    "inputs_available": page_state(root, record).get("messages", 0),
+                                    "days": days, "scope": "archived"}
+                  if record.startswith("projects/") else None)
+    from .reader_model import _source_ids
+    from .project_pages import repository_context
+    cited_live = []
+    for source in _source_ids([{"text": notebook.read(record)}]):
+        if source.startswith(("file:", "git:")) and (context := repository_context(root, source)):
+            cited_live.append({"source": source,
+                               "file": source[5:].rsplit("@", 1)[0] if source.startswith("file:") else source,
+                               "timestamp": context["time"], "captured_at": context["captured_at"]})
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
+                          if key in item} for item in [*prompt_items, *evidence_items]
+                         if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],
             "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
                       "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
+                  *, changed: bool = False, repository_items=(), session_items=(), skill_records=(),
+                  project_coverage=None) -> None:
+    """Keep what a finished investigation proposed and mark its page investigated.
+
+    It waits for the lock: the model turn is already paid for, and with several
+    pages in flight (the first run writes four at once) two finish together.
+    """
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        from .reviews import ingest
+        ingest(root, review_candidates)
+        if changed:
+            from .project_pages import retain_repository_context
+            from .reader_model import _source_ids
+            cited = _source_ids([{"text": notebook.read(record)}])
+            retain_repository_context(root, repository_items, cited)
+            from .project_material import retain_cited_sessions
+            retain_cited_sessions(root, session_items, cited)
+            from .skill_runs import retain_skill_records
+            retain_skill_records(root, skill_records, cited)
+            page = notebook.read(record)
+            if drop_map_count(page) != page:
+                notebook.write(record, drop_map_count(page))
+        notebook.note_investigation(record, ", ".join(searched))
+        if project_coverage:
+            from .project_material import page_state
+            path = state_path(root, f"projects/{Path(record).stem}/state.json")
+            state = page_state(root, record)
+            state["last_page_coverage"] = project_coverage
+            write_json(path, state)
+        if repository_items and record.startswith("projects/"):
+            write_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {
+                "provided_sources": sorted({item["source"] for item in repository_items}),
+                "scope": "Material supplied in the completed investigation; not proof every file was read."})
+        from .store import refresh_safely
+        refresh_safely(root)

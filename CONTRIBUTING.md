@@ -92,6 +92,37 @@ Unsure where to begin? You can start by looking through these issues:
    leaked threads, isolated HOME) and how to opt out when a test is about
    exactly that.
 
+### Repository layout
+
+```
+connectonion/
+├── connectonion/
+│   ├── __init__.py         # Public exports
+│   ├── core/               # Agent, LLM providers, events, tool system
+│   │   ├── agent.py        # Agent class
+│   │   ├── llm.py          # Multi-provider LLM abstraction
+│   │   ├── events.py       # Lifecycle hooks
+│   │   └── tool_factory.py # Function → tool schema
+│   ├── cli/                # The `co` command line
+│   │   ├── main.py         # Command registration
+│   │   ├── commands/       # One module per command
+│   │   ├── co_ai/          # The agent behind `co ai`
+│   │   └── templates/co-ai # The template `co create` copies
+│   ├── network/            # host(), connect(), relay, trust
+│   ├── debug/              # @xray, auto_debug
+│   ├── rem/                # co rem (personal memory)
+│   ├── tui/                # Terminal UI components
+│   ├── useful_tools/       # Built-in tools
+│   ├── useful_plugins/     # Built-in plugins
+│   └── useful_skills/      # Built-in skills
+├── docs/                   # Documentation, synced to docs.connectonion.com
+├── examples/
+├── tests/
+│   ├── unit/
+│   └── e2e/
+└── pyproject.toml
+```
+
 ## Pull Request Process
 
 1. **Create a Branch**
@@ -229,7 +260,7 @@ def test_agent_with_custom_tool():
 ## Recognition
 
 Contributors will be recognized in our:
-- README.md contributors section
+- The GitHub contributors graph
 - Release notes
 - Special mentions for significant contributions
 

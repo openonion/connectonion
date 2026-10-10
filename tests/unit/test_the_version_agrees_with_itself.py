@@ -181,6 +181,25 @@ def test_versioning_md_names_the_version_being_shipped():
     )
 
 
+def test_readme_preview_install_pin_matches_the_version_being_shipped():
+    version = _pyproject_version()
+    if not re.search(r"(?:a|b|rc)\d+$", version):
+        return
+
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    heading = re.search(r"^### Try co rem · (.+)$", readme, re.M)
+    # After a stable release the README recommends that stable; a later
+    # preview is offered from docs/releases.md and leaves it alone.
+    if not heading.group(1).endswith(" preview"):
+        return
+    preview = readme.split(heading.group(0), 1)[1].split("\n## ", 1)[0]
+    pin = re.search(r"pip install --upgrade 'connectonion==([^']+)'", preview)
+    assert pin, "README.md has no exact co rem preview install pin"
+    assert pin.group(1) == version, (
+        f"README.md installs {pin.group(1)}, but this package ships {version}"
+    )
+
+
 def test_uv_lock_names_the_version_being_shipped():
     """Editable root metadata is still package metadata and must be refreshed."""
     lockfile = (REPO / "uv.lock").read_text(encoding="utf-8")

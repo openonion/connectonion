@@ -11,6 +11,55 @@ from connectonion.rem.mail import collect_mail
 NOW = datetime(2026, 9, 7, tzinfo=timezone.utc)
 
 
+def test_rem_uses_deferred_full_window_and_lists_each_mail_after_split(monkeypatch):
+    from connectonion.rem import mail as rem_mail
+
+    monkeypatch.setattr(rem_mail, "LISTING_LIMIT", 2)
+    calls = []
+
+    class Client:
+        def list_between(self, start, end, limit):
+            raise AssertionError("REM should use its cap-aware listing")
+
+        def list_between_for_rem(self, start, end, limit):
+            calls.append((start, end))
+            if end[:10] == "2026-09-03":
+                return [{"id": "a", "date": "2026-09-01T12:00:00+00:00"}]
+            if start[:10] == "2026-09-03":
+                return [{"id": "b", "date": "2026-09-04T12:00:00+00:00"}]
+            return [{"id": "a"}, {"id": "b"}]
+
+    rows = rem_mail._list_all(Client(), datetime(2026, 9, 1, tzinfo=timezone.utc),
+                              datetime(2026, 9, 5, tzinfo=timezone.utc))
+    assert {row["id"] for row in rows} == {"a", "b"}
+    assert len(calls) == 3
+
+
+def test_timeout_splits_history_and_preserves_other_days():
+    from connectonion.rem.mail import _list_all
+
+    class ReadTimeout(Exception):
+        pass
+
+    rows = [{"id": str(day), "date": f"2026-01-{day:02d}T12:00:00+00:00"}
+            for day in range(1, 9)]
+
+    class Client:
+        def list_between(self, start, end, limit):
+            if (datetime.fromisoformat(end) - datetime.fromisoformat(start)).days > 2:
+                raise ReadTimeout("wide query")
+            if start[:10] <= "2026-01-03" < end[:10]:
+                raise ReadTimeout("one day unavailable")
+            return [row for row in rows if start <= row["date"] < end][:limit]
+
+    errors = []
+    found = _list_all(Client(), datetime(2026, 1, 1, tzinfo=timezone.utc),
+                      datetime(2026, 1, 9, tzinfo=timezone.utc),
+                      on_error=lambda start, end, error: errors.append((start, end)))
+    assert {row["id"] for row in found} == {"1", "2", "4", "5", "6", "7", "8"}
+    assert len(errors) == 1 and errors[0][0].date().isoformat() == "2026-01-03"
+
+
 class FakeMail:
     """The two calls an adapter needs: a date-bounded ascending listing and one body."""
 
@@ -168,6 +217,26 @@ def test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line():
     assert strip_quoted(flat).endswith("Program Manager") and "Dear Aaron,Thank you for your interest" not in strip_quoted(flat)
     flat2 = "Agreed, Friday works. On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote: Can we do Friday?"
     assert strip_quoted(flat2).strip() == "Agreed, Friday works."
+
+
+def test_an_outlook_quote_header_on_its_own_lines_is_cut():
+    """Celine's reply (2026-10-05) quoted David's mail under `From:` and `Sent:` on two
+    lines with no rule above them; his signature, LinkedIn and office line stayed in
+    her text and landed on her page, Sasha's and Vern's (#2349)."""
+    from connectonion.rem.mail import strip_quoted
+    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nCeline\nCeline Olarte\n"
+            "Program Coordinator\nFrom: Aaron x <aaron@example.com>\nSent: Friday, 2 October 2026 18:40\n"
+            "To: David Burt <david@example.edu>\nSubject: RE: Invitation\nHi David,\nCheers,\nAaron\n"
+            "From: David Burt <david@example.edu>\nSent: Thursday\nKind regards,\nDavid\nDavid Burt\n"
+            "https://www.linkedin.com/in/david-burt-/")
+    assert strip_quoted(body).rstrip().endswith("Program Coordinator")
+    header = "From: Celine <c@example.edu>\nTo: aaron@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
+    assert strip_quoted(header) == header
+    apple = ("No, I have not.\nBest,\nAaron\nFrom: David Burt <david@example.edu>\nDate: Tuesday, March 31\n"
+             "To: aaron\nCc: Vern Chan <vern@example.edu>\nSubject: Decent Capital?\nT: +61 2 9065 4432")
+    assert strip_quoted(apple).rstrip().endswith("Aaron")
+    forward = "\n\nFrom: Rushi Vyas\nSent: Tuesday\nSubject: Aaron <> BDMz\nWhere: Bondi Junction station"
+    assert strip_quoted(forward) == forward
 
 
 def test_signature_link_noise_is_dropped():

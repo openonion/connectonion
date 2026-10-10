@@ -37,7 +37,10 @@ def default_config() -> dict:
     # starting name, not a rule: what a model can do -- drive tools, or only
     # reply with a page -- is measured when the model changes and recorded in
     # .state/tier.json (tier.py, #1847), never read off its name or generation.
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna",
+    # Claude Code with Sonnet since 1.9.0a41: on one real 260-page first run it
+    # wrote 259 pages and matched Codex on the benchmark pages, while Haiku had
+    # 13 of 17 project pages refused (#2283). Saved configs keep their runner.
+    return {"version": 1, "runner": "claude-code", "model": "claude-sonnet-5-5",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -68,7 +71,10 @@ def default_config() -> dict:
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
-                       "investigation_quota_points": 10, "quota_floor_percent": 70}}
+                       "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # A page whose evidence is more than one turn can hold is read in
+                       # rounds, each part whole, then one synthesis turn (#2314).
+                       "investigation_rounds": 8}}
 
 
 def validate(config: dict) -> dict:
@@ -105,7 +111,9 @@ def validate(config: dict) -> dict:
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
-              "limits.runner_calls_per_day": {6, 30}}
+              "limits.runner_calls_per_day": {6, 30},
+              "limits.investigation_quota_points": {20},
+              "limits.quota_floor_percent": {70}}
 EXPLICIT = "config-explicit.json"
 
 
@@ -137,9 +145,26 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.
-    if config.get("runner") == "coai" and config.get("model") == default_config()["model"]:
+    if config.get("runner") == "coai" and config.get("model") == "gpt-6-luna":
         config["model"] = "default"
     return validate(config) if validated else config
+
+
+def _move_generated_notes(root: Path) -> None:
+    """Before 1.9.1 the maps and skill run reports went to notes/, and in every
+    real notebook they were all notes/ held. They are run logs now; the skill
+    pages that link a report follow it."""
+    notes = root / "notes"
+    moved = [*notes.glob("skill-runs-*.md"), *(notes / f"{c}-map.md" for c in ("people", "projects", "orgs"))]
+    moved = [path for path in moved if path.is_file()]
+    for path in moved:
+        path.replace(root / "logs" / path.name)
+    if not moved:
+        return
+    for page in (root / "skills/catalog").glob("*.md"):
+        text = page.read_text(encoding="utf-8")
+        if "../../notes/skill-runs-" in text:
+            atomic_write(page, text.replace("../../notes/skill-runs-", "../../logs/skill-runs-"))
 
 
 def prepare(root: Path) -> None:
@@ -148,6 +173,7 @@ def prepare(root: Path) -> None:
     state_path(root, "maintenance.lock").parent.mkdir(exist_ok=True, mode=0o700)
     for name in (*CATEGORIES, "skills/catalog", "skills/candidates", "skills/approved"):
         safe_path(root, name).mkdir(parents=True, exist_ok=True, mode=0o700)
+    _move_generated_notes(root)
     path = safe_path(root, "config.yaml")
     if not path.exists():
         atomic_write(path, yaml.safe_dump(default_config(), sort_keys=False))

@@ -1,1179 +1,299 @@
-# 🧅 ConnectOnion — CLI is all you need
+<div align="center">
 
-**The agent CLI harness.**
+<img src="https://www.connectonion.com/favicon.png" width="96" height="96" alt="ConnectOnion logo">
 
-Give your agent one CLI for the environment it works in. `co env` shows which
-settings it will use; `co auth microsoft` connects your account; `co outlook`
-reads your inbox. The same pattern reaches Gmail, your browser, files and chat
-apps. Credentials stay on your machine. Works with Claude Code, Codex, Cursor,
-or your own agent.
+# ConnectOnion
+
+**The agent CLI harness. CLI is all you need.**
+
+One command line, `co`, gives your AI agent the accounts and tools it works with:
+Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
+**co rem enables decentralized context flow:** connect the context in your
+work, keep it on your machine, and carry it into the next task.
+
+[![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
+[![Python](https://img.shields.io/pypi/pyversions/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
+[![Tests](https://img.shields.io/github/actions/workflow/status/openonion/connectonion/tests.yml?branch=main&event=push&style=flat-square&label=tests)](https://github.com/openonion/connectonion/actions/workflows/tests.yml?query=branch%3Amain)
+[![License](https://img.shields.io/pypi/l/connectonion?style=flat-square)](LICENSE)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
+
+[Website](https://www.connectonion.com) · [Docs](https://docs.connectonion.com) · [Get started](#install-and-start) · [co rem](#co-rem--decentralized-context-flow) · [Releases](https://github.com/openonion/connectonion/releases) · [Discord](https://discord.gg/4xfD9k8AUF)
+
+</div>
 
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->
-<table>
-<tr><td colspan="6"><b># identity &amp; memory</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/address.svg" width="40" height="40" alt=""><br><sub><b>0x address</b><br><code>co init</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/mailbox.svg" width="40" height="40" alt=""><br><sub><b>Agent mailbox</b><br><code>co email</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/memory.svg" width="40" height="40" alt=""><br><sub><b>Memory</b><br><code>co wiki</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/secrets.svg" width="40" height="40" alt=""><br><sub><b>Secrets</b><br><code>co env</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/credits.svg" width="40" height="40" alt=""><br><sub><b>Credits</b><br><code>co transfer</code></sub></td></tr>
-<tr><td colspan="6"><b># mail, calendar &amp; notes</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/gmail.svg" width="40" height="40" alt=""><br><sub><b>Gmail</b><br><code>co gmail</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/outlook.svg" width="40" height="40" alt=""><br><sub><b>Outlook</b><br><code>co outlook</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/gcal.svg" width="40" height="40" alt=""><br><sub><b>Google Calendar</b><br><code>co gcalendar</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/meet.svg" width="40" height="40" alt=""><br><sub><b>Google Meet</b><br><code>co gcalendar meet</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/onenote.svg" width="40" height="40" alt=""><br><sub><b>OneNote</b><br><code>co onenote</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/teams.svg" width="40" height="40" alt=""><br><sub><b>Teams meetings</b><br><code>co outlook calendar</code></sub></td></tr>
-<tr><td colspan="6"><b># chat apps</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/whatsapp.svg" width="40" height="40" alt=""><br><sub><b>WhatsApp</b><br><code>co whatsapp</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/telegram.svg" width="40" height="40" alt=""><br><sub><b>Telegram</b><br><code>co telegram</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/discord.svg" width="40" height="40" alt=""><br><sub><b>Discord</b><br><code>co discord</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/slack.svg" width="40" height="40" alt=""><br><sub><b>Slack</b><br><code>co slack</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/feishu.svg" width="40" height="40" alt=""><br><sub><b>Feishu</b><br><code>co feishu</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/lark.svg" width="40" height="40" alt=""><br><sub><b>Lark</b><br><code>co lark</code></sub></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/sms.svg" width="40" height="40" alt=""><br><sub><b>SMS</b><br><code>co sms</code></sub></td></tr>
-<tr><td colspan="6"><b># browser &amp; files</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/chrome.svg" width="40" height="40" alt=""><br><sub><b>Your Chrome</b><br><code>co browser</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/remote.svg" width="40" height="40" alt=""><br><sub><b>Remote browser</b><br><code>co remote-browser</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/gdrive.svg" width="40" height="40" alt=""><br><sub><b>Google Drive</b><br><code>co gdrive</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/youtube.svg" width="40" height="40" alt=""><br><sub><b>YouTube</b><br><code>co youtube</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/syno.svg" width="40" height="40" alt=""><br><sub><b>Synology NAS</b><br><code>co syno</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/search.svg" width="40" height="40" alt=""><br><sub><b>Web search</b><br><code>co search</code></sub></td></tr>
-<tr><td colspan="6"><b># issues &amp; feedback</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/linear.svg" width="40" height="40" alt=""><br><sub><b>Linear</b><br><code>co linear</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/canny.svg" width="40" height="40" alt=""><br><sub><b>Canny</b><br><code>co canny</code></sub></td></tr>
-<tr><td colspan="6"><b># coding agents</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/claude.svg" width="40" height="40" alt=""><br><sub><b>Claude Code</b><br><code>co claude</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/codex.svg" width="40" height="40" alt=""><br><sub><b>Codex</b><br><code>co skills link</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/skills.svg" width="40" height="40" alt=""><br><sub><b>Your skills</b><br><code>co skills</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/sub.svg" width="40" height="40" alt=""><br><sub><b>Shared skills</b><br><code>co sub</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/eval.svg" width="40" height="40" alt=""><br><sub><b>Evals</b><br><code>co eval</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/cursor.svg" width="40" height="40" alt=""><br><sub><b>Cursor</b><br><code>co skills discover</code></sub></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/kiro.svg" width="40" height="40" alt=""><br><sub><b>Kiro</b><br><code>co skills discover</code></sub></td></tr>
-<tr><td colspan="6"><b># models</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/managed.svg" width="40" height="40" alt=""><br><sub><b>Managed keys</b><br><code>co/… ($5 credit)</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/openai.svg" width="40" height="40" alt=""><br><sub><b>OpenAI</b><br><code>gpt-…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/anthropic.svg" width="40" height="40" alt=""><br><sub><b>Anthropic</b><br><code>claude-…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/gemini.svg" width="40" height="40" alt=""><br><sub><b>Gemini</b><br><code>gemini-…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/mistral.svg" width="40" height="40" alt=""><br><sub><b>Mistral</b><br><code>mistral/…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/groq.svg" width="40" height="40" alt=""><br><sub><b>Groq</b><br><code>groq/…</code></sub></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/grok.svg" width="40" height="40" alt=""><br><sub><b>Grok</b><br><code>grok/…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/openrouter.svg" width="40" height="40" alt=""><br><sub><b>OpenRouter</b><br><code>openrouter/…</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/ollama.svg" width="40" height="40" alt=""><br><sub><b>Ollama (local)</b><br><code>ollama/…</code></sub></td></tr>
-<tr><td colspan="6"><b># agents &amp; servers</b></td></tr>
-<tr><td align="center" width="16%"><img src="https://www.connectonion.com/icons/call.svg" width="40" height="40" alt=""><br><sub><b>Remote agents</b><br><code>co call</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/proxy.svg" width="40" height="40" alt=""><br><sub><b>Your internet</b><br><code>co proxy</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/server.svg" width="40" height="40" alt=""><br><sub><b>Your servers</b><br><code>co deploy --to</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/ssh.svg" width="40" height="40" alt=""><br><sub><b>SSH</b><br><code>co server ssh</code></sub></td><td align="center" width="16%"><img src="https://www.connectonion.com/icons/schedule.svg" width="40" height="40" alt=""><br><sub><b>Schedules</b><br><code>co schedule</code></sub></td></tr>
-</table>
+<p><b>Identity &amp; memory</b><br>
+<a href="docs/cli/init.md"><img src="https://www.connectonion.com/logos/address.svg?v=3" width="80" height="80" alt="0x address" title="0x address · co init"></a>
+<a href="docs/cli/email.md"><img src="https://www.connectonion.com/logos/mailbox.svg?v=3" width="80" height="80" alt="Agent mailbox" title="Agent mailbox · co email"></a>
+<a href="docs/cli/rem.md"><img src="https://www.connectonion.com/logos/memory.svg?v=3" width="80" height="80" alt="co rem" title="co rem · co rem"></a>
+<a href="docs/cli/env.md"><img src="https://www.connectonion.com/logos/secrets.svg?v=3" width="80" height="80" alt="Secrets" title="Secrets · co env"></a>
+<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/credits.svg?v=3" width="80" height="80" alt="Credits" title="Credits · co transfer"></a></p>
+
+<p><b>Mail, calendar &amp; notes</b><br>
+<a href="docs/cli/gmail.md"><img src="https://www.connectonion.com/logos/gmail.svg?v=3" width="80" height="80" alt="Gmail" title="Gmail · co gmail"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/outlook.svg?v=3" width="80" height="80" alt="Outlook" title="Outlook · co outlook"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg?v=3" width="80" height="80" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg?v=3" width="80" height="80" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
+<a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=3" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=3" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
+
+<p><b>Chat apps</b><br>
+<a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg?v=3" width="80" height="80" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
+<a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg?v=3" width="80" height="80" alt="Telegram" title="Telegram · co telegram"></a>
+<a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg?v=3" width="80" height="80" alt="Discord" title="Discord · co discord"></a>
+<a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg?v=3" width="80" height="80" alt="Slack" title="Slack · co slack"></a>
+<a href="docs/cli/feishu.md"><img src="https://www.connectonion.com/logos/feishu.svg?v=3" width="80" height="80" alt="Feishu / Lark" title="Feishu / Lark · co feishu, co lark"></a>
+<a href="docs/cli/sms.md"><img src="https://www.connectonion.com/logos/sms.svg?v=3" width="80" height="80" alt="SMS" title="SMS · co sms"></a></p>
+
+<p><b>Browser &amp; files</b><br>
+<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/chrome.svg?v=3" width="80" height="80" alt="Your Chrome" title="Your Chrome · co browser"></a>
+<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/remote.svg?v=3" width="80" height="80" alt="Remote browser" title="Remote browser · co remote-browser"></a>
+<a href="docs/cli/gdrive.md"><img src="https://www.connectonion.com/logos/gdrive.svg?v=3" width="80" height="80" alt="Google Drive" title="Google Drive · co gdrive"></a>
+<a href="docs/cli/youtube.md"><img src="https://www.connectonion.com/logos/youtube.svg?v=3" width="80" height="80" alt="YouTube" title="YouTube · co youtube"></a>
+<a href="docs/cli/synology.md"><img src="https://www.connectonion.com/logos/syno.svg?v=3" width="80" height="80" alt="Synology NAS" title="Synology NAS · co syno"></a>
+<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/search.svg?v=3" width="80" height="80" alt="Web search" title="Web search · co search"></a>
+<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/fetch.svg?v=3" width="80" height="80" alt="Web fetch" title="Web fetch · co fetch"></a></p>
+
+<p><b>Issues &amp; feedback</b><br>
+<a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=3" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
+<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a></p>
+
+<p><b>Coding agents</b><br>
+<a href="docs/cli/ai.md"><img src="https://www.connectonion.com/logos/ai.svg?v=3" width="80" height="80" alt="co ai" title="co ai · co ai"></a>
+<a href="docs/claude-code-plugin.md"><img src="https://www.connectonion.com/logos/claude.svg?v=3" width="80" height="80" alt="Claude Code" title="Claude Code · co claude"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/codex.svg?v=3" width="80" height="80" alt="Codex" title="Codex · co skills link"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/skills.svg?v=3" width="80" height="80" alt="Your skills" title="Your skills · co skills"></a>
+<a href="docs/cli/sub.md"><img src="https://www.connectonion.com/logos/sub.svg?v=3" width="80" height="80" alt="Shared skills" title="Shared skills · co sub"></a>
+<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/eval.svg?v=3" width="80" height="80" alt="Evals" title="Evals · co eval"></a>
+<a href="docs/cli/audit.md"><img src="https://www.connectonion.com/logos/audit.svg?v=3" width="80" height="80" alt="CLI audit" title="CLI audit · co audit"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/cursor.svg?v=3" width="80" height="80" alt="Cursor" title="Cursor · co skills discover"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/kiro.svg?v=3" width="80" height="80" alt="Kiro" title="Kiro · co skills discover"></a></p>
+
+<p><b>Models</b><br>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/managed.svg?v=3" width="80" height="80" alt="Managed keys" title="Managed keys · co/… ($5 credit)"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openai.svg?v=3" width="80" height="80" alt="OpenAI" title="OpenAI · gpt-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/anthropic.svg?v=3" width="80" height="80" alt="Anthropic" title="Anthropic · claude-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/gemini.svg?v=3" width="80" height="80" alt="Gemini" title="Gemini · gemini-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/mistral.svg?v=3" width="80" height="80" alt="Mistral" title="Mistral · mistral/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/groq.svg?v=3" width="80" height="80" alt="Groq" title="Groq · groq/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/grok.svg?v=3" width="80" height="80" alt="Grok" title="Grok · grok/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openrouter.svg?v=3" width="80" height="80" alt="OpenRouter" title="OpenRouter · openrouter/…"></a>
+<a href="docs/concepts/local-models.md"><img src="https://www.connectonion.com/logos/ollama.svg?v=3" width="80" height="80" alt="Ollama (local)" title="Ollama (local) · ollama/…"></a></p>
+
+<p><b>Agents &amp; servers</b><br>
+<a href="docs/cli/call.md"><img src="https://www.connectonion.com/logos/call.svg?v=3" width="80" height="80" alt="Remote agents" title="Remote agents · co call"></a>
+<a href="docs/features/trust.md"><img src="https://www.connectonion.com/logos/trust.svg?v=3" width="80" height="80" alt="Trust" title="Trust · co trust"></a>
+<a href="docs/cli/proxy.md"><img src="https://www.connectonion.com/logos/proxy.svg?v=3" width="80" height="80" alt="Your internet" title="Your internet · co proxy"></a>
+<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/server.svg?v=3" width="80" height="80" alt="Your servers" title="Your servers · co deploy --to"></a>
+<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/ssh.svg?v=3" width="80" height="80" alt="SSH" title="SSH · co server ssh"></a>
+<a href="docs/cli/schedule.md"><img src="https://www.connectonion.com/logos/schedule.svg?v=3" width="80" height="80" alt="Schedules" title="Schedules · co schedule"></a></p>
+
+<p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
-<div align="center">
+<a id="co-rem--your-agents-memory"></a>
 
-[![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://python.org)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
-[![GitHub stars](https://img.shields.io/github/stars/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion)
-[![Contributors](https://img.shields.io/github/contributors/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion/graphs/contributors)
-[![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
-[![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
+## co rem — decentralized context flow
 
-**Open source (Apache-2.0) · Python 3.10+ · `pip install connectonion`**
+**Your context, connected and ready for the next task.** co rem connects
+context from your mail and coding sessions in local, linked Markdown pages.
+People, projects, skills and decisions stay connected to their sources, so
+you and your agents can follow the evidence and reuse that context.
 
-[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
+The context lives on your machine, where your tools and agents can read it.
+Memory keeps it available over time; the goal is to keep context flowing
+through your work.
 
-</div>
+[**Explore co rem →**](https://docs.connectonion.com/rem) ·
+[Try the sample reader](https://docs.connectonion.com/rem/demo) ·
+[Setup and source controls](docs/cli/rem.md)
 
----
+<a href="https://docs.connectonion.com/rem/demo">
+  <picture>
+    <source media="(max-width: 600px)" srcset="docs/assets/rem-readme/reader-phone.png">
+    <img src="docs/assets/rem-readme/reader-desktop.png" alt="co rem morning overview: a changed role, its supporting source, and notebook navigation" width="960">
+  </picture>
+</a>
 
-## Your agent needs a harness
+*The 1.9.0a20 reader with invented example data. The linked sample is a frozen
+notebook you can explore without connecting an account.*
 
-Models can already reason, plan and write code. What they cannot do on their
-own is *reach* anything: log in to a client's portal, read an inbox, drop a file
-on the office NAS, send an email from an address that is theirs. Every one of
-those normally costs you an SDK, an OAuth app, a credential store and a script —
-per service, per agent.
+- **Connect scattered context.** Bring mail and coding sessions into linked
+  pages about the people, projects and skills involved.
+- **Follow the evidence.** Trace facts, decisions and changes back to their
+  sources, then carry that understanding into the next task.
+- **Keep context in your hands.** Local Markdown pages can be read by you and
+  your agents. An approved schedule keeps them current.
 
-ConnectOnion is the harness that removes that work. Each capability is a
-command-line tool the agent runs in its shell:
+### Try co rem · 1.9.1
 
-- **Any agent can use it.** If it can run a shell command — Claude Code, Codex,
-  Cursor, or an agent you wrote — it can use every capability below. Nothing to
-  import.
-- **You can read what it did.** The agent runs the same `co` command you would
-  type. Its transcript is a list of commands, not opaque API calls.
-- **Your agent only needs to know `co`.** Bare `co` lists every command,
-  `co commands` lists every subcommand, and `--help` explains any of them. You
-  don't hand it a tool list or install skills first.
-- **Commands say what to run next.** Many finish with a
-  `Next: …` hint, so an agent recovers from a missing login or a wrong flag on
-  its own.
-- **It stays yours.** Google and Microsoft credentials are saved only on your
-  computer; shell, file writes and email stop for approval when a chat UI is
-  attached.
-
-## Start with your environment
+Start with [the setup guide](https://docs.connectonion.com/rem#start)
+for account setup, source choices and model costs. Daily scheduling currently
+requires **macOS**. Then run:
 
 ```bash
-pip install connectonion
-
-co init                     # create your global identity and ~/.co/keys.env
-co env                      # inspect the active settings; values stay hidden
-co auth microsoft           # connect your Outlook account once
-co outlook                  # read your inbox
-co commands                 # discover Gmail, browser, files, chat and more
+pip install --upgrade 'connectonion==1.9.1'
+co rem init                # build your map and first pages; approve nightly upkeep when prompted
+co rem open                # read the local notebook
 ```
 
-`co init` does not change the current project. To initialize one, pass its path:
-`co init ./`. Commands still use global settings by default; select a project
-file explicitly with `co --env-file ./.env env` or
-`co --env-file ./.env outlook`. See the [CLI Quick Start](docs/quickstart.md)
-for Google, browser and other examples.
+Pages stay in `~/.co/rem`. Selected source content is sent to the configured
+model during investigation; see [source controls and costs](docs/cli/rem.md).
+For access from another device, `co rem open --live` opens your online
+`co ai` Host at `https://chat.openonion.ai/<address>/rem`, for the Host owner only.
 
-## The aha moment: one task, several environments
+## Install and start
 
-Imagine asking your coding agent: “Read the context from my Telegram bot,
-check the official docs, ask a teammate's agent to run an allowed check, then
-email me a summary.” The work stays legible: `co telegram receive` brings in
-messages delivered to a bot you control, `co search` and `co fetch` find the
-source, `co call` runs an allowed command on a reachable remote agent, and
-`co email send` sends only to the recipient you specify. A remote agent can
-delegate to Codex separately through `co ai` only when Codex is installed, authenticated
-and permitted on that machine.
+```bash
+pip install connectonion   # Python 3.10+
+co init                    # your identity and ~/.co/keys.env
+co auth microsoft          # or: co auth google
+co outlook                 # or: co gmail
+co commands                # everything else; add --help to any
+```
+
+The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
+apps and project settings.
+
+## Your tools, one command line
+
+Use Gmail, Outlook, your browser, files and chat apps from the same `co`
+command. Your agent discovers each tool through `--help` when it needs it.
+
+<details>
+<summary><strong>How the CLI works</strong></summary>
+
+## CLI is all you need
+
+An agent's work lives in many places: your inbox, your calendar, a chat
+thread, a web page behind a login, a file on the NAS, an issue tracker, its own
+notes, another agent. **ConnectOnion strings all of that context together with
+one command line, `co`.** The agent reads a thread with one command, looks
+something up with the next, and writes the answer with a third. Every step is
+a line in its shell, and the output of one is the input of the next.
+
+### Why a command line, and not MCP or a plugin per tool
+
+- **Every agent already has one.** Claude Code, Codex, Cursor and any agent you
+  write can run a shell command. There is no server to start, no client to
+  configure and nothing to install into the agent.
+- **It costs no context until it is used.** Tool schemas sit in an agent's
+  prompt whether it needs them or not. A command line is discovered on demand:
+  bare `co` lists the groups, `co gmail --help` explains one, and only the page
+  the agent opens enters its context.
+- **The help page is the prompt.** Each `--help` says what the command does,
+  what it changes (Read-only, Sends, Changes, Deletes…) and gives a real
+  example, so there is no separate skill file or schema to keep in step. CI
+  fails any page that loses one of those parts ([`co audit`](docs/cli/audit.md)).
+- **Every answer names the next step.** A list ends with how to open the first
+  item, a missing login ends with `Next: co auth microsoft`, a typo ends with
+  the command you meant. The agent recovers without asking you.
+- **It composes.** Commands pipe into each other and into scripts, and the
+  transcript is the same commands you would type, so you can read exactly what
+  the agent did, and run it yourself.
+
+```console
+$ co                       # every command group
+$ co linear --help         # what it does, what it changes, an example
+$ co linear issues -n 3
+3 open issues
+CON-3  Todo  No priority  -  2026-10-01  Import your data
+CON-1  Todo  No priority  -  2026-10-01  Get familiar with Linear
+CON-4  Todo  No priority  -  2026-10-01  Set up your teams
+Next: co linear issue CON-3
+```
+
+### MCP becomes a command too
+
+MCP servers are useful; the protocol is not the problem, the interface is.
+**`co mcp`** (coming next, [#2048](https://github.com/openonion/connectonion/issues/2048))
+puts any MCP server behind the same command line: `co mcp tools <server>`
+lists its tools, `co mcp help <server> <tool>` renders a tool as a help page,
+and `co mcp call` runs it. The agent finds MCP tools the way it finds
+everything else, through `--help`, and none of them sit in its prompt.
+
+Credentials stay on your machine, in `~/.co/keys.env` or encrypted with
+`co env set … --secret`. Writes that matter preview until `--yes`, and in
+`co ai` a risky tool call waits for your approval.
+
+
+</details>
+
+## See the CLI in action
+
+[Watch the 43-second film](https://www.connectonion.com/#film) — real runs from co 1.8.10.
+
+<details>
+<summary><strong>See search, Linear, Slack, Canny and audit examples</strong></summary>
 
 <picture>
   <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/aha-search-mobile-poster.png">
   <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/aha-search-poster.png">
   <source media="(max-width: 600px)" srcset="https://www.connectonion.com/aha-search-mobile.gif">
-  <img alt="Read-only co search preview answering what ConnectOnion is with GitHub and website sources" src="https://www.connectonion.com/aha-search.gif">
+  <img alt="co search ConnectOnion printing an answer with its GitHub and website sources" src="https://www.connectonion.com/aha-search.gif">
 </picture>
 
-The GIF is a **verified read-only** `co search ConnectOnion` run with a
-source-backed answer, not a recording of the whole workflow. The configured
-search engine may use account credits. `co search` is in the **1.8.9 preview**; Telegram
-`receive` is experimental and needs a configured bot. No remote agent was
-called and no email was sent in this demo. Start with the stable environment
-and Outlook steps above, then see the [CLI Quick Start](docs/quickstart.md).
-
-## What's in the harness
-
-| | Commands |
-|---|---|
-| **Identity & environment** | `co init` · `co env` · `co auth` · `co keys` · `co status` · `co trust` |
-| **Browser** | `co browser` — one persistent browser; log in by hand once, 2FA included · `co remote-browser` · `co proxy` |
-| **Mail & calendar** | `co email` (the agent's own address, no DNS) · `co gmail` · `co outlook` · `co gcalendar` |
-| **Chat inboxes** | `co sms` · `co telegram` · `co whatsapp` · `co feishu` · `co lark` |
-| **Files** | `co gdrive` · `co syno` (Synology NAS) · `co youtube` |
-| **Skills** | `co skills` — discover, copy and link skill files · `co sub` — follow and refresh shared skills |
-| **Network & ship** | `co call` (run one command on a remote agent) · `co deploy` (our cloud, or `--to` a server you own) · `co server` |
-| **Build** | `co ai` · `co create` · `co eval` · `co doctor` |
-| **Memory** | `co rem` — pages on the people, projects and tools in your mail and sessions (Experimental until 1.9.0) |
-
-`co commands` lists every command and subcommand with its summary.
-
-## Use it from Claude Code or Codex
-
-Because the harness is commands, a coding agent needs nothing but its shell.
-Give it a skill that names the commands it may run:
-
-```markdown
----
-name: monthly-arrears
-description: Pull overdue accounts from the portal and file the report.
-tools: [read_file, write_file, Bash(co *)]
----
-1. co browser go_to the arrears page and export the table
-2. co gdrive put arrears.xlsx
-3. co email send the owner a two-line summary
-```
-
-Skills in `.claude/skills/` load as they are, and `co skills discover` also finds
-Codex, Cursor and Kiro skills.
-
-## co rem — your agent's memory
-
-In REM sleep the brain replays the day and keeps what matters. **co rem** does
-the same for your work: it reads your mail (connected with `co auth google` or
-`co auth microsoft`) and your local Codex and Claude Code sessions, and keeps a
-Markdown page on each person, project and tool you work with. Your agent reads
-those pages, so it picks up where you left off instead of asking again.
-
-- **A folder on your machine.** The notebook lives in `~/.co/rem`. Saved mail
-  bodies stay in its owner-only `.state/` and never go into a page; a model
-  reads them only through the login you choose.
-- **Your plan, not our credits.** By default it runs on your own Codex plan
-  and spends no OpenOnion credits. It starts no new page once your Codex week
-  is 70% used, so your own coding comes first.
-- **What it costs, measured.** Your own page takes about 15 minutes, a person
-  about 15 minutes and a project about a minute in our runs; the first run
-  stops at 5 points of your Codex week. Investigating a very large subject can still cost
-  millions of tokens; searching instead of summarising is
-  [#1850](https://github.com/openonion/connectonion/issues/1850).
-
-Called `co wiki` up to 1.8.9; the 1.9.0 previews name it `co rem`, labelled
-Experimental until 1.9.0 supports it long-term. The first `co rem` moves an
-existing `~/.co/wiki` notebook to `~/.co/rem`, and `co wiki` only prints the new
-command.
-
-```bash
-co rem init       # map 90 days of mail and sessions into pages; no model, no cost
-co rem open       # read the notebook in your browser
-co rem start      # approve what it reads, then turn on the daily update (macOS)
-```
-
-`co rem init` writes your own page, the 3 people you write to most and your recent projects. See
-[co rem](https://docs.connectonion.com/rem) and the
-[command reference](docs/cli/rem.md).
-
-## Build your own agent on the harness
-
-When you want an agent of your own rather than a coding agent, start from the
-same working agent that powers `co ai` and specialise it with skills:
-
-```bash
-co create sales-agent
-cd sales-agent
-co ai          # work on it from a terminal or the web client
-co deploy      # ship it
-co status      # see what is running
-```
-
-`co create` supplies files, shell, browser, planning, todos and sub-agents. The
-Python runtime below is there whenever you need a custom tool, hook, provider or
-host boundary.
-
-The default is `co/gemini-3.8-flash`, routed through the managed gateway
-without exposing Google's key to the client. Out of credits? `co status` says how
-to keep going for free: `co/gemma`, Google's Gemma on ConnectOnion's GPU (4,096-token
-context, one shared inference slot), or a local model as `ollama/<model>`. The free
-`co/llama` works the same way. Select `gemini-3.8-flash` to use
-your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
-Gemini model. Provider failures do not silently move a request to another model.
-
-> ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
->
-> This is the core principle that drives every design decision in ConnectOnion.
-
-## 🎯 Living Our Philosophy
-
-### Step 1: Simple - Create and Use
-```python
-from connectonion import Agent
-
-agent = Agent(name="assistant")
-agent.input("Hello!")  # That's it!
-```
-
-### Step 2: Add Your Tools
-```python
-def search(query: str) -> str:
-    """Search for information."""
-    return f"Results for {query}"
-
-agent = Agent(name="assistant", tools=[search])
-agent.input("Search for Python tutorials")
-```
-
-### Step 3: Debug Your Agent
-```python
-agent = Agent(name="assistant", tools=[search])
-agent.auto_debug()  # Interactive debugging session
-```
-
-### Step 4: Production Ready
-```python
-agent = Agent(
-    name="production",
-    model="gpt-5",                    # Latest models
-    tools=[search, analyze, execute], # Your functions as tools
-    system_prompt=company_prompt,     # Custom behavior
-    max_iterations=10,                # Safety controls
-)
-agent.input("Complex production task")
-```
-
-### Step 5: Multi-Agent - Make it Remotely Callable
-```python
-from connectonion import host
-host(agent)  # HTTP server + P2P relay - other agents can now discover and call this agent
-```
-
-## ✨ Why ConnectOnion?
-
-When you build your own agent, ConnectOnion gives you everything around the LLM call — so you only write prompt and tools.
-
-### Built-in AI Programmer
-
-```bash
-co ai   # Opens a chat interface with an AI that deeply understands ConnectOnion
-```
-
-`co ai` is an AI coding assistant built *with* ConnectOnion. It writes working agent code because it knows the framework inside out. Fully open-source — inspect it, modify it, build your own.
-
-### Built-in Frontend & Backend — Just Write Prompt and Tools
-
-Traditional path: write agent logic → build FastAPI backend → build React frontend → wire APIs → deploy.
-
-ConnectOnion path: **write prompt and tools → deploy.**
-
-- Backend: framework handles the API layer
-- Frontend: [chat.openonion.ai](https://chat.openonion.ai) — ready-to-use chat interface
-- All open-source, customizable, but you don't start from zero
-
-### Ready-to-Use Tool Ecosystem
-
-Import and use — no schema writing, no interface wiring:
-
-```python
-from connectonion import bash, Shell                                    # Command execution
-from connectonion.useful_tools import FileTools                         # File system (with safety tracking)
-from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
-
-from connectonion import Gmail, Outlook              # Email
-from connectonion import get_sms, wait_for_sms        # E2EE Android SMS inbox
-from connectonion import GDrive                      # Google Drive files
-from connectonion import GoogleCalendar              # Calendar
-from connectonion import Memory                      # Persistent memory
-from connectonion import TodoList                    # Task tracking
-```
-
-Need to customize? Copy the source into your project:
-
-```bash
-co copy Gmail     # Copies Gmail tool source code to your project for modification
-```
-
-### Built-in Approval System
-
-Dangerous operations (bash commands, file deletion) automatically trigger approval — no permission logic needed from you.
-
-```python
-from connectonion.useful_plugins import tool_approval, shell_approval
-
-agent = Agent("assistant", tools=[bash], plugins=[shell_approval])
-# Shell commands now require approval before execution
-```
-
-Plugin-based: turn it off, customize it, or replace it entirely.
-
-### Skills System — Auto-Discovery, Claude Code Compatible
-
-Reusable workflows with automatic permission scoping:
-
-```python
-from connectonion.useful_plugins import skills
-
-agent = Agent("assistant", tools=[file_tools], plugins=[skills])
-
-# User types /commit → skill loads → git commands auto-approved → permission cleared after execution
-```
-
-Three-level auto-discovery (project → user → built-in):
-```
-.co/skills/skill-name/SKILL.md      # Project-level (highest priority)
-~/.co/skills/skill-name/SKILL.md    # User-level
-builtin/skill-name/SKILL.md         # Built-in
-```
-
-Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
-
-### 12 Lifecycle Hooks + Plugin System
-
-Inject logic at any point in the agent execution cycle:
-
-```python
-from connectonion import Agent, after_tools, llm_do
-from connectonion.useful_plugins import re_act, eval, auto_compact, subagents, full_access
-
-# Built-in plugins — same capabilities as Claude Code, open to any agent
-agent = Agent("researcher", tools=[search], plugins=[
-    re_act,         # Reflect + plan after each tool call
-    auto_compact,   # Auto-compress context at 90% capacity
-    subagents,      # Spawn sub-agents with independent tools and prompts
-    full_access,            # Full access — fully autonomous mode
-])
-```
-
-These plugins mirror Claude Code's internal capabilities — `auto_compact`, `subagents`, `full_access` directly correspond to Claude Code's context compression, sub-agent spawning, and autonomous work mode. ConnectOnion makes these capabilities available to any agent you build.
-
-Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
-
-Plugins are just lists of event handlers — visible, modifiable, `co copy`-able.
-
-### Multi-Agent Trust System (Fast Rules)
-
-When agents call each other, trust decisions happen **before LLM involvement** — zero token cost for 90% of cases. Trust is configured when hosting an agent:
-
-```python
-from connectonion import host
-
-host(
-    create_agent,
-    trust="careful"    # whitelist → allow, unknown → ask LLM, blocked → deny
-)
-```
-
-Three presets: `open` (dev), `careful` (staging), `strict` (production).
-
----
-
-## 💬 Join the Community
-
-[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Join%20Discord&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/4xfD9k8AUF)
-
-Get help, share agents, and discuss with 1000+ builders in our active community.
-
----
-
-## Build your own agent with the Python SDK
-
-The CLI environment and service commands above work without a project. Use
-this path only when you want to write or host an agent of your own.
-
-### Installation
-
-```bash
-pip install connectonion
-```
-
-### Create a project
-
-```bash
-# Create a new agent project with one command
-co create my-agent
-
-# Navigate and run
-cd my-agent
-python agent.py
-```
-
-For a command-only start, use `co init`, `co env` and a service command as shown
-above; `co create` is for building an agent project.
-
-### Manual Usage
-
-```python
-import os  
-from connectonion import Agent
-
-# Set your OpenAI API key
-os.environ["OPENAI_API_KEY"] = "your-api-key-here"
-
-# 1. Define tools as simple functions
-def search(query: str) -> str:
-    """Search for information."""
-    return f"Found information about {query}"
-
-def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
-
-# 2. Create an agent with tools and personality
-agent = Agent(
-    name="my_assistant",
-    system_prompt="You are a helpful and friendly assistant.",
-    tools=[search, calculate]
-    # max_iterations=100 is the default - agent will try up to 100 tool calls per task
-)
-
-# 3. Use the agent
-result = agent.input("What is 25 * 4?")
-print(result)  # Agent will use the calculate function
-
-result = agent.input("Search for Python tutorials") 
-print(result)  # Agent will use the search function
-
-# 4. View behavior history (automatic!)
-print(agent.history.summary())
-```
-
-### 🔍 Interactive Debugging with `@xray`
-
-Debug your agents like you debug code - pause at breakpoints, inspect variables, and test edge cases:
-
-```python
-from connectonion import Agent
-from connectonion import xray
-
-# Mark tools you want to debug with @xray
-@xray
-def search_database(query: str) -> str:
-    """Search for information."""
-    return f"Found 3 results for '{query}'"
-
-@xray
-def send_email(to: str, subject: str) -> str:
-    """Send an email."""
-    return f"Email sent to {to}"
-
-# Create agent with @xray tools
-agent = Agent(
-    name="debug_demo",
-    tools=[search_database, send_email]
-)
-
-# Launch interactive debugging session
-agent.auto_debug()
-
-# Or debug a specific task
-agent.auto_debug("Search for Python tutorials and email the results")
-```
-
-**What happens at each `@xray` breakpoint:**
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@xray BREAKPOINT: search_database
-
-Local Variables:
-  query = "Python tutorials"
-  result = "Found 3 results for 'Python tutorials'"
-
-What do you want to do?
-  → Continue execution 🚀       [c or Enter]
-    Edit values 🔍             [e]
-    Quit debugging 🚫          [q]
-
-💡 Use arrow keys to navigate or type shortcuts
->
-```
-
-**Key features:**
-- **Pause at breakpoints**: Tools decorated with `@xray` pause execution
-- **Inspect state**: See all local variables and execution context
-- **Edit variables**: Modify results to test "what if" scenarios
-- **Full Python REPL**: Run any code to explore agent behavior
-- **See next action**: Preview what the LLM plans to do next
-
-Perfect for:
-- Understanding why agents make certain decisions
-- Testing edge cases without modifying code
-- Exploring agent behavior interactively
-- Debugging complex multi-tool workflows
-
-[Learn more in the auto_debug guide](docs/debug/auto_debug.md)
-
-### 🔌 Plugin System
-
-Package reusable capabilities as plugins and use them across multiple agents:
-
-```python
-from connectonion import Agent, after_tools, llm_do
-
-# Define a reflection plugin
-def add_reflection(agent):
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_result' and trace['status'] == 'success':
-        result = trace['result']
-        reflection = llm_do(
-            f"Result: {result[:200]}\n\nWhat did we learn?",
-            system_prompt="Be concise.",
-            temperature=0.3
-        )
-        agent.current_session['messages'].append({
-            'role': 'assistant',
-            'content': f"🤔 {reflection}"
-        })
-
-# Plugin is just a list of event handlers
-reflection = [after_tools(add_reflection)]  # after_tools fires once after all tools
-
-# Use across multiple agents
-researcher = Agent("researcher", tools=[search], plugins=[reflection])
-analyst = Agent("analyst", tools=[analyze], plugins=[reflection])
-```
-
-**What plugins provide:**
-- **Reusable capabilities**: Package event handlers into bundles
-- **Simple pattern**: A plugin is just a list of event handlers
-- **Easy composition**: Combine multiple plugins together
-- **Built-in plugins**: re_act, eval, system_reminder, image_result_formatter, and more
-
-**Built-in plugins** are ready to use:
-```python
-from connectonion.useful_plugins import re_act, system_reminder
-
-agent = Agent("assistant", tools=[search], plugins=[re_act, system_reminder])
-```
-
-[Built-in plugins](docs/useful_plugins/)
-
-## 🔧 Core Concepts
-
-### Agent
-The main class that orchestrates LLM calls and tool usage. Each agent:
-- Has a unique name for tracking purposes
-- Can be given a custom personality via `system_prompt`
-- Automatically converts functions to tools
-- Records all behavior to JSON files
-
-### Function-Based Tools
-**NEW**: Just write regular Python functions! ConnectOnion automatically converts them to tools:
-
-```python
-def my_tool(param: str, optional_param: int = 10) -> str:
-    """This docstring becomes the tool description."""
-    return f"Processed {param} with value {optional_param}"
-
-# Use it directly - no wrapping needed!
-agent = Agent("assistant", tools=[my_tool])
-```
-
-Key features:
-- **Automatic Schema Generation**: Type hints become OpenAI function schemas
-- **Docstring Integration**: First line becomes tool description  
-- **Parameter Handling**: Supports required and optional parameters
-- **Type Conversion**: Handles different return types automatically
-
-### System Prompts
-Define your agent's personality and behavior with flexible input options:
-
-```python
-# 1. Direct string prompt
-agent = Agent(
-    name="helpful_tutor",
-    system_prompt="You are an enthusiastic teacher who loves to educate.",
-    tools=[my_tools]
-)
-
-# 2. Load from file (any text file, no extension restrictions)
-agent = Agent(
-    name="support_agent",
-    system_prompt="prompts/customer_support.md"  # Automatically loads file content
-)
-
-# 3. Using Path object
-from pathlib import Path
-agent = Agent(
-    name="coder",
-    system_prompt=Path("prompts") / "senior_developer.txt"
-)
-
-# 4. None for default prompt
-agent = Agent("basic_agent")  # Uses default: "You are a helpful assistant..."
-```
-
-Example prompt file (`prompts/customer_support.md`):
-```markdown
-# Customer Support Agent
-
-You are a senior customer support specialist with expertise in:
-- Empathetic communication
-- Problem-solving
-- Technical troubleshooting
-
-## Guidelines
-- Always acknowledge the customer's concern first
-- Look for root causes, not just symptoms
-- Provide clear, actionable solutions
-```
-
-### Logging
-Automatic logging of all agent activities including:
-- User inputs and agent responses
-- LLM calls with timing
-- Tool executions with parameters and results
-- Default storage in `.co/logs/{name}.log` (human-readable format)
-
-## 🎯 Example Tools
-
-You can still use the traditional Tool class approach, but the new functional approach is much simpler:
-
-### Class Instances as Tools (Still Supported)
-```python
-class Calculator:
-    def calculate(self, expression: str) -> float:
-        """Evaluate a math expression."""
-        return eval(expression)
-
-# Each public method with type hints becomes a tool
-agent = Agent("assistant", tools=[Calculator()])
-```
-
-### New Function-Based Approach (Recommended)
-```python
-def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
-
-def get_time(format: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """Get current date and time."""
-    from datetime import datetime
-    return datetime.now().strftime(format)
-
-def read_file(filepath: str) -> str:
-    """Read contents of a text file."""
-    with open(filepath, 'r') as f:
-        return f.read()
-
-# Use them directly!
-agent = Agent("assistant", tools=[calculate, get_time, read_file])
-```
-
-The function-based approach is simpler, more Pythonic, and easier to test!
-
-## 🎨 CLI Templates
-
-ConnectOnion CLI provides templates to get you started quickly:
-
-```bash
-# Create an agent (the co-ai template)
-co create my-agent
-
-# Initialize global credentials (no project files)
-co init
-
-# Initialize an explicit existing directory
-co init ./                   # Adds project config, .env, and docs
-co init ./ --template co-ai   # Adds the full project
-```
-
-**Available Templates:**
-- `co-ai` (default) - the same agent as `co ai`, hosted: files, shell, browser,
-  planning, todos, sub-agents. Specialise it with skills in `.co/skills/`.
-- `custom` - an LLM writes `agent.py` from your description.
-
-`minimal`, `browser`, `hosted-browser`, `coder`, and `web-research` were
-retired — six skeletons that drifted apart, four of which never called
-`host()` so they could not be deployed. One agent plus skills replaces them.
-
-Each template includes:
-- Pre-configured agent ready to run
-- Automatic API key setup
-- Embedded ConnectOnion documentation
-- Git-ready `.gitignore`
-
-Learn more in the [CLI Documentation](docs/cli/) and [Templates Guide](docs/templates/).
-
-## 🔨 Creating Custom Tools
-
-The simplest way is to use functions (recommended):
-
-```python
-def weather(city: str) -> str:
-    """Get current weather for a city."""
-    # Your weather API logic here
-    return f"Weather in {city}: Sunny, 22°C"
-
-# That's it! Use it directly
-agent = Agent(name="weather_agent", tools=[weather])
-```
-
-Or use a class instance to group related tools with shared state:
-
-```python
-class WeatherService:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-
-    def current(self, city: str) -> str:
-        """Get current weather for a city."""
-        return f"Weather in {city}: Sunny, 22°C"
-
-    def forecast(self, city: str, days: int) -> str:
-        """Get a multi-day forecast for a city."""
-        return f"{days}-day forecast for {city}: mostly sunny"
-
-# Each public method becomes a tool; access the instance via agent.tools.weatherservice
-agent = Agent(name="weather_agent", tools=[WeatherService(api_key="...")])
-```
-
-## 📁 Project Structure
-
-```
-connectonion/
-├── connectonion/
-│   ├── __init__.py         # Main exports
-│   ├── core/               # Agent, LLM, events, tool system
-│   │   ├── agent.py        # Agent class
-│   │   ├── llm.py          # Multi-provider LLM abstraction
-│   │   ├── events.py       # Event system
-│   │   └── tool_factory.py # Function → tool conversion
-│   ├── debug/              # xray, replay, auto_debug
-│   ├── network/            # connect, host, relay, trust
-│   ├── tui/                # Terminal UI components
-│   ├── logger.py           # Unified logging facade
-│   ├── console.py          # Terminal output
-│   ├── useful_tools/       # Built-in tools
-│   ├── useful_plugins/     # Built-in plugins
-│   ├── useful_skills/      # Built-in skills
-│   └── cli/                # CLI module
-│       ├── main.py         # CLI commands
-│       ├── commands/       # Command implementations
-│       └── templates/      # Agent template (one: co-ai)
-│           └── co-ai/
-├── docs/                   # Documentation
-│   ├── quickstart.md
-│   ├── concepts/           # Core concepts
-│   ├── cli/                # CLI commands
-│   ├── templates/          # Project templates
-│   └── ...
-├── examples/
-├── tests/
-│   ├── unit/
-│   └── e2e/
-└── pyproject.toml
-```
-
-## 🧪 Running Tests
-
-```bash
-python -m pytest tests/
-```
-
-Or run individual test files:
-
-```bash
-python -m unittest tests.test_agent
-```
-
-## 📊 Automatic Logging
-
-All agent activities are automatically logged to:
-```
-.co/logs/{agent_name}.log  # Default location
-```
-
-Each log entry includes:
-- Timestamp
-- User input
-- LLM calls with timing
-- Tool executions with parameters and results
-- Final responses
-
-Control logging behavior:
-```python
-# Default: logs to .co/logs/assistant.log
-agent = Agent("assistant")
-
-# Log to current directory
-agent = Agent("assistant", log=True)  # → assistant.log
-
-# Disable logging
-agent = Agent("assistant", log=False)
-
-# Custom log file
-agent = Agent("assistant", log="my_logs/custom.log")
-```
-
-## 🔑 Configuration
-
-### OpenAI API Key
-Set your API key via environment variable:
-```bash
-export OPENAI_API_KEY="your-api-key-here"
-```
-
-Or pass directly to agent:
-```python
-agent = Agent(name="test", api_key="your-api-key-here")
-```
-
-### Model Selection
-```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.8-flash
-```
-
-### Iteration Control
-Control how many tool calling iterations an agent can perform:
-
-```python
-# Default: 10 iterations (good for most tasks)
-agent = Agent(name="assistant", tools=[...])
-
-# Complex tasks may need more iterations
-research_agent = Agent(
-    name="researcher", 
-    tools=[search, analyze, summarize, write_file],
-    max_iterations=25  # Allow more steps for complex workflows
-)
-
-# Simple agents can use fewer iterations for safety
-calculator = Agent(
-    name="calc", 
-    tools=[calculate],
-    max_iterations=5  # Prevent runaway calculations
-)
-
-# Per-request override for specific complex tasks
-result = agent.input(
-    "Analyze all project files and generate comprehensive report",
-    max_iterations=50  # Override for this specific task
-)
-```
-
-When an agent reaches its iteration limit, it returns:
-```
-"Task incomplete: Maximum iterations (100) reached."
-```
-
-**Choosing the Right Limit:**
-- **Simple tasks (1-3 tools)**: 5-10 iterations
-- **Standard workflows**: 10-15 iterations (default: 100)
-- **Complex analysis**: 20-30 iterations  
-- **Research/multi-step**: 30+ iterations
-
-## 🛠️ Advanced Usage
-
-### Multiple Tool Calls
-Agents can chain multiple tool calls automatically:
-```python
-result = agent.input(
-    "Calculate 15 * 8, then tell me what time you did this calculation"
-)
-# Agent will use calculator first, then current_time tool
-```
-
-### Custom LLM Providers
-```python
-from connectonion import LLM
-
-class CustomLLM(LLM):
-    def complete(self, messages, tools=None):
-        # Your custom LLM implementation
-        pass
-
-agent = Agent(name="test", llm=CustomLLM())
-```
-
-## ❓ FAQ
-
-### What is ConnectOnion?
-
-ConnectOnion is the agent CLI harness: it connects your AI agent to Gmail, Outlook, a real logged-in browser, chat apps and your files, one `co` command each, with no OAuth app, no DNS records and no Playwright script. Any agent that can run a shell command can use it — Claude Code, Codex, or an agent you build with ConnectOnion's Python runtime. Open source, Apache-2.0.
-
-### What is ConnectOnion's philosophy?
-
-"Keep simple things simple, make complicated things possible." This principle drives every design decision — start simple, add complexity only when needed.
-
-### How do I get started?
-
-```bash
-pip install connectonion
-```
-
-Or use the CLI for faster setup:
-
-```bash
-co create my-agent
-cd my-agent
-python agent.py
-```
-
-### What LLM providers does ConnectOnion support?
-
-ConnectOnion supports multiple providers: OpenAI, Anthropic, Gemini, and `co/` managed keys (the default — no API key setup needed). To use your own key, set the provider's environment variable:
-
-```bash
-export OPENAI_API_KEY="your-key"     # for gpt-* models
-export ANTHROPIC_API_KEY="your-key"  # for claude-* models
-export GEMINI_API_KEY="your-key"     # for gemini-* models
-```
-
-### How do I add tools to my agent?
-
-Just write regular Python functions! ConnectOnion automatically converts them to tools:
-
-```python
-def search(query: str) -> str:
-    """Search for information."""
-    return f"Results for {query}"
-
-agent = Agent(name="assistant", tools=[search])
-```
-
-No schema writing, no wrapping — your function becomes a tool.
-
-### What are plugins?
-
-Plugins are lists of lifecycle hooks that inject logic at any point in the agent execution cycle. Built-in plugins:
-- `re_act`: Reflect + plan after each tool call
-- `auto_compact`: Auto-compress context at 90% capacity
-- `subagents`: Spawn sub-agents with independent tools
-- `full_access`: Full access — fully autonomous mode
-
-```python
-from connectonion.useful_plugins import re_act, subagents
-agent = Agent("researcher", tools=[search], plugins=[re_act, subagents])
-```
-
-### What is `@xray` debugging?
-
-`@xray` is an interactive debugging feature that pauses execution at marked tools:
-
-```python
-from connectonion import xray
-
-@xray
-def my_tool(query: str) -> str:
-    return "result"
-
-agent = Agent("assistant", tools=[my_tool])
-agent.auto_debug()
-```
-
-At each breakpoint, you can:
-- Inspect local variables
-- Edit values to test "what if" scenarios
-- Continue execution
-- Run Python REPL
-
-### What is the Skills System?
-
-Skills are reusable workflows with automatic permission scoping and three-level auto-discovery:
-- `.co/skills/skill-name/SKILL.md` (project-level, highest priority)
-- `~/.co/skills/skill-name/SKILL.md` (user-level)
-- `builtin/skill-name/SKILL.md` (built-in)
-
-Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
-
-### What is the Multi-Agent Trust System?
-
-When agents call each other, trust decisions happen **before LLM involvement** (zero token cost):
-
-```python
-from connectonion import host
-
-host(create_agent, trust="careful")
-```
-
-Three presets:
-- `open` (dev): Allow all
-- `careful` (staging): whitelist → allow, unknown → ask LLM, blocked → deny
-- `strict` (production): Enforce strict rules
-
-### What built-in tools are available?
-
-Ready-to-use tools with no schema writing:
-
-```python
-from connectonion import bash, Shell, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
-from connectonion.useful_tools import FileTools
-from connectonion.useful_tools.browser_tools import BrowserAutomation
-```
-
-### Where can I find help?
-
-- **[Documentation](http://docs.connectonion.com)**: Comprehensive guides
-- **[Discord](https://discord.gg/4xfD9k8AUF)**: 1000+ builders community
-- **[GitHub Issues](https://github.com/openonion/connectonion/issues)**: Bug reports
-
----
-
-## 🗺️ Roadmap
-
-**Current Focus:**
-- Multi-agent networking (serve/connect)
-- Trust system for agent collaboration
-- `co deploy` for one-command deployment
-
-**Recently Completed:**
-- Multiple LLM providers (OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter)
-- Managed API keys (`co/` prefix)
-- Plugin system
-- Google OAuth integration
-- Interactive debugging (`@xray`, `auto_debug`)
-
-See [full roadmap](docs/roadmap.md) for details.
-
-## 🔗 Connect With Us
-
-<div align="center">
-
-[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
-[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/openonion/connectonion)
-[![Documentation](https://img.shields.io/badge/Docs-Learn_More-blue?style=for-the-badge)](http://docs.connectonion.com)
-
-</div>
-
-- **💬 Discord**: [Join our community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas, meet other developers
-- **📚 Documentation**: [docs.connectonion.com](http://docs.connectonion.com) - Comprehensive guides and examples
-- **⭐ GitHub**: [Star the repo](https://github.com/openonion/connectonion) - Show your support
-- **🐛 Issues**: [Report bugs](https://github.com/openonion/connectonion/issues) - We respond quickly
-
----
-
-## ⭐ Show Your Support
-
-If ConnectOnion helps you build better agents, **give it a star!** ⭐
-
-It helps others discover the framework and motivates us to keep improving it.
-
-[⭐ Star on GitHub](https://github.com/openonion/connectonion)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! ConnectOnion is open source and community-driven.
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
-
-See our [Contributing Guide](http://docs.connectonion.com/website-maintenance) for more details.
-
----
-
-## 📄 License
-
-Apache License 2.0 - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
-
----
-
-<div align="center">
-
-**Built with ❤️ by the open-source community**
-
-[⭐ Star this repo](https://github.com/openonion/connectonion) • [💬 Join Discord](https://discord.gg/4xfD9k8AUF) • [📖 Read Docs](https://docs.connectonion.com) • [⬆ Back to top](#-connectonion)
-
-</div>
-
-## ❓ Frequently Asked Questions (FAQ)
-
-### What is ConnectOnion?
-
-ConnectOnion is a simple, elegant framework for production-ready AI agents. Philosophy: "Keep simple things simple, make complicated things possible" - you write prompts and tools, framework handles everything else.
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| Built-in AI Programmer | `co ai` - AI coding assistant |
-| Built-in Frontend & Backend | chat.openonion.ai ready-to-use |
-| Ready-to-Use Tools | Import without schema writing |
-| Approval System | Dangerous ops auto-trigger approval |
-| Skills System | Claude Code compatible, auto-discovery |
-| 12 Lifecycle Hooks | Inject logic at any point |
-| Plugin System | re_act, auto_compact, subagents, full_access |
-| Multi-Agent Trust | Fast rules, zero token cost |
-
-### Quick Start
-
-```bash
-pip install connectonion
-```
-
-### Available Tools
-
-bash, Shell, FileTools, BrowserAutomation, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
-
-### Customize Tools
-
-```bash
-co copy Gmail  # Copy tool source for modification
-```
-
-### Built-in Plugins
-
-| Plugin | Description | Claude Code Equivalent |
-|--------|-------------|------------------------|
-| re_act | Reflect + plan after each tool | - |
-| auto_compact | Auto-compress context at 90% | Context compression |
-| subagents | Spawn sub-agents | Sub-agent spawning |
-| full_access | Full access autonomous | Autonomous mode |
-
-### Skills Auto-Discovery
-
-Project → User → Built-in levels. Automatically loads Claude Code skills from `.claude/skills/`.
-
-### Lifecycle Hooks
-
-after_user_input, before_iteration, before_llm, after_llm, before_tools, after_tools, on_error, after_iteration, on_stop_signal, on_complete
-
-### Trust System Presets
-
-open (dev), careful (staging), strict (production)
-
-### Debug Agent
-
-```python
-agent.auto_debug()  # Interactive debugging
-```
-
-### Deploy Agent
-
-```python
-from connectonion import host
-host(agent)  # HTTP + P2P relay
-```
-
-### Requirements
-
-Python 3.10+
-
-### License
-
-Apache-2.0
-
-### Help Resources
-
-[Docs](http://docs.connectonion.com) | [Discord](https://discord.gg/4xfD9k8AUF) | [Issues](https://github.com/openonion/connectonion/issues)
+`co search ConnectOnion` answers from the web and cites its sources. The default
+engine uses your own search key, then ConnectOnion credits;
+`--engine ddg` is free.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/linear-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile.gif?v=2">
+  <img alt="co linear issues listing three open issues, then co linear create previewing a new issue" src="https://www.connectonion.com/demos/linear.gif?v=2">
+</picture>
+
+List your Linear issues, then create one. The create shows a preview and changes nothing until `--yes`.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/slack-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile.gif?v=2">
+  <img alt="co slack search finding a message, then co slack thread reading its replies" src="https://www.connectonion.com/demos/slack.gif?v=2">
+</picture>
+
+Search Slack, then read the whole thread. Each message carries the id that `co slack send --reply-to` takes.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/canny-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile.gif?v=2">
+  <img alt="co canny posts ranked by votes, then co canny status previewing a move to planned" src="https://www.connectonion.com/demos/canny.gif?v=2">
+</picture>
+
+Your most-voted Canny requests, and a status change you preview before voters hear about it.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/audit-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile.gif?v=2">
+  <img alt="co audit co linear scoring 13 help pages and reporting fit for an agent harness" src="https://www.connectonion.com/demos/audit.gif?v=2">
+</picture>
+
+`co audit` scores a CLI's help pages the way an agent reads them. CI runs it on every `co` page, and it works on any other CLI too.
+
+</details>
+
+## Use it from Claude Code, Codex or Cursor
+
+Nothing to install into them: ask your coding agent to "use `co` to check my
+Outlook inbox" and it reads `co commands` and `co outlook --help` before it
+acts. `co skills link` also links ConnectOnion's skills into Claude Code and
+Codex ([`co skills`](docs/cli/skills.md)).
+
+ConnectOnion is also a Python framework for building your own agents on the
+same harness; see the [documentation](https://docs.connectonion.com).
+
+## Project
+
+**Stable 1.9.1** is what `pip install connectonion` installs; previews
+remain opt-in ([release channels](docs/releases.md),
+[release notes](https://github.com/openonion/connectonion/releases)).
+Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)
+or the Discord linked above, bugs to [Issues](https://github.com/openonion/connectonion/issues).
+[Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) ·
+[Security](SECURITY.md) (report vulnerabilities privately) ·
+[Apache-2.0](LICENSE).

@@ -62,6 +62,49 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     assert [record["id"] for record in run_logs(root)] == [worked["id"]]
 
 
+def test_changed_session_is_reported_while_safe_session_advances(rem):
+    root, sessions = rem
+    changed = sessions / "rollout-a.jsonl"
+    rollout(changed, [("user", "first")])
+    calls = []
+    run_sync(root, runner=_runner_recording(calls))
+    before = read_json(state_path(root, "progress.json"), {})["codex"]["rollout-a.jsonl"]
+
+    rollout(changed, [("user", "rewritten")])
+    rollout(sessions / "rollout-b.jsonl", [("user", "safe new request")])
+    result = run_sync(root, runner=_runner_recording(calls))
+    after = read_json(state_path(root, "progress.json"), {})["codex"]
+    assert result["outcome"] == "completed" and len(calls) == 2
+    assert result["source_skips"] == [{"source": "codex", "file": "rollout-a.jsonl",
+                                       "reason": "processed prefix changed"}]
+    assert "changed session file" in result["warning"]
+    assert after["rollout-a.jsonl"] == before and "rollout-b.jsonl" in after
+
+
+def test_status_warns_about_the_last_scheduled_source_skip(tmp_path):
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "fake",
+                                                "last_scheduled_outcome": "no_change",
+                                                "last_scheduled_warning": "1 changed session file skipped"})
+    shown = status(root)
+    assert shown["state"].startswith("Background needs attention")
+    assert "changed session file" in shown["state"] and shown["next_run"]
+
+
+def test_failed_daily_investigation_takes_priority_over_source_warning(tmp_path):
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "fake",
+                                                "last_scheduled_outcome": "failed",
+                                                "last_scheduled_reason": "the last scheduled investigation failed",
+                                                "last_scheduled_warning": "1 changed session file skipped"})
+    shown = status(root)
+    assert "investigation failed" in shown["state"]
+
+
 def _two_projects(rem, monkeypatch):
     """tallyho already cites the one message typed in its folder; kite has read nothing."""
     root, sessions = rem
@@ -232,7 +275,7 @@ def test_declined_start_reads_nothing_and_installs_nothing(tmp_path, monkeypatch
     assert scheduler.installed == [] and calls == []
 
 
-def test_a_copied_notebook_does_not_claim_the_original_s_schedule(tmp_path):
+def test_a_copied_notebook_does_not_claim_the_original_s_schedule(tmp_path, monkeypatch):
     """#1964: worker.json travels with a copy; status said "Running in background"
     and doctor "ok schedule" for a launchd job whose --root was the original."""
     from connectonion.rem.schedule import Launchd
@@ -248,6 +291,32 @@ def test_a_copied_notebook_does_not_claim_the_original_s_schedule(tmp_path):
     plist = Launchd().plist_path(root)
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_text("<plist/>")
+    monkeypatch.setattr(Launchd, "describe", lambda self, root: {"loaded": True, "last_exit_code": "0"})
+    assert status(root)["state"].startswith("Running in background")
+
+
+def test_a_loaded_job_with_failed_exit_is_not_reported_healthy(tmp_path, monkeypatch):
+    from connectonion.rem.schedule import Launchd
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "launchd"})
+    monkeypatch.setattr(Launchd, "installed", lambda self, root: True)
+    monkeypatch.setattr(Launchd, "describe", lambda self, root: {"loaded": True, "last_exit_code": "1"})
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "darwin")
+    assert "last launchd exit code 1" in status(root)["state"]
+
+
+def test_a_new_job_that_has_never_exited_is_healthy(tmp_path, monkeypatch):
+    from connectonion.rem.schedule import Launchd
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "launchd"})
+    monkeypatch.setattr(Launchd, "installed", lambda self, root: True)
+    monkeypatch.setattr(Launchd, "describe", lambda self, root: {
+        "loaded": True, "last_exit_code": "(never exited)"})
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "darwin")
     assert status(root)["state"].startswith("Running in background")
 
 
@@ -268,6 +337,19 @@ def test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does
                   scheduler=scheduler, runner=_runner_recording(calls))
     assert again["started"] is True and again["first_batch"] is None
     assert len(calls) == 1
+
+
+def test_init_can_start_the_schedule_without_repeating_its_first_batch(tmp_path, monkeypatch):
+    from connectonion.rem.service import start
+    root, sessions = tmp_path / "rem", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls, scheduler = [], FakeScheduler()
+    result = start(root, confirm=lambda summary: True, scheduler=scheduler,
+                   runner=_runner_recording(calls), run_first_batch=False)
+    assert result["started"] is True and result["first_batch"] is None
+    assert calls == [] and scheduler.installed == [root.resolve()]
+    assert state_path(root, "consent.json").is_file()
 
 
 def test_stop_disables_background_but_manual_sync_still_works(tmp_path, monkeypatch):
@@ -868,16 +950,16 @@ def test_whatsapp_is_a_source_chat_by_chat_and_a_new_chat_asks_again(tmp_path, m
     assert subscriptions(root)["whatsapp"]["chats"] == []
 
 
-@pytest.mark.parametrize("runner, flag", [("codex", "--sandbox workspace-write"),
-                                          ("claude-code", "--permission-mode acceptEdits")])
-def test_the_consent_summary_says_how_confined_the_unattended_runs_are(tmp_path, runner, flag):
+@pytest.mark.parametrize("runner, flag", [("codex", "--sandbox danger-full-access"),
+                                          ("claude-code", "--permission-mode bypassPermissions")])
+def test_the_consent_summary_says_which_tools_unattended_investigations_can_use(tmp_path, runner, flag):
     """Approving `co rem start` is agreeing to runs nobody watches; the user
     should see what those runs may do before saying yes, and how to undo it."""
     from connectonion.rem.service import consent_summary
     prepare(tmp_path)
     set_config(tmp_path, ["runner", runner])
     summary = consent_summary(tmp_path)
-    assert flag in summary["model_permissions"] and "no network" in summary["model_permissions"]
+    assert flag in summary["model_permissions"] and "local repository" in summary["model_permissions"]
     assert "co rem stop" in summary["background"]
 
 
@@ -936,7 +1018,7 @@ def test_a_finished_extraction_is_reused_when_only_the_maintainer_failed(tmp_pat
 
 
 @pytest.mark.parametrize("change", [
-    ["runner", "claude-code"],
+    ["runner", "codex"],
     ["model", "gpt-other"],
     ["schedule.times", "03:00"],
 ])

@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 from typer.testing import CliRunner
 from connectonion.cli.main import app
-from connectonion.rem.config import prepare
+from connectonion.rem.config import prepare, set_config
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map
 from connectonion.rem.scan import canonical_origin
@@ -23,7 +23,7 @@ def test_selected_mail_failures_report_partial_and_preserve_maps(tmp_path):
         assert data['ok'] is False and data['data']['phase']=='partial'
         assert data['data']['errors'][0]['source']=='outlook'
         assert 'secret' not in result.stdout
-        assert (root/'notes/projects-map.md').exists()
+        assert (root/'logs/projects-map.md').exists()
 
 
 def test_setup_commands_keep_custom_root(tmp_path):
@@ -38,6 +38,8 @@ def test_setup_commands_keep_custom_root(tmp_path):
 
 def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
     root = tmp_path / 'rem'
+    prepare(root)
+    set_config(root, ['runner', 'codex', 'model', 'gpt-6-luna'])
     with patch('connectonion.rem.map.build_map', return_value={
         'owner': {'addresses': ['me@example.org']}, 'possible_own_addresses': []
     }), patch('connectonion.rem.service.mail_available', return_value=False):
@@ -104,3 +106,48 @@ def test_show_me_before_init_says_how_to_get_a_page(tmp_path):
     result=CliRunner().invoke(app,['rem','--root',str(root),'show','me'])
     assert result.exit_code!=0
     assert 'co rem init' in result.output and 'expected a Markdown record' not in result.output
+
+
+def _people(root):
+    nb=Notebook(root)
+    nb.write('people/ody-a.md','# Ody Zhou\n\n## Facts\n- Email: zhouody@gmail.com\n- Also known as: Ody; Zekai Zhou\n')
+    nb.write('people/ody-b.md','# Ody Zhou\n\n## Facts\n- Email: zhouodywork@gmail.com\n- Also known as: Ody\n')
+    nb.write('people/mia.md','# Mia Chen\n\n## Facts\n- Email: mia@harbour.example\n- Also known as: Mimi\n')
+    return nb
+
+
+def test_show_finds_a_person_by_name_alias_or_email(tmp_path):
+    # A command that sends mail or hands off work names a person, not a path:
+    # `co rem show ody` said "expected a Markdown record inside a co rem category".
+    root=tmp_path/'rem';prepare(root);_people(root)
+    for query in ('Mia Chen','mimi','MIA@harbour.example'):
+        result=CliRunner().invoke(app,['rem','--root',str(root),'show',query])
+        assert result.exit_code==0, (query, result.output)
+        assert '# Mia Chen' in result.output
+
+
+def test_show_lists_every_match_instead_of_guessing(tmp_path):
+    # Three Ody pages in a real notebook: picking one would send to the wrong address.
+    root=tmp_path/'rem';prepare(root);_people(root)
+    result=CliRunner().invoke(app,['rem','--root',str(root),'show','ody'])
+    assert result.exit_code!=0
+    assert 'people/ody-a.md' in result.output and 'people/ody-b.md' in result.output
+    assert 'zhouody@gmail.com' in result.output and 'zhouodywork@gmail.com' in result.output
+    one=CliRunner().invoke(app,['rem','--root',str(root),'show','zhouodywork@gmail.com'])
+    assert one.exit_code==0 and 'zhouodywork@gmail.com' in one.output
+
+
+def test_show_names_no_person_when_nobody_matches(tmp_path):
+    root=tmp_path/'rem';prepare(root);_people(root)
+    result=CliRunner().invoke(app,['rem','--root',str(root),'show','nobody'])
+    assert result.exit_code!=0
+    assert 'No person matches "nobody"' in result.output
+
+
+def test_a_name_in_the_title_brackets_is_a_name_too(tmp_path):
+    # "Ziming Gong (子明)" and a second page aliased 子明: `show 子明` picked one.
+    root=tmp_path/'rem';prepare(root);nb=Notebook(root)
+    nb.write('people/a.md','# Ziming Gong (子明)\n\n## Facts\n- Email: z@unsw.example\n')
+    nb.write('people/b.md','# Ziming Gong\n\n## Facts\n- Email: z@hotmail.example\n- Also known as: 子明\n')
+    result=CliRunner().invoke(app,['rem','--root',str(root),'show','子明'])
+    assert result.exit_code!=0 and 'people/a.md' in result.output and 'people/b.md' in result.output

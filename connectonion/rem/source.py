@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,7 +35,8 @@ INJECTED_BLOCK = re.compile(
     r"|Caveat: The messages below"
     r"|This session is being continued from a previous conversation"
     r"|Follow these instructions exactly\. They are the skill `"
-    r"|Base directory for this skill:)")
+    r"|Base directory for this skill:"
+    r"|Automation: [^\n]+\nAutomation ID: [^\n]+)")
 # What a typed Codex CLI message looks like: over 30 real days the CLI's `role: user`
 # slot held 688 typed messages with exactly these three keys (median 172 characters)
 # and 9,103 injected ones carrying `id` and a metadata passthrough as well (median
@@ -50,15 +51,21 @@ CODEX_INJECTED_KEY = "internal_chat_message_metadata_passthrough"
 # typed is all `user.*` (`user.text`, `user.image`); what the client adds names itself
 # (`agents_md.instructions`, `environments.environment_context`,
 # `plugins.recommendations`, `goal.internal_context`, `skills.selected_skill_instructions`,
-# `generic.turn_aborted`). A message with no kinds is the client's too: over the same
-# 90 days, 13% of those that open with no tag hold Chinese against 64% of the typed
-# ones -- the owner writes in Chinese, the harness does not.
-CODEX_TYPED_SHAPES = (TYPED_CODEX_KEYS, TYPED_CODEX_KEYS | {"id", CODEX_INJECTED_KEY})
+# `generic.turn_aborted`). Older native Desktop turns recorded only turn_id;
+# those also contain direct requests, alongside injected and scheduled prompts.
+# Language alone cannot establish who supplied a message.
+# Older native CLI records serialize turn metadata without an optional id. The same
+# speaker, client-kind and injected-text checks still apply to that shape.
+CODEX_TYPED_SHAPES = (TYPED_CODEX_KEYS, TYPED_CODEX_KEYS | {CODEX_INJECTED_KEY},
+                      TYPED_CODEX_KEYS | {"id", CODEX_INJECTED_KEY})
 TYPED_KIND = "user."
 CODEX_DESKTOP = "Codex Desktop"
 # Desktop puts the page open in its in-app browser in front of what was typed, as one
 # block. The block goes and the typed words stay (122 messages in the 90 days).
 BROWSER_CONTEXT = re.compile(r"\s*<in-app-browser-context>.*?</in-app-browser-context>\s*", re.S)
+VOICE_INPUT = re.compile(
+    r"\s*<realtime_delegation>\s*<input>([^<>]*)</input>\s*"
+    r"<transcript_delta>.*?</transcript_delta>\s*</realtime_delegation>\s*", re.S)
 # Unfamiliar user-slot messages in one pass before the run says the format moved.
 UNRECOGNISED_ALARM = 20
 SKIPPED = object()     # a user-slot message not read: the client's own machinery, expected
@@ -82,6 +89,7 @@ class Batch:
     progress: dict
     skipped: int = 0        # user-slot messages not read: the client's own machinery
     unrecognised: int = 0   # of those, ones whose shape we do not know -- the alarm
+    changed_files: list[str] = field(default_factory=list)  # skipped, with their old checkpoints intact
 
     @property
     def unreadable(self) -> bool:
@@ -107,6 +115,11 @@ def timestamp(value: str) -> datetime:
 # ---- Codex rollouts: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl ----
 
 def _codex_meta(first: dict) -> dict:
+    if ({"id", "timestamp", "instructions"} <= set(first) <= {"id", "timestamp", "instructions", "git"}
+            and all(isinstance(first[key], str) for key in ("id", "timestamp"))
+            and (first["instructions"] is None or isinstance(first["instructions"], str))):
+        timestamp(first["timestamp"])
+        return {"id": first["id"], "legacy": True, "timestamp": first["timestamp"]}
     if first.get("type") != "session_meta" or not isinstance(first.get("payload"), dict):
         raise RemError("Unrecognized Codex rollout format")
     payload = first["payload"]
@@ -119,7 +132,9 @@ def _codex_meta(first: dict) -> dict:
     source = payload.get("source")
     return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
             "subagent": isinstance(source, dict) and "subagent" in source,
-            "desktop": payload.get("originator") == CODEX_DESKTOP}
+            "interactive_cli": source == "cli" and payload.get("originator") in ("codex-tui", "codex_cli_rs"),
+            "desktop": payload.get("originator") == CODEX_DESKTOP,
+            "native_desktop": payload.get("originator") == CODEX_DESKTOP and source == "vscode"}
 
 
 def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict | None:
@@ -129,6 +144,8 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
     `meta` is the file's `_codex_meta`; without it a row is judged as the CLI's.
     """
     meta = meta or {}
+    if meta.get("legacy"):
+        return _legacy_codex_message(row, since, meta)
     payload = row.get("payload", {})
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
@@ -136,13 +153,12 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
-    if set(payload) not in CODEX_TYPED_SHAPES:
-        # Every user-slot message in 90 days had one of the two shapes. A third is the
-        # alarm, passthrough or not: the day Desktop adds a field, typed messages
-        # skipped quietly would be this bug again.
-        return UNFAMILIAR
     if meta.get("subagent"):
         return SKIPPED
+    if set(payload) not in CODEX_TYPED_SHAPES:
+        # Unknown payload fields are an alarm, passthrough or not: a client
+        # format change must not quietly hide newly typed messages.
+        return UNFAMILIAR
     passthrough = payload.get(CODEX_INJECTED_KEY)
     if passthrough is None and meta.get("desktop"):
         # Desktop writes every message it takes under the passthrough. A bare one in its
@@ -153,7 +169,14 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
         kinds = passthrough.get("content_item_kinds") if isinstance(passthrough, dict) else ()
         if not isinstance(passthrough, dict) or not isinstance(kinds, (list, type(None))):
             return UNFAMILIAR
-        if not kinds or not all(isinstance(kind, str) and kind.startswith(TYPED_KIND) for kind in kinds):
+        # Native CLI and older Desktop turns recorded only their turn id.
+        # Exec wrappers, bare imported history and injected text remain excluded.
+        native_turn = ((meta.get("interactive_cli") or meta.get("native_desktop"))
+                       and set(passthrough) == {"turn_id"}
+                       and isinstance(passthrough["turn_id"], str) and bool(passthrough["turn_id"]))
+        if not kinds and not native_turn:
+            return SKIPPED
+        if kinds and not all(isinstance(kind, str) and kind.startswith(TYPED_KIND) for kind in kinds):
             return SKIPPED
     content = payload.get("content", [])
     text = "\n".join(part["text"] for part in content if isinstance(part, dict)
@@ -161,7 +184,33 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
                      and isinstance(part.get("text"), str))
     if passthrough is not None and BROWSER_CONTEXT.match(text):
         text = BROWSER_CONTEXT.sub("", text, count=1)
-    return _spoken(payload["role"], text, row["timestamp"]) or SKIPPED
+    scope = ""
+    if meta.get("native_desktop") and (voice := VOICE_INPUT.fullmatch(text)):
+        text = voice[1]
+        scope = "Codex Desktop voice transcription; only explicit input, transcript delta omitted; wording may contain recognition errors"
+    elif passthrough is not None and meta.get("native_desktop") and set(passthrough) == {"turn_id"}:
+        scope = "Older native Codex Desktop turn; client content kinds were not recorded"
+    item = _spoken(payload["role"], text, row["timestamp"])
+    if item and scope:
+        item["input_scope"] = scope
+    return item or SKIPPED
+
+
+def _legacy_codex_message(row: dict, since: datetime, meta: dict):
+    """Older native records have a session date, not a per-message timestamp."""
+    if row.get("type") != "message" or row.get("role") != "user":
+        return None
+    if timestamp(meta["timestamp"]) < since:
+        return None
+    content = row.get("content")
+    if (set(row) != {"type", "id", "role", "content"} or not isinstance(content, list)
+            or not all(isinstance(part, dict) and part.get("type") == "input_text"
+                       and isinstance(part.get("text"), str) for part in content)):
+        return UNFAMILIAR
+    item = _spoken("user", "\n".join(part["text"] for part in content), meta["timestamp"])
+    if item:
+        item["timestamp_scope"] = "Legacy session start only; individual message time was not recorded"
+    return item or SKIPPED
 
 
 # ---- Claude Code transcripts: ~/.claude/projects/<encoded cwd>/<session>.jsonl ----
@@ -246,6 +295,10 @@ def pending_metadata(subscription: dict, progress: dict) -> dict:
             "source_available": root.is_dir(), "body_reads": False}
 
 
+class ChangedPrefix(RemError):
+    """A consumed transcript was rewritten; its checkpoint must remain untouched."""
+
+
 def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
     """Re-hash the consumed prefix without holding it; a rewrite must not pass as an append."""
     digest = hashlib.sha256()
@@ -253,11 +306,11 @@ def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
     while remaining:
         chunk = source.read(min(1 << 20, remaining))
         if not chunk:
-            raise RemError("Previously processed source prefix changed; progress preserved for diagnosis")
+            raise ChangedPrefix("Previously processed source prefix changed; progress preserved for diagnosis")
         digest.update(chunk)
         remaining -= len(chunk)
     if offset and digest.hexdigest() != expected:
-        raise RemError("Previously processed source prefix changed; progress preserved for diagnosis")
+        raise ChangedPrefix("Previously processed source prefix changed; progress preserved for diagnosis")
     return digest
 
 
@@ -268,14 +321,19 @@ def _read_rollout(path: Path, old: dict, kind: str):
         raise RemError("Invalid source progress; preserve it for diagnosis")
     with path.open("rb") as source:
         try:
+            digest = _verify_prefix(source, offset, old.get("digest"))
+        except ChangedPrefix:
+            yield None, {}, offset, None
+            return
+        source.seek(0)
+        try:
             first = json.loads(source.readline(1_000_000))
         except (ValueError, UnicodeError) as error:
             raise RemError("Invalid session metadata") from error
         if not isinstance(first, dict):
             raise RemError("Unrecognized session transcript format")
         meta = KINDS[kind]["meta"](first)
-        source.seek(0)
-        digest = _verify_prefix(source, offset, old.get("digest"))
+        source.seek(offset)
         yield source, meta, offset, digest
 
 
@@ -302,6 +360,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
     skipped = unrecognised = 0
+    changed_files = []
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
     # lookback and walks forward is also the only way to exercise, in a test, what a
@@ -317,6 +376,9 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
             continue
         with _read_rollout(path, old, kind) as (source, meta, offset, digest):
+            if source is None:
+                changed_files.append(name)
+                continue
             if meta.get("skip"):
                 continue
             if subscription.get("project") and kind == "codex" and meta.get("cwd") != subscription["project"]:
@@ -335,7 +397,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                 item = None
                 # Nearly every byte of a large transcript is tool output. Only lines that
                 # can be a user/assistant message are worth parsing; the rest are consumed.
-                if b"message" in line and b"role" in line:
+                if b'"message"' in line and b'"role"' in line:
                     try:
                         row = json.loads(line)
                         item = parse(row, since, meta) if isinstance(row, dict) else None
@@ -360,7 +422,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                         held.append((item, size, offset))
                     else:
                         if len(result) >= max_items or used + size > max_chars:
-                            return Batch(result, updated, skipped, unrecognised)
+                            return Batch(result, updated, skipped, unrecognised, changed_files)
                         result.append(item)
                         used += size
                 offset += len(line)
@@ -374,10 +436,10 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                         # Stop before this message and leave the file's cursor on it, so
                         # the rest of the session is the next batch rather than lost.
                         updated[name] = {**updated[name], "offset": at, "digest": _digest_to(path, at)}
-                        return Batch(result, updated, skipped, unrecognised)
+                        return Batch(result, updated, skipped, unrecognised, changed_files)
                     result.append(item)
                     used += size
-    return Batch(result, updated, skipped, unrecognised)
+    return Batch(result, updated, skipped, unrecognised, changed_files)
 
 
 def _digest_to(path: Path, offset: int) -> str:

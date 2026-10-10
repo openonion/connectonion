@@ -7,9 +7,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
+from .files import MAP_DAYS, Notebook, atomic_write, maintenance_lock, read_json, state_path
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
-                   AUTOMATED_HINT, SHORT_SESSION)
+                   institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
 from .org_map import _domain, map_orgs, organisation
 
@@ -20,11 +20,21 @@ def _record(category: str, name: str, identity: str) -> str:
 
 
 def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None,
-               inventory=None, own_names=None) -> tuple[list[dict], set]:
+               inventory=None, own_names=None, *, all_history: bool = False) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
-            own.update(client.my_addresses())
+            for attempt in range(3):
+                try:
+                    own.update(client.my_addresses())
+                    break
+                except Exception as error:
+                    if 'timeout' not in type(error).__name__.lower() or attempt == 2:
+                        raise
+                    # Only transient address discovery is retried. An auth
+                    # failure must still leave this mailbox visibly incomplete.
+                    import time
+                    time.sleep(0.5 * (attempt + 1))
             available[kind] = client
         except Exception as error:  # Provider failures must not block other maps.
             coverage.append(f'{kind}: unavailable ({type(error).__name__}); not searched')
@@ -33,9 +43,18 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         if progress:
             progress(f"scanning {kind} mail metadata")
         try:
+            incomplete = []
+            def window_error(provider, start, end, error):
+                incomplete.append((start, end))
+                if errors is not None:
+                    errors.append({'source': provider, 'stage': 'metadata-window',
+                                   'start': start.isoformat(), 'end': end.isoformat(),
+                                   'error': type(error).__name__})
             rows = scan_people({kind: client}, days, own,
                                on_row=inventory.mail if inventory else None,
-                               on_window=inventory.window if inventory else None, own_names=own_names)
+                               on_window=inventory.window if inventory else None, own_names=own_names,
+                               all_history=all_history, on_error=window_error if all_history else None,
+                               own_addresses_complete=True)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
@@ -45,8 +64,11 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         # and an empty one read identically, which is the state the init contract
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
-        coverage.append(f'{kind}: metadata only, {days} days; a seven-day window at the 200-message '
-                        'listing cap is split until every message in it is listed; ' + found)
+        scope = 'all available history since 1970' if all_history else f'{days} days'
+        interval = 'yearly listing window' if all_history else 'seven-day window'
+        coverage.append(f'{kind}: metadata only, {scope}; a {interval} at the 200-message '
+                        'listing cap is split until every message in it is listed; ' + found
+                        + (f'; {len(incomplete)} windows incomplete' if incomplete else ''))
         if progress:
             progress(f"scanned {kind} mail metadata", len(rows))
         for row in rows:
@@ -195,6 +217,8 @@ def _service(group: list[dict]) -> bool:
     domain named after them writes from their name (aaron@aaron.dev), and a desk
     the owner answers as often as it writes stays a correspondent.
     """
+    if any(institutional_name(str(row.get('name') or '')) for row in group):
+        return True
     received = sum(row.get('received', 0) for row in group)
     sent = sum(row.get('sent', 0) for row in group)
     if not sent and all(_named_by_domain(row['address']) for row in group):
@@ -254,6 +278,8 @@ def service_page(title: str, emails: list[str], row: dict | None, automated: set
     addresses = [address.casefold() for address in emails]
     if not addresses:
         return False
+    if institutional_name(title):
+        return True
     if row:
         group = [{'address': address, 'name': row.get('name') or title, 'sent': row.get('sent', 0),
                   'received': row.get('received', 0),
@@ -329,7 +355,8 @@ def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
 UNFILLED = '- Unknown — not investigated yet'
 POSSIBLY = "- Possibly also the owner's: "
 # The History lines the map itself writes on the owner's page, by how they begin.
-OWNER_HISTORY = ('- In the ', '- Most mail with: ', '- Coding sessions in the same window: ')
+OWNER_HISTORY = ('- In the ', '- Across available history ', '- Most mail with: ',
+                 '- Coding sessions in the same window: ')
 ENUMERATION = re.compile(r'^- \[(\d+)\] Enumeration metadata, observed [^ ]+', re.M)
 
 
@@ -434,7 +461,8 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         'Why they are here': ['This is the owner\'s own page. [1]'],
         # With no mailbox (a page made from --name alone) there is no mail
         # history to state; leaving it Unknown lets a later init fill it.
-        'History': (([f"In the {days} days to {date}: wrote {sent} and received {received} messages with "
+        'History': (([f"{'Across available history' if report.get('all_history') else f'In the {days} days'} to {date}: "
+                      f"wrote {sent} and received {received} messages with "
                       f"{len(people)} correspondents in {', '.join(boxes) or 'no mailbox'}. [1]"]
                      if owner['addresses'] else [])
                     + ([f"Most mail with: {top}. [1]"] if top else [])
@@ -488,14 +516,10 @@ def owner_summary(notebook: Notebook, report: dict) -> dict | None:
 
 
 SCRATCH = re.compile(r'/Documents/Codex/\d{4}-\d{2}-\d{2}/([^/]+?)(?:-\d+)?$')
-# A scratch folder is a project once its work has come back to it: realtime-voice-chat
-# had 23 sessions across dated folders, a one-off request has one or two.
-SCRATCH_MIN_SESSIONS = 2
-ONE_OFF_TASK = 'a one-off Codex task folder (two sessions or fewer)'
 
 
 def _scratch_identity(path: str) -> str:
-    """Codex's dated scratch folders: one project, however many days it was opened.
+    """Group dated Codex folders that contain project manifests by their name.
 
     `Documents/Codex/2026-08-22/realtime-voice-chat`, `…/2026-08-26/…` and
     `…-2`, `…-3` were six project pages on a real notebook -- no repository to
@@ -606,8 +630,7 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
     kept, short, out = [], {}, []
     for row in rows:
         why = not_a_project(row)
-        # A lone short chat is judged with the rest of its project: one of six
-        # dated scratch folders for one piece of work is not a one-off.
+        # A lone short chat is judged with the rest of its project.
         if why == SHORT_SESSION:
             short[row['path']] = why
         elif why:
@@ -635,12 +658,6 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
         members = [row for row in kept if row['path'] in group['members']]
         if group['sessions'] <= 1 and all(row['path'] in short for row in members):
             out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': SHORT_SESSION} for row in members]
-            del groups[key]
-            continue
-        if str(key).startswith('codex-scratch:') and group['sessions'] <= SCRATCH_MIN_SESSIONS:
-            # A Codex scratch folder named after one request: "install-github-cli-gh-on-this",
-            # 2 sessions, became a project page on a fresh init (#2079).
-            out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': ONE_OFF_TASK} for row in members]
             del groups[key]
             continue
         group['worktrees'] = len(group['worktrees'])
@@ -746,15 +763,17 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) 
         return _build_map(root, subscriptions, clients, *args, **options)
 
 
-def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90,
+def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MAP_DAYS,
                skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
-               progress=None, capture_sources: bool = False) -> dict:
+               progress=None, capture_sources: bool = False, all_history: bool = False) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
               'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
               'errors': list(source_errors or []), 'automated_correspondents': [], 'without_page': [],
               'possible_own_addresses': []}
+    if all_history:
+        report['all_history'] = True
     state = root / '.state' / 'map.json'
     from .source_inventory import SourceInventory
     inventory = SourceInventory(root, progress) if capture_sources else None
@@ -790,10 +809,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     sent_names = {"addressed": collections.Counter(), "sent": collections.Counter()}
     if inventory:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 inventory=inventory, own_names=sent_names)
+                                 inventory=inventory, own_names=sent_names, all_history=all_history)
     else:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 own_names=sent_names)
+                                 own_names=sent_names, all_history=all_history)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -824,12 +843,14 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         addresses = [row['address'] for row in group]
         first = group[0]
         automated = all(AUTOMATED_HINT.search(row['address']) for row in group)
+        institutional = any(institutional_name(str(row.get('name') or '')) for row in group)
         # A notice sender that never hears back, or someone reachable only through
         # an event platform's relay, is not a person the user deals with. On one
         # real mailbox this was 165 of 565 people pages (Neon Changelog, Airwallex,
         # event platforms). They stay in the map report; they get no page.
-        if all(_notice(row) for row in group) or _service(group):
-            report['automated_correspondents'].extend(group)
+        if institutional or all(_notice(row) for row in group) or _service(group):
+            report['automated_correspondents'].extend(
+                [{**row, 'classification': 'service desk'} for row in group] if institutional else group)
             org_rows += [{'address': a, 'record': None} for a in addresses]
             continue
         existing = next((p['path'] for p in roster if {a.casefold() for a in addresses} & set(p['emails'])), None)
@@ -872,7 +893,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             if title.startswith('# ') and '@' in title and _mapped_only(page):
                 notebook.write(record, f'# {name}\n' + page.split('\n', 1)[1])
         mails = sum(row.get('mails', 0) for row in group)
+        first_dates = [row['first'] for row in group if row.get('first')]
+        last_dates = [row['last'] for row in group if row.get('last')]
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
+                                 'first': min(first_dates, default=''), 'last': max(last_dates, default=''),
                                  'sent': sum(row.get('sent', 0) for row in group),
                                  'received': sum(row.get('received', 0) for row in group),
                                  'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
@@ -902,12 +926,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                           "Confirm they are one person before relying on it.\n")
             notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n' + notes))
             page = notebook.read(record)
-            dates = [row.get('first') for row in group if row.get('first')], [row.get('last') for row in group if row.get('last')]
             boxes = sorted({box for row in group for box in row.get('boxes', [])})
             # The count is the map's, not the person's history: 379 of 424 History
             # bullets on the owner's people pages were this line (#2059). It goes in
             # the lead, where the reader shows it and the census dates the page.
-            last = max(dates[1]) if dates[1] else 'Unknown'
+            last = max(last_dates) if last_dates else 'Unknown'
             plural = '' if mails == 1 else 's'
             page = page.replace(Notebook.PERSON_LEAD, f"Unknown — not investigated yet. Last contact: {last}; "
                                 f"{mails} mail{plural} ({', '.join(boxes) or 'mail'}).", 1)
@@ -988,7 +1011,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     for category in ('people', 'projects', 'orgs'):
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']
         lines += [f'- [{Path(row["record"]).stem}](../{row["record"]})' for row in report[category]]
-        notebook.write(f'notes/{category}-map.md', '\n'.join(lines) + '\n')
+        notebook.write(f'logs/{category}-map.md', '\n'.join(lines) + '\n')
     # The index the table and thread views read, from what this map just wrote (#2067).
     # Derived and rebuilt next time, so a failure is reported, never the map's.
     from .store import refresh_safely

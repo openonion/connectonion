@@ -6,31 +6,345 @@ ConnectOnion has two release channels:
 - **Preview** contains opt-in alpha, beta, and release-candidate builds.
 
 Preview releases never replace the stable recommendation. Install one by
-pinning its exact version: `pip install --upgrade 'connectonion==X.YbN'`. The
-pin alone lets pip take that one preview. Do not add `--pre`: it applies to
+pinning the exact version shown below. The pin alone lets pip take that one
+preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.10** is the default production channel. It adds `co linear`,
-`co canny`, Slack reads, and `environment.setting()` to 1.8.9. See the
-[1.8.10 GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.8.10).
+Stable **1.9.1** is the default production channel. co rem's first run now
+investigates every page, deepens people with two years of mail, edits pages in
+place and draws decisions and principles; Person pages lead with contact facts
+and cited mail opens as a message. See [1.9.1 notes](releases/1.9.1.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.1).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.10'
+python -m pip install --upgrade 'connectonion==1.9.1'
 ```
 
 ## Current preview
 
-Alpha **1.9.0a12**: REM's morning reader leads with context from the latest
-pass, an explicit link between pages, and an older memory to recall. This
-revision also makes `co rem open` write its local snapshot safely on Windows.
-It remains a read-only preview with known limits. See
-[1.9.0a12 notes](releases/1.9.0a12.md).
+Beta **1.9.2b3** gives a first run you can read straight away: sources numbered
+1, 2, 3, Company filled from the organisation page, probable duplicates named,
+and fewer pages refused. It includes the unpublished 1.9.2b2. See
+[1.9.2b3 notes](releases/1.9.2b3.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a12'
+python -m pip install --upgrade 'connectonion==1.9.2b3'
+```
+
+## Previous previews
+
+Beta **1.9.2b2** was built and tested but not published; its changes are in
+1.9.2b3. See [1.9.2b2 notes](releases/1.9.2b2.md).
+
+Beta **1.9.2b1** lets each investigation pass delete as well as add, so pages
+improve instead of only growing. See [1.9.2b1 notes](releases/1.9.2b1.md).
+
+Release candidate **1.9.1rc1** waits long enough for its notebook and credential
+locks when sixteen workers run at once. See [1.9.1rc1 notes](releases/1.9.1rc1.md).
+
+Beta **1.9.1b5** scans coding sessions once per first run whatever window a page
+asks for, and its mail backfill reads only mail. See [1.9.1b5 notes](releases/1.9.1b5.md).
+
+Beta **1.9.1b4** scans your coding sessions once per first run instead of once
+per person. See [1.9.1b4 notes](releases/1.9.1b4.md).
+
+Beta **1.9.1b3** writes people's first pages without touching the network,
+fetches attachments with the background backfill, and waits out a throttled
+mailbox. See [1.9.1b3 notes](releases/1.9.1b3.md).
+
+Beta **1.9.1b2** writes the first pages from mail already on disk, fetches each
+person's older mail in the background and deepens those pages, and keeps
+project pages that only had a citation wrong. See [1.9.1b2 notes](releases/1.9.1b2.md).
+
+Beta **1.9.1b1** keeps a project page when only one citation is wrong, draws
+decisions and principles from the first run, lists a page's documents, and runs
+init 16 pages at a time. See [1.9.1b1 notes](releases/1.9.1b1.md).
+
+Alpha **1.9.1a2** reads a large page's whole evidence in rounds, edits pages in
+place with a lead-following investigation Skill, enriches organisations from
+their own site, shows a person's contact facts first and opens a cited mail as
+a message. See [1.9.1a2 notes](releases/1.9.1a2.md).
+
+Alpha **1.9.1a1** maps the last 180 days on the first run and moves co rem's
+generated maps and skill run reports from Notes to a Run logs category. See
+[1.9.1a1 notes](releases/1.9.1a1.md).
+
+Alpha **1.9.0a43** shows failed investigations on Home and explains the nightly
+upkeep offer in init's overview. See [1.9.0a43 notes](releases/1.9.0a43.md).
+
+Alpha **1.9.0a42** keeps completed People discovery after a later mail
+connection failure and puts the historical contact directory before the mapped
+People roster so a large first run does not bury it. See
+[1.9.0a42 notes](releases/1.9.0a42.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a42'
+co rem init --investigate-all --estimate-only
+```
+
+Alpha **1.9.0a41** adds a searchable directory of historical mail contacts,
+an all-history first-run cost estimate, and the option to approve nightly REM
+upkeep from `co rem init`. Gmail history uses bounded metadata requests. New
+notebooks run on Claude Code with Sonnet 5.5 by default. See
+[1.9.0a41 notes](releases/1.9.0a41.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a41'
+co rem init --investigate-all --estimate-only
+```
+
+Alpha **1.9.0a40** distinguishes coding-session Skill name matches from
+retained evaluation attempts and says explicitly that neither verifies the
+installed version or task outcome. Mapped Skill pages put the investigation
+command in the phone's first screen; Skill list links are easier to tap. See
+[1.9.0a40 notes](releases/1.9.0a40.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a40'
+co rem open --local
+```
+
+Alpha **1.9.0a39** puts direct 44-pixel source links beside a cited Skill
+finding, so the specific original remains easy to open on a phone. Labelled
+private findings hide those links when the reader hides private passages. See
+[1.9.0a39 notes](releases/1.9.0a39.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a39'
+co rem open --local
+```
+
+Alpha **1.9.0a38** adds a within-source find and Next match control to long
+archived REM excerpts. It shows when an excerpt was truncated and searches only
+the text shown; saved source bodies and memory pages do not change. See
+[1.9.0a38 notes](releases/1.9.0a38.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a38'
+co rem open --local
+```
+
+Alpha **1.9.0a37** shows a compact Project purpose on changed Home cards,
+keeps the purpose's individual source links openable beside a clipped preview,
+and enlarges the desktop privacy control. Saved memories do not change. See
+[1.9.0a37 notes](releases/1.9.0a37.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a37'
+co rem open --local
+```
+
+Alpha **1.9.0a36** keeps paragraph and table-field separators when Outlook
+HTML mail becomes text. New REM source captures and `co outlook read` can show
+event times, reasons and follow-up clauses separately. Already saved excerpts
+are not rewritten. See [1.9.0a36 notes](releases/1.9.0a36.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a36'
+co rem open --live
+```
+
+Alpha **1.9.0a35** puts the full-size source action beside the useful lead
+on written REM pages. In a five-type 375×812 trial, each action fit within
+the first viewport and still opened Sources. See
+[1.9.0a35 notes](releases/1.9.0a35.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a35'
+co rem open --live
+```
+
+Alpha **1.9.0a34** speeds scoped REM investigations by reusing a private
+parsed window of typed coding-session inputs. On one 90-day notebook, a
+source-only repeat in a new process fell from 103.5 to 2.1 seconds while
+finding the same 4,957 messages. See
+[1.9.0a34 notes](releases/1.9.0a34.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a34'
+co rem open --live
+```
+
+Alpha **1.9.0a33** keeps Person first-contact facts and the People index tied
+to evidence, updates first-run token and quota guidance from measured samples,
+and shortens the release path without skipping its test gate. See
+[1.9.0a33 notes](releases/1.9.0a33.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a33'
+```
+
+Alpha **1.9.0a32** keeps Skill pages tied to their invocation names, makes
+cited run parts and local output files openable in the owner-only reader, and
+labels intended outcomes separately from observed work. See
+[1.9.0a32 notes](releases/1.9.0a32.md).
+
+The a30 tag did not publish to PyPI after its release CI failed; see
+[#2253](https://github.com/openonion/connectonion/issues/2253). Its full-cohort
+changes are included in a31.
+
+Earlier alpha previews remain available:
+
+Alpha **1.9.0a31** checks Project claims against their adjacent originals
+before replacing a page, supports deliberate retry, and includes the a30
+full-cohort onboarding code. See [1.9.0a31 notes](releases/1.9.0a31.md).
+
+Alpha **1.9.0a29** puts the mapped-page investigate action within phone reach
+on the first screen. See [1.9.0a29 notes](releases/1.9.0a29.md).
+
+Alpha **1.9.0a28** implements context over control in `co rem investigate`:
+pre-authorizes local search and shell tools upfront, supplies live project
+repository paths, and records full audit provenance. See
+[1.9.0a28 notes](releases/1.9.0a28.md).
+
+Alpha **1.9.0a27** keeps institutional and service desk senders out of the
+People notebook and filters dated scratch tasks and prompt fragments from the
+Projects notebook unless they have project evidence. See
+[1.9.0a27 notes](releases/1.9.0a27.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a27'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
+Alpha **1.9.0a26** reopens written `co rem` notebooks faster and makes it clear
+when background updates are off while existing memories remain available. The
+package README now checks its exact preview pin against the shipped version.
+See [1.9.0a26 notes](releases/1.9.0a26.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a26'
+co rem open --live
+```
+
+Alpha **1.9.0a25** shows what a first `co rem init` mapped, reconciles held
+contacts, and corrects grouped mail dates on a fresh map. See
+[1.9.0a25 notes](releases/1.9.0a25.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a25'
+co rem open --live
+```
+
+Alpha **1.9.0a24** adds `co rem merge` to fold duplicate pages and preserve aliases.
+See [1.9.0a24 notes](releases/1.9.0a24.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a24'
+co rem open --live
+```
+
+Alpha **1.9.0a23** clarifies map-derived contact dates in the reader and keeps
+table headers visible beside sticky columns on mobile. See
+[1.9.0a23 notes](releases/1.9.0a23.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a23'
+co rem open --live
+```
+
+Alpha **1.9.0a22** makes project findings and their evidence easier to check:
+the current finding leads, partial session coverage is visible, and every
+numbered source can be opened from the reader. See
+[1.9.0a22 notes](releases/1.9.0a22.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a22'
+co rem open --live
+```
+
+Alpha **1.9.0a21** shows the complete REM note and citations by default,
+puts the note before Facts on phones, and gives investigation more weekly
+room while retaining a 10% safety reserve. See
+[1.9.0a21 notes](releases/1.9.0a21.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a21'
+co rem open --live
+```
+
+Alpha **1.9.0a20** corrected visible **co rem** reader labels in the morning
+overview, recall prompt, empty states and source dialogs. See
+[1.9.0a20 notes](releases/1.9.0a20.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a20'
+co rem open --live
+```
+
+Alpha **1.9.0a19** completes the public **co rem** rename: live reader links
+use `/rem`, old `/wiki` addresses redirect, and the README, homepage and docs
+share the same command name. See [1.9.0a19 notes](releases/1.9.0a19.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a19'
+co rem init --days 5
+```
+
+Alpha **1.9.0a18**: REM's first-run owner page can lead with a cited change
+of decision and its next step. The reader shows that change before the full
+note and links cited project mentions; extracted fact citations survive the
+quick-pass sample. The broader owner and REM maturity gates remain open.
+See [1.9.0a18 notes](releases/1.9.0a18.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a18'
+co rem init --days 5
+```
+
+Alpha **1.9.0a17**: REM's first written project page compares the owner's
+requests with a bounded local README, package metadata and Git evidence.
+Unsupported optional sections disappear after investigation, while supported
+claims remain cited. Cross-page links and owner-page history are still open.
+See [1.9.0a17 notes](releases/1.9.0a17.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a17'
+co rem init --days 5
+```
+
+Alpha **1.9.0a16**: Gmail scans set a network timeout and avoid fetching
+headers twice when a busy week must be split. A private 90-day first run
+archived 3,202 messages and completed all 36 selected pages. See
+[1.9.0a16 notes](releases/1.9.0a16.md).
+
+Alpha **1.9.0a15**: REM's first run keeps its project list consistent with the
+map it just showed. A later session scan prepares evidence for mapped projects
+without silently adding project pages; unmatched folders remain private
+candidates. This is a focused trust fix, with the broader overnight memory
+review still open. See [1.9.0a15 notes](releases/1.9.0a15.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a15'
+co rem init --days 5
+```
+
+Alpha **1.9.0a14**: `co rem init` now investigates the owner's page, recent
+important people, active projects and related organizations by default. Its
+roughly 20% weekly allowance target is advisory; selected work can finish
+beyond it, subject to the configured safety floor. It also adds privacy labels
+and a local reader toggle to the connected reader shipped in a13. See
+[1.9.0a14 notes](releases/1.9.0a14.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a14'
+co rem init
+```
+
+Alpha **1.9.0a13**: REM's local reader now leads each record with state,
+actions, facts and connected context. The home is shorter and task-first;
+source-backed field changes are separate from page rewrites. Archived citations
+and cited conversations can be inspected in place when source bodies are
+available. It remains a read-only preview with known limits. See
+[1.9.0a13 notes](releases/1.9.0a13.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a13'
 co rem open
 ```
 

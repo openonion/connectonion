@@ -31,7 +31,7 @@ def model(monkeypatch):
 
     def agent(workspace, prompt, config, stage):   # drives tools: writes the file it is told to
         calls.append(prompt)
-        candidate = re.search(r"NEW file (\S+candidate\.md)", prompt)
+        candidate = re.search(r"page is the file (\S+candidate\.md)", prompt)
         if candidate:
             Path(candidate[1]).write_text(_filled(prompt), encoding="utf-8")
         return _envelope("Wrote the page.")
@@ -63,7 +63,7 @@ def test_a_model_that_cannot_drive_tools_is_the_summary_tier(model):
     result = tier.check(default_config())
     assert result["agent"]["passed"] is False
     assert result["tier"] == "summary" and result["summary"]["passed"]
-    assert len(calls) == 2
+    assert len(calls) == 3  # agent turn, its one more turn for the missing candidate, summary turn
 
 
 def test_the_fixture_page_is_filled_in_both_tiers(model):
@@ -128,7 +128,7 @@ def test_a_summary_tier_project_page_is_handed_its_files(tmp_path):
     readme = tmp_path / "README.md"
     readme.write_text("Orbit is a scheduler. " * 200)
     [item] = project_file_texts([str(readme)])
-    assert item["source"] == str(readme) and item["text"].startswith("Orbit is a scheduler.")
+    assert item["source"] == "file:" + str(readme) and item["text"].startswith("Orbit is a scheduler.")
     assert item["text"].endswith("[truncated]")
 
 

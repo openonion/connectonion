@@ -1,0 +1,2 @@
+version: v1.9.2b1
+no_visual_change: "Investigation prompts only: each pass may delete as well as add, the final round trims Uncertainties to five, and a number given as someone else's stays out of Facts. Reader HTML is unchanged since 1.9.1."

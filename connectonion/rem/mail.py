@@ -26,6 +26,9 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from .files import RemError
+
+RELATED_ORG_SCOPE = ("Related contact outside the target mail domains; verify person/company/domain identity "
+                     "from primary messages before attributing this exchange to the organization.")
 from .source import TRUNCATION_NOTE, Batch, timestamp
 
 # Reservation confirmations, CI notifications and newsletters are the bulk of a
@@ -47,9 +50,10 @@ SELF = "me"                          # the correspondent of a mail the user sent
 # rely on line starts or ends; each is the first sign of the quoted thread.
 # No word boundaries either: flattened text runs "…Program ManagerFrom: Vern…"
 # straight through, so the header words themselves are the only signal.
+# Unflattened, `Sent:` or `Date:` starts the line after `From:` with no rule above it (#2349).
 QUOTED_REPLY = re.compile(
     r"(?:\bOn [^\n]{0,160}? wrote:|-{3,}\s*Original Message\s*-{3,}|_{10,}|"
-    r"From: [^\n]{0,240}?Sent: |From: [^\n]{0,240}?Date: [^\n]{0,80}?Subject: |"
+    r"From: [^\n]{0,240}?(?:\n?Sent|\nDate): |From: [^\n]{0,240}?Date: [^\n]{0,80}?Subject: |"
     r"在[^\n]{0,80}写道[：:]|(?:^|\n)> )",
     re.MULTILINE)
 # Signature furniture: links wrapped in angle brackets (how Outlook renders a
@@ -64,9 +68,9 @@ SIGNATURE_NOISE = re.compile(
 
 
 def strip_quoted(body: str) -> str:
-    """The reply itself, without the thread it quotes."""
+    """The reply itself, without the thread it quotes; a bare forward is all quote, so it stays."""
     match = QUOTED_REPLY.search(body)
-    return body[:match.start()] if match else body
+    return body[:match.start()] if match and body[:match.start()].strip() else body
 
 
 def strip_noise(body: str) -> str:
@@ -84,6 +88,17 @@ def _addresses(value) -> list[str]:
     values = value if isinstance(value, (list, tuple)) else [value]
     parts = [part for item in values for part in re.split(r"[;,]", str(item or ""))]
     return [a for a in (_address(part) for part in parts) if a]
+
+
+def participants(row: dict) -> list[str]:
+    """Canonical addresses in the actual headers, including Cc."""
+    return [_address(row.get("from", "")), *_addresses(row.get("to")), *_addresses(row.get("cc"))]
+
+
+def on_domains(row: dict, domains: list[str]) -> bool:
+    """Header domain membership; a name or a domain mentioned in prose is not membership."""
+    suffixes = tuple(f"{sep}{domain.casefold()}" for domain in domains if domain for sep in ("@", "."))
+    return bool(suffixes) and any(address.endswith(suffixes) for address in participants(row))
 
 
 def is_own(sender: str, mine: set) -> bool:
@@ -181,7 +196,7 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     return updated
 
 
-def _list_all(client, start: datetime, end: datetime) -> list:
+def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """Every mail in [start, end), however many there are.
 
     A full listing means there may be more, and nothing after it asks again: a
@@ -191,7 +206,24 @@ def _list_all(client, start: datetime, end: datetime) -> list:
     from the last row would still lose Gmail's. Halving the window until each
     half fits works for both.
     """
-    rows = client.list_between(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    listing = getattr(client, 'list_between_for_rem', client.list_between)
+    try:
+        rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    except Exception as error:
+        # A real all-history Outlook scan reached 2010 and lost its whole map
+        # when a year-wide listing timed out. Smaller queries often succeed.
+        # Auth and other errors still surface; a one-day timeout is incomplete.
+        if 'timeout' not in type(error).__name__.lower():
+            raise
+        if end - start <= timedelta(days=1):
+            if on_error is not None:
+                on_error(start, end, error)
+                return []
+            raise
+        middle = start + timedelta(seconds=(end - start).total_seconds() // 2)
+        unique = {row['id']: row for row in _list_all(client, start, middle, on_error=on_error)
+                  + _list_all(client, middle, end, on_error=on_error)}
+        return list(unique.values())
     if len(rows) < LISTING_LIMIT:
         return rows
     # Whole seconds: Gmail's search takes epoch seconds, so a finer split asks the same question twice.
@@ -199,7 +231,8 @@ def _list_all(client, start: datetime, end: datetime) -> list:
     if middle <= start:
         raise RemError(f"The mailbox lists more than {LISTING_LIMIT} mails in the second at {start.isoformat()}; "
                         "the scan stopped there rather than skip any of them")
-    unique = {row["id"]: row for row in _list_all(client, start, middle) + _list_all(client, middle, end)}
+    unique = {row["id"]: row for row in _list_all(client, start, middle, on_error=on_error)
+              + _list_all(client, middle, end, on_error=on_error)}
     return list(unique.values())
 
 

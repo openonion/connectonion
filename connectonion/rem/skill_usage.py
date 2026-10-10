@@ -24,20 +24,22 @@ from __future__ import annotations
 
 import json
 import re
+from itertools import chain
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError, read_json, state_path, write_json
+from .skill_runs import eval_events
 from .source import KINDS, source_files
 
 CACHE = "skill-usage.json"
-# 2: Codex messages are read as `sync` reads them (#1978); older caches are recounted.
-VERSION = 2
+# 3: Recount messages whose optional Codex id was omitted; older caches missed them.
+VERSION = 4
 EVER = datetime(1970, 1, 1, tzinfo=timezone.utc)
 COMMAND = re.compile(r"<command-name>/([^<\s]+)</command-name>")
 MENTION = re.compile(r"(?<![\w$])\$([A-Za-z][\w.:-]*)")
 LOADED = re.compile(r"/skills/([A-Za-z0-9][\w.:-]*)/SKILL\.md")
-LABELS = {"claude-code": "Claude Code", "codex": "Codex"}
+LABELS = {"claude-code": "Claude Code", "codex": "Codex", "co-ai": "co ai"}
 
 
 def _claude_events(path: Path) -> list[list]:
@@ -114,16 +116,19 @@ def _codex_events(path: Path) -> list[list]:
     return events
 
 
-READERS = {"claude-code": _claude_events, "codex": _codex_events}
+SESSIONS = ("claude-code", "codex")  # co ai runs are sampled by skill_runs, not here
+READERS = {"claude-code": _claude_events, "codex": _codex_events, "co-ai": eval_events}
 
 
 def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 180,
-          now: datetime | None = None) -> dict:
+          now: datetime | None = None, evals: Path | None = None) -> dict:
     """Invocations of each name in `names` over the last `days` days of sessions.
 
     Returns {"counts": {name: {"count", "last", "by_tool": {tool: n}}}, "files",
     "days", "sources"}. A name invoked as `plugin:name` counts for `name` too.
     `root` is the notebook: its cache, and its own task folders to skip.
+    `evals` is co ai's summary folder (`~/.co/evals`): its `/name` runs are
+    the ones a skill page lists under Usage history, read by skill_runs.
     """
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=days)
@@ -133,12 +138,9 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     wanted = {name.casefold(): name for name in names}
     counts = {name: {"count": 0, "last": "", "by_tool": {}} for name in names}
     fresh, read, sources = {}, 0, []
-    for name, sub in subscriptions.items():
-        kind = sub.get("kind")
-        if kind not in READERS or sub.get("enabled") is False or not Path(sub.get("root") or "").is_dir():
-            continue
+    for kind, paths in _sources(subscriptions, evals):
         sources.append(LABELS[kind])
-        for path in source_files(sub):
+        for path in paths:
             stat = path.stat()
             if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
                 continue
@@ -163,6 +165,16 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     return {"counts": counts, "files": read, "days": days, "sources": sources}
 
 
+def _sources(subscriptions: dict, evals: Path | None):
+    """(kind, files) per enabled session source, then co ai's summaries."""
+    for sub in subscriptions.values():
+        kind = sub.get("kind")
+        if kind in READERS and sub.get("enabled") is not False and Path(sub.get("root") or "").is_dir():
+            yield kind, source_files(sub)
+    if evals and evals.is_dir():
+        yield "co-ai", sorted(evals.glob("*.yaml"))
+
+
 def _inside(cwd: str, root: Path) -> bool:
     try:
         return Path(cwd).resolve().is_relative_to(Path(root).resolve())
@@ -180,5 +192,93 @@ def usage_line(row: dict | None, report: dict | None) -> str:
     tools = ", ".join(f"{LABELS[tool]} {n}" for tool, n in sorted(row["by_tool"].items()))
     times = "once" if row["count"] == 1 else f"{row['count']} times"
     return (f"- Invoked {times} in your coding sessions {window}, last on {row['last']} ({tools}). "
-            "Counted by co rem from Skill tool calls, /name commands, $name mentions and SKILL.md loads; "
+            "Counted by co rem from Skill tool calls, /name commands, $name mentions, SKILL.md loads and co ai runs; "
             "an invocation is not a completed run.")
+
+
+def session_samples(root: Path, name: str, limit: int = 3) -> dict:
+    """Read recent invocation turns identified by the map; never scan unrelated sessions."""
+    cached = read_json(state_path(root, CACHE), {})
+    matches = []
+    since = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()[:19]
+    for file, entry in (cached.get("files", {}) if cached.get("version") == VERSION else {}).items():
+        for invoked, when, kind, cwd in entry.get("events", []):
+            if kind not in SESSIONS or invoked.casefold().rsplit(":", 1)[-1] != name.casefold().rsplit(":", 1)[-1]:
+                continue
+            if when and when[:19] < since:
+                continue
+            if cwd and ("/.state/tasks/" in cwd + "/" or _inside(cwd, root)):
+                continue
+            matches.append((when, file, kind, cwd))
+    selected = sorted(set(matches), reverse=True)[:limit]
+    items, missing = [], []
+    for when, file, kind, cwd in selected:
+        path = Path(file)
+        text = _invocation_turn(path, kind, when) if path.is_file() else ""
+        if not text:
+            missing.append({"file": file, "timestamp": when})
+            continue
+        items.append({"source": f"skill-session:{kind}:{path.stem}:{when}", "timestamp": when,
+                      "project": cwd, "reference": path.as_uri(), "text": text})
+    return {"items": items, "matched_invocations": len(set(matches)), "sample_limit": limit,
+            "missing": missing, "cache_available": cached.get("version") == VERSION}
+
+
+def _invocation_turn(path: Path, kind: str, when: str) -> str:
+    """Raw request, invocation, tool results and replies until the next typed request."""
+    from .files import SECRET_SHAPES
+    selected, request, active = [], None, False
+    with path.open() as handle:
+        first = json.loads(handle.readline())
+        meta = KINDS[kind]["meta"](first)
+        for row in chain([first], (json.loads(line) for line in handle)):
+            payload = row.get("payload") or row.get("message") or {}
+            if payload.get('type') == 'message' and payload.get('channel') == 'analysis':
+                continue
+            if isinstance(payload.get('content'), list):
+                content = _text_skill_content(payload['content'])
+                if not content and row.get('type') == 'assistant':
+                    if active and payload.get('stop_reason') == 'end_turn':
+                        break
+                    continue
+                payload = {**payload, 'content': content}
+                row = {**row, 'payload' if row.get('type') == 'response_item' else 'message': payload}
+            result = row.get('toolUseResult')
+            if isinstance(result, dict) and result.get('type') == 'image':
+                row = {**row, 'toolUseResult': {'type': 'image', 'omitted': 'Text-only evidence; image not visually reviewed.'}}
+            spoken = KINDS[kind]["message"](row, EVER, meta)
+            if isinstance(spoken, dict) and spoken.get("role") == "user":
+                if active:
+                    break
+                request = row
+            if not active and row.get("timestamp") == when:
+                active = True
+                selected += [request] if request is not None and request is not row else []
+            event = payload.get("type")
+            if active and ((row.get("type") in ("user", "assistant") and not row.get("isMeta")) or
+                           (row.get("type") == "response_item" and event != "reasoning" and
+                            (event != "message" or payload.get("role") == "assistant" or
+                             isinstance(spoken, dict)))):
+                selected.append(row)
+            if active and row.get("type") == "event_msg" and event in ("task_complete", "turn_aborted"):
+                selected.append(row)
+                break
+            if active and kind == 'claude-code' and payload.get('stop_reason') == 'end_turn':
+                break
+    return SECRET_SHAPES.sub("[REDACTED]", "\n".join(json.dumps(row, ensure_ascii=False) for row in selected))
+
+
+def _text_skill_content(content: list) -> list:
+    """Keep public text/tool reports; binary images and provider thinking are not text evidence."""
+    output = []
+    for part in content:
+        kind = part.get('type')
+        if kind in ('thinking', 'redacted_thinking'):
+            continue
+        if kind in ('image', 'input_image', 'output_image'):
+            output.append({'type': 'text', 'text': '[Image attachment omitted from text-only skill evidence; not visually reviewed.]'})
+        elif kind == 'tool_result' and isinstance(part.get('content'), list):
+            output.append({**part, 'content': _text_skill_content(part['content'])})
+        else:
+            output.append(part)
+    return output

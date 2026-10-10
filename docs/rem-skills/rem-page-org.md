@@ -65,3 +65,32 @@ be written once. A named person with no page yet is a finding, not a failure.
 
 It is often not the sum of the individual ones. The user mentors for UNSW; that
 is not Vern's relationship or Karen's, it is the university's.
+
+## Retained observations and source meaning
+
+The [2026-10-03 organization review](../design-evidence/rem-org-observed-review-2026-10-03/REVIEW.md)
+found 62 separately retained originals missing from one organization's gather.
+Organization investigation now opts into actual saved domain/subdomain or exact
+supported contact participants. The initial-only archive API and its continuous
+coverage remain unchanged. A newly observed provider cannot inherit another
+provider's initial coverage. Newly supplied exact-thread replies can bring back
+already-cited older originals as comparison evidence, without subject matching.
+
+Source access does not settle the interpretation. An incomplete agreement copy
+is a template, not proof of an executed obligation or that nothing was signed
+later. Default student ownership and an optional signed assignment can coexist;
+the selected version and execution may remain unknown. A programme's minimum,
+the user's exception request and a different programme's allocated teams must
+not be combined into accepted terms.
+
+Lead with the supported entity finding. Record recent sourced requests neutrally;
+prerequisites, conditional future offers and missing historical outcomes do not
+by themselves establish current debt. A supported closure uses the reader's
+existing canonical closure wording; unknown outcomes remain qualified. Original
+headers support domains and contacts; a prior notebook page is context. Bulk
+notices and calendar acceptances do not establish direct contact or attendance.
+
+The long example was replaced with a compact synthetic example to keep the
+composed instructions below the existing 15,000-character limit. These rules
+and manual corrections still require automatic writer acceptance; they are not
+an all-page semantic validator.

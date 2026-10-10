@@ -30,10 +30,55 @@ def test_a_phone_only_in_a_signature_is_found_with_its_label():
     assert found(rows, "Links")[0]["value"] == "https://www.linkedin.com/in/mia-chen-data"
 
 
+@pytest.mark.parametrize('flattened', [False, True])
+def test_meeting_dial_in_numbers_are_not_restorable_contact_phones(flattened):
+    text = ('Mia Chen\nJoin Zoom Meeting\nOne tap mobile\n+61 2 5550 0188\n'
+            'Dial by your location\n+61 8 5550 0177\nMeeting ID: 123 456 789\n')
+    text = ('Coaching session invitation details. ' * 5 + text.replace('\n', ' ')) if flattened else text
+    rows = extract([mail('outlook:meeting', '2026-08-04T01:00:00+00:00', text)], HANDLES)
+    assert not found(rows, 'Phone')
+    assert found(rows, 'Calendar')
+    both = extract([mail('outlook:meeting', '2026-08-04T01:00:00+00:00', text),
+                    mail('outlook:direct', '2026-08-05T01:00:00+00:00', SIGNED)], HANDLES)
+    assert all(row['source'] == 'outlook:direct' for row in found(both, 'Phone'))
+    assert len(found(both, 'Phone')) == 2
+
+
 def test_the_signature_block_is_handed_over_for_role_and_company():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", SIGNED)], HANDLES)
     block = found(rows, "Signature")[0]["value"]
     assert "Head of Data Platform | Harbour Analytics" in block and "Thanks" not in block
+
+
+@pytest.mark.timeout(2)
+def test_long_non_invitation_mail_does_not_backtrack_over_every_possible_zoom_subdomain():
+    rows = extract([mail("outlook:long", "2026-08-04T00:00:00Z", "x" * 30_000)], HANDLES)
+    assert not found(rows, "Calendar")
+    assert found(rows, "Last contact")[0]["value"] == "2026-08-04"
+
+
+@pytest.mark.parametrize("url", ["https://zoom.us/j/123", "https://harbour.zoom.us/j/123"])
+def test_zoom_link_alone_keeps_invitation_numbers_out_of_phone(url):
+    rows = extract([mail("outlook:link", "2026-08-04T00:00:00Z", SIGNED + url)], HANDLES)
+    assert not found(rows, "Phone")
+    assert found(rows, "Calendar")
+
+
+def test_legacy_flattened_zoom_invitation_does_not_restore_a_rejected_phone():
+    text = ('Purpose of this meeting is to understand the pilot vision. ' * 4
+            + 'Mia Chen is inviting you to a scheduled Zoom meeting.'
+            + 'Join from PC, Mac, Linux, iOS or Android: https://harbour.zoom.us/j/123456789'
+            + 'Or iPhone one-tap :Australia: +61255500188,,123456789# or +61855500177,,123456789#'
+            + 'Or Telephone:Dial(for higher quality, dial a number based on your current location)')
+    rows = extract([mail('outlook:legacy', '2026-08-04T01:00:00+00:00', text,
+                         subject='Pilot support | Alex')], HANDLES)
+    assert not found(rows, 'Phone')
+    assert found(rows, 'Calendar')
+    candidate = PAGE.replace('Mia leads the pilot [1].',
+                             'Mia leads the pilot; previously listed numbers were meeting dial-ins [1].')
+    kept, restored = facts.keep_extracted('people/mia.md', candidate, rows)
+    assert '- Phone: Unknown' in kept
+    assert not any(row['field'] == 'Phone' for row in restored)
 
 
 def test_a_body_the_provider_flattened_to_one_line_still_gives_its_signature_and_phone():
@@ -62,13 +107,29 @@ def test_a_role_only_in_a_calendar_invite_is_handed_over_as_the_invite_line():
     assert any("Procurement Lead" in line for line in lines)
 
 
-def test_first_and_last_contact_come_from_the_dates_of_the_messages_either_way():
+def test_earliest_retained_mail_does_not_become_first_contact():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", "hi"),
                     mail("gmail:a2", "2026-09-10T01:00:00+00:00", "ok", role="user", speaker="Alex <a@r.example>")],
                    HANDLES)
-    assert found(rows, "First contact")[0]["value"] == "2026-08-04"
+    assert not found(rows, "First contact")
     assert found(rows, "Last contact")[0]["value"] == "2026-09-10"
     assert found(rows, "Last contact")[0]["source"] == "gmail:a2"
+
+
+@pytest.mark.parametrize("zone, last", [
+    ("Australia/Sydney", "2026-08-01"),
+    ("America/Los_Angeles", "2026-07-31"),
+    ("UTC", "2026-07-31"),
+])
+def test_last_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, last):
+    # Same UTC day, reverse input order: source choice needs full instants.
+    rows = extract([mail("outlook:late", "2026-07-31T23:03:58Z", SIGNED),
+                    mail("outlook:early", "2026-07-31T00:23:51Z", "hello")],
+                   HANDLES, timezone=zone)
+    assert not found(rows, "First contact")
+    assert found(rows, "Last contact")[0]["value"] == last
+    assert found(rows, "Last contact")[0]["source"] == "outlook:late"
+    assert all(row["date"] == last for row in found(rows, "Phone") + found(rows, "Signature"))
 
 
 def test_numbers_that_are_not_phones_are_left_alone():
@@ -112,8 +173,8 @@ def test_a_phone_the_model_dropped_is_put_back_with_its_source():
     assert {r["field"] for r in restored} == {"Phone"}           # no Links line: nothing to fill
     assert facts.keep_extracted("people/mia.md", kept, rows)[1] == []
     upgraded, restored = facts.keep_extracted("people/mia.md", facts.upgrade("people/mia.md", PAGE), rows)
-    assert {r["field"] for r in restored} == {"Phone", "Links", "First contact"}
-    assert "- First contact: 2026-08-04 [2]" in upgraded and "- Last contact: 2026-09-10 [1]" in upgraded
+    assert {r["field"] for r in restored} == {"Phone", "Links"}
+    assert "- First contact: Unknown" in upgraded and "- Last contact: 2026-09-10 [1]" in upgraded
 
 
 def test_a_phone_already_on_the_page_in_another_format_is_not_added_twice():
@@ -126,6 +187,36 @@ def test_a_phone_already_on_the_page_in_another_format_is_not_added_twice():
 def test_a_date_the_model_corrected_is_not_overwritten():
     rows = [{"field": "Last contact", "value": "2026-09-01", "qualifier": "", "source": "gmail:z", "date": "2026-09-01"}]
     assert facts.keep_extracted("people/mia.md", PAGE, rows) == (PAGE, [])
+
+
+def test_a_last_contact_date_uses_the_notebook_calendar_when_it_cites_the_same_original():
+    item = mail('gmail:a2', '2026-09-09T23:30:00Z', SIGNED)
+    rows = [r for r in extract([item], HANDLES, timezone='Australia/Sydney') if r['field'] == 'Last contact']
+    page = PAGE.replace('- Last contact: 2026-09-10 [1]', '- Last contact: 2026-09-09 [1]')
+    page += '\n## History\n- 2026-09-10: A separate milestone already has the right date [1].\n'
+    kept, changed = facts.keep_extracted('people/mia.md', page, rows)
+    assert '- Last contact: 2026-09-10 [1]' in kept
+    assert changed == rows
+    assert facts.keep_extracted('people/mia.md', kept, rows) == (kept, [])
+
+
+@pytest.mark.parametrize('current', ['2026-09-09 (approximate) [1]', '2026-09-09 [1][2]'])
+def test_contact_calendar_repair_keeps_qualified_or_multiple_source_interpretations(current):
+    rows = [{'field': 'Last contact', 'value': '2026-09-10', 'qualifier': '', 'source': 'gmail:a2',
+             'date': '2026-09-10'}]
+    page = PAGE.replace('- Last contact: 2026-09-10 [1]', '- Last contact: ' + current)
+    assert facts.keep_extracted('people/mia.md', page, rows) == (page, [])
+
+
+def test_a_fact_from_the_carrier_email_does_not_cite_its_attachment_instead():
+    page = PAGE.replace('gmail:a2 —', 'gmail:a2:Signed contract.pdf —')
+    row = {'field': 'Phone', 'value': '+61 2 5550 0142', 'qualifier': 'work', 'source': 'gmail:a2',
+           'date': '2026-09-10'}
+    kept, restored = facts.keep_extracted('people/mia.md', page, [row])
+    assert '- Phone: +61 2 5550 0142 (work) [2]' in kept
+    assert '- [1] gmail:a2:Signed contract.pdf —' in kept
+    assert '- [2] gmail:a2 — 2026-09-10' in kept
+    assert restored == [row]
 
 
 class Signed:
@@ -141,14 +232,18 @@ class Signed:
 def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path, monkeypatch):
     from connectonion.rem import investigate as inv
     from connectonion.rem import runner
-    from connectonion.rem.config import prepare
+    from connectonion.rem.config import prepare, set_config
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
     root = tmp_path / "rem"
     prepare(root)
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
     notebook = inv.Notebook(root)
     notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
     original = notebook.read("people/vern.md")
     seen = {}
+    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: [
+        {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
+         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}])
 
     def write(nb, items, config, stage):
         seen["facts"] = next(i for i in items if i["role"] == "facts")
@@ -166,10 +261,92 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     result = inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
                              clients={"outlook": Signed()}, subscriptions={}, runner=write)
     assert "Phone: +61 412 000 111 (mobile)" in seen["facts"]["text"]
+    assert found(seen["facts"]["facts"], "Last contact")[0]["value"] == "2026-10-01"
+    assert "Dates use Australia/Sydney" in seen["facts"]["text"]
+    assert "earliest retained mail does not establish first contact" in seen["facts"]["text"]
     page = notebook.read("people/vern.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
-    assert result["facts"]["extracted"] >= 3                        # email, phone, first and last contact
+    assert result["facts"]["extracted"] >= 3                        # email, phone and last contact
+
+
+class Thread(Signed):
+    """Vern gives a number in his own words; David, copied in, signs with his office line."""
+    def list_between(self, s, e, n):
+        return [{"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
+                 "date": "2026-09-30T23:03:58Z"},
+                {"id": "s2", "from": "David Burt <david.burt@unsw.edu.au>", "to": ["me@x.y", "vern.chan@unsw.edu.au"],
+                 "subject": "Re: Hello", "date": "2026-09-29T01:00:00Z"}]
+    def get_email_body(self, i):
+        return ("Call me on 0457 222 333 any time.\n\nRegards,\nVern Chan\nM: +61 412 000 111\n" if i == "s1" else
+                "Thanks both.\n\nKind regards,\nDavid Burt\nDirector of Entrepreneurship\nT: +61 2 9065 4432\n")
+
+
+def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_their_words_stays(tmp_path, monkeypatch):
+    """#2348: Vern's page carried David Burt's office line from David's signature in the
+    thread. The rule that kept only signature phones also took Dannielle's own
+    "give me a call on …" and refused her page over the source left uncited (1.9.2b3 trial)."""
+    from connectonion.rem import investigate as inv
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    original = notebook.read("people/vern.md")
+    seen = {}
+
+    def write(nb, items, config, stage):
+        seen["facts"] = next(i for i in items if i["role"] == "facts")["text"]
+        mine, davids = (next(i["source"] for i in items if i.get("role") == "other" and name in i.get("speaker", ""))
+                        for name in ("Vern", "David"))
+        page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
+                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                .replace("- Unknown — not investigated yet", "- Unknown")
+                .replace("- Phone: Unknown", "- Phone: 0457 222 333 (mobile) [1]; +61 2 9065 4432 (work) [2]")
+                .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high\n- [2] {davids} — 2026-09-29"))
+        candidate = tmp_path / "candidate.md"
+        candidate.write_text(page)
+        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/vern.md"], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+                    clients={"outlook": Thread()}, subscriptions={}, runner=write)
+    assert "Someone else's phone: +61 2 9065 4432 (David Burt)" in seen["facts"]
+    page = notebook.read("people/vern.md")
+    assert "0457 222 333 (mobile) [1]" in page and "9065" not in page
+    assert "- [2]" not in page   # David's mail, cited by nothing else now, goes rather than refuse the page
+
+
+def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_domain(tmp_path, monkeypatch):
+    """#2349: 28 of 53 `Company: Unknown` people wrote from a domain the notebook has an
+    organisation page for; the turn left it Unknown, code knows the domain."""
+    from connectonion.rem import investigate as inv
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    notebook.stub_org("orgs/unsw.md", "UNSW Sydney", ["unsw.edu.au"])
+    original = notebook.read("people/vern.md")
+
+    def write(nb, items, config, stage):
+        mine = next(i["source"] for i in items if i.get("role") == "other" and "Vern" in i.get("speaker", ""))
+        page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
+                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                .replace("- Unknown — not investigated yet", "- Unknown")
+                .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high"))
+        candidate = tmp_path / "candidate.md"
+        candidate.write_text(page)
+        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/vern.md"], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+                    clients={"outlook": Signed()}, subscriptions={}, runner=write)
+    assert "- Company: [UNSW Sydney](../orgs/unsw.md) [1]" in notebook.read("people/vern.md")
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):

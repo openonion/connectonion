@@ -20,6 +20,7 @@ messages and no page gets the map's page when it was active recently.
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import os
 import re
@@ -28,7 +29,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import (SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
+from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
 from .scan import project_exclusion
@@ -110,7 +111,7 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
         offset = len(first)
         for line in source:
             at, offset = offset, offset + len(line)
-            if not line.endswith(b"\n") or b"message" not in line or b"role" not in line:
+            if not line.endswith(b"\n") or b'"message"' not in line or b'"role"' not in line:
                 continue
             try:
                 row = json.loads(line)
@@ -131,7 +132,8 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
             message = {"source": f"{kind}:{session}:{at}", "tool": kind,
                        # One spelling, so times from both tools compare as text.
                        "timestamp": timestamp(item["timestamp"]).isoformat(),
-                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"])}
+                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                       **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}
             if why == CONTAINER:
                 held.append((at, message))
             elif why:
@@ -276,7 +278,8 @@ def page_for(cwd: str, folders: dict[str, str]) -> str | None:
 
 def render(messages: list[dict]) -> str:
     """Plain text to read: one heading per message, its date and tool, its words."""
-    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n{m['text'].rstrip()}"
+    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n"
+              + (f"Input scope: {m['input_scope']}\n\n" if m.get('input_scope') else '') + m['text'].rstrip()
               for m in messages]
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
@@ -292,6 +295,44 @@ def stored(root: Path, record: str) -> list[dict]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def retain_cited_sessions(root: Path, items: list[dict], cited: set[str]) -> None:
+    """Keep only cited inputs from an explicit investigation's live session scan."""
+    for item in items:
+        source, body = item.get("source"), item.get("text")
+        if (source not in cited or item.get("role") != "user"
+                or not isinstance(source, str)
+                or not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source)
+                or not isinstance(body, str)):
+            continue
+        text = SECRET_SHAPES.sub(REDACTED, body)
+        path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+        previous = read_json(path, {})
+        if previous and (previous.get("source") != source or previous.get("text") != text):
+            raise RemError("Retained session citation has conflicting content")
+        if not previous:
+            write_json(path, {"source": source, "text": text, "timestamp": item.get("timestamp") or "",
+                              "input_scope": item.get("input_scope") or ""})
+
+
+def retained_session_context(root: Path, source: str) -> dict | None:
+    """A cited original unavailable in the mapped archive, from the accepted run."""
+    from .reader_model import PRIVATE
+    if not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source):
+        return None
+    path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+    saved = read_json(path, {})
+    body = saved.get("text")
+    if (saved.get("source") != source or not isinstance(body, str)
+            or SECRET_SHAPES.search(body) or PRIVATE.search(body)):
+        return None
+    excerpt = body.strip()[:4_096]
+    return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
+            "time": saved.get("timestamp") or "", "sender": "", "thread": "",
+            "source": source.split(":", 1)[0],
+            "input_scope": saved.get("input_scope") or
+                           "Your input only. Assistant replies and tool results are not included, so this does not verify what was completed."}
 
 
 def page_state(root: Path, record: str) -> dict:
@@ -310,14 +351,16 @@ def _keep_newest(messages: list[dict], cap: int) -> tuple[list[dict], int]:
 
 def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, full: bool = False,
             days: int = LOOKBACK_DAYS, now: datetime | None = None, recent_days: int = RECENT_DAYS,
-            lock_held: bool = False) -> dict:
+            lock_held: bool = False, create_pages: bool = True) -> dict:
     """Refresh every project page's material; return counts, never message text.
 
     With no `since`, the first extraction reads `days` back and every later one
     reads from the previous extraction (less OVERLAP). `full` reads the whole
     window again. New messages are merged by id, so a re-read adds nothing twice.
     A folder with messages and no page gets the map's page if its newest message
-    is within `recent_days`; older ones stay listed as `unmapped`. `lock_held`
+    is within `recent_days`; older ones stay listed as `unmapped`. Init passes
+    `create_pages=False` after showing its map so unmatched folders remain
+    candidates instead of silently changing the project count. `lock_held`
     says the caller already holds the maintenance lock the new pages need.
     """
     now = now or datetime.now(timezone.utc)
@@ -329,7 +372,8 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         since = (timestamp(previous) - OVERLAP) if previous and not full else now - timedelta(days=days)
     folders = page_folders(notebook)
     messages, counts = session_messages(subscriptions, since=since, rem_root=root, folders=folders)
-    created = _new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+    created = (_new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+               if create_pages else [])
     if created:
         folders = page_folders(notebook)
     by_page = {}
@@ -337,19 +381,21 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         record = page_for(message["cwd"], folders)
         if record:
             by_page.setdefault(record, []).append(message)
-    pages = []
-    for record in sorted(set(folders.values())):
-        pages.append(_merge(root, record, by_page.get(record, []), full=full, now=now))
     moved = [m for m in messages if m.get("typed_in")]
     workspace = {"attributed": len(moved), "folders": len({m["cwd"] for m in moved}),
                  "stayed_out": counts["excluded"].get(CONTAINER, 0)}
     index = {"extracted_at": now.isoformat(), "since": since.isoformat(), "created": created,
              "workspace": workspace, "unmapped": _unmapped(messages, folders)}
-    write_json(base / "index.json", index)
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        pages = [_merge(root, record, by_page.get(record, []), full=full, now=now)
+                 for record in sorted(set(folders.values()))]
+        write_json(base / "index.json", index)
+        from .store import refresh_safely
+        indexed = refresh_safely(root)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
             "pages": pages, "created": created, "workspace": workspace, "unmapped": index["unmapped"],
             "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
-            "unfamiliar_skipped": counts["unfamiliar"]}
+            "unfamiliar_skipped": counts["unfamiliar"], "store": indexed}
 
 
 def _unmapped(messages: list[dict], folders: dict) -> list[dict]:
@@ -387,7 +433,7 @@ def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bo
                      "first": row["first"][:10],
                      "last": row["last"][:10], "repo": repo.get("toplevel", ""), "origin": repo.get("origin", "")})
     created = []
-    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook = Notebook(root)
         for identity, group in project_groups(rows).items():
             record, made = file_project(notebook, identity, group, refresh=False)
@@ -421,11 +467,18 @@ def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetim
             "last_activity": state["last_activity"], "written_through": state["written_through"]}
 
 
-def mark_written(root: Path, record: str, through: str, *, now: datetime | None = None) -> None:
+def mark_written(root: Path, record: str, through: str, *, now: datetime | None = None,
+                 inputs_read: int = 0, inputs_available: int = 0) -> None:
     """The page now reflects every message up to `through`; an update starts after it."""
     folder = _private_dir(_folder(root, record))
     state = page_state(root, record)
     state.update(written_through=through, written_at=(now or datetime.now(timezone.utc)).isoformat())
+    if inputs_read:
+        prior = state.get("last_page_coverage") or {}
+        # A later small update does not supply older inputs omitted on the first write.
+        if inputs_available > inputs_read or prior.get("inputs_available", 0) <= prior.get("inputs_read", 0):
+            state["last_page_coverage"] = {"inputs_read": inputs_read, "inputs_available": inputs_available,
+                                           "scope": "queued"}
     write_json(folder / "state.json", state)
 
 

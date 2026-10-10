@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -42,8 +43,11 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "电话:", "电话：", "公司:", "公司：")
 
 CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
-              "decisions", "principles", "works", "agenda", "notes")
+              "decisions", "principles", "works", "agenda", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
+# The map's default window. 90 days left out people the owner works with every
+# season but had not written to this quarter; the owner chose 180 (2026-10-08).
+MAP_DAYS = 180
 # The maintainer has a read-only shell and this is its only write path; a key it
 # was tricked into cat-ing must not become a page. Shapes, not words: prose about
 # "the API key" is fine, the key itself is not.
@@ -112,6 +116,17 @@ def write_json(path: Path, value) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+# How long a write of work already done waits for the notebook lock. A promotion
+# can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
+# wait lost UNSW's page in a 16-worker first run (1.9.1b5).
+WRITE_WAIT_SECONDS = 600
+# Threads of one process queue here before they poll the file lock. Polling
+# alone let 48 first-run workers saving mail take the lock back-to-back while a
+# waiter slept between tries: three organisation pages waited ten minutes and
+# failed (1.9.2b2 trial).
+_THREADS = threading.Lock()
+
+
 @contextmanager
 def maintenance_lock(root: Path, wait: float = 0):
     """One OS-owned lock for every write path; process death releases it.
@@ -120,6 +135,18 @@ def maintenance_lock(root: Path, wait: float = 0):
     once and retries on the next one; a finished investigation has no next
     tick, so it waits rather than lose a page it already paid for.
     """
+    if not (_THREADS.acquire(timeout=wait) if wait > 0 else _THREADS.acquire(blocking=False)):
+        raise RemError("co rem is busy; wait for the active maintenance run")
+    try:
+        with _file_lock(root, wait):
+            yield
+    finally:
+        _THREADS.release()
+
+
+@contextmanager
+def _file_lock(root: Path, wait: float):
+    """The lock other processes see: a scheduled tick, a second terminal."""
     import fcntl
 
     path = state_path(root, "maintenance.lock")
@@ -249,7 +276,10 @@ class Notebook:
         # *by* their address, so leaving `Email: Unknown` on a page the roster
         # sweep built from that very address throws away the one fact the free
         # stage had, and sends the paid stage looking for it.
-        seeded = {"Handles": ", ".join(handles), "Also known as": ", ".join(handles)}
+        # Addresses are not names: seeded into Also known as too, 64 of 295 pages
+        # in the 1.9.2b3 run said nothing there but the Email line again.
+        seeded = {"Handles": ", ".join(handles),
+                  "Also known as": ", ".join(handle for handle in handles if "@" not in handle)}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
         lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
@@ -322,7 +352,7 @@ class Notebook:
             return False
         lines = [f"# {name}", "", "## What it does",
                  description or "Unknown — description not provided"]
-        for section in ("When to use", "Current status", "Example result", "How to use",
+        for section in ("Insight", "When to use", "Current status", "Example result", "How to use",
                         "Inputs and outputs", "Usage history", "Performance",
                         "Limitations", "Maintenance", "Related projects", "Open threads",
                         "Uncertainties"):
@@ -418,6 +448,23 @@ class Notebook:
             roster.append({"path": record, "title": title, "aliases": sorted(set(aliases)),
                            "emails": sorted(set(emails)), "summary": summary})
         return roster
+
+    def find_people(self, query: str) -> list[dict]:
+        """Every person the query names exactly: title, an alias or an address.
+
+        For commands that act on someone (`show`, sending mail, a handoff), so
+        it never guesses. A real notebook had three Ody pages; the caller lists
+        them all rather than pick one and reach the wrong address.
+        """
+        wanted = query.strip().casefold()
+        plain = lambda name: re.sub(r"\s*\([^()]*\)$", "", name).strip().casefold()  # noqa: E731
+        return [person for person in self.people()
+                if wanted in {plain(person["title"]), person["title"].casefold(), *person["emails"],
+                              *(inner.strip().casefold() for inner in re.findall(r"\(([^()]*)\)", person["title"])),
+                              *(plain(alias) for alias in person["aliases"])}]
+
+    def exists(self, record: str) -> bool:
+        return self.path(record).is_file()
 
     def read(self, record: str) -> str:
         path = self.path(record)

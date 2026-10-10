@@ -20,6 +20,7 @@ little outside the conversation around it.
 """
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -40,8 +41,8 @@ def _group(item: dict) -> str:
     kind = source.split(":")[0]
     if kind in CHAT_KINDS:
         return f"{kind}:{item.get('correspondent') or item.get('subject') or 'chat'}"
-    if item.get("role") == "attachment":
-        return source   # one attachment, one file: a document read on its own
+    if item.get("role") == "attachment" or source.startswith("project-source:"):
+        return source   # one snapshot/document per file keeps its index entry discoverable
     if source.count(":") < 2:
         # Mail: a month per mailbox. Each entry keeps its `### <source id>`
         # heading, so a search hit still names the one message to cite.
@@ -60,9 +61,20 @@ def _entry(item: dict) -> str:
     who = item.get("speaker") or item.get("role") or ""
     head = f"### {item.get('source', '')} · {item.get('timestamp', '')} · {who}"
     detail = [f"{label}: {item[key]}" for key, label in (("subject", "Subject"), ("correspondent", "With"),
-                                                       ("project", "Project"), ("reference", "Reference"))
+                                                       ("thread", "Provider thread"),
+                                                       ("project", "Project"), ("reference", "Reference"),
+                                                       ("timestamp_scope", "Timestamp scope"),
+                                                       ("origin", "Snapshot origin"),
+                                                       ("captured_at", "Captured at"),
+                                                       ("retained_at", "Retained at"),
+                                                       ("body_format", "Body format"),
+                                                       ("input_scope", "Input scope"),
+                                                       ("comparison_scope", "Comparison scope"),
+                                                       ("relationship_scope", "Relationship scope"))
               if item.get(key)]
-    return "\n".join([head, *detail, "", str(item.get("text", "")).rstrip(), ""])
+    if item.get("participants"):
+        detail.append("Participants: " + json.dumps(item["participants"], ensure_ascii=False))
+    return "\n".join([head, *detail, "", str(item.get("text", "")), ""])
 
 
 def _split(group: str, entries: list[dict]):

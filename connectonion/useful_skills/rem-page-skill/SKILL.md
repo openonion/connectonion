@@ -7,17 +7,22 @@ description: A skill page for judging usefulness, observed reliability and how t
 
 Why these rules: docs/rem-skills/rem-page-skill.md
 
-Help a reader decide: is this useful for my task, is it reliable for it, and how
-do I start? Keep the opening short and understandable without company or
-technical context. Link the executable source near the end; do not reproduce its
-instructions as the main content.
+Help a reader choose and start a task. Keep the lead short; link, don't paste,
+the source. State missing execution evidence once in `Current status`.
+Keep `#` title exactly the mapped invocation name, without a descriptive suffix;
+`co rem investigate` uses it to find the skill's runs.
 
-Copy headings exactly:
+Keep the core headings `What it does`, `Insight`, `When to use`, `Current status`,
+`How to use`, `Inputs and outputs`, `Usage history`, `Limitations`, `Uncertainties`,
+`Source` and `Sources`. Keep other headings only when evidence fills them; omit
+an optional section whose whole body would be Unknown. Keep the order below:
 
 ```markdown
 # <Name>
 
 ## What it does
+
+## Insight
 
 ## When to use
 
@@ -50,16 +55,22 @@ Copy headings exactly:
 
 **The short opening**
 
-- `What it does`: one plain sentence: the task and useful outcome. Metadata is
-  advertised capability, not verified behaviour.
+- `Insight`: 1–3 cited findings changing task choice, setup or verification.
+  Compare instructions with recorded outputs; name the mismatch, capability or
+  failure condition, consequence and next check. Prefer a specific trap or
+  conflicting rule over listing prerequisites. Put the execution-evidence
+  caveat in `Current status`, not in each Insight. Counts do not prove success.
+- `What it does`: one plain sentence: the task and intended outcome. Say the
+  skill aims to produce checked work until an openable artifact proves it did.
 - `When to use`: a concrete suitable task and an important unsuitable case, when
   known. Never present invented examples as observed successes.
 - `Current status`: latest observed run date, version/model, whether the task
   was completed, actual output, quality assessment, known blockers; a few lines
   linking the detailed run. With no reviewed run evidence: `Unknown — not
   verified` (not "never ran").
-- `Example result`: one real artifact or short excerpt with its run reference.
-  Label illustrative examples and failed/partial outputs.
+- `Example result`: a retained, openable artifact or excerpt with its run
+  reference. If only a run report survives, label its output as reported;
+  leave uninspected artifact details Unknown. Label partial results.
 - `How to use`: shortest verified invocation, prerequisites, working directory,
   ideally at most three steps. Never expose credentials.
 - `Inputs and outputs`: required inputs, expected outputs and their locations.
@@ -85,9 +96,8 @@ Link older records when numerous.
 - Elapsed time and input/output tokens with units and per-metric sample sizes;
   per-run totals apart from per-call usage. Never infer tokens/second from task
   duration; use generation timing. Never invent cost or token telemetry.
-- Separate skill versions, models/context settings and comparable task types or
-  difficulty; label cache conditions if relevant; never pool unlike runs. Small
-  samples are observations, not guarantees.
+- Separate versions, models/context and task types/difficulty; label cache
+  conditions. Never pool unlike runs. Small samples are not guarantees.
 
 **Limits and maintenance**
 
@@ -96,6 +106,9 @@ Link older records when numerous.
 - `Maintenance`: verified maintainer/contact, recent dated changes and whether
   they were validated. Earlier successes do not verify a newer version.
 - `Related projects`: observed associations and valid links only.
+- Notebook links use notebook paths. Do not copy source-relative
+  `../name/SKILL.md` links into the catalog; use a verified catalog link or
+  the plain skill name.
 - `Open threads`: concrete next actions, owners/dates when known.
 - `Uncertainties`: missing logs, unread sources, stale results, unresolved
   identity/version attribution. Do not manufacture a complete-looking dashboard.
@@ -107,19 +120,11 @@ Link older records when numerous.
 
 **Mapping and later review**
 
-Mapping creates one page per skill name from metadata, leaving unsupported
-sections Unknown, and opens `Usage history` with the invocation count and
-last-used date from the user's sessions; reruns refresh only those map-owned
-lines and never overwrite other content. Later review adds source-file
-and execution evidence, adds missing sections to older pages, and preserves
-identity, useful prior content and the runner-owned `Investigation:` line. Never
-execute a skill merely to document it.
+Mapping owns installed copies, usage and identity; preserve them and
+`Investigation:`. Catalog pages stay under `skills/catalog/`; never run the skill.
+Eval counts /skill inputs, while sessions also include file loads. Neither
+proves installed version or goal achievement without artifacts.
 
-Catalog pages go in `skills/catalog/`, not `skills/candidates/` or
-`skills/approved/`. `co rem investigate skills/catalog/<page>.md` collects
-retained co eval summary records into a linked run-evidence note, without a
-model or mail access; add `--eval-dir` (repeatable) for more summary
-directories. It matches explicit slash-command invocation names only (not
-tool-based invocation or all harnesses), and establishes neither source-version
-identity nor goal achievement. Review the linked tasks, outputs and evaluations
-before claiming success or verified changes; missing evidence stays unverified.
+Match claims to exact tasks and originals; cite snapshot IDs. Treat handbacks
+as reports until artifact review.
+Open threads need a current, source-backed pending request.

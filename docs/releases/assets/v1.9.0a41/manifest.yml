@@ -1,0 +1,44 @@
+version: v1.9.0a41
+images:
+  - file: after-people-light-phone.png
+    alt: "Phone People view with a historical contacts disclosure below mapped memories"
+    caption: "The a41 reader added a separate route to old correspondents."
+    scenario: "Invented People and historical contacts after a41"
+    viewport: "390x844, light"
+    commit: d1767944
+    source_run: "Chrome trial rem-all-history-2026-10-04; invented fixture"
+  - file: after-contacts-light-phone.png
+    alt: "Opened phone contact directory with search and readable contact cards"
+    caption: "Old correspondents can be searched without presenting them as written memories."
+    scenario: "Invented historical contacts with the disclosure opened"
+    viewport: "390x844, light"
+    commit: d1767944
+    source_run: "Chrome trial rem-all-history-2026-10-04; invented fixture"
+  - file: after-contacts-dark-phone.png
+    alt: "Opened historical contacts in the dark phone theme"
+    caption: "The card directory remains readable in the dark theme."
+    scenario: "Same invented contacts in dark mode"
+    viewport: "390x844, dark"
+    commit: d1767944
+    source_run: "Chrome trial rem-all-history-2026-10-04; invented fixture"
+  - file: after-contact-command-light-phone.png
+    alt: "Selected historical contact with a copyable investigation command"
+    caption: "The a41 contact card exposes the next action directly below the chosen person."
+    scenario: "Invented contact selected in the directory"
+    viewport: "390x844, light"
+    commit: d1767944
+    source_run: "Chrome trial rem-all-history-2026-10-04; invented fixture"
+  - file: before-people-light-phone.png
+    alt: "Published a40 phone People view without a historical contact directory"
+    caption: "Before a41: a one-off old correspondent had no searchable reader entry."
+    scenario: "Same invented People set in a40"
+    viewport: "390x844, light"
+    commit: 24727973
+    source_run: "Chrome trial rem-all-history-2026-10-04 using published a40 reader"
+  - file: before-people-light-desktop.png
+    alt: "Published a40 desktop People view without a historical contact directory"
+    caption: "The old desktop People view stopped at mapped memories."
+    scenario: "Same invented People set in a40"
+    viewport: "1440x1000, light"
+    commit: 24727973
+    source_run: "Chrome trial rem-all-history-2026-10-04 using published a40 reader"

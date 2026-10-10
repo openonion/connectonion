@@ -1,0 +1,273 @@
+# The writer could not read the code
+
+**Design Journal draft.** This describes a candidate in draft PR #2141, not a
+released package or a published docs-site article.
+
+A project page asked its reader to verify the latest branch before relying on
+it. The initial writer had a README, package metadata and Git dates. Its prompt
+also prohibited opening any other file. More model time could not reveal the
+implementation that the task kept outside the evidence.
+
+In the inspected fixed revision, a PDF app's download link had no corresponding
+handler. Its CLI used a separate renderer. The config loader could select bundled
+example data when no explicit config variable was set and both JSON candidates
+in the current directory were absent.
+The three PDF fixture cases bypassed that loader and the CLI wrapper. These were
+useful source findings; none proved an observed runtime error or a test outcome.
+
+Keeping the metadata-only packet was cheap, but preserved the discovery gap.
+Putting all source into the initial prompt would make every page pay for files
+it did not need. Allowing an unrestricted checkout search would reopen mutable
+files and make evidence harder to reproduce.
+
+The candidate instead supplies a fixed tracked tree and an index of at most
+60 eligible text snapshots. The agent searches relevant supplied files with their
+context. Size and path exclusions are explicit, and an omitted body does not
+mean missing implementation. Accepted citations retain the supplied original.
+
+A second inspection exposed another limit: alphabetical selection in a large
+repository omitted its Python CLI and REM implementation. Short README and
+manifest prefixes stopped before the product explanation and CLI declaration.
+The candidate now prioritizes complete root descriptions/manifests, supported
+declared entries and literal names/paths in the sent request window. Implementation
+comes before supporting documents/tests among those hints. This brought the CLI
+and 24 REM files into the inspected seven-input pool without raising the 60-file
+limit. Hints remain discovery aids, not proof of what a request concerns; Python
+entrypoint syntax and package layouts still have narrow coverage.
+
+Four remaining pages carried skill and task requests in session workspaces,
+with no established software-product identity. A folder was evidence of where
+the conversation happened. The useful findings were requested operating
+constraints: verified recipients and one send, save-only instructions, per-person
+memory, and preserving originals while working on copies. They were historical
+intent, with unknown execution outcomes.
+
+Rendering created two further problems. It chose later updates by their tags,
+burying the first useful finding, and filled an unknown Repository with a local
+workspace path. The candidate uses the first Insight and keeps local paths
+separate from declared repository facts. Explicit Unknown stays unknown. These
+four pages were manually filled and reviewed; their pending automatic writes
+remain queued for a resource-permitted run. A written-page count is not proof of
+automatic quality or successful task execution.
+
+A person-page comparison showed the same access problem in mail. A copied
+member's page retained an approval request after replies stopped including them,
+although the client's approval was saved in the same provider thread. Address
+filtering alone kept the obsolete task alive. The candidate supplies saved
+messages from exact provider/thread matches, marked as context rather than that
+person's contact or obligation. It also retains raw To/Cc metadata in the
+searchable packet. Subject matching would be easier to add but could join
+unrelated discussions; even one genuine thread can contain different teams, so
+the writer still has to match the actual ask. Two page corrections remain
+manual evidence work, rather than proof of automatic reconciliation.
+
+A four-person event audit found that access was only part of the problem.
+Confirmed seating and an arrival reply had become “Nothing open,” although
+neither proved delivery or pack-up. The corrections preserve the actual venue
+conditions and leave missing outcomes unknown, without turning old plans into
+new tasks. Historical signatures and copied mail retain their dated scope.
+
+The same audit found a UTC evening reply displayed a day early in Sydney, and
+contact age used the UTC day while source time used the notebook timezone.
+The candidate now derives contact dates from full instants in the named notebook
+timezone and formats timestamp dates and age on that calendar. Date-only facts
+remain exact. Actual phone review also found Activity rows hidden inside a
+scrolling card and older index roles overriding corrected page fields. Activity
+is latest first with complete phone rows; explicit Role and Company, including
+Unknown and historical qualifications, supersede those derived values. These
+four page corrections remain manual, and selected source-dialog checks do not
+prove every historical citation is retained in the init archive.
+
+A follow-up found 14 older cited messages absent from the reader even though
+their provider renderings had been retrieved for the audit. They were recovered
+privately with exact body hashes, without changing the initial inventory,
+coverage manifest or original page text. Live gathering now retains full mail
+renderings separately from the initial-window archive and supplies the same
+retained version to the writer. This avoids treating a newly read rendering as
+the original behind an older citation.
+
+The source dialog starts its short excerpt at the mail body and offers From,
+To and Cc through a disclosure. Retrieval and later archiving have distinct
+labels; unknown original retrieval time remains unknown. Independent desktop
+and phone review led to shorter provenance wording and a larger disclosure
+target. Scrolling also keeps Close accessible on phone. These changes make the
+selected citations inspectable, while a prefix still cannot guarantee that it
+contains the decisive clause. Recovery is not
+evidence that the original investigation read those bodies.
+
+A five-person student-team review then found errors even where the originals
+were available. A request to update internal records became an owed reply;
+approval of two integrations was confused with approval of a later full scope.
+A reply-cutoff headline hid the team's stated plan to proceed without an answer.
+Institutional email addresses became employers, and UTC evening messages
+became the wrong contact day. The candidate asks for the exact action and
+approval boundary, keeps affiliation separate from employment, and preserves
+request, deadline and missing outcome as different facts.
+
+The reader also hid a stated deadline behind request age and changed its
+meaning once the date passed. It now shows the explicit due date first and
+keeps that date on the notebook calendar. It does not infer a missed deadline
+or completion from the clock. These five pages were manually corrected against
+saved originals; prompt edits and passing browser checks do not prove that an
+automatic first write will make the same distinctions.
+
+This trades a small initial index for additional, variable source reads. The cost
+estimate says so; the quota guard remains in place. It also leaves real limits:
+60 files cannot cover every repository, and the reader's short source prefix may
+stop before the decisive clause.
+
+Another two-person review found a replied-to invitation still presented as an
+owed reply, and different terms' forms treated as one process. Reading the later
+originals changed what was open. The page now separates the sent request from an
+unknown booking and a next-round survey from earlier group feedback. The phone's
+first finding carries those boundaries before text clamping.
+
+Even an attached file being “read” was not enough. The PDF's filled text lived in
+annotations, which the extractor omitted. The candidate includes annotation
+text and explicitly leaves a stamp's appearance and authenticity unverified.
+The source dialog now resolves a filename containing spaces, labels it as the
+current local attachment and keeps unknown original capture/version limits
+visible. Concrete Unknown explanations also remain readable in the full note
+without becoming current debts. These are manual corrections and candidate
+input/reader fixes; they do not prove automatic reconciliation.
+
+Retaining mail for the reader exposed one more boundary: the next investigation
+still selected only initial-window person references. A later reply could open
+from a citation without reaching the writer. The candidate now shares metadata
+selection and uses exact saved participants plus labelled provider-thread context.
+The initial coverage interval stays unchanged. Two offline contact packets grew
+from 17 and six messages to 39 and 29, but the pages themselves did not change.
+One still carries an older contact date. More available evidence is a necessary
+input to reconciliation; it is not proof that reconciliation happened.
+
+The update filter could still remove the original request once the page cited
+it, leaving a new reply without its comparison evidence. A citation also matched
+by substring, so citing an attachment could suppress its distinct carrier email.
+The candidate uses exact IDs and rereads only saved cited originals in exact
+threads with new mail, including an ask outside the update window. They carry
+comparison scope and do not move contact dates. The old page remains an
+interpretation the originals can correct. In two offline packets, 18 cited
+originals are available beside 37 uncited messages; their generated use is still
+unverified.
+
+The real page was manually corrected and independently reviewed. The related
+unit and browser checks pass. A live automatic first write and all-page semantic
+review remain unverified. The next question is whether the writer uses this access
+to produce supported findings, rather than another list of verification requests.
+
+See the [review and exact coverage](../../design-evidence/rem-initial-project-source-review-2026-10-03/REVIEW.md).
+The follow-up [large-project review](../../design-evidence/rem-large-project-source-review-2026-10-03/REVIEW.md)
+records the bounded selection change and the second manually corrected sample.
+The [session-workspace review](../../design-evidence/rem-remaining-workspaces-review-2026-10-03/REVIEW.md)
+records four manual pages, reader corrections and remaining automatic-write limits.
+The [person-thread review](../../design-evidence/rem-person-thread-review-2026-10-03/REVIEW.md)
+records the missing group reply and responsibility corrections, with exact scope.
+The [event/calendar review](../../design-evidence/rem-event-calendar-review-2026-10-03/REVIEW.md)
+records four manual pages, date and summary corrections, and the remaining
+automatic-generation and historical-source availability limits.
+The [mail-retention review](../../design-evidence/rem-mail-retention-review-2026-10-03/REVIEW.md)
+records the isolated recovery, source-dialog states and remaining excerpt limits.
+The [professional-contact review](../../design-evidence/rem-professional-contact-review-2026-10-03/REVIEW.md)
+records later replies, distinct forms, annotation extraction and selected actual
+desktop/phone states, with the remaining observed-mail gather gap.
+The [observed-mail review](../../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
+records the candidate gather correction, unchanged initial coverage and pages,
+and remaining automatic reconciliation and broader review limits.
+The [cited-thread comparison review](../../design-evidence/rem-cited-thread-comparison-review-2026-10-03/REVIEW.md)
+records the old-request comparison, exact citation matching, first-snapshot
+provenance handoff and selected unchanged reader states.
+
+
+A final pending project revealed a different boundary. Its folder matched the
+existing private-project rule, so the automatic queues already skipped it.
+Status still counted it as ordinary unfinished work and suggested a category
+command that could never write it. The mapped page led with a local path and
+left the reason for waiting unexplained. The candidate keeps the written count
+truthful, separates the explicit-request hold from the ordinary next action,
+and explains the hold in the page's lead and existing named-page callout.
+Private original bodies and that page were unchanged. Independent phone review
+also caught the request instruction folding away; the brief explanation is now
+fully visible. This is sampled action-clarity verification, not an automatic
+writer or all-page usefulness pass.
+
+[Private project status review](../../design-evidence/rem-private-project-status-review-2026-10-03/REVIEW.md) records the inspected states and remaining gaps.
+
+
+A contact-date triage led to four more original-source reviews. It exposed UTC
+versus notebook-calendar mistakes, a newer copied introduction missing from a
+page, a screening prerequisite presented as a current debt, and an old promise
+whose age had been mistaken for proof that work was still owed. The pages were
+corrected manually. The candidate adds a narrow same-original Facts date repair
+and teaches the writer to preserve conditional and historical uncertainty.
+An empty calendar reply now shows saved headers and subject rather than claiming
+that its original is unavailable.
+
+An independent AI review from a founder/marketing/UI perspective also found
+a privacy defect that tests had missed: a marked linked sentence and its reused
+connection-card basis stayed
+visible after hiding private content. The candidate protects Markdown links
+before privacy matching and carries the original line's privacy flag into
+connection summaries. The marked page History was corrected manually. Desktop
+and phone hide/restore checks cover the observed failures, without claiming
+that unmarked private information is automatically classified.
+
+The [contact-freshness review](../../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
+records the exact sources, rendered states and remaining automatic-generation
+and all-page limits. This remains an unpublished draft.
+
+Organization review exposed the same access boundary: separately retained mail
+reached person investigations but not organization investigations. The candidate
+includes those saved originals while preserving initial-window coverage and
+provider identity. Nine organization pages were then corrected manually against
+selected originals. The important findings were programme capacity, distinct
+offers and conditional outcomes, rather than another list of missing fields.
+
+The source review also caught agreement templates written as executed terms and
+an optional assignment written as an IP conflict. Historical gaps had become
+current tasks. Actual phone review showed several qualifications folded away,
+and a recent scope request was labelled as a debt. Shorter leads and neutral
+request wording were rechecked. Explicit private labels were corrected sentence
+by sentence. Actual hidden-state review then caught a matcher defect: a second
+marked sentence could leave its text visible while hiding only its label. The
+candidate preserves the shared boundary and public neighboring citations; the
+regression and targeted desktop/phone hide/restore checks cover that failure.
+This still does not prove automatic reconciliation or all-page
+usefulness. The [organization review](../../design-evidence/rem-org-observed-review-2026-10-03/REVIEW.md)
+records the source, rendered-state and verification limits.
+
+The reader had a separate source-access problem in its navigation: an earlier
+reverse name mention could replace a page's explicit link, including the link's
+actual citations and private flag. Exact skill links could vanish altogether.
+The candidate resolves local paths first and keeps each forward link's own
+line. A read-only census recovered 219 lost or misclassified explicit links;
+this is a navigation result, not a semantic proof of relationships.
+
+Independent AI review from a founder/marketing/UI perspective showed maps and incidental name matches
+ahead of useful links and original conversations. Cited conversations now come
+first, explicit notebook links remain visible, and secondary notes and mentions
+are folded separately. Cards identify the note containing their basis and open
+its originals. Independent review also caught repeated citations inflating a
+source count; the candidate deduplicates them. Whole-line summaries can still
+clip the linked sentence, and one entry per page pair does not expose every
+incoming link separately. The [connected context review](../../design-evidence/rem-connected-context-review-2026-10-03/REVIEW.md)
+records the actual inspected scope and remaining gaps. This remains an
+unpublished draft.
+
+A full finding census made the acceptance gap explicit: 224 pages were written,
+but that did not mean 224 useful findings. Independent AI review from a
+founder/marketing/UI perspective still found historical outcomes presented as
+current debts, generic project reminders and a calendar-only Unknown finding.
+Two full-original person reviews replaced false current-debt framing with
+supported interactions: an acknowledged warm handoff and dated evaluation
+interest, with attendance and activation still unknown. Separate offers and
+provider threads stayed separate. One introduction's UTC date also needed the
+notebook calendar.
+
+The person writer now allows a concrete relationship finding to lead, and keeps
+each linked event with its own citations on its own line. Actual phone review
+caught another small failure: generic opening words hid the accepted invitation
+or adoption uncertainty behind the fold. Shorter findings preserve those points
+before expansion. This improves the selected manual pages and the instructions;
+it does not prove automatic generation. The [triage and interaction review](../../design-evidence/rem-page-usefulness-review-2026-10-03/REVIEW.md)
+records the exact read, rendered and remaining scope. This draft remains
+unpublished.
