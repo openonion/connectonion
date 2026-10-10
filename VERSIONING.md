@@ -405,7 +405,8 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.9.2b3 is a 1.9.2 beta; stable remains 1.9.1. It includes the unpublished
 1.9.2b2. A first run you can read straight away: sources are numbered 1, 2, 3,
 a person's Company links the organisation page for their mail domain, probable
-duplicate people are named with the merge command, pages speak in one voice,
+duplicate people are named with the merge command, `co rem show` finds a
+person by name, alias or email, pages speak in one voice,
 and a missing required section is added as Unknown instead of the page being
 refused. The reader keeps Facts labels and addresses on whole words and
 shortens 64-character ids. See [1.9.2b3 notes](docs/releases/1.9.2b3.md).
