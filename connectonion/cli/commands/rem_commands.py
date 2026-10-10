@@ -491,11 +491,12 @@ def _first_org_rows(root, cap) -> list[dict]:
     return _capped(rows, cap)
 
 
-def _in_parallel(jobs, *, workers, gate, done):
+def _in_parallel(jobs, *, workers, gate, done=None):
     """Run `jobs` with up to `workers` at once; `gate()` says why not to start the next, or ''.
 
-    A refused or failed page does not stop the others. `done(job, outcome)` is
-    called in this thread as each one finishes. Returns (outcomes, stopped).
+    A refused or failed page does not stop the others. When supplied,
+    `done(job, outcome)` is called in this thread as each one finishes.
+    Returns (outcomes, stopped).
     """
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -524,7 +525,8 @@ def _in_parallel(jobs, *, workers, gate, done):
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
                     "outcome": "refused" if "rejected" in str(error) else "failed"}
                 outcomes.append((job, outcome))
-                done(job, outcome)
+                if done:
+                    done(job, outcome)
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
     return outcomes, stopped
@@ -1268,7 +1270,7 @@ def make_rem_app(factory):
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
                                   clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
-                                  workers=effective_workers)
+                                  budget=budget, workers=effective_workers)
             if target == "me":
                 return me(root)
             if target in runnable:

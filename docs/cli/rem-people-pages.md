@@ -14,17 +14,20 @@ full 150 days every time, so the round's top pages never fit a day's calls
 co rem investigate people --list                      # the order and the cost; nothing read or spent
 co rem investigate people                             # the next 5, last 14 days first
 co rem investigate people --limit 1                   # just the most recent correspondent
-co rem investigate people --recent-days 7 --limit 0   # everyone written to this week
+co rem investigate people --recent-days 7 --limit 0   # all queued people; last 7 days first
+co rem investigate people --budget 20                 # advisory: stop new pages at 20 points; rerun for the rest
 ```
 
 `co rem investigate people` is the command it always was; its order and
 windows changed. It states the cost first — one model call a person, the mail
 the map counted for the full investigations, how many are updates, and what
-one full investigation measured on this machine — then investigates one person
-after another. It stops starting people at the weekly Codex budget, at this
+one full investigation measured on this machine — then investigates up to four
+people at a time. It stops starting people at the weekly Codex budget, at this
 run's `--budget`, or at the floor kept for your own work, and ends by saying
-how many people are left. `projects`, `orgs`, `skills` and `all` keep their
-order (most mail or sessions first). A single page and `me` are unchanged.
+how many people are left. The budget is advisory: up to four already running
+pages finish after a stop, so the run can exceed its point target. `projects`,
+`orgs`, `skills` and `all` keep their order (most mail or sessions first). A
+single page and `me` are unchanged.
 
 ## Order
 
@@ -35,14 +38,14 @@ decayed by the weeks since the last mail. Left out: the owner (`investigate me`,
 listed first while never investigated), addresses that may be the owner's,
 automated senders, and vendors whose domain also sends notices. The overview
 `co rem investigate` and `people --list` read the same queue. Counts are the
-map's, a floor for what the 150-day read finds; see
+map's, a floor for what the 730-day read finds; see
 [rem-investigation-correctness.md](rem-investigation-correctness.md).
 
 ## Windows: only what is new
 
 | The person | Mode | Window read |
 |---|---|---|
-| Never investigated, or investigated but still unfinished and not in the last 7 days, with nothing newer | full | 150 days (`--days`) |
+| Never investigated, or investigated but still unfinished and not in the last 7 days, with nothing newer | full | 730 days (`--days`) |
 | Mail arrived after the page was last investigated | update | the days since that investigation |
 | Investigated since their last mail | — | not in the queue |
 
@@ -89,7 +92,8 @@ Each scheduled run maintains first, as before. Then:
   run). At most 5 pages, one call each, within the day's call cap. A run with
   nothing new calls no model and says `nothing_new`.
 
-Both stop starting pages at the weekly budget or the 70% floor, and both record
+Both stop starting pages at the weekly budget or the configured safety floor
+(90% by default), and both record
 in `co rem logs` how many pages are left. Which run is which is decided by what
 already ran today, not by the clock, so a machine asleep at the first slot
 still gets its unfinished portion from whichever run comes first. The schedule
