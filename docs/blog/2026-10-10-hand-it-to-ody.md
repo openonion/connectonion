@@ -47,11 +47,25 @@ index is what turns "hand off" into the right command instead of an improvised
 one.
 
 **It also approved its own preview.** The same run read the preview and sent it
-with `--yes` in the next breath. A preview is a gate for a person, and an agent
-holding the keyboard is not that person. The preview now says so in words the
-agent reads, and the skill tells it to ask first. That is guidance, not
-enforcement; making approval something only a person can give is the next
-piece of work, the same rule as #2353's discover switch.
+with `--yes` in the next breath. We changed the preview to say, in words the
+agent reads, "stop here and ask the person", and ran it again. It sent anyway:
+being asked to hand something off reads, to an agent, like permission to send
+whatever it drafted. Text cannot be the gate for the thing reading the text.
+Today the gate is the coding client's own command approval; a person-only
+approval is the next piece of work, the same rule as #2353's discover switch.
+
+**Long sessions forget, but the file does not.** A real Claude Code session
+compacts itself; its jsonl keeps a plaintext summary row, so the brief starts
+there. Codex compacts too, but its summary is encrypted on disk: in 107
+compactions on one Mac, not one was readable. What Codex does keep in the clear
+is the user's own earlier messages, and that is what the draft reads before
+the turns that followed.
+
+**Eight runs, two machines, both directions.** Every run asked the opened
+session "why not option B?" and two other things only the brief knew. 24 of 24
+answers came from the handoff. Most of the fixes were small and about reading:
+the recipient's address hidden behind "no addresses owned yet", a send that
+reprinted the whole preview, a sender shown as a bare mailbox.
 
 **Mail is a fine first wire.** Every co identity already has a mailbox,
 delivery works while the recipient's laptop is closed, and nothing has to be
