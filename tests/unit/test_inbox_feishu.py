@@ -128,7 +128,7 @@ def test_reply_posts_to_the_message_with_a_stable_uuid(creds, monkeypatch):
     assert first == second == again == "om_reply"
     url, body, headers = calls[1]
     assert url == "https://open.feishu.cn/open-apis/im/v1/messages/om_9f8e/reply"
-    assert json.loads(body["content"]) == {"text": "done"}
+    assert json.loads(body["content"]) == {"zh_cn": {"content": [[{"tag": "md", "text": "done"}]]}}
     assert headers == {"Authorization": "Bearer t-abc"}
     assert body["uuid"] == calls[2][1]["uuid"], "same message, same text: a retry, one dedupe key"
     assert body["uuid"] != calls[3][1]["uuid"], "same message, new text (--again): a new key"
@@ -454,3 +454,32 @@ def test_listen_needs_the_sdk_and_says_how_to_get_it(creds, monkeypatch):
 
     assert Feishu().missing() == []
     assert Feishu().listen_requirements() == [feishu_module.SDK_MISSING]
+
+
+def test_a_reply_carries_markdown_as_a_post_and_plain_stays_text(creds, monkeypatch):
+    """#1872: a model writes `**237 位**`; as a `text` message the asterisks
+    arrive raw. A `post` with an `md` element renders them."""
+    calls = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls.append((url, json))
+        if url.endswith("/internal"):
+            return FakeResponse({"code": 0, "tenant_access_token": "t", "expire": 7200})
+        return FakeResponse({"code": 0, "data": {"message_id": "om_x"}})
+
+    monkeypatch.setattr(feishu_module.requests, "post", fake_post)
+    bot = Feishu()
+
+    bot.send("oc_a", "**237 位**\n- one", reply_to="om_1")
+    bot.send("oc_a", "**237 位**")
+    bot.send("oc_a", "**as typed**", plain=True)
+
+    def md(text):
+        return {"zh_cn": {"content": [[{"tag": "md", "text": text}]]}}
+
+    reply, sent, plain = (body for _, body in calls[1:])
+    assert reply["msg_type"] == sent["msg_type"] == "post"
+    assert json.loads(reply["content"]) == md("**237 位**\n- one")
+    assert json.loads(sent["content"]) == md("**237 位**")
+    assert plain["msg_type"] == "text"
+    assert json.loads(plain["content"]) == {"text": "**as typed**"}
