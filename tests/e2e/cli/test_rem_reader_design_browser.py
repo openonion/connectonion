@@ -1461,3 +1461,23 @@ def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
     page.locator('.factlist dd').first.wait_for()
     assert page.evaluate(WHOLE_WORDS, ['.factlist dd, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
+    page, uri = reader
+    digest = '1831aa83d8a03a4013b38bf560ea93cc1279c281cee147ce426980c4028e4080'
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.evaluate("""(digest) => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text = '# weekly-brief\\n\\n## Insight\\nA saved draft needs a queue readback. [1]\\n'
+        + '\\n## Usage history\\n- 2026-10-09 · Run record `skill-record:' + digest + '`; output unavailable. [1]\\n'
+        + '\\n## Sources\\n- [1] skill-record:' + digest + ' — 2026-10-09';
+      KNOWN.delete(r.path); render();
+    }""", digest, isolated_context=False)
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md&h=sources')
+    page.locator('.deep-note .block-sources').wait_for(state='visible')
+    note = page.locator('.deep-note').inner_text()
+    assert digest not in note
+    assert 'skill-record:1831aa83d8a0…' in note
+    assert page.locator('.block-sources .id').first.get_attribute('title') == 'skill-record:' + digest
+    assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1

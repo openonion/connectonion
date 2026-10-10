@@ -1154,8 +1154,13 @@ function inline(text, from) {
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
-  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
+    : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
   return s;
+}
+// A 40+ character digest is an id to copy, not to read: show its first 12 characters.
+function shortHash(text) {
+  return text.replace(/\b([0-9a-f]{12})[0-9a-f]{28,}\b/gi, "$1…");
 }
 const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
 // Only the placeholder: "Unknown — not verified. The latest session, 2026-06-09, …" is a finding (1.9.2b1).
@@ -2404,7 +2409,7 @@ function sectionBody(r, s) {
         return el("li", { id: "src-" + src.n.toLowerCase() }, [el("a", { class: "n cite source-open",
           href: href(r) + "&h=src-" + src.n.toLowerCase(), "aria-label": "Open source " + src.n,
           text: "[" + src.n + "]" }),
-          el("span", {}, [id ? el("span", { class: "id", text: id }) : null, id ? " " : "", rest])]);
+          el("span", {}, [id ? el("span", { class: "id", text: shortHash(id), title: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
   }
