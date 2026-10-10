@@ -1,0 +1,6 @@
+version: v1.9.2b5
+no_visual_change: >-
+  New and changed output is terminal text only: the co handoff commands, the
+  command index co init writes into ~/.codex/AGENTS.md and ~/.claude/CLAUDE.md,
+  and wording fixes in co search, co auth and co benchmark. co handoff was run
+  end to end across two machines (eight runs) with real mail and real Codex.
