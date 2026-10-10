@@ -307,6 +307,7 @@ co handoff send ody "the login task"          # preview from this session; nothi
 co handoff send ody --draft <id> --yes        # send exactly the previewed draft
 co handoff inbox                              # recipient: incoming handoffs
 co handoff open <id>                          # recipient: start a seeded Codex session
+co handoff open handoff.eml                   # recipient: from the mail, sent to an ordinary email
 ```
 
 See [handoff.md](handoff.md).

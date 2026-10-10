@@ -4,6 +4,7 @@ the credential scan, and the recipient's inbox/show/open over a faked mailbox.""
 import json
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -385,3 +386,68 @@ def test_claude_open_reads_the_result_event_from_claude_codes_event_list(monkeyp
         a, 0, stdout=json.dumps(events), stderr=""))
     started = opener.start("claude", "seed", tmp_path)
     assert started["session"] == "s-1" and "claude --resume s-1" in started["resume"]
+
+
+# ---- a handoff sent to an ordinary email (#2378) ----
+
+def _sent_to_a_personal_address(project, mailbox) -> dict:
+    write_codex_session(project)
+    handoff_id = _draft_id(_invoke("handoff", "send", "ody@gmail.com", "task").output)
+    _invoke("handoff", "send", "ody@gmail.com", "--draft", handoff_id, "--yes")
+    return mailbox[-1]
+
+
+def _fake_open(monkeypatch) -> list:
+    seeds = []
+
+    def fake_start(agent, prompt, cwd):
+        seeds.append((agent, prompt, cwd))
+        return {"session": "thread-1", "reply": "Goal.", "resume": "codex resume thread-1", "ask": "codex exec resume thread-1"}
+
+    monkeypatch.setattr(opener, "start", fake_start)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(transport, "fetch", lambda last=200: [])   # not in the recipient's agent mailbox
+    return seeds
+
+
+def test_the_mail_tells_a_personal_address_to_open_the_saved_mail(project, model, mailbox):
+    mail = _sent_to_a_personal_address(project, mailbox)
+    assert "co handoff open handoff.eml" in mail["message"] and "<" not in mail["message"].split("BEGIN")[0][-300:]
+
+
+def test_open_a_handoff_from_the_mail_as_co_email_read_prints_it(project, model, mailbox, monkeypatch, tmp_path):
+    mail = _sent_to_a_personal_address(project, mailbox)
+    seeds = _fake_open(monkeypatch)
+    # The mail service joins single newlines, and the terminal re-wraps at its width,
+    # which can break a line inside the BEGIN marker (seen on a real 1.9.2b5 mail).
+    printed = " ".join(mail["message"].split("\n")).replace("----- BEGIN", "-----\nBEGIN")
+    saved = tmp_path / "handoff-mail.txt"
+    saved.write_text(f"From: me\nSubject: {mail['subject']}\n\n" + textwrap.fill(printed, 80), encoding="utf-8")
+
+    opened = _invoke("handoff", "open", str(saved))
+    assert opened.exit_code == 0, opened.output
+    assert seeds and "any XSS can read localStorage" in seeds[0][1]
+    assert (seeds[0][2] / "HANDOFF.md").exists()
+
+
+@pytest.mark.parametrize("encoding", ["quoted-printable", "base64"])
+def test_open_a_handoff_from_a_downloaded_eml(project, model, mailbox, monkeypatch, tmp_path, encoding):
+    from email.message import EmailMessage
+    mail = _sent_to_a_personal_address(project, mailbox)
+    seeds = _fake_open(monkeypatch)
+    message = EmailMessage()
+    message["Subject"] = mail["subject"]
+    message.set_content(mail["message"], cte=encoding)   # what a mail client's "Download message" saves
+    saved = tmp_path / "handoff.eml"
+    saved.write_bytes(message.as_bytes())
+
+    opened = _invoke("handoff", "open", str(saved))
+    assert opened.exit_code == 0, opened.output
+    assert seeds
+
+
+def test_a_file_without_a_handoff_says_so(project, mailbox, tmp_path):
+    saved = tmp_path / "notes.txt"
+    saved.write_text("just notes", encoding="utf-8")
+    result = _invoke("handoff", "open", str(saved))
+    assert result.exit_code == 1 and "no handoff in" in result.output.lower()
