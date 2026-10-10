@@ -61,9 +61,13 @@ def test_the_problems_found_in_the_b3_logs_are_each_severe(tmp_path):
                                               "## Sources\n- [1] codex:01a12360-47f8-7513-aff3-eb033d92fb14:136643 — 2026-10-10\n")
     # A page refused last, missing from the refusal ledger (row 6).
     _run(root, "run_2", record="skills/catalog/x.md", outcome="refused", error="Section must occur once: Limitations")
-    report = _audit().audit(root, sessions, home)
+    report = _audit().audit(root, sessions, home, strict_reads=True)
     kinds = {finding["check"] for finding in report["severe"]}
     assert {"read outside the material", "cites REM's own session", "refusal missing from ledger"} <= kinds
+    # Full disk access is the owner's choice: by default the reads are measured, not failed.
+    relaxed = _audit().audit(root, sessions, home)
+    assert "read outside the material" not in {f["check"] for f in relaxed["severe"]}
+    assert relaxed["traces"]["outside_reads"] == 2
     wander = next(f for f in report["severe"] if f["check"] == "read outside the material")
     assert ".claude/projects" in wander["example"] and wander["count"] == 2
 
@@ -99,5 +103,6 @@ def test_a_repository_the_task_names_is_that_turns_material(tmp_path):
     rows.insert(1, json.dumps({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
         {"type": "input_text", "text": f"/rem-investigate <co_rem_task> The project repository is {home}/code/harbour"}]}}))
     rollout.write_text("\n".join(rows))
-    wander = next(f for f in _audit().audit(root, sessions, home)["severe"] if f["check"] == "read outside the material")
+    wander = next(f for f in _audit().audit(root, sessions, home, strict_reads=True)["severe"]
+                  if f["check"] == "read outside the material")
     assert wander["count"] == 1 and ".claude/projects" in wander["example"]

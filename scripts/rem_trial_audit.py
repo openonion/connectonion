@@ -7,9 +7,11 @@ Exit 1 when anything severe is found. Run after every trial init: each check
 is something reading 1.9.2b3's logs by hand found (2026-10-10), and none of
 them showed up in the run's own summary.
 
-- read outside the material: an investigation turn's command touched a file
-  under HOME outside the notebook (another notebook, ~/.claude/projects
-  transcripts, ~/.codex/sessions, notes).
+- read outside the material (reported; severe only with --strict-reads): a
+  turn's command touched a file under HOME outside the notebook and outside
+  what its task named. Investigations run with full disk access on purpose
+  ("context over control", owner's decision 2026-10-11), so this is measured
+  to see where they look, not treated as a failure.
 - cites REM's own session: a page cites a coding session that ran in a
   notebook's .state/tasks, i.e. REM's own turn, as the user's words.
 - refusal missing from ledger: a page's last run was refused, and
@@ -189,7 +191,7 @@ def page_checks(root: Path) -> list[dict]:
             for problem in page_problems(str(page.relative_to(root)), page.read_text(encoding="utf-8"))]
 
 
-def audit(root: Path, sessions: Path, home: Path, allowed: list[Path] = ()) -> dict:
+def audit(root: Path, sessions: Path, home: Path, allowed: list[Path] = (), strict_reads: bool = False) -> dict:
     root, home = Path(root), Path(home)
     # An installed skill's source is a skill page's material.
     allowed = [*allowed, *(home / place for place in (".co/skills", ".codex/skills", ".agents/skills", ".claude/skills",
@@ -197,7 +199,7 @@ def audit(root: Path, sessions: Path, home: Path, allowed: list[Path] = ()) -> d
     runs, files = load_runs(root) if (root / ".state" / "runs").is_dir() else [], session_files(Path(sessions))
     traces = trace_checks(root, rem_rollouts(root, files), home, allowed)
     severe = []
-    if traces["outside"]:
+    if traces["outside"] and strict_reads:
         severe.append({"check": "read outside the material", "count": len(traces["outside"]),
                        "example": f"{traces['outside'][0]}; by place {traces['outside_by_place']}"})
     for finding in self_citations(root, files):
@@ -206,6 +208,7 @@ def audit(root: Path, sessions: Path, home: Path, allowed: list[Path] = ()) -> d
         severe.append({"check": "refusal missing from ledger", "count": 1, "example": record})
     if never := background_never_started(root):
         severe.append({"check": "background never started", "count": 1, "example": never})
+    traces["outside_reads"] = len(traces["outside"])
     return {"runs": run_summary(runs), "traces": {k: v for k, v in traces.items() if k != "outside"},
             "severe": severe, "pages": page_checks(root)}
 
@@ -226,9 +229,11 @@ def main(argv=None) -> int:
     parser.add_argument("--sessions", default=str(Path.home() / ".codex" / "sessions"))
     parser.add_argument("--home", default=str(Path.home()))
     parser.add_argument("--allow", action="append", default=[], help="a path turns may read besides the notebook")
+    parser.add_argument("--strict-reads", action="store_true", help="a read outside the material is severe")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    report = audit(Path(args.notebook), Path(args.sessions), Path(args.home), [Path(p) for p in args.allow])
+    report = audit(Path(args.notebook), Path(args.sessions), Path(args.home), [Path(p) for p in args.allow],
+                   strict_reads=args.strict_reads)
     print(json.dumps(report, indent=1, ensure_ascii=False) if args.json else show(report))
     return 1 if report["severe"] else 0
 
