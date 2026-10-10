@@ -248,11 +248,15 @@ class Feishu:
         message id. `fresh` is `reply --again`: a deliberate second post,
         even of the same words.
 
-        `plain` is accepted and does nothing here, so every provider takes the
-        same arguments. Feishu's `text` message type has no inline formatting
-        to translate Markdown into — rich text is a different message type
-        (`post`), which is a larger change than a flag."""
-        content = json.dumps({"text": text}, ensure_ascii=False)
+        The text is Markdown, because a model writes Markdown: it goes out
+        as a `post` whose one `md` element Feishu renders (bold, lists,
+        links, code). A `text` message would show the `**` raw (#1872).
+        `plain` sends a `text` message, the characters exactly as typed."""
+        if plain:
+            msg_type, content = "text", {"text": text}
+        else:
+            msg_type, content = "post", {"zh_cn": {"content": [[{"tag": "md", "text": text}]]}}
+        content = json.dumps(content, ensure_ascii=False)
         if reply_to:
             # Same message, same text: a retry, and Feishu drops the second
             # copy for an hour. `--again` asks for a second post on purpose,
@@ -264,7 +268,7 @@ class Feishu:
                 digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
                 key = str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}:{digest}"))
             body = {
-                "msg_type": "text",
+                "msg_type": msg_type,
                 "content": content,
                 "uuid": key,
             }
@@ -272,7 +276,7 @@ class Feishu:
         else:
             body = {
                 "receive_id": chat,
-                "msg_type": "text",
+                "msg_type": msg_type,
                 "content": content,
                 "uuid": str(uuid.uuid4()),
             }

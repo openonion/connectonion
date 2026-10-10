@@ -242,9 +242,13 @@ still on it.
 | `[the run](https://…)` | the run: https://… |
 
 Nothing inside a fenced block or `` `backticks` `` is converted. `--plain`
-sends the characters exactly as typed. Feishu's `text` message has no inline
-formatting to translate into, so it accepts `--plain` and changes nothing;
-rich text there is a different message type.
+sends the characters exactly as typed.
+
+Feishu and Lark render Markdown themselves, so nothing is translated there:
+`send` and `reply` go out as a `post` message holding one `md` element, and
+bold, italics, lists, links and code blocks arrive formatted. Tables are not
+part of Feishu's `md` element; a `| a | b |` table arrives as its lines.
+`--plain` sends a `text` message, the characters exactly as typed.
 
 ## Your own agent, no flags
 
