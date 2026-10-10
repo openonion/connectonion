@@ -88,7 +88,7 @@ def handle_benchmark_check(name: str, as_json: bool = False) -> int:
           f" — {suite.path}")
     print("Structure is checked; whether the cases are really different decisions is for a person to read.")
     _next(f"write or edit .co/skills/<skill>/SKILL.md, then co eval run {name} --agent agent.py "
-          f"--skill <skill> --runs 1")
+          f"--skill <skill> --invoke explicit --runs 1")
     return 0
 
 
@@ -107,6 +107,10 @@ def handle_eval_run(name: str, agent_path: str, skill_name: Optional[str] = None
         _next(f"co benchmark check {name}")
         return 2
     ceiling = max_iterations or runner.DEFAULT_MAX_ITERATIONS
+    if skill_name and invoke == "auto":
+        # #1810: 50 paid auto-mode attempts, and the named skill ran in none of them.
+        print(f"--invoke auto: the Agent decides whether to use {skill_name}, so this measures discovery, "
+              f"not the skill. To test the skill itself, add --invoke explicit.", file=sys.stderr)
     _say_what_it_will_spend(name, len(suite.cases), runs, ceiling)
     try:
         skill = runner.resolve_skill(skill_name) if skill_name else None
@@ -160,7 +164,7 @@ def handle_eval_report(name: str, run_id: Optional[str] = None, as_json: bool = 
     if failing:
         _next(f"edit only the skill for {failing[0]}, then rerun the same benchmark: co eval run {name} "
               f"--agent {stored['agent']['path']}"
-              + (f" --skill {stored['skill']['name']}" if stored.get("skill") else ""))
+              + (f" --skill {stored['skill']['name']} --invoke {stored['invoke']}" if stored.get("skill") else ""))
     else:
         _next(f"every case passed; add a harder case to .co/benchmarks/{name}.yaml, then co benchmark check {name}")
     return 0
