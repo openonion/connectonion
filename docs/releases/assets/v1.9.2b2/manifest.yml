@@ -1,0 +1,30 @@
+version: v1.9.2b2
+images:
+- file: before-history-desktop.png
+  alt: Person page in 1.9.2b1 with a calm thread shown as open and History ranges misread (desktop)
+  caption: "'None identified' showed as OPEN for 9 days; a range lost its end date to the text, and the Activity panel listed 3 of 4 entries."
+  scenario: Invented one-person notebook (Priya Natarajan, fernhill.example) with ranged History lines and a calm open thread
+  viewport: 1440x900, light
+  commit: 229d4382
+  source_run: Chrome capture of an invented notebook rendered by the 1.9.2b1 reader; 2026-10-09
+- file: after-history-desktop.png
+  alt: The same page in 1.9.2b2 (desktop)
+  caption: "The thread reads CLEAR and the header NOTHING OPEN; each range keeps both dates on two lines, '2025-10' reads Oct 2025, and Activity lists all four."
+  scenario: Invented one-person notebook (Priya Natarajan, fernhill.example) with ranged History lines and a calm open thread
+  viewport: 1440x900, light
+  commit: b3cddcba
+  source_run: Chrome capture of the same invented notebook rendered by the 1.9.2b2 reader; 2026-10-09
+- file: before-person-phone.png
+  alt: The 1.9.2b1 page on a phone
+  caption: The header pill said OPEN for a line that says nothing is open.
+  scenario: Invented one-person notebook (Priya Natarajan, fernhill.example)
+  viewport: 390x844, light
+  commit: 229d4382
+  source_run: Chrome capture of an invented notebook rendered by the 1.9.2b1 reader; 2026-10-09
+- file: after-person-phone.png
+  alt: The 1.9.2b2 page on a phone
+  caption: NOTHING OPEN in the header; History ranges fit the narrow date column.
+  scenario: Invented one-person notebook (Priya Natarajan, fernhill.example)
+  viewport: 390x844, light
+  commit: b3cddcba
+  source_run: Chrome capture of the same invented notebook rendered by the 1.9.2b2 reader; 2026-10-09

@@ -57,6 +57,38 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
         browser.close()
 
 
+def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_path, monkeypatch):
+    """#2349: LayeredVisions, the busiest project, had not been written yet,
+    and its hero read "WHERE THE WORK STANDS /Users/.../LayeredVisions"."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    notebook.stub_project("projects/browser.md", "browser", ["/work/browser"])
+    page_text = notebook.read("projects/browser.md").replace(
+        "- /work/browser", "- /work/browser\n- Sessions: 13\n- First seen: 2026-08-01\n- Last seen: 2026-08-02")
+    notebook.write("projects/browser.md", page_text)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    path = tmp_path / "reader.html"
+    path.write_text(render(root))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        for width in (1440, 375):
+            page = browser.new_page(viewport={"width": width, "height": 812})
+            page.goto(path.as_uri() + "#r=projects%2Fbrowser.md")
+            statement = page.locator(".focus-statement").inner_text()
+            assert "/work/browser" not in statement
+            assert statement == "Not written yet: 13 sessions, last on 2026-08-02."
+            assert "WHERE THE WORK STANDS" not in page.locator(".focus-kicker").inner_text()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.close()
+        browser.close()
+
+
 def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
@@ -364,8 +396,29 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
         "the user is waiting; the user doesn't know": "you are waiting; you don't know",
         "the user should send a proposal": "you should send a proposal",
         "the user replies within a day": "you reply within a day",
+        # 1.9.2b1 pages: an adverb before the verb, and a compound adjective.
+        "Use when the user explicitly asks": "Use when you explicitly ask",
+        "a user-facing request; the user-facing copy": "a user-facing request; the user-facing copy",
     }
     assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
+    # 1.9.2b1: these said nothing was open and showed as OPEN, "open for N days"; a real thread stays open.
+    calm = ["None identified as of 2026-10-01.", "None as of 2026-09-30 [2].", "No explicit open request in the material.",
+            "Nothing owed either way [3].", "No outstanding items.", "Nothing open as of 2026-10-02."]
+    still_open = ["No reply from Lisa since 2026-09-12 [4].", "Unknown — whether Ody sent the invoice; Aaron asked 2026-09-30 [2]."]
+    assert page.evaluate("t => t.map(isCalm)", calm + still_open, isolated_context=False) == [True] * 6 + [False] * 2
+    # 1.9.2b1 skill pages: the finding after "Unknown — not verified." was hidden with the placeholder.
+    record = {"path": "skills/catalog/x.md", "title": "x", "text": "# x\n\n## Current status\nUnknown — not verified. "
+              "The latest session, 2026-06-09, proposed an npm CLI [1].\n\n## Limitations\nUnknown — not verified.\n"}
+    kept = page.evaluate("r => known(r).kept.map(s => s.title)", record, isolated_context=False)
+    assert kept == ["Current status"]
+    # 1.9.2b1 History ranges: the end date leaked into the text or the gutter was blank.
+    lines = "\n".join(["- 2026-08-26–2026-08-28: Town asked [1].", "- 2026-09-23 to 2026-10-09: Daily reports [2].",
+                       "- 2026-08-10–11: Demos sent [3].", "- 2026-07-29–08-04: Trip [4].", "- 2025-10: Met at a meetup [5].", "- 2025-10–11: Term [6]."])
+    got = page.evaluate("t => historyItems(t).map(i => [i.day, i.end, i.text.slice(0, 4)])", lines, isolated_context=False)
+    assert got == [["2026-08-26", "2026-08-28", "Town"], ["2026-09-23", "2026-10-09", "Dail"],
+                   ["2026-08-10", "2026-08-11", "Demo"], ["2026-07-29", "2026-08-04", "Trip"], ["2025-10", "", "Met "], ["2025-10", "2025-11", "Term"]]
+    assert page.evaluate("dayLabel({day: '2025-10', end: ''})", isolated_context=False) == "Oct 2025"
+    assert page.evaluate("dayLabel({day: '2026-08-10', end: '2026-08-11'})", isolated_context=False).count("–") == 1
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
     home_threads = page.locator("ul.threads").first.inner_text()
@@ -375,6 +428,30 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert "the user" not in main.lower() and "you have not signed it" in main
     assert page.get_by_role("heading", name="How you write to them").count() == 1
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
+
+
+def test_a_compound_predicate_agrees_with_you_and_threads_name_the_right_debtor(reader):
+    page, _ = reader
+    # 1.9.2b1: "You run events there and has asked" — only the first verb agreed.
+    cases = {
+        "the user runs events there and has asked Mara for a deck": "you run events there and have asked Mara for a deck",
+        "The user signed on 2026-09-02 but is waiting for the countersigned copy": "You signed on 2026-09-02 but are waiting for the countersigned copy",
+        "the user sends invoices and receipts": "you send invoices and receipts",
+        "Mara asked the user and has replied since": "Mara asked you and has replied since",
+        "the user signed, and Tomas has asked for a copy": "you signed, and Tomas has asked for a copy",
+    }
+    assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
+    # 1.9.2b1/b3 pages: who owes is the subject of the request, not the first name in the line.
+    threads = {
+        "User owes pickup of the replacement card at Gate 2 [1].": "mine",
+        "Avery asked Mara on 2026-09-28 for a first reaction to the name; no reply [6].": "theirs",
+        "Avery asked Tomas to arrange a call and provide a time [2].": "theirs",
+        "Avery is awaiting Mara's answer to the 2026-08-19 question [10].": "theirs",
+        "Mara asks Avery to choose a time for a 30-minute demo [8].": "mine",
+        "Avery offered Mara a free two-week trial; acceptance is not shown [5].": "plain",
+        "Avery offered to cover the $25 card fee [12].": "mine",
+    }
+    assert page.evaluate("t => t.map(direction)", list(threads), isolated_context=False) == list(threads.values())
 
 
 def test_the_owner_focus_prefers_a_supported_change_to_a_generic_now(reader):
@@ -1148,9 +1225,9 @@ def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
         assert 'SKILL-NAME MATCHES\n3' in page.locator('.focus-facts').inner_text()
         assert '3 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
         assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
-        usage = page.locator('.panel').filter(has_text='Matched by skill name in coding sessions.')
+        usage = page.locator('.panel').filter(has_text='Matched by skill name in coding sessions and co ai runs')
         assert usage.is_visible()
-        assert 'neither confirms this installed version or task outcome' in usage.inner_text()
+        assert 'Neither confirms this installed version or task outcome' in usage.inner_text()
         assert '3 matches in Claude Code' in usage.inner_text()
         assert 'Claude Code 3' not in page.locator('.leadrow').inner_text()
         assert 'Retained evaluation attempts: 0' in page.locator('.deep-note').inner_text()
@@ -1386,7 +1463,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     button.focus()
     button.press('Enter')
     assert page.locator('details.maint').evaluate('(node) => node.open')
-    assert page.locator('details.maint > summary').evaluate('(node) => node === document.activeElement')
+    assert page.locator('details.maint .runs tr.failed-run').first.evaluate('(node) => node === document.activeElement')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -1408,3 +1485,55 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     assert '1 investigation failed' in brief.inner_text()
     assert brief.locator('.memory-card').count() > 0
     assert 'No memory pages were written' not in brief.inner_text()
+
+
+WHOLE_WORDS = """([selector, words]) => words.every(word => [...document.querySelectorAll(selector)].every(node => {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const text = walker.currentNode, at = text.data.indexOf(word);
+    if (at < 0) continue;
+    const range = document.createRange();
+    range.setStart(text, at); range.setEnd(text, at + word.length);
+    if (new Set([...range.getClientRects()].map(r => Math.round(r.top))).size > 1) return false;
+  }
+  return true;
+}))"""
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.locator('.factlist dt').first.wait_for()
+    assert page.evaluate(WHOLE_WORDS, ['.factlist dt', ['REPOSITORY', 'ORGANISATION', 'Repository', 'Organisation']])
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/- Email: [^\\n]+/, '- Email: 0x3c3ae74550@mail.openonion.ai [1]')
+        .replace(/## Facts\\n/, '## Facts\\n- Handles: 0x3c3ae74550@mail.openonion.ai [1]\\n');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    page.locator('.factlist dd').first.wait_for()
+    assert page.evaluate(WHOLE_WORDS, ['.factlist dd, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
+    page, uri = reader
+    digest = '1831aa83d8a03a4013b38bf560ea93cc1279c281cee147ce426980c4028e4080'
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.evaluate("""(digest) => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text = '# weekly-brief\\n\\n## Insight\\nA saved draft needs a queue readback. [1]\\n'
+        + '\\n## Usage history\\n- 2026-10-09 · Run record `skill-record:' + digest + '`; output unavailable. [1]\\n'
+        + '\\n## Sources\\n- [1] skill-record:' + digest + ' — 2026-10-09';
+      KNOWN.delete(r.path); render();
+    }""", digest, isolated_context=False)
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md&h=sources')
+    page.locator('.deep-note .block-sources').wait_for(state='visible')
+    note = page.locator('.deep-note').inner_text()
+    assert digest not in note
+    assert 'skill-record:1831aa83d8a0…' in note
+    assert page.locator('.block-sources .id').first.get_attribute('title') == 'skill-record:' + digest
+    assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1

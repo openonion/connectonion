@@ -507,7 +507,16 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     carries instructions. So it names searches and our code runs them; what
     they find joins `items`, so citing it passes validation like any source.
     """
-    asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
+    try:
+        asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
+    except ValueError:
+        # The model wrote this file. A malformed one cost a whole page after four
+        # accepted rounds in 1.9.2b1 (2026-10-09); the candidate it wrote still stands.
+        first["report"] = (str(first.get("report") or "") + "\nSearch requests were not valid JSON; "
+                           "no searches were run.").strip()
+        return first
+    if not isinstance(asked, list):
+        asked = []
     queries = [query.strip()[:200] for query in asked if isinstance(query, str) and query.strip()][:SEARCH_QUERIES]
     known = {item.get("source") for item in items}
     answers = search(queries)
@@ -532,7 +541,10 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
 PROMOTE_WAIT_SECONDS = 1800
 
 
-CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ")
+# A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
+# busiest project (LayeredVisions) and 1.9.2b3 browser.
+CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ",
+                 "Missing or duplicate citation:")
 
 
 def citation_only(errors: list[str]) -> bool:
@@ -554,22 +566,33 @@ def promote_or_drop(notebook, record, candidate, original, items, directory, usa
         return _promote_candidate(notebook, record, candidate, original, items, directory, usage, last_resort=True)
 
 
+def _owner_phones(notebook, record) -> list[str]:
+    """The phones on the owner's own page, which no one else's page may carry."""
+    if not record or not notebook.path(record).is_file():
+        return []
+    line = next((line for line in notebook.read(record).splitlines() if line.startswith("- Phone:")), "")
+    return [part for part in re.split(r"[;,]", re.sub(r"\[W?\d+\]", "", line[len("- Phone:"):]))
+            if "unknown" not in part.casefold() and part.strip()]
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
-    from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+    from .page_review import (add_missing_sections, compact_page, drop_owner_addresses, drop_tool_text,
+                              drop_uncited_sources, drop_unresolved, company_from_domain, drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
-                              restore_runner_fields, unresolved_findings, validate)
+                              renumber_sources, restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
+    from .fact_extract import OTHERS_PHONE
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
     text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
     text, uncited = facts.drop_uncited(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
-    removed = []
+    removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     if record.startswith("people/") and record != owner.get("record"):
-        text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
+        text, removed = drop_owner_addresses(text, owner_values)
     # "web: not searched; Wiki runs are offline" is about the run, not the subject (#2058).
     text, tool_lines = drop_tool_text(record, text, original)
     # Minor unresolved claims can be omitted, but losing a lead or finding
@@ -582,12 +605,28 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items)
-    citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation else []
+        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
+        text, more = facts.drop_uncited(record, text, original)
+        uncited = [*uncited, *more]
+    # The last resort has no repair turn after it: a finding on an untraceable
+    # citation goes with its line, as 1.9.2b3 refused linkedin-workshop whole for one.
+    citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation and not last_resort else []
     text = link_company(notebook, record, drop_uncited_sources(text))
     # A phone, address, link or contact date our code read from the material
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
     text, restored = facts.keep_extracted(record, text, extracted)
+    text = company_from_domain(notebook, record, text, extracted)
+    if record.startswith("people/") and record != owner.get("record"):
+        # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
+        text, again = drop_owner_addresses(text, owner_values)
+        # Nor a number from someone else's own signature in the thread (#2348).
+        values = lambda field: [row["value"] for row in extracted if row["field"] == field]  # noqa: E731
+        text, borrowed = drop_others_phones(text, values(OTHERS_PHONE), values("Phone"))
+        removed = sorted({*removed, *again, *borrowed})
+        if again or borrowed:
+            # The number's own source, cited nowhere else now: Dannielle's page was refused for it.
+            text = drop_uncited_sources(text)
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record == owner.get("record"):
@@ -596,6 +635,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text = compact_page(record, text)
     # Lost citations can themselves cause empty-section or no-source errors.
     # Repair them first; the next promotion still runs the complete validator.
+    if investigation:
+        text = add_missing_sections(record, text, owner=record == owner.get("record"))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"))
     # Only a page's own investigation must finish its sections. Applied to a
     # one-page maintenance turn, it refused every page not investigated yet:
@@ -643,7 +684,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        notebook.write(record, text)
+        notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
     return audit_usage
 
 
@@ -658,7 +699,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and investigating that page reads every source again.
     """
     from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
-                              restore_runner_fields, validate)
+                              renumber_sources, restore_runner_fields, validate)
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
     accepted, refusals = [], []
@@ -690,7 +731,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
-            notebook.write(record, text)
+            notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
     return refusals
 
 

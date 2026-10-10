@@ -219,6 +219,26 @@ def test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line():
     assert strip_quoted(flat2).strip() == "Agreed, Friday works."
 
 
+def test_an_outlook_quote_header_on_its_own_lines_is_cut():
+    """Celine's reply (2026-10-05) quoted David's mail under `From:` and `Sent:` on two
+    lines with no rule above them; his signature, LinkedIn and office line stayed in
+    her text and landed on her page, Sasha's and Vern's (#2349)."""
+    from connectonion.rem.mail import strip_quoted
+    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nCeline\nCeline Olarte\n"
+            "Program Coordinator\nFrom: Aaron x <aaron@example.com>\nSent: Friday, 2 October 2026 18:40\n"
+            "To: David Burt <david@example.edu>\nSubject: RE: Invitation\nHi David,\nCheers,\nAaron\n"
+            "From: David Burt <david@example.edu>\nSent: Thursday\nKind regards,\nDavid\nDavid Burt\n"
+            "https://www.linkedin.com/in/david-burt-/")
+    assert strip_quoted(body).rstrip().endswith("Program Coordinator")
+    header = "From: Celine <c@example.edu>\nTo: aaron@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
+    assert strip_quoted(header) == header
+    apple = ("No, I have not.\nBest,\nAaron\nFrom: David Burt <david@example.edu>\nDate: Tuesday, March 31\n"
+             "To: aaron\nCc: Vern Chan <vern@example.edu>\nSubject: Decent Capital?\nT: +61 2 9065 4432")
+    assert strip_quoted(apple).rstrip().endswith("Aaron")
+    forward = "\n\nFrom: Rushi Vyas\nSent: Tuesday\nSubject: Aaron <> BDMz\nWhere: Bondi Junction station"
+    assert strip_quoted(forward) == forward
+
+
 def test_signature_link_noise_is_dropped():
     """Booking links and newsletter links in signatures are tokens, not facts."""
     from connectonion.rem.mail import strip_noise

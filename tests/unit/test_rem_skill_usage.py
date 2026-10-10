@@ -118,3 +118,30 @@ def test_skill_session_omits_binary_images_with_explicit_text_only_scope(tmp_pat
     assert 'encoded-image-data' not in text and 'duplicated-image-data' not in text
     assert 'image attachment omitted' in text.lower() and 'not visually reviewed' in text
     assert 'Saved screenshot: /artifact.png' in text and 'Reported result' in text
+
+
+def test_co_ai_runs_count_toward_the_header_like_the_runs_listed_below_it(tmp_path):
+    """linkedin-daily's header said "No invocation found" above 11 dated
+    `co ai "/linkedin-daily"` runs: the header counted only Claude Code and
+    Codex sessions, the run list read the co ai eval summaries (#2349)."""
+    import yaml
+    from connectonion.rem.skill_usage import usage, usage_line
+    from connectonion.rem.skill_runs import collect_skill_runs
+    evals = tmp_path / 'evals'
+    evals.mkdir()
+    when = datetime.now(timezone.utc).isoformat()
+    turn = {'input': '/example the task', 'run': 3, 'meta': json.dumps({'ts': when}),
+            'history': [{'run': 1, 'meta': json.dumps({'ts': when})}, {'run': 2, 'meta': json.dumps({'ts': when})}]}
+    (evals / 'example.yaml').write_text(yaml.safe_dump({'turns': [turn, {'input': 'talk about /example', 'run': 1}]}))
+    counted = usage({}, ['example'], root=tmp_path / 'rem', evals=evals)
+    assert counted['counts']['example']['count'] == collect_skill_runs('example', [evals])['invocation_attempts'] == 3
+    line = usage_line(counted['counts']['example'], counted)
+    assert line.startswith('- Invoked 3 times') and '(co ai 3)' in line
+
+
+def test_co_ai_runs_are_not_sampled_as_coding_sessions(tmp_path):
+    when = datetime.now(timezone.utc).isoformat()
+    write_json(state_path(tmp_path, 'skill-usage.json'), {'version': VERSION, 'files': {
+        str(tmp_path / 'example.yaml'): {'events': [['example', when, 'co-ai', '']]}}})
+    result = session_samples(tmp_path, 'example')
+    assert result['matched_invocations'] == 0 and not result['missing']

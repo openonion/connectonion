@@ -51,6 +51,9 @@ PERSONAL_MAILBOX = frozenset({
     "hotmail.co.uk", "live.com", "live.com.au", "msn.com", "yahoo.com", "yahoo.com.au", "yahoo.co.jp",
     "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me", "gmx.com",
     "qq.com", "163.com", "126.com", "foxmail.com", "sina.com", "bigpond.com", "optusnet.com.au",
+    # Short provider addresses and home-internet mail: orgs/pm-me and orgs/xtra-co-nz on 1.9.2b1.
+    "pm.me", "xtra.co.nz", "bigpond.net.au", "tpg.com.au", "iinet.net.au", "internode.on.net", "ozemail.com.au",
+    "dodo.com.au", "comcast.net", "verizon.net", "att.net", "btinternet.com", "sky.com", "virginmedia.com",
 })
 # A provider's name under any country suffix is the same provider: yahoo.com.hk
 # became an organisation on the 1.9.0a5 acceptance map (#2018).
@@ -123,7 +126,8 @@ def _greeting_name(row: dict, address: str, mine: set) -> str:
         return ""
     match = _GREETING.match(html.unescape(str(row.get("snippet") or "")))
     name = (match.group(1) or match.group(2)) if match else ""
-    if not name or name.casefold() in _NOT_A_NAME:
+    # "hi" above a quote: "hi On Fri, May 8, 2026 at 5:06 PM … wrote:" (1.9.2b1).
+    if not name or name.casefold() in _NOT_A_NAME or re.search(r"(?i)\b(?:mon|tue|wed|thu|fri|sat|sun)\b", name):
         return ""
     return name[0].upper() + name[1:] if name.islower() else name
 

@@ -1,6 +1,8 @@
 """The notebook is plain files; its permission boundary is not a prompt."""
 
 
+import time
+
 import pytest
 
 from connectonion.rem.config import prepare, read_config, set_config
@@ -350,3 +352,43 @@ def test_a_written_lead_is_what_the_roster_recognises_someone_by(tmp_path):
     summary = Notebook(tmp_path).people()[0]["summary"]
 
     assert summary.startswith("Mia leads Harbour Analytics")
+
+
+def test_a_waiting_writer_gets_the_lock_while_other_threads_keep_taking_it(tmp_path):
+    """The 1.9.2b2 first run: 48 workers saving mail one message at a time took the
+    lock back-to-back, and three organisation pages waited ten minutes and failed."""
+    import threading
+    prepare(tmp_path)
+    stop = threading.Event()
+
+    def busy():
+        while not stop.is_set():
+            with maintenance_lock(tmp_path, wait=30):
+                time.sleep(0.02)
+
+    workers = [threading.Thread(target=busy) for _ in range(8)]
+    for worker in workers:
+        worker.start()
+    time.sleep(0.2)
+    try:
+        with maintenance_lock(tmp_path, wait=3):
+            pass
+    finally:
+        stop.set()
+        for worker in workers:
+            worker.join()
+
+
+def test_a_mapped_person_is_not_also_known_by_their_addresses(tmp_path):
+    """64 of 295 pages in the 1.9.2b3 run had an Also known as that only repeated
+    the Email line: the map seeded every handle into both fields."""
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia Chen", ["mia@harbour.example", "Mimi"])
+    page = notebook.read("people/mia.md")
+
+    assert "- Handles: mia@harbour.example, Mimi" in page
+    assert "- Also known as: Mimi" in page
+    notebook.stub_person("people/bo.md", "Bo", ["bo@town.example"])
+    assert "- Also known as: Unknown" in notebook.read("people/bo.md")

@@ -400,14 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b1
+## Current Version: 1.9.2b3
 
-1.9.2b1 is a 1.9.2 beta; stable remains 1.9.1. Each investigation pass may
-delete as well as add: the round, final-round and edit prompts treat the page
-like code, the final round keeps at most five Uncertainties, and a number the
-source gives as someone else's stays out of a Person's Facts. See
-[1.9.2b1 notes](docs/releases/1.9.2b1.md).
+1.9.2b3 is a 1.9.2 beta; stable remains 1.9.1. It includes the unpublished
+1.9.2b2. A first run you can read straight away: sources are numbered 1, 2, 3,
+a person's Company links the organisation page for their mail domain, probable
+duplicate people are named with the merge command, `co rem show` finds a
+person by name, alias or email, pages speak in one voice,
+and a missing required section is added as Unknown instead of the page being
+refused. The reader keeps Facts labels and addresses on whole words and
+shortens 64-character ids. See [1.9.2b3 notes](docs/releases/1.9.2b3.md).
 
+- 1.9.2b3 (A first run you can read straight away).
+- 1.9.2b2 (A first run that loses fewer pages; built, not published).
 - 1.9.2b1 (Each pass improves the page, not only grows it).
 
 ## Stable release: 1.9.1

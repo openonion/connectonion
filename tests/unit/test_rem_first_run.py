@@ -297,6 +297,28 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert tail[4] == f"Next: co rem --root {root} open"
 
 
+def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins_them(tmp_path):
+    """#2349: a real first run gave Ody two pages and Ziming Gong a second under 子明;
+    nothing said so, and `co rem merge` was there to join them."""
+    from connectonion.cli.commands.rem_commands import _first_tidy, _init_done
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/zi.md", "子明", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    notebook.stub_person("people/ziming.md", "Ziming Gong", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    said = []
+    result = _first_tidy(tmp_path, said.append)
+    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/ziming.md",
+                                "why": "both list ziming@openonion.ai"}]
+
+    class Ctx:
+        obj = {"root": tmp_path, "json": False}
+    text = _init_done(Ctx(), {"tidy": result})
+    assert "Possibly one person (check, then merge): 子明 and Ziming Gong, both list ziming@openonion.ai" in text
+    assert f"co rem --root {tmp_path} merge people/zi.md people/ziming.md" in text
+
+
 def test_default_window_matches_the_old_next_command(first_run):
     _, init, calls = first_run
     assert init().exit_code == 0
@@ -508,6 +530,23 @@ def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects,
     assert data["next"].endswith("investigate projects/alpha.md --retry-refused")
 
 
+def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_error(projects, monkeypatch):
+    """1.9.2b2 trial: 23 pages were not written and the run ended on a bare "Error: "."""
+    from connectonion.rem.runner import RunFailed
+
+    (root, init, _), _written = projects
+
+    def write_page(root, record, **kw):
+        if record == "projects/alpha.md":
+            raise RunFailed("Candidate rejected; cited-claim audit did not pass")
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page", write_page)
+    lines = Text.from_ansi(init("--yes").output).plain.splitlines()
+    assert "Error:" not in [line.rstrip() for line in lines], lines[-8:]
+    assert "Error: 1 page was not written this run; each is named above with why." in lines
+
+
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
     assert init("--no-investigate").exit_code == 0
@@ -699,12 +738,28 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 14  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 42  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
     mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1), "on your Codex plan")
     assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
+
+
+def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
+    """1.9.2b1 announced ~70 minutes and ~196M input for 280 pages; it ran
+    129 minutes of pages and billed 439M. The defaults were from an
+    interrupted sample: the owner's turns took 20 minutes, not 7, an
+    organisation 8 minutes, not 1.5, and 84 people needed 141 runs with their
+    second pass. 1.9.2b3's 48 workers announced ~30 and ran 126: the model's
+    throughput, not the worker count, sets the pace."""
+    from connectonion.rem import first_run as fr
+
+    b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
+    total = fr.plan([], **b1)
+    assert 120 <= total["minutes"] <= 140
+    assert 400_000_000 <= total["input_tokens"] <= 480_000_000
+    assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]
 
 
 def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
@@ -925,9 +980,10 @@ def test_the_first_run_ends_by_drawing_decisions_and_principles_from_its_pages(t
     assert failed["outcome"] == "failed" and "co rem abstract" in said[-1]
 
 
-def test_people_whose_backfill_found_older_mail_are_deepened_once_the_first_pass_wrote_them(tmp_path, monkeypatch):
+def test_people_whose_backfill_found_older_mail_are_deepened_on_the_parts_before_the_window(tmp_path, monkeypatch):
     """The owner (2026-10-08): read the mapped window first, fetch the rest of two
-    years in parallel, then deepen -- instead of every page waiting on the provider."""
+    years in parallel, then deepen. 2026-10-09: within a 45-minute first run, so
+    the deepen pass reads three parts, the ones before the window the first pass read."""
     from concurrent.futures import Future
     from connectonion.cli.commands import rem_commands
 
@@ -936,15 +992,66 @@ def test_people_whose_backfill_found_older_mail_are_deepened_once_the_first_pass
         future.set_result(value)
         return future
 
-    rows = [{"record": f"people/{name}.md", "mode": "full", "days": 730} for name in ("a", "b", "c")]
-    backfill = {"people/a.md": done(12), "people/b.md": done(0), "people/c.md": done(5)}
-    ran, said = [], []
+    ran = []
     monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows: [
         {"kind": "people", "record": row["record"], "mode": "full", "row": row, "run": lambda row=row: ran.append(row)}
         for row in rows])
-    out = rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill,
-                               written={"people/a.md", "people/b.md"}, stopped="")
-    assert [row["record"] for row in ran] == ["people/a.md"]   # b found nothing older; c was not written
-    assert ran[0]["days"] == 730 and out["backfilled"] == 17
-    assert rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill, written=set(),
-                                stopped="model denied access") == {"started": False}
+    row = {"record": "people/a.md", "mode": "full", "days": 730}
+    found = rem_commands._deepen_job(tmp_path, row, done(12), "2026-04-12")
+    empty = rem_commands._deepen_job(tmp_path, {**row, "record": "people/b.md"}, done(0), "2026-04-12")
+    found["run"](), empty["run"]()
+    assert [r["record"] for r in ran] == ["people/a.md"]   # b's backfill found nothing older
+    assert ran[0] == {**row, "rounds": rem_commands.FIRST_RUN_ROUNDS, "read_before": "2026-04-12"}
+    assert found["kind"] == "deepen" and found["older"]() and not empty["older"]()
+
+
+def test_a_finished_page_can_queue_its_follow_up_behind_the_pages_still_waiting():
+    """A person's deepen starts once every first-pass page has started, not finished (rc1 idled 80 minutes)."""
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    order = []
+    follow = {"record": "people/a.md#deepen", "mode": "full", "run": lambda: order.append("a-deepen")}
+    jobs = [{"record": name, "mode": "full", "run": lambda name=name: order.append(name)} for name in ("a", "b")]
+    outcomes, _ = _in_parallel(jobs, workers=1, gate=lambda: "",
+                               done=lambda job, outcome: [follow] if job["record"] == "a" else [])
+    assert order == ["a", "b", "a-deepen"] and len(outcomes) == 3
+
+
+def test_a_failed_page_is_tried_once_more_at_the_end_of_the_queue():
+    """1.9.2b2 lost three pages to a Codex routing timeout, an interrupted turn and a
+    dropped Gmail connection, each of which a second try would have survived."""
+    from connectonion.rem.files import RemError
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    tries = []
+
+    def flaky(name, failures):
+        def run():
+            tries.append(name)
+            if tries.count(name) <= failures:
+                raise RemError(f"{name}: workspace routing discovery timed out")
+        return {"record": name, "mode": "full", "run": run}
+
+    def refused():
+        tries.append("r")
+        raise RemError("Candidate rejected: one bad citation")
+
+    jobs = [flaky("a", 1), flaky("b", 0), flaky("c", 5), {"record": "r", "mode": "full", "run": refused}]
+    outcomes, _ = _in_parallel(jobs, workers=1, gate=lambda: "", done=lambda job, outcome: [])
+    assert tries == ["a", "b", "c", "r", "a", "c"]
+    assert {o["page"]: o["outcome"] for _, o in outcomes} == {"a": "accepted", "b": "accepted", "c": "failed",
+                                                             "r": "refused"}
+
+
+def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
+    """1.9.2b3 trial: three people with no older mail printed 'deepened …: failed'
+    and ran twice; nothing had failed."""
+    from connectonion.rem.investigate import NothingNew
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    tries = []
+
+    def run():
+        tries.append("dora")
+        raise NothingNew("Nothing dated before 2026-04-13 for Dora. No model was called.")
+
+    outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
+                               gate=lambda: "", done=lambda job, outcome: [])
+    assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"

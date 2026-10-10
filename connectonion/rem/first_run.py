@@ -18,16 +18,21 @@ FIRST_PROJECTS = None
 FIRST_ORGS = None
 WORKERS = 16           # pages investigated at once after the owner's page
 
-# Planning rates from the 2026-10-03 90-day concurrent first-run sample and
-# separate full Person/Skill reads. The sample was interrupted; these rates
-# estimate completed pages, not the cost of all retries or refusals. An owner's
-# first page takes two turns: quick and full. Completed notebook-local runs
-# replace these defaults as soon as they exist.
-DEFAULTS = {"owner": {"input_tokens": 1_160_000, "seconds": 416},
-            "person": {"input_tokens": 1_100_000, "seconds": 290},
-            "project": {"input_tokens": 1_200_000, "seconds": 250},
-            "org": {"input_tokens": 120_000, "seconds": 90},
-            "skill": {"input_tokens": 500_000, "seconds": 180}}
+# Planning rates from the 1.9.2b1 first run on a real 180-day notebook
+# (2026-10-09, 16 workers, Codex): each kind's total work over its pages, so a
+# person includes its second pass (141 runs for 84 people). The 2026-10-03
+# sample before it was interrupted and announced ~70 minutes for a run of 129.
+# An owner's first page takes two turns: quick and full. Completed
+# notebook-local runs replace these defaults as soon as they exist.
+DEFAULTS = {"owner": {"input_tokens": 7_300_000, "seconds": 1236},
+            "person": {"input_tokens": 2_850_000, "seconds": 658},
+            "project": {"input_tokens": 630_000, "seconds": 133},
+            "org": {"input_tokens": 2_030_000, "seconds": 510},
+            "skill": {"input_tokens": 800_000, "seconds": 205}}
+# More workers than this did not finish sooner: 48 wrote what 16 wrote in the
+# same 66 minutes (1.9.2b3), each turn three times slower. The model's own
+# throughput is the limit, so the estimate never divides by more.
+PACE = 16
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
@@ -70,7 +75,7 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
         seconds for group in zip_longest(*(
             [rates[kind]["seconds"]] * counts[kind] for kind in counts if kind != "owner"))
         for seconds in group if seconds is not None]
-    lanes = [0] * max(workers, 1)
+    lanes = [0] * max(min(workers, PACE), 1)
     for seconds in queue:
         lane = min(range(len(lanes)), key=lanes.__getitem__)
         lanes[lane] += seconds

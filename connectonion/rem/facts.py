@@ -285,3 +285,19 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
         text = text[:line.start()] + f"- {row['field']}: {joined}" + text[line.end():]
         restored.append(row)
     return text, restored
+
+
+def names_not_addresses(record: str, text: str) -> str:
+    """Also known as holds names; an address there only repeats the Email line.
+
+    The map once seeded every handle into it, and a turn copies the Email line
+    across, so the reader showed Ody's address three times (1.9.2b3 review).
+    A half address (`name@gmail`) goes too.
+    """
+    if kind(record) != "people":
+        return text
+    match = re.search(r"(?m)^- Also known as:[ \t]*(.*)$", text)
+    if not match or "@" not in match[1]:
+        return text
+    names = [part for part in _split(match[1]) if "@" not in part]
+    return text[:match.start(1)] + ("; ".join(names) or "Unknown") + text[match.end(1):]

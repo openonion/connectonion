@@ -1037,6 +1037,15 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
     return rounds
 
 
+def rounds_to_read(parts: list[list[dict]], cap: int, read_before: str = "") -> tuple[list, list]:
+    """The newest `cap` parts (of those dated before `read_before`, when given), and the rest, both oldest first."""
+    eligible = [n for n, part in enumerate(parts)
+                if not read_before or min(str(i.get("timestamp") or "") for i in part) < read_before]
+    keep = set(eligible[-cap:])
+    return ([part for n, part in enumerate(parts) if n in keep],
+            [part for n, part in enumerate(parts) if n not in keep])
+
+
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
               "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
               "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
@@ -1290,8 +1299,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
                 quick: bool = False, retry_refused: bool = False, website=None,
-                fetch_attachments: bool = True) -> dict:
-    """Fill the page's gaps from everything gathered; the page itself is the first input."""
+                fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "") -> dict:
+    """Fill the page's gaps from everything gathered; the page itself is the first input.
+
+    `rounds` caps the parts read in full (the first run's time budget), and
+    `read_before` reads the parts dated before it -- a deepen pass, whose newer
+    parts the first pass already read. The parts not read stay searchable in files.
+    """
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
@@ -1472,7 +1486,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             # would have only the page and this note to write from.
             raise _nothing_found(record, subject, coverage, me=sent_only, digested=True,
                                  usage=usage_by_stage["extract"] or None)
-    elif gathered_chars > room and not quick and config["limits"]["investigation_rounds"] > 1:
+    elif gathered_chars > room and not quick and (rounds or config["limits"]["investigation_rounds"]) > 1:
         # Read in rounds once the turn's context is known, below (#2314).
         in_rounds = True
         coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
@@ -1568,19 +1582,22 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if in_rounds:
             context = prompt_items[1:len(prompt_items) - len(items)]
             parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
-            parts, older = parts[-config["limits"]["investigation_rounds"]:], parts[:-config["limits"]["investigation_rounds"]]
+            parts, older = rounds_to_read(parts, rounds or config["limits"]["investigation_rounds"], read_before)
+            if not parts:
+                raise NothingNew(f"Nothing dated before {read_before} for {subject}. No model was called; "
+                                 f"{record} is unchanged.")
             if older:
-                # Past the round cap, the oldest material is still searchable from the first round.
+                # Past the round cap, the rest of the material is still searchable from the first round.
                 import uuid
                 from .evidence import write_evidence
                 evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
                 laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
                 parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                                     "file": str(laid_out["index"]), "sources": laid_out["sources"],
-                                    "text": f"Older material, before these rounds, is in files under {evidence_dir}; "
+                                    "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
                                             f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
             coverage.append(f"rounds: {len(parts)} parts read in full" + (
-                f", {sum(map(len, older))} older items searchable in files" if older else ""))
+                f", {sum(map(len, older))} other items searchable in files" if older else ""))
             result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")

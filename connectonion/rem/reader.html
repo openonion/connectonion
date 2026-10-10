@@ -384,7 +384,7 @@
   .timeline li::before { content: ""; position: absolute; left: 101px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--sheet); box-shadow: 0 0 0 1.5px var(--blue); }
   .timeline li::after { content: ""; position: absolute; left: 104px; top: 20px; bottom: -2px; width: 1px; background: var(--line); }
   .timeline li:last-child::after { display: none; }
-  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: nowrap; }
+  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: pre-line; }
   .timeline .e { padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
   .timeline li.undated .d { visibility: hidden; }
   .timeline li.undated::before { box-shadow: 0 0 0 1.5px var(--line); }
@@ -624,8 +624,8 @@
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: 11px; color: var(--ink-3); }
-  .factlist { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 8px 7px 0; border-top: 1px solid var(--line-2); }
+  .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
+  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 12px 7px 0; border-top: 1px solid var(--line-2); overflow-wrap: normal; }
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
@@ -895,7 +895,8 @@
     .record-focus, .record-focus.people { margin-top: 4px; }
     .focus-head { padding-top: 16px; }
     .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
-    .focus-head.purpose-lead .project-purpose-cites { margin-top: 4px; }
+    .focus-head.purpose-lead .focus-more:not([hidden]) { display: inline-block; vertical-align: middle; margin-right: 14px; }
+    .focus-head.purpose-lead .project-purpose-cites { display: inline-flex; width: auto; vertical-align: middle; margin-top: 4px; }
     .focus-head.purpose-lead .focus-limit { margin-top: 8px; }
     .focus-head.purpose-lead .focus-source { margin-top: 4px; }
     .record-focus.people .focus-head { padding-top: 12px; }
@@ -1116,15 +1117,24 @@ function plural(verb) {
   if (/(?:sh|ch|x|z|o)es$/i.test(verb)) return verb.slice(0, -2);
   return verb.slice(0, -1);
 }
+// "the user" opening a clause is its subject, so a second verb after "and"/"but"
+// agrees too: "the user runs events and has asked" reads "you run events and have
+// asked" (1.9.2b1). Only verbs that are never plural nouns: "invoices and receipts" stays.
+const CLAUSE_START = /(?:^|[.;:!?(—–,>]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
+const ALSO_VERBS = new Set([...Object.keys(YOU_VERBS), "owes", "says", "asks", "wants", "expects", "prefers", "agrees", "replies", "writes", "thinks", "knows", "seems"]);
 function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
   return String(text)
     .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
-    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word, at, all) => {
       const verb = plural(word.replace("’", "'"));
-      return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
+      const subject = CLAUSE_START.test(all.slice(0, at)) ? "\u0004" : "";
+      return cap(t, "you") + subject + " " + (adverb ? adverb + " " : "") + (verb || word);
     })
-    .replace(/\b([Tt])he user\b/g, (m, t) => cap(t, "you"));
+    .replace(/\u0004((?:(?!\b(?:and|but|or|yet)\b)[^.;!?\u0004])*?\b(?:and|but|or|yet) (?:(?:still|also|now|then|already|never|[a-z]+ly) )?)([a-z]+(?:['’]t)?)\b/g,
+      (m, between, word) => between + (ALSO_VERBS.has(word.replace("’", "'").toLowerCase()) ? plural(word.replace("’", "'")) : word))
+    .replace(/\u0004/g, "")
+    .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
 }
 function inline(text, from) {
   let s = esc(text);
@@ -1153,10 +1163,17 @@ function inline(text, from) {
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
-  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
+    : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
   return s;
 }
+// A 40+ character digest is an id to copy, not to read: show its first 12 characters.
+function shortHash(text) {
+  return text.replace(/\b([0-9a-f]{12})[0-9a-f]{28,}\b/gi, "$1…");
+}
 const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
+// Only the placeholder: "Unknown — not verified. The latest session, 2026-06-09, …" is a finding (1.9.2b1).
+const UNFILLED_LINE = /^Unknown\s*—\s*(?:not investigated yet|not verified)[.;]?\s*(?:\[W?\d+\]\s*)*$/i;
 
 function markdownList(lines, start, from) {
   const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
@@ -1333,7 +1350,7 @@ function known(r) {
     const text = part.slice(head[0].length).split("\n").filter(line => {
       // Keep a specific missing outcome readable, without promoting it to a task.
       const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
-        && !UNKNOWN_TEXT.test(line.replace(/^\s*[-*]\s*/, ""));
+        && !UNFILLED_LINE.test(line.replace(/^\s*[-*]\s*/, ""));
       return (!UNKNOWN_LINE.test(line) || explanation) && !PLACEHOLDER.test(line) && !repeatsTitle(line);
     }).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
@@ -1388,11 +1405,15 @@ function owing() {
   if (OWING) return OWING;
   const owner = REM.owner && byPath(REM.owner);
   const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
-  const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
+  // "User owes pickup of the card" (1.9.2b1) names the owner without "the".
+  const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
+  // The owner asking or waiting on someone is their debt: "Aaron asked Adi to arrange a call" (1.9.2b3).
+  const chasing = "\\b" + me + "\\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|is waiting (?:on|for)|was waiting (?:on|for))\\s+(?!" + me + "\\b)";
   OWING = {
-    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|^\\s*" + me + "\\s*:|\\b(?:asked|requested)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
-    theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
+    // An offer of something ("offered Mara a trial") is optional; an offer to do something is owed.
+    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered to|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
+      "|^\\s*" + me + "\\s*:|\\b(?:asks?|asked|requests?|requested|wants|invited)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+    theirs: new RegExp(chasing + "|\\b(?:owes?|owed) (?:the user|you)\\b|\\bwaiting (?:on|for) (?:them|him|her|their)\\b|\\bunanswered\\b|\\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\\b|\\bno reply\\b|\\b[A-Z][\\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\\b|\\bpromised\\b")
   };
   return OWING;
 }
@@ -1411,11 +1432,17 @@ function listItems(text) {
   }
   return items;
 }
+// A line saying nothing is open, in the words pages use for it (1.9.2b1 showed
+// "None identified" and "No explicit open request" as OPEN for 30 days).
+function isCalm(t) {
+  return /^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)/i
+    .test(t.replace(/\*/g, "").trim());
+}
 function threads(r) {
   const s = section(r, "open threads");
   if (!s) return { items: [], calm: "" };
   const all = listItems(s.text);
-  const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
+  const calm = all.find(isCalm) || "";
   const today = calendarDay(REM.as_of);
   const items = all.filter(t => t !== calm && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
@@ -1429,10 +1456,20 @@ function threads(r) {
 }
 function historyItems(text) {
   return listItems(text).map(t => {
-    // A range is one date: Ody's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
-    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?(?:\s*[–-]\s*(?:\d{2}-)?\d{2})?)(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
-    return m ? { day: m[1], text: m[2] } : { day: "", text: t };
+    // A range is one entry dated by its start: "2026-07-05–17", "2026-07-29–08-04" (#2059),
+    // "2026-08-26–2026-08-28" and "2026-09-23 to 2026-10-09" (1.9.2b1).
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\s*(?:[–-]|to)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?!\d))?(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    if (!m) return { day: "", end: "", text: t };
+    return { day: m[1], end: m[2] ? m[1].slice(0, m[1].length - m[2].length) + m[2] : "", text: m[3] };
   });
+}
+// A range on two lines so it fits the date column: "Aug 26" over "– 28", or
+// "Jul 29" over "– Aug 4". A month alone is "Oct 2025", not the 1st of it.
+function dayLabel(item) {
+  const one = d => d.length === 7 ? new Date(d + "-01T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC", month: "short", year: "numeric" }) : shortDate(d);
+  if (!item.end || item.end === item.day) return one(item.day);
+  const sameMonth = item.end.length === 10 && item.end.slice(0, 7) === item.day.slice(0, 7);
+  return one(item.day) + "\n– " + (sameMonth ? String(Number(item.end.slice(8))) : one(item.end));
 }
 // "- [n] id — what it shows; confidence; observed date" -> {n: "id — what it shows ..."}
 function rawSection(r, name) {
@@ -1484,7 +1521,7 @@ function contactFields(r) {
 function skillUsage(r) {
   const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.text);
   if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4],
-    tools: (m[5] || "").replace(/\b(Claude Code|Codex) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
+    tools: (m[5] || "").replace(/\b(Claude Code|Codex|co ai) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
   const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
 }
@@ -1519,7 +1556,7 @@ function facts(r) {
   for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
   const text = r.text.replace(COMMENT, "");
   const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
-  const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.day).sort();
+  const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.end || i.day).sort();
   const observed = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2})/.exec(text);
   const paths = listItems(rawSection(r, "Paths"));
   const field = re => (paths.map(p => re.exec(p)).find(Boolean) || [])[1] || "";
@@ -2373,7 +2410,7 @@ function sectionBody(r, s) {
     const items = historyItems(s.text);
     if (items.some(i => i.day)) {
       return el("div", { class: "block-history" }, [el("ol", { class: "timeline" }, items.map(i => el("li", { class: i.day ? "" : "undated" }, [
-        el("span", { class: "d", text: i.day ? shortDate(i.day.length === 7 ? i.day + "-01" : i.day) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
+        el("span", { class: "d", text: i.day ? dayLabel(i) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
     }
   }
   if (name === "sources") {
@@ -2385,7 +2422,7 @@ function sectionBody(r, s) {
         return el("li", { id: "src-" + src.n.toLowerCase() }, [el("a", { class: "n cite source-open",
           href: href(r) + "&h=src-" + src.n.toLowerCase(), "aria-label": "Open source " + src.n,
           text: "[" + src.n + "]" }),
-          el("span", {}, [id ? el("span", { class: "id", text: id }) : null, id ? " " : "", rest])]);
+          el("span", {}, [id ? el("span", { class: "id", text: shortHash(id), title: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
   }
@@ -2422,6 +2459,17 @@ function factValue(item, from) {
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
     item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
 }
+// A long address or path wraps after '@' or before '.' and '/', never mid-word.
+function softBreaks(node) {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  for (const text of texts.filter(t => /[^\s]{16,}/.test(t.data))) {
+    const parts = text.data.split(/(\s+)/).flatMap(token => token.length < 16 ? [token]
+      : token.split(/(?<=@)|(?=\.\w)|(?<=\/)/).flatMap((part, i) => i ? [document.createElement("wbr"), part] : [part]));
+    text.replaceWith(...parts);
+  }
+  return node;
+}
 // The facts a reader came for: labels in small caps, values cited, a missing one visibly empty.
 function factList(r) {
   const labels = FACT_LABELS[r.category];
@@ -2441,7 +2489,7 @@ function factList(r) {
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    dl.append(el("dt", { text: label }), dd);
+    dl.append(el("dt", { text: label }), softBreaks(dd));
   }
   if (r.category === "people" && r.mail) {
     dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
@@ -2508,7 +2556,7 @@ function sidePanels(r, k) {
     const u = skillUsage(r);
     if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: "name " + (u.count === 1 ? "match" : "matches") + " in " + u.days + " days" })]),
       el("div", { class: "usage" }, [usageBar(u)]),
-      el("p", { text: "Matched by skill name in coding sessions. Run evidence counts retained eval attempts separately; neither confirms this installed version or task outcome." }),
+      el("p", { text: "Matched by skill name in coding sessions and co ai runs; the co ai runs are the ones listed under Run evidence. Neither confirms this installed version or task outcome." }),
       el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no name match found" })]));
     if (r.installation) {
       const file = el("dl", {});
@@ -2594,13 +2642,23 @@ function contactStrip(r) {
       btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), dd]);
+    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), softBreaks(dd)]);
   }));
+}
+// A mapped project's hero says it waits and how much there is to read, not its
+// folder: "WHERE THE WORK STANDS /Users/…/LayeredVisions" on the busiest project (#2349).
+function mappedProjectLine(r) {
+  const paths = section(r, "paths")?.text || "";
+  const sessions = (/^-\s*Sessions:\s*(\d+)/m.exec(paths) || [])[1];
+  const last = (/^-\s*Last seen:\s*([0-9-]+)/m.exec(paths) || [])[1];
+  return "Not written yet" + (sessions ? ": " + sessions + " session" + (sessions === "1" ? "" : "s") +
+    (last ? ", last on " + last : "") : "") + ".";
 }
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
+  const projectMapped = r.category === "projects" && k.status === "Mapped" && !privateMapped;
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
   const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
@@ -2611,9 +2669,10 @@ function recordFocus(r) {
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
   const finding = plainLine(findingLine);
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : projectMapped ? mappedProjectLine(r)
     : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
-  const question = privateMapped ? "Needs your explicit request" : projectNeedsContext ?
+  const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : "") }, [el("span", { class: "focus-kicker", text: question })]);

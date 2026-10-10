@@ -650,6 +650,23 @@ def test_company_links_to_the_organisation_page_when_there_is_one(tmp_path):
     assert link_company(notebook, 'people/mia.md', other) == other
 
 
+def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_domain(tmp_path):
+    """28 of 53 `Company: Unknown` pages on a real 1.9.2b2 notebook wrote from a
+    domain the notebook has an organisation page for (#2349)."""
+    from connectonion.rem.page_review import company_from_domain
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    rows = [{'field': 'Company domain', 'value': 'gmail.example', 'qualifier': '', 'source': 'gmail:aaa', 'date': '2026-09-02'},
+            {'field': 'Company domain', 'value': 'student.unsw.edu.au', 'qualifier': '',
+             'source': 'outlook:bbb', 'date': '2026-08-01'}]
+    filled = company_from_domain(notebook, 'people/mia.md', original, rows)
+    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-08-01$', filled, re.M)[1]
+    assert f'- Company: [UNSW Sydney](../orgs/unsw-1234.md) [{number}]' in filled
+    named = original.replace('- Company: Unknown', '- Company: Acme [1]')
+    assert company_from_domain(notebook, 'people/mia.md', named, rows) == named
+    assert company_from_domain(notebook, 'people/mia.md', original, rows[:1]) == original
+
+
 def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
     """#2008: project pages came back after 0.6-0.9M tokens with five and six
     sections still saying "Unknown — not investigated yet"."""
@@ -878,3 +895,101 @@ def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
             '- Retained evaluation attempts: 2\n<!-- rem-skill-runs:end -->\n\nInvestigation: mapped\n')
     out = repair_run_citations('skills/catalog/x.md', text, '# x\n')
     assert out.count('## Run evidence') == 1 and '- None known.' in out and 'attempts: 2' in out
+
+
+def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page():
+    """1.9.2b1 (2026-10-09) gave Weiwei the user's phone from his own signature, against the instructions."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Email: weiwei.lei@rmit.edu.au\n- Phone: +61 435 525 634 [2]\n- Role: Professor [1]\n"
+    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0435 525 634 (work)"})
+    assert "- Phone: Unknown\n" in text and removed == ["+61 435 525 634"]
+    assert "- Email: weiwei.lei@rmit.edu.au" in text
+    other = page.replace("+61 435 525 634", "+61 400 111 222")
+    assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])
+
+
+def test_the_owners_phone_is_found_when_each_number_carries_its_own_citation():
+    """1.9.2b2 (2026-10-09) kept the user's phone on Sasha's page: `[48]` was read as two more digits."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Phone: +61-0435525634 (work) [48]; +61 2 9065 4432 (work) [49]\n"
+    text, removed = drop_owner_addresses(page, {"0435 525 634"})
+    assert "- Phone: +61 2 9065 4432 (work) [49]\n" in text and "0435525634" not in text
+    assert removed == ["+61-0435525634 (work) [48]"]
+
+
+def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
+    """#2348, as narrowed by the 1.9.2b3 trial: only a number known to be someone else's goes."""
+    from connectonion.rem.page_review import drop_others_phones
+    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9065 4432 (work) [49]\n- Role: Lead [1]\n"
+    text, removed = drop_others_phones(page, ["+61 2 9065 4432"], [])
+    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9065 4432 (work) [49]"]
+    assert drop_others_phones(page, ["+61 2 9065 4432"], ["02 9065 4432"]) == (page, [])   # theirs too
+    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290654432"], [])[0]
+
+
+def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
+    """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
+    from connectonion.rem.runner import _searched_turn
+    (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
+    first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
+
+    def never(*args):
+        raise AssertionError("no search should run")
+    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
+    assert out["result"] == "edited" and "not valid JSON" in out["report"]
+
+
+def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(tmp_path):
+    """1.9.2b1: Ian's page cited the owner's Claude memory file by path. It sat in
+    the folder of a supplied session transcript, so it passed as a local file."""
+    from connectonion.rem.page_review import drop_unresolved
+    folder = tmp_path / '.claude/projects/-work'
+    (folder / 'memory').mkdir(parents=True)
+    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_ian.md'
+    transcript.write_text('{}')
+    memory.write_text('Ian: MBA at UNSW')
+    items = [{'role': 'owner-work-evidence', 'file': str(transcript), 'sources': ['claude-code:s1']}]
+    text = ('# Ian\n\nIan asked about pricing [1].\n\n## Who they are\nIan studies an MBA [2].\n\n'
+            f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
+    kept, dropped = drop_unresolved('people/ian.md', text, '', items)
+    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
+
+
+def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
+    # 40 of 123 pages in a real 1.9.2b3 notebook listed [1], [2], [5], [9]...
+    # after uncited sources were dropped; the reader showed the gaps.
+    from connectonion.rem.page_review import renumber_sources
+    text = ("# Ada\n\nShe runs the lab [2] and signed [5][W1].\n\n"
+            "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+            "## Sources\n- [2] outlook:aaa — observed 2026-07-10\n- [5] outlook:bbb — observed 2026-07-11\n"
+            "- [W1] https://lab.test\n")
+    assert renumber_sources(text) == (
+        "# Ada\n\nShe runs the lab [1] and signed [2][W1].\n\n"
+        "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+        "## Sources\n- [1] outlook:aaa — observed 2026-07-10\n- [2] outlook:bbb — observed 2026-07-11\n"
+        "- [W1] https://lab.test\n")
+
+
+def test_sources_already_in_order_are_unchanged():
+    from connectonion.rem.page_review import renumber_sources
+    text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
+    assert renumber_sources(text) == text
+
+
+def test_a_required_section_the_turn_left_out_is_added_as_unknown():
+    # 1.9.2b3 trial: a project page without "Open threads" and a skill page
+    # without "Limitations" were refused whole, reported as "must occur once".
+    from connectonion.rem.page_review import add_missing_sections, headings
+    page = ('# startup\n\n## Facts\n- Status: active [1]\n\n## Insight\nIt ships [1].\n\n'
+            '## What it is\nA shop [1].\n\n## Where it stands\nLive [1].\n\n## Paths\n- /work/startup [1]\n\n'
+            '## Uncertainties\n- Unknown\n\n## Sources\n- [1] claude-code:s1 — 2026-08-11\n')
+    fixed = add_missing_sections('projects/startup.md', page)
+    assert re.findall(r'^## (.+)$', fixed, re.M) == list(headings('projects/startup.md'))
+    assert '## Paths\n- /work/startup [1]\n\n## Open threads\n- Unknown\n\n## Uncertainties' in fixed
+
+
+def test_a_missing_section_is_reported_as_missing_not_as_a_duplicate():
+    page = '# A\n\n## Facts\n- Status: Unknown\n\n## Sources\n- [1] claude-code:s1\n'
+    errors = validate('projects/a.md', page, '', [])
+    assert 'Missing section: Open threads' in errors
+    assert not any('must occur once: Open threads' in e for e in errors)

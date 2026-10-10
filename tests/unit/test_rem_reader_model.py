@@ -131,6 +131,17 @@ def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
     assert not relationships(records)['projects/harbour.md'][0]['private']
 
 
+def test_relationship_basis_is_clipped_at_a_word_with_an_ellipsis():
+    text = "Mara Ostrowski approved the scope and clarified that parity includes the current OIP version " * 3 + "[1]."
+    records = [
+        {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski", "text": "# Mara"},
+        {"path": "projects/harbour.md", "category": "projects", "title": "Harbour", "text": text},
+    ]
+    basis = relationships(records)["projects/harbour.md"][0]["basis"]
+    assert len(basis) <= 221 and basis.endswith("…")
+    assert text.startswith(basis[:-1].rstrip() + " ")
+
+
 def test_explicit_links_keep_their_own_line_even_after_a_reverse_mention():
     records = [
         {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski",

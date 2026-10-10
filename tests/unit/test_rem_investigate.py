@@ -2003,3 +2003,27 @@ def test_one_run_scans_its_sessions_once_for_every_person(tmp_path, monkeypatch)
         assert [i["text"] for i in items] == ["Vern and Ody decided"]
         scans.append(len(calls))
     assert scans[0] > 0 and scans[2] == scans[1] == scans[0]  # later pages read the kept window
+
+
+def test_a_capped_first_run_reads_the_newest_parts_and_a_deepen_reads_the_ones_before_the_window():
+    """2026-10-09: a 45-minute first run reads three parts per page; the rest stay searchable."""
+    from connectonion.rem.investigate import rounds_to_read
+    parts = [[{"timestamp": f"2026-0{month}-01T00:00:00+00:00"}] for month in range(1, 9)]
+    read, rest = rounds_to_read(parts, 3)
+    assert read == parts[5:] and rest == parts[:5]
+    read, rest = rounds_to_read(parts, 3, read_before="2026-05-15")
+    assert read == parts[2:5] and rest == parts[:2] + parts[5:]
+
+
+def test_a_deepen_with_nothing_before_the_window_is_nothing_new_not_a_failure(tmp_path, monkeypatch):
+    """1.9.2b2 trial: seven people's second pass found only material inside the
+    mapped window and failed with "list index out of range"."""
+    root = _notebook(tmp_path, "codex")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    with pytest.raises(inv.NothingNew, match="2026-04-12"):
+        inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                        extractor=lambda *a: pytest.fail("no digest pass"), rounds=3, read_before="2026-04-12",
+                        runner=lambda *a, **kw: pytest.fail("no model turn"))

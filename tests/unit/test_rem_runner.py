@@ -520,6 +520,27 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
     assert "Leads the data team." in notebook.read("people/mia.md")
 
 
+def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
+    """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
+    unresolved [7] was dropped, the half it supported was left uncited, and the
+    whole page was refused for "Fact without a citation: Role"."""
+    from connectonion.rem import runner
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(original.replace("## Who they are\n- Unknown — not investigated yet",
+                                          "## Who they are\n- Leads the data team. [1]")
+                         .replace("- Role: Unknown", "- Role: Data lead [1]; tax customer (project record) [7]")
+                         .replace("- (none yet)", "- [1] gmail:m:1\n- [7] project-file:/elsewhere/PEOPLE.md@abc")
+                         .replace("- Unknown — not investigated yet", "- Unknown"))
+    runner._promote_candidate(notebook, "people/mia.md", candidate, original,
+                              [{"source": "gmail:m:1"}], tmp_path, None)
+    page = notebook.read("people/mia.md")
+    assert "- Role: Data lead [1]\n" in page and "tax customer" not in page
+
+
 def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch):
     from connectonion.rem import runner
     from connectonion.rem.runner import RunFailed

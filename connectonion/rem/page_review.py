@@ -236,6 +236,30 @@ def drop_uncited_sources(text: str) -> str:
     return head + marker + ''.join(kept) + rest
 
 
+CODE = re.compile(r'```.*?```|`[^`\n]*`', re.S)
+
+
+def renumber_sources(text: str) -> str:
+    """Number the kept Sources 1, 2, 3... and their citations to match.
+
+    Dropping uncited sources left gaps the reader showed as they were: 40 of
+    123 pages in a real 1.9.2b3 notebook. Code is not prose, so `rows[5]`
+    keeps its index; web sources ([W1]) keep their own numbering.
+    """
+    sources = text.partition('\n## Sources\n')[2]
+    listed = [int(n) for n in re.findall(r'^\s*(?:- )?\[(\d+)\]', sources, re.M)]
+    order = {old: new for new, old in enumerate(sorted(set(listed)), 1)}
+    if all(old == new for old, new in order.items()):
+        return text
+    swap = lambda prose: re.sub(r'\[(\d+)\](?!\()',  # noqa: E731
+                                lambda m: f'[{order.get(int(m[1]), m[1])}]', prose)
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [swap(text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(text[last:])
+
+
 RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
                              "investigation:project-repositories"),
                # The same refusal on a skill page (title-refine, 2026-10-08).
@@ -303,30 +327,63 @@ def normalize_numbered_sources(text: str) -> str:
     return head + marker + sources + rest
 
 
-IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
+IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
+
+
+def _identity_key(value: str) -> str:
+    """A phone compares by its last nine digits (+61 435 ... is 0435 ...); anything else by case-folded text."""
+    value = re.sub(r"\s*\[W?\d+\]", "", value).strip()   # a part's own citation is not its digits
+    digits = re.sub(r"\D", "", re.sub(r"\(.*?\)", "", value))
+    return digits[-9:] if len(digits) >= 8 else value.casefold()
 
 
 def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
-    """Take the account owner's own addresses off someone else's identity lines.
+    """Take the account owner's own addresses and phones off someone else's identity lines.
 
     Mail between the user and a person carries both addresses, and a real page
-    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle.
-    Which addresses are the owner's is known, so this is removed mechanically
-    rather than asked of the model; the rest of the page is kept.
+    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle;
+    1.9.2b1 gave Weiwei the user's phone from his own quoted signature
+    (2026-10-09), though the instructions forbid it. Which values are the
+    owner's is known, so they are removed mechanically; the rest of the page is kept.
     """
+    owner = {_identity_key(value) for value in owner}
     removed = []
 
     def clean(match):
         head, value = match.groups()
         body, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', value).groups()
         parts = [part.strip() for part in re.split(r'[;,]', body) if part.strip()]
-        kept = [part for part in parts if part.casefold() not in owner]
-        removed.extend(part for part in parts if part.casefold() in owner)
+        kept = [part for part in parts if _identity_key(part) not in owner]
+        removed.extend(part for part in parts if _identity_key(part) in owner)
         if kept == parts:
             return match.group(0)
         return head + ('; '.join(kept) + cites if kept else 'Unknown')
 
     return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
+
+
+
+PHONE_LINE = re.compile(r'^(- Phone: )(.*)$', re.M)
+
+
+def drop_others_phones(text: str, others: list[str], own: list[str]) -> tuple[str, list[str]]:
+    """Take a number off a contact's page when it is in someone else's own signature (#2348).
+
+    1.9.2b1 put another person's number on 6 of 25 people, each from a signature
+    quoted in the thread. Keeping only numbers from the person's own signature
+    went too far: it took 7 right ones, a number given in their own words among
+    them. A number that is theirs too (`own`) stays.
+    """
+    keys = {_identity_key(value) for value in others} - {_identity_key(value) for value in own}
+    removed = []
+
+    def clean(match):
+        parts = [part.strip() for part in match.group(2).split(';') if part.strip()]
+        kept = [part for part in parts if _identity_key(part) not in keys]
+        removed.extend(part for part in parts if part not in kept)
+        return match.group(0) if kept == parts else match.group(1) + ("; ".join(kept) or "Unknown")
+
+    return PHONE_LINE.sub(clean, text), removed
 
 
 # What an investigation hands the model about itself, not about the subject.
@@ -358,7 +415,15 @@ def _known_sources(items: list[dict]) -> set:
     return known
 
 
+# An assistant's memory and transcript folders hold its own notes, not material.
+# Ian's page cited the owner's Claude memory file, which sat beside a supplied
+# transcript (1.9.2b1). A session is cited by its id, `claude-code:<id>`.
+PRIVATE_STORE = re.compile(r'/\.claude/projects/|/\.codex/(?:sessions|archived_sessions|memories)/')
+
+
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
+    if PRIVATE_STORE.search(value):
+        return False
     if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
         from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
@@ -512,7 +577,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
         if old_title and new_title and old_title[1] != new_title[1]:
             errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
-    errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
+    errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
+               for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
@@ -660,6 +726,23 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     return head + marker + sources + rest, {'citations': sorted(bad), 'lines': dropped}
 
 
+def add_missing_sections(record: str, text: str, owner: bool = False) -> str:
+    """A required section the turn left out is added as Unknown, in its place.
+
+    1.9.2b3 trial: a project page without Open threads and a skill page
+    without Limitations were refused whole, after every other section was
+    written. Unknown is what the page knows about the missing one.
+    """
+    required = headings(record, owner)
+    for index, heading in enumerate(required):
+        if re.search(rf'^## {re.escape(heading)}[ \t]*$', text, re.M):
+            continue
+        later = (re.search(rf'^## {re.escape(h)}[ \t]*$', text, re.M) for h in required[index + 1:])
+        at = next((m.start() for m in later if m), len(text))
+        text = text[:at] + f'## {heading}\n- Unknown\n\n' + text[at:]
+    return text
+
+
 def _fill_emptied_sections(head: str) -> str:
     """A section whose every line went says Unknown, so the page keeps its shape."""
     parts = re.split(r'(?m)^(## .+)$', head)
@@ -773,4 +856,35 @@ def link_company(notebook, record: str, text: str) -> str:
         title = next((line[2:].strip() for line in notebook.read(org).splitlines() if line.startswith('# ')), '')
         if title.casefold() == name.casefold():
             return text[:match.start()] + f'- Company: [{name}](../{org}){cites}' + text[match.end():]
+    return text
+
+
+def _named_orgs(notebook) -> list[tuple[str, str, list[str]]]:
+    """(record, title, domains) of each organisation page whose title is a name, not its domain."""
+    from .investigate import org_domains
+    found = []
+    for org in notebook.list('orgs'):
+        page = notebook.read(org)
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')
+        if title and title.casefold() not in org_domains(page):
+            found.append((org, title, org_domains(page)))
+    return found
+
+
+def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> str:
+    """`Company: Unknown` takes the organisation page whose Domains hold the person's own mail domain (#2349).
+
+    28 of 53 unknown companies on a real notebook wrote from a domain it had a
+    page for. The newest mail from that domain is the citation. A page still
+    titled by its domain is the map's stub: its name is not known yet.
+    """
+    match = re.search(r'^- Company: (.*)$', text, re.M)
+    if not record.startswith('people/') or not match or not match.group(1).casefold().startswith('unknown'):
+        return text
+    for row in (row for row in rows if row['field'] == 'Company domain'):
+        for org, title, domains in _named_orgs(notebook):
+            if any(row['value'] == domain or row['value'].endswith('.' + domain) for domain in domains):
+                text, number = facts._cite(text, row)
+                match = re.search(r'^- Company: (.*)$', text, re.M)
+                return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
     return text

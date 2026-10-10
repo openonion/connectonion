@@ -287,6 +287,13 @@ def test_a_personal_mailbox_is_never_an_organisation():
     assert scan_orgs(people) == []
 
 
+def test_a_short_provider_address_or_a_home_internet_mailbox_is_not_an_organisation():
+    """1.9.2b1 wrote orgs/pm-me (Proton's short addresses) and orgs/xtra-co-nz (Spark NZ home mail)."""
+    from connectonion.rem.scan import personal_mailbox
+    assert all(map(personal_mailbox, ["pm.me", "xtra.co.nz", "tpg.com.au", "iinet.net.au", "comcast.net"]))
+    assert not personal_mailbox("unsw.edu.au")
+
+
 def test_a_single_person_on_a_work_domain_stays_a_field_unless_asked_for():
     """One person with a work address is a `Company:` field on their own page. The
     threshold can be lowered deliberately, which is how a one-person client that
@@ -384,6 +391,9 @@ def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
     ("您好， 请以本邮件中的版本为准", ""),
     ("Hi, Attached is the report", ""),
     ("check worker", ""),
+    # 1.9.2b1: a one-word reply above the quote made a person called "On Fri".
+    ("hi On Fri, May 8, 2026 at 5:06 PM openonion ai wrote:", ""),
+    ("Hi On 2026-05-08, Ody wrote:", ""),
 ])
 def test_the_owners_greeting_names_the_person_they_wrote_to(snippet, name):
     people = scan_people({"gmail": Box("me@x.y", [_sent(["p@q.com"], snippet)])}, days=30, own_addresses=set())
