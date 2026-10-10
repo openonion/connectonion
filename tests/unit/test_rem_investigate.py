@@ -1945,7 +1945,7 @@ def test_a_search_the_provider_refuses_is_reported_not_fatal():
             return ["me@x.y"]
 
         def list_search(self, query, limit):
-            if "(" in query:
+            if '"' in query:
                 raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 400).",
                                               "co outlook inbox", status=400)
             return [{"id": "m1", "from": "ody@x.y", "date": "2026-10-01", "subject": "Deck"}]
@@ -1953,29 +1953,19 @@ def test_a_search_the_provider_refuses_is_reported_not_fatal():
         def get_email_body(self, message_id):
             return "--- Email Body ---\nThe deck is done."
 
-    found = inv.mail_search({"outlook": Outlook()})(["(Phaedon Stough)", "deck"])
+    found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
     assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
     assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]
 
 
-def test_a_quoted_lead_is_searched_without_its_quotes_and_automated_senders_are_left_out():
-    """2026-10-10, 1.9.2b3 trial: five of sixteen round investigations lost every
-    follow-up search to HTTP 400, because Outlook wraps the query in quotes and
-    the model's own quotes ("pitch coaching") broke it; the searches that did
-    run came back as "19 unrelated newsletters and digests" (Nina, round 3)."""
-    from connectonion.provider_credentials import ProviderCredentialError
-
-    sent = []
-
+def test_automated_senders_are_left_out_of_search_answers():
+    """2026-10-10, 1.9.2b3 trial: the follow-up searches that ran came back as
+    "19 unrelated newsletters and digests" (Nina, round 3)."""
     class Outlook:
         def my_addresses(self):
             return ["me@x.y"]
 
         def list_search(self, query, limit):
-            sent.append(query)
-            if '"' in query:
-                raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 400).",
-                                              "co outlook inbox", status=400)
             return [{"id": "m1", "from": "Nina <nina@x.y>", "date": "2026-10-01", "subject": "Coaching"},
                     {"id": "m2", "from": "noreply@eventbrite.com", "date": "2026-10-02", "subject": "Digest"},
                     {"id": "m3", "from": "LinkedIn <messages-noreply@linkedin.com>", "date": "2026-10-03",
@@ -1984,9 +1974,8 @@ def test_a_quoted_lead_is_searched_without_its_quotes_and_automated_senders_are_
         def get_email_body(self, message_id):
             return "--- Email Body ---\nabout the coaching"
 
-    found = inv.mail_search({"outlook": Outlook()})(['Founders "pitch coaching"'])
+    found = inv.mail_search({"outlook": Outlook()})(["Founders pitch coaching"])
 
-    assert sent == ["Founders pitch coaching"]
     assert [item["speaker"] for item in found] == ["Nina <nina@x.y>"]
 
 

@@ -903,10 +903,6 @@ def mail_search(clients: dict, known: set | None = None):
     def search(queries: list[str]) -> list[dict]:
         found, seen = [], set()
         for query in queries:
-            # Outlook wraps the query in quotes of its own, so the model's
-            # phrase quotes ("pitch coaching") were HTTP 400 on every lead of
-            # five pages in the 1.9.2b3 trial (2026-10-10); the words still find.
-            query = " ".join(query.replace('"', " ").split())
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
                 try:
