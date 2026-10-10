@@ -54,7 +54,7 @@ def _missing_scope(text: str):
     return found.group(1) if found else None
 
 
-def _configured(name: str, *, sends: bool = False):
+def _configured(name: str, *, sends: bool = False, p=None):
     """The provider, or exit 3 with what is missing. Every verb that talks
     to the platform starts here so the message is the same everywhere.
 
@@ -65,7 +65,8 @@ def _configured(name: str, *, sends: bool = False):
     listener that could never exist and then exited 1, while `listen` and
     `check` said exit 3 and named the pip command at once.
     """
-    p = provider(name)
+    if p is None:
+        p = provider(name)
     problems = p.missing()
     start = False
     if not problems and sends and getattr(p, "via_listener", False) \
@@ -540,10 +541,11 @@ def _unsupported(p, name: str, verb: str,
 def handle_edit(name: str, message_id: str, text: Optional[str] = None,
                 plain: bool = False) -> None:
     """Replace the text of a message we sent. Prints the edit's id."""
-    p = _configured(name, sends=True)
-    inbox = Inbox(name)
+    p = provider(name)
     if getattr(p, "edit", None) is None:
         _unsupported(p, name, "edit")
+    p = _configured(name, sends=True, p=p)
+    inbox = Inbox(name)
     original = inbox.lookup_sent(message_id)
     if original is None:
         # Deliberately not "no such message": we can only edit our own, so the
@@ -565,10 +567,11 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
 
 def handle_delete(name: str, message_id: str) -> None:
     """Delete a message for everyone. Prints the deletion's id."""
-    p = _configured(name, sends=True)
-    inbox = Inbox(name)
+    p = provider(name)
     if getattr(p, "revoke", None) is None:
         _unsupported(p, name, "delete")
+    p = _configured(name, sends=True, p=p)
+    inbox = Inbox(name)
     ours = inbox.lookup_sent(message_id)
     if ours is not None:
         chat, sender = ours["chat"], ""
@@ -627,10 +630,11 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     only stay silent or send a whole message, which is louder than the moment
     deserves (#1633). Prints the reaction's id so a script can check it landed.
     """
-    p = _configured(name, sends=True)
-    inbox = Inbox(name)
+    p = provider(name)
     if getattr(p, "react", None) is None:
         _unsupported(p, name, "react", "POST /im/v1/messages/<id>/reactions")
+    p = _configured(name, sends=True, p=p)
+    inbox = Inbox(name)
     ours = inbox.lookup_sent(message_id)
     if ours is not None:
         chat, sender, mine = ours["chat"], "", True
