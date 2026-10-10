@@ -178,6 +178,16 @@ def test_generic_prompt_requires_reporting_what_actually_happened():
     assert "Finish the whole thing" in prompt
 
 
+def test_a_missing_key_is_found_by_running_the_command():
+    """#2115: co ai saw `co linear`, grepped ~/.co/keys.env first, was
+    (rightly) refused, and gave up on the command for twenty browser calls.
+    Every co command already reports a missing key with its Next: line."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    assert "Don't look for credentials yourself" in prompt
+    assert "run the command" in prompt
+
+
 def test_unknown_role_fails_loudly():
     """A deployed agent with a typo'd role should die at construction with a
     readable message, not silently serve a prompt missing its domain."""
