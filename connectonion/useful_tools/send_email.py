@@ -2,14 +2,16 @@
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
   Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv, credentials, project] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls send_email(to, subject, message) → preserves environment precedence and fills missing values from project-root .env then ~/.co/keys.env → validates the selected ambient token against the canonical project identity → validates email format → POST to /api/v1/email/send → returns {success, message_id, from, error}
+  Data flow: Agent calls send_email(to, subject, message) → preserves environment precedence and fills missing values from project-root .env then ~/.co/keys.env → validates the selected ambient token against the canonical project identity → validates email format → wraps a plain-text body (no HTML tags) as escaped <p>/<br> HTML → POST to /api/v1/email/send → returns {success, message_id, from, error}
   State/Effects: reads canonical credential files and loads missing values into the process environment | makes one HTTP POST only after credential validation | no local state persistence
   Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/v1/email/send with Bearer token
   Performance: canonical project-root lookup plus at most two dotenv reads | one HTTP request per email | no caching | synchronous (blocks on network)
   Errors: returns {success: False, error: str} for missing/mismatched credentials, invalid email format, and API failures | credential errors are redacted and non-retryable | HTTP errors caught and wrapped
 """
 
+import html
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
@@ -21,6 +23,15 @@ from ..address import agent_email
 from ..backend import backend_url
 from ..credentials import AmbientCredentialError, require_ambient_api_key
 from ..project import project_co_dir, project_root
+
+
+_HTML_TAG = re.compile(r"</?[a-zA-Z][^>]*>")
+
+
+def _plain_text_as_html(text: str) -> str:
+    """Blank lines become paragraphs and single newlines <br>, after escaping."""
+    paragraphs = re.split(r"\n\s*\n", html.escape(text).strip())
+    return "\n".join("<p>" + p.replace("\n", "<br>\n") + "</p>" for p in paragraphs)
 
 
 def send_email(
@@ -93,12 +104,9 @@ def send_email(
     payload = {
         "to": to,
         "subject": subject,
-        # The body goes as-is. A local `is_html = "<" in message and ">" in
-        # message` used to be computed here and thrown away — the payload has no
-        # html field to put it in — while the header claimed the function
-        # "detects HTML vs plain text". Whether a body renders as HTML is the
-        # backend's decision, and nothing here influences it.
-        "body": message
+        # The mail service sends every body as HTML and takes no text/plain
+        # part, so plain text arrived as one paragraph (#2395).
+        "body": message if _HTML_TAG.search(message) else _plain_text_as_html(message)
     }
     if from_address:
         payload["from_address"] = from_address
