@@ -1429,3 +1429,35 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     assert '1 investigation failed' in brief.inner_text()
     assert brief.locator('.memory-card').count() > 0
     assert 'No memory pages were written' not in brief.inner_text()
+
+
+WHOLE_WORDS = """([selector, words]) => words.every(word => [...document.querySelectorAll(selector)].every(node => {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const text = walker.currentNode, at = text.data.indexOf(word);
+    if (at < 0) continue;
+    const range = document.createRange();
+    range.setStart(text, at); range.setEnd(text, at + word.length);
+    if (new Set([...range.getClientRects()].map(r => Math.round(r.top))).size > 1) return false;
+  }
+  return true;
+}))"""
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.locator('.factlist dt').first.wait_for()
+    assert page.evaluate(WHOLE_WORDS, ['.factlist dt', ['REPOSITORY', 'ORGANISATION', 'Repository', 'Organisation']])
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/- Email: [^\\n]+/, '- Email: 0x3c3ae74550@mail.openonion.ai [1]')
+        .replace(/## Facts\\n/, '## Facts\\n- Handles: 0x3c3ae74550@mail.openonion.ai [1]\\n');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    page.locator('.factlist dd').first.wait_for()
+    assert page.evaluate(WHOLE_WORDS, ['.factlist dd, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

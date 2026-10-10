@@ -624,8 +624,8 @@
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: 11px; color: var(--ink-3); }
-  .factlist { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 8px 7px 0; border-top: 1px solid var(--line-2); }
+  .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
+  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 12px 7px 0; border-top: 1px solid var(--line-2); overflow-wrap: normal; }
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
@@ -2441,6 +2441,17 @@ function factValue(item, from) {
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
     item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
 }
+// A long address or path wraps after '@' or before '.' and '/', never mid-word.
+function softBreaks(node) {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  for (const text of texts.filter(t => /[^\s]{16,}/.test(t.data))) {
+    const parts = text.data.split(/(\s+)/).flatMap(token => token.length < 16 ? [token]
+      : token.split(/(?<=@)|(?=\.\w)|(?<=\/)/).flatMap((part, i) => i ? [document.createElement("wbr"), part] : [part]));
+    text.replaceWith(...parts);
+  }
+  return node;
+}
 // The facts a reader came for: labels in small caps, values cited, a missing one visibly empty.
 function factList(r) {
   const labels = FACT_LABELS[r.category];
@@ -2460,7 +2471,7 @@ function factList(r) {
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    dl.append(el("dt", { text: label }), dd);
+    dl.append(el("dt", { text: label }), softBreaks(dd));
   }
   if (r.category === "people" && r.mail) {
     dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
@@ -2613,7 +2624,7 @@ function contactStrip(r) {
       btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), dd]);
+    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), softBreaks(dd)]);
   }));
 }
 function recordFocus(r) {
