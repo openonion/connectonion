@@ -8,7 +8,10 @@ LLM-Note:
 """
 
 import json
+import os
+import shutil
 import sys
+import tempfile
 from contextlib import nullcontext, redirect_stdout
 from functools import partial
 from pathlib import Path
@@ -79,6 +82,7 @@ def handle_ai(
         raise typer.Exit(2)
 
     runtime_invite_code = _read_runtime_invite_code(invite_code, invite_code_file)
+    _this_co_first()
 
     if harness != _harness.OURS or harness not in _harness.HARNESSES:
         _handle_delegated(harness, prompt, model, json_output, sandbox, timeout,
@@ -147,6 +151,23 @@ def handle_ai(
             agent_factory=agent_factory,
             invite_code=runtime_invite_code,
         )
+
+
+def _this_co_first() -> None:
+    """Make `co` in the agent's shell the co that is running, not the first on PATH.
+
+    An older co earlier on PATH (a pyenv shim, say) hid every newer command
+    from the agent (#2114). Only `co` is put first, through a directory that
+    holds nothing else: the install's own bin would also shadow the user's
+    `python` and `pip`.
+    """
+    own = shutil.which("co", path=str(Path(sys.executable).parent))
+    # The bash tool is Unix-only, and `python -m connectonion` has no script.
+    if sys.platform == "win32" or own is None:
+        return
+    front = Path(tempfile.mkdtemp(prefix="co-ai-bin-"))
+    (front / "co").symlink_to(own)
+    os.environ["PATH"] = os.pathsep.join([str(front), os.environ.get("PATH", "")])
 
 
 def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600,

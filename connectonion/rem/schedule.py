@@ -131,7 +131,10 @@ class Launchd:
             env["PYTHONPATH"] = pythonpath
         job = {
             "Label": label_for(root),
-            "ProgramArguments": [*command,
+            # caffeinate -i: no idle sleep while this process lives. A sleeping
+            # laptop runs a slot only in its 45-second dark wakes, and every
+            # monotonic deadline pauses with it (2026-10-10, one page, 80 min).
+            "ProgramArguments": ["/usr/bin/caffeinate", "-i", *command,
                                  "rem", "--root", str(root), "sync", "--scheduled"],
             "StartInterval": TICK_SECONDS,
             "RunAtLoad": False,

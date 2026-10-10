@@ -18,7 +18,7 @@ from typing import Optional
 import requests
 
 from .store import Inbox, Message, iso_utc
-from .recovery import HistoryRecovery
+from .recovery import HistoryRecovery, MissingScope
 
 DOMAINS = {
     "feishu": "https://open.feishu.cn",
@@ -182,9 +182,19 @@ class Feishu:
             else:
                 inbox.log(f"duplicate {message.id} dropped")
 
+        # Reactions and read receipts are acknowledged and dropped. An app
+        # subscribed to them got "processor not found" from the SDK for
+        # each one, and Feishu retried it (#1618). Neither is a person
+        # talking to us, so neither becomes a message to answer.
+        def ignore(data) -> None:
+            return None
+
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(on_message)
+            .register_p2_im_message_reaction_created_v1(ignore)
+            .register_p2_im_message_reaction_deleted_v1(ignore)
+            .register_p2_im_message_message_read_v1(ignore)
             .build()
         )
         client = lark.ws.Client(
@@ -248,11 +258,15 @@ class Feishu:
         message id. `fresh` is `reply --again`: a deliberate second post,
         even of the same words.
 
-        `plain` is accepted and does nothing here, so every provider takes the
-        same arguments. Feishu's `text` message type has no inline formatting
-        to translate Markdown into — rich text is a different message type
-        (`post`), which is a larger change than a flag."""
-        content = json.dumps({"text": text}, ensure_ascii=False)
+        The text is Markdown, because a model writes Markdown: it goes out
+        as a `post` whose one `md` element Feishu renders (bold, lists,
+        links, code). A `text` message would show the `**` raw (#1872).
+        `plain` sends a `text` message, the characters exactly as typed."""
+        if plain:
+            msg_type, content = "text", {"text": text}
+        else:
+            msg_type, content = "post", {"zh_cn": {"content": [[{"tag": "md", "text": text}]]}}
+        content = json.dumps(content, ensure_ascii=False)
         if reply_to:
             # Same message, same text: a retry, and Feishu drops the second
             # copy for an hour. `--again` asks for a second post on purpose,
@@ -264,7 +278,7 @@ class Feishu:
                 digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
                 key = str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}:{digest}"))
             body = {
-                "msg_type": "text",
+                "msg_type": msg_type,
                 "content": content,
                 "uuid": key,
             }
@@ -272,7 +286,7 @@ class Feishu:
         else:
             body = {
                 "receive_id": chat,
-                "msg_type": "text",
+                "msg_type": msg_type,
                 "content": content,
                 "uuid": str(uuid.uuid4()),
             }
@@ -346,6 +360,8 @@ def _data(response, brand: str = "Feishu") -> dict:
         body = response.json()
     except ValueError:
         raise RuntimeError(f"{brand} returned HTTP {response.status_code} without JSON")
+    if body.get("code") == 230027:
+        raise MissingScope(f"{brand} error 230027: {body.get('msg')}")
     if body.get("code") != 0:
         raise RuntimeError(f"{brand} error {body.get('code')}: {body.get('msg')}")
     # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the

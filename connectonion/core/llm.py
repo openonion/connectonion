@@ -184,6 +184,13 @@ class ToolCall:
     id: str
     extra_content: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self):
+        # A model occasionally returns a call with no name. Echoed back as-is,
+        # Gemini refuses the whole next request ("Name cannot be empty") and the
+        # run dies (#1356). Named, it is just an unknown tool, answered as one.
+        if not (self.name or "").strip():
+            self.name = "unnamed_tool"
+
 
 # Import TokenUsage from usage module
 from ..backend import backend_url

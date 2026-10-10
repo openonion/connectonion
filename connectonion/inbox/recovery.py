@@ -14,6 +14,10 @@ from urllib.parse import urlencode
 from .store import _sync_directory
 
 
+class MissingScope(RuntimeError):
+    """The app lacks a permission only an admin can grant; retrying cannot fix it."""
+
+
 class HistoryRecovery:
     """One worker owned by the single listener for this inbox directory."""
 
@@ -160,6 +164,12 @@ class HistoryRecovery:
             self.pending.clear()
             try:
                 self.reconcile()
+            except MissingScope as exc:
+                (self.inbox.root / 'recovery-error.txt').write_text(str(exc))
+                self.inbox.log(f'history recovery stopped: {exc}. Grant that scope to the app in the '
+                               'developer console (a tenant admin may need to approve it), then restart '
+                               'the listener. Live messages still arrive.')
+                return
             except Exception as exc:
                 (self.inbox.root / 'recovery-error.txt').write_text(str(exc))
                 self.inbox.log(f'history recovery incomplete; checkpoint retained: {exc}. '

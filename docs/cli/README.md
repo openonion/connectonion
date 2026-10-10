@@ -297,6 +297,23 @@ details and current limitations.
 
 ---
 
+#### `co handoff` - Hand a Task to Another Person's Agent (Experimental)
+
+Hand the task you discussed with Codex or Claude Code to a colleague's coding
+agent: decisions, rejected options and the discussion itself travel with it.
+
+```bash
+co handoff send ody "the login task"          # preview from this session; nothing sent
+co handoff send ody --draft <id> --yes        # send exactly the previewed draft
+co handoff inbox                              # recipient: incoming handoffs
+co handoff open <id>                          # recipient: start a seeded Codex session
+co handoff open handoff.eml                   # recipient: from the mail, sent to an ordinary email
+```
+
+See [handoff.md](handoff.md).
+
+---
+
 #### `co sms` - Pair & Read Encrypted SMS
 
 ```bash

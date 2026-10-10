@@ -22,6 +22,7 @@ from typing import Optional
 import yaml
 from rich.console import Console
 
+from ...address import agent_email
 from .env_inheritance import is_operator_identity
 from .server_commands import SSH_TIMEOUT_SECONDS, derived_agent_identity, load_server
 
@@ -760,7 +761,7 @@ def _agent_account(agent_identity: dict) -> Optional[dict]:
     return {
         "OPENONION_API_KEY": token,
         "AGENT_ADDRESS": public_key,
-        "AGENT_EMAIL": email or f"{public_key[:10]}@mail.openonion.ai",
+        "AGENT_EMAIL": email or agent_email(public_key),
         "IS_EMAIL_ACTIVE": "true",
     }
 

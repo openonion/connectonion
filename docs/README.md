@@ -1266,10 +1266,10 @@ The `send_email` function provides:
 
 Every agent automatically gets an email address:
 ```
-0x1234abcd@mail.openonion.ai
+0x1234abcd56@mail.openonion.ai
 ```
 
-- Based on your public key (first 10 characters)
+- Based on your public key: `0x` and its first 10 hex characters
 - Generated during `co init` or `co create`
 - Activated with `co auth`
 

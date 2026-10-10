@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/unit/test_address.py]
   Data flow: generate() → creates 12-word seed phrase via Mnemonic → derives SigningKey from seed → creates address (0x + hex public key) → returns {address, short_address, email, seed_phrase, signing_key} | recover(seed_phrase) → validates phrase → recreates SigningKey → recreates address
   State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and env vars (AGENT_EMAIL, IS_EMAIL_ACTIVE) | no global state
-  Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: first 10 chars + @mail.openonion.ai
+  Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: 0x + first 10 hex chars + @mail.openonion.ai (agent_email)
   Performance: Ed25519 signing is fast (sub-millisecond) | mnemonic generation and validation are fast | file I/O minimal (only on save/load)
   Errors: raises ImportError if pynacl or mnemonic not installed | raises ValueError for invalid recovery phrase | returns None for missing keys (graceful) | verify() returns False for invalid signatures
 """
@@ -95,6 +95,15 @@ def derives_from(seed_phrase: str, signing_key) -> bool:
     return bytes(_account_key(mnemo.to_seed(seed_phrase))) == bytes(signing_key)
 
 
+def agent_email(address: str) -> str:
+    """The agent's mailbox: 0x + the first 10 hex characters of its address.
+
+    oo-api names the mailbox this way (email_service.get_agent_email_address,
+    public_key[:12]); a shorter slice is a mailbox nobody reads (#2359).
+    """
+    return f"{address[:12]}@mail.openonion.ai"
+
+
 def generate() -> Dict[str, Any]:
     """
     Generate a new agent address with Ed25519 keys.
@@ -103,7 +112,7 @@ def generate() -> Dict[str, Any]:
         Dictionary containing:
         - address: Hex-encoded public key with 0x prefix (66 chars)
         - short_address: Truncated display format (0x3d40...660c)
-        - email: Agent's email address (0x3d4017c3@mail.openonion.ai)
+        - email: Agent's email address (0x3d4017c3e8@mail.openonion.ai)
         - seed_phrase: 12-word recovery phrase
         - signing_key: Ed25519 signing key for signatures
         
@@ -112,7 +121,7 @@ def generate() -> Dict[str, Any]:
         >>> print(addr['address'])
         0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c
         >>> print(addr['email'])
-        0x3d4017c3@mail.openonion.ai
+        0x3d4017c3e8@mail.openonion.ai
     """
     if SigningKey is None or Mnemonic is None:
         raise ImportError(
@@ -137,8 +146,7 @@ def generate() -> Dict[str, Any]:
     # Create short display format
     short_address = f"{address[:6]}...{address[-4:]}"
 
-    # Create email address (first 10 chars of address)
-    email = f"{address[:10]}@mail.openonion.ai"
+    email = agent_email(address)
 
     return Identity({
         "address": address,
@@ -191,8 +199,7 @@ def recover(seed_phrase: str) -> Dict[str, Any]:
     address = "0x" + public_key_bytes.hex()
     short_address = f"{address[:6]}...{address[-4:]}"
 
-    # Create email address (first 10 chars of address)
-    email = f"{address[:10]}@mail.openonion.ai"
+    email = agent_email(address)
 
     return Identity({
         "address": address,
@@ -302,7 +309,7 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         legacy_derivation = bool(seed_phrase) and not derives_from(seed_phrase, signing_key)
 
         # Load email and activation status from environment
-        email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
+        email = os.getenv("AGENT_EMAIL", agent_email(address))
         email_active = os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"
 
         result = Identity({
@@ -398,16 +405,12 @@ def sign(address_data: Dict[str, Any], message: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # SSH access key
 #
-# The agent identity above uses only the first 32 of the seed's 64 bytes. The
-# same recovery phrase can therefore also back the operator's SSH key, so there
-# is still exactly one thing to write down.
+# The same recovery phrase also backs the operator's SSH keys, so there is
+# still exactly one thing to write down. Both come off one SLIP-0010 tree, at
+# different SLIP-0013 paths:
 #
-# The agent key is deliberately left on its original derivation — bare
-# seed[:32]. Deriving it differently would change every existing agent's address
-# and void every trust relationship keyed to it.
-#
-#     agent identity : SigningKey(seed[:32])                     (unchanged)
-#     ssh access     : SLIP-0010, one path per server            (#427)
+#     agent identity : SLIP-0010, the account path (ACCOUNT_URI)   (#404)
+#     ssh access     : SLIP-0010, one path per server              (#427)
 #
 # Two keys, not one used twice: a signing oracle in the agent protocol must not
 # be usable against SSH login.

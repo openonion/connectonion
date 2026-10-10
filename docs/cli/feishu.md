@@ -54,7 +54,12 @@ that lists the ones you own. To use an existing one, configure it by hand:
    groups it is in. Add `im:message.p2p_msg:readonly` if people will message
    the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
-   `im.message.receive_v1`. No request URL is needed.
+   `im.message.receive_v1`. No request URL is needed. That is the only event
+   the listener turns into messages. If the application is also subscribed to
+   `im.message.reaction.created_v1`, `im.message.reaction.deleted_v1` or
+   `im.message.message_read_v1`, those are acknowledged and dropped: they
+   never wake the agent. Any other event gets the SDK's
+   `processor not found` in the log, and Feishu retries it; unsubscribe it.
 4. Publish it to your tenant, then write its credentials into
    `~/.co/keys.env` — `co env set` refuses these two names by default, because
    a hand-typed app secret came from somewhere it cannot check, so say where
@@ -242,9 +247,13 @@ still on it.
 | `[the run](https://…)` | the run: https://… |
 
 Nothing inside a fenced block or `` `backticks` `` is converted. `--plain`
-sends the characters exactly as typed. Feishu's `text` message has no inline
-formatting to translate into, so it accepts `--plain` and changes nothing;
-rich text there is a different message type.
+sends the characters exactly as typed.
+
+Feishu and Lark render Markdown themselves, so nothing is translated there:
+`send` and `reply` go out as a `post` message holding one `md` element, and
+bold, italics, lists, links and code blocks arrive formatted. Tables are not
+part of Feishu's `md` element; a `| a | b |` table arrives as its lines.
+`--plain` sends a `text` message, the characters exactly as typed.
 
 ## Your own agent, no flags
 

@@ -39,11 +39,25 @@ def test_plist_runs_scheduled_daily_with_a_path_that_can_find_codex(tmp_path, mo
     config["schedule"]["timezone"] = "Australia/Sydney"
     plist = plistlib.loads(scheduler.render(root, config).encode())
     assert plist["Label"] == label_for(root)
-    assert plist["ProgramArguments"] == ["/venv/bin/co",
+    assert plist["ProgramArguments"] == ["/usr/bin/caffeinate", "-i", "/venv/bin/co",
                                          "rem", "--root", str(root), "sync", "--scheduled"]
     assert "/opt/codex/bin" in plist["EnvironmentVariables"]["PATH"]
     assert "/venv/bin" in plist["EnvironmentVariables"]["PATH"]
     assert plist["StandardErrorPath"].startswith(str(root / ".state"))
+
+
+def test_the_job_holds_the_mac_awake_while_it_runs(tmp_path, monkeypatch):
+    """2026-10-10: a one-page investigation started at 22:19 on a Mac that went
+    to 'Maintenance Sleep' at 22:31; it advanced only in the 45-second dark
+    wakes each hour, the monotonic deadlines (co ai --timeout, subprocess
+    timeout) paused with the clock, and the run read 'running' 80 minutes
+    later with three stages done. A 03:00 slot on a sleeping laptop is the
+    same run. `caffeinate -i` keeps idle sleep off for exactly as long as the
+    job's process lives, and nothing longer."""
+    scheduler, _ = make(tmp_path, monkeypatch)
+    plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
+    assert plist["ProgramArguments"][:2] == ["/usr/bin/caffeinate", "-i"]
+    assert "--scheduled" in plist["ProgramArguments"]
 
 
 def test_install_writes_a_private_plist_and_bootstraps_it_once(tmp_path, monkeypatch):
@@ -152,8 +166,8 @@ def test_the_job_runs_the_installation_that_installed_it_not_the_first_co_on_pat
     scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=Calls())
     root = tmp_path / "rem"
     plist = plistlib.loads(scheduler.render(root, default_config()).encode())
-    assert plist["ProgramArguments"] == ["/work/venv/bin/python", "-m", "connectonion.cli.main",
-                                         "rem", "--root", str(root), "sync", "--scheduled"]
+    assert plist["ProgramArguments"] == ["/usr/bin/caffeinate", "-i", "/work/venv/bin/python", "-m",
+                                         "connectonion.cli.main", "rem", "--root", str(root), "sync", "--scheduled"]
     assert plist["EnvironmentVariables"]["PATH"].startswith("/work/venv/bin:")
 
 

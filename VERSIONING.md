@@ -400,17 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b4
+## Current Version: 1.9.2b6
 
-1.9.2b4 is a 1.9.2 beta; stable remains 1.9.1. A `handoff` skill passes a
-session's work to another person by email or to their agent, after removing
-secrets and getting the user's approval of the exact text. Fixes found by
-running 1.9.2b3 on a real machine: REM no longer reads its own task sessions as
-the user's words, Outlook searches with a quoted phrase work, status names a
-background job macOS never started, `config set model` no longer crashes, and
-Intel Macs install without compiling cryptography. See
-[1.9.2b4 notes](docs/releases/1.9.2b4.md).
+1.9.2b6 is a 1.9.2 beta; stable remains 1.9.1. co rem's second pass goes
+deeper: a follow-up search hands the model only mail from people the notebook
+knows, and after the final round code counts the lines that still say what is
+not known outside Uncertainties and gives the model one editing turn to fix
+them (measured live on one page: 10 such lines to 0 in 40 seconds). The
+scheduled job keeps the Mac awake while it runs, and `co rem logs --usage` no
+longer crashes on skill runs. See [1.9.2b6 notes](docs/releases/1.9.2b6.md).
 
+- 1.9.2b6 (The second pass goes deeper).
+- 1.9.2b5 (Hand a session to someone else's agent).
 - 1.9.2b4 (Hand work to someone else).
 - 1.9.2b3 (A first run you can read straight away).
 - 1.9.2b2 (A first run that loses fewer pages; built, not published).

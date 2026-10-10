@@ -170,6 +170,11 @@ UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
 UNITS_ONE = {"mails": ("mail",), "sessions": ("session",), "people": ("person", "people"), "": ("", "")}
 
 
+def _by_stage(chars, phase: str) -> dict:
+    """{stage: chars}: a runner outcome carries one number, an investigation a table."""
+    return chars if isinstance(chars, dict) else {phase: chars} if chars else {}
+
+
 def _logged(root, record, phase, call, quiet=False):
     """Run one investigation and keep a run record of it, whatever happens.
 
@@ -240,8 +245,9 @@ def _logged(root, record, phase, call, quiet=False):
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
-                   instructions_chars=result.get("instructions_chars") or {},
-                   evidence=result.get("evidence") or [], report=result.get("report") or "")
+                   instructions_chars=_by_stage(result.get("instructions_chars"), phase),
+                   evidence=result.get("evidence") or [], report=result.get("report") or "",
+                   **{key: result[key] for key in ("hedged_lines", "rounds", "refused_rounds") if result.get(key)})
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
         if not quiet:

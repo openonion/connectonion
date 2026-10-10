@@ -1842,7 +1842,7 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
         page = notebook.path("people/vern.md")
         page.write_text(page.read_text() + f"\nRound {len(turns)} line.\n")
         return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5},
-                "report": f"lead {len(turns)} — searched — found — next"}
+                "report": f"lead {len(turns)} — searched — found — next", "threads": [f"thread-{len(turns)}"]}
 
     out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                           extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
@@ -1857,6 +1857,64 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
     assert "Round 1 line." in page and f"Round {len(turns)} line." in page
     assert out["usage"]["input_tokens"] == 5 * (len(turns) - 1) + 1
     assert any(line.startswith("rounds: ") for line in out["coverage"])
+    # Each accepted round's thread is on the record, so the run leads to every trace.
+    assert out["threads"] == [f"thread-{n}" for n in range(1, len(turns) + 1) if n != 2]
+
+
+def test_hedged_lines_left_after_the_final_round_get_one_editing_turn_that_names_them(tmp_path, monkeypatch):
+    """#2343: after 1.9.2b1 the 'not established' lines did not go away, they
+    moved from Uncertainties into the lead, History and Open threads (16 -> 19
+    on one page). On the 2026-10-10 trial 56 of 87 person pages carried them
+    outside Uncertainties, and the final round answered NO CHANGE on 6 of 17
+    pages. The editing round is a turn, not a request: it lists the lines."""
+    root = _notebook(tmp_path, "codex")
+    page = inv.Notebook(root).path("people/vern.md")
+    page.write_text(page.read_text().replace(
+        "## History\n", "## History\n- 2026-03-01 asked for a deck; whether it was sent is not established [1]\n", 1))
+    assert "not established" in page.read_text()
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    notes, carried = [], []
+
+    def write(notebook, material, config, **kw):
+        note = next(i for i in material if i["role"] == "round")["text"]
+        notes.append(note)
+        carried.append([i["role"] for i in material])
+        if note.startswith("Editing round"):
+            text = notebook.path("people/vern.md").read_text()
+            notebook.path("people/vern.md").write_text(
+                text.replace("; whether it was sent is not established [1]", " [1]"))
+            return {"changed": ["people/vern.md"], "usage": {"input_tokens": 7}, "report": "edited"}
+        return {"changed": [], "usage": {"input_tokens": 5}, "report": "NO CHANGE"}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
+
+    assert notes[-2].startswith("Final round") and notes[-1].startswith("Editing round")
+    assert "not established" in notes[-1] and "History" in notes[-1]
+    assert carried[-1] == ["page", "round"]  # the page and the list, no evidence, no coverage
+    assert out["hedged_lines"] == [1, 0]
+    assert "not established" not in inv.Notebook(root).read("people/vern.md")
+
+
+def test_a_page_with_no_hedged_lines_gets_no_editing_turn(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    notes = []
+
+    def write(notebook, material, config, **kw):
+        notes.append(next(i for i in material if i["role"] == "round")["text"])
+        return {"changed": [], "usage": {"input_tokens": 5}, "report": "NO CHANGE"}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
+
+    assert notes[-1].startswith("Final round") and out["hedged_lines"] == [0, 0]
 
 
 def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
@@ -1900,6 +1958,49 @@ def test_a_search_the_provider_refuses_is_reported_not_fatal():
     found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
     assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
     assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]
+
+
+def test_automated_senders_are_left_out_of_search_answers():
+    """2026-10-10, 1.9.2b3 trial: the follow-up searches that ran came back as
+    "19 unrelated newsletters and digests" (Nina, round 3)."""
+    class Outlook:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            return [{"id": "m1", "from": "Nina <nina@x.y>", "date": "2026-10-01", "subject": "Coaching"},
+                    {"id": "m2", "from": "noreply@eventbrite.com", "date": "2026-10-02", "subject": "Digest"},
+                    {"id": "m3", "from": "LinkedIn <messages-noreply@linkedin.com>", "date": "2026-10-03",
+                     "subject": "You appeared in 3 searches"}]
+
+        def get_email_body(self, message_id):
+            return "--- Email Body ---\nabout the coaching"
+
+    found = inv.mail_search({"outlook": Outlook()})(["Founders pitch coaching"])
+
+    assert [item["speaker"] for item in found] == ["Nina <nina@x.y>"]
+
+
+def test_a_search_answer_comes_from_someone_the_notebook_knows():
+    """The no-reply test let a beehiiv letter and a bulk founders@ mailout
+    through (2026-10-10 live run: 4 of 12 results). A lead's answer is a reply
+    from a mapped person or the owner; other senders are left out."""
+    class Outlook:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            return [{"id": "m1", "from": "Nina <nina@x.y>", "date": "2026-10-01", "subject": "Coaching"},
+                    {"id": "m2", "from": "foundersbay@mail.beehiiv.com", "date": "2026-10-02", "subject": "Journal"},
+                    {"id": "m3", "from": "founders@unsw.edu.au", "date": "2026-10-03", "subject": "This week"},
+                    {"id": "m4", "from": "me@x.y", "date": "2026-10-04", "subject": "Re: Coaching"}]
+
+        def get_email_body(self, message_id):
+            return "--- Email Body ---\nabout the coaching"
+
+    found = inv.mail_search({"outlook": Outlook()}, known={"nina@x.y"})(["coaching"])
+
+    assert [item["speaker"] for item in found] == ["Nina <nina@x.y>", "me@x.y"]
 
 
 def test_an_organisation_is_enriched_from_its_own_site_and_a_dead_site_is_a_note():

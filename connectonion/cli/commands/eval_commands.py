@@ -60,7 +60,8 @@ def summarise_run(trace: list, format_tool_call) -> dict:
 def get_agent_from_file(file_path: str, cwd: str):
     """The Agent an agent.py defines, imported without letting it start serving.
 
-    Either a module-level `agent`, or whatever the file hands to host(): the
+    A module-level `agent`, whatever the file hands to host(), or else its
+    conventional `create_agent()` factory. For host(): the
     `co create` template passes a factory, `host(lambda: create_agent(...))`,
     so each hosted conversation gets a fresh Agent. host() never returns, so it
     is swapped for one that only records its argument while the file runs.
@@ -87,16 +88,22 @@ def get_agent_from_file(file_path: str, cwd: str):
     agent = getattr(module, 'agent', None)
     if not isinstance(agent, Agent) and hosted:
         agent = hosted[0] if isinstance(hosted[0], Agent) else hosted[0]()
+    # `host(create_agent)` under `if __name__ == "__main__"` never runs on
+    # import; the conventional factory is the Agent it would have served (#1778).
+    if not isinstance(agent, Agent) and callable(getattr(module, 'create_agent', None)):
+        agent = module.create_agent()
     if isinstance(agent, Agent):
         agent.logger.enable_sessions = False  # Prevent duplicate eval files
         return agent
 
     raise ValueError(
-        f"No Agent found in {file_path}: no module-level 'agent', and nothing passed to host().\n\n"
-        f"Structure your file like this:\n\n"
+        f"No Agent found in {file_path}: no module-level 'agent', no create_agent() factory, "
+        f"and nothing passed to host().\n\n"
+        f"Structure your file like one of these:\n\n"
         f"    agent = Agent(...)\n\n"
+        f"    def create_agent() -> Agent: ...\n"
         f"    if __name__ == '__main__':\n"
-        f"        agent.input('...')\n"
+        f"        host(create_agent)\n"
     )
 
 

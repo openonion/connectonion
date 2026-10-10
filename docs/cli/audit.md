@@ -129,7 +129,10 @@ PR and blocks on any problem, `look` included. It adds three house conventions o
 fixed "what it changes" word, a `Back:` line, and every command in
 `co commands` reachable from `co --help`. The `help-gate` workflow runs
 `co audit co --since base.json --review` on pages a PR changed, and reports
-without blocking, because a model's verdict varies between runs.
+without blocking, because a model's verdict varies between runs. When the
+model cannot run (no credit, provider error), the job summary says "review
+unavailable" and the check carries a warning, so a missing verdict never
+reads as a pass.
 
 `co rem` keeps its own reviewed pages (#1656), which are being rewritten
 (#1667); `co audit co` reports their missing examples. They are held to
