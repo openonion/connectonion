@@ -50,9 +50,12 @@ Placeholders are not evidence.
 
 Rules:
 
-- **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date>` and channel. Historical
-  gaps go in `Uncertainties`. `Nothing open as of <date>` needs closure evidence.
+- **Lead**: 2–3 cited sentences, in order: who they are to the user (role,
+  organisation, why they matter); what is open or latest;
+  `Last contact: <date>` and channel. Never open on a gap.
+  `Nothing open as of <date>` needs closure evidence.
+- **One voice**: the owner is `the user` in every sentence, never their name,
+  `you` or `we`.
 - **`Facts` is data, written first.** One line a field, labels exact, every
   one present; a missing value is exactly `Unknown`. Several values: `; `
   between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
@@ -65,13 +68,11 @@ Rules:
   `At stake:` or `Pattern:`** — what the inbox does not say outright: what they
   are to the user's work now; what moved recently; what is at risk or owed;
   a pattern over time (reply speed, topics, who chases whom). Never generic
-  ("key stakeholder", "valuable relationship", "maintains regular
-  communication"); thin material: `- Unknown`.
+  ("key stakeholder", "valuable relationship"); thin material: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
 - Attribute group replies to their sender using exact From/To/Cc metadata.
-  Greetings do not bind names by recipient order; the owner's phone is not
-  the contact's, nor one the source gives as someone else's; relay
-  addresses are not `Email`. Date historical plans and handoffs; missing completion
+  Greetings do not bind names by recipient order; relay addresses are not
+  `Email`. Date historical plans and handoffs; missing completion
   evidence does not make them current pending work.
 - **`Company` needs stated employment.** Student or mailbox affiliation proves
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
@@ -102,7 +103,8 @@ Rules:
   left out and named in `Uncertainties`.
 - **`Uncertainties`**: at most five unknowns that change the user's next step;
   never where you searched.
-- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
+- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences. Never an
+  assistant's memory file.
   Reuse numbers and list only cited sources.
 
 ## Exact headings

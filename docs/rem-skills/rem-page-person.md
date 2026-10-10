@@ -33,6 +33,30 @@ heading so the roster's section list is unchanged; `stub_person` writes it as
 `Unknown — not investigated yet. Last contact: Unknown.` so a mapped page
 already has the slot, and the validator reads it as ordinary cited text.
 
+## Who they are comes first in the lead (1.9.2b1)
+
+The Skill had compressed the order above to "start with a supported current
+obligation", and the every-page review of a real 1.9.2b1 notebook found the
+result on about thirty person pages: the lead opened on Tracy's budget, an
+unresolved hedge, a missed call or a signature line, and never said who the
+person was. The rule now names the order again: who they are to the user, what
+is open, last contact.
+
+## One voice: `the user`
+
+The same notebook wrote the owner as "Aaron" on 58 person pages, "the user" on
+9, and both on 9 more. The reader turns "the user" into "you" and leaves a
+name alone, so one page read "you" in one paragraph and "Aaron" in the next.
+Pages now always say `the user`; the Markdown stays unambiguous for an agent
+and reads as `you` for the owner.
+
+## An assistant's memory is not a source
+
+Ian's page cited the owner's Claude memory file by absolute path. It sat in the
+folder of a supplied session transcript, so it passed the local-file check.
+Code now refuses paths in assistant memory and transcript folders as sources;
+a session is cited by its id.
+
 ## Every section is always present
 
 An empty slot is information: it tells the user what to go find out. A page
