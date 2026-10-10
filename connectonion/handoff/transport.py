@@ -34,11 +34,15 @@ def add_contact(name: str, address: str) -> str:
 
 
 def mail_address(address: str) -> str:
-    """An email stays as it is; a 0x agent address becomes that agent's mailbox."""
+    """An email stays as it is; a 0x agent address becomes that agent's mailbox.
+
+    oo-api names it 0x + the first 10 hex characters (email_service.get_agent_email_address);
+    several older client paths still compute address[:10], which is two characters short.
+    """
     if "@" in address:
         return address
     if re.fullmatch(r"0x[0-9a-fA-F]{64}", address):
-        return f"{address[:10].lower()}@{AGENT_MAIL_DOMAIN}"
+        return f"{address[:12].lower()}@{AGENT_MAIL_DOMAIN}"
     raise ValueError(f"'{address}' is neither an email nor a full 0x agent address (0x + 64 hex)")
 
 

@@ -213,8 +213,8 @@ def test_a_contact_name_resolves_to_its_address(project, model, mailbox):
 
 
 def test_a_0x_address_resolves_to_that_agents_mailbox():
-    address = "0xadfeca14" + "c" * 56
-    assert transport.resolve(address) == "0xadfeca14@mail.openonion.ai"
+    address = "0xadfeca14cb" + "c" * 54
+    assert transport.resolve(address) == "0xadfeca14cb@mail.openonion.ai"   # oo-api: 0x + 10 hex
     with pytest.raises(ValueError):
         transport.resolve("0xshort")
 

@@ -68,6 +68,8 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
     _preview(bundle, path)
     if not yes:
         out.print(style.warn("Preview only. Nothing has been sent."))
+        out.print("Agents: show this preview to the person and add --yes only after they approve it. "
+                  "Your own --yes is not their approval.")
         _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} --yes")
         return
     _deliver(bundle)
