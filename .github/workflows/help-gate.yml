@@ -50,9 +50,13 @@ jobs:
             echo "no model credential in this context — review skipped." | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          {
-            echo "## co audit --review (advisory)"
-            echo '```'
-            co audit co --since "$RUNNER_TEMP/base.json" --review || true
-            echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Exit 1 is either a verdict with findings or a crash (no credit, no
+          # provider). Only the verdict line tells them apart; a crash is not a pass.
+          co audit co --since "$RUNNER_TEMP/base.json" --review > "$RUNNER_TEMP/review.txt" 2>&1 || true
+          if grep -q "fit for an agent harness" "$RUNNER_TEMP/review.txt"; then
+            heading="## co audit --review (advisory)"
+          else
+            heading="## co audit --review: review unavailable, no verdict was produced"
+            echo "::warning title=help-gate::model review unavailable; no verdict was produced (see job summary)"
+          fi
+          { echo "$heading"; echo '```'; cat "$RUNNER_TEMP/review.txt"; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
