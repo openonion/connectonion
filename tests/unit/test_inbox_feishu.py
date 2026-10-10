@@ -269,6 +269,10 @@ def test_a_raw_payload_that_cannot_be_marshalled_is_logged_not_dropped_silently(
             self.fn = fn
             return self
 
+        def __getattr__(self, name):
+            # The other subscriptions run() acknowledges and drops.
+            return lambda fn: self
+
         def build(self):
             return self.fn
 
@@ -311,6 +315,10 @@ def _fake_sdk(monkeypatch, start):
         def register_p2_im_message_receive_v1(self, fn):
             self.fn = fn
             return self
+
+        def __getattr__(self, name):
+            # The other subscriptions run() acknowledges and drops.
+            return lambda fn: self
 
         def build(self):
             return self.fn
@@ -483,3 +491,39 @@ def test_a_reply_carries_markdown_as_a_post_and_plain_stays_text(creds, monkeypa
     assert json.loads(sent["content"]) == md("**237 位**")
     assert plain["msg_type"] == "text"
     assert json.loads(plain["content"]) == {"text": "**as typed**"}
+
+
+def test_reaction_and_read_receipt_events_are_acked_and_never_become_messages(creds, monkeypatch, tmp_path):
+    """#1618: an app subscribed to reactions or read receipts got
+    "processor not found" from the SDK on every one, and Feishu retried
+    them. They are acknowledged now, and none of them is a message to answer.
+    Uses the real lark_oapi dispatcher, so the SDK's own lookup is tested."""
+    lark = pytest.importorskip("lark_oapi")
+    from connectonion.inbox.store import Inbox
+
+    outcomes = []
+
+    class FakeWs:
+        def __init__(self, *a, event_handler=None, **k):
+            self.handler = event_handler
+            self.on_reconnecting = self.on_reconnected = None
+
+        def start(self):
+            for kind in ("im.message.reaction.created_v1", "im.message.reaction.deleted_v1",
+                         "im.message.message_read_v1"):
+                payload = {"schema": "2.0", "header": {"event_type": kind, "event_id": kind},
+                           "event": {"message_id": "om_9f8e"}}
+                self.handler._do_without_validation(json.dumps(payload).encode())
+                outcomes.append(kind)
+
+    monkeypatch.setattr(lark.ws, "Client", FakeWs)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
+    box = Inbox("feishu", home=tmp_path / "feishu")
+
+    Feishu().run(box)
+
+    assert len(outcomes) == 3, "every subscribed event had a processor"
+    assert box.unread() == [], "a reaction is not a message to answer"

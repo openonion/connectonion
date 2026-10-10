@@ -182,9 +182,19 @@ class Feishu:
             else:
                 inbox.log(f"duplicate {message.id} dropped")
 
+        # Reactions and read receipts are acknowledged and dropped. An app
+        # subscribed to them got "processor not found" from the SDK for
+        # each one, and Feishu retried it (#1618). Neither is a person
+        # talking to us, so neither becomes a message to answer.
+        def ignore(data) -> None:
+            return None
+
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(on_message)
+            .register_p2_im_message_reaction_created_v1(ignore)
+            .register_p2_im_message_reaction_deleted_v1(ignore)
+            .register_p2_im_message_message_read_v1(ignore)
             .build()
         )
         client = lark.ws.Client(
