@@ -11,6 +11,7 @@ import base64
 import email
 import email.policy
 import hashlib
+import html
 import json
 import re
 import uuid
@@ -168,14 +169,18 @@ def _strings(value, field: str = ""):
 # ---- how a bundle travels in a mail body ----
 
 def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
-    """(subject, body). The body is the prompt to paste into a coding agent, with the brief inline;
-    the machine-readable bundle follows for co handoff open, base64 so no mail system rewrites it."""
+    """(subject, HTML body). The mail is the prompt to paste into a coding agent, brief inline,
+    then the machine-readable bundle for co handoff open (base64, so no mail system rewrites it).
+
+    HTML with <pre>, because the mail service sends the body as HTML: plain text arrived as
+    one paragraph in every client (newlines collapse), and anything shaped like a tag vanished.
+    """
     subject = f"[co handoff] {bundle['id']}: {_one_line(bundle['title'], 80)}"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    body = (f"{prompt}\n"
-            f"No AI agent at hand? Read the brief above, and reply to this email with any question.\n\n"
-            f"{BEGIN}\n{wrapped}\n{END}\n")
+    body = (f"<pre>{html.escape(prompt)}</pre>\n"
+            "<p>No AI agent at hand? Read the brief above, and reply to this email with any question.</p>\n"
+            f"<pre>{BEGIN}\n{wrapped}\n{END}</pre>\n")
     return subject, body
 
 
@@ -190,6 +195,7 @@ def from_saved_mail(text: str) -> dict | None:
 
 
 def from_mail(body: str) -> dict | None:
+    body = html.unescape(body or "")
     found = re.search(_marker(BEGIN) + r"(.*?)" + _marker(END), body or "", re.S)
     if not found:
         return None

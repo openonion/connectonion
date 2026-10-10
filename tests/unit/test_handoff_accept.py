@@ -1,6 +1,7 @@
 """co handoff accept / ask / answer (#2351): one pasted prompt, a handoff-scoped code, and the
 acceptance coming back to the sender. Two agents share one faked mail service."""
 
+import html
 import json
 import os
 import re
@@ -68,7 +69,7 @@ def _send(world, to=RECIPIENT["mail"]) -> str:
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(to)))
     result = _invoke("handoff", "send", to, "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
-    return world["mails"][-1]["message"]
+    return html.unescape(re.sub(r"</?(pre|p)>", "", world["mails"][-1]["message"]))   # as a mail client shows it
 
 
 def _code(text: str) -> str:
@@ -84,7 +85,9 @@ def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands
     assert "pip install connectonion" in body and "co init --yes" in body
     assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
-    assert "<" not in body                                                         # the mail service strips tags
+    raw = world["mails"][-1]["message"]
+    assert raw.startswith("<pre>Paste this into Codex or Claude Code")              # newlines survive the HTML mail
+    assert "<" not in body                                                         # no tag-shaped placeholder
 
 
 def test_send_prints_the_same_prompt_for_any_other_channel(world):
@@ -93,7 +96,7 @@ def test_send_prints_the_same_prompt_for_any_other_channel(world):
     drafts.mkdir(parents=True)
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
-    assert _code(result.output) == _code(world["mails"][-1]["message"])
+    assert _code(result.output) == _code(html.unescape(world["mails"][-1]["message"]))
 
 
 # ---- the code ----

@@ -239,7 +239,7 @@ def _recipient_status(code: dict) -> None:
     handoff_id = code["id"]
     out.print(style.heading(f"Handoff {handoff_id} (accepted from {code['mailbox']})"))
     answers = [b for b in replies.received(handoff_id)
-               if b["kind"] == "answer" and b["secret"] == code["secret"] and b["mailbox"] == code["mailbox"]]
+               if b["kind"] == "answer" and b["secret"] == code["secret"] and b["address"] == code["address"]]
     for a in answers:
         out.print(f"Answer, {a['at']}: {a['text']}", markup=False)
     if not answers:
@@ -274,7 +274,7 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     (folder / "code.json").chmod(0o600)
     if brief:
         shutil.copyfile(brief, folder / "HANDOFF.md")
-    result = replies.send("accept", code, code["mailbox"], mailbox=os.getenv("AGENT_EMAIL"))
+    result = replies.send("accept", code, code["mailbox"], reply_to=os.getenv("AGENT_EMAIL"))
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
