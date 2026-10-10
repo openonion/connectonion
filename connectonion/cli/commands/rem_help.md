@@ -228,11 +228,14 @@ Example:  co rem open
           it. Works offline; run it again to see newer pages.
           co rem open --live
           Opens the live view in O Chat, read from your co ai Host. Checks the
-          Host first; if it is not online, says so (start it with co ai) and
-          opens the snapshot instead. Only for the default notebook.
+          Host first; if offline, starts co ai automatically in the background.
+          Waits for readiness; startup failure names the log and opens a clearly
+          labelled snapshot. Only for the default notebook.
           --no-launch prints the page without opening a browser.
 Effects:  Reads pages and changes none. The snapshot is written outside the
-          notebook, to a temporary file.
+          notebook, to a temporary file. --live may start an owner-authorized
+          co ai Host; its log is in the selected .co/rem-live-host.log.
+          Channel listeners stay off; no extra chat tab is opened.
 Next:     co rem show PAGE   (to read one page in the terminal)
 Back:     co rem --help
 ```

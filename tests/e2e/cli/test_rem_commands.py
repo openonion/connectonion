@@ -276,10 +276,11 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     assert opened == [data["link"]]
 
 
-def test_live_with_the_host_offline_falls_back_to_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
+def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     output = _plain(result.output)
     assert asked == [OWNER]
     assert "not online" in output and "co ai" in output
