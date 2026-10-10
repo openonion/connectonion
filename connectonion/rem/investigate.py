@@ -898,9 +898,15 @@ def mail_search(clients: dict):
     with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
     the gathered mail's shape and source ids, so they cite like the rest.
     """
+    from .scan import AUTOMATED_HINT
+
     def search(queries: list[str]) -> list[dict]:
         found, seen = [], set()
         for query in queries:
+            # Outlook wraps the query in quotes of its own, so the model's
+            # phrase quotes ("pitch coaching") were HTTP 400 on every lead of
+            # five pages in the 1.9.2b3 trial (2026-10-10); the words still find.
+            query = " ".join(query.replace('"', " ").split())
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
                 try:
@@ -917,6 +923,10 @@ def mail_search(clients: dict):
                     if row["id"] in seen or len(found) >= SEARCH_RESULTS:
                         continue
                     seen.add(row["id"])
+                    if AUTOMATED_HINT.search(_address(row["from"])):
+                        # A lead's answer is a person's reply; the same words in
+                        # digests and newsletters were 19 of 19 results on one round.
+                        continue
                     body = _patient(client.get_email_body, row["id"])
                     head, _, rest = body.partition("--- Email Body ---")
                     body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
@@ -1057,7 +1067,14 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
                   "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
                   "most five, each one that would change the next step. For a thread whose outcome is not "
                   "established, request a mail search for the reply before writing so. Keep each cited fact you "
-                  "keep with its citation; add no claim without a citation on the page or from a search.")
+                  "keep with its citation; add no claim without a citation on the page or from a search. "
+                  "This round supplies no evidence on purpose: its work is editing, so NO CHANGE is only right "
+                  "when the page already reads as one account with every doubt under Uncertainties.")
+EDITING_NOTE = ("Editing round: the page still says what is not known in {count} place(s) outside Uncertainties, "
+                "listed below by section. Rewrite each line as what the material does establish (the ask, the "
+                "date, who owes what), move it under Uncertainties if the doubt would change the user's next step "
+                "(five there at most), or delete it. Add no claim and lose no citation. Edit the page; do not "
+                "answer NO CHANGE.\n\n{lines}")
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
@@ -1102,8 +1119,33 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
+    # The final round answered NO CHANGE on 6 of 17 pages in the 2026-10-10
+    # trial while the hedges stayed: what is left is measured here, by code,
+    # and handed back as lines to edit, once (#2343).
+    from .page_review import hedged_lines
+    before = hedged_lines(notebook.read(record))
+    after = before
+    if before:
+        note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
+        items = [page_item(notebook.read(record)), *context,
+                 {"role": "round", "source": "investigation:round", "text": note}]
+        if stage_progress:
+            stage_progress("editing round")
+        try:
+            out = runner(notebook, items, config, stage="investigate")
+        except RunFailed as error:
+            refused.append(str(error))
+            for key, value in (error.usage or {}).items():
+                usage[key] = usage.get(key, 0) + value
+        else:
+            for key, value in (out.get("usage") or {}).items():
+                usage[key] = usage.get(key, 0) + value
+            changed = sorted({*changed, *out.get("changed", [])})
+            if out.get("report"):
+                ledgers.append(f"Editing round: {str(out['report']).strip()}")
+        after = hedged_lines(notebook.read(record))
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers),
-            "rounds": total + 1, "refused_rounds": refused}
+            "rounds": total + 1, "refused_rounds": refused, "hedged_lines": [len(before), len(after)]}
 
 
 def searched_sources(coverage: list[str]) -> list[str]:
@@ -1648,6 +1690,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "hedged_lines": result.get("hedged_lines"),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
                          if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],
