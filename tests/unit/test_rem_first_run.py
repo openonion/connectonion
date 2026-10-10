@@ -716,12 +716,28 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 14  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 42  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
     mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1), "on your Codex plan")
     assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
+
+
+def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
+    """1.9.2b1 announced ~70 minutes and ~196M input for 280 pages; it ran
+    129 minutes of pages and billed 439M. The defaults were from an
+    interrupted sample: the owner's turns took 20 minutes, not 7, an
+    organisation 8 minutes, not 1.5, and 84 people needed 141 runs with their
+    second pass. 1.9.2b3's 48 workers announced ~30 and ran 126: the model's
+    throughput, not the worker count, sets the pace."""
+    from connectonion.rem import first_run as fr
+
+    b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
+    total = fr.plan([], **b1)
+    assert 120 <= total["minutes"] <= 140
+    assert 400_000_000 <= total["input_tokens"] <= 480_000_000
+    assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]
 
 
 def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
