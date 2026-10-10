@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -108,14 +110,40 @@ def _fresh(record: ProviderCredentials) -> bool:
 _ROTATED: dict[str, str] = {}
 
 
-def _rotated_here(old: str | None, new: str | None) -> bool:
-    """`new` descends from `old` through refreshes this process made."""
-    seen = set()
+def _digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()[:32]
+
+
+def _rotations(path: Path) -> Path:
+    """Rotations any co process made of this file's records, as token digests.
+
+    Remembering only this process's own let a co command in another terminal
+    fail 14 co rem threads at once (1.9.2b3 real run, 2026-10-11)."""
+    return path.parent / ".token-rotations"
+
+
+def _remember_rotation(path: Path | None, old: str, new: str) -> None:
+    _ROTATED[old] = new
+    if path is None:
+        return
+    log = _rotations(path)
+    lines = log.read_text().splitlines()[-199:] if log.is_file() else []
+    log.write_text("\n".join([*lines, f"{_digest(old)} {_digest(new)}"]) + "\n")
+    log.chmod(0o600)
+
+
+def _rotated_here(old: str | None, new: str | None, path: Path | None = None) -> bool:
+    """`new` descends from `old` through refreshes made by co, here or in another process."""
+    chain = {_digest(a): _digest(b) for a, b in _ROTATED.items()}
+    if path is not None and _rotations(path).is_file():
+        chain.update(tuple(line.split()) for line in _rotations(path).read_text().splitlines()
+                     if len(line.split()) == 2)
+    old, new, seen = old and _digest(old), new and _digest(new), set()
     while old and old not in seen:
         if old == new:
             return True
         seen.add(old)
-        old = _ROTATED.get(old)
+        old = chain.get(old)
     return False
 
 
@@ -128,7 +156,7 @@ def _latest(record: ProviderCredentials) -> ProviderCredentials:
         return current
     old_email, new_email = record.get("EMAIL"), current.get("EMAIL")
     same_account = (old_email and new_email and old_email.casefold() == new_email.casefold())
-    same_grant = _rotated_here(record.get("REFRESH_TOKEN"), current.get("REFRESH_TOKEN"))
+    same_grant = _rotated_here(record.get("REFRESH_TOKEN"), current.get("REFRESH_TOKEN"), record.path)
     if (old_email and new_email and not same_account) or not (same_account or same_grant):
         raise ProviderCredentialError("record_changed", "The selected credential record changed during this operation.", "co status")
     return current
@@ -209,7 +237,7 @@ def refresh_credentials(record: ProviderCredentials, *, backend: str, api_key: s
             values = _validated_values(latest, data)
             rotated = values.get(f"{record.provider.upper()}_REFRESH_TOKEN")
             if rotated and rotated != refresh_token:
-                _ROTATED[refresh_token] = rotated
+                _remember_rotation(record.path, refresh_token, rotated)
             if record.path:
                 write_env_unlocked(record.path, values)
             record.values = values
