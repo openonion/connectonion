@@ -1647,7 +1647,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
-            "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "usage_by_stage": usage_by_stage, "report": result.get("report", ""), "threads": result.get("threads", []),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
                          if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],

@@ -1,5 +1,6 @@
 """co rem task files in, one co ai invocation out. COAI owns every harness."""
 
+import contextvars
 import json
 import math
 import os
@@ -250,6 +251,11 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     return flags
 
 
+# The Codex/Claude thread of every turn a run_stage makes. Without it the 1.9.2b3
+# audit matched about 102 of 331 runs to their threads, by timestamps alone.
+_THREADS = contextvars.ContextVar("rem_turn_threads", default=None)
+
+
 def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Run every co rem model turn from its stable task workspace."""
     timeout = config["limits"]["timeout_seconds"]
@@ -274,6 +280,8 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
         if isinstance(candidate, dict) and "outcome" in candidate:
             envelope = candidate
             break
+    if (seen := _THREADS.get()) is not None and envelope.get("session_id"):
+        seen.append(envelope["session_id"])
     usage = envelope.get("usage")
     if isinstance(usage, dict):
         # COAI also reports cache provenance. It is metadata, not an additive counter.
@@ -805,9 +813,21 @@ def private_task_mask():
                 os.umask(_TASK_MASK_PREVIOUS)
 
 
-def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
-    """Run investigation and maintenance on disposable page copies before promotion."""
+def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "", **options) -> dict:
+    """Run investigation and maintenance on disposable page copies before promotion.
+
+    The outcome names the threads its turns ran in, so a run record leads to its trace."""
+    seen = []
+    token = _THREADS.set(seen)
+    try:
+        outcome = _stage_on_copies(notebook, items, config, kind, **options)
+    finally:
+        _THREADS.reset(token)
+    return {**outcome, "threads": seen}
+
+
+def _stage_on_copies(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
+                     *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with _TASK_CLEANUP_LOCK:
