@@ -890,7 +890,7 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
 SEARCH_RESULTS = 20
 
 
-def mail_search(clients: dict):
+def mail_search(clients: dict, known: set | None = None):
     """Read-only mail searches the model may ask for after its first turn (2026-10-01).
 
     The owner asked that a gap the gathered mail leaves (how two people met, a
@@ -923,9 +923,13 @@ def mail_search(clients: dict):
                     if row["id"] in seen or len(found) >= SEARCH_RESULTS:
                         continue
                     seen.add(row["id"])
-                    if AUTOMATED_HINT.search(_address(row["from"])):
-                        # A lead's answer is a person's reply; the same words in
-                        # digests and newsletters were 19 of 19 results on one round.
+                    sender = _address(row["from"])
+                    if AUTOMATED_HINT.search(sender) or (known is not None and sender not in known
+                                                         and sender not in mine and "@" in sender):
+                        # A lead's answer is a reply from someone the notebook knows.
+                        # The same words in digests and newsletters were 19 of 19
+                        # results on one round, and a beehiiv letter and a bulk
+                        # founders@ mailout passed the no-reply test (2026-10-10).
                         continue
                     body = _patient(client.get_email_body, row["id"])
                     head, _, rest = body.partition("--- Email Body ---")
@@ -1056,6 +1060,12 @@ def rounds_to_read(parts: list[list[dict]], cap: int, read_before: str = "") -> 
             [part for n, part in enumerate(parts) if n not in keep])
 
 
+def known_addresses(root: Path) -> set:
+    """Every address the map holds for a mapped person."""
+    state = read_json(state_path(root, "map.json"), {})
+    return {address.casefold() for row in state.get("people", []) for address in row.get("addresses", [])}
+
+
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
               "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
               "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
@@ -1070,11 +1080,44 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
                   "keep with its citation; add no claim without a citation on the page or from a search. "
                   "This round supplies no evidence on purpose: its work is editing, so NO CHANGE is only right "
                   "when the page already reads as one account with every doubt under Uncertainties.")
-EDITING_NOTE = ("Editing round: the page still says what is not known in {count} place(s) outside Uncertainties, "
-                "listed below by section. Rewrite each line as what the material does establish (the ask, the "
-                "date, who owes what), move it under Uncertainties if the doubt would change the user's next step "
-                "(five there at most), or delete it. Add no claim and lose no citation. Edit the page; do not "
-                "answer NO CHANGE.\n\n{lines}")
+EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
+                "do not open evidence files, do not request searches, do not follow the investigation steps. "
+                "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
+                "section. Make exactly one edit per listed line: rewrite it as what its citation does establish "
+                "(the ask, the date, who owes what) and drop the clause about what is not known; or move it under "
+                "Uncertainties if the doubt would change the user's next step (five there at most); or delete it. "
+                "Add no claim, no source and no new line about what is not evidenced. Then end. NO CHANGE is not "
+                "an answer to this round.\n\n{lines}")
+
+
+def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
+    """One turn that edits the hedged lines the final round left, if any (#2343).
+
+    The final round answered NO CHANGE on 6 of 17 pages in the 2026-10-10 trial
+    while the hedges stayed. A first version of this turn carried the round's
+    context items too, and the model treated it as one more evidence round:
+    it read the evidence files, added two sources and a new hedge, 10 -> 10.
+    So this turn carries the page and the list, nothing else.
+    Returns (hedges before, hedges after, the turn's outcome or None).
+    """
+    from .page_review import hedged_lines
+    from .runner import RunFailed
+    before = hedged_lines(notebook.read(record))
+    if not before:
+        return [], [], None
+    note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
+    items = [{"role": "page", "record": record, "source": "investigation:page",
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
+                      f"note:\n\n{notebook.read(record)}"},
+             {"role": "round", "source": "investigation:round", "text": note}]
+    if stage_progress:
+        stage_progress("editing round")
+    try:
+        out = runner(notebook, items, config, stage="investigate")
+    except RunFailed as error:
+        out = {"usage": error.usage, "refused": str(error), "changed": []}
+    return before, hedged_lines(notebook.read(record)), out
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
@@ -1119,31 +1162,15 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
-    # The final round answered NO CHANGE on 6 of 17 pages in the 2026-10-10
-    # trial while the hedges stayed: what is left is measured here, by code,
-    # and handed back as lines to edit, once (#2343).
-    from .page_review import hedged_lines
-    before = hedged_lines(notebook.read(record))
-    after = before
-    if before:
-        note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
-        items = [page_item(notebook.read(record)), *context,
-                 {"role": "round", "source": "investigation:round", "text": note}]
-        if stage_progress:
-            stage_progress("editing round")
-        try:
-            out = runner(notebook, items, config, stage="investigate")
-        except RunFailed as error:
-            refused.append(str(error))
-            for key, value in (error.usage or {}).items():
-                usage[key] = usage.get(key, 0) + value
-        else:
-            for key, value in (out.get("usage") or {}).items():
-                usage[key] = usage.get(key, 0) + value
-            changed = sorted({*changed, *out.get("changed", [])})
-            if out.get("report"):
-                ledgers.append(f"Editing round: {str(out['report']).strip()}")
-        after = hedged_lines(notebook.read(record))
+    before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
+    if edit is not None:
+        for key, value in (edit.get("usage") or {}).items():
+            usage[key] = usage.get(key, 0) + value
+        if edit.get("refused"):
+            refused.append(edit["refused"])
+        changed = sorted({*changed, *edit.get("changed", [])})
+        if edit.get("report"):
+            ledgers.append(f"Editing round: {str(edit['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers),
             "rounds": total + 1, "refused_rounds": refused, "hedged_lines": [len(before), len(after)]}
 
@@ -1617,7 +1644,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = partial(run_stage, search=mail_search(clients)) if clients else run_stage
+        runner = partial(run_stage, search=mail_search(clients, known_addresses(root))) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
     try:
@@ -1690,7 +1717,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
-            "hedged_lines": result.get("hedged_lines"),
+            "hedged_lines": result.get("hedged_lines"), "rounds": result.get("rounds"),
+            "refused_rounds": result.get("refused_rounds"),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
                          if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],

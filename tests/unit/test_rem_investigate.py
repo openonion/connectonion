@@ -1874,11 +1874,12 @@ def test_hedged_lines_left_after_the_final_round_get_one_editing_turn_that_names
               "speaker": "vern@x.y", "subject": f"Contract {i}",
               "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
-    notes = []
+    notes, carried = [], []
 
     def write(notebook, material, config, **kw):
         note = next(i for i in material if i["role"] == "round")["text"]
         notes.append(note)
+        carried.append([i["role"] for i in material])
         if note.startswith("Editing round"):
             text = notebook.path("people/vern.md").read_text()
             notebook.path("people/vern.md").write_text(
@@ -1891,6 +1892,7 @@ def test_hedged_lines_left_after_the_final_round_get_one_editing_turn_that_names
 
     assert notes[-2].startswith("Final round") and notes[-1].startswith("Editing round")
     assert "not established" in notes[-1] and "History" in notes[-1]
+    assert carried[-1] == ["page", "round"]  # the page and the list, no evidence, no coverage
     assert out["hedged_lines"] == [1, 0]
     assert "not established" not in inv.Notebook(root).read("people/vern.md")
 
@@ -1986,6 +1988,28 @@ def test_a_quoted_lead_is_searched_without_its_quotes_and_automated_senders_are_
 
     assert sent == ["Founders pitch coaching"]
     assert [item["speaker"] for item in found] == ["Nina <nina@x.y>"]
+
+
+def test_a_search_answer_comes_from_someone_the_notebook_knows():
+    """The no-reply test let a beehiiv letter and a bulk founders@ mailout
+    through (2026-10-10 live run: 4 of 12 results). A lead's answer is a reply
+    from a mapped person or the owner; other senders are left out."""
+    class Outlook:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            return [{"id": "m1", "from": "Nina <nina@x.y>", "date": "2026-10-01", "subject": "Coaching"},
+                    {"id": "m2", "from": "foundersbay@mail.beehiiv.com", "date": "2026-10-02", "subject": "Journal"},
+                    {"id": "m3", "from": "founders@unsw.edu.au", "date": "2026-10-03", "subject": "This week"},
+                    {"id": "m4", "from": "me@x.y", "date": "2026-10-04", "subject": "Re: Coaching"}]
+
+        def get_email_body(self, message_id):
+            return "--- Email Body ---\nabout the coaching"
+
+    found = inv.mail_search({"outlook": Outlook()}, known={"nina@x.y"})(["coaching"])
+
+    assert [item["speaker"] for item in found] == ["Nina <nina@x.y>", "me@x.y"]
 
 
 def test_an_organisation_is_enriched_from_its_own_site_and_a_dead_site_is_a_note():
