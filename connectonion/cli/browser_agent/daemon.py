@@ -1136,10 +1136,19 @@ class BrowserDaemon:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
+        # "Last command" alone cannot say whether that command is still running,
+        # which is the question a caller choosing between waiting and restarting has.
+        running = [f'"{_short_line(request["line"])}" on tab {_tab_label(key)}, '
+                   f'running {_fmt_duration(time.time() - request["started_at"])}'
+                   for key, meta in getattr(self.browser, "_tab_meta", {}).items()
+                   for request in (meta.get("active_requests") or {}).values()]
+        if running:
+            lines.append("Busy: " + "; ".join(running))
+        idle = "" if running else "Idle. "
         if self.last_command:
-            lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
+            lines.append(f'{idle}Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
-            lines.append("Last command: (none yet)")
+            lines.append(f"{idle}Last command: (none yet)")
         lines.append("")
         try:
             lines.append(
