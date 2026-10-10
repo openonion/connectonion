@@ -479,7 +479,7 @@ def make_handoff_app(factory) -> typer.Typer:
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
     def accept(
-        code: str = typer.Argument(..., help="The coh1.… code from the handoff prompt"),
+        code: str = typer.Argument(..., metavar="CODE", help="The coh1.… code from the handoff prompt"),
         brief: Optional[Path] = typer.Option(None, "--brief", exists=True, dir_okay=False, help="The brief from the prompt, saved as a file, to keep with the handoff"),
     ):
         """Accept a handoff someone sent you, from the code in its prompt. Sends the sender an acceptance with your agent address; writes ~/.co/handoff/accepted/<id>/.
