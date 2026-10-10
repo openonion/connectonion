@@ -83,7 +83,8 @@ def test_a_schedule_that_runs_co_wiki_is_replaced_by_one_that_runs_co_rem(tmp_pa
     assert line == "Your daily update now runs co rem sync."
     assert not stale.exists() and other.exists(), "only this notebook's job is replaced"
     installed = plistlib.loads(scheduler.plist_path(new).read_bytes())
-    assert installed["ProgramArguments"][1:3] == ["rem", "--root"]
+    assert installed["ProgramArguments"][:2] == ["/usr/bin/caffeinate", "-i"]
+    assert "rem" in installed["ProgramArguments"] and "--root" in installed["ProgramArguments"]
     assert ["launchctl", "bootout", "gui/501/ai.openonion.co-wiki.0123456789ab"] in calls
     assert migrate.replace_schedule(new, old, scheduler) == ""
 
