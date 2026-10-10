@@ -920,3 +920,24 @@ def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_p
         raise AssertionError("no search should run")
     out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
     assert out["result"] == "edited" and "not valid JSON" in out["report"]
+
+
+def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
+    # 40 of 123 pages in a real 1.9.2b3 notebook listed [1], [2], [5], [9]...
+    # after uncited sources were dropped; the reader showed the gaps.
+    from connectonion.rem.page_review import renumber_sources
+    text = ("# Ada\n\nShe runs the lab [2] and signed [5][W1].\n\n"
+            "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+            "## Sources\n- [2] outlook:aaa — observed 2026-07-10\n- [5] outlook:bbb — observed 2026-07-11\n"
+            "- [W1] https://lab.test\n")
+    assert renumber_sources(text) == (
+        "# Ada\n\nShe runs the lab [1] and signed [2][W1].\n\n"
+        "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+        "## Sources\n- [1] outlook:aaa — observed 2026-07-10\n- [2] outlook:bbb — observed 2026-07-11\n"
+        "- [W1] https://lab.test\n")
+
+
+def test_sources_already_in_order_are_unchanged():
+    from connectonion.rem.page_review import renumber_sources
+    text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
+    assert renumber_sources(text) == text
