@@ -1266,3 +1266,29 @@ def test_tokens_per_1k_characters_is_measured_on_sync_batches_only(tmp_path):
                                      "phase": "investigate", "outcome": "completed",
                                      "usage": {"input_tokens": 900_000}, "chars_in": 30})
     assert usage_report(tmp_path)["by_model"]["m"]["input_tokens_per_1k_chars"] == 500.0
+
+
+def test_a_job_launchd_never_started_is_not_reported_as_a_failed_investigation(tmp_path, monkeypatch):
+    # A real Mac, 2026-10-07 to 10-11: the job was loaded, `runs = 0`, 18 slots
+    # passed, and status said "the last scheduled investigation failed; run co rem logs".
+    from connectonion.rem.schedule import Launchd
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "launchd",
+                                                 "installed_at": "2026-10-07T09:28:00+00:00",
+                                                 "last_scheduled_outcome": "failed"})
+    monkeypatch.setattr(Launchd, "installed", lambda self, root: True)
+    monkeypatch.setattr(Launchd, "describe", lambda self, root: {
+        "loaded": True, "last_exit_code": "(never exited)", "runs": 0})
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "darwin")
+    state = status(root)["state"]
+    assert "has not started it once since 2026-10-07" in state
+    assert "Allow in the Background" in state and "co rem logs" not in state
+
+
+def test_launchd_describe_reads_how_many_times_the_job_ran(tmp_path):
+    from connectonion.rem.schedule import Launchd
+    printed = "\tstate = not running\n\truns = 0\n\tlast exit code = (never exited)\n"
+    launcher = Launchd(run=lambda *a, **k: type("R", (), {"returncode": 0, "stdout": printed})())
+    assert launcher.describe(tmp_path / "rem")["runs"] == 0
