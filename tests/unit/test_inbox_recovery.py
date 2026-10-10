@@ -161,3 +161,27 @@ def test_unknown_bot_identity_cannot_admit_mentions_of_someone_else(tmp_path, mo
     with pytest.raises(ValueError, match='bot identity'):
         recovery.reconcile(until=210)
     assert json.loads(recovery.state.read_text())['through'] == 100
+
+
+def test_a_missing_scope_is_logged_once_and_not_retried(tmp_path, monkeypatch):
+    """#2084: an app without im:message.group_msg got 230027 and logged it
+    every 60 s for 3.5 days (5,404 lines). Only an admin can grant a scope,
+    so the worker says so once and stops; live messages still arrive."""
+    import connectonion.inbox.feishu as feishu
+    bot, box, recovery = setup(tmp_path)
+
+    class Denied:
+        status_code = 400
+        def json(self):
+            return {'code': 230027, 'msg': 'Lack of necessary permissions, ext=need scope: im:message.group_msg'}
+
+    monkeypatch.setattr(bot, '_get', lambda path: feishu._data(Denied(), bot.brand))
+    recovery.start()
+    recovery.worker.join(2)
+
+    assert not recovery.worker.is_alive()
+    lines = box.logfile.read_text().splitlines()
+    assert len([line for line in lines if '230027' in line]) == 1
+    assert 'im:message.group_msg' in lines[-1] and 'restart' in lines[-1]
+    assert 'im:message.group_msg' in (box.root / 'recovery-error.txt').read_text()
+    recovery.stop()

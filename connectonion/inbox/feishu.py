@@ -18,7 +18,7 @@ from typing import Optional
 import requests
 
 from .store import Inbox, Message, iso_utc
-from .recovery import HistoryRecovery
+from .recovery import HistoryRecovery, MissingScope
 
 DOMAINS = {
     "feishu": "https://open.feishu.cn",
@@ -346,6 +346,8 @@ def _data(response, brand: str = "Feishu") -> dict:
         body = response.json()
     except ValueError:
         raise RuntimeError(f"{brand} returned HTTP {response.status_code} without JSON")
+    if body.get("code") == 230027:
+        raise MissingScope(f"{brand} error 230027: {body.get('msg')}")
     if body.get("code") != 0:
         raise RuntimeError(f"{brand} error {body.get('code')}: {body.get('msg')}")
     # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the
