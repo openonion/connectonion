@@ -107,6 +107,7 @@ SKILLS = {
     "co-mail-and-drive": "co-mail-and-drive",
     "co-synology": "co-synology",
     "commit": "commit",
+    "handoff": "handoff",
     "install-connectonion": "install-connectonion",
     "oo": "oo",
     "oo-subscribe": "oo-subscribe",

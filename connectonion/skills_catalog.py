@@ -16,6 +16,8 @@ DEFAULT_LIBRARY_SKILLS = (
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
+    # Passing this session's work to another person or their agent.
+    "handoff",
     # co rem stages share the same CLI skill resolution for every harness.
     "rem-init",
     "rem-investigate",

@@ -1840,3 +1840,15 @@ def test_person_search_preserves_provider_threads_and_named_recipients(monkeypat
     assert 'conversationId' in requests[0]['$select'].split(',')
     assert rows[0]['to'] == ['Owner <owner@example.org>']
     assert rows[0]['cc'] == ['Reviewer <reviewer@example.org>']
+
+
+def test_a_search_with_a_quoted_phrase_reaches_graph_escaped():
+    """Graph answered 400 to every REM lead with a phrase in quotes (67 of 584
+    turns, 1.9.2b3): the whole query is itself wrapped in quotes. Escaped inner
+    quotes keep the phrase; checked against live Graph on 2026-10-11."""
+    from connectonion.useful_tools.outlook import Outlook
+    outlook = Outlook.__new__(Outlook)
+    outlook._request = MagicMock(return_value={"value": []})
+    outlook._email_dicts = lambda rows: rows
+    outlook.list_search('subject:"Sprint 1 retrospective meeting"')
+    assert outlook._request.call_args.kwargs["params"]["$search"] == '"subject:\\"Sprint 1 retrospective meeting\\""'

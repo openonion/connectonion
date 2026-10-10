@@ -51,6 +51,22 @@ def model(monkeypatch):
     return use
 
 
+def test_a_model_that_asks_for_a_mail_search_is_still_graded(monkeypatch):
+    # gpt-6-luna on `co rem config set model`, 1.9.2b3: the fixture prompt offers
+    # mail searches, the model wrote one, and the check crashed with
+    # "'FixtureMail' object has no attribute 'list_search'".
+    def searching(workspace, prompt, config, stage):
+        requests = re.search(r"to (\S+search-requests\.json)", prompt)
+        if requests:
+            Path(requests[1]).write_text('["from:ada@lovelace.example", "pilot agreement"]', encoding="utf-8")
+        candidate = re.search(r"page is the file (\S+candidate\.md)", prompt)
+        if candidate:
+            Path(candidate[1]).write_text(_filled(prompt), encoding="utf-8")
+        return _envelope("Wrote the page.")
+    monkeypatch.setattr("connectonion.rem.runner.run_task", searching)
+    assert tier.attempt(default_config(), "agent") == []
+
+
 def test_a_model_that_drives_tools_is_the_agent_tier(model):
     calls = model("agent")
     result = tier.check(default_config())

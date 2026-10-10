@@ -388,6 +388,13 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
             if launched.get("last_exit_code") not in (None, "0", "(never exited)"):
                 return ("Background needs attention — last launchd exit code "
                         f"{launched['last_exit_code']}; run `co rem doctor`"), None
+            # Loaded, every five minutes, and never started: a real Mac went four days
+            # like this while status blamed "the last scheduled investigation" (1.9.2b3).
+            installed = worker.get("installed_at")
+            if launched.get("runs") == 0 and installed and now() - datetime.fromisoformat(installed) > timedelta(minutes=15):
+                return ("Background needs attention — macOS has not started it once since "
+                        f"{installed[:10]}. Check System Settings → General → Login Items → Allow in the "
+                        "Background, then run `co rem start`; `co rem sync` works by hand meanwhile"), None
     if worker.get("enabled"):
         slot = next_slot(config, zone)
         if worker.get("last_scheduled_warning") or worker.get("last_scheduled_outcome") == "failed":

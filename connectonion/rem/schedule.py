@@ -194,6 +194,8 @@ class Launchd:
                 info["state"] = line.split("=", 1)[1].strip()
             elif line.startswith("last exit code = "):
                 info["last_exit_code"] = line.split("=", 1)[1].strip()
+            elif line.startswith("runs = "):
+                info["runs"] = int(line.split("=", 1)[1])
         return info
 
 

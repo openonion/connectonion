@@ -91,6 +91,13 @@ class FixtureMail:
         return [{key: value for key, value in mail.items() if key != "body"} for mail in self.mails
                 if address in (mail["from"] + mail["to"]).lower()]
 
+    def list_search(self, query: str, max_results: int = 10) -> list[dict]:
+        """A model may ask for more mail (search-requests.json); a real model did."""
+        words = [word.split(":", 1)[-1].strip('"').lower() for word in query.split()]
+        return [{key: value for key, value in mail.items() if key != "body"} for mail in self.mails
+                if all(word in " ".join((mail["from"], mail["to"], mail["subject"], mail["body"])).lower()
+                       for word in words)][:max_results]
+
     def get_email_body(self, email_id: str) -> str:
         return next(mail["body"] for mail in self.mails if mail["id"] == email_id)
 

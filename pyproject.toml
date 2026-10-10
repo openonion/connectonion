@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.2b3"
+version = "1.9.2b4"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -82,7 +82,11 @@ dependencies = [
     "packaging>=23.0",
     # `co browser import` decrypts Chrome's cookies (AES-128-CBC, PBKDF2) and
     # address.py already used it; it arrived only transitively until then.
-    "cryptography>=42.0.0",
+    # cryptography 49+ has no Intel macOS wheel: pip compiled 50.0.2 from source
+    # and sat in "Preparing metadata" for over thirty minutes (1.9.2b3 install,
+    # 2026-10-11). 48.0.1 ships universal2.
+    'cryptography>=42.0.0,<49; sys_platform == "darwin" and platform_machine == "x86_64"',
+    'cryptography>=42.0.0; sys_platform != "darwin" or platform_machine != "x86_64"',
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
     # cannot satisfy ConnectOnion with versions that retain known vulnerabilities.
