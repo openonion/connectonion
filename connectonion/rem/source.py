@@ -7,7 +7,7 @@ import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .files import RemError, safe_path
 
@@ -112,6 +112,12 @@ def timestamp(value: str) -> datetime:
         raise RemError("Source contains an invalid timestamp") from error
 
 
+def rem_task(cwd) -> bool:
+    """A session run in a notebook's .state/tasks: REM's own work, never the user's words."""
+    parts = PurePosixPath(str(cwd or "")).parts
+    return any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1))
+
+
 # ---- Codex rollouts: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl ----
 
 def _codex_meta(first: dict) -> dict:
@@ -124,6 +130,11 @@ def _codex_meta(first: dict) -> dict:
         raise RemError("Unrecognized Codex rollout format")
     payload = first["payload"]
     if payload.get("originator") == "co_rem" or payload.get("source") == "co_rem":
+        return {"skip": True}
+    # REM's own turns: Codex records them as originator "connectonion" (as it
+    # does co ai's, which are the user's), run in the notebook's .state/tasks.
+    # The owner's page cited REM's model-access probe as the user's request (1.9.2b3).
+    if rem_task(payload.get("cwd")):
         return {"skip": True}
     # A subagent's thread (the approval reviewer, a spawned worker) is Codex's
     # sidechain: its user slot is what the parent agent wrote or quoted back, and a
@@ -234,7 +245,7 @@ def _claude_message(row: dict, since: datetime, meta: dict | None = None) -> dic
     # is: a meta row (a skill body, a caveat, a system reminder), a sidechain row (a
     # prompt the assistant wrote for its own subagent -- "You are one finder angle in
     # a code review…"), and the shape of the content.
-    if row.get("isMeta") or row.get("isSidechain"):
+    if row.get("isMeta") or row.get("isSidechain") or rem_task(row.get("cwd")):
         return SKIPPED
     content = message.get("content")
     if isinstance(content, str):

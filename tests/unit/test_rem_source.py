@@ -85,6 +85,24 @@ def test_organizer_does_not_ingest_itself(tmp_path):
     assert not collect(subscription(tmp_path), {}, 20, 10000).items
 
 
+def test_rems_own_task_sessions_are_not_the_users_material(tmp_path):
+    # 1.9.2b3 real run: the owner's page cited REM's own model-access probe
+    # ("Reply READY only…") as the user's request. Codex records REM's turns with
+    # originator "connectonion" and cwd inside the notebook's .state/tasks.
+    rollout(tmp_path / "rollout-probe.jsonl", [("user", "Reply READY only. Do not use tools or read files.")],
+            originator="connectonion", project="/Users/a/.co/rem/.state/tasks/model-access")
+    rollout(tmp_path / "rollout-task.jsonl", [("user", "investigate this person")],
+            originator="connectonion", project="/Users/a/.co/rem-trials/x/.state/tasks/investigate-0afb93zl")
+    assert not collect(subscription(tmp_path), {}, 20, 10000).items
+
+
+def test_a_co_ai_session_in_a_project_is_still_the_users(tmp_path):
+    # co ai drives Codex with the same originator; what the user typed there is theirs.
+    rollout(tmp_path / "rollout-a.jsonl", [("user", "Ship the login fix")],
+            originator="connectonion", project="/work/demo")
+    assert [i["text"] for i in collect(subscription(tmp_path), {}, 20, 10000).items] == ["Ship the login fix"]
+
+
 def test_incomplete_tail_is_not_consumed(tmp_path):
     file = tmp_path / "rollout-a.jsonl"
     rollout(file, [("user", "complete")])
@@ -428,3 +446,11 @@ def test_delegated_skill_instructions_are_not_reingested_as_user_experience(tmp_
     batch = collect({"kind": "codex", "root": str(tmp_path), "since": "2020-01-01T00:00:00Z",
                      "enabled": True, "consented": True}, {}, 20, 200000)
     assert batch.items == []
+
+
+def test_rems_own_claude_code_task_sessions_are_not_the_users_material(tmp_path):
+    file = tmp_path / "-Users-a--co-rem--state-tasks-investigate-x" / "abc.jsonl"
+    claude_transcript(file, [("user", "investigate this person", {"cwd": "/Users/a/.co/rem/.state/tasks/investigate-x"}),
+                             ("user", "Alice prefers email.", {})])
+    sub = {**subscription(tmp_path), "kind": "claude-code"}
+    assert [i["text"] for i in collect(sub, {}, 10, 10000).items] == ["Alice prefers email."]
