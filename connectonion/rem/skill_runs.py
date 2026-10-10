@@ -23,10 +23,51 @@ def _meta(value):
     return value if isinstance(value, dict) else {}
 
 
+INVOCATION = re.compile(r'^/(\S+)(?:\s|$)')
+
+
+def load_summary(path: Path) -> dict:
+    """One co eval summary, or ValueError when it is not one."""
+    if path.stat().st_size > MAX_BYTES:
+        raise ValueError('oversized')
+    data = yaml.safe_load(path.read_text())
+    if not isinstance(data, dict) or not isinstance(data.get('turns'), list):
+        raise ValueError('unsupported shape')
+    return data
+
+
+def attempts(path: Path, data: dict):
+    """(name, identity, turn, entry, current) for every explicit /name run of a summary.
+
+    The one reading both the skill page's header count (skill_usage) and its
+    run list use, so the two cannot disagree.
+    """
+    for turn_index, turn in enumerate(data['turns'], 1):
+        invoked = INVOCATION.match(str(turn.get('input', '')).strip()) if isinstance(turn, dict) else None
+        if not invoked:
+            continue
+        entries = [(turn, True)] + [(h, False) for h in turn.get('history', []) if isinstance(h, dict)]
+        for entry, current in entries:
+            number = entry.get('run')
+            if type(number) is int and number >= 1:
+                yield invoked[1], f'{path.resolve()}#run={number}&turn={turn_index}', turn, entry, current
+
+
+def eval_events(path: Path) -> list[list]:
+    """skill_usage's events for one co ai summary: one per run, dated by its own meta."""
+    try:
+        data = load_summary(path)
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError):
+        return []
+    events = {}
+    for name, identity, _, entry, _ in attempts(path, data):
+        events.setdefault(identity, [name, str(_meta(entry.get('meta')).get('ts') or ''), 'co-ai', ''])
+    return list(events.values())
+
+
 def collect_skill_runs(name: str, directories: list[Path], limit: int = 1000) -> dict:
     """Count retained explicit /name turns, not mentions, process exits or successes."""
     runs, coverage, seen = {}, [], set()
-    invocation = re.compile(r'^/' + re.escape(name) + r'(?:\s|$)')
     for directory in directories:
         directory = directory.expanduser().resolve()
         info = {"directory": str(directory), "status": "missing", "files_read": 0, "errors": []}
@@ -40,24 +81,14 @@ def collect_skill_runs(name: str, directories: list[Path], limit: int = 1000) ->
                 continue
             seen.add(path.resolve())
             try:
-                if path.stat().st_size > MAX_BYTES:
-                    raise ValueError('oversized')
-                data = yaml.safe_load(path.read_text())
-                if not isinstance(data, dict) or not isinstance(data.get('turns'), list):
-                    raise ValueError('unsupported shape')
+                data = load_summary(path)
                 info['files_read'] += 1
-                for turn_index, turn in enumerate(data['turns'], 1):
-                    if not isinstance(turn, dict) or not invocation.match(str(turn.get('input', '')).strip()):
+                for invoked, identity, turn, entry, current in attempts(path, data):
+                    if invoked != name:
                         continue
-                    entries = [(turn, True)] + [(h, False) for h in turn.get('history', []) if isinstance(h, dict)]
-                    for entry, current in entries:
-                        number = entry.get('run')
-                        if type(number) is not int or number < 1:
-                            continue
-                        identity = f'{path.resolve()}#run={number}&turn={turn_index}'
-                        row = _record(path, identity, turn, entry, current, data)
-                        if identity not in runs or current:
-                            runs[identity] = row
+                    row = _record(path, identity, turn, entry, current, data)
+                    if identity not in runs or current:
+                        runs[identity] = row
             except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
                 info['errors'].append({"file": str(path), "error": type(error).__name__})
     rows = sorted(runs.values(), key=lambda r: (r['timestamp'] or '', r['id']), reverse=True)
@@ -96,6 +127,50 @@ def skill_identity(notebook: Notebook, record: str) -> str:
     return name
 
 
+RUNS_START, RUNS_END = '<!-- rem-skill-runs:start -->', '<!-- rem-skill-runs:end -->'
+
+
+def run_evidence_block(result: dict, report: str) -> str:
+    return (f'{RUNS_START}\n## Run evidence\n\n'
+            f'- Retained evaluation attempts: {result["invocation_attempts"]}; '
+            f'outputs retained: {result["outputs_retained"]}; goal achievement unassessed: '
+            f'{result["completion_unassessed"]}.\n'
+            f'- [Run-by-run evidence and coverage](../../{report})\n'
+            f'- Name-based attribution only; not a verified count for this installed version.\n{RUNS_END}')
+
+
+def place_run_evidence(page: str, block: str) -> str:
+    """Exactly one collector-owned block, just above the Investigation line.
+
+    The collector owns this section, and the model edits the page after it:
+    it drops a marker, keeps a heading, or rewrites the counts inside the
+    markers (15 of 159 pages on a real first run, #2349). Every old copy goes
+    -- a marked span, a `## Run evidence` section, a stray marker -- before the
+    current block is added, and a source only that old text cited goes too.
+    """
+    before = page
+    page = re.sub(re.escape(RUNS_START) + r'.*?' + re.escape(RUNS_END) + r'\n?', '', page, flags=re.S)
+    page = re.sub(r'(?ms)^## Run evidence\n.*?(?=^## |^Investigation:|\Z)', '', page)
+    page = page.replace(RUNS_START, '').replace(RUNS_END, '')
+    page = re.sub(r'\n{3,}', '\n\n', page)
+    position = page.rfind('Investigation:')
+    position = position if position >= 0 else len(page)
+    return _drop_orphaned_sources(page[:position].rstrip() + '\n\n' + block + '\n\n' + page[position:], before)
+
+
+def _cited(page: str) -> set[str]:
+    return set(re.findall(r'\[(W?\d+)\](?!\()', page.partition('\n## Sources\n')[0]))
+
+
+def _drop_orphaned_sources(page: str, before: str) -> str:
+    """Remove the Sources lines only the removed old block cited; leave every other line."""
+    orphaned = _cited(before) - _cited(page)
+    if not orphaned:
+        return page
+    head, marker, tail = page.partition('\n## Sources\n')
+    return head + marker + re.sub(r'(?m)^- \[(W?\d+)\] .*\n?', lambda m: '' if m[1] in orphaned else m[0], tail)
+
+
 def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> dict:
     """Write a linked evidence review without overwriting curated skill-page sections."""
     notebook = Notebook(root)
@@ -106,23 +181,7 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
     text = _report(name, result)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook.write(report, text)
-        page = notebook.read(record)
-        start, end = '<!-- rem-skill-runs:start -->', '<!-- rem-skill-runs:end -->'
-        # A model or section normalization can move or drop the marker while
-        # retaining the heading. The collector owns this section; replace all
-        # old copies before adding the current evidence, not a second heading.
-        page = re.sub(r'(?ms)^## Run evidence\n.*?(?=^## |^Investigation:|\Z)', '', page)
-        page = page.replace(start, '').replace(end, '')
-        block = (f'{start}\n## Run evidence\n\n'
-                 f'- Retained evaluation attempts: {result["invocation_attempts"]}; '
-                 f'outputs retained: {result["outputs_retained"]}; goal achievement unassessed: '
-                 f'{result["completion_unassessed"]}.\n'
-                 f'- [Run-by-run evidence and coverage](../../{report})\n'
-                 f'- Name-based attribution only; not a verified count for this installed version.\n{end}')
-        position = page.rfind('Investigation:')
-        position = position if position >= 0 else len(page)
-        page = page[:position].rstrip() + '\n\n' + block + '\n\n' + page[position:]
-        notebook.write(record, page)
+        notebook.write(record, place_run_evidence(notebook.read(record), run_evidence_block(result, report)))
     return {**result, "record": record, "report": report,
             "status": "run evidence collected; goals, changes and quality require review"}
 
@@ -182,6 +241,11 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
         retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
     record_result(root, notebook, record, result.get('review_candidates', []), ['skill source', 'retained evals'],
                   changed=record in result.get('changed', []), skill_records=record_items)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        page = notebook.read(record)
+        healed = place_run_evidence(page, run_evidence_block(evidence, evidence['report']))
+        if healed != page:
+            notebook.write(record, healed)
     return {**result, 'record': record, 'report': evidence['report'], 'items': len(items),
             'invocation_attempts': evidence['invocation_attempts'],
             'session_turns_reviewable': len(samples['items']),

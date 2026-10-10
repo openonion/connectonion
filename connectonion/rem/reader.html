@@ -1502,7 +1502,7 @@ function contactFields(r) {
 function skillUsage(r) {
   const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.text);
   if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4],
-    tools: (m[5] || "").replace(/\b(Claude Code|Codex) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
+    tools: (m[5] || "").replace(/\b(Claude Code|Codex|co ai) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
   const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
 }
@@ -2526,7 +2526,7 @@ function sidePanels(r, k) {
     const u = skillUsage(r);
     if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: "name " + (u.count === 1 ? "match" : "matches") + " in " + u.days + " days" })]),
       el("div", { class: "usage" }, [usageBar(u)]),
-      el("p", { text: "Matched by skill name in coding sessions. Run evidence counts retained eval attempts separately; neither confirms this installed version or task outcome." }),
+      el("p", { text: "Matched by skill name in coding sessions and co ai runs; the co ai runs are the ones listed under Run evidence. Neither confirms this installed version or task outcome." }),
       el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no name match found" })]));
     if (r.installation) {
       const file = el("dl", {});
