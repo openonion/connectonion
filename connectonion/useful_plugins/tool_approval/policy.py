@@ -276,6 +276,40 @@ def _is_key_material(word: str) -> bool:
         or name in _CREDENTIAL_FILES
         or name.endswith(_CREDENTIAL_SUFFIXES)
     )
+
+
+# Subcommands that open a secret store: `kubectl get secret`, `gh secret list`,
+# `aws secretsmanager ...`, `vault kv get secret/prod`.
+_SECRET_STORE_VERBS = {"secret", "secrets", "secretsmanager", "credential", "credentials"}
+
+
+def _is_path_shaped(word: str) -> bool:
+    """A word that can name a file: `a/b`, `~/x`, `.env`, `secrets.yaml` — not a sentence."""
+    return not any(c.isspace() for c in word) and (
+        "/" in word or word.startswith(("~", ".")) or re.search(r"\.[A-Za-z0-9]+$", word) is not None
+    )
+
+
+def _reads_credentials(first: str, words: list[str], verbs: set[str]) -> bool:
+    """True if the command opens a credential-shaped value, not if it merely says the word.
+
+    `keys`, `secret` and `credentials` are ordinary English, and the text a
+    browser types or a commit message carries is data (#1494). A bare word
+    counts only where it can name a file — an argument of `cat`, `ls`, `grep`.
+    """
+    if verbs & _SECRET_STORE_VERBS:
+        return True
+    for word in words[1:]:
+        if word.startswith("-"):
+            continue
+        lowered = word.lower()
+        if ".env" in lowered and _is_path_shaped(lowered):
+            return True
+        if first not in _PATH_READING_COMMANDS and not _is_path_shaped(word):
+            continue
+        if _is_key_material(word) or "secret" in lowered or "credential" in lowered:
+            return True
+    return False
 # The read-only commands that open the paths they are given. `basename`,
 # `echo`, `pwd` and friends take strings, not files, and `cd` is here because
 # leaving the workspace makes every later relative path a path outside it.
@@ -652,9 +686,7 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         return decision("deletion", "ask", "deleting or cancelling through a command requires human approval", "call", requires_human=True)
     if verbs & _INSTALLING_SUBCOMMANDS:
         return decision("code_execution", "ask", "installing a package runs code this policy cannot read", "call", requires_human=True)
-    if first in _SENSITIVE_COMMANDS or any(
-        ".env" in token or "credential" in token or "secret" in token for token in lowered
-    ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
+    if first in _SENSITIVE_COMMANDS or _reads_credentials(first, words, verbs):
         return decision("credentials", "deny", "credential access is never auto-approved", "call")
     special = _classify_known_multiplexer(first, words)
     if special is not None:
