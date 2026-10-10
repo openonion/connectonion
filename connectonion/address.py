@@ -405,16 +405,12 @@ def sign(address_data: Dict[str, Any], message: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # SSH access key
 #
-# The agent identity above uses only the first 32 of the seed's 64 bytes. The
-# same recovery phrase can therefore also back the operator's SSH key, so there
-# is still exactly one thing to write down.
+# The same recovery phrase also backs the operator's SSH keys, so there is
+# still exactly one thing to write down. Both come off one SLIP-0010 tree, at
+# different SLIP-0013 paths:
 #
-# The agent key is deliberately left on its original derivation — bare
-# seed[:32]. Deriving it differently would change every existing agent's address
-# and void every trust relationship keyed to it.
-#
-#     agent identity : SigningKey(seed[:32])                     (unchanged)
-#     ssh access     : SLIP-0010, one path per server            (#427)
+#     agent identity : SLIP-0010, the account path (ACCOUNT_URI)   (#404)
+#     ssh access     : SLIP-0010, one path per server              (#427)
 #
 # Two keys, not one used twice: a signing oracle in the agent protocol must not
 # be usable against SSH login.

@@ -1102,9 +1102,9 @@ def load_api_key() -> Optional[str]:
 def _token_for_this_account(token: str) -> Optional[str]:
     """Re-authenticate when the stored token names an account we are not.
 
-    `co server new` and `co deploy` bill whatever the token says. After
-    `co account migrate`, or when a project has its own key, a token can name a
-    different account than the canonical project-first identity. Nothing fails
+    `co server new` and `co deploy` bill whatever the token says. When a
+    project has its own key, a token can name a different account than the
+    canonical project-first identity. Nothing fails
     at the API boundary, so the operator sees and spends another account's
     credit. One $180 server was bought that way.
 
