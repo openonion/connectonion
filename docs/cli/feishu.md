@@ -54,7 +54,12 @@ that lists the ones you own. To use an existing one, configure it by hand:
    groups it is in. Add `im:message.p2p_msg:readonly` if people will message
    the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
-   `im.message.receive_v1`. No request URL is needed.
+   `im.message.receive_v1`. No request URL is needed. That is the only event
+   the listener turns into messages. If the application is also subscribed to
+   `im.message.reaction.created_v1`, `im.message.reaction.deleted_v1` or
+   `im.message.message_read_v1`, those are acknowledged and dropped: they
+   never wake the agent. Any other event gets the SDK's
+   `processor not found` in the log, and Feishu retries it; unsubscribe it.
 4. Publish it to your tenant, then write its credentials into
    `~/.co/keys.env` — `co env set` refuses these two names by default, because
    a hand-typed app secret came from somewhere it cannot check, so say where
