@@ -281,7 +281,8 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
         if subscriptions is None:
             from .service import subscriptions as saved
             subscriptions = saved(notebook.root)
-        counted = usage(subscriptions, [rows[0]["name"] for rows in by_name.values()], root=notebook.root, days=days)
+        counted = usage(subscriptions, [rows[0]["name"] for rows in by_name.values()], root=notebook.root, days=days,
+                        evals=Path.home() / ".co" / "evals")
         existing = _existing(notebook)
         # A page made under a folder name joins the page of the skill it is a copy of.
         for page, key in renamed_pages(notebook, by_name, existing).items():
@@ -349,7 +350,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
                          + (f"; used {use['count']}×, last {use['last']}" if use.get("count") else ""))
         index = ["# Skills map", "", "Generated inventory, one page per skill name; edit individual pages to add knowledge.",
                  "Metadata describes installed files, not verified capability. Use counts are invocations in your "
-                 "coding sessions, not completed runs.", "", *links]
+                 "coding sessions and co ai runs, not completed runs.", "", *links]
         if only_transient:
             index += ["", "## Only in temporary or package locations", "No page: these copies come and go with a "
                       "checkout, an upgrade or a cache."]

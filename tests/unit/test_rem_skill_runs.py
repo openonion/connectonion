@@ -1,3 +1,4 @@
+import re
 import json
 
 import yaml
@@ -415,3 +416,34 @@ def test_run_evidence_is_a_run_log_not_a_note(tmp_path):
     result = investigate_skill_runs(root, record, [logs])
     assert result['report'].startswith('logs/skill-runs-')
     assert '](../../logs/skill-runs-' in n.read(record)
+
+
+def test_a_model_that_mangles_the_run_evidence_block_is_healed_after_its_turn(tmp_path, monkeypatch):
+    """Of 158 skill pages after a real first run, 38 had the block's markers
+    unbalanced or its heading gone: the model edits the page after the
+    collector writes the block (journal, job-followup, lark-openapi-explorer)."""
+    import connectonion.rem.runner as runner
+    from connectonion.rem.skill_runs import investigate_skill_page
+    logs = tmp_path / 'evals'
+    summaries(logs)
+    root = tmp_path / 'rem'
+    source = tmp_path / 'SKILL.md'
+    source.write_text('---\nname: example\n---\nDo the task.')
+    record = 'skills/catalog/example.md'
+    n = Notebook(root)
+    n.stub_skill(record, 'example', str(source))
+    start, end = '<!-- rem-skill-runs:start -->', '<!-- rem-skill-runs:end -->'
+    mangles = [lambda page: page.replace(start, ''),
+               lambda page: re.sub(re.escape(start) + '.*?' + re.escape(end),
+                                   start + '\n- The model restated the counts. [9]\n' + end, page, flags=re.S),
+               lambda page: re.sub('## Run evidence.*?' + re.escape(end), start, page, flags=re.S)]
+    for mangle in mangles:
+        def review(notebook, items, config, **kwargs):
+            notebook.write(record, mangle(notebook.read(record)))
+            return {'changed': [], 'usage': {}}
+        monkeypatch.setattr(runner, 'run_stage', review)
+        investigate_skill_page(root, record, [logs])
+        page = n.read(record)
+        assert page.count(start) == page.count(end) == page.count('## Run evidence\n') == 1, page
+        assert 'The model restated' not in page
+        assert page.index(start) < page.index('## Run evidence') < page.index(end) < page.index('Investigation:')

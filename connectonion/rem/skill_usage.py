@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError, read_json, state_path, write_json
+from .skill_runs import eval_events
 from .source import KINDS, source_files
 
 CACHE = "skill-usage.json"
@@ -38,7 +39,7 @@ EVER = datetime(1970, 1, 1, tzinfo=timezone.utc)
 COMMAND = re.compile(r"<command-name>/([^<\s]+)</command-name>")
 MENTION = re.compile(r"(?<![\w$])\$([A-Za-z][\w.:-]*)")
 LOADED = re.compile(r"/skills/([A-Za-z0-9][\w.:-]*)/SKILL\.md")
-LABELS = {"claude-code": "Claude Code", "codex": "Codex"}
+LABELS = {"claude-code": "Claude Code", "codex": "Codex", "co-ai": "co ai"}
 
 
 def _claude_events(path: Path) -> list[list]:
@@ -115,16 +116,19 @@ def _codex_events(path: Path) -> list[list]:
     return events
 
 
-READERS = {"claude-code": _claude_events, "codex": _codex_events}
+SESSIONS = ("claude-code", "codex")  # co ai runs are sampled by skill_runs, not here
+READERS = {"claude-code": _claude_events, "codex": _codex_events, "co-ai": eval_events}
 
 
 def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 180,
-          now: datetime | None = None) -> dict:
+          now: datetime | None = None, evals: Path | None = None) -> dict:
     """Invocations of each name in `names` over the last `days` days of sessions.
 
     Returns {"counts": {name: {"count", "last", "by_tool": {tool: n}}}, "files",
     "days", "sources"}. A name invoked as `plugin:name` counts for `name` too.
     `root` is the notebook: its cache, and its own task folders to skip.
+    `evals` is co ai's summary folder (`~/.co/evals`): its `/name` runs are
+    the ones a skill page lists under Usage history, read by skill_runs.
     """
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=days)
@@ -134,12 +138,9 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     wanted = {name.casefold(): name for name in names}
     counts = {name: {"count": 0, "last": "", "by_tool": {}} for name in names}
     fresh, read, sources = {}, 0, []
-    for name, sub in subscriptions.items():
-        kind = sub.get("kind")
-        if kind not in READERS or sub.get("enabled") is False or not Path(sub.get("root") or "").is_dir():
-            continue
+    for kind, paths in _sources(subscriptions, evals):
         sources.append(LABELS[kind])
-        for path in source_files(sub):
+        for path in paths:
             stat = path.stat()
             if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
                 continue
@@ -164,6 +165,16 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     return {"counts": counts, "files": read, "days": days, "sources": sources}
 
 
+def _sources(subscriptions: dict, evals: Path | None):
+    """(kind, files) per enabled session source, then co ai's summaries."""
+    for sub in subscriptions.values():
+        kind = sub.get("kind")
+        if kind in READERS and sub.get("enabled") is not False and Path(sub.get("root") or "").is_dir():
+            yield kind, source_files(sub)
+    if evals and evals.is_dir():
+        yield "co-ai", sorted(evals.glob("*.yaml"))
+
+
 def _inside(cwd: str, root: Path) -> bool:
     try:
         return Path(cwd).resolve().is_relative_to(Path(root).resolve())
@@ -181,7 +192,7 @@ def usage_line(row: dict | None, report: dict | None) -> str:
     tools = ", ".join(f"{LABELS[tool]} {n}" for tool, n in sorted(row["by_tool"].items()))
     times = "once" if row["count"] == 1 else f"{row['count']} times"
     return (f"- Invoked {times} in your coding sessions {window}, last on {row['last']} ({tools}). "
-            "Counted by co rem from Skill tool calls, /name commands, $name mentions and SKILL.md loads; "
+            "Counted by co rem from Skill tool calls, /name commands, $name mentions, SKILL.md loads and co ai runs; "
             "an invocation is not a completed run.")
 
 
@@ -192,7 +203,7 @@ def session_samples(root: Path, name: str, limit: int = 3) -> dict:
     since = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()[:19]
     for file, entry in (cached.get("files", {}) if cached.get("version") == VERSION else {}).items():
         for invoked, when, kind, cwd in entry.get("events", []):
-            if invoked.casefold().rsplit(":", 1)[-1] != name.casefold().rsplit(":", 1)[-1]:
+            if kind not in SESSIONS or invoked.casefold().rsplit(":", 1)[-1] != name.casefold().rsplit(":", 1)[-1]:
                 continue
             if when and when[:19] < since:
                 continue
