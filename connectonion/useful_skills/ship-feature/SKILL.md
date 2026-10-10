@@ -188,3 +188,12 @@ silently skipping it.
 - If the user specifies a version explicitly, use that instead of auto-calculating
 - Never force-push or amend published commits
 - Never publish package artifacts directly from a workstation
+
+## Service command discovery
+
+On every CLI audit or new service command, compare the complete service
+inventory across the GitHub README, docs website and landing-page logo walls.
+Verify the command names, icons, documentation links, release labels and
+desktop/mobile layout. Link companion PRs for separate repositories. A CLI
+help audit alone does not complete this product discovery check. See AGENTS.md
+for the canonical paths.

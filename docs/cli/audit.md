@@ -141,3 +141,12 @@ OneNote also has a behavioral terminal journey in `tests/unit/test_onenote.py`:
 that both numbers resolve to the IDs that were displayed, even when two pages
 share a title. The help review can flag a missing short reference, but it
 cannot verify that a displayed number resolves to the right item.
+
+## Co product audit: logo walls
+
+`co audit` judges CLI output and works on any program. When auditing Co itself,
+also compare every service command with the logo walls in the GitHub README,
+docs website and landing page. Verify names, icons, linked documentation and
+stable/preview status on all three, and inspect desktop/mobile rendering.
+This website check is a repository review step, not a network side effect of
+`co audit`. Link companion PRs and record any missing coverage in the audit.

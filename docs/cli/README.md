@@ -1430,3 +1430,7 @@ See [server.md](server.md).
 The 1.8.4 Gmail candidate adds `co gmail draft review <draft-id> --json` and
 `co gmail draft send <draft-id> --confirm <review-token> --json`. See
 [gmail.md](gmail.md) for the MIME-bound send and uncertain-outcome contract.
+
+## Upcoming preview
+
+- [co github](github.md): explicit repository watches and issue/PR activity in a local inbox, using gh authentication.

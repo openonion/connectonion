@@ -704,3 +704,23 @@ def test_ls_skips_malformed_queue_files_without_claiming_valid_messages(box, cap
     assert 'om_1\toc_a' in capsys.readouterr().out
     assert box.receive(0).id == 'om_1'
     assert (box.bad / '1-torn').exists()
+
+
+def test_no_reply_consumer_keeps_stdout_local_and_completes(box, fake, monkeypatch, capsys):
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
+    deliver(box, i="om_local")
+    capsys.readouterr()
+    listen_commands.handle_consume("feishu", [sys.executable, "-c", "print('task queued')"],
+                                   once=True, no_reply=True)
+    assert "task queued" in capsys.readouterr().out
+    assert fake.sent == [] and fake.order == []
+    assert 'om_local' in box.completed.read_text()
+
+
+def test_no_reply_consumer_failure_keeps_message_for_retry(box, fake, monkeypatch):
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
+    deliver(box, i="om_retry")
+    listen_commands.handle_consume("feishu", [sys.executable, "-c", "import sys; sys.exit(1)"],
+                                   once=True, no_reply=True)
+    assert fake.sent == []
+    assert _taken(box) == ["om_retry"]
