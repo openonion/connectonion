@@ -5,7 +5,7 @@ Verified with codex-cli 0.162.1: `codex exec --json` prints
 `codex exec resume <id> "<question>"` or interactive `codex resume <id>` continue
 it with the seed in context. stdin must be closed: with an open pipe, exec waits
 to append it to the prompt. Claude Code: `claude -p --output-format json`
-returns `session_id`, and `claude --resume <id>` continues it.
+returns `session_id` (2.1.290: in the last `result` event of a list), and `claude --resume <id>` continues it.
 
 The seed turn runs read-only. Nothing in the bundle can widen what the
 recipient's agent may do; their own Codex/Claude settings decide that afterwards.
@@ -74,6 +74,9 @@ def _start_claude(prompt: str, cwd: Path) -> dict:
                          stdin=subprocess.DEVNULL, capture_output=True, text=True, cwd=cwd)
     _require_ok(out, "claude -p")
     result = json.loads(out.stdout)
+    # Claude Code 2.1.290 prints the whole event list; older versions printed only the result object.
+    if isinstance(result, list):
+        result = [event for event in result if event.get("type") == "result"][-1]
     where = shlex.quote(str(cwd))
     return {"session": result["session_id"], "reply": result.get("result", ""),
             "resume": f"cd {where} && claude --resume {result['session_id']}",

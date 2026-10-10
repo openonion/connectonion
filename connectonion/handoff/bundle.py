@@ -226,7 +226,8 @@ def excerpt_text(bundle: dict) -> str:
 
 
 def header(bundle: dict) -> str:
-    return (f"# Handoff: {bundle['title']}\n"
+    # A blank line, not a single newline: the mail service joins single newlines in the text part.
+    return (f"# Handoff: {bundle['title']}\n\n"
             f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
 
 

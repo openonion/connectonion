@@ -245,7 +245,7 @@ def handle_inbox() -> None:
         return
     out.print(style.heading(f"Incoming handoffs ({len(found)}) at {mailbox}"))
     for mail, bundle in found:
-        opened = " · opened" if (_home() / "received" / bundle["id"] / "session.json").exists() else ""
+        opened = " · opened" if any((_home() / "received" / bundle["id"]).glob("session-*.json")) else ""
         out.print(f"{style.command(bundle['id'])}  from {_sender(bundle['from'])}  {str(mail.get('timestamp', ''))[:16]}{opened}")
         out.print(f"    {bundle['title']}", markup=False)
     out.print("Nothing runs until you open one.")
@@ -283,7 +283,7 @@ def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
     bundle = _find(handoff_id)
     folder = _home() / "received" / handoff_id
     opener.materialize(bundle, folder)
-    record_path = folder / "session.json"
+    record_path = folder / f"session-{agent}.json"   # one session per agent; reopening reuses it
     if record_path.exists():
         record = json.loads(record_path.read_text(encoding="utf-8"))
         out.print(f"Already opened: {record['agent']} session {record['session']}. No new session was created.")

@@ -376,3 +376,12 @@ def test_private_paths_are_shown_in_the_preview(project, model, mailbox):
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 0
     assert "Private paths in it" in result.output and "/Users/alice/secret-notes/plan.md" in result.output
+
+
+def test_claude_open_reads_the_result_event_from_claude_codes_event_list(monkeypatch, tmp_path):
+    # Claude Code 2.1.290 prints [system, assistant, ..., result]; older versions printed the result alone.
+    events = [{"type": "system"}, {"type": "result", "session_id": "s-1", "result": "Goal: ..."}]
+    monkeypatch.setattr(opener.subprocess, "run", lambda *a, **k: opener.subprocess.CompletedProcess(
+        a, 0, stdout=json.dumps(events), stderr=""))
+    started = opener.start("claude", "seed", tmp_path)
+    assert started["session"] == "s-1" and "claude --resume s-1" in started["resume"]
