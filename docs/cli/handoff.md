@@ -30,7 +30,8 @@ format `co-handoff/2`:
 | section | field | what it holds |
 |---|---|---|
 | title | `title` | the task in one line |
-| Task | `task`, `may_do` | what to do, what "done" means; what the recipient may do (only as stated) |
+| (under the header) | `may_do` | `Recipient may: …`, only what the sender stated; left out when nothing was |
+| Task | `task` | what to do, what "done" means |
 | Where it stands | `where_it_stands` | finished, in progress, tried |
 | Decided | `decided` | each decision with its reason |
 | Rejected | `rejected` | each dropped alternative with why |

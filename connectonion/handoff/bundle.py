@@ -214,12 +214,6 @@ def _one_line(text: str, width: int) -> str:
 
 # ---- what a person reads: one format everywhere ----
 
-def task_section(bundle: dict) -> str:
-    lines = [bundle["task"]]
-    lines.append("You may: " + ("; ".join(bundle["may_do"]) if bundle.get("may_do") else "not stated by the sender"))
-    return "\n\n".join(lines)
-
-
 def decided_text(bundle: dict) -> str:
     return "\n".join(f"- {d['decision']} (why: {d['why']})" for d in bundle.get("decided", [])) or "- none recorded"
 
@@ -235,7 +229,7 @@ def questions_text(bundle: dict) -> str:
 def references_text(bundle: dict) -> str:
     lines = [f"- {r['reference']}: {r['note']}" for r in bundle.get("references", [])]
     source = bundle.get("source", {})
-    lines.append(f"- Transcript excerpt: {len(bundle.get('excerpt', []))} turns of the sender's "
+    lines.append(f"- Transcript excerpt: {_count(bundle.get('excerpt'), 'turn')} of the sender's "
                  f"{source.get('kind', '?')} session{' (compacted; earlier part as kept by the client)' if source.get('compacted') else ''}")
     return "\n".join(lines)
 
@@ -246,13 +240,15 @@ def excerpt_text(bundle: dict) -> str:
 
 def header(bundle: dict) -> str:
     # A blank line, not a single newline: the mail service joins single newlines in the text part.
+    # What the recipient may do is the sender's grant, not part of the task; left out when none was stated.
+    may = f"\n\nRecipient may: {'; '.join(bundle['may_do'])}" if bundle.get("may_do") else ""
     return (f"# Handoff: {bundle['title']}\n\n"
-            f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+            f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}{may}")
 
 
 def summary_text(bundle: dict) -> str:
     """The first screen: task, where it stands, open questions, and what else there is."""
-    return (f"{header(bundle)}\n\n## Task\n{task_section(bundle)}\n\n"
+    return (f"{header(bundle)}\n\n## Task\n{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n## Open questions\n{questions_text(bundle)}\n\n"
             f"{_count(bundle.get('decided'), 'decision')}, {_count(bundle.get('rejected'), 'rejected option')}, "
             f"{_count(bundle.get('references'), 'reference')}, {len(bundle.get('excerpt', []))}-turn excerpt.")
@@ -261,7 +257,7 @@ def summary_text(bundle: dict) -> str:
 def brief_markdown(bundle: dict) -> str:
     """The whole brief in the handoff skill's sections: preview, mail body and HANDOFF.md."""
     return (f"{header(bundle)}\n\n"
-            f"## Task\n{task_section(bundle)}\n\n"
+            f"## Task\n{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n"
             f"## Decided\n{decided_text(bundle)}\n\n"
             f"## Rejected\n{rejected_text(bundle)}\n\n"

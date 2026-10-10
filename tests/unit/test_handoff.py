@@ -245,6 +245,32 @@ def test_a_changed_bundle_is_not_verified():
     assert not bundles.from_mail(bundles.to_mail(tampered)[1])["verified"]
 
 
+
+# ---- how the brief reads (#2377) ----
+
+def _brief(may_do=(), turns=1) -> dict:
+    return {"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "Store the token.", "from": "a", "to": "b",
+            "created_at": "2026-10-10", "where_it_stands": "", "may_do": list(may_do),
+            "source": {"kind": "notes file"}, "excerpt": [{"role": "notes", "text": "x"}] * turns}
+
+
+def test_one_turn_is_singular():
+    assert "Transcript excerpt: 1 turn of the sender's" in bundles.brief_markdown(_brief(turns=1))
+    assert "Transcript excerpt: 2 turns of the sender's" in bundles.brief_markdown(_brief(turns=2))
+
+
+def test_permissions_sit_under_the_header_not_inside_task():
+    stated = bundles.brief_markdown(_brief(may_do=["edit auth/", "open a PR"]))
+    header, task = stated.split("## Task\n", 1)
+    assert "Recipient may: edit auth/; open a PR" in header
+    assert task.split("\n\n## ")[0] == "Store the token."
+    assert "Recipient may" in bundles.summary_text(_brief(may_do=["edit auth/"])).split("## Task")[0]
+
+
+def test_unstated_permissions_are_left_out():
+    for text in (bundles.brief_markdown(_brief()), bundles.summary_text(_brief())):
+        assert "may:" not in text and "not stated" not in text
+
 # ---- recipient ----
 
 def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypatch):
