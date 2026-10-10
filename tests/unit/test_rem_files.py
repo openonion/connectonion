@@ -36,7 +36,7 @@ def test_the_roster_reads_aliases_without_their_citations(tmp_path):
 
 def test_inspection_does_not_initialize(tmp_path):
     root = tmp_path / "rem"
-    assert read_config(root)["model"] == "claude-sonnet-5-5"
+    assert read_config(root)["model"] == "gpt-6-luna"
     assert Notebook(root).list() == []
     assert not root.exists()
 

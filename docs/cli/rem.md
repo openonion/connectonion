@@ -25,9 +25,11 @@ work is the purpose.
 
 The notebook is a folder on your machine, `~/.co/rem`. Saved mail bodies stay
 in its owner-only `.state/` and never go into a page; a model reads them only
-through the login you choose. By default it runs on your own Claude Code plan
-(Sonnet, `claude-sonnet-5-5`) and spends no OpenOnion credits. Notebooks made
-before 1.9.0a41 keep the runner saved in their `config.yaml`.
+through the login you choose. By default it runs on your own Codex plan
+(`gpt-6-luna`, your ChatGPT sign-in), or on Claude Code (Sonnet) when Codex is
+not installed or not signed in, and spends no OpenOnion credits. A notebook
+keeps the runner saved in its `config.yaml`; change it with
+`co rem config set runner claude-code`.
 
 What it costs, measured: the first run writes up to 16 pages at a time. An earlier
 real notebook trial wrote 198 of 242 people, project and organisation pages in

@@ -51,3 +51,20 @@ def test_generated_notes_move_to_run_logs_and_links_follow(tmp_path):
     assert (tmp_path / "logs/people-map.md").is_file() and (tmp_path / "logs/skill-runs-abc.md").is_file()
     assert sorted(p.name for p in (tmp_path / "notes").iterdir()) == ["idea.md"]
     assert "../../logs/skill-runs-abc.md" in (tmp_path / "skills/catalog/x.md").read_text()
+
+
+def test_a_new_notebook_runs_on_codex():
+    """Owner's decision 2026-10-11: with both agents signed in, a fresh install chose
+    Claude Code and announced ~460M input tokens on the user's Claude plan."""
+    from connectonion.rem.config import default_config
+    config = default_config()
+    assert (config["runner"], config["model"]) == ("codex", "gpt-6-luna")
+
+
+def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeypatch):
+    from connectonion.rem.config import prepare, read_config
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (
+        ("Codex is not installed", "npm i -g @openai/codex") if config["runner"] == "codex" else ("", "")))
+    prepare(tmp_path / "rem")
+    assert (read_config(tmp_path / "rem")["runner"], read_config(tmp_path / "rem")["model"]) == \
+        ("claude-code", "claude-sonnet-5-5")

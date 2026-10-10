@@ -199,11 +199,12 @@ def test_a_chunk_with_nothing_worth_keeping_yields_no_digest():
     assert digests == []
 
 
-def test_the_runner_is_a_choice_between_the_two_harnesses(tmp_path):
+def test_the_runner_is_a_choice_between_the_two_harnesses(tmp_path, monkeypatch):
     from connectonion.rem.config import prepare, read_config, set_config
     from connectonion.rem.files import RemError
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     root = tmp_path / "rem"; prepare(root)
-    assert read_config(root)["runner"] == "claude-code"
+    assert read_config(root)["runner"] == "codex"
     set_config(root, ["runner", "coai"])
     assert read_config(root)["runner"] == "coai"
     with pytest.raises(RemError) as caught:

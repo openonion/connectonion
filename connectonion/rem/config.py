@@ -37,10 +37,12 @@ def default_config() -> dict:
     # starting name, not a rule: what a model can do -- drive tools, or only
     # reply with a page -- is measured when the model changes and recorded in
     # .state/tier.json (tier.py, #1847), never read off its name or generation.
-    # Claude Code with Sonnet since 1.9.0a41: on one real 260-page first run it
-    # wrote 259 pages and matched Codex on the benchmark pages, while Haiku had
-    # 13 of 17 project pages refused (#2283). Saved configs keep their runner.
-    return {"version": 1, "runner": "claude-code", "model": "claude-sonnet-5-5",
+    # Codex with gpt-6-luna, the owner's choice on 2026-10-11: with both agents
+    # signed in, a fresh install picked Claude Code and announced ~460M input
+    # tokens on the user's Claude plan. Codex wrote 312 of 312 pages on the same
+    # mailbox. A machine without a working Codex gets Claude Code (first_runner).
+    # Saved configs keep their runner.
+    return {"version": 1, "runner": "codex", "model": "gpt-6-luna",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -176,7 +178,16 @@ def prepare(root: Path) -> None:
     _move_generated_notes(root)
     path = safe_path(root, "config.yaml")
     if not path.exists():
-        atomic_write(path, yaml.safe_dump(default_config(), sort_keys=False))
+        atomic_write(path, yaml.safe_dump(first_runner(default_config()), sort_keys=False))
+
+
+def first_runner(config: dict) -> dict:
+    """Codex when it can run; otherwise Claude Code, if that can."""
+    from .runner import ready
+    if not ready(config)[0]:
+        return config
+    fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5"}
+    return fallback if not ready(fallback)[0] else config
 
 
 def set_config(root: Path, pairs: list[str]) -> dict:
