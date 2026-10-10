@@ -10,7 +10,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from ..environment import global_config_dir
-from . import replies
+from . import replies, transport
 
 INTERVAL = 300
 FRESH = timedelta(days=14)
@@ -26,10 +26,11 @@ def _waiting() -> list:
 
 def check() -> list[str]:
     """One pass: the lines worth telling the sender, each event once."""
-    news = []
-    for path in _waiting():
+    news, waiting = [], _waiting()
+    mails = transport.fetch() if waiting else []   # one mailbox read for every waiting handoff
+    for path in waiting:
         record = json.loads(path.read_text(encoding="utf-8"))
-        state = replies.settle(record)
+        state = replies.settle(record, mails)
         seen = record.get("seen", {"accepted": False, "questions": 0})
         who = state["accepted"]
         if who and not seen["accepted"]:

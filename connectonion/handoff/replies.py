@@ -110,10 +110,10 @@ def _human(kind: str, block: dict) -> str:
     return f"{kind.capitalize()} about handoff {block['id']}: {block.get('text', '')}"
 
 
-def received(handoff_id: str) -> list[dict]:
+def received(handoff_id: str, mails: list[dict] = None) -> list[dict]:
     """Reply blocks about this handoff in this agent's mailbox, oldest first."""
     found = []
-    for mail in reversed(transport.fetch()):   # fetch is newest first
+    for mail in reversed(transport.fetch() if mails is None else mails):   # fetch is newest first
         block = _decode(mail.get("message", ""))
         if block and block.get("id") == handoff_id and block.get("kind") in KINDS:
             found.append(block)
@@ -126,7 +126,7 @@ def _decode(body: str) -> dict | None:
     return json.loads(base64.b64decode(re.sub(r"\s+", "", found.group(1)))) if found else None
 
 
-def settle(record: dict) -> dict:
+def settle(record: dict, mails: list[dict] = None) -> dict:
     """The sender's view of one sent handoff from its replies: who accepted, which questions count.
 
     Only a block carrying this handoff's secret counts. The first acceptance binds
@@ -135,7 +135,7 @@ def settle(record: dict) -> dict:
     mail's From: the mail service delivers with a per-message sender address.
     """
     state = {"accepted": None, "questions": [], "ignored": 0}
-    for block in received(record["id"]):
+    for block in received(record["id"], mails):
         if block["secret"] != record["secret"] or block["kind"] == "answer":
             continue
         if block["kind"] == "accept" and state["accepted"] is None:
