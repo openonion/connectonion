@@ -216,3 +216,13 @@ def test_co_ai_notices_an_acceptance_and_a_question_once(world):
     assert news[0].startswith(f"[handoff] ho-1a2b3c4d accepted by {RECIPIENT['address']}")
     assert "7 days or 30?" in news[1]
     assert watch.check() == []
+
+
+def test_co_email_read_keeps_a_long_code_on_one_line(monkeypatch):
+    code = "coh1." + "x" * 300
+    monkeypatch.setattr("connectonion.cli.commands.email_commands._require_auth", lambda: True)
+    import connectonion.useful_tools.get_emails  # noqa: F401  (the module; the package re-exports the function)
+    monkeypatch.setattr(sys.modules["connectonion.useful_tools.get_emails"], "get_emails", lambda last: [
+        {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"}])
+    result = runner.invoke(app, ["email", "read", "7"], env={"COLUMNS": "80", "NO_COLOR": "1"})
+    assert f"co handoff accept {code} [now]" in result.output

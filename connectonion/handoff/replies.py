@@ -62,9 +62,9 @@ def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
     """One block for Codex or Claude Code: what the mail shows (in <pre>) and what send prints for chat."""
     steps = [
         f"{sender} handed you a task with ConnectOnion (handoff {handoff_id}). Do these steps in order.",
-        "1. Check that the co command works: co --version. If it is missing, install it with "
+        "1. Check that the co command works: co --version. Only if it is missing: install it with "
         "pip install connectonion (if pip refuses, python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install "
-        "connectonion, then use ~/.co-venv/bin/co), and run co init --yes.",
+        "connectonion, then use ~/.co-venv/bin/co), then run co init --yes once.",
         "2. Save the brief below, from its first line '# Handoff:' through the end of 'Code and references', "
         "as HANDOFF.md in the current directory.",
         f"3. Accept the handoff, which tells the sender it arrived: co handoff accept {code} --brief HANDOFF.md",
