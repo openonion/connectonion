@@ -105,7 +105,7 @@ def test_the_code_names_sender_handoff_and_hash_and_carries_a_secret(world):
     code = replies.parse_code(_code(_send(world)))
     assert code["address"] == SENDER["address"] and code["mailbox"] == SENDER["mail"]
     assert code["id"] == "ho-1a2b3c4d" and code["hash"] == _bundle(RECIPIENT["mail"])["content_hash"]
-    assert len(code["secret"]) >= 16
+    assert len(code["secret"]) == 20
 
 
 def test_a_handoff_code_is_never_an_invite_and_never_a_contact(world, monkeypatch):
@@ -170,7 +170,7 @@ def test_question_and_answer_round_trip(world):
 
 def test_a_wrong_secret_or_a_second_acceptor_is_not_recorded(world):
     code = _code(_send(world))
-    forged = replies.make_code(dict(replies.parse_code(code), secret="0" * 32))
+    forged = replies.make_code(dict(replies.parse_code(code), secret="0" * 20))
     world["be"](RECIPIENT)
     _invoke("handoff", "accept", forged)
     world["be"](SENDER)
@@ -226,3 +226,16 @@ def test_co_email_read_keeps_a_long_code_on_one_line(monkeypatch):
         {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"}])
     result = runner.invoke(app, ["email", "read", "7"], env={"COLUMNS": "80", "NO_COLOR": "1"})
     assert f"co handoff accept {code} [now]" in result.output
+
+
+def test_a_one_character_typo_is_refused_not_sent_somewhere_else(world):
+    code = _code(_send(world))
+    typo = code[:60] + ("B" if code[60] != "B" else "C") + code[61:]
+    world["be"](RECIPIENT)
+    sent_before = len(world["mails"])
+    result = _invoke("handoff", "accept", typo)
+    assert result.exit_code == 1 and "typo" in result.output and len(world["mails"]) == sent_before
+
+
+def test_the_code_is_short_enough_to_copy(world):
+    assert len(_code(_send(world))) < 120

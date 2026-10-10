@@ -20,7 +20,8 @@ def test_handoff_is_a_copyable_single_file_skill():
 def test_every_co_command_the_skill_names_exists():
     body = SKILL.read_text(encoding="utf-8")
     for command in ("rem show", "email send", "email sent", "trust add",
-                    "handoff send", "handoff status", "handoff contact", "handoff inbox", "handoff show", "handoff open"):
+                    "handoff send", "handoff status", "handoff contact", "handoff inbox", "handoff show", "handoff open",
+                    "handoff accept", "handoff ask", "handoff answer"):
         assert f"co {command}" in body
         result = CliRunner().invoke(app, [*command.split(), "--help"])
         assert result.exit_code == 0, (command, result.output)
@@ -32,7 +33,8 @@ def test_an_invite_code_is_never_mailed_and_approval_comes_first():
     assert "contact" in EXEC_REQUIRES
     body = SKILL.read_text(encoding="utf-8")
     assert "Never put an invite code in a handoff email" in body
-    assert "Invite" not in body.split("Continue this with your AI")[1].split("```")[0]
+    # The code the mail carries is handoff-scoped, and the skill says it is not an invite.
+    assert "It is not an invite and grants nothing on your agent." in body
     assert body.index("## 3. Audit") < body.index("## 4. Get the user's approval") < body.index("## 5a. Send by email")
 
 

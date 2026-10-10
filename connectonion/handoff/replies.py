@@ -13,12 +13,14 @@ so no backend changes are needed.
 """
 
 import base64
+import hashlib
 import html
 import json
 import re
 import secrets
 from datetime import datetime, timezone
 
+from ..address import agent_email
 from . import transport
 
 PREFIX = "coh1."
@@ -30,30 +32,39 @@ KINDS = ("accept", "question", "answer")
 # ---- the code ----
 
 def new_secret() -> str:
-    return secrets.token_hex(16)
+    return secrets.token_hex(10)
 
 
+# Binary, then base64: the code is about 110 characters instead of 300, because an agent
+# that retypes it (seen in a real run) is the commonest way to get it wrong. The last
+# four bytes are a checksum, so a mistyped code is refused instead of decoding to a
+# different mailbox, which a real run also did ("openonion.ai" became "openonion.as").
 def make_code(fields: dict) -> str:
-    compact = {"a": fields["address"], "m": fields["mailbox"], "i": fields["id"],
-               "h": fields["hash"], "s": fields["secret"]}
-    raw = json.dumps(compact, separators=(",", ":")).encode()
-    return PREFIX + base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    mailbox = "" if fields["mailbox"] == agent_email(fields["address"]) else fields["mailbox"]
+    raw = (bytes.fromhex(fields["address"][2:]) + bytes.fromhex(fields["id"][3:]) + bytes.fromhex(fields["hash"])
+           + bytes.fromhex(fields["secret"]) + mailbox.encode())
+    return PREFIX + base64.urlsafe_b64encode(raw + hashlib.sha256(raw).digest()[:4]).decode().rstrip("=")
 
 
 def parse_code(code: str) -> dict:
-    """{address, mailbox, id, hash, secret}. ValueError for anything else."""
+    """{address, mailbox, id, hash, secret}. ValueError for anything else, including a typo."""
+    code = "".join(code.split())   # a terminal or mail client may have wrapped it
     if not code.startswith(PREFIX):
         raise ValueError("a handoff code starts with coh1.")
     body = code[len(PREFIX):]
     try:
-        compact = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
-        fields = {"address": compact["a"], "mailbox": compact["m"], "id": compact["i"],
-                  "hash": compact["h"], "secret": compact["s"]}
-    except (ValueError, KeyError, TypeError) as error:
-        raise ValueError("this handoff code is cut off or changed; copy it again from the handoff") from error
-    if not re.fullmatch(r"ho-[0-9a-f]{8}", fields["id"]):
-        raise ValueError("this handoff code is cut off or changed; copy it again from the handoff")
-    return fields
+        data = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+    except ValueError as error:
+        raise ValueError(_CHANGED) from error
+    raw, check = data[:-4], data[-4:]
+    if len(raw) < 54 or hashlib.sha256(raw).digest()[:4] != check:
+        raise ValueError(_CHANGED)
+    address = "0x" + raw[:32].hex()
+    return {"address": address, "id": "ho-" + raw[32:36].hex(), "hash": raw[36:44].hex(),
+            "secret": raw[44:54].hex(), "mailbox": raw[54:].decode() or agent_email(address)}
+
+
+_CHANGED = "this code is cut off or has a typo; copy it again, character for character, from the handoff"
 
 
 # ---- the prompt a recipient pastes into their coding agent ----
