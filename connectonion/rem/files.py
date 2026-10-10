@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -144,11 +145,35 @@ def maintenance_lock(root: Path, wait: float = 0):
         _THREADS.release()
 
 
+def _try_lock(fd: int) -> None:
+    """Take the cross-process lock, raising BlockingIOError while it is held.
+
+    POSIX uses ``fcntl.flock``, Windows ``msvcrt.locking``. msvcrt reports a
+    busy lock as a plain ``OSError`` (EACCES/EDEADLK) rather than
+    ``BlockingIOError``, so translate those for the retry loop below.
+    """
+    if os.name == "nt":
+        import msvcrt
+        # msvcrt.locking needs at least one byte to lock, and the lock file is
+        # otherwise never written to. seek(0) keeps lock and unlock on the same
+        # byte (same shape as network/host/schedule.py).
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as error:
+            if error.errno in (errno.EACCES, errno.EDEADLK):
+                raise BlockingIOError(*error.args) from error
+            raise
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 @contextmanager
 def _file_lock(root: Path, wait: float):
     """The lock other processes see: a scheduled tick, a second terminal."""
-    import fcntl
-
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -156,7 +181,7 @@ def _file_lock(root: Path, wait: float):
     try:
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _try_lock(fd)
                 break
             except BlockingIOError as error:
                 if time.monotonic() >= deadline:
