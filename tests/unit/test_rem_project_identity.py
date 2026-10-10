@@ -9,6 +9,8 @@ were projects; and `Paths` listed 49 worktrees.
 import json
 from pathlib import Path
 
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map, file_project, project_groups
@@ -74,6 +76,52 @@ def test_scan_counts_turns_only_for_a_lone_session_outside_a_repository(tmp_path
     (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in typed))
     rows = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
     assert [(r["path"], r["sessions"], r["turns"]) for r in rows] == [(str(chat), 1, 2)]
+
+
+@pytest.mark.parametrize("preamble", ["queue-operation", "mode", "bridge-session"])
+def test_scan_discovers_claude_projects_after_a_metadata_preamble(tmp_path, monkeypatch, preamble):
+    monkeypatch.setattr("connectonion.rem.scan.project_exclusion", lambda path: "")
+    project = tmp_path / "project"
+    project.mkdir()
+    sessions = tmp_path / "claude" / "encoded-project"
+    sessions.mkdir(parents=True)
+    rows = [{"type": preamble},
+            {"type": "user", "cwd": str(project), "sessionId": "s",
+             "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}]
+    (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    assert [(p["path"], p["sessions"], p["turns"]) for p in projects] == [(str(project), 1, 1)]
+
+
+def test_scan_skips_a_claude_session_without_a_working_directory(tmp_path):
+    sessions = tmp_path / "claude" / "encoded-project"
+    sessions.mkdir(parents=True)
+    (sessions / "s.jsonl").write_text('{"type": "queue-operation"}\n{"type": "mode"}\n', encoding="utf-8")
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
+
+
+@pytest.mark.parametrize("preamble_count, expected", [(255, 1), (256, 0)])
+def test_claude_project_discovery_stops_after_a_bounded_preamble(tmp_path, monkeypatch, preamble_count, expected):
+    monkeypatch.setattr("connectonion.rem.scan.project_exclusion", lambda path: "")
+    project = tmp_path / "project"
+    project.mkdir()
+    sessions = tmp_path / "claude" / "encoded-project"
+    sessions.mkdir(parents=True)
+    message = {"type": "user", "cwd": str(project), "sessionId": "s",
+               "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}
+    (sessions / "s.jsonl").write_text('{"type": "mode"}\n' * preamble_count + json.dumps(message) + "\n",
+                                     encoding="utf-8")
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    assert [p["path"] for p in projects] == [str(project)] * expected
+
+
+def test_claude_project_discovery_stops_after_its_byte_budget(tmp_path):
+    sessions = tmp_path / "claude" / "encoded-project"
+    sessions.mkdir(parents=True)
+    preamble = {"type": "queue-operation", "content": "x" * 1_000_000}
+    message = {"type": "user", "cwd": str(tmp_path / "project"), "sessionId": "s"}
+    (sessions / "s.jsonl").write_text(json.dumps(preamble) + "\n" + json.dumps(message) + "\n", encoding="utf-8")
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
 
 
 def test_worktrees_fold_into_their_repository_and_are_counted(tmp_path):
