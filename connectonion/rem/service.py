@@ -1176,7 +1176,10 @@ def usage_report(root: Path, days: int | None = None) -> dict:
     # is where a regression shows up (older runs did not record it).
     sizes = {}
     for run in runs:
-        for stage, chars in (run.get("instructions_chars") or {}).items():
+        recorded = run.get("instructions_chars") or {}
+        # Skill investigations recorded the runner's bare number (1.9.2b1); it is that run's phase.
+        per_stage = recorded if isinstance(recorded, dict) else {run.get("phase") or "investigate": recorded}
+        for stage, chars in per_stage.items():
             if isinstance(chars, int):
                 sizes.setdefault(stage, []).append(chars)
     for stage, values in sizes.items():

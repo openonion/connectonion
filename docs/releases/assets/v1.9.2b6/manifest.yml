@@ -1,0 +1,6 @@
+version: v1.9.2b6
+no_visual_change: >-
+  Changes are in co rem's investigation pipeline and its launchd job; the only
+  new output is three fields in a run record (hedged_lines, rounds,
+  refused_rounds). The editing turn and a full second pass were run live on a
+  copy of a real notebook.

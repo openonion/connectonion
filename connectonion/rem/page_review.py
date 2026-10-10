@@ -520,6 +520,35 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
 HISTORY_LIMIT = 16
 
 
+# A line that says what is not known instead of what is. The page template has
+# one place for these, Uncertainties, and a ceiling of five there.
+HEDGE = re.compile(r"not (?:established|confirmed|documented|verified|recorded|stated)|unknown whether"
+                   r"|is unknown|remains? (?:unknown|unconfirmed|unresolved)"
+                   r"|no (?:outcome|reply) (?:is )?(?:documented|found|recorded)|does not say|cannot be verified", re.I)
+
+
+def hedged_lines(text: str) -> list[tuple[str, str]]:
+    """(section, line) for every hedge outside Uncertainties and Sources.
+
+    After 1.9.2b1 let a pass delete, the hedges on one real page did not fall
+    (16 -> 19): they moved from Uncertainties into the lead, History and Open
+    threads (#2343). On the 2026-10-10 trial 56 of 87 person pages carried
+    them there. A page without an Uncertainties section is not of this shape.
+    """
+    if not re.search(r"(?m)^## Uncertainties\s*$", text):
+        return []
+    found, section = [], "lead"
+    for line in text.splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        if section in ("Uncertainties", "Sources") or line.startswith("Investigation:"):
+            continue
+        if HEDGE.search(line):
+            found.append((section, line.strip()))
+    return found
+
+
 def _history(text: str) -> list[str]:
     section = prose(text).partition('\n## History\n')[2].split('\n## ', 1)[0]
     return [line for line in section.splitlines() if line.startswith('- ') and 'not investigated yet' not in line]
