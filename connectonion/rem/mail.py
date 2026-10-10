@@ -50,9 +50,10 @@ SELF = "me"                          # the correspondent of a mail the user sent
 # rely on line starts or ends; each is the first sign of the quoted thread.
 # No word boundaries either: flattened text runs "…Program ManagerFrom: Vern…"
 # straight through, so the header words themselves are the only signal.
+# Unflattened, `Sent:` or `Date:` starts the line after `From:` with no rule above it (#2349).
 QUOTED_REPLY = re.compile(
     r"(?:\bOn [^\n]{0,160}? wrote:|-{3,}\s*Original Message\s*-{3,}|_{10,}|"
-    r"From: [^\n]{0,240}?Sent: |From: [^\n]{0,240}?Date: [^\n]{0,80}?Subject: |"
+    r"From: [^\n]{0,240}?(?:\n?Sent|\nDate): |From: [^\n]{0,240}?Date: [^\n]{0,80}?Subject: |"
     r"在[^\n]{0,80}写道[：:]|(?:^|\n)> )",
     re.MULTILINE)
 # Signature furniture: links wrapped in angle brackets (how Outlook renders a
@@ -67,9 +68,9 @@ SIGNATURE_NOISE = re.compile(
 
 
 def strip_quoted(body: str) -> str:
-    """The reply itself, without the thread it quotes."""
+    """The reply itself, without the thread it quotes; a bare forward is all quote, so it stays."""
     match = QUOTED_REPLY.search(body)
-    return body[:match.start()] if match else body
+    return body[:match.start()] if match and body[:match.start()].strip() else body
 
 
 def strip_noise(body: str) -> str:

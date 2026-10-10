@@ -4,6 +4,7 @@ A fake mailbox and fake investigations; never the operator's mail or a model.
 """
 
 import json
+import re
 import stat
 from datetime import datetime, timedelta, timezone
 
@@ -406,3 +407,36 @@ def test_a_hollow_run_on_a_record_merged_since_is_judged_as_the_page_it_lives_in
                                      "record": "people/old.md", "outcome": "completed",
                                      "coverage": ["gmail (me@x): 0 matched, 0 bodies read, 0 attachments read"]})
     assert hollow_investigations(root) == {"people/kept.md"}
+
+
+def test_a_company_left_unknown_before_its_organisation_page_existed_is_filled_after_the_run(tmp_path):
+    """#2349: people and organisations are written in one interleaved queue, so a
+    person's page often promotes before the page for their employer exists."""
+    from connectonion.rem.map import build_map
+    from connectonion.rem.mail_archive import archive_init
+    prepare_notebook(tmp_path)
+    when = (NOW - timedelta(hours=2)).isoformat()
+    rows = [{"id": "ask", "date": when, "from": OWNER, "to": ["Ana Lee <ana@staff.uni.example>"], "cc": [], "subject": "Plan"},
+            {"id": "answer", "date": (NOW - timedelta(hours=1)).isoformat(), "from": "Ana Lee <ana@staff.uni.example>",
+             "to": [OWNER], "cc": [], "subject": "Re: Plan"}]
+
+    class Mail:
+        def my_addresses(self): return {OWNER}
+        def list_between(self, start, end, limit): return [r for r in rows if start <= r["date"] < end]
+        def get_email_body(self, message_id): return f"--- Email Body ---\nbody {message_id}"
+
+    skills = tmp_path / "source-skills"
+    skills.mkdir()
+    report = build_map(tmp_path, {}, {"gmail": Mail()}, days=1, skill_directories=[skills], capture_sources=True)
+    archive_init(tmp_path, report, {"gmail": Mail()})
+    notebook = Notebook(tmp_path)
+    record = next(row["record"] for row in report["people"] if "ana@staff.uni.example" in row.get("addresses", [row.get("address")]))
+    assert "- Company: Unknown" in notebook.read(record)
+    [org] = notebook.list("orgs")   # the map's own page for uni.example, titled by its domain until written
+    assert people_pages.fill_companies(tmp_path) == []
+    notebook.write(org, notebook.read(org).replace("# uni.example", "# The University", 1))
+    assert people_pages.fill_companies(tmp_path) == [record]
+    page = notebook.read(record)
+    number = re.search(r"^- \[(\d+)\] gmail:\w{12} — ", page, re.M)[1]
+    assert f"- Company: [The University](../{org}) [{number}]" in page
+    assert people_pages.fill_companies(tmp_path) == []

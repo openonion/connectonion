@@ -687,6 +687,23 @@ def _skill_jobs(root, rows) -> list[dict]:
     return [job(row) for row in rows]
 
 
+def _first_tidy(root, say) -> dict:
+    """Code's pass over the pages just written, no model (#2349).
+
+    A person written before their employer's page leaves `Company: Unknown`
+    (28 of 53 on a real notebook); pages that are probably one person are
+    named for the owner to merge, never merged by name.
+    """
+    from ...rem.files import Notebook
+    from ...rem.merge import likely_pairs
+    from ...rem.people_pages import fill_companies
+    companies = fill_companies(root)
+    if companies:
+        say(f"Company filled from the organisation pages on {len(companies)} "
+            f"{'person' if len(companies) == 1 else 'people'}.")
+    return {"companies": companies, "pairs": likely_pairs(Notebook(root))}
+
+
 def _first_abstract(root, config, say, result) -> dict:
     """Decisions, then principles, from the pages the first run just wrote.
 
@@ -723,6 +740,17 @@ def _kind_result(kind, jobs, outcomes, stopped) -> dict:
             **({"stopped": stopped} if stopped else {})}
 
 
+def _pair_lines(ctx, pairs) -> list[str]:
+    """One line per pair of pages that are probably one person, with the merge that joins them."""
+    from ...rem.files import Notebook
+    notebook = Notebook(ctx.obj["root"])
+
+    def title(record):
+        return next((line[2:] for line in notebook.read(record).splitlines() if line.startswith("# ")), record)
+    return [f"Possibly one person (check, then merge): {title(pair['kept'])} and {title(pair['other'])}, "
+            f"{pair['why']}. {_next(ctx, ['merge', pair['kept'], pair['other']])}" for pair in pairs]
+
+
 def _init_done(ctx, result) -> str:
     """init's last word (#1996): what is in the notebook, skills included, what was written, what is next.
 
@@ -745,6 +773,7 @@ def _init_done(ctx, result) -> str:
     owner = (result.get("owner_page") or {}).get("path") or ""
     missed = sum(page.get("outcome") not in ("accepted", "nothing_new")
                  for key in KEYS.values() for page in (result.get(key) or {}).get("pages") or [])
+    pairs = _pair_lines(ctx, (result.get("tidy") or {}).get("pairs") or [])
     return "\n".join([
         # A failed result is printed after "Error: "; this line is what it says.
         f"{missed} page{' was' if missed == 1 else 's were'} not written this run; each is named above with why."
@@ -752,6 +781,7 @@ def _init_done(ctx, result) -> str:
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
+        *pairs,
         *([f"Your page: {owner}"] if owner else [])])
 
 
@@ -1084,6 +1114,7 @@ def make_rem_app(factory):
             for key in KEYS.values():
                 if result[key].get("reason"):
                     say(result[key]["reason"])
+            result["tidy"] = _first_tidy(root, say)
             result["abstract"] = _first_abstract(root, config, say, result)
             if result.get("investigation") == "failed":
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True

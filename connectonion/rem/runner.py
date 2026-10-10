@@ -575,7 +575,7 @@ def _owner_phones(notebook, record) -> list[str]:
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
-                              drop_others_phones,
+                              company_from_domain, drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
                               restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
@@ -611,6 +611,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
     text, restored = facts.keep_extracted(record, text, extracted)
+    text = company_from_domain(notebook, record, text, extracted)
     if record.startswith("people/") and record != owner.get("record"):
         # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
         text, again = drop_owner_addresses(text, owner_values)

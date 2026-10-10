@@ -22,9 +22,11 @@ investigate turn searches that material as files instead of digesting it
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .config import read_config
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import timestamp
 
@@ -153,6 +155,36 @@ def handles(root: Path, record: str) -> tuple[str, list[str]]:
     row = next((r for r in _map(root).get("people", []) if r.get("record") == record), {})
     known = [*person.get("emails", []), *row.get("addresses", []), *person.get("aliases", [])]
     return title, list(dict.fromkeys([*known, title.split(" (")[0]]))
+
+
+def fill_companies(root: Path) -> list[str]:
+    """People whose `Company: Unknown` has an organisation page for their own mail domain (#2349).
+
+    The first run writes people and organisations in one queue, so a person
+    often promotes before their employer's page exists: 28 of 53 unknown
+    companies on a real notebook. No model; the saved mail is the citation.
+    """
+    from .fact_extract import extract
+    from .investigate import org_domains
+    from .mail_archive import person_material
+    from .page_review import company_from_domain
+    notebook = Notebook(root)
+    domains = {domain for org in notebook.list("orgs") for domain in org_domains(notebook.read(org))}
+    filled = []
+    for record in notebook.list("people"):
+        text = notebook.read(record)
+        if not re.search(r"^- Company: Unknown", text, re.M):
+            continue
+        name, found = handles(root, record)
+        mine = {handle.rpartition("@")[2].casefold() for handle in found if "@" in handle}
+        if not any(own == domain or own.endswith("." + domain) for own in mine for domain in domains):
+            continue
+        material = person_material(root, record, handles=found)
+        items = [item for group in (material[0].values() if material else []) for item in group]
+        rows = extract(items, [name, *found], timezone=read_config(root)["schedule"]["timezone"])
+        if notebook.write(record, company_from_domain(notebook, record, text, rows)):
+            filled.append(record)
+    return filled
 
 
 def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: dict, max_calls=None,

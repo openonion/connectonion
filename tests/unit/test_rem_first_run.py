@@ -297,6 +297,28 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert tail[4] == f"Next: co rem --root {root} open"
 
 
+def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins_them(tmp_path):
+    """#2349: a real first run gave Ody two pages and Ziming Gong a second under 子明;
+    nothing said so, and `co rem merge` was there to join them."""
+    from connectonion.cli.commands.rem_commands import _first_tidy, _init_done
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/zi.md", "子明", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    notebook.stub_person("people/ziming.md", "Ziming Gong", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    said = []
+    result = _first_tidy(tmp_path, said.append)
+    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/ziming.md",
+                                "why": "both list ziming@openonion.ai"}]
+
+    class Ctx:
+        obj = {"root": tmp_path, "json": False}
+    text = _init_done(Ctx(), {"tidy": result})
+    assert "Possibly one person (check, then merge): 子明 and Ziming Gong, both list ziming@openonion.ai" in text
+    assert f"co rem --root {tmp_path} merge people/zi.md people/ziming.md" in text
+
+
 def test_default_window_matches_the_old_next_command(first_run):
     _, init, calls = first_run
     assert init().exit_code == 0
