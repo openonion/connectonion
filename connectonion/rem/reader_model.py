@@ -32,9 +32,16 @@ def _destination(origin: str, raw: str) -> str:
     return posixpath.normpath(posixpath.join(posixpath.dirname(origin), raw))
 
 
+def _clip(text: str, limit: int = 220) -> str:
+    """A card preview ends on a whole word, and says it was shortened."""
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+
+
 def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-    basis = CITATION.sub("", basis).lstrip("- ").strip()[:220]
+    basis = _clip(CITATION.sub("", basis).lstrip("- ").strip())
     return {"path": target, "kind": kind, "basis": basis,
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 
