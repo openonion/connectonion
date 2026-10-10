@@ -400,17 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b4
+## Current Version: 1.9.2b5
 
-1.9.2b4 is a 1.9.2 beta; stable remains 1.9.1. A `handoff` skill passes a
-session's work to another person by email or to their agent, after removing
-secrets and getting the user's approval of the exact text. Fixes found by
-running 1.9.2b3 on a real machine: REM no longer reads its own task sessions as
-the user's words, Outlook searches with a quoted phrase work, status names a
-background job macOS never started, `config set model` no longer crashes, and
-Intel Macs install without compiling cryptography. See
-[1.9.2b4 notes](docs/releases/1.9.2b4.md).
+1.9.2b5 is a 1.9.2 beta; stable remains 1.9.1. `co handoff` (Experimental)
+hands a Codex or Claude Code session's work to another person's agent: it
+drafts a brief from the session (compacted ones included), previews exactly
+what leaves, sends it to their agent mailbox, and the recipient opens it as a
+Codex or Claude Code session that continues from it. `co init` and agent start
+write co's command index into Codex's and Claude Code's instruction files, so
+those agents find co commands on their own. Plus ten fixes from the open
+issues. See [1.9.2b5 notes](docs/releases/1.9.2b5.md).
 
+- 1.9.2b5 (Hand a session to someone else's agent).
 - 1.9.2b4 (Hand work to someone else).
 - 1.9.2b3 (A first run you can read straight away).
 - 1.9.2b2 (A first run that loses fewer pages; built, not published).
