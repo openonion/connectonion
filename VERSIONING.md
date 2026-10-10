@@ -400,16 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b7
+## Current Version: 1.9.2b8
 
-1.9.2b7 is a 1.9.2 beta; stable remains 1.9.1. Fixes from a real 312-page
-first run of 1.9.2b3: a token another `co` process rotated no longer fails
-investigations as a changed credential record, a new notebook runs on Codex,
-Skills stop pointing turns at a document the package does not ship, and a run
-record names the Codex threads it ran in. `scripts/rem_trial_audit.py` audits a
-run from its records, traces and pages. See
-[1.9.2b7 notes](docs/releases/1.9.2b7.md).
+1.9.2b8 is a 1.9.2 beta; stable remains 1.9.1. `co handoff` (Experimental): the
+recipient no longer runs commands. The handoff arrives as one prompt to paste
+into Codex or Claude Code; their agent installs co if needed, accepts with a
+handoff-scoped one-time code (never an invite code), continues from the brief,
+and can ask the sender questions; the sender sees the acceptance and the
+questions in `co handoff status` and replies with `co handoff answer`. The co
+rem launchd job also carries a calendar trigger, because macOS 14 never fires
+its interval. See [1.9.2b8 notes](docs/releases/1.9.2b8.md).
 
+- 1.9.2b8 (Paste one prompt to take over a handoff).
 - 1.9.2b7 (A first run that does not trip over itself).
 - 1.9.2b6 (The second pass goes deeper).
 - 1.9.2b5 (Hand a session to someone else's agent).

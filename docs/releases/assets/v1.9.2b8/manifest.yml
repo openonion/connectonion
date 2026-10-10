@@ -1,0 +1,6 @@
+version: v1.9.2b8
+no_visual_change: >-
+  Terminal and mail text only: the handoff mail is one prompt block (HTML pre),
+  and co handoff gains accept, ask and answer. The co rem change is a launchd
+  plist key. Checked in six real runs across two machines, including one with no
+  co installed.

@@ -25,13 +25,12 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b7** makes a first run steadier: another `co` command refreshing a
-sign-in no longer fails investigations, a new notebook runs on Codex, and each
-run record names the Codex threads it ran in. See
-[1.9.2b7 notes](releases/1.9.2b7.md).
+Beta **1.9.2b8**: a handoff now arrives as one prompt to paste into Codex or
+Claude Code; the recipient's agent takes it from there, and questions come back
+to the sender. See [1.9.2b8 notes](releases/1.9.2b8.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b7'
+python -m pip install --upgrade 'connectonion==1.9.2b8'
 ```
 
 ## Previous previews
