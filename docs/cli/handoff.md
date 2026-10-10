@@ -20,7 +20,7 @@ co handoff open ho-98fb1cb3                     # starts his own Codex session
 
 ## What is sent
 
-One bundle (JSON, format `co-handoff/1`):
+One bundle (JSON, format `co-handoff/2`):
 
 | field | what it holds |
 |---|---|

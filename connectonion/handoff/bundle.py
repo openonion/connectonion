@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
-FORMAT = "co-handoff/1"
+FORMAT = "co-handoff/2"  # /1 was the pre-release shape (goal/decisions); never shipped
 BEGIN = "----- BEGIN CO HANDOFF BUNDLE -----"
 END = "----- END CO HANDOFF BUNDLE -----"
 

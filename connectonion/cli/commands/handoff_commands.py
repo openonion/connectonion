@@ -65,12 +65,17 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
         out.print(f"Remove it from {style.path(path)} (the draft never left this machine).")
         _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} --edit")
         raise typer.Exit(1)
-    _preview(bundle, path)
+    if draft_id and yes and not edit:
+        # The person approved this exact draft from its preview; say what goes, not all of it again.
+        out.print(f"Sending draft {bundle['id']} (content hash {bundle['content_hash']}) to {bundle['to']}: "
+                  f"{bundle['title']}", markup=False)
+    else:
+        _preview(bundle, path)
     if not yes:
         out.print(style.warn("Preview only. Nothing has been sent."))
-        out.print("Agents: show this preview to the person and add --yes only after they approve it. "
-                  "Your own --yes is not their approval.")
-        _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} --yes")
+        out.print("If you are an agent: stop here. Show the person this preview and ask whether to send it. "
+                  "Being asked to hand something off is not approval of this text; only their yes to this preview is.")
+        _next(f"once the person approves this preview, co handoff send {shlex.quote(who)} --draft {bundle['id']} --yes")
         return
     _deliver(bundle)
 
@@ -188,9 +193,9 @@ def handle_status(handoff_id: str) -> None:
     mail = transport.sent_status(record["to"], record["subject"])
     out.print(style.heading(f"Handoff {handoff_id}"))
     out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
-    out.print(f"Mail service: {mail.get('status', 'unknown') if mail else 'no record of this message yet'}")
-    out.print("Whether they opened it is not reported back yet; the recipient runs it on their machine:")
-    _next(f"co handoff open {handoff_id}")
+    out.print(f"Mail service: {'accepted and sent' if mail and mail.get('status') == 'sent' else (mail or {}).get('status', 'no record of this message yet')}")
+    out.print("Whether they opened it is not reported back yet. The recipient continues on their machine with:")
+    _next(f"co handoff open {handoff_id}  (run by the recipient)")
 
 
 def handle_contact(name: str, address: str) -> None:
@@ -213,19 +218,35 @@ def _incoming() -> list[tuple[dict, dict]]:
         bundle = bundles.from_mail(mail.get("message", ""))
         if bundle:
             found.append((mail, bundle))
+            _keep(bundle)
     return found
+
+
+def _keep(bundle: dict) -> None:
+    """Save each received bundle, so show/open need not read the whole mailbox again."""
+    folder = _home() / "received" / bundle["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "bundle.json").write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _sender(address: str) -> str:
+    """'parrot (0x…@mail…)' when the sender is a saved contact, else the address."""
+    names = [name for name, mail in transport.contacts().items() if mail == address]
+    return f"{names[0]} ({address})" if names else address
 
 
 def handle_inbox() -> None:
     found = _incoming()
+    mailbox = os.getenv("AGENT_EMAIL", "your agent mailbox")
     if not found:
-        out.print(f"No handoffs in {os.getenv('AGENT_EMAIL', 'your agent mailbox')}.")
-        _next("co email addresses")
+        out.print(f"No handoffs yet. Senders reach you at {mailbox}: give them that address "
+                  "(it works even if co email addresses lists none).")
+        _next("co handoff inbox")
         return
-    out.print(style.heading(f"Incoming handoffs ({len(found)})"))
+    out.print(style.heading(f"Incoming handoffs ({len(found)}) at {mailbox}"))
     for mail, bundle in found:
         opened = " · opened" if (_home() / "received" / bundle["id"] / "session.json").exists() else ""
-        out.print(f"{style.command(bundle['id'])}  from {bundle['from']}  {str(mail.get('timestamp', ''))[:16]}{opened}")
+        out.print(f"{style.command(bundle['id'])}  from {_sender(bundle['from'])}  {str(mail.get('timestamp', ''))[:16]}{opened}")
         out.print(f"    {bundle['title']}", markup=False)
     out.print("Nothing runs until you open one.")
     _next(f"co handoff show {found[0][1]['id']}")
@@ -233,7 +254,7 @@ def handle_inbox() -> None:
 
 def _find(handoff_id: str) -> dict:
     saved = _home() / "received" / handoff_id / "bundle.json"
-    if saved.exists():
+    if saved.exists() and json.loads(saved.read_text(encoding="utf-8")).get("format") == bundles.FORMAT:
         return json.loads(saved.read_text(encoding="utf-8"))
     for _, bundle in _incoming():
         if bundle["id"] == handoff_id:
