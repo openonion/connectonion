@@ -1,0 +1,6 @@
+version: v1.9.2b9
+no_visual_change: >-
+  co mcp is terminal output only (a server list, a tool list, a tool's JSON).
+  It was run live against Codex 0.162.1 on the owner's Mac: ls, tools, a
+  read-only Gmail search and profile read, and a send_email preview that sent
+  nothing.

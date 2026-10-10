@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b8**: a handoff now arrives as one prompt to paste into Codex or
-Claude Code; the recipient's agent takes it from there, and questions come back
-to the sender. See [1.9.2b8 notes](releases/1.9.2b8.md).
+Beta **1.9.2b9** adds `co mcp` (Experimental): call the connectors and MCP
+servers you already have in Codex, such as Gmail, from the terminal, with no
+second login and no model turn. See [1.9.2b9 notes](releases/1.9.2b9.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b8'
+python -m pip install --upgrade 'connectonion==1.9.2b9'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b8**: a handoff now arrives as one prompt to paste into Codex or
+Claude Code; the recipient's agent takes it from there, and questions come back
+to the sender. See [1.9.2b8 notes](releases/1.9.2b8.md).
 
 Beta **1.9.2b6** makes co rem's second pass go deeper: follow-up searches hand
 back mail from people the notebook knows, and one editing turn rewrites the

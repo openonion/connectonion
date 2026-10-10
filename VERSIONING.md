@@ -400,17 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b8
+## Current Version: 1.9.2b9
 
-1.9.2b8 is a 1.9.2 beta; stable remains 1.9.1. `co handoff` (Experimental): the
-recipient no longer runs commands. The handoff arrives as one prompt to paste
-into Codex or Claude Code; their agent installs co if needed, accepts with a
-handoff-scoped one-time code (never an invite code), continues from the brief,
-and can ask the sender questions; the sender sees the acceptance and the
-questions in `co handoff status` and replies with `co handoff answer`. The co
-rem launchd job also carries a calendar trigger, because macOS 14 never fires
-its interval. See [1.9.2b8 notes](docs/releases/1.9.2b8.md).
+1.9.2b9 is a 1.9.2 beta; stable remains 1.9.1. `co mcp` (Experimental) lists
+and calls the MCP servers and account connectors a user already has in Codex
+(Gmail, Google Calendar, GitHub, their own servers) without a second login and
+without a model turn: `co mcp ls`, `co mcp tools <server>`, `co mcp call
+<server> <tool> '<json>'`. Read-only tools run at once; others preview until
+`--yes`. See [1.9.2b9 notes](docs/releases/1.9.2b9.md).
 
+- 1.9.2b9 (Use the connectors Codex already has).
 - 1.9.2b8 (Paste one prompt to take over a handoff).
 - 1.9.2b7 (A first run that does not trip over itself).
 - 1.9.2b6 (The second pass goes deeper).
