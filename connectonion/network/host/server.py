@@ -628,15 +628,18 @@ def usable_uvicorn_options(workers, reload) -> tuple:
 def _port_in_use(port: int) -> bool:
     """Whether uvicorn's bind on 0.0.0.0:<port> would fail.
 
-    Binds the way uvicorn does (SO_REUSEADDR, all interfaces) and lets go, so a
-    port in TIME_WAIT from the last run is not reported as taken. There is a
-    window between this and uvicorn's bind; losing that race still ends in
-    uvicorn's own error, which is what happened every time before.
+    Binds the way uvicorn's asyncio server does (all interfaces, SO_REUSEADDR
+    only on POSIX) and lets go, so a port in TIME_WAIT from the last run is not
+    reported as taken. On Windows SO_REUSEADDR binds over a live listener, so
+    setting it there reported a held port as free and uvicorn failed after the
+    banner. There is a window between this and uvicorn's bind; losing that race
+    still ends in uvicorn's own error.
     """
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if os.name == "posix":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("0.0.0.0", port))
         except OSError:
