@@ -17,6 +17,7 @@ from typing import Dict, Optional
 import requests
 import yaml
 
+from ..address import agent_email
 from ..backend import backend_url
 from ..credentials import AmbientCredentialError, require_ambient_api_key
 from ..project import project_co_dir, project_root
@@ -267,7 +268,7 @@ def get_agent_email() -> Optional[str]:
         if not email:
             address = agent_config.get("address", "")
             if address and address.startswith("0x"):
-                email = f"{address[:10]}@mail.openonion.ai"
+                email = agent_email(address)
 
         return email
     except Exception:
