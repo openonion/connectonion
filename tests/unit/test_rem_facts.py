@@ -175,3 +175,15 @@ def test_markdown_and_malformed_links_do_not_block_the_index():
     assert row["website"] == "[Personal site](https://harbour.example); https://[broken"
     disguised = columns({"Links": "https://linkedin.com@evil.example/in/mia; https://linkedin.com.evil.example"})
     assert disguised["linkedin"] == ""
+
+
+def test_also_known_as_keeps_names_not_addresses():
+    # A turn copies the Email line into Also known as; the reader then shows the
+    # same address three times (Ody, 1.9.2b3 review).
+    from connectonion.rem.facts import names_not_addresses
+    page = ("# Ody Zhou\n\n## Facts\n- Email: zhouody@gmail.com [1]\n"
+            "- Also known as: Ody; 周泽凯 [2]; zhouody@gmail.com; zhouodywork@gmail\n\n## Sources\n")
+    assert "- Also known as: Ody; 周泽凯 [2]\n" in names_not_addresses("people/ody.md", page)
+    only = page.replace("Ody; 周泽凯 [2]; ", "")
+    assert "- Also known as: Unknown\n" in names_not_addresses("people/ody.md", only)
+    assert names_not_addresses("orgs/x.md", page) == page

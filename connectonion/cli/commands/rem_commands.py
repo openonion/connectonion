@@ -1419,6 +1419,17 @@ def make_rem_app(factory):
         order = "most recent contact first" if sort == "last_contact" else "by " + sort.replace("_", " ")
         _handle(ctx, operation, ["list"], draw=lambda rows: draw(rows, order) if table else None)
 
+    def _person(notebook, query: str) -> str:
+        """The one page a name, alias or address names; several or none is an error that lists them."""
+        from ...rem.files import RemError
+        found = notebook.find_people(query)
+        if len(found) == 1:
+            return found[0]["path"]
+        if not found:
+            raise RemError(f'No person matches "{query}". Search names with `co rem list people --aliases`')
+        rows = "\n".join(f"  {person['path']}  {person['title']}  {', '.join(person['emails'])}" for person in found)
+        raise RemError(f'"{query}" matches {len(found)} people; show one by its path or address:\n{rows}')
+
     @rem.command("show", cls=V("co rem show"))
     def show_record(ctx: typer.Context, record: str = typer.Argument(...)):
         from ...rem.files import CATEGORIES, Notebook, RemError, read_json, state_path
@@ -1435,6 +1446,9 @@ def make_rem_app(factory):
                     raise RemError("No page for you yet: init makes it from a connected mailbox or from your "
                                     "name. Run `co rem init --name \"Your Name\"`")
                 category = page.split("/")[0]
+            elif not record.endswith(".md"):
+                page = _person(Notebook(root), record)
+                category = "people"
             from ...rem.merge import resolve
             text = Notebook(root).read(resolve(root, page))
             return text, (["investigate", record] if "Unknown" in text else ["list", category])

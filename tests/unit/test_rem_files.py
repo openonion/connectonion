@@ -377,3 +377,18 @@ def test_a_waiting_writer_gets_the_lock_while_other_threads_keep_taking_it(tmp_p
         stop.set()
         for worker in workers:
             worker.join()
+
+
+def test_a_mapped_person_is_not_also_known_by_their_addresses(tmp_path):
+    """64 of 295 pages in the 1.9.2b3 run had an Also known as that only repeated
+    the Email line: the map seeded every handle into both fields."""
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia Chen", ["mia@harbour.example", "Mimi"])
+    page = notebook.read("people/mia.md")
+
+    assert "- Handles: mia@harbour.example, Mimi" in page
+    assert "- Also known as: Mimi" in page
+    notebook.stub_person("people/bo.md", "Bo", ["bo@town.example"])
+    assert "- Also known as: Unknown" in notebook.read("people/bo.md")

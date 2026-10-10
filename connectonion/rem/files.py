@@ -276,7 +276,10 @@ class Notebook:
         # *by* their address, so leaving `Email: Unknown` on a page the roster
         # sweep built from that very address throws away the one fact the free
         # stage had, and sends the paid stage looking for it.
-        seeded = {"Handles": ", ".join(handles), "Also known as": ", ".join(handles)}
+        # Addresses are not names: seeded into Also known as too, 64 of 295 pages
+        # in the 1.9.2b3 run said nothing there but the Email line again.
+        seeded = {"Handles": ", ".join(handles),
+                  "Also known as": ", ".join(handle for handle in handles if "@" not in handle)}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
         lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
@@ -445,6 +448,20 @@ class Notebook:
             roster.append({"path": record, "title": title, "aliases": sorted(set(aliases)),
                            "emails": sorted(set(emails)), "summary": summary})
         return roster
+
+    def find_people(self, query: str) -> list[dict]:
+        """Every person the query names exactly: title, an alias or an address.
+
+        For commands that act on someone (`show`, sending mail, a handoff), so
+        it never guesses. A real notebook had three Ody pages; the caller lists
+        them all rather than pick one and reach the wrong address.
+        """
+        wanted = query.strip().casefold()
+        plain = lambda name: re.sub(r"\s*\([^()]*\)$", "", name).strip().casefold()  # noqa: E731
+        return [person for person in self.people()
+                if wanted in {plain(person["title"]), person["title"].casefold(), *person["emails"],
+                              *(inner.strip().casefold() for inner in re.findall(r"\(([^()]*)\)", person["title"])),
+                              *(plain(alias) for alias in person["aliases"])}]
 
     def exists(self, record: str) -> bool:
         return self.path(record).is_file()

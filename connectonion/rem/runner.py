@@ -684,7 +684,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        notebook.write(record, renumber_sources(text))
+        notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
     return audit_usage
 
 
@@ -731,7 +731,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
-            notebook.write(record, renumber_sources(text))
+            notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
     return refusals
 
 

@@ -19,6 +19,7 @@ confuse installing this Skill with starting collection or approving source acces
 | Find relevant records by text | `co rem search "query"` |
 | Browse one category | `co rem list people` |
 | Read a result | `co rem show people/alice.md` |
+| Find one person's page and contact facts (email, phone) by name, alias or address | `co rem show "Alice Chen"` — several matches are listed with their emails and none is shown; pick by address. Every contact as data: `co rem --json list people --table` |
 | Inspect an earlier run | `co rem logs` |
 | Where the tokens went (by stage, model, source; per item and per 1k chars) | `co rem logs --usage` / `co rem logs --usage --days 7` |
 | Show the user the whole notebook in their browser | `co rem open` (a fresh local snapshot that works offline; `--live` opens O Chat's view when the `co ai` Host is online, else falls back) |

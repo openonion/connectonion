@@ -256,10 +256,12 @@ Back:     co rem --help
 ```
 Print one page as Markdown. Read-only.
 
-Usage:    co rem show PAGE
+Usage:    co rem show PAGE | PERSON
 Example:  co rem show people/tamara-berryman-324b6af6e8.md
           co rem show me   (your own page)
+          co rem show "Tamara Berryman"   (a person's name, alias or email)
 Inputs:   PAGE comes from list, search, or the Next line of investigate.
+          A PERSON naming several pages lists them and shows none.
 Next:     co rem investigate PAGE   (if it still says Unknown)
 Back:     co rem --help
 ```
