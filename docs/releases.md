@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
+Beta **1.9.2b7** makes a first run steadier: another `co` command refreshing a
+sign-in no longer fails investigations, a new notebook runs on Codex, and each
+run record names the Codex threads it ran in. See
+[1.9.2b7 notes](releases/1.9.2b7.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b7'
+```
+
+## Previous previews
+
 Beta **1.9.2b6** makes co rem's second pass go deeper: follow-up searches hand
 back mail from people the notebook knows, and one editing turn rewrites the
 lines the final round leaves saying what is not known. See
 [1.9.2b6 notes](releases/1.9.2b6.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2b6'
-```
-
-## Previous previews
 
 Beta **1.9.2b5** adds `co handoff` (Experimental): hand the work in a Codex or
 Claude Code session to someone else's agent, which continues it in its own

@@ -400,16 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b6
+## Current Version: 1.9.2b7
 
-1.9.2b6 is a 1.9.2 beta; stable remains 1.9.1. co rem's second pass goes
-deeper: a follow-up search hands the model only mail from people the notebook
-knows, and after the final round code counts the lines that still say what is
-not known outside Uncertainties and gives the model one editing turn to fix
-them (measured live on one page: 10 such lines to 0 in 40 seconds). The
-scheduled job keeps the Mac awake while it runs, and `co rem logs --usage` no
-longer crashes on skill runs. See [1.9.2b6 notes](docs/releases/1.9.2b6.md).
+1.9.2b7 is a 1.9.2 beta; stable remains 1.9.1. Fixes from a real 312-page
+first run of 1.9.2b3: a token another `co` process rotated no longer fails
+investigations as a changed credential record, a new notebook runs on Codex,
+Skills stop pointing turns at a document the package does not ship, and a run
+record names the Codex threads it ran in. `scripts/rem_trial_audit.py` audits a
+run from its records, traces and pages. See
+[1.9.2b7 notes](docs/releases/1.9.2b7.md).
 
+- 1.9.2b7 (A first run that does not trip over itself).
 - 1.9.2b6 (The second pass goes deeper).
 - 1.9.2b5 (Hand a session to someone else's agent).
 - 1.9.2b4 (Hand work to someone else).
