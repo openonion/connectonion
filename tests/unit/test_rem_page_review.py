@@ -953,3 +953,24 @@ def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(
             f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
     kept, dropped = drop_unresolved('people/ian.md', text, '', items)
     assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
+
+
+def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
+    # 40 of 123 pages in a real 1.9.2b3 notebook listed [1], [2], [5], [9]...
+    # after uncited sources were dropped; the reader showed the gaps.
+    from connectonion.rem.page_review import renumber_sources
+    text = ("# Ada\n\nShe runs the lab [2] and signed [5][W1].\n\n"
+            "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+            "## Sources\n- [2] outlook:aaa — observed 2026-07-10\n- [5] outlook:bbb — observed 2026-07-11\n"
+            "- [W1] https://lab.test\n")
+    assert renumber_sources(text) == (
+        "# Ada\n\nShe runs the lab [1] and signed [2][W1].\n\n"
+        "```python\nrows[5] = x[2]\n```\n\nSee `a[9]` and [the docs](https://x.test).\n\n"
+        "## Sources\n- [1] outlook:aaa — observed 2026-07-10\n- [2] outlook:bbb — observed 2026-07-11\n"
+        "- [W1] https://lab.test\n")
+
+
+def test_sources_already_in_order_are_unchanged():
+    from connectonion.rem.page_review import renumber_sources
+    text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
+    assert renumber_sources(text) == text

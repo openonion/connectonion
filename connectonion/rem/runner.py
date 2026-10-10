@@ -580,7 +580,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain, drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
-                              restore_runner_fields, unresolved_findings, validate)
+                              renumber_sources, restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -682,7 +682,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        notebook.write(record, text)
+        notebook.write(record, renumber_sources(text))
     return audit_usage
 
 
@@ -697,7 +697,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and investigating that page reads every source again.
     """
     from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
-                              restore_runner_fields, validate)
+                              renumber_sources, restore_runner_fields, validate)
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
     accepted, refusals = [], []
@@ -729,7 +729,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
-            notebook.write(record, text)
+            notebook.write(record, renumber_sources(text))
     return refusals
 
 

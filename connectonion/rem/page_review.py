@@ -236,6 +236,30 @@ def drop_uncited_sources(text: str) -> str:
     return head + marker + ''.join(kept) + rest
 
 
+CODE = re.compile(r'```.*?```|`[^`\n]*`', re.S)
+
+
+def renumber_sources(text: str) -> str:
+    """Number the kept Sources 1, 2, 3... and their citations to match.
+
+    Dropping uncited sources left gaps the reader showed as they were: 40 of
+    123 pages in a real 1.9.2b3 notebook. Code is not prose, so `rows[5]`
+    keeps its index; web sources ([W1]) keep their own numbering.
+    """
+    sources = text.partition('\n## Sources\n')[2]
+    listed = [int(n) for n in re.findall(r'^\s*(?:- )?\[(\d+)\]', sources, re.M)]
+    order = {old: new for new, old in enumerate(sorted(set(listed)), 1)}
+    if all(old == new for old, new in order.items()):
+        return text
+    swap = lambda prose: re.sub(r'\[(\d+)\](?!\()',  # noqa: E731
+                                lambda m: f'[{order.get(int(m[1]), m[1])}]', prose)
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [swap(text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(text[last:])
+
+
 RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
                              "investigation:project-repositories"),
                # The same refusal on a skill page (title-refine, 2026-10-08).
