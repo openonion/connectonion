@@ -622,7 +622,7 @@ def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
     mock_yaml_load.return_value = {"agent": {"address": "0xabcdef1234567890"}}
     email = get_agent_email()
-    assert email == "0xabcdef12@mail.openonion.ai"
+    assert email == "0xabcdef1234@mail.openonion.ai"
 
 
 def test_is_email_active(monkeypatch):

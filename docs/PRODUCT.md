@@ -163,7 +163,7 @@ gets exit code 4. `bash` itself is **Unix and macOS only — it raises on Window
 no bare `co calendar` — do not write that name.
 
 **Email, precisely.** Every address deterministically yields
-`{address[:10]}@mail.openonion.ai` at key generation (`address.py:69-70`) — so "it
+`{address[:12]}@mail.openonion.ai` (`0x` + 10 hex, `address.agent_email`) — so "it
 ships with an email address" is literally true of the identity. But it is **inert
 until `co auth`** (`address.py:76`), send and receive are **hosted OpenOnion API
 calls**, not agent-local (`useful_tools/send_email.py:98`), and custom names and

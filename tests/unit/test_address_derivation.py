@@ -56,7 +56,7 @@ def test_the_seed_slice_is_retired():
 
 
 def test_email_follows_the_new_address():
-    assert address.recover(PHRASE)["email"] == f"{EXPECTED[:10]}@mail.openonion.ai"
+    assert address.recover(PHRASE)["email"] == f"{EXPECTED[:12]}@mail.openonion.ai"
 
 
 # --- The break, and saying it out loud ---

@@ -93,7 +93,7 @@ def handle_reset():
     ))
 
     # Create keys.env with agent address
-    agent_email = f"{addr_data['address'][:10]}@mail.openonion.ai"
+    agent_email = address.agent_email(addr_data['address'])
     with open(keys_env, 'w', encoding='utf-8') as f:
         f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
         f.write(f"AGENT_ADDRESS={addr_data['address']}\n")

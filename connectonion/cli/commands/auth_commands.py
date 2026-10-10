@@ -81,9 +81,9 @@ def authenticate(co_dir: Path, save_to_project: bool = False, quiet: bool = Fals
 
         # Get the agent email from the server response
         if email_info:
-            agent_email = email_info.get("address", f"{public_key[:10]}@mail.openonion.ai")
+            agent_email = email_info.get("address", address.agent_email(public_key))
         else:
-            agent_email = f"{public_key[:10]}@mail.openonion.ai"
+            agent_email = address.agent_email(public_key)
 
         from ...environment import (global_config_dir, explicit_env_file,
                                     selected_env_file, publish_values)
