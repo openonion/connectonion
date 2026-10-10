@@ -107,7 +107,7 @@ def _dump(data) -> None:
 @mcp_app.command("ls", epilog="Example:  co mcp ls  |  co mcp ls --json")
 @_reported
 def ls(as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
-    """Every MCP server Codex has: its auth state and how many tools it offers."""
+    """Read-only. Every MCP server Codex has: its auth state and how many tools it offers."""
     with _codex() as (client, thread_id):
         rows = [{"name": s["name"], "auth": s.get("authStatus"), "tools": len(s.get("tools") or {})}
                 for s in _servers(client, thread_id)]
@@ -123,7 +123,7 @@ def ls(as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
 @_reported
 def tools(server: str = typer.Argument(..., help="A server name from co mcp ls"),
           as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
-    """One server's tools, one line each; read-only ones are marked."""
+    """Read-only. One server's tools, one line each; read-only ones are marked."""
     with _codex() as (client, thread_id):
         found = _server(_servers(client, thread_id), server).get("tools") or {}
     if as_json:
@@ -142,7 +142,7 @@ def call(server: str = typer.Argument(..., help="A server name from co mcp ls"),
          tool: str = typer.Argument(..., help="A tool name from co mcp tools <server>"),
          arguments: str = typer.Argument("{}", help="The tool's arguments as a JSON object"),
          yes: bool = typer.Option(False, "--yes", help="Run a tool that is not read-only; without it this previews")):
-    """Call one tool and print its own data as JSON."""
+    """Runs one tool and prints its own data as JSON. A tool that is not read-only (send, delete, create) only previews until --yes."""
     args = json.loads(arguments)
     with _codex() as (client, thread_id):
         found = _server(_servers(client, thread_id), server).get("tools") or {}
