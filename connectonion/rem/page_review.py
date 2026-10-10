@@ -569,7 +569,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
         if old_title and new_title and old_title[1] != new_title[1]:
             errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
-    errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
+    errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
+               for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
@@ -715,6 +716,23 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     sources = ''.join(line for line in sources.splitlines(keepends=True)
                       if not ((match := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) and match[1] in bad))
     return head + marker + sources + rest, {'citations': sorted(bad), 'lines': dropped}
+
+
+def add_missing_sections(record: str, text: str, owner: bool = False) -> str:
+    """A required section the turn left out is added as Unknown, in its place.
+
+    1.9.2b3 trial: a project page without Open threads and a skill page
+    without Limitations were refused whole, after every other section was
+    written. Unknown is what the page knows about the missing one.
+    """
+    required = headings(record, owner)
+    for index, heading in enumerate(required):
+        if re.search(rf'^## {re.escape(heading)}[ \t]*$', text, re.M):
+            continue
+        later = (re.search(rf'^## {re.escape(h)}[ \t]*$', text, re.M) for h in required[index + 1:])
+        at = next((m.start() for m in later if m), len(text))
+        text = text[:at] + f'## {heading}\n- Unknown\n\n' + text[at:]
+    return text
 
 
 def _fill_emptied_sections(head: str) -> str:
