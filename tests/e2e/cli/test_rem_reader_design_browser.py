@@ -57,6 +57,38 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
         browser.close()
 
 
+def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_path, monkeypatch):
+    """#2349: LayeredVisions, the busiest project, had not been written yet,
+    and its hero read "WHERE THE WORK STANDS /Users/.../LayeredVisions"."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    notebook.stub_project("projects/browser.md", "browser", ["/work/browser"])
+    page_text = notebook.read("projects/browser.md").replace(
+        "- /work/browser", "- /work/browser\n- Sessions: 13\n- First seen: 2026-08-01\n- Last seen: 2026-08-02")
+    notebook.write("projects/browser.md", page_text)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    path = tmp_path / "reader.html"
+    path.write_text(render(root))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        for width in (1440, 375):
+            page = browser.new_page(viewport={"width": width, "height": 812})
+            page.goto(path.as_uri() + "#r=projects%2Fbrowser.md")
+            statement = page.locator(".focus-statement").inner_text()
+            assert "/work/browser" not in statement
+            assert statement == "Not written yet: 13 sessions, last on 2026-08-02."
+            assert "WHERE THE WORK STANDS" not in page.locator(".focus-kicker").inner_text()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.close()
+        browser.close()
+
+
 def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})

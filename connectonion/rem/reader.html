@@ -2615,10 +2615,20 @@ function contactStrip(r) {
     return el("div", { class: "focus-fact" }, [el("dt", { text: label }), dd]);
   }));
 }
+// A mapped project's hero says it waits and how much there is to read, not its
+// folder: "WHERE THE WORK STANDS /Users/…/LayeredVisions" on the busiest project (#2349).
+function mappedProjectLine(r) {
+  const paths = section(r, "paths")?.text || "";
+  const sessions = (/^-\s*Sessions:\s*(\d+)/m.exec(paths) || [])[1];
+  const last = (/^-\s*Last seen:\s*([0-9-]+)/m.exec(paths) || [])[1];
+  return "Not written yet" + (sessions ? ": " + sessions + " session" + (sessions === "1" ? "" : "s") +
+    (last ? ", last on " + last : "") : "") + ".";
+}
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
+  const projectMapped = r.category === "projects" && k.status === "Mapped" && !privateMapped;
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
   const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
@@ -2629,9 +2639,10 @@ function recordFocus(r) {
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
   const finding = plainLine(findingLine);
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : projectMapped ? mappedProjectLine(r)
     : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
-  const question = privateMapped ? "Needs your explicit request" : projectNeedsContext ?
+  const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : "") }, [el("span", { class: "focus-kicker", text: question })]);

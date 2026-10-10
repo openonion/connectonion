@@ -541,7 +541,10 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
 PROMOTE_WAIT_SECONDS = 1800
 
 
-CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ")
+# A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
+# busiest project (LayeredVisions) and 1.9.2b3 browser.
+CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ",
+                 "Missing or duplicate citation:")
 
 
 def citation_only(errors: list[str]) -> bool:
@@ -605,7 +608,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
         text, more = facts.drop_uncited(record, text, original)
         uncited = [*uncited, *more]
-    citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation else []
+    # The last resort has no repair turn after it: a finding on an untraceable
+    # citation goes with its line, as 1.9.2b3 refused linkedin-workshop whole for one.
+    citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation and not last_resort else []
     text = link_company(notebook, record, drop_uncited_sources(text))
     # A phone, address, link or contact date our code read from the material
     # is not lost because the turn did not copy it (#2068).
