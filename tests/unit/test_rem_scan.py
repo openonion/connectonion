@@ -1,10 +1,24 @@
 """The census: what the sources already list, handed over as signals."""
 
 import ssl
+from datetime import datetime
 
 import pytest
 
 from connectonion.rem.scan import _display_name, scan_people
+
+
+class _September(datetime):
+    """The fixtures are mail from September 2026; on 2026-10-11 a 30-day window no
+    longer reached them, so every scan here found no one. The clock is fixed instead."""
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 9, 15, tzinfo=tz)
+
+
+@pytest.fixture(autouse=True)
+def _mid_september(monkeypatch):
+    monkeypatch.setattr("connectonion.rem.scan.datetime", _September)
 
 
 class Box:
