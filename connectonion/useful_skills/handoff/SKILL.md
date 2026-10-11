@@ -141,8 +141,10 @@ address:
 
 Tell the user it went, and run `co handoff status <id> --wait` in the background:
 it returns when their agent accepts or asks. `co handoff status <id>` shows "Accepted by …" once their
-agent accepts, and their questions; `co ai` also prints both while it runs. Answer
-a question the user has answered with `co handoff answer <id> "<their answer>"`.
+agent accepts, and their questions; `co ai` also prints both while it runs. Each
+question is answered automatically by the sender's agent with a copy of the session
+(credentials removed), so you do not answer it yourself. If the user wants to add
+something, send it with `co handoff answer <id> "<their answer>"`.
 The mail service's own record of the send is in `co email sent`. A recipient
 without an agent replies by plain email; answer them with `co email send` only
 after the user approves the text.
