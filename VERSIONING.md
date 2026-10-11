@@ -405,7 +405,7 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.9.2b10 is a 1.9.2 beta; stable remains 1.9.1. The `co handoff` mail reads
 like a mail on any screen: who handed you what, the task, where it stands and
 the open questions first, then the block for Codex or Claude Code in a box that
-wraps. Its install step asks for a version that exists (1.9.2b8 or newer, never
+wraps. Its install step asks for a version that exists (1.9.2b10 or newer, never
 the sender's own build) and installs co in its own environment, never the
 global Python. `co email send` keeps a plain-text body's paragraphs. One
 line installs co (`curl … install.sh | sh`), and an accepted handoff makes

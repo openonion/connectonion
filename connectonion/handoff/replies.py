@@ -69,11 +69,12 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 
 # ---- the prompt a recipient pastes into their coding agent ----
 
-# The oldest published co that can accept a handoff from the prompt (1.9.2b8). The install line
-# names this, never __version__: a sender on a dev build pinned 1.9.2b10.dev1, which no index
-# had, so the recipient could not install co at all (2026-10-11). Raise it only when a release
-# changes what the recipient's co must do.
-MIN_VERSION = "1.9.2b8"
+# The oldest published co whose `co handoff accept` does everything this prompt promises. The
+# install line names this, never __version__: a sender on a dev build pinned 1.9.2b10.dev1, which
+# no index had, so the recipient could not install co at all (2026-10-11). Raise it whenever a
+# release changes what the recipient's co does: 1.9.2b10 accept also makes the sender a contact
+# (#2399), and a recipient on 1.9.2b8 would pass step 1 and never save them.
+MIN_VERSION = "1.9.2b10"
 
 
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:

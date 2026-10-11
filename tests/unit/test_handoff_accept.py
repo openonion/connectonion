@@ -292,3 +292,11 @@ def test_a_person_reads_the_task_before_the_agent_steps_and_sees_no_markdown_fen
     assert "```" not in raw
     assert body.index("handed you a task") < body.index("Copy everything in the box") < body.index("1. Run co --version")
     assert body.index("Where it stands:") < body.index("1. Run co --version")
+
+
+def test_the_install_floor_is_never_newer_than_this_release():
+    # A released sender must only ask for a version that exists once it is on PyPI.
+    from packaging.version import Version
+    from connectonion import __version__
+    from connectonion.handoff.replies import MIN_VERSION
+    assert Version(MIN_VERSION) <= Version(__version__)
