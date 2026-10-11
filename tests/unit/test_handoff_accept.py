@@ -152,7 +152,7 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert f"{RECIPIENT['address']} is now your agent's contact bob (co trust list)" in status.output
     assert tools.is_contact(RECIPIENT["address"], co_dir) and not tools.is_whitelisted(RECIPIENT["address"], co_dir)
-    assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"]}}  # kept its name
+    assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True}}  # kept its name; reads the inbox
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
     assert peers[RECIPIENT["address"]] == {"mailbox": RECIPIENT["mail"], "scope": "handoff", "handoffs": ["ho-1a2b3c4d"]}
 
@@ -350,3 +350,12 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
     shown = _invoke("handoff", "show", "ho-2b3c4d5e")
     assert "co handoff accept coh2." in shown.output                         # how to take it over, without the mail
+
+
+def test_a_contact_from_before_the_inbox_still_gets_mail(world):
+    # Parrot accepted a 1.9.2b11 handoff, so it is a contact with an agent address, but its co
+    # never reads the inbox: a handoff sent there would never be seen.
+    world["be"](SENDER)
+    transport._save({"parrot": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"]}})
+    _send(world, who="parrot")
+    assert world["inbox"] == [] and world["mails"][-1]["to"] == RECIPIENT["mail"]

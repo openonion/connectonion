@@ -34,7 +34,7 @@ def check() -> list[str]:
         seen = record.get("seen", {"accepted": False, "questions": 0})
         who = state["accepted"]
         if who and not seen["accepted"]:
-            name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"])
+            name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"], record.get("inbox", False))
             news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as contact {name}")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
                  for q in state["questions"][seen["questions"]:]]

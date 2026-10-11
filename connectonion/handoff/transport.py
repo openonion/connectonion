@@ -45,8 +45,11 @@ def add_contact(name: str, address: str) -> str:
     return mail
 
 
-def meet(mail: str, agent: str) -> str:
+def meet(mail: str, agent: str, inbox: bool = False) -> str:
     """After a handoff is accepted, each side makes the other its agent's contact. Returns their name.
+
+    `inbox` records that their co reads the agent inbox (they used a coh2 code), so later
+    handoffs to them go there; a contact without it gets mail, which every version reads.
 
     `agent` joins this identity's trust contacts (co trust list). The name book learns that `mail`
     reaches them: a name already reached at `mail`, or already known as `agent`, keeps its name and
@@ -61,6 +64,8 @@ def meet(mail: str, agent: str) -> str:
         name = f"{name}-{agent[2:8]}" if name in book else name
         book[name] = {"mail": mail}
     book[name]["agent"] = agent
+    if inbox:
+        book[name]["inbox"] = True
     _save(book)
     return name
 
@@ -89,10 +94,10 @@ def resolve(who: str) -> str | None:
 
 
 def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
-    """Send to `agent`'s inbox when its address is known (passed, or a contact's), else mail `to`.
+    """Send to `agent`'s inbox when known (passed, or a contact that reads its inbox), else mail `to`.
 
     Returns send_email's result dict; an inbox delivery adds "via": "agent inbox"."""
-    agent = agent or next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("agent")), None)
+    agent = agent or next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
     if agent:
         return _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
     return _send_mail(to, subject, body, idempotency_key)

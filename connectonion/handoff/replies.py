@@ -76,8 +76,9 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # no index had, so the recipient could not install co at all (2026-10-11). Raise it whenever a
 # release changes what the recipient's co does: 1.9.2b10 accept also makes the sender a contact
 # (#2399), and a recipient on 1.9.2b8 would pass step 1 and never save them. 1.9.2b11: the prompt's
-# step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have.
-MIN_VERSION = "1.9.2b11"
+# step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
+# replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox.
+MIN_VERSION = "1.9.2b12"
 
 
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
@@ -162,7 +163,7 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
     return state
 
 
-def remember_peer(address: str, mailbox: str, handoff_id: str, to: str) -> str:
+def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: bool = False) -> str:
     """The acceptor becomes this agent's contact, named after whoever `to` was; returns that name.
 
     peers.json keeps which handoffs they took.
@@ -173,7 +174,7 @@ def remember_peer(address: str, mailbox: str, handoff_id: str, to: str) -> str:
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return transport.meet(to, address)
+    return transport.meet(to, address, inbox)
 
 
 def _now() -> str:
