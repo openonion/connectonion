@@ -37,6 +37,8 @@ ADMIN = "0x" + "1" * 64
     ("bash", {"command": "rm -rf build"}, "irreversible"),
     ("bash", {"command": "git push --force origin main"}, "irreversible"),
     ("bash", {"command": "git reset --hard"}, "irreversible"),
+    ("bash", {"command": "git push origin :old-branch"}, "irreversible"),
+    ("bash", {"command": "git push --prune origin"}, "irreversible"),
     ("bash", {"command": "co gmail send --to bob@x.com"}, "as_owner"),
     ("bash", {"command": "co outlook reply 3"}, "as_owner"),
     # The body of a mail is ordinary text, apostrophes included.

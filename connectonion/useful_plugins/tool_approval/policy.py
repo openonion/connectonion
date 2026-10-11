@@ -1524,7 +1524,11 @@ def _special_command(command: str, root: Path | None) -> str | None:
         rest = [w for w in words[1:] if not w.startswith("-")]
         if rest and _git_discards_work(rest[0].lower(), words[words.index(rest[0]) + 1:]):
             return "irreversible"
-    if first == "git" and "push" in words and any(w in ("-f", "--force", "--force-with-lease", "--mirror", "--delete", "-d") or w.startswith("+") for w in words):
+    # A forced push, a deleting refspec (`:branch`) or --prune removes what
+    # the remote held.
+    if first == "git" and "push" in words and any(
+            w in ("-f", "--force", "--force-with-lease", "--mirror", "--delete", "-d", "--prune")
+            or w.startswith(("+", ":")) for w in words):
         return "irreversible"
     return _SPECIAL_OF_EFFECT.get(_classify_single_command(" ".join(shlex.quote(w) for w in words), root)["effect_class"])
 
