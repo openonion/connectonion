@@ -85,12 +85,18 @@ def model(monkeypatch):
 
     def fake_llm_do(prompt, output=None, **kwargs):
         prompts.append(prompt)
-        return bundles.Draft(
+        if output is bundles.Replies:
+            numbers = [int(n) for n in re.findall(r"^\[(\d+)\] Sender:", prompt, re.M)]
+            return bundles.Replies(replies=[bundles.Reply(
+                n=n, said="Rejected localStorage (XSS can read it); chose the httpOnly cookie." if n == 1
+                else f"summary of {n}") for n in numbers])
+        return bundles.Top(
             title="Store the login token",
             task="Store the login session token; done when the cookie is set on login.",
             where_it_stands="Option chosen, no code yet",
+            decided=["Use an httpOnly cookie, because JS cannot read it"],
+            rejected=["localStorage: any script on the page can read it"],
             open_questions=["Cookie lifetime?"],
-            replies=[bundles.Reply(n=1, said="Rejected localStorage (XSS can read it); chose the httpOnly cookie.")],
         )
 
     import connectonion.llm_do  # noqa: F401  (the module, not the function the package re-exports)
@@ -168,7 +174,7 @@ def test_yes_with_draft_sends_exactly_the_previewed_bundle(project, model, mailb
     handoff_id = _draft_id(preview.output)
     sent = _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
     assert sent.exit_code == 0, sent.output
-    assert len(mailbox) == 1 and len(model) == 1                     # no second drafting call
+    assert len(mailbox) == 1 and len(model) == 2                     # drafted once (replies + top), not again on send
     arrived = bundles.from_mail(mailbox[0]["message"])
     previewed = json.loads((Path.home() / ".co/handoff/drafts" / f"{handoff_id}.json").read_text())
     assert arrived["verified"] and arrived["content_hash"] == previewed["content_hash"]
@@ -343,27 +349,91 @@ def test_the_handoff_keeps_the_users_words_and_only_a_summary_of_the_ai(project,
     assert "Which for the login token?" in result.output
 
 
-def test_the_handoff_names_the_repository_branch_and_commit(project, model, mailbox):
+def _git(folder, *args):
     import subprocess
-    git = lambda *a: subprocess.run(["git", *a], cwd=project, check=True, capture_output=True, text=True).stdout.strip()
-    git("init", "-q", "-b", "login-token")
-    git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "start")
-    git("remote", "add", "origin", "https://alice:hunter2pass@github.com/acme/login-app.git")
-    (project / "wip.py").write_text("x = 1\n")
-    write_codex_session(project)
+    return subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def _repo(folder: Path, branch: str, remote: str) -> str:
+    folder.mkdir(parents=True, exist_ok=True)
+    _git(folder, "init", "-q", "-b", branch)
+    _git(folder, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "start")
+    _git(folder, "remote", "add", "origin", remote)
+    return _git(folder, "rev-parse", "HEAD")
+
+
+def test_the_code_is_where_the_session_worked_not_where_send_runs(project, model, mailbox, tmp_path):
+    # Sent from a folder that is not a repository; the session itself worked in a worktree.
+    worktree = tmp_path / "login-app-fix"
+    commit = _repo(worktree, "login-token", "https://alice:hunter2pass@github.com/acme/login-app.git")
+    (worktree / "wip.py").write_text("x = 1\n")
+    path = write_claude_session(project)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows[1]["cwd"], rows[1]["gitBranch"] = str(worktree), "login-token"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     result = _invoke("handoff", "send", SELF, "task")
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
-    assert draft["code"] == {"repository": "https://github.com/acme/login-app.git", "branch": "login-token",
-                             "commit": git("rev-parse", "HEAD"), "pushed": False, "uncommitted": 1}
-    assert "hunter2pass" not in json.dumps(draft)
+    assert draft["code"] == [{"repository": "https://github.com/acme/login-app.git", "branch": "login-token",
+                              "commit": commit, "pushed": False, "uncommitted": 1}]
+    assert "hunter2pass" not in json.dumps(draft) and str(worktree) not in json.dumps(draft)
     assert "https://github.com/acme/login-app.git" in result.output and "not pushed" in result.output
 
 
-def test_outside_a_repository_the_handoff_says_there_is_no_code_reference(project, model, mailbox):
+def test_the_commit_is_the_branch_the_session_was_on_not_todays_checkout(project, tmp_path):
+    repo = tmp_path / "app"
+    _repo(repo, "main", "https://github.com/acme/app.git")
+    _git(repo, "checkout", "-q", "-b", "old-feature")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "feature")
+    feature = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "main")
+    assert sessions.code_at(repo, "old-feature")["commit"] == feature
+
+
+def test_a_session_outside_any_repository_has_no_code_reference(project, model, mailbox):
     write_codex_session(project)
     result = _invoke("handoff", "send", SELF, "task")
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
-    assert draft["code"] is None
+    assert draft["code"] == []
+    assert "Ask the sender where the code is" in result.output
+
+
+def test_a_long_session_is_summarised_in_bounded_pieces(project, model, mailbox, monkeypatch):
+    monkeypatch.setattr(bundles, "CHUNK_CHARS", 300)
+    talk = [{"at": "", "user": f"question {n}", "ai": "x" * 200} for n in range(1, 7)]
+    top, said = bundles.draft(talk, "task")
+    assert len(model) > 2 and all(len(p) < 300 + len(bundles.REPLIES_PROMPT) + 200 for p in model[:-1])
+    assert said == {1: "Rejected localStorage (XSS can read it); chose the httpOnly cookie.",
+                    **{n: f"summary of {n}" for n in range(2, 7)}}
+    assert "question 6" in model[-1] and "summary of 6" in model[-1]     # the top is written from all of it
+
+
+def test_one_huge_ai_reply_keeps_its_end(project, model, mailbox, monkeypatch):
+    monkeypatch.setattr(bundles, "CHUNK_CHARS", 1000)
+    bundles.draft([{"at": "", "user": "go", "ai": "start " + "y" * 5000 + " CONCLUSION"}], "task")
+    assert "CONCLUSION" in model[0] and len(model[0]) < 1000 + len(bundles.REPLIES_PROMPT) + 200
+
+
+def test_decided_and_rejected_are_at_the_top(project, model, mailbox):
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task")
+    top = result.output.split("## Conversation")[0]
+    assert "## Decided\n- Use an httpOnly cookie" in top and "## Rejected\n- localStorage" in top
+
+
+def test_since_starts_the_conversation_at_that_message(project, model, mailbox):
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task", "--since", "2")
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert [e["user"] for e in draft["conversation"]] == ["Agreed. Next is the middleware in auth/session.py."]
+    assert "Which for the login token?" not in json.dumps(draft) and "Which for the login token?" not in "".join(model)
+
+
+def test_email_addresses_and_phone_numbers_are_listed_in_the_preview(project, model, mailbox):
+    write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
+    result = _invoke("handoff", "send", SELF, "task")
+    private = result.output.split("Private details in it")[1].split("Draft:")[0]
+    assert "bob.smith@gmail.com" in private and "+61 435 525 634" in private
+    assert SELF not in private                                         # the sender's own address is the header
 
 
 def test_session_by_id_or_path(project, tmp_path):
@@ -419,7 +489,7 @@ def test_private_paths_are_shown_in_the_preview(project, model, mailbox):
     write_codex_session(project, extra=" see /Users/alice/secret-notes/plan.md")
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 0
-    assert "Private paths in it" in result.output and "/Users/alice/secret-notes/plan.md" in result.output
+    assert "Private details in it" in result.output and "/Users/alice/secret-notes/plan.md" in result.output
 
 
 def test_claude_open_reads_the_result_event_from_claude_codes_event_list(monkeypatch, tmp_path):
@@ -513,3 +583,10 @@ def test_status_wait_returns_once_something_new_arrives(project, model, mailbox,
     result = _invoke("handoff", "status", handoff_id, "--wait")
     assert result.exit_code == 0, result.output
     assert len(checks) == 3 and f"Handoff {handoff_id} (sent)" in result.output
+
+
+def test_a_repository_url_is_not_a_private_detail_and_a_detached_head_says_so():
+    bundle = {"from": SELF, "to": "x", "code": [{"repository": "git@github.com:acme/app.git", "branch": "HEAD",
+                                                 "commit": "abc123", "pushed": True, "uncommitted": 0}]}
+    assert bundles.find_private(bundle) == []
+    assert "branch HEAD" not in bundles.code_text(bundle) and "detached" in bundles.code_text(bundle)
