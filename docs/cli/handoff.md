@@ -86,6 +86,24 @@ the mailbox and the agent inbox every five minutes
 when a handoff sent in the last 14 days is waiting, and prints
 `[handoff] ho-… accepted by …` and each new question once.
 
+### Questions are answered automatically
+
+The sender's agent answers every question by itself; no one reviews the answer
+first. The first answer carries a copy of the session the handoff came from:
+every message, what the AI said, and every tool call with its output (a long
+output keeps its start and end). It covers only the handed-off messages
+(`--since`) up to the moment the handoff was sent, and credential-shaped strings
+and values from your keys.env are removed. The recipient's `co handoff status`
+saves it as `~/.co/handoff/accepted/<id>/session.md`, so their agent searches it
+instead of asking again. Later questions are answered with a pointer to that
+copy. The brief leaves tool output out on purpose; this copy is how a
+requirement that only ever appeared in a tool call still reaches the recipient.
+
+It happens wherever the sender's side checks for replies: `co ai`'s watcher,
+`co handoff status`, and `status --wait`. You still see every question there,
+and `co handoff answer` adds your own answer. Handoffs drafted from a notes file
+(`--from-file`) have no session to copy and are not answered automatically.
+
 ## What is sent
 
 One message, kept the way a compaction keeps a conversation:

@@ -61,7 +61,7 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
     if edit:
         bundle = _edit(bundle)
     path = _save_draft(bundle)
-    hits = bundles.find_credentials(bundle, _known_secrets())
+    hits = bundles.find_credentials(bundle, bundles.known_secrets())
     if hits:
         out.print(style.error("Refusing to send: the handoff contains what looks like a credential."))
         for hit in hits:
@@ -117,8 +117,13 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
                           "the AI's replies in summary…"))
     top, said = bundles.draft(talk, what)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
-    return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
-                            code=code, top=top, said=said, exchanges=talk, titles=titles)
+    bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
+                              code=code, top=top, said=said, exchanges=talk, titles=titles)
+    if not from_file:   # stays on this machine: what an automatic answer copies from
+        _drafts().mkdir(parents=True, exist_ok=True)
+        (_drafts() / f"{bundle['id']}.session.json").write_text(json.dumps(
+            {"kind": kind, "path": str(path), "since": talk[0]["at"] if since > 1 and talk else ""}), encoding="utf-8")
+    return bundle
 
 
 def _edit(bundle: dict) -> dict:
@@ -126,12 +131,6 @@ def _edit(bundle: dict) -> dict:
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
     subprocess.run([*shlex.split(editor), str(path)], check=True)
     return bundles.seal(json.loads(path.read_text(encoding="utf-8")))
-
-
-def _known_secrets() -> list[str]:
-    """Values of credential-named keys in the selected env file and process: any of them in a bundle is a leak."""
-    names = ("KEY", "TOKEN", "SECRET", "PASSWORD", "INVITE")
-    return [v for k, v in os.environ.items() if any(n in k.upper() for n in names) and len(v) >= 12]
 
 
 def _drafts() -> Path:
@@ -187,6 +186,9 @@ def _deliver(bundle: dict) -> None:
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
               "secret": secret, "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "inbox": True, "via": result.get("via", "mail")}
+    session = _drafts() / f"{bundle['id']}.session.json"
+    if session.exists():
+        record["session"] = json.loads(session.read_text(encoding="utf-8"))
     sent = _home() / "sent"
     sent.mkdir(parents=True, exist_ok=True)
     path = sent / f"{bundle['id']}.json"
@@ -217,7 +219,9 @@ def handle_status(handoff_id: str, wait: bool = False) -> None:
     if accepted.exists():
         _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), quiet=sent.exists())
     if sent.exists():
-        _sender_status(json.loads(sent.read_text(encoding="utf-8")))
+        record = json.loads(sent.read_text(encoding="utf-8"))
+        _sender_status(record)
+        sent.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")   # what was answered
 
 
 def _wait_for_news(handoff_id: str, every: int = 30) -> None:
@@ -257,6 +261,9 @@ def _sender_status(record: dict) -> None:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
     for q in state["questions"]:
         out.print(f"Question, {q['at']}: {q['text']}", markup=False)
+    for line in replies.answer_automatically(record, state):
+        out.print(line.replace(f"[handoff] {handoff_id} answered automatically", "Answered automatically, with the session copy"
+                               if record.get("answered") == 1 else "Answered automatically"), markup=False)
     if state["questions"]:
         _next(f'co handoff answer {handoff_id} "<your answer>"')
     else:
@@ -271,6 +278,10 @@ def _recipient_status(code: dict, quiet: bool = False) -> None:
                if b["kind"] == "answer" and b["secret"] == code["secret"] and b["address"] == code["address"]]
     for a in answers:
         out.print(f"Answer, {a['at']}: {a['text']}", markup=False)
+        if a.get("context"):
+            copy = _home() / "accepted" / handoff_id / "session.md"
+            copy.write_text(replies.unpack(a["context"]), encoding="utf-8")
+            out.print(f"The sender's session, up to the handoff: {style.path(copy)} (search it before asking again)")
     if not answers:
         out.print("No answers from the sender yet.")
     brief = _home() / "accepted" / handoff_id / "HANDOFF.md"

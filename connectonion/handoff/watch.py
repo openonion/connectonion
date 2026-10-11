@@ -38,6 +38,7 @@ def check() -> list[str]:
             news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as contact {name}")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
                  for q in state["questions"][seen["questions"]:]]
+        news += replies.answer_automatically(record, state)
         record["seen"] = {"accepted": bool(who), "questions": len(state["questions"])}
         path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return news

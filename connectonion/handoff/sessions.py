@@ -125,6 +125,65 @@ def read_turns(agent: str, path: Path) -> list[dict]:
     return turns
 
 
+# A tool's output longer than this keeps its start and end: a file dump is rarely what is asked about.
+OUTPUT_CHARS = 3_000
+
+
+def transcript(agent: str, path: Path, since: str = "", until: str = "") -> str:
+    """The session as plain text, oldest first: what the person typed, what the AI said, and every
+    tool call with its output. Reasoning is left out.
+
+    This is the copy an automatic answer sends (replies.answer_automatically): the brief carries
+    what was said, but a requirement can live only in a tool call (study B, T3, 2026-10-11).
+    `since` and `until` bound it to the handed-off messages, up to when the handoff was sent."""
+    parts = []
+    with Path(path).open(encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line) if line.strip() else {}
+            when = row.get("timestamp", "")
+            if not when or (since and _moment(when) < _moment(since)) or (until and _moment(when) > _moment(until)):
+                continue
+            parts += [f"[{when[:19]}] {who}:\n{_clip(text)}" for who, text in
+                      (_codex_parts(row) if agent == "codex" else _claude_parts(row))]
+    return "\n\n".join(parts) + "\n"
+
+
+def _claude_parts(row: dict) -> list[tuple[str, str]]:
+    turn = _claude_turn(row)
+    if turn:
+        return [(turn["role"], turn["text"])]
+    content = (row.get("message") or {}).get("content")
+    if row.get("type") not in ("user", "assistant") or row.get("isSidechain") or not isinstance(content, list):
+        return []
+    parts = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") == "tool_use":
+            parts.append((f"tool call {part.get('name')}", json.dumps(part.get("input"), ensure_ascii=False)))
+        elif part.get("type") == "tool_result":
+            output = part.get("content")
+            parts.append(("tool output", _text(output) if isinstance(output, list) else str(output)))
+    return parts
+
+
+def _codex_parts(row: dict) -> list[tuple[str, str]]:
+    turn = _codex_turn(row)
+    if turn:
+        return [(turn["role"], turn["text"])]
+    payload = (row.get("payload") or {}) if row.get("type") == "response_item" else {}
+    if payload.get("type") in ("function_call", "custom_tool_call"):
+        return [(f"tool call {payload.get('name')}", str(payload.get("arguments") or payload.get("input") or ""))]
+    if payload.get("type") in ("function_call_output", "custom_tool_call_output"):
+        return [("tool output", str(payload.get("output") or ""))]
+    return []
+
+
+def _clip(text: str) -> str:
+    half = OUTPUT_CHARS // 2
+    return text if len(text) <= OUTPUT_CHARS else f"{text[:half]}\n[… {len(text) - OUTPUT_CHARS:,} characters …]\n{text[-half:]}"
+
+
 def exchanges(turns: list[dict]) -> list[dict]:
     """Each user message with the AI text that followed it: {at, user, ai}."""
     found = []
@@ -244,12 +303,23 @@ def code_at(folder: Path, branch: str = "", before: str = "") -> dict | None:
     commit = head.stdout.strip()
     remote = git("remote", "get-url", "origin").stdout.strip()
     return {"repository": re.sub(r"//[^/@]+@", "//", remote) or None,   # never a user:token@ in a URL
-            "branch": branch or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
+            "branch": branch if branch and branch != "HEAD" else _branch_of(git, commit),
             "commit": commit,
             "pushed": bool(git("branch", "-r", "--contains", commit).stdout.strip()),
             # Changes in the folder today belong to that commit only if it is still what is checked out.
             "uncommitted": len(git("status", "--porcelain").stdout.splitlines())
             if commit == git("rev-parse", "HEAD").stdout.strip() else 0}
+
+
+def _branch_of(git, commit: str) -> str:
+    """A branch at `commit`, local first: Claude Code records "HEAD" once a session cd's into a repository
+    (#2416). "HEAD" when no branch points there, which is what detached means."""
+    for args in (("branch", "--points-at", commit), ("branch", "-r", "--points-at", commit)):
+        names = [n.strip() for n in git(*args, "--format=%(refname:short)").stdout.splitlines()]
+        names = [n.removeprefix("origin/") for n in names if n and "HEAD" not in n]
+        if names:
+            return names[0]
+    return "HEAD"
 
 
 def code_for(agent: str, path: Path, limit: int = 3, since: str = "") -> list[dict]:

@@ -15,6 +15,7 @@ import email.policy
 import hashlib
 import html
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -167,6 +168,22 @@ def find_credentials(bundle: dict, known_secrets: list[str] = ()) -> list[str]:
             if secret in text:
                 hits.append(f"{field}: a value from your keys.env")
     return hits
+
+
+def redact(text: str, known_secrets: list[str] = ()) -> str:
+    """`text` with every credential-looking string replaced: for the session copy, which no one reviews
+    line by line the way a person reviews the brief's preview."""
+    for kind, pattern in CREDENTIAL_PATTERNS.items():
+        text = re.sub(pattern, f"[removed: {kind}]", text)
+    for secret in known_secrets:
+        text = text.replace(secret, "[removed: a value from keys.env]")
+    return text
+
+
+def known_secrets() -> list[str]:
+    """Values of credential-named keys in the environment: any of them in a handoff is a leak."""
+    names = ("KEY", "TOKEN", "SECRET", "PASSWORD", "INVITE")
+    return [v for k, v in os.environ.items() if any(n in k.upper() for n in names) and len(v) >= 12]
 
 
 # Not secrets, but not the recipient's business either: they are shown in the

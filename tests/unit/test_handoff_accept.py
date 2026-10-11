@@ -359,3 +359,61 @@ def test_a_contact_from_before_the_inbox_still_gets_mail(world):
     transport._save({"parrot": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"]}})
     _send(world, who="parrot")
     assert world["inbox"] == [] and world["mails"][-1]["to"] == RECIPIENT["mail"]
+
+
+# ---- the sender's agent answers by itself, with a copy of the session ----
+
+def _send_from_session(world, tmp_path) -> str:
+    """Alice sends a handoff drafted from a real session file; returns the code."""
+    session = tmp_path / "alice-session.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in [
+        {"type": "user", "timestamp": "2026-10-11T09:00:00Z", "message": {"role": "user", "content": "Store the login token."}},
+        {"type": "assistant", "timestamp": "2026-10-11T09:00:01Z", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t", "name": "Bash", "input": {"command": "grep -n maxAge auth/session.py"}}]}},
+        {"type": "user", "timestamp": "2026-10-11T09:00:02Z", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t", "content": "auth/session.py:12: maxAge = 30 days (product asked)"}]}},
+    ]) + "\n")
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": ""}))
+    result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
+    assert result.exit_code == 0, result.output
+    return _code(html.unescape(world["mails"][-1]["message"]))
+
+
+def test_a_question_is_answered_by_the_senders_agent_with_a_copy_of_the_session(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "How long should the cookie live?")
+
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")              # no `co handoff answer` typed by anyone
+    assert "Answered automatically" in status.output
+
+    world["be"](RECIPIENT)
+    theirs = _invoke("handoff", "status", "ho-1a2b3c4d")
+    copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
+    assert "maxAge = 30 days (product asked)" in copy.read_text()   # the answer was only in a tool output
+    assert str(copy) in theirs.output
+
+
+def test_each_question_is_answered_once_and_the_copy_is_sent_once(world, tmp_path):
+    from connectonion.handoff import watch
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "first?")
+    world["be"](SENDER)
+    watch.check()                                                 # co ai answers it
+    _invoke("handoff", "status", "ho-1a2b3c4d")                   # and status does not answer it again
+    world["be"](RECIPIENT)
+    _invoke("handoff", "ask", code, "second?")
+    world["be"](SENDER)
+    watch.check()
+    answers = [replies._decode(transport._as_mail(m)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
+    assert len(answers) == 2
+    assert "context" in answers[0] and "context" not in answers[1]
+    assert "session copy" in answers[1]["text"]

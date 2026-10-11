@@ -236,8 +236,7 @@ def test_a_credential_in_the_session_is_refused(project, model, mailbox):
 def test_a_value_from_keys_env_is_refused_even_without_a_known_shape(monkeypatch):
     monkeypatch.setenv("LINEAR_API_KEY", "plainvalue-without-prefix-123")
     bundle = {"excerpt": [{"text": "here: plainvalue-without-prefix-123"}]}
-    from connectonion.cli.commands.handoff_commands import _known_secrets
-    assert bundles.find_credentials(bundle, _known_secrets()) == ["excerpt[0].text: a value from your keys.env"]
+    assert bundles.find_credentials(bundle, bundles.known_secrets()) == ["excerpt[0].text: a value from your keys.env"]
 
 
 def test_a_changed_bundle_is_not_verified():
@@ -402,6 +401,19 @@ def test_with_since_the_code_is_only_where_the_handed_off_messages_worked(tmp_pa
     assert [c["repository"] for c in sessions.code_for("claude", path, since=since)] == ["https://github.com/acme/late.git"]
 
 
+def test_a_branch_recorded_as_head_is_named_not_called_detached(tmp_path):
+    # #2416: a Claude Code session that cd's into a repository records gitBranch "HEAD" on every row,
+    # and the handoff said "detached" for a worktree that was on release-1.9.2b12.
+    repo = tmp_path / "app"
+    _repo(repo, "main", "https://github.com/acme/app.git")
+    _git(repo, "checkout", "-q", "-b", "release-x")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "release")
+    assert sessions.code_at(repo, "HEAD")["branch"] == "release-x"
+    _git(repo, "checkout", "-q", "--detach")
+    _git(repo, "branch", "-q", "-D", "release-x")
+    assert sessions.code_at(repo, "HEAD")["branch"] == "HEAD"     # truly detached, no branch has it: say so
+
+
 def test_the_commit_is_the_branch_the_session_was_on_not_todays_checkout(project, tmp_path):
     repo = tmp_path / "app"
     _repo(repo, "main", "https://github.com/acme/app.git")
@@ -493,8 +505,7 @@ def test_an_invite_code_is_refused_by_shape_and_by_value(project, model, mailbox
     assert result.exit_code == 1 and "ConnectOnion invite code" in result.output and mailbox == []
     monkeypatch.setenv("CO_INVITE_CODE", "OpenOnion-legacy-code")
     assert bundles.find_credentials({"t": "code OpenOnion-legacy-code"},
-                                    __import__("connectonion.cli.commands.handoff_commands",
-                                               fromlist=["_known_secrets"])._known_secrets())
+                                    bundles.known_secrets())
 
 
 def test_the_mail_carries_no_invite_code_or_token(project, model, mailbox, monkeypatch):
@@ -715,3 +726,40 @@ def test_only_title_shaped_text_counts_as_a_title():
                                 '1782\t2026-09-26\tx\n'
                                 '{"number": 1037, "title": "bash() clamps timeout to 600s \\u2014 agents cannot tell"}')
     assert found == {"1037": "bash() clamps timeout to 600s — agents cannot tell"}
+
+
+# ---- the session copy an automatic answer carries ----
+
+def _tool_session(tmp_path: Path) -> Path:
+    """A Claude Code session where a requirement exists only in a tool call and its output (study B, T3)."""
+    rows = [
+        {"type": "user", "timestamp": "2026-10-10T09:00:00Z", "message": {"role": "user", "content": "unrelated earlier work"}},
+        {"type": "user", "timestamp": "2026-10-10T10:00:00Z", "message": {"role": "user", "content": "Fix co keys."}},
+        {"type": "assistant", "timestamp": "2026-10-10T10:00:01Z", "message": {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "private reasoning"},
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "co keys list --json"}}]}},
+        {"type": "user", "timestamp": "2026-10-10T10:00:02Z", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": "keys list must hide values unless --show; OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwx"}]}},
+        {"type": "assistant", "timestamp": "2026-10-10T10:00:03Z", "message": {"role": "assistant", "content": [
+            {"type": "text", "text": "Done: values are hidden."}]}},
+        {"type": "user", "timestamp": "2026-10-10T11:00:00Z", "message": {"role": "user", "content": "after the handoff"}},
+    ]
+    path = tmp_path / "tools.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    return path
+
+
+def test_the_session_copy_has_the_tool_calls_a_summary_leaves_out(tmp_path):
+    text = sessions.transcript("claude", _tool_session(tmp_path), since="2026-10-10T10:00:00Z",
+                               until="2026-10-10T10:30:00+00:00")
+    assert "Fix co keys." in text and "Done: values are hidden." in text
+    assert "co keys list --json" in text and "must hide values unless --show" in text   # tool call and its output
+    assert "unrelated earlier work" not in text and "after the handoff" not in text    # --since, and sent at
+    assert "private reasoning" not in text
+
+
+def test_the_session_copy_never_carries_a_credential(tmp_path):
+    text = bundles.redact(sessions.transcript("claude", _tool_session(tmp_path)), known_secrets=["hunter2hunter2"])
+    assert "sk-proj-abcdefghijklmnopqrstuvwx" not in text and "[removed: " in text
+    assert "hunter2hunter2" not in bundles.redact("pw hunter2hunter2", known_secrets=["hunter2hunter2"])
