@@ -113,7 +113,7 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
                           "the AI's replies in summary…"))
     top, said = bundles.draft(talk, what)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
-    return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, source=source,
+    return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
                             code=code, top=top, said=said, exchanges=talk)
 
 

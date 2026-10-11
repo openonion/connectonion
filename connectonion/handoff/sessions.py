@@ -43,6 +43,10 @@ from ..rem.source import INJECTED_BLOCK
 
 # Written by the client into the user slot, not typed by the person.
 CLIENT_NOTICE = re.compile(r"^\[Request interrupted by user")
+# Codex /goal wraps the person's objective in an injected-looking block and repeats it every turn.
+# A Codex command's working directory, in a function call's JSON arguments or a custom tool's JS input.
+WORKDIR = re.compile(r'\\?"workdir\\?"\s*:\s*\\?"([^"\\]+)')
+GOAL = re.compile(r'^\s*<codex_internal_context source="goal">.*?<objective>\s*(.*?)\s*</objective>', re.S)
 
 
 class SessionNotFound(Exception):
@@ -107,13 +111,16 @@ def _claude_candidates(cwd: Path) -> list[Path]:
 def read_turns(agent: str, path: Path) -> list[dict]:
     """The whole conversation, oldest first: {role: user|assistant, text, timestamp}."""
     parse = _codex_turn if agent == "codex" else _claude_turn
-    turns = []
+    turns, goals = [], set()
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 turn = parse(json.loads(line))
-                if turn:
+                goal = turn.pop("goal", None) if turn else None
+                if turn and goal not in goals:
                     turns.append(turn)
+                if goal:
+                    goals.add(goal)
     return turns
 
 
@@ -153,6 +160,10 @@ def _codex_turn(row: dict) -> dict | None:
         return None
     text = "\n".join(part.get("text", "") for part in payload.get("content") or []
                      if isinstance(part, dict) and part.get("type") in ("input_text", "output_text"))
+    goal = GOAL.match(text) if payload["role"] == "user" else None
+    if goal:
+        return {"role": "user", "text": f"Goal: {goal.group(1)}", "timestamp": row.get("timestamp", ""),
+                "goal": goal.group(1)}
     return _spoken(payload["role"], text, row.get("timestamp", ""))
 
 
@@ -182,12 +193,13 @@ def _spoken(role: str, text: str, when: str) -> dict | None:
     return {"role": role, "text": text.strip(), "timestamp": when}
 
 
-def places(agent: str, path: Path) -> list[tuple[Path, str]]:
-    """The directories the session worked in, most recent first, each with the branch it recorded there.
+def places(agent: str, path: Path) -> list[tuple[Path, str, str]]:
+    """The directories the session worked in, most recent first: (folder, branch it recorded, last time there).
 
     Claude Code puts `cwd` and `gitBranch` on every row, and the cwd follows the session
     into worktrees. Codex records `session_meta.cwd` (with `git.branch`) and a `cwd` in
-    every `turn_context`.
+    every `turn_context`, but a session started above the repositories works in them
+    through each command's `workdir`.
     """
     last = {}
     with Path(path).open(encoding="utf-8") as f:
@@ -200,23 +212,29 @@ def places(agent: str, path: Path) -> list[tuple[Path, str]]:
                 cwd, branch = row["cwd"], row.get("gitBranch")
             elif row.get("type") in ("session_meta", "turn_context") and payload.get("cwd"):
                 cwd, branch = payload["cwd"], (payload.get("git") or {}).get("branch")
+            elif WORKDIR.search(str(payload.get("input") or payload.get("arguments") or "")):
+                cwd, branch = WORKDIR.search(str(payload.get("input") or payload.get("arguments"))).group(1), ""
             else:
                 continue
-            last[cwd] = branch or last.pop(cwd, "") or ""   # re-inserted, so the dict ends with the latest
-    return [(Path(cwd), branch) for cwd, branch in reversed(last.items())]
+            branch = branch or last.pop(cwd, ("", ""))[0]
+            last.pop(cwd, None)
+            last[cwd] = (branch or "", row.get("timestamp", ""))   # re-inserted, so the dict ends with the latest
+    return [(Path(cwd), branch, when) for cwd, (branch, when) in reversed(last.items())]
 
 
-def code_at(folder: Path, branch: str = "") -> dict | None:
+def code_at(folder: Path, branch: str = "", before: str = "") -> dict | None:
     """Where the code is, so the recipient's agent can check out the same thing; None outside a repository.
 
-    `branch` is the one the session recorded: its tip, not whatever the folder has checked out today."""
+    `branch` and `before` are what the session recorded: the last commit on that branch by the
+    time the session last worked there, not whatever the folder has checked out today."""
     if not shutil.which("git") or not Path(folder).is_dir():
         return None
     git = lambda *args: subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
-    head = git("rev-parse", f"{branch}^{{commit}}" if branch else "HEAD")
-    if head.returncode:                  # the recorded branch is gone: fall back to what is checked out
-        head, branch = git("rev-parse", "HEAD"), ""
-    if head.returncode:                  # not a repository, or one without a commit yet
+    at = lambda ref: git("rev-list", "-1", *([f"--before={before}"] if before else []), ref)
+    head = at(branch) if branch and branch != "HEAD" else at("HEAD")
+    if head.returncode or not head.stdout.strip():   # the recorded branch is gone: what is checked out
+        head, branch = at("HEAD"), ""
+    if head.returncode or not head.stdout.strip():   # not a repository, or no commit by then
         return None
     commit = head.stdout.strip()
     remote = git("remote", "get-url", "origin").stdout.strip()
@@ -228,10 +246,10 @@ def code_at(folder: Path, branch: str = "") -> dict | None:
 
 
 def code_for(agent: str, path: Path, limit: int = 3) -> list[dict]:
-    """The repositories the session worked in, most recent first, one entry per repository and branch."""
+    """The repositories the session worked in, most recent first, one entry per repository and commit."""
     found = []
-    for folder, branch in places(agent, path):
-        code = code_at(folder, branch)
-        if code and all((c["repository"], c["branch"]) != (code["repository"], code["branch"]) for c in found):
+    for folder, branch, when in places(agent, path):
+        code = code_at(folder, branch, when)
+        if code and all((c["repository"], c["commit"]) != (code["repository"], code["commit"]) for c in found):
             found.append(code)
     return found[:limit]

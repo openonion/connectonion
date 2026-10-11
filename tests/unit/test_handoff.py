@@ -369,7 +369,9 @@ def test_the_code_is_where_the_session_worked_not_where_send_runs(project, model
     (worktree / "wip.py").write_text("x = 1\n")
     path = write_claude_session(project)
     rows = [json.loads(line) for line in path.read_text().splitlines()]
+    from datetime import datetime, timezone
     rows[1]["cwd"], rows[1]["gitBranch"] = str(worktree), "login-token"
+    rows[1]["timestamp"] = datetime.now(timezone.utc).isoformat()       # the session worked there after that commit
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     result = _invoke("handoff", "send", SELF, "task")
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
@@ -590,3 +592,51 @@ def test_a_repository_url_is_not_a_private_detail_and_a_detached_head_says_so():
                                                  "commit": "abc123", "pushed": True, "uncommitted": 0}]}
     assert bundles.find_private(bundle) == []
     assert "branch HEAD" not in bundles.code_text(bundle) and "detached" in bundles.code_text(bundle)
+
+
+def _goal(objective):
+    return _codex_message("user", '<codex_internal_context source="goal">\nContinue working toward the active '
+                          f"thread goal.\n\n<objective>\n{objective}\n</objective>\n\nContinuation behavior:\n- persists")
+
+
+def test_a_codex_goal_arrives_once_as_the_users_words(project):
+    # /goal puts the person's task inside an injected-looking block, and repeats it every turn.
+    path = write_codex_session(project)
+    rows = path.read_text().splitlines()
+    path.write_text("\n".join(rows + [_goal("Make every rem page worth reading."), _codex_message("assistant", "On it."),
+                                      _goal("Make every rem page worth reading.")]) + "\n")
+    users = [t["text"] for t in sessions.read_turns("codex", path) if t["role"] == "user"]
+    assert users[-1] == "Goal: Make every rem page worth reading." and users.count(users[-1]) == 1
+
+
+def test_the_senders_own_words_lead_the_task(project, model, mailbox):
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "fix the clock skew in the scan test")
+    assert "## Task\nHanded off as: fix the clock skew in the scan test\n" in result.output
+
+
+def test_the_commit_is_the_last_one_before_the_session_ended(project, tmp_path, monkeypatch):
+    import os
+    repo = tmp_path / "app"
+    first = _repo(repo, "main", "https://github.com/acme/app.git")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2030-01-01T00:00:00Z")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "later")
+    assert sessions.code_at(repo, "main", before="2029-01-01T00:00:00Z")["commit"] == first
+
+
+def test_ip_addresses_are_listed_in_the_preview():
+    hits = bundles.find_private({"from": SELF, "to": "x", "conversation": [{"user": "ssh to 35.189.30.72 now", "ai": ""}]})
+    assert hits == ["conversation[0].user: 35.189.30.72"]
+
+
+def test_codex_code_comes_from_the_workdir_of_its_commands(project, tmp_path):
+    # A Codex session started in a folder above the repositories works in them through `workdir`.
+    from datetime import datetime, timezone
+    repo = tmp_path / "connectonion-fix"
+    commit = _repo(repo, "fix-timeout", "https://github.com/acme/connectonion.git")
+    path = write_codex_session(project)
+    call = {"type": "custom_tool_call", "name": "exec", "input":
+            'const r = await tools.exec_command({"cmd":"pytest -q","workdir":"' + str(repo) + '"}); text(r.output);'}
+    with path.open("a") as f:
+        f.write(_row("response_item", call, when=datetime.now(timezone.utc).isoformat()) + "\n")
+    assert [c["commit"] for c in sessions.code_for("codex", path)] == [commit]
