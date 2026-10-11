@@ -400,15 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b9
+## Current Version: 1.9.2b10
 
-1.9.2b9 is a 1.9.2 beta; stable remains 1.9.1. `co mcp` (Experimental) lists
-and calls the MCP servers and account connectors a user already has in Codex
-(Gmail, Google Calendar, GitHub, their own servers) without a second login and
-without a model turn: `co mcp ls`, `co mcp tools <server>`, `co mcp call
-<server> <tool> '<json>'`. Read-only tools run at once; others preview until
-`--yes`. See [1.9.2b9 notes](docs/releases/1.9.2b9.md).
+1.9.2b10 is a 1.9.2 beta; stable remains 1.9.1. The `co handoff` mail reads
+like a mail on any screen: who handed you what, the task, where it stands and
+the open questions first, then the block for Codex or Claude Code in a box that
+wraps. Its install step asks for a version that exists (1.9.2b8 or newer, never
+the sender's own build) and installs co in its own environment, never the
+global Python. `co email send` keeps a plain-text body's paragraphs. See
+[1.9.2b10 notes](docs/releases/1.9.2b10.md).
 
+- 1.9.2b10 (A handoff mail you can read on a phone).
 - 1.9.2b9 (Use the connectors Codex already has).
 - 1.9.2b8 (Paste one prompt to take over a handoff).
 - 1.9.2b7 (A first run that does not trip over itself).
