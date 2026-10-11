@@ -148,18 +148,34 @@ For access from another device, `co rem open --live` opens your online
 
 ## Install and start
 
+One line installs `co` and sets it up: your agent identity, an OpenOnion key
+with starter credit, and the skills and command index that tell Codex and
+Claude Code about `co`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install.sh | sh
+```
+
+It uses [uv](https://docs.astral.sh/uv/) (installing it if needed) to keep `co`
+out of your system Python, so you need no Python of your own. Then connect what
+you use:
+
+```bash
+co auth google      # Gmail and Google Calendar
+co auth microsoft   # Outlook
+co commands         # everything else; add --help to any
+```
+
+<details>
+<summary>With pip instead</summary>
+
 ```bash
 # Python 3.10+
 pip install connectonion
-# your identity and ~/.co/keys.env
 co init
-# or: co auth google
-co auth microsoft
-# or: co gmail
-co outlook
-# everything else; add --help to any
-co commands
 ```
+
+</details>
 
 The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
 apps and project settings.

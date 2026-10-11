@@ -490,8 +490,11 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
     return "linked"
 
 
-def handle_skills_link(force: bool = False):
-    """Link the bundled ConnectOnion skills into ~/.claude/skills and ~/.codex/skills."""
+def handle_skills_link(force: bool = False, brief: bool = False):
+    """Link the bundled ConnectOnion skills into ~/.claude/skills and ~/.codex/skills.
+
+    `brief` (co init) prints one line per coding agent instead of a row per skill.
+    """
     skills = sorted(d for d in BUNDLED_SKILLS.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
     if not skills:
         console.print("[dim]No bundled skills found.[/dim]")
@@ -503,17 +506,26 @@ def handle_skills_link(force: bool = False):
     for name, _ in roots:
         table.add_column(name)
 
+    skipped = {name: [] for name, _ in roots}
     for skill in skills:
         row = [skill.name]
-        for _, root in roots:
+        for name, root in roots:
             # A tool that is not installed gets nothing: creating ~/.codex
             # would make every later check believe Codex is here.
             if not root.parent.is_dir():
                 row.append(f"no {root.parent.name}, skipped")
                 continue
             row.append(_link_one(skill, root / skill.name, force))
+            if row[-1].endswith("skipped"):
+                skipped[name].append(skill.name)
         table.add_row(*row)
 
+    if brief:
+        for name, root in roots:
+            if root.parent.is_dir():
+                own = f" ({len(skipped[name])} of your own kept: {', '.join(skipped[name])})" if skipped[name] else ""
+                console.print(f"[green]✓[/green] {name}: {len(skills) - len(skipped[name])} co skills in {root}{own}")
+        return
     console.print()
     console.print(table)
     console.print(
