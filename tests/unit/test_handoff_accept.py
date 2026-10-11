@@ -53,12 +53,9 @@ def _bundle(to: str) -> dict:
     return bundles.seal({
         "format": bundles.FORMAT, "id": "ho-1a2b3c4d", "from": SENDER["mail"], "to": to,
         "created_at": "2026-10-11T10:00:00+00:00", "task": "the login task", "title": "Store the login token",
-        "source": {"kind": "codex", "session": "t", "turns_included": 1, "compacted": False},
-        "may_do": [], "where_it_stands": "Option A chosen, no code yet",
-        "decided": [{"decision": "httpOnly cookie", "why": "JS cannot read it"}],
-        "rejected": [{"option": "Option B (localStorage)", "why_not": "third-party scripts can read it"}],
-        "open_questions": ["Cookie lifetime?"], "references": [],
-        "excerpt": [{"role": "user", "text": "Reject B.", "timestamp": ""}]})
+        "source": {"kind": "codex", "session": "t", "messages": 1},
+        "where_it_stands": "Option A chosen, no code yet", "open_questions": ["Cookie lifetime?"], "code": None,
+        "conversation": [{"at": "", "user": "Reject B.", "ai": "Chose the httpOnly cookie: JS cannot read it."}]})
 
 
 def _send(world, to=RECIPIENT["mail"]) -> str:
@@ -81,7 +78,7 @@ def _code(text: str) -> str:
 def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands(world):
     body = _send(world)
     assert "Paste this into Codex or Claude Code" in body
-    assert "Option B (localStorage): third-party scripts can read it" in body      # the brief, inline
+    assert "Reject B." in body and "JS cannot read it" in body                      # the handoff, inline
     # Plain `pip install connectonion` gets the last stable release, which has no co handoff accept.
     from connectonion import __version__
     # A pre-release floor admits pre-releases of co by itself (PEP 440); --pre would admit them for dependencies too.
@@ -205,14 +202,6 @@ def test_ask_before_accept_is_refused_with_the_accept_command(world):
 
 
 # ---- #2377 ----
-
-def test_one_turn_and_no_empty_permission_line():
-    text = bundles.brief_markdown(_bundle("x"))
-    assert "1 turn of" in text and "1 turns" not in text
-    assert "not stated by the sender" not in text
-    with_permission = bundles.brief_markdown(bundles.seal(dict(_bundle("x"), may_do=["edit auth/"])))
-    assert "Recipient may: edit auth/" in with_permission.split("## Task")[0]
-
 
 def test_co_ai_notices_an_acceptance_and_a_question_once(world):
     from connectonion.handoff import watch
