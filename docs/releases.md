@@ -25,15 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b10**: a handoff mail you can read on a phone, whose paste-in block
-installs co in its own environment and accepts in one go; one line installs
-co; an accepted handoff makes each side the other's contact. See [1.9.2b10 notes](releases/1.9.2b10.md).
+Beta **1.9.2b11**: a handoff carries every message you typed, word for word,
+and the AI's replies in summary, across every compaction, plus where the code
+is; the recipient's questions come back to `co handoff status --wait`. See
+[1.9.2b11 notes](releases/1.9.2b11.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b10'
+python -m pip install --upgrade 'connectonion==1.9.2b11'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b10**: a handoff mail you can read on a phone, whose paste-in block
+installs co in its own environment and accepts in one go; one line installs
+co; an accepted handoff makes each side the other's contact. See [1.9.2b10 notes](releases/1.9.2b10.md).
 
 Beta **1.9.2b9** adds `co mcp` (Experimental): call the connectors and MCP
 servers you already have in Codex, such as Gmail, from the terminal, with no

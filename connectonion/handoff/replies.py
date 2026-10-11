@@ -73,8 +73,9 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # install line names this, never __version__: a sender on a dev build pinned 1.9.2b10.dev1, which
 # no index had, so the recipient could not install co at all (2026-10-11). Raise it whenever a
 # release changes what the recipient's co does: 1.9.2b10 accept also makes the sender a contact
-# (#2399), and a recipient on 1.9.2b8 would pass step 1 and never save them.
-MIN_VERSION = "1.9.2b10"
+# (#2399), and a recipient on 1.9.2b8 would pass step 1 and never save them. 1.9.2b11: the prompt's
+# step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have.
+MIN_VERSION = "1.9.2b11"
 
 
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
