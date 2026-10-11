@@ -114,7 +114,7 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir=None):
                 # Only a tool that ran reports a duration; a refusal never ran.
                 "decision": "done" if "duration_ms" in result else "declined",
                 "outcome": result.get("status"),
-                "reason": result.get("error"),
+                "reason": approvals.short(result.get("error")),
                 "ms": result.get("duration_ms", 0),
             })
         return result
@@ -146,9 +146,9 @@ def _make_remote_browser(remote_browser_service, trust_agent, record_dir=None):
                 "who": approvals.identity(requester_address),
                 "tool": f"remote-browser {request.get('command', '')}".strip(),
                 "args": approvals.short({k: v for k, v in request.items() if k != "command"}),
-                "decision": "declined" if reply.get("code") in ("AUTH_REQUIRED", "FORBIDDEN") else "done",
+                "decision": "done" if reply.get("ok") else "declined",
                 "outcome": "success" if reply.get("ok") else reply.get("code"),
-                "reason": None if reply.get("ok") else reply.get("message"),
+                "reason": None if reply.get("ok") else approvals.short(reply.get("message")),
             })
         return reply
 

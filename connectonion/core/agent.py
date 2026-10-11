@@ -185,6 +185,9 @@ class Agent:
             log=effective_log,
             co_dir=state_dir if state_dir is not None else co_dir,
         )
+        # The record (#2408) lives with the agent's state, and log=False keeps
+        # no files at all.
+        self.record_dir = None if log is False else Path(state_dir) if state_dir is not None else self.co_dir
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool

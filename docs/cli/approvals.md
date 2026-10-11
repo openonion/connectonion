@@ -13,18 +13,23 @@ co approvals -n 200 --json         # more, as JSON
 
 ## What is recorded
 
-One JSON line per event in the agent's `.co/approvals.jsonl`:
+One JSON line per event in the agent's `.co/approvals.jsonl` (its `state_dir`
+if it has one). `co ai` keeps its record in `~/.co`, beside its identity;
+`co approvals` reads the project's record, or `~/.co`'s when the project has
+none, and prints which file it read.
 
 | `path` | When |
 |---|---|
 | `turn` | every tool call in an agent turn, done or declined, including calls made inside Codex or Claude Code |
 | `exec` | every network EXEC, allowed or refused |
 | `browser` | every Remote Browser request |
-| `trust` | every change to contacts, the whitelist, the blocklist or admins, with the block reason |
+| `trust` | every change to contacts, the whitelist, the blocklist or admins, with the block reason. `subject` is whom it is about; `--who` matches it too |
 
 Each line has `ts`, `who` (`key:0x…`, `email:…`, `chat:<provider>:<sender>`, or
 `local`), `tool`, `args` (cut to 300 characters), `decision` (`done` or
-`declined`), `outcome`, `reason` and, for turns, `session` and `via`.
+`declined`), `outcome`, `reason` and, for turns, `session` and `via`. Tokens
+(`sk-…`, `ghp_…`, `Bearer …`) and values assigned to names containing KEY,
+TOKEN, SECRET or PASSWORD are replaced with `***` before the line is written.
 
 ## What it is not
 
@@ -34,5 +39,8 @@ Each line has `ts`, `who` (`key:0x…`, `email:…`, `chat:<provider>:<sender>`,
   `Bash(...)` grants bound that.
 - **Not a store of results.** Results stay in the session; the record says what
   ran, for whom, and whether it was allowed.
-- **Never rewritten.** Lines are only appended. An agent with no `.co/` keeps no
-  record.
+- **Never rewritten.** Lines are only appended. An agent with no writable
+  `.co/`, or created with `log=False`, keeps no record.
+- **Not complete for delegated coding agents.** A Codex run is recorded only
+  when the agent has a client connected, and the calls of a sub-agent are
+  recorded as `local`.

@@ -102,7 +102,7 @@ def test_trust_changes_are_recorded_with_their_reason(project):
     promote_to_contact(CONTACT, project)  # already a contact: no change, no line
     block(STRANGER, reason="spam", co_dir=project)
 
-    assert [(e["tool"], e["who"], e["reason"]) for e in _lines(project)] == [
+    assert [(e["tool"], e["subject"], e["reason"]) for e in _lines(project)] == [
         ("add to contacts", f"key:{CONTACT}", None),
         ("add to blocklist", f"key:{STRANGER}", "spam"),
     ]
@@ -125,4 +125,42 @@ def test_co_approvals_filters_by_who(project):
     result = CliRunner().invoke(app, ["approvals", "--who", STRANGER, "--json"])
 
     assert result.exit_code == 0, result.output
-    assert [e["who"] for e in json.loads(result.stdout)] == [f"key:{STRANGER}"]
+    assert [e["subject"] for e in json.loads(result.stdout)] == [f"key:{STRANGER}"]
+
+
+def test_a_missing_tool_is_not_recorded_as_done(project):
+    agent = Agent("t", tools=[greet], llm=MockLLM(), co_dir=project)
+    _chat_turn(agent)
+
+    _call(agent, "no_such_tool", {})
+
+    [line] = _lines(project)
+    assert (line["decision"], line["outcome"]) == ("declined", "not_found")
+
+
+def test_secrets_are_cut_before_they_are_written(project):
+    approvals.append(project, {"args": approvals.short(
+        {"command": 'curl -H "Authorization: Bearer abcdefgh12345678" && OPENAI_API_KEY=sk-live1234567890 co env set GITHUB_TOKEN=ghp_abcdefgh1234'})})
+
+    text = (project / approvals.RECORD).read_text()
+    for secret in ("abcdefgh12345678", "sk-live1234567890", "ghp_abcdefgh1234"):
+        assert secret not in text
+    assert "OPENAI_API_KEY=***" in text and "GITHUB_TOKEN=***" in text
+
+
+def test_log_false_keeps_no_record(project):
+    agent = Agent("t", tools=[greet], llm=MockLLM(), co_dir=project, log=False)
+    _chat_turn(agent)
+
+    _call(agent, "greet", {"name": "bob"})
+
+    assert not (project / approvals.RECORD).exists()
+
+
+def test_a_record_it_cannot_write_does_not_break_the_call(project):
+    (project / approvals.RECORD).write_text("")
+    (project / approvals.RECORD).chmod(0o400)
+    agent = Agent("t", tools=[greet], llm=MockLLM(), co_dir=project)
+    _chat_turn(agent)
+
+    assert _call(agent, "greet", {"name": "bob"})["status"] == "success"

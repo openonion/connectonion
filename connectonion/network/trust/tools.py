@@ -204,9 +204,10 @@ def verify_agent(agent_id: str, agent_info: str = "") -> str:
 
 def _record_change(change: str, client_id: str, list_path: Path, reason: str = None) -> None:
     """A trust change goes in the record (#2408): who, which list, and why."""
+    # `subject` is whom the change is about. Who made it is not known here.
     approvals.append(list_path.parent, {
-        "path": "trust", "who": approvals.identity(client_id), "tool": change,
-        "decision": "done", "reason": reason or None,
+        "path": "trust", "subject": approvals.identity(client_id), "tool": change,
+        "decision": "done", "reason": approvals.short(reason) if reason else None,
     })
 
 
@@ -233,9 +234,9 @@ def _remove_from_list(list_name: str, client_id: str, co_dir: Path = None) -> bo
         return True
 
     content = list_path.read_text(encoding='utf-8')
-    lines = [line for line in content.strip().split('\n')
-             if line.strip() and line.strip() != client_id]
-    if len(lines) == len([line for line in content.strip().split('\n') if line.strip()]):
+    entries = [line for line in content.strip().split('\n') if line.strip()]
+    lines = [line for line in entries if line.strip() != client_id]
+    if len(lines) == len(entries):
         return True
     list_path.write_text('\n'.join(lines) + '\n' if lines else '', encoding='utf-8')
     _record_change(f"remove from {list_name}", client_id, list_path)
