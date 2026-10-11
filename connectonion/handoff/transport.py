@@ -1,12 +1,15 @@
-"""How a bundle reaches the recipient: today, their agent mailbox.
+"""How a bundle and its replies reach the other side: mail first, then the agent inbox.
 
-Every co identity has a mail address, delivery works while the recipient is
-offline, and no Host has to be running. `deliver` and `fetch` are the only two
-functions that know this; a direct agent-to-agent route (`co host`) replaces
-them later without touching drafting, preview or opening.
+Mail is for discovery: the first handoff goes to a person, whose agent address is
+not known yet. Once it is (the code carries the sender's, an acceptance carries the
+recipient's, and each side saves the other as a contact), messages go to that agent's
+inbox on the backend (`/api/v1/messages`, #2410) instead of through the mail service.
+Both work while the other side is offline, and no Host has to be running. `deliver`
+and `fetch` are the only two functions that know this.
 """
 
 import json
+import os
 import re
 
 from ..address import agent_email
@@ -85,16 +88,62 @@ def resolve(who: str) -> str | None:
     return entry["mail"] if entry else None
 
 
-def deliver(to: str, subject: str, body: str, idempotency_key: str) -> dict:
-    """Send through the agent mailbox. Returns send_email's result dict."""
+def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
+    """Send to `agent`'s inbox when its address is known (passed, or a contact's), else mail `to`.
+
+    Returns send_email's result dict; an inbox delivery adds "via": "agent inbox"."""
+    agent = agent or next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("agent")), None)
+    if agent:
+        return _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
+    return _send_mail(to, subject, body, idempotency_key)
+
+
+def fetch(last: int = 200) -> list[dict]:
+    """Recent mail and inbox messages that carry a handoff, newest first, in the mail's shape."""
+    found = [m for m in _read_mail(last) + _read_messages()
+             if m.get("subject", "").startswith(SUBJECT_PREFIX)]
+    return sorted(found, key=lambda m: str(m.get("timestamp", "")), reverse=True)
+
+
+def _send_mail(to: str, subject: str, body: str, idempotency_key: str) -> dict:
     from ..useful_tools.send_email import send_email
     return send_email(to, subject, body, idempotency_key=idempotency_key)
 
 
-def fetch(last: int = 200) -> list[dict]:
-    """Recent mail that carries a handoff, newest first."""
+def _read_mail(last: int) -> list[dict]:
     from ..useful_tools.get_emails import get_emails
-    return [m for m in get_emails(last=last) if m.get("subject", "").startswith(SUBJECT_PREFIX)]
+    return get_emails(last=last)
+
+
+def _post_message(agent: str, body: str) -> dict:
+    import requests
+    from ..backend import backend_url
+    from ..credentials import require_ambient_api_key
+    response = requests.post(f"{backend_url()}/api/v1/messages", json={"to": agent, "body": body},
+                             headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    if not response.ok:
+        return {"success": False, "error": f"agent inbox answered {response.status_code}: {response.text[:200]}"}
+    return {"success": True, "message_id": f"agent-message-{response.json()['id']}",
+            "from": os.getenv("AGENT_EMAIL"), "via": "agent inbox"}
+
+
+def _read_messages() -> list[dict]:
+    """This agent's inbox, as mail-shaped dicts. A backend without the inbox yet (404) has none."""
+    import requests
+    from ..backend import backend_url
+    from ..credentials import require_ambient_api_key
+    response = requests.get(f"{backend_url()}/api/v1/messages", params={"limit": 500},
+                            headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    return [_as_mail(m) for m in response.json()["messages"]]
+
+
+def _as_mail(message: dict) -> dict:
+    content = json.loads(message["body"])
+    return {"id": f"agent-message-{message['id']}", "from": content.get("from") or message["from_address"],
+            "subject": content["subject"], "message": content["message"], "timestamp": message["created_at"]}
 
 
 def sent_status(to: str, subject: str) -> dict | None:

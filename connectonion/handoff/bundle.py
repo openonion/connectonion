@@ -254,6 +254,12 @@ def from_saved_mail(text: str) -> dict | None:
     return from_mail(text)
 
 
+def prompt_in(body: str) -> str:
+    """The text of a handoff message before its bundle block, as a person reads it: the prompt is in it."""
+    found = re.search(r"(?s)(.*?)" + _marker(BEGIN), html.unescape(re.sub(r"<[^>]+>", "", body or "")))
+    return found.group(1).strip() if found else ""
+
+
 def from_mail(body: str) -> dict | None:
     body = html.unescape(body or "")
     found = re.search(_marker(BEGIN) + r"(.*?)" + _marker(END), body or "", re.S)

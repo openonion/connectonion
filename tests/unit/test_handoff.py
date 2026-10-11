@@ -381,6 +381,27 @@ def test_the_code_is_where_the_session_worked_not_where_send_runs(project, model
     assert "https://github.com/acme/login-app.git" in result.output and "not pushed" in result.output
 
 
+def test_with_since_the_code_is_only_where_the_handed_off_messages_worked(tmp_path):
+    # 2026-10-11, Mac to Parrot: --since 117 still listed every folder the 120-message session had
+    # visited, including a shared checkout with another session's 30 uncommitted files, and the
+    # recipient's first question was which of the three to start from.
+    from datetime import datetime, timedelta, timezone
+    early, late = tmp_path / "early", tmp_path / "late"
+    _repo(early, "main", "https://github.com/acme/early.git")
+    _repo(late, "main", "https://github.com/acme/late.git")
+    now = datetime.now(timezone.utc)
+    rows = [{"type": "user", "cwd": str(early), "gitBranch": "main", "timestamp": (now + timedelta(minutes=1)).isoformat(),
+             "message": {"role": "user", "content": "old work"}},
+            {"type": "user", "cwd": str(late), "gitBranch": "main", "timestamp": (now + timedelta(minutes=10)).isoformat(),
+             "message": {"role": "user", "content": "this task"}}]
+    path = tmp_path / "s.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert [c["repository"] for c in sessions.code_for("claude", path)] == [
+        "https://github.com/acme/late.git", "https://github.com/acme/early.git"]
+    since = (now + timedelta(minutes=5)).isoformat()
+    assert [c["repository"] for c in sessions.code_for("claude", path, since=since)] == ["https://github.com/acme/late.git"]
+
+
 def test_the_commit_is_the_branch_the_session_was_on_not_todays_checkout(project, tmp_path):
     repo = tmp_path / "app"
     _repo(repo, "main", "https://github.com/acme/app.git")

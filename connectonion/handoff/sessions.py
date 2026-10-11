@@ -37,6 +37,7 @@ import os
 import re
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from ..rem.source import INJECTED_BLOCK
@@ -251,14 +252,23 @@ def code_at(folder: Path, branch: str = "", before: str = "") -> dict | None:
             if commit == git("rev-parse", "HEAD").stdout.strip() else 0}
 
 
-def code_for(agent: str, path: Path, limit: int = 3) -> list[dict]:
-    """The repositories the session worked in, most recent first, one entry per repository and commit."""
+def code_for(agent: str, path: Path, limit: int = 3, since: str = "") -> list[dict]:
+    """The repositories the session worked in, most recent first, one entry per repository and commit.
+
+    `since` (the first handed-off message's time) leaves out folders the session only worked in
+    before it: with --since, the other work earlier in the session is not the recipient's."""
     found = []
     for folder, branch, when in places(agent, path):
+        if since and _moment(when) < _moment(since):
+            continue
         code = code_at(folder, branch, when)
         if code and all((c["repository"], c["commit"]) != (code["repository"], code["commit"]) for c in found):
             found.append(code)
     return found[:limit]
+
+
+def _moment(stamp: str) -> datetime:
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
 
 
 def titles(agent: str, path: Path) -> dict[str, str]:

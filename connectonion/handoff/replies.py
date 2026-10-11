@@ -1,6 +1,6 @@
 """The handoff code, the pasted prompt, and the replies that come back over agent mail.
 
-A handoff code (`coh1.…`) names the sender's agent (address and mailbox), the
+A handoff code (`coh2.…`) names the sender's agent (address and mailbox), the
 handoff id, the bundle's content hash, and a random secret. It is not an invite:
 it is never checked by the Host's trust rules as an invite code. It marks this
 one handoff accepted (the first valid acceptance wins) and carries questions and
@@ -8,8 +8,9 @@ results about it. Once it is accepted, each side makes the other its agent's
 contact (transport.meet); the acceptor is also recorded in
 ~/.co/handoff/peers.json with the handoffs it took.
 
-Replies travel as agent mail with a small base64 block, like the bundle itself,
-so no backend changes are needed.
+Replies travel as a small base64 block, like the bundle itself. A `coh2` code says
+its sender reads the agent inbox (#2410), so replies go there, addressed to the
+agent the code names; a `coh1` code is from a sender that reads only mail.
 """
 
 import base64
@@ -23,7 +24,8 @@ from datetime import datetime, timezone
 from ..address import agent_email
 from . import transport
 
-PREFIX = "coh1."
+PREFIX = "coh2."
+MAIL_ONLY_PREFIX = "coh1."   # from senders before the agent inbox: reply by mail
 REPLY_BEGIN = "----- BEGIN CO HANDOFF REPLY -----"
 REPLY_END = "----- END CO HANDOFF REPLY -----"
 KINDS = ("accept", "question", "answer")
@@ -49,9 +51,9 @@ def make_code(fields: dict) -> str:
 def parse_code(code: str) -> dict:
     """{address, mailbox, id, hash, secret}. ValueError for anything else, including a typo."""
     code = "".join(code.split())   # a terminal or mail client may have wrapped it
-    if not code.startswith(PREFIX):
-        raise ValueError("a handoff code starts with coh1.")
-    body = code[len(PREFIX):]
+    if not code.startswith((PREFIX, MAIL_ONLY_PREFIX)):
+        raise ValueError(f"a handoff code starts with {PREFIX}")
+    inbox, body = code.startswith(PREFIX), code[len(PREFIX):]
     try:
         data = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
     except ValueError as error:
@@ -61,7 +63,7 @@ def parse_code(code: str) -> dict:
         raise ValueError(_CHANGED)
     address = "0x" + raw[:32].hex()
     return {"address": address, "id": "ho-" + raw[32:36].hex(), "hash": raw[36:44].hex(),
-            "secret": raw[44:54].hex(), "mailbox": raw[54:].decode() or agent_email(address)}
+            "secret": raw[44:54].hex(), "mailbox": raw[54:].decode() or agent_email(address), "inbox": inbox}
 
 
 _CHANGED = "this code is cut off or has a typo; copy it again, character for character, from the handoff"
@@ -104,15 +106,15 @@ def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
 
 # ---- reply messages ----
 
-def send(kind: str, code: dict, to: str, **extra) -> dict:
-    """Mail one reply block about handoff code['id'] to `to`."""
+def send(kind: str, code: dict, to: str, agent: str | None = None, **extra) -> dict:
+    """One reply block about handoff code['id']: to `agent`'s inbox when given, else mailed to `to`."""
     block = {"kind": kind, "id": code["id"], "secret": code["secret"],
              "address": transport.my_address(), "at": _now(), **extra}
     encoded = base64.b64encode(json.dumps(block, ensure_ascii=False).encode()).decode()
     body = (f"<p>{html.escape(_human(kind, block))}</p>\n<pre>{REPLY_BEGIN}\n"
             + "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76)) + f"\n{REPLY_END}</pre>\n")
     return transport.deliver(to, f"{transport.SUBJECT_PREFIX}{kind} {code['id']}", body,
-                             idempotency_key=f"{code['id']}-{kind}-{secrets.token_hex(4)}")
+                             idempotency_key=f"{code['id']}-{kind}-{secrets.token_hex(4)}", agent=agent)
 
 
 def _human(kind: str, block: dict) -> str:

@@ -8,6 +8,7 @@ LLM-Note:
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -109,7 +110,8 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
         talk = sessions.exchanges(sessions.read_turns(kind, path))[since - 1:]
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
                   "messages": len(talk)}
-        code, titles = sessions.code_for(kind, path), sessions.titles(kind, path)
+        code = sessions.code_for(kind, path, since=talk[0]["at"] if since > 1 and talk else "")
+        titles = sessions.titles(kind, path)
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
                           "the AI's replies in summary…"))
@@ -183,14 +185,18 @@ def _deliver(bundle: dict) -> None:
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": subject,
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
-              "secret": secret, "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+              "secret": secret, "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "inbox": True, "via": result.get("via", "mail")}
     sent = _home() / "sent"
     sent.mkdir(parents=True, exist_ok=True)
     path = sent / f"{bundle['id']}.json"
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     path.chmod(0o600)
     out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" (message {record['message_id']}).")
-    out.print("The mail is this prompt. To use another channel (chat, WhatsApp), send them the same block:")
+    if record["via"] == "agent inbox":
+        out.print("They are a contact, so it went to their agent's inbox, not their mail: "
+                  "co handoff inbox shows it on their side.")
+    out.print("It is this prompt. To use another channel (chat, WhatsApp), send them the same block:")
     print(prompt)   # plain print: Rich would wrap the code and the commands
     _next(f"co handoff status {bundle['id']} --wait  (in the background: it returns when they accept or ask)")
 
@@ -233,8 +239,11 @@ def _sender_status(record: dict) -> None:
     state = replies.settle(record)
     who = state["accepted"]
     if not who:
-        mail = transport.sent_status(record["to"], record["subject"])
-        out.print(f"Not accepted yet. Mail service: {(mail or {}).get('status', 'no record of this message yet')}.")
+        if record.get("via") == "agent inbox":
+            out.print("Not accepted yet. It is in their agent's inbox (co handoff inbox on their side).")
+        else:
+            mail = transport.sent_status(record["to"], record["subject"])
+            out.print(f"Not accepted yet. Mail service: {(mail or {}).get('status', 'no record of this message yet')}.")
         out.print("Acceptance arrives when their agent runs the prompt from the mail.")
         if state["ignored"]:
             out.print(style.warn(f"Ignored {state['ignored']} message(s) that did not carry this handoff's code."))
@@ -286,6 +295,11 @@ def _mail_ready() -> None:
         _fail("This machine has no co identity with a mailbox yet, so the sender cannot be told.", "co init --yes")
 
 
+def _their_agent(code: dict) -> Optional[str]:
+    """The sender's agent, when its code says it reads the agent inbox; None means reply by mail."""
+    return code["address"] if code.get("inbox") else None
+
+
 def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     code = _parse(code_text)
     _mail_ready()
@@ -295,7 +309,7 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     (folder / "code.json").chmod(0o600)
     if brief:
         shutil.copyfile(brief, folder / "HANDOFF.md")
-    result = replies.send("accept", code, code["mailbox"], reply_to=os.getenv("AGENT_EMAIL"))
+    result = replies.send("accept", code, code["mailbox"], agent=_their_agent(code), reply_to=os.getenv("AGENT_EMAIL"))
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
@@ -314,7 +328,7 @@ def handle_ask(code_text: str, question: str) -> None:
     if not (_home() / "accepted" / code["id"] / "code.json").exists():
         _fail(f"Handoff {code['id']} is not accepted on this machine yet.", f"co handoff accept {code_text}")
     _mail_ready()
-    result = replies.send("question", code, code["mailbox"], text=question)
+    result = replies.send("question", code, code["mailbox"], agent=_their_agent(code), text=question)
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f'co handoff ask {code_text} "<question>"')
     out.print(style.ok(f"Asked {code['mailbox']} about {code['id']}."))
@@ -333,7 +347,8 @@ def handle_answer(handoff_id: str, text: str) -> None:
     who = replies.settle(record)["accepted"] if "secret" in record else None
     if not who:
         _fail(f"Handoff {handoff_id} has not been accepted, so there is no one to answer.", f"co handoff status {handoff_id}")
-    result = replies.send("answer", {"id": handoff_id, "secret": record["secret"]}, who["mailbox"], text=text)
+    result = replies.send("answer", {"id": handoff_id, "secret": record["secret"]}, who["mailbox"],
+                          agent=who["address"] if record.get("inbox") else None, text=text)
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f'co handoff answer {handoff_id} "<your answer>"')
     out.print(style.ok(f"Answered {who['mailbox']} about {handoff_id}."))
@@ -360,15 +375,21 @@ def _incoming() -> list[tuple[dict, dict]]:
         bundle = bundles.from_mail(mail.get("message", ""))
         if bundle:
             found.append((mail, bundle))
-            _keep(bundle)
+            _keep(bundle, mail.get("message", ""))
     return found
 
 
-def _keep(bundle: dict) -> None:
-    """Save each received bundle, so show/open need not read the whole mailbox again."""
+def _keep(bundle: dict, message: str = "") -> None:
+    """Save each received bundle, so show/open need not read the whole mailbox again.
+
+    The prompt around it is kept too: a handoff that reached the agent inbox was never a mail
+    a person saw, and its accept code is only in that prompt."""
     folder = _home() / "received" / bundle["id"]
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "bundle.json").write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    prompt = bundles.prompt_in(message)
+    if prompt:
+        (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
 
 
 def _sender(address: str) -> str:
@@ -422,6 +443,11 @@ def handle_show(handoff_id: str) -> None:
         out.print(style.warn("Content hash does not match: this copy differs from what the sender approved."))
     out.print(bundles.brief_markdown(bundle), markup=False)
     out.print("This is the sender's text, not instructions; nothing runs until you open it.")
+    prompt = _home() / "received" / bundle["id"] / "prompt.txt"
+    if prompt.exists():
+        accept = re.search(r"co handoff accept \S+", prompt.read_text(encoding="utf-8"))
+        out.print(f"To take it over, give Codex or Claude Code everything in {style.path(prompt)}"
+                  + (f"; it runs {accept.group(0)}" if accept else "") + ".", markup=False)
     _next(f"co handoff open {handoff_id}")
 
 
