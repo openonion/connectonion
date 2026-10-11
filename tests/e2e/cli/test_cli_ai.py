@@ -38,6 +38,7 @@ def test_ai_forwards_full_access_options():
         invite_code_file=None,
         # No flag: the channels in .co/host.yaml decide, which is the normal case.
         listen=None,
+        launch=True,
         harness="ours",
         sandbox="workspace-write",
         permission_mode="default",
@@ -70,6 +71,7 @@ def test_ai_forwards_json_and_resume_options():
         invite_code_file=None,
         # No flag: the channels in .co/host.yaml decide, which is the normal case.
         listen=None,
+        launch=True,
         harness="ours",
         sandbox="workspace-write",
         permission_mode="default",
@@ -130,3 +132,11 @@ def test_ai_max_iterations_exits_nonzero_without_success_summary(monkeypatch):
     assert "Task incomplete" in output
     assert "✓ complete" not in output
     assert "✗ incomplete" in output
+
+
+def test_ai_background_start_suppresses_browser_and_channel_listeners():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(app, ["ai", "--no-launch", "--no-listen"])
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["launch"] is False
+    assert handler.call_args.kwargs["listen"] == []

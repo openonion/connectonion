@@ -1374,7 +1374,7 @@ def make_rem_app(factory):
             wanted = not local and (live or reader.LIVE_IS_DEFAULT)
             result = reader.live_or_snapshot(root, identity and identity["address"],
                                              live=wanted, launch=launch)
-            return result, ["status"] if launch else ["open"]   # --no-launch: open is what shows it (#2008)
+            return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
         _handle(ctx, operation, ["doctor"])
 
     @rem.command("list", cls=V("co rem list"))

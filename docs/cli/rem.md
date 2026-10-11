@@ -376,7 +376,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
 | `co rem open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
-| `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Checks first that the Host is online; if it is not, says so (start it with `co ai`) and opens the snapshot instead. Default notebook only. |
+| `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
 Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before

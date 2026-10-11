@@ -707,6 +707,7 @@ def ai(
         None, "--listen", metavar="feishu[,lark]",
         help="Answer these channels instead of the ones in .co/host.yaml",
     ),
+    launch: bool = typer.Option(True, "--launch/--no-launch", help="Open the web chat when the Host starts"),
     no_listen: bool = typer.Option(
         False, "--no-listen", help="Do not answer any channel this run"
     ),
@@ -747,6 +748,7 @@ def ai(
         invite_code=invite_code,
         invite_code_file=invite_code_file,
         listen=channels,
+        launch=launch,
         harness=harness,
         sandbox=sandbox,
         permission_mode=permission_mode,

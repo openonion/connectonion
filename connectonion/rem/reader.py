@@ -15,7 +15,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import CATEGORIES, MAP_DAYS, Notebook
+from .files import CATEGORIES, MAP_DAYS, Notebook, RemError
 from .service import run_logs, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
@@ -227,7 +227,7 @@ LIVE_REM_SERVED = True
 # live view through the Host is a feature asked for with --live.
 LIVE_IS_DEFAULT = False
 
-LIVE_HINT = "co rem open --live   (the live view in O Chat; needs your co ai Host online)"
+LIVE_HINT = "co rem open --live   (the live view in O Chat; starts co ai automatically)"
 
 
 def host_online(address: str, timeout: float = 3.0) -> bool:
@@ -274,9 +274,14 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
     if not host_online(address):
-        return open_snapshot(root, launch=launch, live=(
-            f"your Host {address[:10]}... is not online, so the live view would not load. "
-            "Start it with `co ai`, then run `co rem open --live` again"))
+        from .live_host import ensure_online
+        try:
+            failure = ensure_online(address)
+        except (OSError, RemError) as error:
+            failure = f"could not start co ai: {error}; run `co ai` to diagnose"
+        if failure:
+            return open_snapshot(root, launch=launch, live=f"Live startup failed: {failure}; showing a snapshot",
+                                 live_startup_failed=True)
     url = LIVE_REM_URL.format(address=address)
     if launch:
         webbrowser.open(url)

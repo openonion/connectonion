@@ -130,6 +130,7 @@ def start_server(
     full_access_turns: int = 100,
     agent_factory=None,
     invite_code: str = None,
+    launch: bool = True,
 ):
     """Start AI coding agent web server.
 
@@ -185,7 +186,7 @@ def start_server(
         create = agent
 
     # Open chat URL after agent successfully starts (2 second delay)
-    if addr_data:
+    if addr_data and launch:
 
         def open_chat_delayed():
             time.sleep(2)
