@@ -56,6 +56,7 @@ def _mention_a_legacy_list(list_name: str, co_dir: Path = None) -> None:
 # The `.co/` that belongs to this agent. A blocked address read from the wrong
 # list comes back a stranger, so this one fails open. See connectonion/project.py.
 from ...project import project_co_dir as _project_co_dir
+from ... import approvals
 
 
 def _admins_file(co_dir: Path = None) -> Path:
@@ -201,7 +202,16 @@ def verify_agent(agent_id: str, agent_info: str = "") -> str:
     return f"Verifying agent: {agent_id}. Info: {agent_info}"
 
 
-def _add_to_list(list_name: str, client_id: str, co_dir: Path = None) -> bool:
+def _record_change(change: str, client_id: str, list_path: Path, reason: str = None) -> None:
+    """A trust change goes in the record (#2408): who, which list, and why."""
+    # `subject` is whom the change is about. Who made it is not known here.
+    approvals.append(list_path.parent, {
+        "path": "trust", "subject": approvals.identity(client_id), "tool": change,
+        "decision": "done", "reason": approvals.short(reason) if reason else None,
+    })
+
+
+def _add_to_list(list_name: str, client_id: str, co_dir: Path = None, reason: str = None) -> bool:
     """Add client_id to a list file."""
     list_path = list_file(list_name, co_dir)
     list_path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,6 +223,7 @@ def _add_to_list(list_name: str, client_id: str, co_dir: Path = None) -> bool:
     # Append to file
     with open(list_path, 'a', encoding='utf-8') as f:
         f.write(f"{client_id}\n")
+    _record_change(f"add to {list_name}", client_id, list_path, reason)
     return True
 
 
@@ -223,9 +234,12 @@ def _remove_from_list(list_name: str, client_id: str, co_dir: Path = None) -> bo
         return True
 
     content = list_path.read_text(encoding='utf-8')
-    lines = [line for line in content.strip().split('\n')
-             if line.strip() and line.strip() != client_id]
+    entries = [line for line in content.strip().split('\n') if line.strip()]
+    lines = [line for line in entries if line.strip() != client_id]
+    if len(lines) == len(entries):
+        return True
     list_path.write_text('\n'.join(lines) + '\n' if lines else '', encoding='utf-8')
+    _record_change(f"remove from {list_name}", client_id, list_path)
     return True
 
 
@@ -301,7 +315,7 @@ def demote_to_stranger(client_id: str, co_dir: Path = None) -> str:
 
 def block(client_id: str, reason: str = "", co_dir: Path = None) -> str:
     """Add to blocklist."""
-    _add_to_list("blocklist", client_id, co_dir)
+    _add_to_list("blocklist", client_id, co_dir, reason)
     return f"{client_id} blocked. Reason: {reason}"
 
 
@@ -475,6 +489,7 @@ def add_admin(admin_id: str, co_dir: Path = None) -> str:
 
     with open(admins_file, 'a', encoding='utf-8') as f:
         f.write(f"{admin_id}\n")
+    _record_change("add to admins", admin_id, admins_file)
 
     return f"{admin_id} added as admin."
 
@@ -493,4 +508,5 @@ def remove_admin(admin_id: str, co_dir: Path = None) -> str:
         return f"{admin_id} is not an admin."
 
     admins_file.write_text('\n'.join(new_lines) + '\n' if new_lines else '', encoding='utf-8')
+    _record_change("remove from admins", admin_id, admins_file)
     return f"{admin_id} removed from admins."

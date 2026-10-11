@@ -388,6 +388,18 @@ def status(
     handle_status(reveal=reveal)
 
 
+@app.command(epilog="Example:  co approvals  |  co approvals --who 0x3f5a...c9e1  |  co approvals --class money")
+def approvals(
+    who: str = typer.Option(None, "--who", help="Only this identity: 0x…, an email, provider:sender, or key:/email:/chat: form"),
+    klass: str = typer.Option(None, "--class", help="Only this class: credentials, authority, money, irreversible, as_owner"),
+    last: int = typer.Option(50, "--last", "-n", help="How many of the newest entries to show"),
+    json_output: bool = typer.Option(False, "--json", help="Print the entries as JSON"),
+):
+    """Show the record of what this agent did or declined, for whom: tool calls, EXEC, Remote Browser and trust changes. Read-only."""
+    from .commands.approvals_commands import handle_approvals
+    handle_approvals(who=who, klass=klass, last=last, json_output=json_output)
+
+
 @app.command(epilog="Example:  co reset")
 def reset():
     """Reset account (destructive). Deletes ~/.co/keys/ and ~/.co/keys.env after you confirm, then creates a new account."""

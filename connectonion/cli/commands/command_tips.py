@@ -113,6 +113,7 @@ HANDLER = None   # the handler prints its own, data-dependent tip (e.g. "co gmai
 NEXT = {
     # -- top level --
     "co ai": HANDLER,                 # the answer is the output
+    "co approvals": "co approvals --who <address> shows one requester",
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
     "co browser": HANDLER,            # rotating tip on stderr; `import` names its own go_to check; exits by raise

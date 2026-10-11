@@ -313,6 +313,22 @@ See [handoff.md](handoff.md).
 
 ---
 
+#### `co approvals` - What Your Agent Did, for Whom
+
+Every tool call in a turn, every network EXEC, every Remote Browser request and
+every trust-list change is one line in `.co/approvals.jsonl`. The agent's own
+write tools cannot edit it.
+
+```bash
+co approvals                       # the newest 50 entries
+co approvals --who 0x3f5a...c9e1   # one requester: also email or provider:sender
+co approvals --json                # for scripts
+```
+
+See [approvals.md](approvals.md).
+
+---
+
 #### `co sms` - Pair & Read Encrypted SMS
 
 ```bash

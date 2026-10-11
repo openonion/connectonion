@@ -27,6 +27,7 @@ from .llm import LLM, TokenUsage, create_llm
 from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
 from .provider_messages import messages_for_provider
 from .tool_executor import execute_and_record_tools, execute_single_tool
+from ..approvals import record_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
 from .usage import DEFAULT_MODEL, get_context_limit, turn_usage_from_trace
@@ -184,6 +185,9 @@ class Agent:
             log=effective_log,
             co_dir=state_dir if state_dir is not None else co_dir,
         )
+        # The record (#2408) lives with the agent's state, and log=False keeps
+        # no files at all.
+        self.record_dir = None if log is False else Path(state_dir) if state_dir is not None else self.co_dir
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool
@@ -308,6 +312,9 @@ class Agent:
             entry['ts'] = time.time()
 
         self.current_session['trace'].append(entry)
+        if entry.get('type') == 'tool_result':
+            # The record (#2408): every finished tool call, done or declined.
+            record_tool(self, entry)
 
         if self.io:
             # Wire-only fields belong on a separate top-level object. The
