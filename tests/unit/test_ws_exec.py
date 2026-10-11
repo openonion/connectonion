@@ -16,6 +16,9 @@ from connectonion import Agent, ExecResult
 from connectonion.network.host.http_router import exec_handler
 from connectonion.network.host.ws_router.exec import run_exec
 
+# exec_handler records every call in .co/decisions.jsonl.
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 def _echo(text: str) -> str:
     """Echo the input back."""

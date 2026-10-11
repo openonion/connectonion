@@ -607,6 +607,13 @@ def _git_discards_work(sub: str, args: list[str]) -> bool:
         return bool(args) and args[0] in ("expire", "delete", "remove", "prune")
     if sub == "update-ref":
         return "-d" in args
+    if sub == "push":
+        # A force push replaces the remote's history and a delete removes a
+        # branch: the commits they drop are often held nowhere else.
+        refspecs = [a for a in args if not a.startswith("-")]
+        return (any(a in ("--delete", "--mirror", "--prune") or a.startswith("--force") for a in args)
+                or _short_flag_has(args, "f") or _short_flag_has(args, "d")
+                or any(r.startswith(("+", ":")) for r in refspecs))
     return sub in ("gc", "prune", "filter-branch")
 
 

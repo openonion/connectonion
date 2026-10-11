@@ -189,6 +189,7 @@ from .approval import (
     load_config_permissions,
     poll_interrupt,
     poll_mode_changes,
+    record_remote_result,
 )
 from .constants import VALID_PERMISSION_MODES
 from .policy import apply_auto_approve_policy
@@ -199,6 +200,9 @@ tool_approval = [
     load_config_permissions,
     poll_mode_changes,
     poll_interrupt,
+    # after_each_tool; listed before the before_each_tool pair, which callers
+    # rely on being last.
+    record_remote_result,
     apply_auto_approve_policy,
     check_approval,
 ]

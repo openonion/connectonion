@@ -43,7 +43,8 @@ from .session.turn import input_handler as input_handler
 # Handlers
 # ═══════════════════════════════════════════════════════
 
-def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
+def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict,
+                 requester: dict | None = None, co_dir=None) -> dict:
     """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.
 
     The terminal-style fast path: the client names a tool and its arguments,
@@ -68,19 +69,38 @@ def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args
     goes through the `co browser` CLI instead — `co browser <verb>` drives the
     persistent browser DAEMON, a separate process that handles tab arbitration
     and lifecycle on its own. See docs/network/remote-call.md.
+
+    Every call is recorded in .co/decisions.jsonl, refused ones too, and three
+    classes need the owner's own say (#2408): credentials, authority and money;
+    irreversible deletes; acting as the owner in the owner's accounts. Until
+    authorization by email lands, a remote caller below admin is told to ask
+    the owner, who can run it from their own terminal. `requester` is
+    {"address", "level"} from the WS layer; None means a local caller.
     """
     from ...useful_plugins.tool_approval.approval import is_tool_permitted
+    from ...useful_plugins.tool_approval.record import record
+    from ...useful_plugins.tool_approval.special import needs_the_owner, special_class
+
+    co_dir = co_dir or project_co_dir()
+    note = partial(record, co_dir, path="exec", tool=tool_name, args=args, requester=requester)
 
     allowed, reason = is_tool_permitted(tool_name, args, permissions)
     if not allowed:
+        note(outcome="refused", reason=f"not in host.yaml permissions: {reason}")
         return {"status": "error",
                 "error": f"blocked: {reason}. Allow it by adding a rule to .co/host.yaml permissions."}
 
     agent = create_agent()
     tool = agent.tools.get(tool_name)
     if tool is None:
+        note(outcome="refused", reason="unknown tool")
         return {"status": "error",
                 "error": f"unknown tool '{tool_name}' (available: {agent.tools.names()})"}
+
+    special = special_class(tool_name, args, tool=tool)
+    if special and requester and requester.get("level") != "admin":
+        note(outcome="refused", reason=special["reason"], special=special)
+        return {"status": "error", "error": needs_the_owner(special)}
 
     # Same injection as tool_executor: tools that declare 'agent' get it at call
     # time (never exposed to the caller's args).
@@ -91,10 +111,12 @@ def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args
     try:
         result = tool(**args)
     except Exception as e:
+        note(outcome="failed", reason=f"{type(e).__name__}: {e}", special=special)
         return {"status": "error",
                 "error": f"{type(e).__name__}: {e}",
                 "duration_ms": int((time.time() - start) * 1000)}
 
+    note(outcome="executed", special=special)
     return {"status": "success",
             "result": str(result),
             "duration_ms": int((time.time() - start) * 1000)}
