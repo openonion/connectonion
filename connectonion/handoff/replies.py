@@ -20,7 +20,6 @@ import re
 import secrets
 from datetime import datetime, timezone
 
-from .._version import __version__
 from ..address import agent_email
 from . import transport
 
@@ -70,15 +69,23 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 
 # ---- the prompt a recipient pastes into their coding agent ----
 
+# The oldest published co that can accept a handoff from the prompt (1.9.2b8). The install line
+# names this, never __version__: a sender on a dev build pinned 1.9.2b10.dev1, which no index
+# had, so the recipient could not install co at all (2026-10-11). Raise it only when a release
+# changes what the recipient's co must do.
+MIN_VERSION = "1.9.2b8"
+
+
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
-    """One block for Codex or Claude Code: what the mail shows (in <pre>) and what send prints for chat."""
+    """One block for Codex or Claude Code: the grey box in the mail, and what send prints for chat."""
+    floor = f'"connectonion>={MIN_VERSION}"'
     steps = [
         f"{sender} handed you a task with ConnectOnion (handoff {handoff_id}). Do these steps in order.",
-        f"1. Run co --version. If it prints {__version__} or newer, go to step 2 and do not run co init. "
+        f"1. Run co --version. If it prints {MIN_VERSION} or newer, go to step 2 and do not run co init. "
         f"If co is missing or older, install it in its own environment, never into the global Python: "
-        f"if uv is available, uv tool install \"connectonion>={__version__}\"; otherwise, if pipx is available, "
-        f"pipx install --force \"connectonion>={__version__}\"; otherwise python3 -m venv ~/.co-venv && "
-        f"~/.co-venv/bin/pip install \"connectonion>={__version__}\". Use that co for every co command below "
+        f"if uv is available, uv tool install {floor}; otherwise, if pipx is available, "
+        f"pipx install --force {floor}; otherwise python3 -m venv ~/.co-venv && "
+        f"~/.co-venv/bin/pip install {floor}. Use that co for every co command below "
         f"(uv and pipx put it in ~/.local/bin, the venv in ~/.co-venv/bin), and only then run co init --yes.",
         "2. Save the brief below, from its first line '# Handoff:' through the end of 'Code and references', "
         "as HANDOFF.md in the current directory.",
@@ -89,8 +96,7 @@ def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
         f"5. For a question the brief does not answer, ask the sender: co handoff ask {code} \"your question\" "
         f"and read their answer later with: co handoff status {handoff_id}",
     ]
-    return ("Paste this into Codex or Claude Code:\n\n```text\n" + "\n\n".join(steps)
-            + "\n\n" + brief.strip() + "\n```\n")
+    return "\n\n".join(steps) + "\n\n" + brief.strip() + "\n"
 
 
 # ---- reply messages ----

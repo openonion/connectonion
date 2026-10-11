@@ -69,7 +69,7 @@ def _send(world, to=RECIPIENT["mail"], who=None) -> str:
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(to)))
     result = _invoke("handoff", "send", who or to, "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
-    return html.unescape(re.sub(r"</?(pre|p)>", "", world["mails"][-1]["message"]))   # as a mail client shows it
+    return html.unescape(re.sub(r"<[^>]+>", "", world["mails"][-1]["message"]))   # as a mail client shows it
 
 
 def _code(text: str) -> str:
@@ -80,12 +80,12 @@ def _code(text: str) -> str:
 
 def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands(world):
     body = _send(world)
-    assert "Paste this into Codex or Claude Code" in body
+    assert "Copy everything in the box into Codex or Claude Code" in body
     assert "Option B (localStorage): third-party scripts can read it" in body      # the brief, inline
     # Plain `pip install connectonion` gets the last stable release, which has no co handoff accept.
-    from connectonion import __version__
+    from connectonion.handoff.replies import MIN_VERSION
     # A pre-release floor admits pre-releases of co by itself (PEP 440); --pre would admit them for dependencies too.
-    floor = f'"connectonion>={__version__}"'
+    floor = f'"connectonion>={MIN_VERSION}"'
     # Isolated installs only, in this order; never the recipient's global Python (#2396).
     uv, pipx = body.index(f"uv tool install {floor}"), body.index(f"pipx install --force {floor}")
     venv = body.index(f"python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install {floor}")
@@ -95,7 +95,7 @@ def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands
     assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
-    assert raw.startswith("<pre>Paste this into Codex or Claude Code")              # newlines survive the HTML mail
+    assert "white-space:pre-wrap" in raw                                           # the box keeps newlines and wraps
     assert "<" not in body                                                         # no tag-shaped placeholder
 
 
@@ -275,3 +275,20 @@ def test_a_one_character_typo_is_refused_not_sent_somewhere_else(world):
 
 def test_the_code_is_short_enough_to_copy(world):
     assert len(_code(_send(world))) < 120
+
+
+def test_the_install_floor_is_a_published_version_not_the_senders_build(world, monkeypatch):
+    # 2026-10-11: a sender on 1.9.2b10.dev1 mailed `connectonion>=1.9.2b10.dev1`, which no index had.
+    from connectonion.handoff import replies
+    monkeypatch.setattr("connectonion._version.__version__", "9.9.9.dev1")
+    body = _send(world)
+    assert f'"connectonion>={replies.MIN_VERSION}"' in body
+    assert ".dev" not in body
+
+
+def test_a_person_reads_the_task_before_the_agent_steps_and_sees_no_markdown_fences(world):
+    body = _send(world)
+    raw = world["mails"][-1]["message"]
+    assert "```" not in raw
+    assert body.index("handed you a task") < body.index("Copy everything in the box") < body.index("1. Run co --version")
+    assert body.index("Where it stands:") < body.index("1. Run co --version")
