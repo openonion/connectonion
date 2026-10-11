@@ -62,6 +62,9 @@ From: <sender> · To: <recipient> · <date> · <handoff id>
 ## Code
 - Up to three repositories this session worked in: remote, branch, commit (pushed or not).
 
+## Issues and PRs mentioned
+- #N: its title, from gh output this session already read.
+
 ## Conversation
 [1] <sender>:
 <the user's message, word for word>

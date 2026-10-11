@@ -640,3 +640,57 @@ def test_codex_code_comes_from_the_workdir_of_its_commands(project, tmp_path):
     with path.open("a") as f:
         f.write(_row("response_item", call, when=datetime.now(timezone.utc).isoformat()) + "\n")
     assert [c["commit"] for c in sessions.code_for("codex", path)] == [commit]
+
+
+def test_issues_and_prs_are_named_from_what_the_session_read(project, model, mailbox):
+    # The session ran gh; its output already holds the titles, so nothing is fetched at send time.
+    path = write_codex_session(project, extra=" Then fix #1043 and look at #1047.")
+    gh_json = json.dumps([{"number": 1043, "title": "Fresh co ai installs cannot onboard their owner", "state": "OPEN"}])
+    rows = [_row("response_item", {"type": "function_call_output", "call_id": "c1", "output": gh_json}),
+            _row("response_item", {"type": "custom_tool_call_output", "call_id": "c2",
+                                   "output": "title:\tKeep eval runs opt-in\nstate:\tOPEN\nnumber:\t1047\n"})]
+    with path.open("a") as f:
+        f.write("\n".join(rows) + "\n")
+    result = _invoke("handoff", "send", SELF, "task")
+    assert "- #1043: Fresh co ai installs cannot onboard their owner" in result.output
+    assert "- #1047: Keep eval runs opt-in" in result.output
+
+
+def test_a_claude_tool_result_names_an_issue_too(project):
+    path = write_claude_session(project)
+    row = {"type": "user", "timestamp": "2026-10-10T10:00:05Z", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content":
+         "123\tFix the login race\tfix/login\tOPEN\t2026-10-01\n1\tAnalyze Python\tpush\tmain\t2026-10-01"}]}}
+    with path.open("a") as f:
+        f.write(json.dumps(row) + "\n")
+    assert sessions.titles("claude", path) == {"123": "Fix the login race"}
+
+
+def test_a_long_handoff_suggests_starting_later(project, model, mailbox, monkeypatch):
+    from connectonion.cli.commands import handoff_commands
+    monkeypatch.setattr(handoff_commands, "LONG_CHARS", 100)
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task")
+    assert "--since <N>" in result.output.split("Draft:")[0] and "characters" in result.output
+
+
+def test_a_detached_checkout_is_found_in_the_reflog(project, tmp_path, monkeypatch):
+    # The session sat on B; today the same folder is back on A with an edit. Neither is the session's.
+    repo = tmp_path / "app"
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
+    first = _repo(repo, "main", "https://github.com/acme/app.git")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-15T00:00:00Z")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "B")
+    second = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-03-01T00:00:00Z")
+    _git(repo, "checkout", "-q", "--detach", first)
+    (repo / "today.py").write_text("x = 1\n")
+    code = sessions.code_at(repo, "HEAD", before="2026-02-01T00:00:00Z")
+    assert code["commit"] == second and code["uncommitted"] == 0     # today's edit is not that commit's
+
+
+def test_only_title_shaped_text_counts_as_a_title():
+    found = sessions._titles_in('1\t0x10e68f6dff39ab1c50cc48ea1c74e7fd6ce7269aa6e8123829b344e57d005508\tx\n'
+                                '1782\t2026-09-26\tx\n'
+                                '{"number": 1037, "title": "bash() clamps timeout to 600s \\u2014 agents cannot tell"}')
+    assert found == {"1037": "bash() clamps timeout to 600s — agents cannot tell"}

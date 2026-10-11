@@ -25,6 +25,8 @@ from ...handoff import bundle as bundles
 from ...handoff import opener, replies, sessions, transport
 
 out = style.console()
+# Past this, the message is a lot to paste into a coding agent's box; the preview suggests --since.
+LONG_CHARS = 30_000
 
 
 def _home() -> Path:
@@ -98,7 +100,7 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     if from_file:
         path = Path(from_file).resolve()
         talk = [{"at": "", "user": path.read_text(encoding="utf-8"), "ai": ""}]
-        source, code = {"kind": "notes file", "session": path.name, "messages": 1}, []
+        source, code, titles = {"kind": "notes file", "session": path.name, "messages": 1}, [], {}
     else:
         try:
             kind, path = sessions.find_by_id(session) if session else sessions.find_session(Path.cwd(), agent)
@@ -107,14 +109,14 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
         talk = sessions.exchanges(sessions.read_turns(kind, path))[since - 1:]
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
                   "messages": len(talk)}
-        code = sessions.code_for(kind, path)
+        code, titles = sessions.code_for(kind, path), sessions.titles(kind, path)
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
                           "the AI's replies in summary…"))
     top, said = bundles.draft(talk, what)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
-                            code=code, top=top, said=said, exchanges=talk)
+                            code=code, top=top, said=said, exchanges=talk, titles=titles)
 
 
 def _edit(bundle: dict) -> dict:
@@ -154,8 +156,12 @@ def _preview(bundle: dict, path: Path) -> None:
     out.print("Everything between the lines below is what leaves this machine, and nothing else: "
               "no files, rem pages or mail.")
     out.print("-" * 60)
-    out.print(bundles.brief_markdown(bundle), markup=False)
+    brief = bundles.brief_markdown(bundle)
+    out.print(brief, markup=False)
     out.print("-" * 60)
+    if len(brief) > LONG_CHARS:
+        out.print(style.warn(f"It is {len(brief):,} characters, a lot to paste into a coding agent. If the session "
+                             f"covered other work first, start where this task starts: --since <N>, with N from the [N] list."))
     private = bundles.find_private(bundle)
     if private:
         out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "

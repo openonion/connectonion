@@ -231,7 +231,11 @@ def code_at(folder: Path, branch: str = "", before: str = "") -> dict | None:
         return None
     git = lambda *args: subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
     at = lambda ref: git("rev-list", "-1", *([f"--before={before}"] if before else []), ref)
-    head = at(branch) if branch and branch != "HEAD" else at("HEAD")
+    if branch and branch != "HEAD":
+        head = at(branch)
+    else:   # detached: where HEAD actually was then, from the reflog; today's HEAD may have moved back
+        head = git("rev-parse", "--verify", "-q", f"HEAD@{{{before}}}") if before else at("HEAD")
+        head = head if head.returncode == 0 and head.stdout.strip() else at("HEAD")
     if head.returncode or not head.stdout.strip():   # the recorded branch is gone: what is checked out
         head, branch = at("HEAD"), ""
     if head.returncode or not head.stdout.strip():   # not a repository, or no commit by then
@@ -242,7 +246,9 @@ def code_at(folder: Path, branch: str = "", before: str = "") -> dict | None:
             "branch": branch or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
             "commit": commit,
             "pushed": bool(git("branch", "-r", "--contains", commit).stdout.strip()),
-            "uncommitted": len(git("status", "--porcelain").stdout.splitlines())}
+            # Changes in the folder today belong to that commit only if it is still what is checked out.
+            "uncommitted": len(git("status", "--porcelain").stdout.splitlines())
+            if commit == git("rev-parse", "HEAD").stdout.strip() else 0}
 
 
 def code_for(agent: str, path: Path, limit: int = 3) -> list[dict]:
@@ -253,3 +259,72 @@ def code_for(agent: str, path: Path, limit: int = 3) -> list[dict]:
         if code and all((c["repository"], c["commit"]) != (code["repository"], code["commit"]) for c in found):
             found.append(code)
     return found[:limit]
+
+
+def titles(agent: str, path: Path) -> dict[str, str]:
+    """Issue and PR titles the session already read (gh output in its tool results): {"1043": "title"}.
+
+    So a handoff can say what #1043 is without fetching anything, even for a private repository."""
+    found = {}
+    with Path(path).open(encoding="utf-8") as f:
+        for line in f:
+            if '"title' in line or "title:" in line or "\\t" in line:
+                for output in _tool_outputs(json.loads(line)):
+                    found.update(_titles_in(_unescaped(output)))
+    return found
+
+
+def _tool_outputs(row: dict) -> list[str]:
+    payload = row.get("payload") or {}
+    if payload.get("type") in ("function_call_output", "custom_tool_call_output"):
+        output = payload.get("output")
+        return [output if isinstance(output, str) else json.dumps(output)]
+    content = (row.get("message") or {}).get("content")
+    results = [part.get("content") for part in content if isinstance(part, dict) and part.get("type") == "tool_result"] \
+        if isinstance(content, list) else []
+    return [r if isinstance(r, str) else _text(r) for r in results]
+
+
+def _unescaped(text: str) -> str:
+    """gh JSON inside a tool's JSON output arrives escaped two or three times over."""
+    for _ in range(4):
+        text = text.replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\")
+    return text
+
+
+LIST_ROW = re.compile(r"^#?(\d{1,6})\t(.+)$", re.M)
+STATES = {"OPEN", "CLOSED", "MERGED", "DRAFT"}
+
+
+def _titles_in(text: str) -> dict[str, str]:
+    """{number: title}, keeping only text shaped like a title: tables also have numbered rows of dates and addresses."""
+    return {n: t for n, t in _candidates(text).items() if TITLE_SHAPE.match(t) and not re.match(r"0x[0-9a-f]{8}|\d{4}-\d\d", t)}
+
+
+# Words and a space, not a date or an address.
+TITLE_SHAPE = re.compile(r"^(?=.*[A-Za-z].*[A-Za-z])(?=.*\s).{8,}$")
+
+
+def _candidates(text: str) -> dict[str, str]:
+    text = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+    found = {}
+    # gh --json: each issue's fields lie between its "number" and the next one's
+    parts = re.split(r'"number"\s*:\s*', text)
+    for before, part in zip(parts, parts[1:]):
+        number = re.match(r"\d+", part)
+        title = re.search(r'"title"\s*:\s*"([^"\n]{3,300})"', part) or re.search(r'"title"\s*:\s*"([^"\n]{3,300})"[^"]*$', before)
+        if number and title:
+            found[number.group(0)] = title.group(1)
+    # gh issue/pr view: "title:\t…" and "number:\t…" lines
+    view_title, view_number = re.search(r"^title:\t(.+)$", text, re.M), re.search(r"^number:\t(\d+)$", text, re.M)
+    if view_title and view_number:
+        found[view_number.group(1)] = view_title.group(1).strip()
+    # gh issue list: number, state, title, …; gh pr list: number, title, branch, state, …
+    # A numbered row without a state column is some other table (workflow runs, a co listing).
+    for number, rest in LIST_ROW.findall(text):
+        columns = rest.split("\t")
+        if columns[0] in STATES and len(columns) > 1:
+            found.setdefault(number, columns[1])
+        elif STATES & set(columns[1:]):
+            found.setdefault(number, columns[0])
+    return found

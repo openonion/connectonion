@@ -114,7 +114,7 @@ def _pieces(numbered: list[tuple[int, dict]]) -> list[str]:
 
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
-             top: Top, said: dict[int, str], exchanges: list[dict]) -> dict:
+             top: Top, said: dict[int, str], exchanges: list[dict], titles: dict[str, str] = None) -> dict:
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -129,6 +129,9 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
         "conversation": [{"at": e["at"], "user": e["user"], "ai": said.get(n, "")}
                          for n, e in enumerate(exchanges, 1)],
     }
+    # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.
+    mentioned = dict.fromkeys(re.findall(r"#(\d{1,6})\b", json.dumps(bundle, ensure_ascii=False)))
+    bundle["mentioned"] = {n: (titles or {})[n] for n in mentioned if n in (titles or {})}
     return seal(bundle)
 
 
@@ -299,6 +302,10 @@ def _asked(bundle: dict) -> str:
     return f"Handed off as: {bundle['asked']}\n\n" if bundle.get("asked") else ""
 
 
+def _mentioned(bundle: dict) -> str:
+    return "\n".join(f"- #{n}: {title}" for n, title in bundle["mentioned"].items())
+
+
 def _listed(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items) or "- none recorded"
 
@@ -325,5 +332,6 @@ def brief_markdown(bundle: dict) -> str:
             f"## Rejected\n{_listed(bundle.get('rejected', []))}\n\n"
             f"## Open questions\n{questions_text(bundle)}\n\n"
             f"## Code\n{code_text(bundle)}\n\n"
-            f"## Conversation\nEvery message {bundle['from']} wrote, word for word; the AI's replies in summary. "
+            + (f"## Issues and PRs mentioned\n{_mentioned(bundle)}\n\n" if bundle.get("mentioned") else "")
+            + f"## Conversation\nEvery message {bundle['from']} wrote, word for word; the AI's replies in summary. "
             f"Anything not here, ask the sender.\n\n{conversation_text(bundle)}\n")
