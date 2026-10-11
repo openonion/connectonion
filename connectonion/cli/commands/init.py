@@ -63,7 +63,7 @@ def handle_global_init(key: Optional[str] = None) -> None:
     # them; their always-loaded files are the one place every session reads.
     from .agent_index import handle_skills_index
     from .skills_commands import handle_skills_link
-    handle_skills_link()
+    handle_skills_link(brief=True)
     handle_skills_index()
     console.print("[dim]For a project, pass its directory explicitly: co init ./[/dim]")
 

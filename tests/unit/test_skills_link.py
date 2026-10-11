@@ -65,6 +65,16 @@ class TestSkillsLink:
                 assert linked.exists(), f"{name} missing from {root}"
                 assert (linked / "SKILL.md").exists()
 
+    def test_brief_is_one_line_per_coding_agent_naming_what_it_kept(self, targets, capsys):
+        """co init uses brief: a row per skill pushed the useful lines off the screen."""
+        (targets[1] / bundled_names()[0]).mkdir(parents=True)          # one the user owns in codex
+        handle_skills_link(brief=True)
+        out = " ".join(capsys.readouterr().out.split())                  # rich wraps long paths
+        n = len(bundled_names())
+        assert out.startswith(f"✓ claude: {n} co skills in ")
+        assert f"✓ codex: {n - 1} co skills in " in out and f"1 of your own kept: {bundled_names()[0]}" in out
+        assert out.count("✓") == 2 and "Linking" not in out              # no per-skill table
+
     def test_is_idempotent(self, targets, capsys):
         handle_skills_link()
         capsys.readouterr()

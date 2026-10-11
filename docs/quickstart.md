@@ -7,8 +7,8 @@ required for these commands.
 ## Install and see the environment
 
 ```bash
-pip install connectonion
-co init                     # global identity and ~/.co/keys.env
+curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install.sh | sh
+# or: pip install connectonion && co init
 co env                      # selected settings and their sources, values hidden
 co status                   # identity, account and connected services
 ```
