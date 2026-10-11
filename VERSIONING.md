@@ -407,7 +407,9 @@ like a mail on any screen: who handed you what, the task, where it stands and
 the open questions first, then the block for Codex or Claude Code in a box that
 wraps. Its install step asks for a version that exists (1.9.2b8 or newer, never
 the sender's own build) and installs co in its own environment, never the
-global Python. `co email send` keeps a plain-text body's paragraphs. See
+global Python. `co email send` keeps a plain-text body's paragraphs. One
+line installs co (`curl … install.sh | sh`), and an accepted handoff makes
+each side the other's agent contact. See
 [1.9.2b10 notes](docs/releases/1.9.2b10.md).
 
 - 1.9.2b10 (A handoff mail you can read on a phone).

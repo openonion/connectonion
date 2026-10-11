@@ -1,5 +1,5 @@
 ---
-description: The co handoff mail was one long monospace block that ran off a phone, showed Markdown fences and a base64 blob, and pinned a version of co nobody could install. It now reads like a mail, and a second machine's Codex took it from paste to acceptance.
+description: The co handoff mail ran off a phone and pinned a co version nobody could install. It now reads like a mail, and Codex on a second machine took it from paste to accept.
 tags: [Handoff, Email, Codex]
 ---
 

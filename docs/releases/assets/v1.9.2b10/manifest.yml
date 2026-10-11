@@ -12,5 +12,5 @@ images:
   caption: "Who handed what, the task, where it stands and open questions first; the agent block wraps in a box; page width equals the 390 px viewport."
   scenario: Test handoff ho-ba300b27 (invented notes) rendered from this branch's to_mail
   viewport: 390x844, light
-  commit: b58331dd
+  commit: bb193027
   source_run: Chrome capture of bundle.to_mail output for draft ho-ba300b27; 2026-10-11

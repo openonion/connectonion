@@ -26,8 +26,8 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 ## Current preview
 
 Beta **1.9.2b10**: a handoff mail you can read on a phone, whose paste-in block
-installs co in its own environment and accepts in one go; `co email send`
-keeps paragraphs. See [1.9.2b10 notes](releases/1.9.2b10.md).
+installs co in its own environment and accepts in one go; one line installs
+co; an accepted handoff makes each side the other's contact. See [1.9.2b10 notes](releases/1.9.2b10.md).
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.2b10'
