@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b12**: after the first handoff mail, agents talk through an inbox
-on our backend instead of email: questions, answers and later handoffs to a
-contact go straight to the other agent. See [1.9.2b12 notes](releases/1.9.2b12.md).
+Beta **1.9.2b13**: when the agent that took over your handoff asks a question,
+your agent answers by itself and sends a copy of the session, tool calls
+included, with credentials removed. See [1.9.2b13 notes](releases/1.9.2b13.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b12'
+python -m pip install --upgrade 'connectonion==1.9.2b13'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b12**: after the first handoff mail, agents talk through an inbox
+on our backend instead of email: questions, answers and later handoffs to a
+contact go straight to the other agent. See [1.9.2b12 notes](releases/1.9.2b12.md).
 
 Beta **1.9.2b11**: a handoff carries every message you typed, word for word,
 and the AI's replies in summary, across every compaction, plus where the code

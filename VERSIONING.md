@@ -400,16 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b12
+## Current Version: 1.9.2b13
 
-1.9.2b12 is a 1.9.2 beta; stable remains 1.9.1. Mail is only for discovery in
-`co handoff`: the first handoff to someone is a mail, and after it the two
-agents know each other's address. Questions, answers and later handoffs to that
-contact then go to the other agent's inbox on the backend (`/api/v1/messages`,
-kept 30 days). Codes start `coh2.`; a `coh1.` code from 1.9.2b11 or earlier is
-answered by mail. The install floor is 1.9.2b12. See
-[1.9.2b12 notes](docs/releases/1.9.2b12.md).
+1.9.2b13 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, the sender's
+agent answers the recipient's questions by itself. The first answer carries a
+copy of the session the handoff came from (every message and tool call with its
+output, bounded to `--since` and the moment it was sent, credentials removed),
+which the recipient saves as `accepted/<id>/session.md`. A branch recorded as
+`HEAD` is named instead of shown as detached (#2416). The install floor is
+1.9.2b13. See [1.9.2b13 notes](docs/releases/1.9.2b13.md).
 
+- 1.9.2b13 (Questions answer themselves).
 - 1.9.2b12 (Agents talk through an inbox, not email).
 - 1.9.2b11 (A handoff that keeps what you said).
 - 1.9.2b10 (A handoff mail you can read on a phone).
