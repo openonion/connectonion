@@ -350,6 +350,7 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
     shown = _invoke("handoff", "show", "ho-2b3c4d5e")
     assert "co handoff accept coh2." in shown.output                         # how to take it over, without the mail
+    assert "[co.path]" not in shown.output                                   # a path, not style markup (b13 test)
 
 
 def test_a_contact_from_before_the_inbox_still_gets_mail(world):
