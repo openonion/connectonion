@@ -88,12 +88,9 @@ def model(monkeypatch):
         return bundles.Draft(
             title="Store the login token",
             task="Store the login session token; done when the cookie is set on login.",
-            may_do=["edit auth/"],
             where_it_stands="Option chosen, no code yet",
-            decided=[bundles.Decided(decision="Use an httpOnly cookie", why="JS cannot read it")],
-            rejected=[bundles.Rejected(option="B: localStorage", why_not="any XSS can read localStorage")],
             open_questions=["Cookie lifetime?"],
-            references=[bundles.Reference(reference="auth/session.py", note="where the middleware goes")],
+            replies=[bundles.Reply(n=1, said="Rejected localStorage (XSS can read it); chose the httpOnly cookie.")],
         )
 
     import connectonion.llm_do  # noqa: F401  (the module, not the function the package re-exports)
@@ -158,9 +155,9 @@ def test_send_previews_by_default_and_sends_nothing(project, model, mailbox):
     assert result.exit_code == 0, result.output
     assert mailbox == []
     assert "Nothing has been sent" in result.output
-    assert "any XSS can read localStorage" in result.output        # the excerpt and decision, shown
-    assert "Which for the login token?" in result.output
-    assert "Which for the login token?" in model[0]                  # the draft saw the excerpt
+    assert "XSS can read it" in result.output                        # the AI's part, summarised
+    assert "Which for the login token?" in result.output             # the user's words, verbatim
+    assert "Which for the login token?" in model[0]
     draft = Path.home() / ".co" / "handoff" / "drafts" / f"{_draft_id(result.output)}.json"
     assert json.loads(draft.read_text())["to"] == SELF
 
@@ -256,10 +253,8 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     inbox = _invoke("handoff", "inbox")
     assert handoff_id in inbox.output and f"Next: co handoff show {handoff_id}" in inbox.output
 
-    summary = _invoke("handoff", "show", handoff_id)
-    assert "Store the login token" in summary.output and "localStorage" not in summary.output
-    detail = _invoke("handoff", "show", handoff_id, "--decisions")
-    assert "- B: localStorage: any XSS can read localStorage" in detail.output
+    shown = _invoke("handoff", "show", handoff_id)
+    assert "Store the login token" in shown.output and "Which for the login token?" in shown.output
 
     seeds = []
 
@@ -274,8 +269,8 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     assert opened.exit_code == 0, opened.output
     assert "codex resume thread-1" in opened.output
     agent, prompt, cwd = seeds[0]
-    assert agent == "codex" and "any XSS can read localStorage" in prompt
-    assert (cwd / "HANDOFF.md").exists() and (cwd / "excerpt.md").exists()
+    assert agent == "codex" and "XSS can read it" in prompt and "Which for the login token?" in prompt
+    assert (cwd / "HANDOFF.md").exists()
 
     again = _invoke("handoff", "open", handoff_id)
     assert len(seeds) == 1 and "No new session was created" in again.output
@@ -288,40 +283,87 @@ def test_show_of_an_unknown_id_points_at_the_inbox(project, mailbox):
 
 # ---- compaction and picking a session ----
 
-def test_a_compacted_codex_session_keeps_what_codex_retained_then_the_turns_after(project):
+def test_a_compacted_codex_session_keeps_every_user_message_once(project):
+    # The rollout keeps the full history; replacement_history repeats user messages already in it.
     path = write_codex_session(project)
     rows = path.read_text().splitlines()
     compacted = _row("compacted", {"message": "", "replacement_history": [
-        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Original ask: store the login token."}]},
-        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions\nrules"}]},
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Agreed. Next is the middleware in auth/session.py."}]},
         {"type": "compaction", "encrypted_content": "gAAAA-opaque"}]})
     after = _codex_message("user", "After compaction: lifetime is 7 days.")
     path.write_text("\n".join(rows + [compacted, after]) + "\n")
-    turns = sessions.excerpt(sessions.read_turns("codex", path))
-    assert [(t["role"], t["text"]) for t in turns] == [
-        ("earlier", "Original ask: store the login token."),
-        ("user", "After compaction: lifetime is 7 days.")]
+    turns = sessions.read_turns("codex", path)
+    assert [t["text"] for t in turns if t["role"] == "user"] == [
+        "Option A: httpOnly cookie. Option B: localStorage. Which for the login token?",
+        "Agreed. Next is the middleware in auth/session.py.",
+        "After compaction: lifetime is 7 days."]
 
 
-def test_a_compacted_claude_session_starts_from_its_summary(project):
+def test_a_compacted_claude_session_keeps_every_user_message_and_not_the_summary(project):
     path = write_claude_session(project)
     rows = path.read_text().splitlines()
     summary = {"type": "user", "isCompactSummary": True, "timestamp": "2026-10-10T11:00:00Z",
                "message": {"role": "user", "content": "This session is being continued from a previous "
                                                       "conversation.\n\nSummary: chose the queue over backoff."}}
-    after = {"type": "user", "timestamp": "2026-10-10T11:00:01Z",
+    interrupted = {"type": "user", "timestamp": "2026-10-10T11:00:01Z",
+                   "message": {"role": "user", "content": [{"type": "text", "text": "[Request interrupted by user]"}]}}
+    typed_mid_turn = {"type": "attachment", "timestamp": "2026-10-10T11:00:02Z",
+                      "attachment": {"type": "queued_command", "prompt": "Use the real session.",
+                                     "origin": {"kind": "human"}}}
+    after = {"type": "user", "timestamp": "2026-10-10T11:00:03Z",
              "message": {"role": "user", "content": "Now write the worker."}}
-    path.write_text("\n".join(rows + [json.dumps(summary), json.dumps(after)]) + "\n")
-    turns = sessions.excerpt(sessions.read_turns("claude", path))
-    assert [t["role"] for t in turns] == ["summary", "user"]
-    assert "chose the queue over backoff" in turns[0]["text"]
+    path.write_text("\n".join(rows + [json.dumps(r) for r in (summary, interrupted, typed_mid_turn, after)]) + "\n")
+    turns = sessions.read_turns("claude", path)
+    assert [t["text"] for t in turns if t["role"] == "user"] == [
+        "Should we retry with backoff or a queue?", "Use the real session.", "Now write the worker."]
+    assert "chose the queue over backoff" not in json.dumps(turns)
 
 
-def test_a_long_session_keeps_the_last_turns_but_never_drops_the_summary():
-    turns = [{"role": "summary", "text": "S", "timestamp": ""}] + \
-            [{"role": "user", "text": str(i), "timestamp": ""} for i in range(100)]
-    kept = sessions.excerpt(turns, limit=5)
-    assert [t["text"] for t in kept] == ["S", "95", "96", "97", "98", "99"]
+def test_each_user_message_carries_the_ai_replies_that_followed_it():
+    turns = [{"role": "assistant", "text": "hello", "timestamp": "t0"},
+             {"role": "user", "text": "A?", "timestamp": "t1"},
+             {"role": "assistant", "text": "first", "timestamp": "t2"},
+             {"role": "assistant", "text": "second", "timestamp": "t3"},
+             {"role": "user", "text": "B?", "timestamp": "t4"}]
+    assert sessions.exchanges(turns) == [{"at": "t1", "user": "A?", "ai": "first\n\nsecond"},
+                                         {"at": "t4", "user": "B?", "ai": ""}]
+
+
+def test_the_handoff_keeps_the_users_words_and_only_a_summary_of_the_ai(project, model, mailbox):
+    long_ask = "Keep every word of this. " * 400
+    write_codex_session(project, extra=" " + long_ask)
+    result = _invoke("handoff", "send", SELF, "the login token task")
+    assert result.exit_code == 0, result.output
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    said = [e["user"] for e in draft["conversation"]]
+    assert said[0].endswith(long_ask.strip()) and len(said) == 2      # verbatim, never cut
+    assert draft["conversation"][0]["ai"] == "Rejected localStorage (XSS can read it); chose the httpOnly cookie."
+    assert "Reject B: any XSS can read localStorage" not in json.dumps(draft)   # the AI's own text stays here
+    assert "Reject B: any XSS can read localStorage" in model[0]                # but the summary was made from it
+    assert "Which for the login token?" in result.output
+
+
+def test_the_handoff_names_the_repository_branch_and_commit(project, model, mailbox):
+    import subprocess
+    git = lambda *a: subprocess.run(["git", *a], cwd=project, check=True, capture_output=True, text=True).stdout.strip()
+    git("init", "-q", "-b", "login-token")
+    git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "start")
+    git("remote", "add", "origin", "https://alice:hunter2pass@github.com/acme/login-app.git")
+    (project / "wip.py").write_text("x = 1\n")
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task")
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert draft["code"] == {"repository": "https://github.com/acme/login-app.git", "branch": "login-token",
+                             "commit": git("rev-parse", "HEAD"), "pushed": False, "uncommitted": 1}
+    assert "hunter2pass" not in json.dumps(draft)
+    assert "https://github.com/acme/login-app.git" in result.output and "not pushed" in result.output
+
+
+def test_outside_a_repository_the_handoff_says_there_is_no_code_reference(project, model, mailbox):
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task")
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert draft["code"] is None
 
 
 def test_session_by_id_or_path(project, tmp_path):
@@ -337,7 +379,7 @@ def test_send_from_another_session_does_not_put_local_paths_in_the_bundle(projec
     result = _invoke("handoff", "send", SELF, "task", "--session", THREAD)
     assert result.exit_code == 0, result.output
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
-    assert draft["source"] == {"kind": "codex", "session": THREAD, "turns_included": 3, "compacted": False}
+    assert draft["source"] == {"kind": "codex", "session": THREAD, "messages": 2}
     assert str(Path.home()) not in json.dumps(draft)
 
 
@@ -429,7 +471,7 @@ def test_open_a_handoff_from_the_mail_as_co_email_read_prints_it(project, model,
 
     opened = _invoke("handoff", "open", str(saved))
     assert opened.exit_code == 0, opened.output
-    assert seeds and "any XSS can read localStorage" in seeds[0][1]
+    assert seeds and "XSS can read it" in seeds[0][1]
     assert (seeds[0][2] / "HANDOFF.md").exists()
 
 
@@ -454,3 +496,20 @@ def test_a_file_without_a_handoff_says_so(project, mailbox, tmp_path):
     saved.write_text("just notes", encoding="utf-8")
     result = _invoke("handoff", "open", str(saved))
     assert result.exit_code == 1 and "no handoff in" in result.output.lower()
+
+
+def test_status_wait_returns_once_something_new_arrives(project, model, mailbox, monkeypatch):
+    # An agent runs this in the background: it ends, and so wakes the agent, only on news.
+    write_codex_session(project)
+    handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
+    _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
+    from connectonion.handoff import replies
+    arrivals = iter([[], [], [{"kind": "ask"}]])
+    checks = []
+    monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: checks.append(1) or next(arrivals))
+    monkeypatch.setattr(replies, "settle", lambda record, mails=None: {"accepted": None, "questions": [], "ignored": 0})
+    monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    result = _invoke("handoff", "status", handoff_id, "--wait")
+    assert result.exit_code == 0, result.output
+    assert len(checks) == 3 and f"Handoff {handoff_id} (sent)" in result.output

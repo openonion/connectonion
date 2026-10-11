@@ -15,33 +15,34 @@ Both clients write far more into the user slot than anyone typed (AGENTS.md,
 environment context, skill bodies); `INJECTED_BLOCK` from co rem's importer is the
 measured filter for that, reused rather than re-learned.
 
-Compaction. Both clients keep the full history on disk and add a marker when the
-model's context was compacted:
+What a handoff keeps, the way a compaction does: every message the person typed,
+word for word, and what the AI said, to be summarised. Tool calls, tool output
+and reasoning are never read.
 
-- Claude Code writes a ``user`` row with ``isCompactSummary: true`` whose text is
-  the plaintext summary ("This session is being continued from a previous
-  conversation…"). It is read as a ``summary`` turn.
-- Codex writes a ``compacted`` row. Its summary is a ``compaction`` item holding
-  only ``encrypted_content`` (0 of 107 compactions on one Mac had plaintext), so it
-  cannot be read. What Codex itself kept is ``replacement_history``: the user's own
-  earlier messages. Those are read as ``earlier`` turns.
+Compaction. Both clients keep the full history on disk and only add a marker when
+the model's context was compacted, so the whole conversation is read from the
+start and the markers are skipped:
 
-So a compacted session yields: what survived the last compaction, then the turns
-after it. An uncompacted one yields its last EXCERPT_TURNS turns.
+- Claude Code writes a ``user`` row with ``isCompactSummary: true`` (the client's
+  summary, not the person's words).
+- Codex writes a ``compacted`` row whose ``replacement_history`` repeats user
+  messages already earlier in the rollout; its summary is encrypted anyway.
+
+A message the person typed while Claude Code was mid-turn is not a ``user`` row: it
+is an ``attachment`` row of type ``queued_command`` with ``origin.kind: human``.
 """
 
 import json
 import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from ..rem.source import INJECTED_BLOCK
 
-MAX_TURN_CHARS = 2000
-SUMMARY_CHARS = 12000
-# Only the end of a session is the task being handed off. Forty turns covers a
-# discussion that settled two options; the draft names the cut so it is visible.
-EXCERPT_TURNS = 40
+# Written by the client into the user slot, not typed by the person.
+CLIENT_NOTICE = re.compile(r"^\[Request interrupted by user")
 
 
 class SessionNotFound(Exception):
@@ -104,45 +105,27 @@ def _claude_candidates(cwd: Path) -> list[Path]:
 
 
 def read_turns(agent: str, path: Path) -> list[dict]:
-    """The turns a handoff needs, oldest first: {role, text, timestamp}.
-
-    Roles: user, assistant, and for a compacted session `summary` (Claude Code's
-    plaintext summary) or `earlier` (messages Codex retained). Tool calls, tool
-    output and reasoning are left out.
-    """
+    """The whole conversation, oldest first: {role: user|assistant, text, timestamp}."""
     parse = _codex_turn if agent == "codex" else _claude_turn
     turns = []
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            kept = _compaction(agent, row)
-            if kept is not None:
-                turns = kept          # everything before is what the compaction replaced
-                continue
-            turn = parse(row)
-            if turn:
-                turns.append(turn)
+            if line.strip():
+                turn = parse(json.loads(line))
+                if turn:
+                    turns.append(turn)
     return turns
 
 
-def _compaction(agent: str, row: dict) -> list[dict] | None:
-    if agent == "claude" and row.get("type") == "user" and row.get("isCompactSummary"):
-        text = (row.get("message") or {}).get("content")
-        text = text if isinstance(text, str) else "\n".join(
-            p.get("text", "") for p in text or [] if isinstance(p, dict))
-        return [{"role": "summary", "text": text.strip(), "timestamp": row.get("timestamp", "")}]
-    if agent == "codex" and row.get("type") == "compacted":
-        payload = row.get("payload") or {}
-        kept = [{"role": "summary", "text": payload["message"], "timestamp": row.get("timestamp", "")}] \
-            if payload.get("message") else []
-        for item in payload.get("replacement_history") or []:
-            turn = _codex_turn({"type": "response_item", "payload": item, "timestamp": row.get("timestamp", "")})
-            if turn and turn["role"] == "user":
-                kept.append(dict(turn, role="earlier"))
-        return kept
-    return None
+def exchanges(turns: list[dict]) -> list[dict]:
+    """Each user message with the AI text that followed it: {at, user, ai}."""
+    found = []
+    for turn in turns:
+        if turn["role"] == "user":
+            found.append({"at": turn["timestamp"], "user": turn["text"], "ai": ""})
+        elif found:
+            found[-1]["ai"] = (found[-1]["ai"] + "\n\n" + turn["text"]).strip()
+    return found
 
 
 def find_by_id(ref: str) -> tuple[str, Path]:
@@ -162,20 +145,6 @@ def find_by_id(ref: str) -> tuple[str, Path]:
                           f"or {Path.home() / '.claude' / 'projects'}")
 
 
-def excerpt(turns: list[dict], limit: int = EXCERPT_TURNS) -> list[dict]:
-    """What survived compaction (always kept), then the last `limit` turns after it."""
-    head = [t for t in turns if t["role"] in ("summary", "earlier")]
-    tail = [t for t in turns if t["role"] not in ("summary", "earlier")][-limit:]
-    return [dict(t, text=_clip(t["text"], SUMMARY_CHARS if t["role"] == "summary" else MAX_TURN_CHARS))
-            for t in head + tail]
-
-
-def _clip(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[:limit] + f"\n[cut by co handoff: {len(text) - limit} more characters]"
-
-
 def _codex_turn(row: dict) -> dict | None:
     payload = row.get("payload") or {}
     if row.get("type") != "response_item" or payload.get("type") != "message":
@@ -188,20 +157,42 @@ def _codex_turn(row: dict) -> dict | None:
 
 
 def _claude_turn(row: dict) -> dict | None:
-    if row.get("type") not in ("user", "assistant") or row.get("isMeta") or row.get("isSidechain"):
+    attachment = row.get("attachment") or {}
+    if attachment.get("type") == "queued_command" and (attachment.get("origin") or {}).get("kind") == "human":
+        return _spoken("user", _text(attachment.get("prompt")), row.get("timestamp", ""))
+    if row.get("type") not in ("user", "assistant") or row.get("isMeta") or row.get("isSidechain") \
+            or row.get("isCompactSummary"):
         return None
-    content = (row.get("message") or {}).get("content")
+    return _spoken(row["type"], _text((row.get("message") or {}).get("content")), row.get("timestamp", ""))
+
+
+def _text(content) -> str:
+    """A Claude Code message body: a string, or a list whose text parts are what was said."""
     if isinstance(content, list):
-        content = "\n".join(part.get("text", "") for part in content
-                            if isinstance(part, dict) and part.get("type") == "text")
-    if not isinstance(content, str):
-        return None
-    return _spoken(row["type"], content, row.get("timestamp", ""))
+        return "\n".join(part.get("text", "") for part in content
+                         if isinstance(part, dict) and part.get("type") == "text")
+    return content if isinstance(content, str) else ""
 
 
 def _spoken(role: str, text: str, when: str) -> dict | None:
     if not text.strip():
         return None
-    if role == "user" and INJECTED_BLOCK.match(text):
+    if role == "user" and (INJECTED_BLOCK.match(text) or CLIENT_NOTICE.match(text)):
         return None
     return {"role": role, "text": text.strip(), "timestamp": when}
+
+
+def code_at(folder: Path) -> dict | None:
+    """Where the code is, so the recipient's agent can check out the same thing; None outside a repository."""
+    if not shutil.which("git"):
+        return None
+    git = lambda *args: subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
+    head = git("rev-parse", "HEAD")
+    if head.returncode:                  # not a repository, or one without a commit yet
+        return None
+    remote = git("remote", "get-url", "origin").stdout.strip()
+    return {"repository": re.sub(r"//[^/@]+@", "//", remote) or None,   # never a user:token@ in a URL
+            "branch": git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
+            "commit": head.stdout.strip(),
+            "pushed": bool(git("branch", "-r", "--contains", "HEAD").stdout.strip()),
+            "uncommitted": len(git("status", "--porcelain").stdout.splitlines())}
