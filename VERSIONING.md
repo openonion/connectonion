@@ -400,16 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b13
+## Current Version: 1.9.2b14
 
-1.9.2b13 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, the sender's
-agent answers the recipient's questions by itself. The first answer carries a
-copy of the session the handoff came from (every message and tool call with its
-output, bounded to `--since` and the moment it was sent, credentials removed),
-which the recipient saves as `accepted/<id>/session.md`. A branch recorded as
-`HEAD` is named instead of shown as detached (#2416). The install floor is
-1.9.2b13. See [1.9.2b13 notes](docs/releases/1.9.2b13.md).
+1.9.2b14 is a 1.9.2 beta; stable remains 1.9.1. Every agent with a `.co/` keeps
+an append-only record, `.co/approvals.jsonl`, of every tool call in a turn,
+every network EXEC, every Remote Browser request and every trust-list change,
+with who asked and whether it was done or declined; `co approvals` reads it.
+Three classes, named by code from the tool and its arguments (credentials,
+authority and money; irreversible; acting as the owner in the owner's
+accounts), are declined when someone other than the owner asked and nobody is
+connected to ask, and on network EXEC for anyone but an admin (#2408). See
+[1.9.2b14 notes](docs/releases/1.9.2b14.md).
 
+- 1.9.2b14 (See what your agent did, and for whom).
 - 1.9.2b13 (Questions answer themselves).
 - 1.9.2b12 (Agents talk through an inbox, not email).
 - 1.9.2b11 (A handoff that keeps what you said).

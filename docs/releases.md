@@ -25,15 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b13**: when the agent that took over your handoff asks a question,
-your agent answers by itself and sends a copy of the session, tool calls
-included, with credentials removed. See [1.9.2b13 notes](releases/1.9.2b13.md).
+Beta **1.9.2b14**: your agent keeps a record of everything it does for anyone
+(`co approvals`), and three kinds of action (credentials and money, anything
+that cannot be undone, acting as you in your own accounts) wait for you when
+someone else asks and nobody is connected. See [1.9.2b14 notes](releases/1.9.2b14.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b13'
+python -m pip install --upgrade 'connectonion==1.9.2b14'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b13**: when the agent that took over your handoff asks a question,
+your agent answers by itself and sends a copy of the session, tool calls
+included, with credentials removed. See [1.9.2b13 notes](releases/1.9.2b13.md).
 
 Beta **1.9.2b12**: after the first handoff mail, agents talk through an inbox
 on our backend instead of email: questions, answers and later handoffs to a
