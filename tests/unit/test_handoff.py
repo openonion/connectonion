@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import textwrap
+from email.message import EmailMessage
 from pathlib import Path
 
 import pytest
@@ -247,6 +248,21 @@ def test_a_changed_bundle_is_not_verified():
     assert bundles.from_mail(body)["verified"]
     tampered = dict(bundle, task="something else")          # keeps the approved hash
     assert not bundles.from_mail(bundles.to_mail(tampered, "prompt")[1])["verified"]
+
+
+def test_html_only_saved_mail_keeps_a_readable_prompt_and_a_parseable_bundle():
+    bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "Fix login", "task": "Use a cookie",
+                           "from": "alice@example.com", "to": "bob@example.com", "created_at": "2026-10-10",
+                           "where_it_stands": "Ready for review"})
+    _, body = bundles.to_mail(bundle, "Paste this entire prompt\nThen accept")
+    message = EmailMessage()
+    message.set_content(body, subtype="html")
+    assert bundles.from_saved_mail(message.as_string())["verified"]
+    assert "Paste this entire prompt" in bundles.prompt_in(body)
+    message = EmailMessage()
+    message.set_content("The task summary without the hidden bundle")
+    message.add_alternative(body, subtype="html")
+    assert bundles.from_saved_mail(message.as_string())["verified"]
 
 
 # ---- recipient ----
@@ -549,7 +565,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "Copy everything in the box into Codex or Claude Code" in mail["message"]
+    assert "Select and copy the entire block below" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 

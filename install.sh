@@ -7,7 +7,7 @@
 #    never into your system Python; uv fetches a Python if you have none
 # 2. co init: your agent identity, an OpenOnion key with starter credit, and the
 #    co skills and command index for Codex and Claude Code
-# A preview instead of the stable release:  ... | CO_VERSION=1.9.2b10 sh
+# A preview instead of the stable release:  ... | CO_VERSION=1.9.2b13 sh
 set -eu
 
 spec="connectonion${CO_VERSION:+==$CO_VERSION}"
