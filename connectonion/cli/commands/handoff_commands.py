@@ -44,7 +44,7 @@ def _fail(message: str, next_cmd: str) -> None:
 # ---- send ----
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
-                draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None) -> None:
+                draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1) -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -54,7 +54,7 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
             _fail(f"Draft {draft_id} was prepared for {bundle['to']}, not {to}. A draft is approved for one recipient.",
                   f'co handoff send {shlex.quote(who)} "<what to hand off>"')
     else:
-        bundle = _new_bundle(to, what, from_file, agent, session)
+        bundle = _new_bundle(to, what, from_file, agent, session, since)
     if edit:
         bundle = _edit(bundle)
     path = _save_draft(bundle)
@@ -94,26 +94,27 @@ def _recipient(who: str) -> str:
 
 
 def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[str],
-                session: Optional[str]) -> dict:
+                session: Optional[str], since: int = 1) -> dict:
     if from_file:
         path = Path(from_file).resolve()
         talk = [{"at": "", "user": path.read_text(encoding="utf-8"), "ai": ""}]
-        source = {"kind": "notes file", "session": path.name, "messages": 1}
+        source, code = {"kind": "notes file", "session": path.name, "messages": 1}, []
     else:
         try:
             kind, path = sessions.find_by_id(session) if session else sessions.find_session(Path.cwd(), agent)
         except sessions.SessionNotFound as missing:
             _fail(str(missing), 'co handoff send <who> "<what to hand off>" --from-file <notes.md>')
-        talk = sessions.exchanges(sessions.read_turns(kind, path))
+        talk = sessions.exchanges(sessions.read_turns(kind, path))[since - 1:]
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
                   "messages": len(talk)}
+        code = sessions.code_for(kind, path)
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
-                          "the AI's replies in summary (one model call)…"))
-    summary = bundles.draft(talk, what)
+                          "the AI's replies in summary…"))
+    top, said = bundles.draft(talk, what)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, source=source,
-                            code=sessions.code_at(Path.cwd()), summary=summary, exchanges=talk)
+                            code=code, top=top, said=said, exchanges=talk)
 
 
 def _edit(bundle: dict) -> dict:
@@ -157,7 +158,8 @@ def _preview(bundle: dict, path: Path) -> None:
     out.print("-" * 60)
     private = bundles.find_private(bundle)
     if private:
-        out.print(style.warn(f"Private paths in it ({len(private)}): remove them with --edit unless the recipient needs them."))
+        out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "
+                             f"--since <N>, unless the recipient needs them."))
         for hit in private[:10]:
             out.print(f"  {hit}", markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
@@ -465,20 +467,21 @@ def make_handoff_app(factory) -> typer.Typer:
         from_file: Optional[Path] = typer.Option(None, "--from-file", help="Draft from these notes instead of the current session"),
         agent: Optional[str] = typer.Option(None, "--agent", help="Read the current codex or claude session (default: whichever is newest here)"),
         session: Optional[str] = typer.Option(None, "--session", help="Draft from this session instead: a Codex thread id, Claude Code session id, or .jsonl path"),
+        since: int = typer.Option(1, "--since", min=1, help="Start at message N of the preview's [N] list, leaving out earlier, unrelated work"),
         draft: Optional[str] = typer.Option(None, "--draft", help="Use this saved draft id exactly, instead of drafting again"),
         edit: bool = typer.Option(False, "--edit", help="Open the draft in $EDITOR before the preview"),
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
 
-        Drafting reads the end of the current session (or --from-file) and makes one
-        model call. The preview shows the recipient and every byte that would leave
-        this machine; credentials are refused. Send exactly what you saw with
-        --draft <id> --yes.
+        Drafting reads the whole session (or --from-file): every message you wrote goes
+        word for word, the AI's replies in summary (model calls). The preview shows the
+        recipient and every byte that would leave this machine; credentials are refused.
+        Send exactly what you saw with --draft <id> --yes.
         """
         if agent and agent not in AGENTS:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
-        handle_send(who, what, from_file, agent, draft, edit, yes, session)
+        handle_send(who, what, from_file, agent, draft, edit, yes, session, since)
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
     def accept(

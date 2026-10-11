@@ -182,17 +182,56 @@ def _spoken(role: str, text: str, when: str) -> dict | None:
     return {"role": role, "text": text.strip(), "timestamp": when}
 
 
-def code_at(folder: Path) -> dict | None:
-    """Where the code is, so the recipient's agent can check out the same thing; None outside a repository."""
-    if not shutil.which("git"):
+def places(agent: str, path: Path) -> list[tuple[Path, str]]:
+    """The directories the session worked in, most recent first, each with the branch it recorded there.
+
+    Claude Code puts `cwd` and `gitBranch` on every row, and the cwd follows the session
+    into worktrees. Codex records `session_meta.cwd` (with `git.branch`) and a `cwd` in
+    every `turn_context`.
+    """
+    last = {}
+    with Path(path).open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            payload = row.get("payload") or {}
+            if agent == "claude" and row.get("cwd"):
+                cwd, branch = row["cwd"], row.get("gitBranch")
+            elif row.get("type") in ("session_meta", "turn_context") and payload.get("cwd"):
+                cwd, branch = payload["cwd"], (payload.get("git") or {}).get("branch")
+            else:
+                continue
+            last[cwd] = branch or last.pop(cwd, "") or ""   # re-inserted, so the dict ends with the latest
+    return [(Path(cwd), branch) for cwd, branch in reversed(last.items())]
+
+
+def code_at(folder: Path, branch: str = "") -> dict | None:
+    """Where the code is, so the recipient's agent can check out the same thing; None outside a repository.
+
+    `branch` is the one the session recorded: its tip, not whatever the folder has checked out today."""
+    if not shutil.which("git") or not Path(folder).is_dir():
         return None
     git = lambda *args: subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
-    head = git("rev-parse", "HEAD")
+    head = git("rev-parse", f"{branch}^{{commit}}" if branch else "HEAD")
+    if head.returncode:                  # the recorded branch is gone: fall back to what is checked out
+        head, branch = git("rev-parse", "HEAD"), ""
     if head.returncode:                  # not a repository, or one without a commit yet
         return None
+    commit = head.stdout.strip()
     remote = git("remote", "get-url", "origin").stdout.strip()
     return {"repository": re.sub(r"//[^/@]+@", "//", remote) or None,   # never a user:token@ in a URL
-            "branch": git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
-            "commit": head.stdout.strip(),
-            "pushed": bool(git("branch", "-r", "--contains", "HEAD").stdout.strip()),
+            "branch": branch or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
+            "commit": commit,
+            "pushed": bool(git("branch", "-r", "--contains", commit).stdout.strip()),
             "uncommitted": len(git("status", "--porcelain").stdout.splitlines())}
+
+
+def code_for(agent: str, path: Path, limit: int = 3) -> list[dict]:
+    """The repositories the session worked in, most recent first, one entry per repository and branch."""
+    found = []
+    for folder, branch in places(agent, path):
+        code = code_at(folder, branch)
+        if code and all((c["repository"], c["branch"]) != (code["repository"], code["branch"]) for c in found):
+            found.append(code)
+    return found[:limit]

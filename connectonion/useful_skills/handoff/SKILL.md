@@ -48,7 +48,7 @@ co handoff send <who> "<what to hand off, in the user's words>"
 
 It reads this whole session, across compactions (Codex: `$CODEX_THREAD_ID`;
 Claude Code: `$CLAUDE_CODE_SESSION_ID`; otherwise the newest session whose working
-directory is here), makes one model call, and prints the message as it will go:
+directory is here), summarises your replies with the model, and prints the message as it will go:
 
 ```markdown
 # Handoff: <task in one line>
@@ -56,19 +56,23 @@ From: <sender> · To: <recipient> · <date> · <handoff id>
 
 ## Task
 ## Where it stands
+## Decided
+## Rejected
 ## Open questions
 ## Code
-- Repository, branch, commit (pushed or not), uncommitted files: read from git here.
+- Up to three repositories this session worked in: remote, branch, commit (pushed or not).
 
 ## Conversation
 [1] <sender>:
 <the user's message, word for word>
 
-AI, in summary: <what you said or did in reply, one to three sentences>
+AI, in summary: <what you said or did in reply>
 ```
 
 Your own replies, tool output and the session file stay on this machine.
 
+- The session also covered other work: `--since <N>` starts at message `[N]` of
+  the preview.
 - Another session: `--session <thread id, session id or .jsonl path>`.
 - No session (a plain terminal): write notes to a file, `--from-file notes.md`.
 - Push the branch first if the recipient needs the code: the preview says
@@ -80,7 +84,7 @@ Your own replies, tool output and the session file stay on this machine.
 credential-shaped (`sk-`, `AKIA`, `ghp_`, `xox`, private key blocks, JWTs,
 `PASSWORD=…`, ConnectOnion invite codes) or any value of a KEY / TOKEN / SECRET /
 PASSWORD / INVITE variable in your environment. It lists private paths
-(`/Users/<name>/…`, `~/.codex/…`) above the draft line. Still read the preview
+(`/Users/<name>/…`, `~/.codex/…`), email addresses and phone numbers above the draft line. Still read the preview
 line by line and remove:
 
 | Remove | Examples |

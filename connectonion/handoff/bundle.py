@@ -28,34 +28,51 @@ END = "----- END CO HANDOFF BUNDLE -----"
 
 class Reply(BaseModel):
     n: int = Field(description="The number of the [n] message the AI was answering")
-    said: str = Field(description="What the AI said or did in reply, in one to three sentences")
+    said: str = Field(description="What the AI said or did in reply")
 
 
-class Draft(BaseModel):
+class Replies(BaseModel):
+    replies: list[Reply] = Field(default_factory=list, description="One per numbered message that has an AI part")
+
+
+class Top(BaseModel):
     title: str = Field(description="The task in one line")
-    task: str = Field(description="What to do, and what 'done' means")
-    where_it_stands: str = Field(description="What is finished, what is in progress, what was tried")
-    open_questions: list[str] = Field(default_factory=list, description="Each undecided question, and who is waiting on it")
-    replies: list[Reply] = Field(default_factory=list, description="One per numbered message that got an AI reply")
+    task: str = Field(description="What the sender asked for, and what 'done' means")
+    where_it_stands: str = Field(description="What is finished, what is in progress, what was tried, with the numbers")
+    decided: list[str] = Field(default_factory=list, description="Each decision, with its reason")
+    rejected: list[str] = Field(default_factory=list, description="Each option ruled out, with why")
+    open_questions: list[str] = Field(default_factory=list, description="Each undecided question or action still owed, and who it waits on")
 
 
-DRAFT_PROMPT = """You prepare a handoff: a colleague's coding agent continues this task from
-the conversation below. The sender's messages travel word for word; your job is the
-rest. Use ONLY the conversation.
+# One model call reads at most this much conversation; a longer session is summarised in pieces.
+# 1.1M characters in one call took 241 s on a real 124 MB Claude Code session (study A, s12).
+CHUNK_CHARS = 120_000
 
-1. replies: one entry for EVERY numbered message [n] that has an "AI:" part, even a
-   short one; skip none. Say in one to three
-   sentences what the AI said or did in reply: its findings with their numbers, what
-   it decided or ruled out and why, what it changed (repository paths, commits, PRs).
-   Name things so a stranger understands them. Never copy a credential, token, key,
-   invite code, or a path under a home directory.
-2. title, task, where_it_stands, open_questions: short, for the task the sender
-   names below. Write only what the conversation established; if something is
-   uncertain, say so.
+REPLIES_PROMPT = """These are numbered messages from a conversation between a person (Sender) and their
+coding AI. The Sender's words travel to a colleague word for word; you summarise the AI's side.
 
-The sender's own words about what to hand off: {what}
+For EVERY [n] that has an "AI:" part, even a short one, say what the AI said or did in reply:
+its findings with their numbers, what it decided or ruled out and why, what it changed
+(repository paths, commits, PRs, releases), and what it left unfinished. One to three
+sentences; up to six for a long stretch, but never drop a number, decision or change.
+Name things so a stranger understands them. Never copy a credential, token, key, invite
+code, or a path under a home directory.
 
-Conversation (oldest first):
+{transcript}"""
+
+TOP_PROMPT = """A colleague's coding agent will continue this work from the conversation below: the
+Sender's messages word for word, and a summary of each AI reply. Write the part they read first.
+
+- task: what the Sender asked for. A review stays a review and a question stays a question;
+  never turn either into an order to fix or build.
+- where_it_stands: what is finished, in progress and tried, with the numbers. Later messages
+  override earlier ones: something requested early and done later is done.
+- decided / rejected: every decision and every ruled-out option, each with its reason.
+- open_questions: what is undecided or still owed (an action such as "revoke the key"), and who it waits on.
+Write only what the conversation established; if something is uncertain, say so.
+
+The Sender's own words about what to hand off: {what}
+
 {transcript}"""
 
 
@@ -63,20 +80,38 @@ def new_id() -> str:
     return "ho-" + uuid.uuid4().hex[:8]
 
 
-def draft(exchanges: list[dict], what: str, model: str = None) -> Draft:
-    """One llm_do call summarises the AI's side and writes the task on top."""
+def draft(exchanges: list[dict], what: str, model: str = None) -> tuple[Top, dict[int, str]]:
+    """The AI's side summarised in bounded pieces (in parallel), then the top written from all of it."""
+    from concurrent.futures import ThreadPoolExecutor
     from ..llm_do import llm_do
-    transcript = "\n\n".join(f"[{n}] Sender: {e['user']}" + (f"\nAI: {e['ai']}" if e["ai"] else "")
-                             for n, e in enumerate(exchanges, 1))
-    prompt = DRAFT_PROMPT.format(what=what or "(not stated; infer the task from the conversation)",
-                                 transcript=transcript)
     kwargs = {"model": model} if model else {}
-    return llm_do(prompt, output=Draft, **kwargs)
+    pieces = _pieces([(n, e) for n, e in enumerate(exchanges, 1) if e["ai"]])
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        found = pool.map(lambda text: llm_do(REPLIES_PROMPT.format(transcript=text), output=Replies, **kwargs), pieces)
+        said = {r.n: r.said for result in found for r in result.replies}
+    transcript = "\n\n".join(f"[{n}] Sender: {e['user']}" + (f"\nAI, in summary: {said[n]}" if n in said else "")
+                             for n, e in enumerate(exchanges, 1))
+    top = llm_do(TOP_PROMPT.format(what=what or "(not stated; infer the task from the conversation)",
+                                   transcript=transcript), output=Top, **kwargs)
+    return top, said
 
 
-def assemble(*, handoff_id: str, sender: str, to: str, source: dict, code: dict | None,
-             summary: Draft, exchanges: list[dict]) -> dict:
-    said = {r.n: r.said for r in summary.replies}
+def _pieces(numbered: list[tuple[int, dict]]) -> list[str]:
+    """Consecutive exchanges packed into pieces of at most CHUNK_CHARS. One reply longer than that
+    keeps its end, where an AI turn reports what it found and did."""
+    pieces, current = [], ""
+    for n, e in numbered:
+        ai = e["ai"] if len(e["ai"]) <= CHUNK_CHARS // 2 else "[…start cut…]\n" + e["ai"][-(CHUNK_CHARS // 2):]
+        text = f"[{n}] Sender: {e['user'][:CHUNK_CHARS // 4]}\nAI: {ai}"
+        if current and len(current) + len(text) > CHUNK_CHARS:
+            pieces.append(current)
+            current = ""
+        current += ("\n\n" if current else "") + text
+    return pieces + ([current] if current else [])
+
+
+def assemble(*, handoff_id: str, sender: str, to: str, source: dict, code: list[dict],
+             top: Top, said: dict[int, str], exchanges: list[dict]) -> dict:
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -84,10 +119,7 @@ def assemble(*, handoff_id: str, sender: str, to: str, source: dict, code: dict 
         "to": to,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
-        "title": summary.title,
-        "task": summary.task,
-        "where_it_stands": summary.where_it_stands,
-        "open_questions": summary.open_questions,
+        **top.model_dump(),
         "code": code,
         # The AI's own words stay here: only the summary of them goes.
         "conversation": [{"at": e["at"], "user": e["user"], "ai": said.get(n, "")}
@@ -135,15 +167,19 @@ def find_credentials(bundle: dict, known_secrets: list[str] = ()) -> list[str]:
 PRIVATE_PATTERNS = {
     "home directory path": r"(?:/Users|/home)/[A-Za-z0-9._-]+(?:/[^\s`'\")\]]*)?",
     "agent config path": r"~/\.(?:codex|claude|co)\b[^\s`'\")\]]*",
+    "email address": r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+    "phone number": r"\+\d[\d \-]{7,}\d",
 }
 
 
 def find_private(bundle: dict) -> list[str]:
-    """Private paths in the bundle, as 'field: match' (deduplicated)."""
+    """Private paths, email addresses and phone numbers in the bundle, as 'field: match' (deduplicated).
+    The sender's and recipient's addresses are the header, and `code` holds repository URLs on purpose."""
+    own = {bundle.get("from"), bundle.get("to")}
     hits = []
-    for field, text in _strings(bundle):
+    for field, text in _strings({k: v for k, v in bundle.items() if k not in ("from", "to", "code")}):
         for pattern in PRIVATE_PATTERNS.values():
-            hits += [f"{field}: {m}" for m in re.findall(pattern, text)]
+            hits += [f"{field}: {m}" for m in re.findall(pattern, text) if m not in own]
     return list(dict.fromkeys(hits))
 
 
@@ -215,16 +251,22 @@ def questions_text(bundle: dict) -> str:
 
 
 def code_text(bundle: dict) -> str:
-    code = bundle.get("code")
-    if not code:
-        return "- Not sent from a git repository. Ask the sender where the code is."
-    pushed = "pushed" if code["pushed"] else "not pushed yet: ask the sender to push it"
-    lines = [f"- Repository: {code['repository'] or 'no remote'}",
-             f"- Branch: {code['branch']}",
-             f"- Commit: {code['commit']} ({pushed})"]
-    if code["uncommitted"]:
-        lines.append(f"- {code['uncommitted']} changed file(s) on the sender's machine are not in that commit")
+    places = bundle.get("code") or []
+    if not places:
+        return "- The session did not work in a git repository. Ask the sender where the code is."
+    lines = []
+    for code in places:
+        pushed = "pushed" if code["pushed"] else "not pushed yet: ask the sender to push it"
+        branch = "detached" if code["branch"] == "HEAD" else f"branch {code['branch']}"
+        lines.append(f"- {code['repository'] or 'a repository with no remote'}, {branch}, "
+                     f"commit {code['commit']} ({pushed})")
+        if code["uncommitted"]:
+            lines.append(f"  {code['uncommitted']} changed file(s) on the sender's machine are not in that commit")
     return "\n".join(lines)
+
+
+def _listed(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items) or "- none recorded"
 
 
 def conversation_text(bundle: dict) -> str:
@@ -245,6 +287,8 @@ def brief_markdown(bundle: dict) -> str:
     return (f"{header(bundle)}\n\n"
             f"## Task\n{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n"
+            f"## Decided\n{_listed(bundle.get('decided', []))}\n\n"
+            f"## Rejected\n{_listed(bundle.get('rejected', []))}\n\n"
             f"## Open questions\n{questions_text(bundle)}\n\n"
             f"## Code\n{code_text(bundle)}\n\n"
             f"## Conversation\nEvery message {bundle['from']} wrote, word for word; the AI's replies in summary. "

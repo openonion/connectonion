@@ -88,26 +88,33 @@ One message, kept the way a compaction keeps a conversation:
 
 | part | what it holds |
 |---|---|
-| Task, Where it stands, Open questions | a few lines on top, written by one `llm_do` call (default model) for the task you name |
-| Code | the git remote of the directory you send from (any `user:token@` removed), branch, commit, whether that commit is pushed, and how many files are changed but not committed. "Not sent from a git repository" otherwise |
-| Conversation | every message you typed in the session, word for word and never cut; under each, what the AI said or did in reply, summarised in one to three sentences |
+| Task, Where it stands, Decided, Rejected, Open questions | the part read first, written from your messages and the summaries below. A review stays a review; later messages override earlier ones |
+| Code | up to three repositories the session worked in (Claude Code's `cwd`/`gitBranch` on each row, Codex's `session_meta` and `turn_context`), most recent first: remote (any `user:token@` removed), branch, that branch's commit, whether it is pushed, and how many files are changed but not committed |
+| Conversation | every message you typed in the session, word for word and never cut; under each, what the AI said or did in reply, summarised (up to six sentences for a long stretch) |
 
 Not sent: the AI's own text, tool calls and output, reasoning, anything the client
 injects (AGENTS.md, skill bodies, environment context), and the session file. The
 recipient's agent asks for anything it needs (`co handoff ask`), and you answer.
 
+The AI's side is summarised in pieces of at most 120,000 characters, in parallel,
+then the top is written from all of it; one reply longer than half a piece keeps
+its end, where an AI turn reports what it found. On a real 124 MB Claude Code
+session (313 messages) drafting took 110 s.
+
 A message containing anything credential-shaped (API keys, tokens, private key
 blocks, JWTs, `PASSWORD=…`, ConnectOnion invite codes) or any value of a KEY /
 TOKEN / SECRET / PASSWORD / INVITE variable in your environment is refused with
-exit 1. Private paths (`/Users/<name>/…`, `/home/<name>/…`, `~/.codex/…`) are
-listed under the preview so you remove or keep each knowingly. Every message you
-typed goes, so in a session that covered other work, read the preview and remove
-what this person should not see (`--edit`).
+exit 1. Private paths (`/Users/<name>/…`, `/home/<name>/…`, `~/.codex/…`), email
+addresses and phone numbers are listed under the preview so you remove or keep
+each knowingly. Every message you typed goes, so in a session that also covered
+other work, start where this task starts: `--since <N>` with N from the preview's
+`[N]` list, or remove lines with `--edit`.
 
-Bundle format `co-handoff/3`: `title`, `task`, `where_it_stands`,
-`open_questions`, `code`, `conversation` (`[{at, user, ai}]`), `source` (client,
-session id, message count; no local paths) and `content_hash`, which covers all of
-it so the recipient can tell the copy is the one you approved.
+Bundle format `co-handoff/3`: `title`, `task`, `where_it_stands`, `decided`,
+`rejected`, `open_questions`, `code` (`[{repository, branch, commit, pushed,
+uncommitted}]`), `conversation` (`[{at, user, ai}]`), `source` (client, session
+id, message count; no local paths) and `content_hash`, which covers all of it so
+the recipient can tell the copy is the one you approved.
 
 ## Where the session comes from
 
