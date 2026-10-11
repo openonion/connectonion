@@ -2,11 +2,11 @@
 
 A handoff code (`coh1.…`) names the sender's agent (address and mailbox), the
 handoff id, the bundle's content hash, and a random secret. It is not an invite:
-it is never checked by the Host's trust rules, and the person who presents it is
-recorded only in ~/.co/handoff/peers.json with scope "handoff", never in the
-trust lists that let a contact EXEC on the host. It can do two things: mark this
-one handoff accepted (the first valid acceptance wins), and carry questions and
-results about it.
+it is never checked by the Host's trust rules as an invite code. It marks this
+one handoff accepted (the first valid acceptance wins) and carries questions and
+results about it. Once it is accepted, each side makes the other its agent's
+contact (transport.meet); the acceptor is also recorded in
+~/.co/handoff/peers.json with the handoffs it took.
 
 Replies travel as agent mail with a small base64 block, like the bundle itself,
 so no backend changes are needed.
@@ -151,14 +151,18 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
     return state
 
 
-def remember_peer(address: str, mailbox: str, handoff_id: str) -> None:
-    """A handoff-scoped peer. Deliberately not a trust contact: contacts may EXEC on the host."""
+def remember_peer(address: str, mailbox: str, handoff_id: str, to: str) -> str:
+    """The acceptor becomes this agent's contact, named after whoever `to` was; returns that name.
+
+    peers.json keeps which handoffs they took.
+    """
     path = transport.contacts_file().parent / "peers.json"
     peers = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     peer = peers.setdefault(address, {"mailbox": mailbox, "scope": "handoff", "handoffs": []})
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return transport.meet(to, address)
 
 
 def _now() -> str:
