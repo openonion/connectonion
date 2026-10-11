@@ -7,6 +7,7 @@ tool call after the Host has selected ``auto``.
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 from pathlib import Path
@@ -416,7 +417,8 @@ def _workspace_path(args: dict) -> Path | None:
         (args.get(key) for key in ("file_path", "path", "target", "filename") if args.get(key)),
         None,
     )
-    return Path(str(raw)).expanduser().resolve(strict=False) if raw is not None else None
+    # os.path.expanduser leaves `~nosuchuser/x` alone; Path.expanduser raises.
+    return Path(os.path.expanduser(str(raw))).resolve(strict=False) if raw is not None else None
 
 
 def _inside_workspace(path: Path, root: Path) -> bool:
@@ -1422,3 +1424,134 @@ def record_approval_policy(agent: "Agent", pending: dict) -> None:
         if entry.get("type") == "tool_call" and (not tool_id or entry.get("tool_id") == tool_id):
             entry["approval_policy"] = dict(result)
             return
+
+
+# ---------------------------------------------------------------------------
+# The three special classes (#2408)
+#
+# Everything else is done and recorded. These five names are what needs the
+# owner: credentials, authority (who may command the agent) and money; an
+# irreversible delete or overwrite; and acting as the owner in the owner's own
+# accounts. Mail from the agent's own mailbox (`co email send`, send_email) is
+# not one of them. Decided by code from the tool and its arguments, so a turn
+# cannot talk an action out of its class.
+# ---------------------------------------------------------------------------
+
+SPECIAL_CLASSES = ("credentials", "authority", "money", "irreversible", "as_owner")
+_SPECIAL_OF_EFFECT = {
+    "credentials": "credentials",
+    "authorization_control": "authority",
+    "payment": "money",
+    "deletion": "irreversible",
+}
+# The owner's own accounts. A method of one of these classes that reaches
+# other people does so in the owner's name.
+_OWNER_ACCOUNT_SENDS = {
+    "Gmail": {"send", "reply"},
+    "Outlook": {"send", "reply"},
+    "GoogleCalendar": {"create_event", "create_meet", "update_event", "delete_event"},
+    "MicrosoftCalendar": {"create_event", "create_teams_meeting", "update_event", "delete_event"},
+}
+_CO_SPECIAL_PATHS = {
+    ("server", "new"): "money",
+    ("server", "create"): "money",
+    ("server", "destroy"): "irreversible",
+    ("server", "delete"): "irreversible",
+    ("transfer",): "money",
+    ("gmail", "send"): "as_owner",
+    ("gmail", "reply"): "as_owner",
+    ("gmail", "draft", "send"): "as_owner",
+    ("outlook", "send"): "as_owner",
+    ("outlook", "reply"): "as_owner",
+    ("gcalendar", "create"): "as_owner",
+    ("gcalendar", "update"): "as_owner",
+    ("gcalendar", "delete"): "as_owner",
+    ("gcalendar", "meet"): "as_owner",
+    ("outlook", "calendar", "create"): "as_owner",
+    ("outlook", "calendar", "update"): "as_owner",
+    ("outlook", "calendar", "delete"): "as_owner",
+    ("outlook", "calendar", "teams"): "as_owner",
+}
+
+
+# Words that run the rest of the line: what they run decides the class.
+_RUNS_THE_REST = {"sudo", "nohup", "time", "nice", "env", "xargs", "exec", "command", "doas"}
+_RUNS_A_STRING = {"bash", "sh", "zsh", "dash", "eval"}
+_PAYMENT_TOOLS = {"pay", "create_payment", "transfer"}
+
+
+def _unwrapped(words: list[str]) -> list[str]:
+    """`sudo timeout 60 env A=1 co server new` is `co server new`."""
+    while words:
+        head = Path(words[0]).name.lower()
+        if "=" in words[0] and not words[0].startswith("-"):
+            words = words[1:]
+        elif head in _RUNS_THE_REST:
+            words = words[1:]
+            while words and words[0].startswith("-"):
+                words = words[1:]
+        elif head == "timeout":
+            words = [w for w in words[1:] if not w.startswith("-")][1:]
+        elif head == "uv" and words[1:2] == ["run"]:
+            words = words[2:]
+        else:
+            return words
+    return words
+
+
+def _special_command(command: str, root: Path | None) -> str | None:
+    """The special class of one shell command, without its pipes and chains."""
+    # An apostrophe in a quoted body ("It's ready") can leave the quotes
+    # unbalanced once the chain parser has rejoined the words, and a command
+    # that cannot be split must not fall out of its class.
+    words = _unwrapped(_command_words(command) or command.split())
+    if not words:
+        return None
+    first = Path(words[0]).name.lower()
+    if first in _RUNS_A_STRING:
+        # The chain parser may already have unquoted the script into words.
+        script = " ".join(words[1:]) if first == "eval" else (
+            " ".join(words[words.index("-c") + 1:]) if "-c" in words[:-1] else "")
+        return special_class("bash", {"command": script}, root=root) if script else None
+    if first == "co" and len(words) > 1:
+        path = tuple(word.lower() for word in words[1:] if not word.startswith("-"))
+        named = next((value for key, value in _CO_SPECIAL_PATHS.items() if path[:len(key)] == key), None)
+        if named:
+            return named
+        if path[:1] == ("keys",):
+            return "credentials"
+    if first == "git":
+        rest = [w for w in words[1:] if not w.startswith("-")]
+        if rest and _git_discards_work(rest[0].lower(), words[words.index(rest[0]) + 1:]):
+            return "irreversible"
+    # A forced push, a deleting refspec (`:branch`) or --prune removes what
+    # the remote held.
+    if first == "git" and "push" in words and any(
+            w in ("-f", "--force", "--force-with-lease", "--mirror", "--delete", "-d", "--prune")
+            or w.startswith(("+", ":")) for w in words):
+        return "irreversible"
+    return _SPECIAL_OF_EFFECT.get(_classify_single_command(" ".join(shlex.quote(w) for w in words), root)["effect_class"])
+
+
+def special_class(tool_name: str, args: dict, owner_class: str | None = None, root: Path | None = None) -> str | None:
+    """Which of #2408's special classes this call is in, or None for everything else.
+
+    `owner_class` names the classes the tool is a method of, e.g. "Gmail":
+    method names like `send` mean nothing on their own.
+    """
+    name = str(tool_name).lower()
+    if any(name in _OWNER_ACCOUNT_SENDS.get(owner, ()) for owner in (owner_class or "").split()):
+        return "as_owner"
+    if name in _PAYMENT_TOOLS:
+        return "money"
+    if name in {"bash", "shell", "run", "run_in_dir", "run_background"}:
+        command = _without_heredoc_body(str(args.get("command", "")))
+        try:
+            subcommands = _extract_subcommands(command)
+        except Exception:
+            subcommands = [(None, command)]
+        found = (_special_command(full, root) for _, full in subcommands)
+        return next((klass for klass in found if klass), None)
+    if name in DELETE_TOOLS and not any(args.get(k) for k in ("file_path", "path", "target", "filename")):
+        return None  # an SDK tool's delete(id): its own records, not files
+    return _SPECIAL_OF_EFFECT.get(evaluate_auto_approve(tool_name, args, root)["effect_class"])

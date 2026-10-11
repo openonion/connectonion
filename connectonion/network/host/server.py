@@ -111,6 +111,7 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir=None):
                 "who": approvals.identity(requester_address),
                 "tool": tool_name,
                 "args": approvals.short(args),
+                "class": result.get("class"),
                 # Only a tool that ran reports a duration; a refusal never ran.
                 "decision": "done" if "duration_ms" in result else "declined",
                 "outcome": result.get("status"),
@@ -131,7 +132,8 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir=None):
                     "error": f"forbidden: exec requires a contact or admin, "
                              f"you are {level}"}
 
-        return exec_handler(create_agent, exec_permissions, tool_name, args)
+        return exec_handler(create_agent, exec_permissions, tool_name, args,
+                            owner=(level == "admin"))
 
     return handle_ws_exec
 

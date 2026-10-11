@@ -58,19 +58,17 @@ def _handler(channel: Channel, inbox: Inbox, provider, agent, sessions: dict, gu
                 # Agent.input, no session means "carry on with the one you
                 # have", which was the last chat's. Client B's first question
                 # went to the model after client A's whole conversation, and
-                # from then on the two chats shared one dict (#1751). Reset
-                # rather than pass an empty dict, which would start the turn
-                # without the system prompt.
-                agent.reset_conversation()
+                # from then on the two chats shared one dict (#1751). A fresh
+                # session dict gets the system prompt from input() (#1766).
+                previous = {}
+            # Who is asking is known before the turn, not after it: set once
+            # the reply was in, the first turn of every chat ran as nobody,
+            # which the special classes (#2408) read as the owner.
             # Given a session, input() works on a copy, so the dict kept here
             # for one chat is never the one another chat's turn appends to.
+            previous = {**previous, "requester": {"address": f"{inbox.provider}:{message.sender}", "level": "open"}}
             reply = agent.input(message.text, session=previous)
-            session = agent.current_session
-            # Anyone who can address the bot may command it in 1.8.5. The
-            # sender is written down anyway, so the allowlist in #1479 starts
-            # with data rather than with a migration.
-            session["requester"] = {"address": f"{inbox.provider}:{message.sender}", "level": "open"}
-            sessions[key] = session
+            sessions[key] = agent.current_session
 
         if not (reply or "").strip():
             inbox.log(f"nothing to say for {message.id}")
