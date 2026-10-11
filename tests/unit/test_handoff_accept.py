@@ -61,13 +61,13 @@ def _bundle(to: str) -> dict:
         "excerpt": [{"role": "user", "text": "Reject B.", "timestamp": ""}]})
 
 
-def _send(world, to=RECIPIENT["mail"]) -> str:
-    """Alice sends a handoff to `to`; returns the mail body the recipient gets."""
+def _send(world, to=RECIPIENT["mail"], who=None) -> str:
+    """Alice sends a handoff to `to` (named `who` on the command line); returns the mail body the recipient gets."""
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
     drafts.mkdir(parents=True)
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(to)))
-    result = _invoke("handoff", "send", to, "--draft", "ho-1a2b3c4d", "--yes")
+    result = _invoke("handoff", "send", who or to, "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
     return html.unescape(re.sub(r"</?(pre|p)>", "", world["mails"][-1]["message"]))   # as a mail client shows it
 
@@ -134,6 +134,37 @@ def test_a_handoff_code_is_never_an_invite_and_never_a_contact(world, monkeypatc
     assert not tools.is_contact(RECIPIENT["address"], co_dir) and not tools.is_whitelisted(RECIPIENT["address"], co_dir)
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
     assert peers[RECIPIENT["address"]] == {"mailbox": RECIPIENT["mail"], "scope": "handoff", "handoffs": ["ho-1a2b3c4d"]}
+
+
+def test_after_acceptance_each_side_is_the_others_contact(world):
+    world["be"](SENDER)
+    assert _invoke("handoff", "contact", "Bob", RECIPIENT["mail"]).exit_code == 0
+    code = _code(_send(world, who="bob"))
+    world["be"](RECIPIENT)
+    accepted = _invoke("handoff", "accept", code)
+    assert "The sender is your contact alice: co handoff send alice hands work back." in accepted.output
+    assert transport.contacts() == {"alice": {"mail": SENDER["mail"], "agent": SENDER["address"]}}
+
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "They are your contact bob: co handoff send bob reaches them again." in status.output
+    assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"]}}  # kept its name
+    listed = _invoke("handoff", "contacts")
+    assert f"bob  {RECIPIENT['mail']}  agent {RECIPIENT['address']}" in listed.output
+
+
+def test_a_new_contact_never_overwrites_one_with_the_same_name(world):
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "contact", "alice", "other-alice@example.com").exit_code == 0
+    assert transport.meet(SENDER["mail"], SENDER["address"]) == "alice-a1a1a1"
+    assert transport.contacts()["alice"] == {"mail": "other-alice@example.com"}
+
+
+def test_an_old_contacts_file_of_plain_addresses_still_resolves(world):
+    world["be"](SENDER)
+    transport.contacts_file().parent.mkdir(parents=True)
+    transport.contacts_file().write_text(json.dumps({"ody": "ody@example.com"}))
+    assert transport.resolve("ody") == "ody@example.com"
 
 
 def test_a_malformed_code_names_what_to_paste(world):

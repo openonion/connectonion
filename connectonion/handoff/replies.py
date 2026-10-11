@@ -151,14 +151,20 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
     return state
 
 
-def remember_peer(address: str, mailbox: str, handoff_id: str) -> None:
-    """A handoff-scoped peer. Deliberately not a trust contact: contacts may EXEC on the host."""
+def remember_peer(address: str, mailbox: str, handoff_id: str, to: str) -> str:
+    """The acceptor, kept two ways; returns their contact name.
+
+    peers.json scopes them to this handoff. The address book (contacts.json) learns that the
+    person reached at `to` runs agent `address`, so they are a contact on both sides. Neither is
+    a trust contact: those may EXEC on the host, and only an invite makes one.
+    """
     path = transport.contacts_file().parent / "peers.json"
     peers = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     peer = peers.setdefault(address, {"mailbox": mailbox, "scope": "handoff", "handoffs": []})
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return transport.meet(to, address)
 
 
 def _now() -> str:

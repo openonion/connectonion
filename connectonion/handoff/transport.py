@@ -20,17 +20,43 @@ def contacts_file():
 
 
 def contacts() -> dict:
+    """name → {"mail": where a handoff to them is delivered, "agent": their 0x address once known}.
+
+    An address book for co handoff, never a trust list: nothing in it lets anyone call this agent.
+    """
     path = contacts_file()
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    book = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return {name: entry if isinstance(entry, dict) else {"mail": entry} for name, entry in book.items()}
+
+
+def _save(book: dict) -> None:
+    contacts_file().parent.mkdir(parents=True, exist_ok=True)
+    contacts_file().write_text(json.dumps(book, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def add_contact(name: str, address: str) -> str:
     mail = mail_address(address)
     book = contacts()
-    book[name.lower()] = mail
-    contacts_file().parent.mkdir(parents=True, exist_ok=True)
-    contacts_file().write_text(json.dumps(book, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    book[name.lower()] = {"mail": mail, "agent": address.lower()} if "@" not in address else {"mail": mail}
+    _save(book)
     return mail
+
+
+def meet(mail: str, agent: str) -> str:
+    """After a handoff is accepted, each side keeps the other: `mail` reaches them, `agent` is who they are.
+
+    A contact already reached at `mail`, or already known as `agent`, keeps its name and gains the
+    agent; anyone else is saved under the mailbox's name. Returns the contact's name.
+    """
+    book = contacts()
+    name = next((n for n, e in book.items() if e["mail"] == mail or e.get("agent") == agent), None)
+    if name is None:
+        name = mail.split("@")[0].lower()
+        name = f"{name}-{agent[2:8]}" if name in book else name
+        book[name] = {"mail": mail}
+    book[name]["agent"] = agent
+    _save(book)
+    return name
 
 
 def mail_address(address: str) -> str:
@@ -52,7 +78,8 @@ def resolve(who: str) -> str | None:
     """Recipient mailbox for a name, email or 0x address; None for an unknown name."""
     if "@" in who or who.startswith("0x"):
         return mail_address(who)
-    return contacts().get(who.lower())
+    entry = contacts().get(who.lower())
+    return entry["mail"] if entry else None
 
 
 def deliver(to: str, subject: str, body: str, idempotency_key: str) -> dict:

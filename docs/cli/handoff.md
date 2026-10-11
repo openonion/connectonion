@@ -64,8 +64,9 @@ The code is **handoff-scoped**. It lets one agent mark this one handoff accepted
 (the first valid acceptance wins; later ones are counted and ignored) and send
 questions about it. It is **not an invite**: it never reaches the Host's trust
 rules, and the agent that accepts is recorded in `~/.co/handoff/peers.json` with
-`scope: handoff`, never in the trust lists, because a contact may EXEC on your
-host and a mail can be forwarded.
+`scope: handoff`, never in the trust lists, because a trust contact may EXEC on
+your host and a mail can be forwarded. It does join your handoff address book
+(see [Recipients](#recipients)).
 
 ## Accept, ask, answer, status
 
@@ -158,6 +159,14 @@ planned with #2351/#2353.
 `~/.co/handoff/contacts.json`), an email, or a full `0x` agent address, which
 becomes that agent's mailbox `0x<first 10 hex>@mail.openonion.ai`. An unknown
 name exits 1 and prints the exact `co handoff contact` line.
+
+Once a handoff is accepted, each side is the other's contact: the recipient saves
+the sender when it runs `co handoff accept`, and the sender saves the recipient's
+agent when `co handoff status` (or a running `co ai`) sees the acceptance. A
+contact you already had keeps its name and its mail address and gains the agent's
+`0x` address; anyone new is saved under their mailbox name. `co handoff contacts`
+lists them. This is an address book for `co handoff send`, not a trust list: no
+one in it may call your agent. Only an invite does that.
 
 ## Transport
 

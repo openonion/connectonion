@@ -223,8 +223,9 @@ def _sender_status(record: dict) -> None:
             out.print(style.warn(f"Ignored {state['ignored']} message(s) that did not carry this handoff's code."))
         _next(f"co handoff status {handoff_id}")
         return
-    replies.remember_peer(who["address"], who["mailbox"], handoff_id)
+    name = replies.remember_peer(who["address"], who["mailbox"], handoff_id, record["to"])
     out.print(style.ok(f"Accepted by {who['address']} ({who['mailbox']}) at {who['at']}"))
+    out.print(f"They are your contact {name}: co handoff send {shlex.quote(name)} reaches them again.")
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
     for q in state["questions"]:
@@ -281,6 +282,8 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
         _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
+    name = transport.meet(code["mailbox"], code["address"])
+    out.print(f"The sender is your contact {name}: co handoff send {shlex.quote(name)} hands work back.")
     if brief:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
     out.print("Continue from the brief; ask the person here before changing anything.")
@@ -327,6 +330,15 @@ def handle_contact(name: str, address: str) -> None:
     _next(f'co handoff send {shlex.quote(name)} "<what to hand off>"')
 
 
+def handle_contacts() -> None:
+    book = transport.contacts()
+    for name, entry in sorted(book.items()):
+        out.print(f"{name}  {entry['mail']}  agent {entry.get('agent', 'not known yet')}", markup=False)
+    if not book:
+        out.print("No contacts yet. Each side of an accepted handoff becomes the other's contact.")
+        _next("co handoff contact <name> <email-or-0x-address>")
+
+
 # ---- recipient: inbox, show, open ----
 
 def _incoming() -> list[tuple[dict, dict]]:
@@ -351,7 +363,7 @@ def _keep(bundle: dict) -> None:
 
 def _sender(address: str) -> str:
     """'parrot (0x…@mail…)' when the sender is a saved contact, else the address."""
-    names = [name for name, mail in transport.contacts().items() if mail == address]
+    names = [name for name, entry in transport.contacts().items() if entry["mail"] == address]
     return f"{names[0]} ({address})" if names else address
 
 
@@ -520,6 +532,11 @@ def make_handoff_app(factory) -> typer.Typer:
     ):
         """Save who a name means, so co handoff send <name> knows where to deliver. Writes ~/.co/handoff/contacts.json."""
         handle_contact(name, address)
+
+    @app.command("contacts", epilog="Example:  co handoff contacts")
+    def contacts():
+        """List the people co handoff send can reach by name, with their agent's 0x address once a handoff between you was accepted. Read-only."""
+        handle_contacts()
 
     @app.command("inbox", epilog="Example:  co handoff inbox")
     def inbox():
