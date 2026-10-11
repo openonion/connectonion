@@ -37,7 +37,7 @@ from typing import Callable, Optional, Union
 import uvicorn
 from rich.console import Console
 
-from ... import address
+from ... import address, approvals
 from ...backend import DEFAULT_BACKEND_WS_URL
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
@@ -81,7 +81,7 @@ from .ws_router import run_ws_session
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
 
 
-def _make_ws_exec(create_agent, exec_permissions, trust_agent):
+def _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir=None):
     """Direct tool execution, gated on who is asking as well as what they ask.
 
     EXEC used to take neither the caller's address nor their level:
@@ -103,6 +103,23 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
     from that whitelist.
     """
     def handle_ws_exec(tool_name, args, requester_address=None):
+        result = gated_exec(tool_name, args, requester_address)
+        # The record (#2408). EXEC runs no hooks, so this is its only trace.
+        if record_dir:
+            approvals.append(record_dir, {
+                "path": "exec",
+                "who": approvals.identity(requester_address),
+                "tool": tool_name,
+                "args": approvals.short(args),
+                # Only a tool that ran reports a duration; a refusal never ran.
+                "decision": "done" if "duration_ms" in result else "declined",
+                "outcome": result.get("status"),
+                "reason": result.get("error"),
+                "ms": result.get("duration_ms", 0),
+            })
+        return result
+
+    def gated_exec(tool_name, args, requester_address):
         if not requester_address:
             return {"status": "error",
                     "error": "forbidden: exec requires an authenticated caller"}
@@ -119,9 +136,23 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
     return handle_ws_exec
 
 
-def _make_remote_browser(remote_browser_service, trust_agent):
+def _make_remote_browser(remote_browser_service, trust_agent, record_dir=None):
     """Bind Remote Browser to authenticated contact-or-admin authority."""
     def handle_remote_browser(request, requester_address=None, transport="unknown"):
+        reply = gated_browser(request, requester_address, transport)
+        if record_dir:
+            approvals.append(record_dir, {
+                "path": "browser",
+                "who": approvals.identity(requester_address),
+                "tool": f"remote-browser {request.get('command', '')}".strip(),
+                "args": approvals.short({k: v for k, v in request.items() if k != "command"}),
+                "decision": "declined" if reply.get("code") in ("AUTH_REQUIRED", "FORBIDDEN") else "done",
+                "outcome": "success" if reply.get("ok") else reply.get("code"),
+                "reason": None if reply.get("ok") else reply.get("message"),
+            })
+        return reply
+
+    def gated_browser(request, requester_address, transport):
         if not requester_address:
             return {
                 "schema_version": "1",
@@ -393,8 +424,9 @@ def _create_route_handlers(
                              mode_policy=mode_policy,
                              is_admin=bool(requester and requester["level"] == "admin")), prompt)
 
-    handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
-    handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent)
+    record_dir = Path(project_dir) / ".co" if project_dir else project_co_dir()
+    handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir)
+    handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent, record_dir)
 
     def handle_prepare_provider_workroom_turn(
         storage,

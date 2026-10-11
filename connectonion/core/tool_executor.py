@@ -547,6 +547,8 @@ def execute_single_tool(
         error_msg = f"Error: {str(e)}"
         error_msg += f"\n\nTool '{tool_name}' schema: required={required}, all_params={properties}, you_provided={list(tool_args.keys())}"
         trace_entry["result"] = error_msg
+        if not cleared:
+            trace_entry["declined"] = True
 
         agent._record_trace(trace_entry)
 
