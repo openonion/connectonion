@@ -157,8 +157,34 @@ curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install
 ```
 
 It uses [uv](https://docs.astral.sh/uv/) (installing it if needed) to keep `co`
-out of your system Python, so you need no Python of your own. Then connect what
-you use:
+out of your system Python, so you need no Python of your own.
+
+### Try the 1.9.2 preview with handoff
+
+The installer above gets the stable release. To try the **1.9.2b13 preview**
+instead, use the same installer with a version pin (macOS or Linux):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install.sh | CO_VERSION=1.9.2b13 sh
+```
+
+Or copy this whole prompt into Codex or Claude Code. It can run the setup for
+you, including on Windows:
+
+```text
+Install ConnectOnion 1.9.2b13 preview on this computer. On macOS or Linux, run:
+curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install.sh | CO_VERSION=1.9.2b13 sh
+On Windows, install uv from its official instructions if needed, then run
+uv tool install --force "connectonion==1.9.2b13" and co init --yes.
+Keep co in its own tool environment, not the project's or system Python.
+Run co --version and co status. If setup needs sign-in, guide me through co auth.
+Do not print keys or connect my personal accounts unless I ask. Tell me when my
+agent identity and mailbox are ready, then show me how to receive a handoff.
+```
+
+See [handoff](docs/cli/handoff.md) for sending and receiving a task. `co init`
+sets up your agent mailbox; connecting Gmail or Outlook is optional. Connect
+those accounts only if you want to use their other features:
 
 ```bash
 co auth google      # Gmail and Google Calendar

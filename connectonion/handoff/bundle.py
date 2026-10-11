@@ -205,40 +205,44 @@ def _strings(value, field: str = ""):
 # ---- how a bundle travels in a mail body ----
 
 _FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
-_BOX = ("white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;margin:0;padding:14px 16px;"
-        "background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;"
-        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:#1f2a22")
+_BOX = ("white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;margin:0;padding:16px;"
+        "background:#f5faf6;border:1px solid #c8dfcf;border-radius:8px;"
+        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.55;color:#173325")
 
 
 def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
     """(subject, HTML body) for a person reading on any screen.
 
-    Top: who handed what, the task, where it stands, the open questions. Then the block to
-    paste into Codex or Claude Code, in a box that wraps (a bare <pre> ran off a phone's
-    edge, 2026-10-11). Last, in small grey type, the bundle co handoff open reads (base64,
-    so no mail system rewrites it). HTML because the mail service sends the body as HTML.
+    The human-readable summary and one paste block come first. The encoded bundle remains
+    in the HTML for `co handoff open`, but is hidden from the visual email. The mail service
+    sends the body as HTML.
     """
     subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {bundle['from']})"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
     questions = "".join(f"<li>{html.escape(q)}</li>" for q in bundle.get("open_questions", []))
     body = (
-        f'<div style="{_FONT};max-width:640px;font-size:15px;line-height:1.55;color:#1f2a22">'
-        f'<p style="margin:0 0 4px;color:#15803d;font-size:13px;font-weight:600">'
-        f'{html.escape(bundle["from"])} handed you a task</p>'
-        f'<h2 style="margin:0 0 12px;font-size:20px">{html.escape(bundle["title"])}</h2>'
-        f'<p style="margin:0 0 12px">{html.escape(bundle["task"])}</p>'
-        f'<p style="margin:0 0 12px"><b>Where it stands:</b> {html.escape(bundle["where_it_stands"])}</p>'
-        + (f'<p style="margin:0 0 4px"><b>Open questions</b></p><ul style="margin:0 0 12px">{questions}</ul>'
+        f'<div style="{_FONT};max-width:640px;margin:0 auto;padding:24px 16px;'
+        'font-size:15px;line-height:1.55;color:#1f2a22">'
+        '<p style="margin:0 0 16px;color:#15803d;font-size:13px;font-weight:700;letter-spacing:.04em">'
+        'CONNECTONION · HANDOFF</p>'
+        f'<p style="margin:0 0 6px;color:#4b5b4f">{html.escape(bundle["from"])} sent you a task</p>'
+        f'<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">{html.escape(bundle["title"])}</h1>'
+        f'<p style="margin:0 0 14px">{html.escape(bundle["task"])}</p>'
+        f'<p style="margin:0 0 14px"><b>Current status</b><br>{html.escape(bundle["where_it_stands"])}</p>'
+        + (f'<p style="margin:0 0 4px"><b>Open questions</b></p><ul style="margin:0 0 16px">{questions}</ul>'
            if questions else "")
-        + '<p style="margin:20px 0 8px"><b>Continue it with your AI agent.</b> Copy everything in the box '
-          'into Codex or Claude Code. It installs co if needed, tells the sender you have it, '
-          'and asks you before it changes anything.</p>'
+        + '<div style="border-top:1px solid #d9e6dc;margin:22px 0 18px"></div>'
+        '<h2 style="margin:0 0 6px;font-size:18px">Continue in Codex or Claude Code</h2>'
+        '<p style="margin:0 0 14px">Select and copy the entire block below, then paste it into your AI agent. '
+        'It will install ConnectOnion if needed and send an acceptance back to the sender.</p>'
+        '<p style="margin:0 0 6px;color:#4b5b4f;font-size:12px;font-weight:700">COPY FROM HERE</p>'
         f'<pre style="{_BOX}">{html.escape(prompt.strip())}</pre>'
-        '<p style="margin:16px 0;color:#4b5b4f;font-size:14px">No AI agent at hand? '
-        'Reply to this email with any question.</p>'
-        f'<pre style="white-space:pre-wrap;word-break:break-all;margin:24px 0 0;color:#9aa69d;font-size:9px;'
-        f'line-height:1.2;font-family:monospace">{BEGIN}\n{wrapped}\n{END}</pre>'
+        '<p style="margin:14px 0 0;font-size:13px;color:#4b5b4f">'
+        'Need help installing? <a href="https://github.com/openonion/connectonion#try-the-192-preview-with-handoff" '
+        'style="color:#147d3a">Open the setup guide</a>. You can also reply to this email with a question.</p>'
+        f'<div style="display:none;max-height:0;overflow:hidden" aria-hidden="true">'
+        f'{BEGIN}\n{wrapped}\n{END}</div>'
         "</div>\n"
     )
     return subject, body
@@ -249,8 +253,13 @@ def from_saved_mail(text: str) -> dict | None:
     whose text part may be quoted-printable or base64 encoded."""
     message = email.message_from_string(text, policy=email.policy.default)
     if message["MIME-Version"] or message["Content-Type"]:
-        body = message.get_body(preferencelist=("plain",))
-        text = body.get_content() if body else ""
+        for kind in ("plain", "html"):
+            body = message.get_body(preferencelist=(kind,))
+            if body:
+                bundle = from_mail(body.get_content())
+                if bundle:
+                    return bundle
+        return None
     return from_mail(text)
 
 

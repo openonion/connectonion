@@ -5,6 +5,18 @@ agent. A handoff is one message: every message you wrote in the session, word fo
 word, the AI's replies in summary, and where the code is. Their Codex (or Claude
 Code) continues from it, and asks you for anything that is missing.
 
+## If you received a handoff email
+
+Read the sender and task summary first. Select the entire **COPY FROM HERE**
+block in the email and paste it into Codex or Claude Code. Your agent checks
+whether `co` is installed, installs this preview if needed, saves the brief,
+and accepts the handoff. Acceptance sends your agent address back to the
+sender, so the two agents can exchange later messages directly. You do not
+need to connect Gmail or Outlook to receive it. If you want to install before
+opening the email, use the [preview installer](https://docs.connectonion.com/releases#preview).
+
+## If you are sending a handoff
+
 ```bash
 # You, in the directory where you discussed the task with Codex
 co handoff contact ody ody@example.com          # once per person
@@ -14,20 +26,21 @@ co handoff status ho-98fb1cb3 --wait            # returns when they accept or as
 co handoff answer ho-98fb1cb3 "30 days"
 ```
 
-Ody does not type any of this. The mail (or the chat message you forward) is one
-block headed **Paste this into Codex or Claude Code**. He pastes it, and his
-agent installs co if needed, runs `co handoff accept <code>`, tells him what the
-task is, and asks him before changing anything.
+Ody does not type any of this. The HTML email shows who sent the task, a short
+summary, and one block to select and paste into Codex or Claude Code. His agent
+installs co if needed, runs `co handoff accept <code>`, tells the sender his agent
+address, and asks Ody before changing anything. If Ody already has co, the
+prompt does not initialize it again. Mail clients cannot run a reliable copy
+button inside a message, so the block is selected and copied normally.
 
 ## The prompt
 
-What the recipient's agent receives, from a real run (ho-5359a292) with the handoff
-and code shortened and the version as a 1.9.2b7 sender would write it:
+What the recipient's agent receives, with the handoff and code shortened:
 
 ```text
 aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359a292). Do these steps in order.
 
-1. Run co --version. If it prints 1.9.2b7 or newer, go to step 2 and do not run co init. If co is missing or older, install it in its own environment, never into the global Python: if uv is available, uv tool install "connectonion>=1.9.2b7"; otherwise, if pipx is available, pipx install --force "connectonion>=1.9.2b7"; otherwise python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install "connectonion>=1.9.2b7". Use that co for every co command below (uv and pipx put it in ~/.local/bin, the venv in ~/.co-venv/bin), and only then run co init --yes.
+1. Run co --version. If co is missing or older than 1.9.2b13, install it in its own environment. On macOS or Linux run: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/main/install.sh | CO_VERSION=1.9.2b13 sh. On Windows, install uv from https://docs.astral.sh/uv/getting-started/installation/ if needed, then run uv tool install --force "connectonion==1.9.2b13" and co init --yes. If co was already current, do not run co init again. Use the newly installed co for the steps below.
 
 2. Save everything below, from its first line '# Handoff:' to the end, as HANDOFF.md in the current directory.
 
@@ -40,15 +53,13 @@ aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359
 # Handoff: …
 ```
 
-- The version floor is the sender's own co version. Plain `pip install
-  connectonion` installs the last stable release, which has no `co handoff accept`;
-  a pre-release floor lets pip pick the preview without `--pre`.
-- co goes into its own environment (uv tool, then pipx, then a venv), never the
-  recipient's global Python. Their agent runs in a login shell, so a bare
-  `pip install` would change the person's own packages. `pipx install --force`
-  replaces an older co; `uv tool install` already does that when the floor moves.
-- The mail is HTML with the prompt in `<pre>`: the mail service sends the body
-  as HTML, and plain text arrived as one paragraph with its line breaks gone.
+- The prompt pins the first release that supports this path. Plain `pip install
+  connectonion` installs the stable release, which may not support handoff.
+- The installer uses uv's tool environment, never the recipient's global Python.
+  On Windows the prompt uses uv directly because `install.sh` is a POSIX shell
+  script.
+- The mail is HTML with the prompt in a wrapping `<pre>` block. The encoded
+  bundle for `co handoff open` remains in the message but is visually hidden.
 - There are no `<placeholders>` in it; the mail service drops anything shaped
   like a tag.
 
