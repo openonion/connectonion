@@ -1,0 +1,16 @@
+version: v1.9.2b10
+images:
+- file: before-handoff-mail-phone.png
+  alt: The handoff mail in 1.9.2b8 on a phone, first screen
+  caption: "One unwrapped <pre>: the page is 4,494 px wide at a 390 px phone, Markdown fences show, the task sits under the install step, and the base64 bundle follows."
+  scenario: Real handoff ho-74278114 as received in Gmail (HTML part), rendered in Chrome
+  viewport: 390x844, light
+  commit: 72204e4d
+  source_run: Gmail message 1a1286fe147ed017 read with co mcp call codex_apps gmail.read_email; 2026-10-11
+- file: after-handoff-mail-phone.png
+  alt: The handoff mail in 1.9.2b10 on a phone, first screen
+  caption: "Who handed what, the task, where it stands and open questions first; the agent block wraps in a box; page width equals the 390 px viewport."
+  scenario: Test handoff ho-ba300b27 (invented notes) rendered from this branch's to_mail
+  viewport: 390x844, light
+  commit: bb193027
+  source_run: Chrome capture of bundle.to_mail output for draft ho-ba300b27; 2026-10-11

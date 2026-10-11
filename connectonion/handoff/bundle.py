@@ -168,19 +168,43 @@ def _strings(value, field: str = ""):
 
 # ---- how a bundle travels in a mail body ----
 
-def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
-    """(subject, HTML body). The mail is the prompt to paste into a coding agent, brief inline,
-    then the machine-readable bundle for co handoff open (base64, so no mail system rewrites it).
+_FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+_BOX = ("white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;margin:0;padding:14px 16px;"
+        "background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;"
+        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:#1f2a22")
 
-    HTML with <pre>, because the mail service sends the body as HTML: plain text arrived as
-    one paragraph in every client (newlines collapse), and anything shaped like a tag vanished.
+
+def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
+    """(subject, HTML body) for a person reading on any screen.
+
+    Top: who handed what, the task, where it stands, the open questions. Then the block to
+    paste into Codex or Claude Code, in a box that wraps (a bare <pre> ran off a phone's
+    edge, 2026-10-11). Last, in small grey type, the bundle co handoff open reads (base64,
+    so no mail system rewrites it). HTML because the mail service sends the body as HTML.
     """
-    subject = f"[co handoff] {bundle['id']}: {_one_line(bundle['title'], 80)}"
+    subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {bundle['from']})"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    body = (f"<pre>{html.escape(prompt)}</pre>\n"
-            "<p>No AI agent at hand? Read the brief above, and reply to this email with any question.</p>\n"
-            f"<pre>{BEGIN}\n{wrapped}\n{END}</pre>\n")
+    questions = "".join(f"<li>{html.escape(q)}</li>" for q in bundle.get("open_questions", []))
+    body = (
+        f'<div style="{_FONT};max-width:640px;font-size:15px;line-height:1.55;color:#1f2a22">'
+        f'<p style="margin:0 0 4px;color:#15803d;font-size:13px;font-weight:600">'
+        f'{html.escape(bundle["from"])} handed you a task</p>'
+        f'<h2 style="margin:0 0 12px;font-size:20px">{html.escape(bundle["title"])}</h2>'
+        f'<p style="margin:0 0 12px">{html.escape(bundle["task"])}</p>'
+        f'<p style="margin:0 0 12px"><b>Where it stands:</b> {html.escape(bundle["where_it_stands"])}</p>'
+        + (f'<p style="margin:0 0 4px"><b>Open questions</b></p><ul style="margin:0 0 12px">{questions}</ul>'
+           if questions else "")
+        + '<p style="margin:20px 0 8px"><b>Continue it with your AI agent.</b> Copy everything in the box '
+          'into Codex or Claude Code. It installs co if needed, tells the sender you have it, '
+          'and asks you before it changes anything.</p>'
+        f'<pre style="{_BOX}">{html.escape(prompt.strip())}</pre>'
+        '<p style="margin:16px 0;color:#4b5b4f;font-size:14px">No AI agent at hand? '
+        'Reply to this email with any question.</p>'
+        f'<pre style="white-space:pre-wrap;word-break:break-all;margin:24px 0 0;color:#9aa69d;font-size:9px;'
+        f'line-height:1.2;font-family:monospace">{BEGIN}\n{wrapped}\n{END}</pre>'
+        "</div>\n"
+    )
     return subject, body
 
 

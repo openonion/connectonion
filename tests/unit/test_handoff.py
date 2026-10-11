@@ -414,7 +414,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert mail["message"].startswith("<pre>Paste this into Codex or Claude Code")
+    assert "Copy everything in the box into Codex or Claude Code" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 

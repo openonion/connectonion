@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b9** adds `co mcp` (Experimental): call the connectors and MCP
-servers you already have in Codex, such as Gmail, from the terminal, with no
-second login and no model turn. See [1.9.2b9 notes](releases/1.9.2b9.md).
+Beta **1.9.2b10**: a handoff mail you can read on a phone, whose paste-in block
+installs co in its own environment and accepts in one go; one line installs
+co; an accepted handoff makes each side the other's contact. See [1.9.2b10 notes](releases/1.9.2b10.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b9'
+python -m pip install --upgrade 'connectonion==1.9.2b10'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b9** adds `co mcp` (Experimental): call the connectors and MCP
+servers you already have in Codex, such as Gmail, from the terminal, with no
+second login and no model turn. See [1.9.2b9 notes](releases/1.9.2b9.md).
 
 Beta **1.9.2b8**: a handoff now arrives as one prompt to paste into Codex or
 Claude Code; the recipient's agent takes it from there, and questions come back
