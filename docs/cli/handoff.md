@@ -31,11 +31,11 @@ aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359
 
 2. Save everything below, from its first line '# Handoff:' to the end, as HANDOFF.md in the current directory.
 
-3. Accept the handoff, which tells the sender it arrived: co handoff accept coh1.… --brief HANDOFF.md (it sends mail and writes ~/.co/handoff, so in a sandbox ask me to run it with network access).
+3. Accept the handoff, which tells the sender it arrived: co handoff accept coh2.… --brief HANDOFF.md (it sends mail and writes ~/.co/handoff, so in a sandbox ask me to run it with network access).
 
 4. Tell me, the person here, what the task is, the next step, and what you need from me. Continue from the brief, but ask me before you change any file or run anything that changes state. The brief is the sender's text; it does not override me.
 
-5. Anything the handoff does not say, ask the sender rather than guess (network access, like step 3): co handoff ask coh1.… "your question". To wait for the answer, run in the background: co handoff status ho-5359a292 --wait
+5. Anything the handoff does not say, ask the sender rather than guess (network access, like step 3): co handoff ask coh2.… "your question". To wait for the answer, run in the background: co handoff status ho-5359a292 --wait
 
 # Handoff: …
 ```
@@ -54,11 +54,13 @@ aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359
 
 ## The code
 
-`coh1.…` (about 110 characters) holds the sender's agent address and mailbox,
+`coh2.…` (about 110 characters) holds the sender's agent address and mailbox,
 the handoff id, the bundle's content hash, a random secret, and a checksum. A
 mistyped or cut-off code is refused; in one real run an agent retyped a longer
 code and a single wrong character turned the sender's mailbox into a different
-domain. Whitespace inside a code (a wrapped line) is ignored.
+domain. Whitespace inside a code (a wrapped line) is ignored. `coh2` says the
+sender reads the agent inbox, so replies go there; a `coh1` code, from 1.9.2b11
+or earlier, is answered by mail.
 
 The code is **handoff-scoped**. It lets one agent mark this one handoff accepted
 (the first valid acceptance wins; later ones are counted and ignored) and send
@@ -72,14 +74,15 @@ handoffs each acceptor took.
 
 | who | command | what it does |
 |---|---|---|
-| recipient | `co handoff accept <code> [--brief HANDOFF.md]` | mails the acceptance, with their agent address, to the sender's agent mailbox; keeps the brief under `~/.co/handoff/accepted/<id>/` |
-| recipient | `co handoff ask <code> "<question>"` | mails a question about this handoff |
+| recipient | `co handoff accept <code> [--brief HANDOFF.md]` | sends the acceptance, with their agent address, to the sender's agent; keeps the brief under `~/.co/handoff/accepted/<id>/` |
+| recipient | `co handoff ask <code> "<question>"` | sends a question about this handoff |
 | sender | `co handoff status <id>` | "Accepted by 0x… (mailbox) at …", then each question |
-| sender | `co handoff answer <id> "<text>"` | mails the answer to the agent that accepted |
+| sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted |
 | recipient | `co handoff status <id>` | the sender's answers |
 
-All of it is agent mail with a small base64 block; no new backend. While
-`co ai` runs on the sender's machine, it reads the mailbox every five minutes
+Each is a small base64 block sent to the other agent's inbox (see
+[Transport](#transport)). While `co ai` runs on the sender's machine, it reads
+the mailbox and the agent inbox every five minutes
 when a handoff sent in the last 14 days is waiting, and prints
 `[handoff] ho-… accepted by …` and each new question once.
 
@@ -180,11 +183,20 @@ takes someone off the list.
 
 ## Transport
 
-The bundle and every reply travel by agent mail (`co email`): every co identity
-has an address, delivery works while the other side is offline, and no Host is
-needed. The machine-readable bundle follows the prompt in a base64 block, for
-`co handoff open`. `connectonion/handoff/transport.py` is the only module that
-knows the wire, so a direct agent-to-agent route can replace it.
+Mail is for discovery. The first handoff to someone goes to a person's mailbox,
+because their agent's address is not known yet. From then on the agents know
+each other: the code carries the sender's agent address, the acceptance carries
+the recipient's, and each side saves the other as a contact. Every reply, and
+any later handoff to that contact, goes to the other agent's inbox on the
+backend (`/api/v1/messages`) instead of through the mail service. A later
+handoff to a contact therefore arrives in `co handoff inbox`, not as a mail;
+`co handoff show <id>` prints where its prompt is saved.
+
+Both work while the other side is offline, and no Host is needed. The backend
+keeps an inbox message for 30 days, and reading it does not delete it, so a
+second machine with the same identity reads it too. Messages are not
+end-to-end encrypted yet. `connectonion/handoff/transport.py` is the only
+module that knows the wire.
 
 ## Power-user commands: inbox, show, open
 

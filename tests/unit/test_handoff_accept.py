@@ -26,8 +26,10 @@ def _invoke(*args):
 
 @pytest.fixture
 def world(monkeypatch, tmp_path):
-    """One mail service; `be(who)` switches which agent (and which ~/.co) is running."""
-    mails, homes = [], {}
+    """One mail service and one agent inbox; `be(who)` switches which agent (and which ~/.co) is running.
+
+    Faked below deliver/fetch, so the choice between mail and the agent inbox is the real one."""
+    mails, inbox, homes = [], [], {}
 
     def be(who):
         homes.setdefault(who["mail"], tmp_path / who["mail"])
@@ -35,18 +37,27 @@ def world(monkeypatch, tmp_path):
         monkeypatch.setenv("AGENT_EMAIL", who["mail"])
         monkeypatch.setattr(transport, "my_address", lambda: who["address"])
 
-    def deliver(to, subject, body, idempotency_key):
+    def send_mail(to, subject, body, idempotency_key):
         mails.append({"id": str(len(mails) + 1), "from": os.environ["AGENT_EMAIL"], "to": to,
-                      "subject": subject, "message": body, "timestamp": f"2026-10-11T10:{len(mails):02d}:00"})
+                      "subject": subject, "message": body, "timestamp": f"2026-10-11T10:{len(mails) + len(inbox):02d}:00"})
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": os.environ["AGENT_EMAIL"]}
 
-    monkeypatch.setattr(transport, "deliver", deliver)
-    monkeypatch.setattr(transport, "fetch", lambda last=200: [
-        m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"] and m["subject"].startswith(transport.SUBJECT_PREFIX)])
+    def post_message(agent, body):
+        inbox.append({"id": len(inbox) + 1, "to": agent, "from_address": transport.my_address(), "body": body,
+                      "created_at": f"2026-10-11T10:{len(mails) + len(inbox):02d}:00+00:00"})
+        return {"success": True, "message_id": f"agent-message-{len(inbox)}", "from": os.environ["AGENT_EMAIL"],
+                "via": "agent inbox"}
+
+    monkeypatch.setattr(transport, "_send_mail", send_mail)
+    monkeypatch.setattr(transport, "_post_message", post_message)
+    monkeypatch.setattr(transport, "_read_mail", lambda last: [
+        m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
+    monkeypatch.setattr(transport, "_read_messages", lambda: [
+        transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.chdir(tmp_path)
-    return {"mails": mails, "be": be}
+    return {"mails": mails, "inbox": inbox, "be": be}
 
 
 def _bundle(to: str) -> dict:
@@ -70,7 +81,7 @@ def _send(world, to=RECIPIENT["mail"], who=None) -> str:
 
 
 def _code(text: str) -> str:
-    return re.search(r"co handoff accept (coh1\.[A-Za-z0-9_-]+)", text).group(1)
+    return re.search(r"co handoff accept (coh[12]\.[A-Za-z0-9_-]+)", text).group(1)
 
 
 # ---- the prompt ----
@@ -177,7 +188,7 @@ def test_accept_reaches_the_sender_and_status_shows_it(world, tmp_path):
     assert accepted.exit_code == 0, accepted.output
     saved = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d"
     assert (saved / "HANDOFF.md").read_text() == "# Handoff: Store the login token\n"
-    assert world["mails"][-1]["to"] == SENDER["mail"]
+    assert world["inbox"][-1]["to"] == SENDER["address"]
 
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
@@ -289,3 +300,53 @@ def test_the_install_floor_is_never_newer_than_this_release():
     from connectonion import __version__
     from connectonion.handoff.replies import MIN_VERSION
     assert Version(MIN_VERSION) <= Version(__version__)
+
+
+# ---- #2410: mail finds the agent, the agent inbox carries the rest ----
+
+def test_after_the_first_mail_every_reply_goes_to_the_agent_inbox(world):
+    code = _code(_send(world))
+    assert code.startswith("coh2.") and len(world["mails"]) == 1
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    assert _invoke("handoff", "ask", code, "7 days or 30?").exit_code == 0
+    assert [m["to"] for m in world["inbox"]] == [SENDER["address"]] * 2
+
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert f"Accepted by {RECIPIENT['address']}" in status.output and "7 days or 30?" in status.output
+    assert _invoke("handoff", "answer", "ho-1a2b3c4d", "30 days").exit_code == 0
+    assert world["inbox"][-1]["to"] == RECIPIENT["address"]
+
+    world["be"](RECIPIENT)
+    assert "30 days" in _invoke("handoff", "status", "ho-1a2b3c4d").output
+    assert len(world["mails"]) == 1                                          # only the first handoff was mail
+
+
+def test_a_code_from_a_sender_that_reads_only_mail_is_answered_by_mail(world):
+    code = _code(_send(world)).replace("coh2.", "coh1.", 1)   # what 1.9.2b11 and earlier generate
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    assert world["inbox"] == [] and world["mails"][-1]["to"] == SENDER["mail"]
+
+
+def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_it(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")                 # the acceptance makes them a contact
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    second = dict(_bundle(RECIPIENT["mail"]), id="ho-2b3c4d5e", title="Second task")
+    (drafts / "ho-2b3c4d5e.json").write_text(json.dumps(bundles.seal(second)))
+    mails_before = len(world["mails"])
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-2b3c4d5e", "--yes")
+    assert sent.exit_code == 0 and "agent's inbox" in sent.output
+    assert len(world["mails"]) == mails_before and world["inbox"][-1]["to"] == RECIPIENT["address"]
+    assert "their agent's inbox" in _invoke("handoff", "status", "ho-2b3c4d5e").output
+
+    world["be"](RECIPIENT)
+    listed = _invoke("handoff", "inbox")
+    assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
+    shown = _invoke("handoff", "show", "ho-2b3c4d5e")
+    assert "co handoff accept coh2." in shown.output                         # how to take it over, without the mail
