@@ -22,7 +22,7 @@ def contacts_file():
 def contacts() -> dict:
     """name → {"mail": where a handoff to them is delivered, "agent": their 0x address once known}.
 
-    An address book for co handoff, never a trust list: nothing in it lets anyone call this agent.
+    Names only. Who may call this agent is the trust list (co trust list), which `meet` also updates.
     """
     path = contacts_file()
     book = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -43,11 +43,14 @@ def add_contact(name: str, address: str) -> str:
 
 
 def meet(mail: str, agent: str) -> str:
-    """After a handoff is accepted, each side keeps the other: `mail` reaches them, `agent` is who they are.
+    """After a handoff is accepted, each side makes the other its agent's contact. Returns their name.
 
-    A contact already reached at `mail`, or already known as `agent`, keeps its name and gains the
-    agent; anyone else is saved under the mailbox's name. Returns the contact's name.
+    `agent` joins this identity's trust contacts (co trust list). The name book learns that `mail`
+    reaches them: a name already reached at `mail`, or already known as `agent`, keeps its name and
+    gains the agent; anyone else is saved under the mailbox's name.
     """
+    from ..network.trust.tools import promote_to_contact
+    promote_to_contact(agent, global_config_dir())
     book = contacts()
     name = next((n for n, e in book.items() if e["mail"] == mail or e.get("agent") == agent), None)
     if name is None:
