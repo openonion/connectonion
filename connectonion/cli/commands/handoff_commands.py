@@ -457,7 +457,7 @@ def handle_show(handoff_id: str) -> None:
     prompt = _home() / "received" / bundle["id"] / "prompt.txt"
     if prompt.exists():
         accept = re.search(r"co handoff accept \S+", prompt.read_text(encoding="utf-8"))
-        out.print(f"To take it over, give Codex or Claude Code everything in {style.path(prompt)}"
+        out.print(f"To take it over, give Codex or Claude Code everything in {prompt}"
                   + (f"; it runs {accept.group(0)}" if accept else "") + ".", markup=False)
     _next(f"co handoff open {handoff_id}")
 
