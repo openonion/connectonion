@@ -2476,6 +2476,9 @@ app.add_typer(linear_app, name="linear")
 # Canny feedback boards (#2050): our own commands on Canny's REST API.
 from .commands.canny_commands import canny_app
 app.add_typer(canny_app, name="canny")
+# MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
+from .commands.mcp_commands import mcp_app
+app.add_typer(mcp_app, name="mcp")
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

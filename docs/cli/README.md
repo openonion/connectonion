@@ -487,6 +487,22 @@ command inventory, adapter sources and migration behavior.
 
 ---
 
+#### `co mcp` - the MCP servers Codex already has (Experimental)
+
+Call the connectors and MCP servers you enabled in Codex (Gmail, Calendar,
+GitHub, your own) straight from the terminal: no second login, no model turn.
+Read-only tools run at once; others preview until `--yes`.
+
+```bash
+co mcp ls
+co mcp tools codex_apps
+co mcp call codex_apps gmail.search_emails '{"query": "newer_than:7d"}'
+```
+
+See [mcp.md](mcp.md).
+
+---
+
 #### `co linear` - Linear issues
 
 Your Linear issues with a personal API key: list, read, search, and create,
@@ -1429,6 +1445,7 @@ See [server.md](server.md).
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
+| `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
