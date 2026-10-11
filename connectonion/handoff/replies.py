@@ -79,8 +79,9 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # release changes what the recipient's co does: 1.9.2b10 accept also makes the sender a contact
 # (#2399), and a recipient on 1.9.2b8 would pass step 1 and never save them. 1.9.2b11: the prompt's
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
-# replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox.
-MIN_VERSION = "1.9.2b12"
+# replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
+# automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
+MIN_VERSION = "1.9.2b13"
 
 
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:

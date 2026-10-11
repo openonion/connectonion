@@ -152,6 +152,8 @@ CREDENTIAL_PATTERNS = {
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
     "private key block": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "ConnectOnion invite code": r"\b[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}\b",
+    # A handoff code is the secret that accepts or asks on one handoff (replies.make_code).
+    "ConnectOnion handoff code": r"\bcoh[12]\.[A-Za-z0-9_-]{40,}",
     "JWT": r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
     "secret assignment": r"(?i)\b[A-Z0-9_]*(?:api[_-]?key|secret|token|password|passwd)[A-Z0-9_]*\s*[:=]\s*['\"]?[A-Za-z0-9_\-/+=.]{16,}",
 }

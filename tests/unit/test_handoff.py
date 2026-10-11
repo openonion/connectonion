@@ -763,3 +763,11 @@ def test_the_session_copy_never_carries_a_credential(tmp_path):
     text = bundles.redact(sessions.transcript("claude", _tool_session(tmp_path)), known_secrets=["hunter2hunter2"])
     assert "sk-proj-abcdefghijklmnopqrstuvwx" not in text and "[removed: " in text
     assert "hunter2hunter2" not in bundles.redact("pw hunter2hunter2", known_secrets=["hunter2hunter2"])
+
+
+def test_the_session_copy_never_carries_a_handoff_code():
+    # A real session copy (2026-10-11) still held 44 coh2 codes: each is the secret that lets its holder
+    # accept or ask on that handoff, including handoffs meant for someone else.
+    code = "coh2.EOaPbf85qxxQzEjqHHTn_WznJpqm6BI4KbNE5X0AVQjgdBg-O3ErLLX3FVu1_pw9O-lBGRPKYWFyb24ueGllQG1haWwub3Blbm9uaW9uLmFpRW2Mkw"
+    text = bundles.redact(f"run co handoff accept {code} --brief HANDOFF.md, or the old coh1.{code[5:]}")
+    assert "coh2.EOaP" not in text and "coh1.EOaP" not in text and "[removed: " in text
