@@ -61,3 +61,23 @@ matches). No ambient Anthropic API key was used. The previous authentication
 403 must not be repeated as the current diagnosis. The next real-writing
 sample can now separate source-gathering timeouts from model or prompt quality;
 it has not yet been performed by this review.
+
+
+## Published-source correction — 12 October 2026 (Sydney)
+
+This audit's original nightly-stall finding describes the older local installation and its historical logs. It must not be read as proof that current published code still aborts on a rewritten prefix.
+
+A complete inspection of the public b11 wheel confirms that `ChangedPrefix` is caught, the old checkpoint is preserved, the changed file is recorded in `source_skips`, and healthy sessions can continue. The published b14 source distribution retains this behavior and reports launchd health and scheduled warnings. An earlier abbreviated b11 check looked only for the guard and collection-before-record ordering, missing the exception handler; issue #2301 now includes that correction.
+
+An isolated check against the SHA-256-verified b14 distribution imported a healthy synthetic session alongside a rewritten one, retained the rewritten file's checkpoint, reported the skipped file, and imported no duplicate on the next pass. It made zero model calls and read zero real sources. This is distribution-level regression evidence, not a real scheduled acceptance run.
+
+The next nightly deliverable is reviewable recovery/reindexing for skipped files and manual confirmation of a successful scheduled pass, with last-success and partial-coverage reporting. Do not create a duplicate prefix-isolation implementation. Issue #2301 remains open for its unmet acceptance criteria.
+
+### Other product axes and evidence limits
+
+- **Trusted context:** no new source-to-claim sample audit or identity adjudication was performed in this round; historical findings remain unverified against b14.
+- **Morning recall:** no sequence of real mornings was observed; source isolation alone does not demonstrate useful new memories or durable recall.
+- **Mobile and accessibility:** the existing screenshots and interaction checks describe the earlier candidate. No new rendered b14 desktop/mobile or assistive-technology pass was performed on this computer.
+- **Opening the product:** live Host auto-start is now distributed in b11 onward (#2308), with artifact verification recorded on the PR. No real relay/Host trial is claimed.
+
+The owner's instruction to leave real-data testing to them remains in force. No init, mail scan, model probe or real scheduled tick was run here. Neither the release label nor these synthetic checks establish product maturity.
