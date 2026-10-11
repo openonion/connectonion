@@ -400,18 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b10
+## Current Version: 1.9.2b11
 
-1.9.2b10 is a 1.9.2 beta; stable remains 1.9.1. The `co handoff` mail reads
-like a mail on any screen: who handed you what, the task, where it stands and
-the open questions first, then the block for Codex or Claude Code in a box that
-wraps. Its install step asks for a version that exists (1.9.2b10 or newer, never
-the sender's own build) and installs co in its own environment, never the
-global Python. `co email send` keeps a plain-text body's paragraphs. One
-line installs co (`curl … install.sh | sh`), and an accepted handoff makes
-each side the other's agent contact. See
-[1.9.2b10 notes](docs/releases/1.9.2b10.md).
+1.9.2b11 is a 1.9.2 beta; stable remains 1.9.1. A `co handoff` is one
+message: every message the person typed in the session, word for word and
+across every compaction, the AI's replies in summary, and where the code is
+(repository, branch, commit). The preview flags private details, `--since N`
+starts at a later message, and `co handoff status --wait` returns when the
+other side accepts, asks or answers. Opening live REM starts `co ai` when no
+Host is running. See [1.9.2b11 notes](docs/releases/1.9.2b11.md).
 
+- 1.9.2b11 (A handoff that keeps what you said).
 - 1.9.2b10 (A handoff mail you can read on a phone).
 - 1.9.2b9 (Use the connectors Codex already has).
 - 1.9.2b8 (Paste one prompt to take over a handoff).
