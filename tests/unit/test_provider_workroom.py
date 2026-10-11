@@ -287,7 +287,9 @@ def test_workroom_continuation_fails_closed_for_another_owner_or_live_source(tmp
     ) == {"reason": "not_active"}
 
 
-def test_owned_continuation_reaches_codex_through_the_real_approval_plugin(tmp_path):
+def test_owned_continuation_reaches_codex_through_the_real_approval_plugin(tmp_path, monkeypatch):
+    # A remote turn's tool calls are recorded in the project's .co/ (#2408).
+    monkeypatch.chdir(tmp_path)
     storage = SessionStorage(tmp_path / "sessions.jsonl")
     storage.save(Session(
         session_id="session-1",

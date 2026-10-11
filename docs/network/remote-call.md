@@ -158,6 +158,37 @@ permissions:
 > exact (`"Bash(python --version)"`), never `python *`. Keep wildcards to tools
 > that are safe with *any* arguments (`ls`, `cat`, `git log`).
 
+### Three classes only the owner grants
+
+The whitelist decides what may run. Three classes of action are held back
+from every remote caller below admin, even when the whitelist allows them
+(#2408):
+
+1. **Credentials, authority and money**: `co keys`, `co env get`, reading
+   key files, `co trust ...`, writing `.co/host.yaml` or the trust lists,
+   `co transfer`, `co server new`.
+2. **Irreversible deletes and overwrites**: `rm`, `git push --force`, deleting
+   a remote branch, `delete_file`, `co server destroy`.
+3. **Acting as the owner in the owner's own accounts**: `co gmail send`,
+   `co outlook send`, and the `send`/`reply` methods of the Gmail and Outlook
+   tools. The agent's own mailbox (`co email`, `send_email`) is not in this class.
+
+```python
+remote.call("bash", command="co transfer 5 0x…")
+# ExecResult(status="error", error="needs the owner: this touches credentials, authority or money (...). Ask the owner to run it from their own terminal.")
+```
+
+The same line holds on the agent's own turn when someone else is driving it,
+so neither a `host.yaml` rule nor a contact approving in their own session
+grants these. Admins and the owner's own terminal are unaffected.
+
+### Every call is recorded
+
+Each EXEC call, and each tool call made in a remote requester's turn, appends
+one line to `.co/decisions.jsonl`: who asked, at what level, the tool and its
+arguments (secret-looking arguments redacted, long values cut), and whether it
+executed, failed or was refused. The agent's own tools cannot write this file.
+
 ---
 
 ## Allowed by default

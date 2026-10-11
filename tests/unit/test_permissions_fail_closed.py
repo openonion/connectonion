@@ -53,8 +53,15 @@ class TestNobodyToAsk:
         with pytest.raises(ValueError) as refused:
             # A third-party CLI the policy has no rule for: "ordinary command,
             # allowed by default" everywhere else, one chat message from wiping data.
-            _run(_turn("auto", "bash", {"command": "acme-cli wipe --all"}, via="feishu"))
+            _run(_turn("auto", "bash", {"command": "acme-cli send --all"}, via="feishu"))
         assert "grant" in str(refused.value).lower()
+
+    def test_a_chat_turn_cannot_delete_even_with_a_grant(self, workspace):
+        """Irreversible is the owner's own call (#2408), whatever host.yaml says."""
+        granted = {"Bash(acme-cli *)": {"allowed": True, "source": "config", "reason": "everything"}}
+        with pytest.raises(ValueError) as refused:
+            _run(_turn("auto", "bash", {"command": "acme-cli wipe --all"}, via="feishu", permissions=granted))
+        assert "needs the owner" in str(refused.value)
 
     def test_auto_outside_a_chat_turn_keeps_the_default_allow(self, workspace):
         # #1481: an unattended job must not die on xargs; only chat turns change.

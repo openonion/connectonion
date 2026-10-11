@@ -114,7 +114,9 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
                     "error": f"forbidden: exec requires a contact or admin, "
                              f"you are {level}"}
 
-        return exec_handler(create_agent, exec_permissions, tool_name, args)
+        return exec_handler(create_agent, exec_permissions, tool_name, args,
+                            requester={"address": requester_address, "level": level},
+                            co_dir=getattr(trust_agent, "_co_dir", None))
 
     return handle_ws_exec
 

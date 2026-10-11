@@ -44,8 +44,10 @@ class FakeAgent:
             self.current_session['requester'] = requester
 
 
-DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
-                                           'description': 'clean'}}
+# Asks for approval, and is not one of the three classes only the owner grants
+# (#2408), so a contact may approve it in their own session.
+DANGEROUS = {'name': 'bash', 'arguments': {'command': 'npm install left-pad',
+                                           'description': 'install'}}
 class TestAuthenticatedUsersCanApproveTheirOwnWork:
 
     @pytest.mark.parametrize("level", ['contact', 'whitelist', 'admin'])
@@ -90,6 +92,31 @@ class TestAuthenticatedUsersCanApproveTheirOwnWork:
         check_approval(agent)
 
         assert io.sent == []
+
+    @pytest.mark.parametrize("command", ['rm -rf build', 'co keys --reveal', 'co transfer 5 0xabc'])
+    def test_a_contact_cannot_approve_what_only_the_owner_grants(self, command, tmp_path, monkeypatch):
+        """Irreversible, credentials, money: the dialog is not offered (#2408)."""
+        monkeypatch.chdir(tmp_path)
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': 'contact'})
+        agent.current_session['pending_tool'] = {'name': 'bash', 'arguments': {'command': command}}
+
+        with pytest.raises(ValueError) as exc:
+            check_approval(agent)
+
+        assert io.sent == []
+        assert 'needs the owner' in str(exc.value)
+
+    def test_the_admin_is_still_asked_about_an_irreversible_delete(self):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': 'admin'})
+        agent.current_session['pending_tool'] = {'name': 'bash', 'arguments': {'command': 'rm -rf build'}}
+
+        check_approval(agent)
+
+        assert [event['type'] for event in io.sent] == ['approval_needed']
 
     def test_a_contact_cannot_approve_rewriting_protected_policy(self):
         io = FakeIO(responses=[{'approved': True}])

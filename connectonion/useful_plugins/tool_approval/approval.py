@@ -196,7 +196,7 @@ File Relationships:
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
+from ...core.events import after_each_tool, after_iteration, after_user_input, before_each_tool, before_iteration
 from ...core.mode import AUTO, FULL_ACCESS, mode_id, mode_of, set_mode, skips_approval
 from ...project import project_co_dir
 from .bash_parser import check_bash_chain_permitted
@@ -403,6 +403,59 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
 
 
 # =============================================================================
+# The record, and the classes only the owner grants (#2408)
+# =============================================================================
+
+def _registered(agent: 'Agent', tool_name: str):
+    """The tool object, which tells the owner's Gmail.send from any other send."""
+    tools = getattr(agent, 'tools', None)
+    return tools.get(tool_name) if tools is not None else None
+
+
+def _refuse_special_for_remote(agent: 'Agent', pending: dict) -> None:
+    from .record import record
+    from .special import needs_the_owner, special_class
+
+    requester = agent.current_session.get('requester')
+    if not requester or requester.get('level') == 'admin':
+        return
+    tool_name, tool_args = pending['name'], pending['arguments']
+    special = special_class(tool_name, tool_args, tool=_registered(agent, tool_name))
+    if not special:
+        return
+    record(project_co_dir(), path="turn", tool=tool_name, args=tool_args, outcome="refused",
+           reason=special['reason'], requester=requester, special=special)
+    agent.current_session['_recorded_tool_id'] = pending.get('id')
+    raise ValueError(needs_the_owner(special))
+
+
+@after_each_tool
+def record_remote_result(agent: 'Agent') -> None:
+    """Record every tool call a remote requester's turn made, and how it ended.
+
+    A local `co ai` run is the owner at their own terminal and is already in
+    the session logs; what the owner reads afterwards is what others caused.
+    """
+    from .record import record
+    from .special import special_class
+
+    requester = agent.current_session.get('requester')
+    trace = agent.current_session.get('trace') or []
+    if not requester or not trace:
+        return
+    entry = trace[-1]
+    if entry.get('tool_id') is not None and entry.get('tool_id') == agent.current_session.pop('_recorded_tool_id', None):
+        return
+    succeeded = entry.get('status') == 'success'
+    args = entry.get('args') or {}
+    record(project_co_dir(), path="turn", tool=entry.get('name', ''), args=args,
+           outcome="executed" if succeeded else "failed",
+           reason="" if succeeded else str(entry.get('error', entry.get('status', ''))),
+           requester=requester,
+           special=special_class(entry.get('name', ''), args, tool=_registered(agent, entry.get('name', ''))))
+
+
+# =============================================================================
 # Event Handlers
 # =============================================================================
 
@@ -456,6 +509,13 @@ def check_approval(agent: 'Agent') -> None:
         refusal = _refuse_control_file(tool_name, tool_args)
         if refusal:
             raise ValueError(refusal)
+
+        # Three classes need the owner's own say (#2408): credentials,
+        # authority and money; irreversible deletes; acting as the owner. A
+        # remote caller below admin is refused here, before the whitelist and
+        # the mode, so neither host.yaml nor the caller's own approval in the
+        # dialog grants them. EXEC holds the same line in exec_handler.
+        _refuse_special_for_remote(agent, pending)
 
         # An operator's `allowed: false` holds against every allow, from any
         # source. The matching loops below skipped it, so a deny written in
@@ -819,7 +879,15 @@ def load_permission_patterns(co_dir=None) -> dict:
 # Not all of `.co/`: agents write `dashboard.html` on purpose — it *is* the Home
 # page, built by the dashboard skill — and logs, docs and skills are content
 # too. The line is what a file decides, not where it lives.
-CONTROL_FILES = ("host.yaml", "schedule.yaml", "admins.txt")
+#
+# The trust lists decide who is a contact and who is blocked, so an agent that
+# could write them could promote a caller itself; and decisions.jsonl is the
+# record the owner reads afterwards, which the actor must not be able to edit
+# (#2408).
+CONTROL_FILES = (
+    "host.yaml", "schedule.yaml", "admins.txt",
+    "contacts.txt", "whitelist.txt", "blocklist.txt", "decisions.jsonl",
+)
 CONTROL_DIRS = ("keys",)
 
 

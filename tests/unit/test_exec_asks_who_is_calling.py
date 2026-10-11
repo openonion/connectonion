@@ -133,8 +133,9 @@ class TestWhoMayDriveToolsDirectly:
         )
         calls = []
 
-        def exec_handler(create_agent, permissions, tool_name, args):
+        def exec_handler(create_agent, permissions, tool_name, args, requester=None, co_dir=None):
             calls.append(tool_name)
+            self.requester = requester
             return {"status": "success", "result": "ok"}
 
         with patch.object(server, "exec_handler", exec_handler):
@@ -146,6 +147,13 @@ class TestWhoMayDriveToolsDirectly:
 
         assert result["status"] == "success"
         assert calls == ["bash"]
+
+    def test_the_caller_and_level_reach_the_runner(self, ws_exec):
+        """The runner records who asked and holds the owner-only classes on level."""
+        handler, _ = ws_exec
+        handler("bash", {"command": "whoami"}, requester_address=CONTACT)
+
+        assert self.requester == {"address": CONTACT, "level": "contact"}
 
     def test_a_whitelisted_caller_may(self, ws_exec):
         handler, calls = ws_exec
