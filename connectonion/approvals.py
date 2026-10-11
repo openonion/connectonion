@@ -94,11 +94,49 @@ def record_tool(agent, trace_entry: dict) -> None:
         "session": session.get("session_id"),
         "tool": trace_entry.get("name"),
         "args": short(trace_entry.get("args") or {}),
+        "class": trace_entry.get("class"),
         "decision": "done" if ran else "declined",
         "outcome": status,
         "reason": short(trace_entry.get("error")) if not ran else None,
         "ms": int(trace_entry.get("timing_ms") or 0),
     })
+
+
+# What each special class is, said to whoever was refused.
+_CLASS_WORDS = {
+    "credentials": "touches credentials",
+    "authority": "changes who may command this agent",
+    "money": "spends money",
+    "irreversible": "cannot be undone",
+    "as_owner": "acts as the owner in the owner's own account",
+}
+
+
+def special(tool_name: str, args: dict, tool_func=None) -> str | None:
+    """Which of #2408's special classes a call is in. Decided by code."""
+    from .useful_plugins.tool_approval.policy import special_class
+    owner = getattr(tool_func, "_bound_instance", None)
+    classes = " ".join(c.__name__ for c in type(owner).__mro__) if owner is not None else None
+    return special_class(tool_name, args or {}, classes)
+
+
+def stops_here(agent) -> bool:
+    """A special-class call stops here when someone other than the owner asked
+    and nobody is connected to be asked: a chat message, an inbox turn, a
+    contact's unattended run.
+
+    A local caller (the agent's own terminal, its schedules) is the owner, and
+    so is an admin. With a client connected, the approval flow asks that
+    person as it did before; asking the owner instead is #2408's next step.
+    """
+    requester = (agent.current_session or {}).get("requester")
+    return bool(requester) and requester.get("level") != "admin" and agent.io is None
+
+
+def needs_owner(klass: str, tool_name: str) -> str:
+    return (f"{tool_name} {_CLASS_WORDS[klass]} ({klass}), so only the agent's owner may run it, "
+            f"at the agent's own terminal. Do not try another command for the same thing: "
+            f"tell whoever asked that it needs the owner (#2408).")
 
 
 def read(co_dir: Path, who: str | None = None, klass: str | None = None, last: int = 50) -> list[dict]:

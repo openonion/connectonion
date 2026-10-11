@@ -7,7 +7,7 @@ for you. The record is how you find out what was done. Design: [#2408](https://g
 co approvals                       # the newest 50 entries, oldest first
 co approvals --who 0x3f5a...c9e1   # one requester
 co approvals --who feishu:ou_123   # a chat sender
-co approvals --class money         # one special class (once classes are set)
+co approvals --class money         # one special class
 co approvals -n 200 --json         # more, as JSON
 ```
 
@@ -30,6 +30,35 @@ Each line has `ts`, `who` (`key:0x…`, `email:…`, `chat:<provider>:<sender>`,
 `declined`), `outcome`, `reason` and, for turns, `session` and `via`. Tokens
 (`sk-…`, `ghp_…`, `Bearer …`) and values assigned to names containing KEY,
 TOKEN, SECRET or PASSWORD are replaced with `***` before the line is written.
+
+## The three things that need the owner
+
+Code, not the model, puts a call in one of these classes, from the tool and
+its arguments, and every such call is recorded with its class. Where it stops:
+
+- **Someone other than the owner asked, and nobody is connected to ask**: a
+  chat message, an inbox turn, a contact's unattended run. The call is
+  declined with a pointer to the agent's own terminal, in every mode, Full
+  access included, with or without the approval plugin.
+- **Network EXEC** from anyone but an admin, whatever `host.yaml` whitelists:
+  the shipped `Bash(co *)` no longer lets a contact run `co env get`.
+
+The owner is a local caller (the agent's terminal, its schedules) or an admin.
+With a client connected, as when you use `co ai` in the browser, the approval
+flow asks that person as it always did. Asking the owner by email instead is
+next (#2408).
+
+| `class` | Examples |
+|---|---|
+| `credentials` | `co keys`, `co env get`, reading `keys.env` or `.co/keys/` |
+| `authority` | `co trust add`, writing `host.yaml`, `admins.txt` or a trust list |
+| `money` | `co transfer`, `co server new` |
+| `irreversible` | `rm`, `git push --force`, `git reset --hard`, `git clean`. For now every `rm` counts, even of a file git could restore |
+| `as_owner` | `co gmail send`, `co outlook reply`, the Gmail/Outlook tools' `send` and `reply`, calendar invites |
+
+Not in any class: mail from the agent's **own** mailbox (`co email send`,
+`send_email`), `co server list`, an ordinary `git push`, tests, reads. Those
+are done and recorded.
 
 ## What it is not
 

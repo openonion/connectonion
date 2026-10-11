@@ -822,7 +822,11 @@ def load_permission_patterns(co_dir=None) -> dict:
 #
 # approvals.jsonl is the record of what the agent did (#2408). An agent that
 # could edit it could hide what it did, so it is control too.
-CONTROL_FILES = ("host.yaml", "schedule.yaml", "admins.txt", "approvals.jsonl")
+#
+# The trust lists decide who may reach the agent at all (#2408's authority
+# class): an agent that could write whitelist.txt could admit anyone.
+CONTROL_FILES = ("host.yaml", "schedule.yaml", "admins.txt", "approvals.jsonl",
+                 "contacts.txt", "whitelist.txt", "blocklist.txt")
 CONTROL_DIRS = ("keys",)
 
 

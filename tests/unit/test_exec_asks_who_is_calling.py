@@ -133,7 +133,7 @@ class TestWhoMayDriveToolsDirectly:
         )
         calls = []
 
-        def exec_handler(create_agent, permissions, tool_name, args):
+        def exec_handler(create_agent, permissions, tool_name, args, owner=False):
             calls.append(tool_name)
             return {"status": "success", "result": "ok"}
 

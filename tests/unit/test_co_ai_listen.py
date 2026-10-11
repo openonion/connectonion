@@ -316,3 +316,18 @@ class TestTheListener:
         thread.join(timeout=5)
         assert not thread.is_alive()
         assert said == [], "a restart that worked is not news"
+
+
+class TestWhoIsAsking:
+    def test_the_first_turn_of_a_chat_already_knows_who_is_asking(self, rig):
+        """The requester used to be set after the reply was in, so the first
+        turn of every chat ran as nobody, which the special classes (#2408)
+        read as the owner: a stranger's first message could run co env get."""
+        inbox, provider, agent, llm = rig
+        seen = []
+        llm.answer = lambda last: seen.append((agent.current_session or {}).get("requester")) or "ok"
+
+        put(inbox, text="hi", sender="ou_stranger")
+        run(agent, [Channel("feishu")], until=lambda: provider.sent)
+
+        assert seen == [{"address": "feishu:ou_stranger", "level": "open"}]

@@ -22,6 +22,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
+from ...approvals import needs_owner, special
 from ...project import project_co_dir
 from ..asgi.http import (
     CORS_HEADERS,
@@ -43,7 +44,8 @@ from .session.turn import input_handler as input_handler
 # Handlers
 # ═══════════════════════════════════════════════════════
 
-def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
+def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict,
+                 owner: bool = False) -> dict:
     """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.
 
     The terminal-style fast path: the client names a tool and its arguments,
@@ -81,6 +83,11 @@ def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args
     if tool is None:
         return {"status": "error",
                 "error": f"unknown tool '{tool_name}' (available: {agent.tools.names()})"}
+
+    # #2408: whitelisted or not, a special-class call needs the owner.
+    klass = special(tool_name, args, tool)
+    if klass and not owner:
+        return {"status": "error", "class": klass, "error": f"forbidden: {needs_owner(klass, tool_name)}"}
 
     # Same injection as tool_executor: tools that declare 'agent' get it at call
     # time (never exposed to the caller's args).
