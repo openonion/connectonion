@@ -188,7 +188,8 @@ because their agent's address is not known yet. From then on the agents know
 each other: the code carries the sender's agent address, the acceptance carries
 the recipient's, and each side saves the other as a contact. Every reply, and
 any later handoff to that contact, goes to the other agent's inbox on the
-backend (`/api/v1/messages`) instead of through the mail service. A later
+backend (`/api/v1/messages`) instead of through the mail service. A contact
+made by 1.9.2b11 or earlier still gets mail: its co does not read the inbox. A later
 handoff to a contact therefore arrives in `co handoff inbox`, not as a mail;
 `co handoff show <id>` prints where its prompt is saved.
 

@@ -400,16 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b11
+## Current Version: 1.9.2b12
 
-1.9.2b11 is a 1.9.2 beta; stable remains 1.9.1. A `co handoff` is one
-message: every message the person typed in the session, word for word and
-across every compaction, the AI's replies in summary, and where the code is
-(repository, branch, commit). The preview flags private details, `--since N`
-starts at a later message, and `co handoff status --wait` returns when the
-other side accepts, asks or answers. Opening live REM starts `co ai` when no
-Host is running. See [1.9.2b11 notes](docs/releases/1.9.2b11.md).
+1.9.2b12 is a 1.9.2 beta; stable remains 1.9.1. Mail is only for discovery in
+`co handoff`: the first handoff to someone is a mail, and after it the two
+agents know each other's address. Questions, answers and later handoffs to that
+contact then go to the other agent's inbox on the backend (`/api/v1/messages`,
+kept 30 days). Codes start `coh2.`; a `coh1.` code from 1.9.2b11 or earlier is
+answered by mail. The install floor is 1.9.2b12. See
+[1.9.2b12 notes](docs/releases/1.9.2b12.md).
 
+- 1.9.2b12 (Agents talk through an inbox, not email).
 - 1.9.2b11 (A handoff that keeps what you said).
 - 1.9.2b10 (A handoff mail you can read on a phone).
 - 1.9.2b9 (Use the connectors Codex already has).
