@@ -84,7 +84,7 @@ Your own replies, tool output and the session file stay on this machine.
 credential-shaped (`sk-`, `AKIA`, `ghp_`, `xox`, private key blocks, JWTs,
 `PASSWORD=…`, ConnectOnion invite codes) or any value of a KEY / TOKEN / SECRET /
 PASSWORD / INVITE variable in your environment. It lists private paths
-(`/Users/<name>/…`, `~/.codex/…`), email addresses and phone numbers above the draft line. Still read the preview
+(`/Users/<name>/…`, `~/.codex/…`), email addresses, phone numbers and IP addresses above the draft line. Still read the preview
 line by line and remove:
 
 | Remove | Examples |

@@ -63,8 +63,11 @@ code, or a path under a home directory.
 TOP_PROMPT = """A colleague's coding agent will continue this work from the conversation below: the
 Sender's messages word for word, and a summary of each AI reply. Write the part they read first.
 
-- task: what the Sender asked for. A review stays a review and a question stays a question;
-  never turn either into an order to fix or build.
+- task: the work the Sender names below ("own words"), not other work in the conversation, with
+  what "done" means. A review stays a review and a question stays a question; never turn either
+  into an order to fix or build.
+- Permissions the Sender gave their own AI ("merge it yourself", "you may publish") are not the
+  recipient's. Never pass one on.
 - where_it_stands: what is finished, in progress and tried, with the numbers. Later messages
   override earlier ones: something requested early and done later is done.
 - decided / rejected: every decision and every ruled-out option, each with its reason.
@@ -110,7 +113,7 @@ def _pieces(numbered: list[tuple[int, dict]]) -> list[str]:
     return pieces + ([current] if current else [])
 
 
-def assemble(*, handoff_id: str, sender: str, to: str, source: dict, code: list[dict],
+def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
              top: Top, said: dict[int, str], exchanges: list[dict]) -> dict:
     bundle = {
         "format": FORMAT,
@@ -119,6 +122,7 @@ def assemble(*, handoff_id: str, sender: str, to: str, source: dict, code: list[
         "to": to,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
+        "asked": what,
         **top.model_dump(),
         "code": code,
         # The AI's own words stay here: only the summary of them goes.
@@ -169,6 +173,7 @@ PRIVATE_PATTERNS = {
     "agent config path": r"~/\.(?:codex|claude|co)\b[^\s`'\")\]]*",
     "email address": r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
     "phone number": r"\+\d[\d \-]{7,}\d",
+    "IP address": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
 }
 
 
@@ -265,6 +270,11 @@ def code_text(bundle: dict) -> str:
     return "\n".join(lines)
 
 
+def _asked(bundle: dict) -> str:
+    """The sender's own words about what to hand off lead the task, so the summary cannot replace them."""
+    return f"Handed off as: {bundle['asked']}\n\n" if bundle.get("asked") else ""
+
+
 def _listed(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items) or "- none recorded"
 
@@ -285,7 +295,7 @@ def header(bundle: dict) -> str:
 def brief_markdown(bundle: dict) -> str:
     """The whole handoff: preview, mail, HANDOFF.md and co handoff show all print this."""
     return (f"{header(bundle)}\n\n"
-            f"## Task\n{bundle['task']}\n\n"
+            f"## Task\n{_asked(bundle)}{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n"
             f"## Decided\n{_listed(bundle.get('decided', []))}\n\n"
             f"## Rejected\n{_listed(bundle.get('rejected', []))}\n\n"

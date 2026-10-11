@@ -88,8 +88,8 @@ One message, kept the way a compaction keeps a conversation:
 
 | part | what it holds |
 |---|---|
-| Task, Where it stands, Decided, Rejected, Open questions | the part read first, written from your messages and the summaries below. A review stays a review; later messages override earlier ones |
-| Code | up to three repositories the session worked in (Claude Code's `cwd`/`gitBranch` on each row, Codex's `session_meta` and `turn_context`), most recent first: remote (any `user:token@` removed), branch, that branch's commit, whether it is pushed, and how many files are changed but not committed |
+| Task, Where it stands, Decided, Rejected, Open questions | the part read first. Task opens with your own words from `send` ("Handed off as: …"); the rest is written from your messages and the summaries below. A review stays a review, later messages override earlier ones, and permissions you gave your own AI ("merge it yourself") are never passed on |
+| Code | up to three repositories the session worked in (Claude Code's `cwd`/`gitBranch` on each row; Codex's `session_meta`, `turn_context` and each command's `workdir`), most recent first: remote (any `user:token@` removed), branch, the last commit on it by the time the session last worked there, whether it is pushed, and how many files are changed but not committed |
 | Conversation | every message you typed in the session, word for word and never cut; under each, what the AI said or did in reply, summarised (up to six sentences for a long stretch) |
 
 Not sent: the AI's own text, tool calls and output, reasoning, anything the client
@@ -105,13 +105,13 @@ A message containing anything credential-shaped (API keys, tokens, private key
 blocks, JWTs, `PASSWORD=…`, ConnectOnion invite codes) or any value of a KEY /
 TOKEN / SECRET / PASSWORD / INVITE variable in your environment is refused with
 exit 1. Private paths (`/Users/<name>/…`, `/home/<name>/…`, `~/.codex/…`), email
-addresses and phone numbers are listed under the preview so you remove or keep
+addresses, phone numbers and IP addresses are listed under the preview so you remove or keep
 each knowingly. Every message you typed goes, so in a session that also covered
 other work, start where this task starts: `--since <N>` with N from the preview's
 `[N]` list, or remove lines with `--edit`.
 
 Bundle format `co-handoff/3`: `title`, `task`, `where_it_stands`, `decided`,
-`rejected`, `open_questions`, `code` (`[{repository, branch, commit, pushed,
+`rejected`, `open_questions`, `asked` (your words from `send`), `code` (`[{repository, branch, commit, pushed,
 uncommitted}]`), `conversation` (`[{at, user, ai}]`), `source` (client, session
 id, message count; no local paths) and `content_hash`, which covers all of it so
 the recipient can tell the copy is the one you approved.
@@ -136,6 +136,8 @@ whole conversation is read from its first message:
   `origin.kind: human`) and is kept.
 - **Codex** writes a `compacted` row whose `replacement_history` repeats user
   messages already in the rollout, and whose summary is encrypted. It is skipped.
+  A `/goal` objective arrives inside `<codex_internal_context source="goal">`,
+  repeated every turn; its `<objective>` is kept once, as "Goal: …".
 
 ## Preview, edit, send
 
