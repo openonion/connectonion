@@ -144,7 +144,10 @@ BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
 
 `co create` and `co init ./ --template co-ai` scaffold the same agent the `co ai`
 command runs, wrapped in `host()`, plus a `Dockerfile` that ships a real
-Chrome + Xvfb browser runtime so browser tools work out of the box.
+Chrome + Xvfb browser runtime so browser tools work out of the box. The deployed
+host serves what `co ai` serves: the agent, REM when the server has a
+`~/.co/rem`, and the channels in `.co/host.yaml`'s `listen:`
+([what one host serves](host.md#what-one-host-serves)).
 
 There is one template. `agent.py` is about five lines, and you specialise it
 with skills in `.co/skills/` rather than by starting from a different skeleton:

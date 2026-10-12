@@ -73,7 +73,7 @@ def test_it_says_which_port_and_how_to_change_it(project, taken_port, monkeypatc
     assert str(taken_port) in text
     assert "already in use" in text
     assert "port:" in text and ".co/host.yaml" in text
-    assert "AGENT_PORT=" in text
+    assert "co host --port" in text
 
 
 def test_a_free_port_is_not_reported(tmp_path):

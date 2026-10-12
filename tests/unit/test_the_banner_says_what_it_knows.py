@@ -148,7 +148,7 @@ class TestAConfigFileThatIsNotThere:
         hint = self._flat(_port_taken_message(8000, tmp_path / ".co"))
 
         assert "does not exist yet" in hint and "port: 8001" in hint
-        assert "AGENT_PORT=8001" in hint
+        assert "co host --port 8001" in hint
 
     def test_the_port_hint_says_to_change_one_that_exists(self, tmp_path):
         from connectonion.network.host.server import _port_taken_message

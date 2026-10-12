@@ -120,7 +120,7 @@ def env_file_callback(ctx: typer.Context, value: Optional[Path]):
 START_HERE = (
     ("Start here:", (
         "co init                  Set up your identity and keys (~/.co/keys.env)",
-        "co create my-agent       New project; then: cd my-agent && python agent.py",
+        "co create my-agent       New project; then: cd my-agent && co host",
         "co auth                  Log in to OpenOnion for managed models and credits",
         "co commands              Every command and subcommand; add --help to any",
     )),
@@ -260,6 +260,25 @@ def create(
     if handle_create(name=name, ai=None, key=key, template=template,
                      description=description, yes=yes) is False:
         raise typer.Exit(1)
+
+
+@app.command(epilog="Example:  co host  |  co host --port 8001")
+def host(
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
+):
+    """Serve the agent in this directory: runs ./agent.py with co's own Python, so it works however co was installed.
+
+    One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
+    channels in .co/host.yaml's listen:. Runs until stopped.
+    """
+    import os
+    import subprocess
+    if not Path("agent.py").exists():
+        console.print("[red]No agent.py in this directory.[/red] Make one: co create my-agent, then cd my-agent")
+        raise typer.Exit(2)
+    # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
+    env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
+    raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
 
 
 @app.command(epilog="Example:  co deploy  |  co deploy --to prod")

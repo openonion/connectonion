@@ -131,6 +131,7 @@ def start_server(
     agent_factory=None,
     invite_code: str = None,
     launch: bool = True,
+    listen: list | None = None,
 ):
     """Start AI coding agent web server.
 
@@ -201,7 +202,7 @@ def start_server(
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
     if agent_factory is None:
-        host(create, port=port, trust=trust, co_dir=co_dir, rem_root=Path.home() / ".co/rem")
+        host(create, port=port, trust=trust, co_dir=co_dir, listen=listen)
         return
 
     from ...network.host.session import SessionStorage
@@ -256,6 +257,5 @@ def start_server(
         for stop in handoff_stop:
             stop.set()
 
-    host(session_agent, port=port, trust=trust, co_dir=co_dir,
-         rem_root=Path.home() / ".co/rem",
+    host(session_agent, port=port, trust=trust, co_dir=co_dir, listen=listen,
          on_agent_startup=start_watches, on_agent_shutdown=stop_watches)

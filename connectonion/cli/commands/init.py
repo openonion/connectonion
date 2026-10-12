@@ -358,7 +358,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Show different message based on whether agent.py exists
     if template != 'none' and (Path(current_dir) / "agent.py").exists():
         # Command with syntax highlighting - compact design
-        command = "python agent.py"
+        command = "co host"
         syntax = Syntax(
             command,
             "bash",

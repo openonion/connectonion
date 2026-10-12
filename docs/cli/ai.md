@@ -23,6 +23,9 @@ co ai
 - You chat with the agent through the web UI
 - Agent runs in your project directory
 - Serves OIP 0.1 over the authenticated `/ws` connection
+- Serves REM (your `~/.co/rem`) and answers the chat channels in
+  `~/.co/host.yaml`'s `listen:`, through the same Host as `co host`
+  ([what one host serves](../network/host.md#what-one-host-serves))
 
 ### Watch work in this session
 

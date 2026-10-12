@@ -1,4 +1,4 @@
-# Host configuration — edit these values, then run: host(create_agent)
+# Host configuration — edit these values, then run: co host
 trust: careful
 port: 8000
 workers: 1
@@ -6,6 +6,11 @@ result_ttl: 86400
 # Omit relay_url to follow CONNECTONION_BACKEND_URL. Set a custom WebSocket
 # origin to override it, or set relay_url: "" to disable relay discovery.
 reload: false
+
+# One host serves everything (docs/network/host.md#what-one-host-serves):
+rem: true                           # your ~/.co/rem pages, to the owner only
+# listen:                           # chat channels to answer, e.g.
+#   feishu: {mention_only: true}
 
 # File upload limits - uncomment to customize
 # max_file_size: 10                 # MB per file (both WebSocket and HTTP)

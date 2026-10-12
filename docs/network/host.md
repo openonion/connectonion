@@ -11,7 +11,7 @@
 ## Quick Start (60 Seconds)
 
 First, once per machine, give yourself an identity and an account — the agent
-below calls a `co/` model, and without them `python agent.py` stops with
+below calls a `co/` model, and without them `co host` stops with
 `MissingAmbientAPIKey`:
 
 ```bash
@@ -19,7 +19,7 @@ co auth        # creates ~/.co/keys.env with your address and signs you in
 ```
 
 (`co init` in the project folder does the same and also writes `.co/` and the
-agent's invite code.) Then save this as `agent.py` and run `python agent.py`:
+agent's invite code.) Then save this as `agent.py` and run `co host`:
 
 ```python
 from connectonion import Agent, host, llm_do
@@ -85,7 +85,29 @@ needs none and runs on defaults; the banner then says where the file would go.
 
 **Port already in use?** `host()` checks before printing the banner and stops
 with the port and how to move it: set `port:` in `.co/host.yaml` (creating the
-file if the project has none), or for one run `AGENT_PORT=8001 python agent.py`.
+file if the project has none), or for one run `co host --port 8001`.
+
+**`co host` or `python agent.py`?** The same thing. `co host` runs `./agent.py`
+with the Python co itself runs on, so it works however co was installed. After
+the one-line installer, co lives in its own environment, and the system
+`python` cannot import `connectonion` (#2438). `python agent.py` works when that
+python has connectonion installed, as in a venv or on a `co deploy` server.
+
+## What one host serves
+
+One process and one port serve everything below. `co host`, `python agent.py`,
+`co deploy` and `co ai` all go through the same `host()`, so they serve the
+same things (#2439):
+
+| | What | Who can use it | Turned off by |
+|---|---|---|---|
+| Agent | HTTP `POST /input`, `WS /ws`, the relay | whoever `trust` admits | — |
+| REM | your `~/.co/rem` pages, over the same socket (`co rem open --live`) | the owner (admin) only | `rem: false` in `.co/host.yaml` |
+| Channels | the chats in `.co/host.yaml`'s `listen:` (Feishu, Telegram, …) | whoever can address the bot there | leaving `listen:` out |
+| Schedule | the jobs in `.co/schedule.yaml` | — | having none |
+
+Nothing needs a second command. A server with no `~/.co/rem` answers REM
+requests with "not available on this Host".
 
 **By default, your agent is discoverable, not open.** Anyone with your
 address can reach it, but the default trust level is `careful`: it answers you
@@ -115,34 +137,30 @@ See [Agent-Relay Protocol](protocol/agent-relay-protocol.md) for technical detai
 
 ```python
 def host(
-    create_agent: Callable[[], Agent],  # Factory that returns fresh Agent
-
-    # Trust
-    trust: Union[str, Agent] = "careful",
-    blacklist: list = None,
-    whitelist: list = None,
-
-    # Server
-    port: int = 8000,
-    workers: int = 1,
-
-    # Storage
-    result_ttl: int = 86400,  # 24 hours (how long server keeps results)
-
-    # P2P Discovery
-    relay_url: str = "wss://oo.openonion.ai/ws/announce",
-
-    # Development
-    reload: bool = False,
-
-    # File Upload Limits
-    max_file_size: int = 10,               # MB per file
-    max_files_per_request: int = 10,       # Max files in one request
-
-    # Deterministic HTTP resources (optional)
-    http: HTTPRouter = None,
+    create_agent: Callable[[], Agent] | Agent,  # Factory (fresh Agent per request) or one shared Agent
+    port: int = None,          # None: host.yaml's port:, else 8000
+    trust: Union[str, Agent] = None,   # None: host.yaml's trust:, else "careful"
+    result_ttl: int = None,    # None: host.yaml's result_ttl:, else 86400 (24 h)
+    workers: int = None,
+    reload: bool = None,
+    *,
+    relay_url: str | None = UNSET,   # unset: host.yaml's relay_url:, else the relay of your backend; None: no relay
+    blacklist: list | None = None,
+    whitelist: list | None = None,
+    co_dir: Path = None,       # the .co directory; default: ./.co
+    summary: str = None,       # shown in /info and on the relay
+    examples: list = None,     # example prompts in /info
+    http: HTTPRouter = None,   # deterministic HTTP routes (see http-routes.md)
+    provider_station=None,     # Codex / Claude Code delegation
+    rem_root: Path = None,     # None: ~/.co/rem, unless host.yaml says rem: false
+    listen: list | None = None,   # None: host.yaml's listen:; [] answers no channel
+    on_agent_startup=None,     # async callables run when the server starts / stops
+    on_agent_shutdown=None,
 ) -> None:
 ```
+
+Upload limits (`max_file_size`, `max_files_per_request`) are `.co/host.yaml`
+keys, not parameters. See [host-config.md](host-config.md).
 
 ---
 
@@ -1439,35 +1457,9 @@ sudo systemctl start myagent
 
 ### host()
 
-```python
-def host(
-    create_agent: Callable[[], Agent],
-    trust: Union[str, Agent] = "careful",
-    blacklist: list = None,
-    whitelist: list = None,
-    port: int = 8000,
-    workers: int = 1,
-    result_ttl: int = 86400,
-    relay_url: str = "wss://oo.openonion.ai/ws/announce",
-    reload: bool = False,
-    max_file_size: int = 10,               # MB per file
-    max_files_per_request: int = 10,
-) -> None
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `create_agent` | `Callable[[], Agent]` | required | Function that returns a fresh Agent instance |
-| `trust` | `str` or `Agent` | `"careful"` | Trust level, policy, or agent |
-| `blacklist` | `list` | `None` | Addresses to always reject |
-| `whitelist` | `list` | `None` | Addresses to always accept |
-| `port` | `int` | `8000` | HTTP port |
-| `workers` | `int` | `1` | Number of uvicorn worker processes |
-| `result_ttl` | `int` | `86400` | How long server keeps results (24h) |
-| `relay_url` | `str` | production | P2P relay server |
-| `reload` | `bool` | `False` | Auto-reload on changes |
-| `max_file_size` | `int` | `10` | Max file size in MB (both WS and HTTP) |
-| `max_files_per_request` | `int` | `10` | Max number of files in one request |
+The signature and what each parameter does are under
+[Function Signature](#function-signature) above. Every parameter left as
+`None` takes its value from `.co/host.yaml`, then from the built-in default.
 
 ### create_app()
 
