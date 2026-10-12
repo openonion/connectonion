@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b18**: a `co handoff` starts cleanly on a machine that has never
-seen co, inside Codex's sandbox too, and the sender sees each question's state
-every time. See [1.9.2b18 notes](releases/1.9.2b18.md).
+Beta **1.9.2b19**: one host serves the agent, REM and your channels however you
+start it, and the new `co host` works right after the one-line installer. See
+[1.9.2b19 notes](releases/1.9.2b19.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b18'
+python -m pip install --upgrade 'connectonion==1.9.2b19'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b18**: a `co handoff` starts cleanly on a machine that has never
+seen co, inside Codex's sandbox too, and the sender sees each question's state
+every time. See [1.9.2b18 notes](releases/1.9.2b18.md).
 
 Beta **1.9.2b17**: the session copy sent with a handoff answer also drops
 credentials the AI wrote through a tool call. See [1.9.2b17 notes](releases/1.9.2b17.md).
