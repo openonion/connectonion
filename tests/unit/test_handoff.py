@@ -784,3 +784,9 @@ def test_a_long_conversation_keeps_its_newest_messages_in_the_mailed_block():
     assert len(text) < 21_000 and "message 100 " in text and "message 1 " not in text
     assert text.startswith("[Messages 1 to ") and "whole session" in text
     assert bundles.conversation_text(bundle) .count("message ") == 100      # HANDOFF.md and the preview keep all
+
+
+def test_a_secret_in_a_tool_input_shown_as_escaped_json_is_redacted():
+    # A tool call's input reaches the copy as JSON, so a credentials file it wrote has escaped quotes.
+    text = bundles.redact('{"content": "{\\"client_secret\\": \\"GOCSPX-abcdefghijklmnopqrstuv\\"}"}')
+    assert "GOCSPX" not in text
