@@ -1388,11 +1388,13 @@ def trust_callback(ctx: typer.Context):
         handle_trust_list()
 
 
-@trust_app.command("list", epilog="Example:  co trust list")
-def trust_list():
+@trust_app.command("list", epilog="Example:  co trust list --global")
+def trust_list(global_: bool = typer.Option(False, "--global", "-g",
+                                            help="The global identity in ~/.co, which co ai and co handoff use")):
     """List every address on each trust list. Read-only."""
     from .commands.trust_commands import handle_trust_list
-    handle_trust_list()
+    from ..environment import global_config_dir
+    handle_trust_list(global_config_dir() if global_ else None)
 
 
 @trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}")

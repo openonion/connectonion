@@ -188,3 +188,26 @@ class TestCoTrustSaysWhereItLooked:
         out = capsys.readouterr().out
         assert 'Whitelist' in out
         assert '0xabc' in out
+
+
+class TestTheGlobalIdentityHasItsOwnLists:
+    """co ai and co handoff use ~/.co; a handoff says its new contact is there (#2427)."""
+
+    def test_global_lists_the_identity_a_handoff_added_to(self, tmp_path, monkeypatch):
+        from typer.testing import CliRunner
+        from connectonion.cli.main import app
+
+        home = tmp_path / 'home' / '.co'
+        home.mkdir(parents=True)
+        (home / 'contacts.txt').write_text('0x' + 'b2' * 32 + '\n')
+        monkeypatch.setenv('AGENT_CONFIG_PATH', str(home))
+        monkeypatch.chdir(tmp_path)          # a folder with no agent of its own
+
+        here = CliRunner().invoke(app, ['trust', 'list'], env={'COLUMNS': '200'})
+        assert 'co trust list --global' in here.output, "the way to the contact a handoff announced"
+
+        result = CliRunner().invoke(app, ['trust', 'list', '--global'], env={'COLUMNS': '200'})
+        assert result.exit_code == 0
+        assert '0x' + 'b2' * 32 in result.output
+        assert 'accepted handoff' in result.output
+        assert str(home) in result.output.replace('\n', '')

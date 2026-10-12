@@ -255,7 +255,7 @@ def _sender_status(record: dict) -> None:
         return
     name = replies.remember_peer(who["address"], who["mailbox"], handoff_id, record["to"], record.get("inbox", False))
     out.print(style.ok(f"Accepted by {who['address']} ({who['mailbox']}) at {who['at']}"))
-    out.print(f"{who['address']} is now your agent's contact {name} (co trust list); "
+    out.print(f"{who['address']} is now your agent's contact {name} (co trust list --global); "
               f"co handoff send {shlex.quote(name)} reaches them again.")
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
@@ -328,7 +328,7 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
     name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}")
-    out.print(f"The sender {code['address']} is now your agent's contact {name} (co trust list); "
+    out.print(f"The sender {code['address']} is now your agent's contact {name} (co trust list --global); "
               f"co handoff send {shlex.quote(name)} hands work back.")
     if brief:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")

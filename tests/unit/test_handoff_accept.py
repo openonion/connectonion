@@ -142,7 +142,7 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
     world["be"](RECIPIENT)
     assert not tools.is_contact(SENDER["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
     accepted = _invoke("handoff", "accept", code)
-    assert f"The sender {SENDER['address']} is now your agent's contact alice (co trust list)" in accepted.output
+    assert f"The sender {SENDER['address']} is now your agent's contact alice (co trust list --global)" in accepted.output
     assert tools.is_contact(SENDER["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
     assert transport.resolve("alice") == SENDER["mail"]
 
@@ -150,7 +150,7 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
     co_dir = Path(os.environ["AGENT_CONFIG_PATH"])
     assert not tools.is_contact(RECIPIENT["address"], co_dir)          # not before the sender sees the acceptance
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert f"{RECIPIENT['address']} is now your agent's contact bob (co trust list)" in status.output
+    assert f"{RECIPIENT['address']} is now your agent's contact bob (co trust list --global)" in status.output
     assert tools.is_contact(RECIPIENT["address"], co_dir) and not tools.is_whitelisted(RECIPIENT["address"], co_dir)
     assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True}}  # kept its name; reads the inbox
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
