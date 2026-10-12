@@ -164,6 +164,13 @@ def test_a_new_contact_never_overwrites_one_with_the_same_name(world):
     assert transport.contacts()["alice"] == {"mail": "other-alice@example.com"}
 
 
+def test_a_contact_named_after_an_agent_mailbox_is_reached_by_that_name(world):
+    world["be"](SENDER)                                     # the recipient reads 0x…@mail, so that is its name
+    name = transport.meet(RECIPIENT["mail"], RECIPIENT["address"])
+    assert name == "0xb2b2b2b2b2"
+    assert transport.resolve(name) == RECIPIENT["mail"]     # what `co handoff send <name>` prints as the way back
+
+
 def test_an_old_contacts_file_of_plain_addresses_still_resolves(world):
     world["be"](SENDER)
     transport.contacts_file().parent.mkdir(parents=True)
