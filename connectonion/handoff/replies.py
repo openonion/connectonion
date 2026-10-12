@@ -270,7 +270,7 @@ def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: b
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return transport.meet(to, address, inbox)
+    return transport.meet(to, address, inbox, f"accepted our handoff {handoff_id}")
 
 
 def _now() -> str:
