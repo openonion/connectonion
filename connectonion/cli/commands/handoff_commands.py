@@ -274,16 +274,28 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
               f"co handoff send {shlex.quote(name)} reaches them again.")
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
+    news = replies.answer_automatically(record, state)
+    answered = [q for q in state["questions"] if replies.question_key(q) in record.get("answered", [])]
     for q in state["questions"]:
         out.print(f"Question, {q['at']}: {q['text']}", markup=False)
-    for line in replies.answer_automatically(record, state):
-        out.print(line.replace(f"[handoff] {handoff_id} answered", "Answered")
-                  .replace(f"[handoff] {handoff_id} could not", "Could not"), markup=False)
+        if q in answered:
+            out.print(f"  Answered automatically: {_how_answered(record, q)}", markup=False)
+    for line in [n for n in news if " could not answer " in n]:
+        out.print(line.replace(f"[handoff] {handoff_id} could not", "Could not"), markup=False)
     if state["questions"]:
-        _next(f'co handoff answer {handoff_id} "<your answer>"')
+        also = "  (only if the session copy does not answer it)" if len(answered) == len(state["questions"]) else ""
+        _next(f'co handoff answer {handoff_id} "<your answer>"{also}')
     else:
         out.print("No questions yet.")
         _next(f"co handoff status {handoff_id}")
+
+
+def _how_answered(record: dict, question: dict) -> str:
+    if record.get("copy_with") == replies.question_key(question):
+        return "your agent sent them the session copy to search."
+    if record.get("copy_sent"):
+        return "your agent pointed them to the session copy it sent before."
+    return "the session is no longer on this machine, so no copy went with it. Answer it yourself."
 
 
 def _recipient_status(code: dict, mails: list[dict], quiet: bool = False) -> None:

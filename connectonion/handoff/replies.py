@@ -207,13 +207,14 @@ def answer_automatically(record: dict, state: dict) -> list[str]:
         on_disk = json.loads(path.read_text(encoding="utf-8"))
         record["answered"] = answered_keys(on_disk, state["questions"])
         record["copy_sent"] = on_disk.get("copy_sent", False)
+        record["copy_with"] = on_disk.get("copy_with")
         news = []
         for question in [q for q in state["questions"] if question_key(q) not in record["answered"]]:
             sent, line = _answer(record, who, session, question)
             news.append(line)
             if not sent:
                 break
-        on_disk.update(answered=record["answered"], copy_sent=record["copy_sent"])
+        on_disk.update(answered=record["answered"], copy_sent=record["copy_sent"], copy_with=record["copy_with"])
         path.write_text(json.dumps(on_disk, indent=2) + "\n", encoding="utf-8")
     return news
 
@@ -229,6 +230,7 @@ def _answer(record: dict, who: dict, session: dict, question: dict) -> tuple[boo
         return False, f"[handoff] {record['id']} could not answer \"{question['text']}\": {result.get('error')}"
     record["answered"].append(question_key(question))
     record["copy_sent"] = record["copy_sent"] or copy
+    record["copy_with"] = question_key(question) if copy else record["copy_with"]
     label = ", with the session copy" if copy else ""
     return True, f"[handoff] {record['id']} answered automatically{label}: {question['text']}"
 

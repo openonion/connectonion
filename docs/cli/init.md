@@ -44,8 +44,10 @@ only for those installed (their `~/.codex` or `~/.claude` directory exists):
   commands` and `co <cmd> --help` before a browser or a script; do not hunt
   for credentials) and one line per top-level command.
 
-It prints each path it changed. Your own text outside the markers is never
-touched. To take the block out: `co skills index --remove`; to refresh it
+It prints each path it changed. A directory it cannot write, like `~/.codex`
+inside Codex's sandbox, is skipped with a line saying so, and init still
+finishes; run `co skills link` and `co skills index` outside the sandbox later.
+Your own text outside the markers is never touched. To take the block out: `co skills index --remove`; to refresh it
 without re-running init: `co skills index`. Agents started with `host()` or
 `co ai` refresh a stale block on their own, and `co doctor` reports one that
 is missing or stale. See [co skills index](skills.md#co-skills-index).
