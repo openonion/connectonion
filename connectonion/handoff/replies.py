@@ -155,7 +155,8 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
     agent, are ignored and counted. The block's own fields are used, not the
     mail's From: the mail service delivers with a per-message sender address.
     """
-    state = {"accepted": None, "questions": [], "ignored": 0}
+    # The acceptance is kept in the record: on a busy mailbox it falls out of the newest 200 mails.
+    state = {"accepted": record.get("accepted"), "questions": [], "ignored": 0}
     for block in received(record["id"], mails):
         if block["secret"] != record["secret"] or block["kind"] == "answer":
             continue
@@ -167,6 +168,7 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
             state["questions"].append({"text": block["text"], "at": block["at"]})
         elif not ours:
             state["ignored"] += 1
+    record["accepted"] = state["accepted"]
     return state
 
 

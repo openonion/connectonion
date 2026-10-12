@@ -538,3 +538,33 @@ def test_the_inbox_is_read_to_its_newest_message(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda url, params, headers, timeout: Page(params))
     monkeypatch.setattr("connectonion.credentials.require_ambient_api_key", lambda: "token")
     assert [m["message"] for m in transport._read_messages()][-1] == "n600"
+
+
+def test_wait_returns_at_once_for_an_answer_that_landed_before_it_began(world, tmp_path, monkeypatch):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")                 # answered before the recipient starts waiting
+    world["be"](RECIPIENT)
+    waits = []
+    monkeypatch.setattr("time.sleep", lambda seconds: waits.append(seconds) or (_ for _ in ()).throw(TimeoutError))
+    first = _invoke("handoff", "status", "ho-1a2b3c4d", "--wait")
+    assert first.exit_code == 0 and not waits and "Answer," in first.output
+    again = _invoke("handoff", "status", "ho-1a2b3c4d", "--wait")  # already shown: it waits for something new
+    assert isinstance(again.exception, TimeoutError) and waits
+
+
+def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    world["inbox"][:] = [m for m in world["inbox"] if "accept" not in transport._as_mail(m)["subject"]]
+    world["be"](RECIPIENT)
+    _invoke("handoff", "ask", code, "q1?")
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "Not accepted yet" not in status.output and "Answered automatically, with the session copy: q1?" in status.output

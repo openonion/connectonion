@@ -608,7 +608,7 @@ def test_status_wait_returns_once_something_new_arrives(project, model, mailbox,
     handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
     _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
     from connectonion.handoff import replies
-    arrivals = iter([[], [], [{"kind": "ask"}]])
+    arrivals = iter([[], [], [{"kind": "ask"}], [{"kind": "ask"}], [{"kind": "ask"}]])
     checks = []
     monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: checks.append(1) or next(arrivals))
     monkeypatch.setattr(replies, "settle", lambda record, mails=None: {"accepted": None, "questions": [], "ignored": 0})
@@ -616,7 +616,7 @@ def test_status_wait_returns_once_something_new_arrives(project, model, mailbox,
     monkeypatch.setattr("time.sleep", lambda seconds: None)
     result = _invoke("handoff", "status", handoff_id, "--wait")
     assert result.exit_code == 0, result.output
-    assert len(checks) == 3 and f"Handoff {handoff_id} (sent)" in result.output
+    assert len(checks) == 4 and f"Handoff {handoff_id} (sent)" in result.output   # 3 waiting, 1 to remember it
 
 
 def test_a_repository_url_is_not_a_private_detail_and_a_detached_head_says_so():
