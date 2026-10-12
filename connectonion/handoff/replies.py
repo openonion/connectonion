@@ -21,8 +21,11 @@ import json
 import re
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 
 from ..address import agent_email
+from ..env_file import env_lock
+from ..environment import global_config_dir
 from . import bundle as bundles
 from . import sessions, transport
 
@@ -177,30 +180,75 @@ POINTER = ("Answered automatically by the sender's agent: search the session cop
            "answer (co handoff status shows where it is saved). The sender sees your question too.")
 
 
+NO_COPY = ("Answered automatically by the sender's agent, but the session this handoff came from is no longer "
+           "on the sender's machine, so no copy comes with it. The sender sees your question and can answer it.")
+
+# The block is base64'd again inside the message and the inbox takes 5 MB, so the packed copy stays
+# under 3.5 MB; a longer session keeps its newest part. 124 MB of Claude Code session packed to 5.76 MB.
+COPY_BUDGET = 3_500_000
+EARLIER_CUT = "[The earlier part of this session was cut so the copy fits the agent inbox.]\n\n"
+
+
 def answer_automatically(record: dict, state: dict) -> list[str]:
     """Answer each question not answered yet, without asking the sender (Aaron, 2026-10-11).
 
     The first answer carries a copy of the session the handoff was drafted from, bounded to the
-    handed-off messages and the moment it was sent; later answers point to it. `record` counts
-    what was answered, so each question is answered once; the caller saves it."""
+    handed-off messages and the moment it was sent; later answers point to it. The record on disk
+    lists the questions answered, under a lock, so co ai's watcher and `co handoff status` running
+    at once answer each question once; `record` gets the same fields."""
     who, session = state["accepted"], record.get("session")
     if not who or not session:
         return []
-    news = []
-    for question in state["questions"][record.get("answered", 0):]:
-        extra = {} if record.get("copy_sent") else {"context": _pack(bundles.redact(
-            sessions.transcript(session["kind"], session["path"], session.get("since", ""), record["sent_at"]),
-            bundles.known_secrets()))}
-        result = send("answer", {"id": record["id"], "secret": record["secret"]}, who["mailbox"],
-                      agent=who["address"] if record.get("inbox") else None,
-                      text=POINTER if record.get("copy_sent") else WITH_COPY, **extra)
-        if not result.get("success"):
-            news.append(f"[handoff] {record['id']} could not answer \"{question['text']}\": {result.get('error')}")
-            break
-        record["answered"] = record.get("answered", 0) + 1
-        record["copy_sent"] = True
-        news.append(f"[handoff] {record['id']} answered automatically: {question['text']}")
+    path = global_config_dir() / "handoff" / "sent" / f"{record['id']}.json"
+    with env_lock(path, timeout=300):
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        record["answered"] = answered_keys(on_disk, state["questions"])
+        record["copy_sent"] = on_disk.get("copy_sent", False)
+        news = []
+        for question in [q for q in state["questions"] if question_key(q) not in record["answered"]]:
+            sent, line = _answer(record, who, session, question)
+            news.append(line)
+            if not sent:
+                break
+        on_disk.update(answered=record["answered"], copy_sent=record["copy_sent"])
+        path.write_text(json.dumps(on_disk, indent=2) + "\n", encoding="utf-8")
     return news
+
+
+def _answer(record: dict, who: dict, session: dict, question: dict) -> tuple[bool, str]:
+    """One answer, and the line to tell the sender; marks the question answered in `record` when it went out."""
+    copy = not record["copy_sent"] and Path(session["path"]).exists()
+    extra = {"context": _copy(record, session)} if copy else {}
+    text = POINTER if record["copy_sent"] else WITH_COPY if copy else NO_COPY
+    result = send("answer", {"id": record["id"], "secret": record["secret"]}, who["mailbox"],
+                  agent=who["address"] if record.get("inbox") else None, text=text, **extra)
+    if not result.get("success"):
+        return False, f"[handoff] {record['id']} could not answer \"{question['text']}\": {result.get('error')}"
+    record["answered"].append(question_key(question))
+    record["copy_sent"] = record["copy_sent"] or copy
+    label = ", with the session copy" if copy else ""
+    return True, f"[handoff] {record['id']} answered automatically{label}: {question['text']}"
+
+
+def question_key(question: dict) -> str:
+    return f"{question['at']} {question['text']}"
+
+
+def answered_keys(record: dict, questions: list[dict]) -> list[str]:
+    """The questions answered so far. Records from 1.9.2b13 kept a count of the oldest ones instead."""
+    answered = record.get("answered", [])
+    return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
+
+
+def _copy(record: dict, session: dict) -> str:
+    """The redacted session, packed; its newest part when the whole would not fit the inbox."""
+    text = bundles.redact(sessions.transcript(session["kind"], session["path"], session.get("since", ""),
+                                              record["sent_at"]), bundles.known_secrets())
+    packed = _pack(text)
+    while len(packed) > COPY_BUDGET:
+        text = text[-int(len(text) * COPY_BUDGET / len(packed) * 0.9):]
+        packed = _pack(EARLIER_CUT + text)
+    return packed
 
 
 def _pack(text: str) -> str:

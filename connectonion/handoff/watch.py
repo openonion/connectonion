@@ -31,15 +31,16 @@ def check() -> list[str]:
     for path in waiting:
         record = json.loads(path.read_text(encoding="utf-8"))
         state = replies.settle(record, mails)
-        seen = record.get("seen", {"accepted": False, "questions": 0})
+        seen = record.get("seen", {"accepted": False, "questions": []})
+        told = replies.answered_keys({"answered": seen["questions"]}, state["questions"])   # 1.9.2b13 kept a count
         who = state["accepted"]
         if who and not seen["accepted"]:
             name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"], record.get("inbox", False))
             news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as contact {name}")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
-                 for q in state["questions"][seen["questions"]:]]
+                 for q in state["questions"] if replies.question_key(q) not in told]
         news += replies.answer_automatically(record, state)
-        record["seen"] = {"accepted": bool(who), "questions": len(state["questions"])}
+        record["seen"] = {"accepted": bool(who), "questions": [replies.question_key(q) for q in state["questions"]]}
         path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return news
 

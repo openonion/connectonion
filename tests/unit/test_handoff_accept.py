@@ -350,6 +350,7 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
     shown = _invoke("handoff", "show", "ho-2b3c4d5e")
     assert "co handoff accept coh2." in shown.output                         # how to take it over, without the mail
+    assert "[co.path]" not in shown.output                                   # a path, not style markup (b13 test)
 
 
 def test_a_contact_from_before_the_inbox_still_gets_mail(world):
@@ -417,3 +418,116 @@ def test_each_question_is_answered_once_and_the_copy_is_sent_once(world, tmp_pat
     assert len(answers) == 2
     assert "context" in answers[0] and "context" not in answers[1]
     assert "session copy" in answers[1]["text"]
+
+
+def _answers(world) -> list[dict]:
+    return [replies._decode(transport._as_mail(m)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
+
+
+def test_a_new_question_is_answered_after_older_ones_expired_from_the_inbox(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    _invoke("handoff", "ask", code, "q2?")
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    world["inbox"][:] = [m for m in world["inbox"] if not re.search(r"q[12]\?", transport._as_mail(m)["message"])]  # 30 days on
+    world["be"](RECIPIENT)
+    _invoke("handoff", "ask", code, "q3?")
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert len(_answers(world)) == 3
+    assert "Answered automatically: q3?" in status.output
+
+
+def test_the_watcher_and_status_at_once_answer_a_question_once(world, tmp_path, monkeypatch):
+    import threading
+    import time
+    from connectonion.handoff import watch
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    world["be"](SENDER)
+    post = transport._post_message
+    monkeypatch.setattr(transport, "_post_message", lambda agent, body: time.sleep(0.5) or post(agent, body))
+    watcher = threading.Thread(target=watch.check)
+    watcher.start()
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    watcher.join()
+    assert len(_answers(world)) == 1
+
+
+def test_status_says_which_answer_carried_the_session_copy(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    _invoke("handoff", "ask", code, "q2?")
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "Answered automatically, with the session copy: q1?" in status.output
+    assert "Answered automatically: q2?" in status.output
+
+
+def test_a_session_file_that_is_gone_still_gets_an_answer_without_the_copy(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    (tmp_path / "alice-session.jsonl").unlink()   # Claude Code deletes sessions after 30 days
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert status.exit_code == 0, status.output
+    [answer] = _answers(world)
+    assert "context" not in answer and "no longer" in answer["text"]
+
+
+def test_an_acceptance_that_was_not_delivered_does_not_let_questions_through(world, monkeypatch):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    monkeypatch.setattr(transport, "_post_message", lambda *a: {"success": False, "error": "network"})
+    assert _invoke("handoff", "accept", code).exit_code == 1
+    asked = _invoke("handoff", "ask", code, "q1?")
+    assert asked.exit_code == 1 and "not accepted" in asked.output
+
+
+def test_a_long_session_sends_its_newest_part_within_the_inbox_limit(world, tmp_path, monkeypatch):
+    monkeypatch.setattr(replies, "COPY_BUDGET", 2_000)
+    session = tmp_path / "long.jsonl"
+    session.write_text("".join(json.dumps({"type": "user", "timestamp": f"2026-10-11T09:{i // 60:02d}:{i % 60:02d}Z",
+                                           "message": {"role": "user", "content": f"step {i} {os.urandom(40).hex()}"}}) + "\n"
+                               for i in range(600)))
+    packed = replies._copy({"sent_at": "2026-10-11T10:00:00+00:00"}, {"kind": "claude", "path": str(session)})
+    text = replies.unpack(packed)
+    assert len(packed) <= 2_000
+    assert text.startswith(replies.EARLIER_CUT) and "step 599" in text and "step 0 " not in text
+
+
+def test_a_message_from_another_agent_that_is_not_a_handoff_is_skipped(monkeypatch):
+    rows = [{"id": 1, "from_address": "0x" + "c" * 64, "created_at": "2026-10-11T10:00:00+00:00", "body": '{"hi": 1}'},
+            {"id": 2, "from_address": "0x" + "c" * 64, "created_at": "2026-10-11T10:00:00+00:00", "body": "[1, 2]"}]
+    assert [transport._as_mail(r) for r in rows] == [None, None]
+
+
+def test_the_inbox_is_read_to_its_newest_message(monkeypatch):
+    import requests
+    rows = [{"id": i, "from_address": "0x" + "c" * 64, "created_at": "2026-10-11T10:00:00+00:00",
+             "body": json.dumps({"subject": "[co handoff] question ho-x", "message": f"n{i}"})} for i in range(1, 601)]
+
+    class Page:
+        status_code = 200
+
+        def __init__(self, params):
+            self.rows = [r for r in rows if r["id"] > params["after"]][:params["limit"]]   # ORDER BY id LIMIT
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"messages": self.rows}
+
+    monkeypatch.setattr(requests, "get", lambda url, params, headers, timeout: Page(params))
+    monkeypatch.setattr("connectonion.credentials.require_ambient_api_key", lambda: "token")
+    assert [m["message"] for m in transport._read_messages()][-1] == "n600"

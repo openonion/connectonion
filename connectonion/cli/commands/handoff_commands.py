@@ -262,8 +262,8 @@ def _sender_status(record: dict) -> None:
     for q in state["questions"]:
         out.print(f"Question, {q['at']}: {q['text']}", markup=False)
     for line in replies.answer_automatically(record, state):
-        out.print(line.replace(f"[handoff] {handoff_id} answered automatically", "Answered automatically, with the session copy"
-                               if record.get("answered") == 1 else "Answered automatically"), markup=False)
+        out.print(line.replace(f"[handoff] {handoff_id} answered", "Answered")
+                  .replace(f"[handoff] {handoff_id} could not", "Could not"), markup=False)
     if state["questions"]:
         _next(f'co handoff answer {handoff_id} "<your answer>"')
     else:
@@ -316,13 +316,15 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     _mail_ready()
     folder = _home() / "accepted" / code["id"]
     folder.mkdir(parents=True, exist_ok=True)
+    result = replies.send("accept", code, code["mailbox"], agent=_their_agent(code), reply_to=os.getenv("AGENT_EMAIL"))
+    if not result.get("success"):
+        _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
+    # Only now: ask and status treat code.json as "accepted", and a question sent before the
+    # acceptance arrived is ignored by the sender.
     (folder / "code.json").write_text(json.dumps(code, indent=2) + "\n", encoding="utf-8")
     (folder / "code.json").chmod(0o600)
     if brief:
         shutil.copyfile(brief, folder / "HANDOFF.md")
-    result = replies.send("accept", code, code["mailbox"], agent=_their_agent(code), reply_to=os.getenv("AGENT_EMAIL"))
-    if not result.get("success"):
-        _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
     name = transport.meet(code["mailbox"], code["address"], code["inbox"])
@@ -457,7 +459,7 @@ def handle_show(handoff_id: str) -> None:
     prompt = _home() / "received" / bundle["id"] / "prompt.txt"
     if prompt.exists():
         accept = re.search(r"co handoff accept \S+", prompt.read_text(encoding="utf-8"))
-        out.print(f"To take it over, give Codex or Claude Code everything in {style.path(prompt)}"
+        out.print(f"To take it over, give Codex or Claude Code everything in {prompt}"
                   + (f"; it runs {accept.group(0)}" if accept else "") + ".", markup=False)
     _next(f"co handoff open {handoff_id}")
 
