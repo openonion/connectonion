@@ -560,7 +560,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "Copy everything in the box into Codex or Claude Code" in mail["message"]
+    assert "Copy everything between START and END" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 
@@ -608,7 +608,7 @@ def test_status_wait_returns_once_something_new_arrives(project, model, mailbox,
     handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
     _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
     from connectonion.handoff import replies
-    arrivals = iter([[], [], [{"kind": "ask"}]])
+    arrivals = iter([[], [], [{"kind": "ask"}], [{"kind": "ask"}], [{"kind": "ask"}]])
     checks = []
     monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: checks.append(1) or next(arrivals))
     monkeypatch.setattr(replies, "settle", lambda record, mails=None: {"accepted": None, "questions": [], "ignored": 0})
@@ -616,7 +616,7 @@ def test_status_wait_returns_once_something_new_arrives(project, model, mailbox,
     monkeypatch.setattr("time.sleep", lambda seconds: None)
     result = _invoke("handoff", "status", handoff_id, "--wait")
     assert result.exit_code == 0, result.output
-    assert len(checks) == 3 and f"Handoff {handoff_id} (sent)" in result.output
+    assert len(checks) == 4 and f"Handoff {handoff_id} (sent)" in result.output   # 3 waiting, 1 to remember it
 
 
 def test_a_repository_url_is_not_a_private_detail_and_a_detached_head_says_so():
@@ -776,3 +776,11 @@ def test_the_session_copy_never_carries_a_handoff_code():
 def test_a_credentials_file_printed_in_a_tool_output_is_redacted():
     text = bundles.redact('{"client_secret": "GOCSPX-abcdefghijklmnopqrstuv", "password": "hunter2hunter2hunter2"}')
     assert "GOCSPX" not in text and "hunter2" not in text
+
+
+def test_a_long_conversation_keeps_its_newest_messages_in_the_mailed_block():
+    bundle = {"from": SELF, "conversation": [{"user": f"message {n} " + "x" * 1000, "ai": ""} for n in range(1, 101)]}
+    text = bundles.conversation_text(bundle, chars=20_000)
+    assert len(text) < 21_000 and "message 100 " in text and "message 1 " not in text
+    assert text.startswith("[Messages 1 to ") and "whole session" in text
+    assert bundles.conversation_text(bundle) .count("message ") == 100      # HANDOFF.md and the preview keep all

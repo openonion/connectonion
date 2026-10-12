@@ -177,7 +177,8 @@ def _deliver(bundle: dict) -> None:
     secret = replies.new_secret()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"],
                               "id": bundle["id"], "hash": bundle["content_hash"], "secret": secret})
-    prompt = replies.prompt(bundles.brief_markdown(bundle), code, bundle["id"], bundle["from"])
+    # Gmail clips a mail past about 102 KB, and the block to paste must arrive whole.
+    prompt = replies.prompt(bundles.brief_markdown(bundle, conversation_chars=50_000), code, bundle["id"], bundle["from"])
     subject, body = bundles.to_mail(bundle, prompt)
     result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"])
     if not result.get("success"):
@@ -215,24 +216,38 @@ def handle_status(handoff_id: str, wait: bool = False) -> None:
     load_api_key()
     if wait:
         _wait_for_news(handoff_id)
+    mails = transport.fetch()   # one read, so what is shown is exactly what is remembered as shown
     # Both exist when you handed something to yourself: one Next line, the sender's.
     if accepted.exists():
-        _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), quiet=sent.exists())
+        _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), mails, quiet=sent.exists())
     if sent.exists():
         record = json.loads(sent.read_text(encoding="utf-8"))
-        _sender_status(record)
+        _sender_status(record, mails)
         sent.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")   # what was answered
+    _shown_file(handoff_id).write_text(json.dumps(sorted(map(_key, replies.received(handoff_id, mails)))) + "\n")
 
 
 def _wait_for_news(handoff_id: str, every: int = 30) -> None:
-    """Return once a reply about this handoff (acceptance, question, answer) arrives that was not there before."""
-    seen = len(replies.received(handoff_id))
+    """Return once a reply about this handoff (acceptance, question, answer) arrives that status has not shown.
+
+    Not "since the wait began": an answer that landed between `ask` and the wait would be missed."""
+    shown = set(json.loads(_shown_file(handoff_id).read_text())) if _shown_file(handoff_id).exists() else set()
     out.print(style.muted(f"Waiting for news on {handoff_id}, checking every {every}s…"))
-    while len(replies.received(handoff_id)) == seen:
+    while all(_key(b) in shown for b in replies.received(handoff_id)):
         time.sleep(every)
 
 
-def _sender_status(record: dict) -> None:
+def _shown_file(handoff_id: str) -> Path:
+    folder = _home() / "shown"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"{handoff_id}.json"
+
+
+def _key(block: dict) -> str:
+    return f"{block['kind']} {block.get('at')} {block.get('address')}"
+
+
+def _sender_status(record: dict, mails: list[dict]) -> None:
     handoff_id = record["id"]
     out.print(style.heading(f"Handoff {handoff_id} (sent)"))
     out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
@@ -240,7 +255,7 @@ def _sender_status(record: dict) -> None:
         out.print("Sent before acceptance existed: the recipient opens it with co handoff open.")
         _next(f"co handoff open {handoff_id}  (run by the recipient)")
         return
-    state = replies.settle(record)
+    state = replies.settle(record, mails)
     who = state["accepted"]
     if not who:
         if record.get("via") == "agent inbox":
@@ -271,10 +286,10 @@ def _sender_status(record: dict) -> None:
         _next(f"co handoff status {handoff_id}")
 
 
-def _recipient_status(code: dict, quiet: bool = False) -> None:
+def _recipient_status(code: dict, mails: list[dict], quiet: bool = False) -> None:
     handoff_id = code["id"]
     out.print(style.heading(f"Handoff {handoff_id} (accepted from {code['mailbox']})"))
-    answers = [b for b in replies.received(handoff_id)
+    answers = [b for b in replies.received(handoff_id, mails)
                if b["kind"] == "answer" and b["secret"] == code["secret"] and b["address"] == code["address"]]
     for a in answers:
         out.print(f"Answer, {a['at']}: {a['text']}", markup=False)

@@ -81,9 +81,9 @@ def mail_address(address: str) -> str:
 
 
 def my_address() -> str:
-    """This agent's full 0x address (the global identity in ~/.co)."""
-    from ..address import load
-    return load(global_config_dir())["address"]
+    """This agent's full 0x address: the selected identity, whose token reads the inbox (#2424 review)."""
+    from ..project import project_identity
+    return project_identity()["address"]
 
 
 def resolve(who: str) -> str | None:
