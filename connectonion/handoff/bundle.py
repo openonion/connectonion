@@ -245,7 +245,9 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
     max-width on a div. Reviewed by a UI and product-flow pass (2026-10-12): one green box only,
     so "the box" is never ambiguous; step 3 promises only what the prompt does. Last, hidden, the
     bundle `co handoff open` reads from a saved mail (base64, so no mail system rewrites it); it
-    is after the block, so a clipped mail loses only the bundle, never the block.
+    is after the block, so a clipped mail loses only the bundle, never the block. Text sits in a
+    <div>, never bare in a cell: the mail service writes the text part from this HTML and breaks
+    lines only at blocks, so bare cells ran together ("ENDFirst time?").
     """
     sender, title = html.escape(bundle["from"]), html.escape(bundle["title"])
     subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {bundle['from']})"
@@ -258,13 +260,13 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
         '<tr><td align="center" style="padding:24px 16px">'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}">'
-        f'<tr><td style="padding:0 0 14px;border-bottom:2px solid {_GREEN};{_LABEL}">CONNECTONION HANDOFF</td></tr>'
-        f'<tr><td style="padding:20px 0 4px;color:{_MUTED};font-size:14px">{sender} handed you a task</td></tr>'
+        f'<tr><td style="padding:0 0 14px;border-bottom:2px solid {_GREEN};{_LABEL}"><div>CONNECTONION HANDOFF</div></td></tr>'
+        f'<tr><td style="padding:20px 0 4px;color:{_MUTED};font-size:14px"><div>{sender} handed you a task</div></td></tr>'
         f'<tr><td style="padding:0 0 10px"><h1 style="margin:0;font-size:24px;line-height:1.25">{title}</h1></td></tr>'
-        f'<tr><td style="padding:0 0 18px;color:{_MUTED};font-size:14px">'
+        f'<tr><td style="padding:0 0 18px;color:{_MUTED};font-size:14px"><div>'
         f'<a href="{SITE}" style="color:{_GREEN}">ConnectOnion</a> is an open-source tool for AI agents. '
         f'{sender} used it to pass you this task. To continue, paste the block below into Codex or '
-        'Claude Code on your computer. Nothing runs until you do.</td></tr>'
+        'Claude Code on your computer. Nothing runs until you do.</div></td></tr>'
         f'<tr><td style="padding:2px 0 2px 16px;border-left:3px solid {_GREEN}">'
         + _field("The task", html.escape(bundle["task"]))
         + _field("Where it stands", html.escape(bundle["where_it_stands"]))
@@ -278,13 +280,13 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
         + _step(3, f"Your agent installs co if it is missing, tells {sender} you have picked the task up, "
                    "then explains the task and asks before touching your files.")
         + '</td></tr>'
-        f'<tr><td style="padding:0 0 6px;{_LABEL}">START</td></tr>'
+        f'<tr><td style="padding:0 0 6px;{_LABEL}"><div>START</div></td></tr>'
         f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{html.escape(prompt.strip())}</pre></td></tr>'
-        f'<tr><td style="padding:6px 0 0;{_LABEL}">END</td></tr>'
+        f'<tr><td style="padding:6px 0 0;{_LABEL}"><div>END</div></td></tr>'
         f'<tr><td style="padding:22px 0 0;color:{_MUTED};font-size:14px">'
-        f'First time? <a href="{GUIDE}" style="color:{_GREEN}">How a handoff works</a>.</td></tr>'
+        f'<div>First time? <a href="{GUIDE}" style="color:{_GREEN}">How a handoff works</a>.</div></td></tr>'
         f'<tr><td style="padding:22px 0 0;margin-top:22px;border-top:1px solid {_LINE};color:#5f6b62;font-size:13px">'
-        f'Handoff {html.escape(bundle["id"])}, sent by {sender} with co handoff.</td></tr>'
+        f'<div>Handoff {html.escape(bundle["id"])}, sent by {sender} with co handoff.</div></td></tr>'
         '</table></td></tr></table>'
         f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
     )
@@ -306,7 +308,7 @@ def _step(number: int, text: str) -> str:
     return ('<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 0"><tr>'
             '<td valign="top" style="width:30px"><div style="width:22px;height:22px;border-radius:11px;'
             f'background:{_GREEN};color:#ffffff;font-size:12px;font-weight:700;line-height:22px;'
-            f'text-align:center">{number}</div></td><td style="font-size:15px">{text}</td></tr></table>')
+            f'text-align:center">{number}</div></td><td style="font-size:15px"><div>{text}</div></td></tr></table>')
 
 
 def from_saved_mail(text: str) -> dict | None:

@@ -239,6 +239,15 @@ def test_a_value_from_keys_env_is_refused_even_without_a_known_shape(monkeypatch
     assert bundles.find_credentials(bundle, bundles.known_secrets()) == ["excerpt[0].text: a value from your keys.env"]
 
 
+def test_no_text_in_the_mail_sits_bare_in_a_table_cell():
+    """The mail service writes the text part from the HTML and breaks lines only at blocks, so text bare
+    in a cell ran into the next one: "CONNECTONION HANDOFF0xf9e5…", "ENDFirst time?" (b17, 2026-10-13)."""
+    bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a@b.c",
+                           "to": "d@e.f", "created_at": "2026-10-10", "where_it_stands": "w"})
+    _, body = bundles.to_mail(bundle, "prompt")
+    assert re.findall(r"<td[^>]*>[^<]*\w[^<]*<", body) == []
+
+
 def test_a_changed_bundle_is_not_verified():
     bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a", "to": "b",
                            "created_at": "2026-10-10", "where_it_stands": ""})

@@ -90,8 +90,9 @@ def _write(path: Path, new_block: str) -> None:
 
 
 def refresh(app=None) -> List[Tuple[Path, Optional[str], str]]:
-    """Write the block wherever it is missing or stale; (file, old, new) for each one changed."""
-    changes = stale()
+    """Write the block wherever it is missing or stale and can be written; (file, old, new) for each one changed."""
+    from .skills_commands import writable
+    changes = [(path, old) for path, old in stale() if writable(path)]
     if not changes:
         return []
     if app is None:
@@ -153,9 +154,12 @@ def handle_skills_index(remove_block: bool = False) -> None:
     changed = refresh()
     for path, old, new in changed:
         out.print(f"Wrote the command index for co to {escape(str(path))} ({old or 'none'} → {new})")
-    for path in targets():
-        if path not in [p for p, _, _ in changed]:
+    for path in [p for p in targets() if p not in [c for c, _, _ in changed]]:
+        if stamp(path) == __version__:
             out.print(f"{escape(str(path))} already has the index for {__version__}")
+        else:
+            out.print(f"{escape(str(path))} is read-only here, so the index was not written. "
+                      "Outside the sandbox: co skills index")
     out.print("Only the text between <!-- co:begin --> and <!-- co:end --> is ours. "
               "To take it out: co skills index --remove", markup=False)
     out.print(next_line("co doctor"))

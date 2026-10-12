@@ -167,6 +167,19 @@ class TestCli:
             assert agent_index.stamp(path) == __version__
         assert (Path.home() / ".codex" / "skills" / "co-linear" / "SKILL.md").exists()
 
+    def test_global_init_skips_a_tool_directory_it_cannot_write(self, tools, monkeypatch, request):
+        """Inside Codex's sandbox ~/.codex is read-only: init crashed linking skills there, so the
+        installer a handoff mail runs exited 1 after co was installed (b17 end-to-end, 2026-10-13)."""
+        from connectonion.cli.commands import init
+        monkeypatch.setattr(init, "authenticate", lambda *a, **k: True)
+        codex = tools[0].parent
+        codex.chmod(0o555)
+        request.addfinalizer(lambda: codex.chmod(0o755))
+        init.handle_global_init()
+        assert agent_index.stamp(tools[1]) == __version__
+        assert (Path.home() / ".claude" / "skills" / "co-linear" / "SKILL.md").exists()
+        assert not tools[0].exists() and not (codex / "skills").exists()
+
 
 class TestDoctor:
 

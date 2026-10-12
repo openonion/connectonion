@@ -464,6 +464,11 @@ def link_targets():
 BUNDLED_SKILLS = Path(__file__).parent.parent.parent / "useful_skills"
 
 
+def writable(path: Path) -> bool:
+    """Whether path, or the folder it would be made in, can be written."""
+    return os.access(path if path.exists() else path.parent, os.W_OK)
+
+
 def _link_one(source: Path, target: Path, force: bool) -> str:
     """Point target at source. Returns a one-word status for the report."""
     if target.is_symlink():
@@ -515,6 +520,10 @@ def handle_skills_link(force: bool = False, brief: bool = False):
             if not root.parent.is_dir():
                 row.append(f"no {root.parent.name}, skipped")
                 continue
+            # Codex's sandbox keeps ~/.codex read-only; the installer runs co init there.
+            if not writable(root):
+                row.append("read-only here, skipped")
+                continue
             row.append(_link_one(skill, root / skill.name, force))
             if row[-1].endswith("skipped"):
                 skipped[name].append(skill.name)
@@ -522,7 +531,10 @@ def handle_skills_link(force: bool = False, brief: bool = False):
 
     if brief:
         for name, root in roots:
-            if root.parent.is_dir():
+            if root.parent.is_dir() and not writable(root):
+                console.print(f"[yellow]![/yellow] {name}: {root} is read-only here, so no skills were linked. "
+                              "Outside the sandbox: co skills link")
+            elif root.parent.is_dir():
                 own = f" ({len(skipped[name])} of your own kept: {', '.join(skipped[name])})" if skipped[name] else ""
                 console.print(f"[green]✓[/green] {name}: {len(skills) - len(skipped[name])} co skills in {root}{own}")
         return

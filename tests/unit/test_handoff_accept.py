@@ -418,6 +418,20 @@ def test_a_question_is_answered_by_the_senders_agent_with_a_copy_of_the_session(
     assert str(copy) in theirs.output
 
 
+def test_status_keeps_showing_that_a_question_was_answered(world, tmp_path):
+    """The answered line echoed the question as if it were the answer, and the next status dropped it
+    and still told the sender to answer (b17 end-to-end, 2026-10-13)."""
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "How long should the cookie live?")
+    world["be"](SENDER)
+    for status in (_invoke("handoff", "status", "ho-1a2b3c4d"), _invoke("handoff", "status", "ho-1a2b3c4d")):
+        assert status.output.count("How long should the cookie live?") == 1
+        assert "Answered automatically" in status.output
+        assert "session copy" in status.output
+
+
 def test_each_question_is_answered_once_and_the_copy_is_sent_once(world, tmp_path):
     from connectonion.handoff import watch
     code = _send_from_session(world, tmp_path)
@@ -455,7 +469,7 @@ def test_a_new_question_is_answered_after_older_ones_expired_from_the_inbox(worl
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert len(_answers(world)) == 3
-    assert "Answered automatically: q3?" in status.output
+    assert re.search(r"q3\?\n\s+Answered automatically", status.output)
 
 
 def test_the_watcher_and_status_at_once_answer_a_question_once(world, tmp_path, monkeypatch):
@@ -484,8 +498,8 @@ def test_status_says_which_answer_carried_the_session_copy(world, tmp_path):
     _invoke("handoff", "ask", code, "q2?")
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert "Answered automatically, with the session copy: q1?" in status.output
-    assert "Answered automatically: q2?" in status.output
+    assert "q1?\n  Answered automatically: your agent sent them the session copy" in status.output
+    assert "q2?\n  Answered automatically: your agent pointed them to the session copy" in status.output
 
 
 def test_a_session_file_that_is_gone_still_gets_an_answer_without_the_copy(world, tmp_path):
@@ -577,4 +591,5 @@ def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, t
     _invoke("handoff", "ask", code, "q1?")
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert "Not accepted yet" not in status.output and "Answered automatically, with the session copy: q1?" in status.output
+    assert "Not accepted yet" not in status.output
+    assert "q1?\n  Answered automatically: your agent sent them the session copy" in status.output
