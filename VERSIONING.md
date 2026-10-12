@@ -400,18 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b14
+## Current Version: 1.9.2b15
 
-1.9.2b14 is a 1.9.2 beta; stable remains 1.9.1. Every agent with a `.co/` keeps
-an append-only record, `.co/approvals.jsonl`, of every tool call in a turn,
-every network EXEC, every Remote Browser request and every trust-list change,
-with who asked and whether it was done or declined; `co approvals` reads it.
-Three classes, named by code from the tool and its arguments (credentials,
-authority and money; irreversible; acting as the owner in the owner's
-accounts), are declined when someone other than the owner asked and nobody is
-connected to ask, and on network EXEC for anyone but an admin (#2408). See
-[1.9.2b14 notes](docs/releases/1.9.2b14.md).
+1.9.2b15 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, each question
+is answered exactly once, a month later as well as today: answered questions are
+remembered by when they were asked, the `co ai` watcher and `co handoff status`
+answer under one lock, a session copy too large for the inbox keeps its newest
+part, and a session that was deleted gets an answer saying so. The agent inbox
+is read to its newest message and skips messages that are not handoffs. The
+install floor stays 1.9.2b13. See [1.9.2b15 notes](docs/releases/1.9.2b15.md).
 
+- 1.9.2b15 (Every question answered once, on day thirty-one too).
 - 1.9.2b14 (See what your agent did, and for whom).
 - 1.9.2b13 (Questions answer themselves).
 - 1.9.2b12 (Agents talk through an inbox, not email).
