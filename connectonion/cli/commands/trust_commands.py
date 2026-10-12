@@ -89,8 +89,8 @@ def handle_trust_list(co_dir=None):
         console.print(f"[yellow]No agent here[/yellow] — {agent_dir} does not exist.")
         console.print("[dim]Trust lists belong to one agent. Run this from its "
                       "directory, or 'co init ./' to make one.[/dim]")
-        console.print("[dim]Contacts made by co ai and co handoff belong to your global "
-                      "identity: co trust list --global[/dim]")
+        console.print("[dim]Contacts made by co ai and co handoff belong to your global identity:[/dim]")
+        console.print("  co trust list --global")
         console.print()
         return
 
