@@ -295,8 +295,8 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     (co / "whitelist.txt").write_text("w1\n", encoding="utf-8")
     (co / "blocklist.txt").write_text("b1\n", encoding="utf-8")
 
-    monkeypatch.setattr(trust_mod, "load_admins", lambda: ["a1"])
-    monkeypatch.setattr(trust_mod, "get_self_address", lambda: "a1")
+    monkeypatch.setattr(trust_mod, "load_admins", lambda co_dir=None: ["a1"])
+    monkeypatch.setattr(trust_mod, "get_self_address", lambda co_dir=None: "a1")
 
     # Smoke test list
     trust_mod.handle_trust_list()

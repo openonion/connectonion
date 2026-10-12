@@ -15,6 +15,7 @@ for use in other commands or configuration files.
 
 Usage:
     co trust list                    # List all trust lists
+    co trust list --global           # The global identity's (co ai, co handoff)
     co trust level <address>         # Check trust level of address
     co trust add <address>           # Add to contacts (default)
     co trust add <address> -w        # Add to whitelist
@@ -67,9 +68,9 @@ def _require_address(address: str) -> None:
     raise typer.Exit(2)
 
 
-def _read_list(list_name: str) -> list[str]:
+def _read_list(list_name: str, co_dir=None) -> list[str]:
     """Read entries from a list file."""
-    list_path = list_file(list_name)
+    list_path = list_file(list_name, co_dir)
     if not list_path.exists():
         return []
     content = list_path.read_text(encoding='utf-8')
@@ -77,25 +78,27 @@ def _read_list(list_name: str) -> list[str]:
             if line.strip() and not line.startswith('#')]
 
 
-def handle_trust_list():
-    """List all trust lists."""
+def handle_trust_list(co_dir=None):
+    """List all trust lists: this directory's agent, or `co_dir` (the global identity for --global)."""
     # These lists belong to one agent, so being in the wrong directory shows
     # four empty sections — which reads as "my whitelist was wiped" rather than
     # "you are not standing in an agent". Say which it is.
-    agent_dir = list_file("whitelist").parent
+    agent_dir = list_file("whitelist", co_dir).parent
     if not agent_dir.is_dir():
         console.print()
         console.print(f"[yellow]No agent here[/yellow] — {agent_dir} does not exist.")
         console.print("[dim]Trust lists belong to one agent. Run this from its "
                       "directory, or 'co init ./' to make one.[/dim]")
+        console.print("[dim]Contacts made by co ai and co handoff belong to your global "
+                      "identity: co trust list --global[/dim]")
         console.print()
         return
 
-    contacts = _read_list("contacts")
-    whitelist = _read_list("whitelist")
-    blocklist = _read_list("blocklist")
-    admins = load_admins()
-    self_addr = get_self_address()
+    contacts = _read_list("contacts", co_dir)
+    whitelist = _read_list("whitelist", co_dir)
+    blocklist = _read_list("blocklist", co_dir)
+    admins = load_admins(co_dir)
+    self_addr = get_self_address(co_dir)
 
     console.print()
 
@@ -119,7 +122,7 @@ def handle_trust_list():
     console.print()
 
     # Contacts
-    console.print("[bold]Contacts[/bold] [dim](verified via invite/payment)[/dim]")
+    console.print("[bold]Contacts[/bold] [dim](invite, payment or an accepted handoff)[/dim]")
     if contacts:
         for addr in contacts:
             console.print(f"  {addr}")
@@ -136,7 +139,7 @@ def handle_trust_list():
         console.print("  [dim]Empty[/dim]")
     console.print()
 
-    console.print(f"[dim]Lists stored in: {list_file('whitelist').parent}[/dim]")
+    console.print(f"[dim]Lists stored in: {agent_dir}[/dim]")
 
 
 def handle_trust_level(address: str):

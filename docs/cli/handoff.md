@@ -186,7 +186,7 @@ becomes that agent's mailbox `0x<first 10 hex>@mail.openonion.ai`. An unknown
 name exits 1 and prints the exact `co handoff contact` line.
 
 Once a handoff is accepted, each side is the other's **agent contact**, the
-same list `co trust list` shows for your global identity (`~/.co`). The
+same list `co trust list --global` shows for your global identity (`~/.co`). The
 recipient adds the sender when it runs `co handoff accept`. The sender adds the
 recipient's agent when `co handoff status` (or a running `co ai`) sees the
 acceptance. Only the first valid acceptance counts. Each side also gets a name
