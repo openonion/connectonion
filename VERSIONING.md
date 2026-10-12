@@ -400,17 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b16
+## Current Version: 1.9.2b17
 
-1.9.2b16 is a 1.9.2 beta; stable remains 1.9.1. The first `co handoff` mail is
-rewritten for a person who has never heard of ConnectOnion: who sent it and what
-ConnectOnion is, the task, three steps and one block marked START and END, in a
-layout that holds in Outlook and survives Gmail's clipping (#2415). The prompt
-installs co with the release's own `install.sh`. `status --wait` notices an
-answer that came before it, and the brief never passes on the sender's own
-permissions (#2404). The install floor is 1.9.2b16. See
-[1.9.2b16 notes](docs/releases/1.9.2b16.md).
+1.9.2b17 is a 1.9.2 beta; stable remains 1.9.1. The session copy a `co handoff`
+answer carries also drops credentials the AI wrote through a tool call, whose
+quotes arrive escaped (#2434). The install floor stays 1.9.2b16. See
+[1.9.2b17 notes](docs/releases/1.9.2b17.md).
 
+- 1.9.2b17 (A session copy with nothing secret in it).
 - 1.9.2b16 (A first handoff mail a stranger can read).
 - 1.9.2b15 (Every question answered once, on day thirty-one too).
 - 1.9.2b14 (See what your agent did, and for whom).

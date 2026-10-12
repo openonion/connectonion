@@ -25,15 +25,18 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b16**: the first `co handoff` mail reads like an introduction:
-who sent it, the task, three steps and one block to paste, in every inbox. See
-[1.9.2b16 notes](releases/1.9.2b16.md).
+Beta **1.9.2b17**: the session copy sent with a handoff answer also drops
+credentials the AI wrote through a tool call. See [1.9.2b17 notes](releases/1.9.2b17.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b16'
+python -m pip install --upgrade 'connectonion==1.9.2b17'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b16**: the first `co handoff` mail reads like an introduction:
+who sent it, the task, three steps and one block to paste, in every inbox. See
+[1.9.2b16 notes](releases/1.9.2b16.md).
 
 Beta **1.9.2b15**: in `co handoff`, every question is answered exactly once,
 including weeks later, when two programs check at once, or when the session is
