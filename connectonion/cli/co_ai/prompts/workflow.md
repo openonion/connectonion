@@ -10,7 +10,7 @@ Always scaffold with `co create` — never create files manually from scratch:
 co create my-agent      # the agent: bash + files + browser + todos + skills
 ```
 
-Then `cd my-agent && python agent.py`.
+Then `cd my-agent && co host`.
 
 **Auth first** if they haven't set up:
 ```bash

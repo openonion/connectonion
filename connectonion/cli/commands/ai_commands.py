@@ -18,7 +18,6 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 
 from ...core.usage import DEFAULT_MODEL
 from ..co_ai import harness as _harness
@@ -140,7 +139,6 @@ def handle_ai(
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
-        _start_listening(channels, agent_factory, model, max_iterations, full_access_turns)
         from ..co_ai.main import start_server
         start_server(
             agent,
@@ -152,6 +150,7 @@ def handle_ai(
             agent_factory=agent_factory,
             invite_code=runtime_invite_code,
             launch=launch,
+            listen=channels,   # the Host answers them, as it does for python agent.py (#2439)
         )
 
 
@@ -231,32 +230,6 @@ def _channels(override):
         # them, right up until somebody wonders why the bot is ignoring them.
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(2)
-
-
-def _start_listening(channels, agent_factory, model, max_iterations, full_access_turns) -> None:
-    """Answer those channels in the background.
-
-    Chat gets an agent of its own rather than the web server's: a message from
-    a group and a question typed in the browser are two conversations, and one
-    Agent object holds one history.
-    """
-    import threading
-
-    if not channels:
-        return
-
-    from ..co_ai.listen import listen as consume
-
-    def build():
-        return agent_factory(model, max_iterations, False, full_access_turns)
-
-    def say(line: str) -> None:
-        # Not markup: a listener's reason can contain [brackets].
-        console.print(f"[yellow]{escape(line)}[/yellow]", soft_wrap=True, highlight=False)
-
-    threading.Thread(target=consume, args=(channels, build), kwargs={"say": say},
-                     daemon=True, name="co-ai-listen").start()
-    console.print(f"[dim]answering {', '.join(c.provider for c in channels)}[/dim]")
 
 
 def _read_runtime_invite_code(invite_code, invite_code_file) -> str | None:

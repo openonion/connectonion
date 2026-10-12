@@ -482,7 +482,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     console.print()
 
     # Command with syntax highlighting - compact design
-    command = f"cd {name} && python agent.py"
+    command = f"cd {name} && co host"
     syntax = Syntax(
         command,
         "bash",

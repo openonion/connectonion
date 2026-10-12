@@ -235,7 +235,7 @@ class TestHelpBestPractices:
         result = self.runner.invoke(cli, [])
 
         assert "co create" in result.output
-        assert "python agent.py" in result.output
+        assert "co host" in result.output
 
 
 def test_tracebacks_never_print_local_variables():

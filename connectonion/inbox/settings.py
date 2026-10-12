@@ -1,7 +1,7 @@
 """
 Purpose: Which channels an agent listens to, written in .co/host.yaml so that starting needs no flags
 LLM-Note:
-  Dependencies: imports from [dataclasses, pathlib, yaml, inbox/__init__.py for PROVIDERS] | imported by [cli/co_ai/listen.py, network/host/inbox.py] | tested by [tests/unit/test_inbox_settings.py]
+  Dependencies: imports from [dataclasses, pathlib, yaml, inbox/__init__.py for PROVIDERS] | imported by [network/host/inbox.py, cli/commands/ai_commands.py] | tested by [tests/unit/test_inbox_settings.py]
   Data flow: .co/host.yaml `listen:` → channels_from(mapping) → [Channel] | Channel.answers(message) → the one gate 1.8.5 applies
   State/Effects: reads one file; writes nothing
   Integration: host.yaml already holds `name` and `trust`, so a channel belongs beside them; --listen replaces the list for one run, --no-listen empties it

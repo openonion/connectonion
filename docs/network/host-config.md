@@ -200,9 +200,10 @@ workers: 1
 result_ttl: 86400
 
 # P2P relay for agent discovery
-# Default: wss://oo.openonion.ai/ws/announce
+# Default: the relay of your backend (wss://oo.openonion.ai, or whatever
+# CONNECTONION_BACKEND_URL points at)
 # Set to null to disable relay
-relay_url: wss://oo.openonion.ai/ws/announce
+relay_url: wss://oo.openonion.ai
 
 # Auto-reload on code changes (development only)
 # Default: false
@@ -212,6 +213,27 @@ reload: false
 # Default: ~/.co/
 co_dir: null
 ```
+
+### REM and channels
+
+One host serves REM and answers chat channels too, whichever command started
+it (`co host`, `python agent.py`, `co deploy`, `co ai`).
+
+```yaml
+# REM: your ~/.co/rem pages, over the agent's own socket, to the owner only
+# Default: true. A machine with no ~/.co/rem says "not available on this Host".
+rem: true
+
+# Channels to answer, with options per channel. Leave it out to answer none.
+listen:
+  feishu:
+    chats: [oc_123]        # only these chats (default: any chat the bot is in)
+    mention_only: true     # in a group, only when the bot is mentioned (default)
+  telegram: {}
+```
+
+`co ai --listen feishu` replaces the list for one run, and `--no-listen`
+answers none. The code parameters `rem_root=` and `listen=` win over the file.
 
 ### File Upload Limits
 
@@ -674,7 +696,7 @@ trust: careful
 port: 8000
 workers: 1
 result_ttl: 86400
-relay_url: wss://oo.openonion.ai/ws/announce
+relay_url: wss://oo.openonion.ai
 reload: false
 
 # File upload limits - uncomment to customize

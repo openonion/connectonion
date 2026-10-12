@@ -697,9 +697,9 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     where = (f"Change `port:` in {config_file}" if config_file.exists()
              else f"Put `port: {port + 1}` in {config_file} (it does not exist yet: create it)")
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
-            f"`python agent.py` still running?\n"
+            f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: AGENT_PORT={port + 1} python agent.py")
+            f"or for one run: co host --port {port + 1}")
 
 
 def _print_host_banner(
@@ -1074,6 +1074,15 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
 DEFAULT_RELAY_URL = DEFAULT_BACKEND_WS_URL
 
 
+def _rem_root(rem_root, config: dict) -> Path | None:
+    """Where REM requests are read from: the code parameter, else the owner's ~/.co/rem
+    unless host.yaml says `rem: false`. Every host serves it, not only `co ai` (#2439);
+    only an admin can read it."""
+    if rem_root:
+        return Path(rem_root).expanduser().resolve()
+    return None if config.get("rem", True) is False else (Path.home() / ".co" / "rem").resolve()
+
+
 def host(
     create_agent: Callable,
     port: int = None,
@@ -1091,6 +1100,7 @@ def host(
     http=None,
     provider_station=None,
     rem_root: Path = None,
+    listen: list | None = None,
     on_agent_startup=None,
     on_agent_shutdown=None,
 ):
@@ -1139,6 +1149,8 @@ def host(
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
         http: Optional HTTPRouter with publisher-defined resource routes
+        rem_root: Where REM requests read from (default: ~/.co/rem, unless host.yaml has `rem: false`)
+        listen: Channels to answer, replacing host.yaml's `listen:` ([] answers none)
 
     Direct execution (WS EXEC):
         Clients can run a tool directly, bypassing the LLM, via
@@ -1320,7 +1332,7 @@ def host(
         project_dir=co_dir.parent,
         provider_station=provider_station,
     )
-    route_handlers["rem_root"] = Path(rem_root).expanduser().resolve() if rem_root else None
+    route_handlers["rem_root"] = _rem_root(rem_root, config)
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
 
@@ -1377,7 +1389,7 @@ def host(
     # session_results.jsonl beside the interactive turns. The listener that
     # fills the directory is still its own process (DD-063 and #1478).
     inbox_startup, inbox_shutdown = create_inbox_lifespan(
-        co_dir, create_agent, storage, result_ttl, console=Console())
+        co_dir, create_agent, storage, result_ttl, console=Console(), channels=listen)
     on_startup = _both(on_startup, inbox_startup)
     on_shutdown = _both(inbox_shutdown, on_shutdown)
 
