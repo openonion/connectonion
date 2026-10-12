@@ -86,11 +86,15 @@ def my_address() -> str:
 
 
 def resolve(who: str) -> str | None:
-    """Recipient mailbox for a name, email or 0x address; None for an unknown name."""
+    """Recipient mailbox for a name, email or 0x address; None for an unknown name.
+
+    Names come first: a peer met through its agent mailbox is named `0x` + 10 hex, like the mailbox."""
+    entry = contacts().get(who.lower())
+    if entry:
+        return entry["mail"]
     if "@" in who or who.startswith("0x"):
         return mail_address(who)
-    entry = contacts().get(who.lower())
-    return entry["mail"] if entry else None
+    return None
 
 
 def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
