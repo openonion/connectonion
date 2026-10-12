@@ -230,7 +230,7 @@ _INK, _MUTED, _GREEN, _TINT, _LINE = "#1f2a22", "#4b5b4f", "#15803d", "#f3f8f4",
 _LABEL = f"color:{_GREEN};font-size:13px;font-weight:700;letter-spacing:.05em"
 # Outlook's Word engine ignores padding, border and wrapping on <pre>, so the frame is the cell.
 _FRAME = f"padding:14px 16px;background:{_TINT};border:1px solid {_LINE}"
-_PRE = ("margin:0;white-space:pre-wrap;word-break:break-all;"
+_PRE = ("margin:0;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;"
         f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:{_INK}")
 GUIDE = "https://github.com/openonion/connectonion/blob/main/docs/cli/handoff.md"
 SITE = "https://github.com/openonion/connectonion"
