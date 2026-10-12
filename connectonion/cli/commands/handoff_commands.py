@@ -327,7 +327,7 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
         shutil.copyfile(brief, folder / "HANDOFF.md")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
-    name = transport.meet(code["mailbox"], code["address"], code["inbox"])
+    name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}")
     out.print(f"The sender {code['address']} is now your agent's contact {name} (co trust list); "
               f"co handoff send {shlex.quote(name)} hands work back.")
     if brief:

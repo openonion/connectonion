@@ -157,6 +157,20 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
     assert peers[RECIPIENT["address"]] == {"mailbox": RECIPIENT["mail"], "scope": "handoff", "handoffs": ["ho-1a2b3c4d"]}
 
 
+def test_the_record_says_which_handoff_made_each_side_a_contact(world):
+    def reasons():
+        lines = (Path(os.environ["AGENT_CONFIG_PATH"]) / "approvals.jsonl").read_text().splitlines()
+        return [(e["subject"], e["reason"]) for e in map(json.loads, lines) if e["tool"] == "add to contacts"]
+
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    assert reasons() == [(f"key:{SENDER['address']}", "sent us handoff ho-1a2b3c4d")]
+    world["be"](SENDER)
+    assert _invoke("handoff", "status", "ho-1a2b3c4d").exit_code == 0
+    assert reasons() == [(f"key:{RECIPIENT['address']}", "accepted our handoff ho-1a2b3c4d")]
+
+
 def test_a_new_contact_never_overwrites_one_with_the_same_name(world):
     world["be"](RECIPIENT)
     assert _invoke("handoff", "contact", "alice", "other-alice@example.com").exit_code == 0

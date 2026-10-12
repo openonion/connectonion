@@ -283,9 +283,9 @@ def verify_payment(client_id: str, amount: float, required_amount: float) -> str
 
 # === Promotion ===
 
-def promote_to_contact(client_id: str, co_dir: Path = None) -> str:
-    """Stranger → Contact"""
-    _add_to_list("contacts", client_id, co_dir)
+def promote_to_contact(client_id: str, co_dir: Path = None, reason: str = None) -> str:
+    """Stranger → Contact. `reason` goes into the record (approvals.jsonl)."""
+    _add_to_list("contacts", client_id, co_dir, reason)
     return f"{client_id} promoted to contact."
 
 
