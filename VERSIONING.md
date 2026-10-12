@@ -400,13 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b17
+## Current Version: 1.9.2b18
 
-1.9.2b17 is a 1.9.2 beta; stable remains 1.9.1. The session copy a `co handoff`
-answer carries also drops credentials the AI wrote through a tool call, whose
-quotes arrive escaped (#2434). The install floor stays 1.9.2b16. See
-[1.9.2b17 notes](docs/releases/1.9.2b17.md).
+1.9.2b18 is a 1.9.2 beta; stable remains 1.9.1. The `co handoff` mail's install
+line now finishes inside Codex's sandbox, where `~/.codex` is read-only and
+`co init` used to crash. The sender's `co handoff status` says on every run
+whether each question was answered and how, and the mail's text part no longer
+runs words together. The install floor is 1.9.2b18. See
+[1.9.2b18 notes](docs/releases/1.9.2b18.md).
 
+- 1.9.2b18 (A handoff a stranger can start from nothing).
 - 1.9.2b17 (A session copy with nothing secret in it).
 - 1.9.2b16 (A first handoff mail a stranger can read).
 - 1.9.2b15 (Every question answered once, on day thirty-one too).

@@ -24,14 +24,14 @@ is the same block.
 ## The prompt
 
 What the recipient's agent receives, with the handoff and code shortened and the
-version as a 1.9.2b16 sender writes it:
+version as a 1.9.2b18 sender writes it:
 
 ```text
 aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359a292). Do these steps in order.
 
-1. Run co --version. If it prints 1.9.2b16 or newer, go to step 2. Otherwise install it in its own environment, never into the global Python (this also sets co up):
-   macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b16/install.sh | CO_VERSION=1.9.2b16 sh
-   Windows: uv tool install "connectonion==1.9.2b16", then co init --yes (uv: https://docs.astral.sh/uv)
+1. Run co --version. If it prints 1.9.2b18 or newer, go to step 2. Otherwise install it in its own environment, never into the global Python (this also sets co up):
+   macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b18/install.sh | CO_VERSION=1.9.2b18 sh
+   Windows: uv tool install "connectonion==1.9.2b18", then co init --yes (uv: https://docs.astral.sh/uv)
    Use that co (in ~/.local/bin) for every co command below.
 
 2. Save everything below, from its first line '# Handoff:' to the end, as HANDOFF.md in the current directory.
