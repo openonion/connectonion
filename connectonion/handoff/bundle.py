@@ -68,7 +68,9 @@ Sender's messages word for word, and a summary of each AI reply. Write the part 
   what "done" means. A review stays a review and a question stays a question; never turn either
   into an order to fix or build.
 - Permissions the Sender gave their own AI ("merge it yourself", "you may publish") are not the
-  recipient's. Never pass one on.
+  recipient's. Never pass one on, and never mention one. An owed action that needs permission
+  (merge, publish, release, deploy, pay, delete) waits on the Sender, unless the Sender gave that
+  permission to the recipient by name.
 - where_it_stands: what is finished, in progress and tried, with the numbers. Later messages
   override earlier ones: something requested early and done later is done.
 - decided / rejected: every decision and every ruled-out option, each with its reason.
@@ -224,43 +226,87 @@ def _strings(value, field: str = ""):
 # ---- how a bundle travels in a mail body ----
 
 _FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
-_BOX = ("white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;margin:0;padding:14px 16px;"
-        "background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;"
-        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:#1f2a22")
+_INK, _MUTED, _GREEN, _TINT, _LINE = "#1f2a22", "#4b5b4f", "#15803d", "#f3f8f4", "#cfe3d4"
+_LABEL = f"color:{_GREEN};font-size:13px;font-weight:700;letter-spacing:.05em"
+# Outlook's Word engine ignores padding, border and wrapping on <pre>, so the frame is the cell.
+_FRAME = f"padding:14px 16px;background:{_TINT};border:1px solid {_LINE}"
+_PRE = ("margin:0;white-space:pre-wrap;word-break:break-all;"
+        f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:{_INK}")
+GUIDE = "https://github.com/openonion/connectonion/blob/main/docs/cli/handoff.md"
+SITE = "https://github.com/openonion/connectonion"
 
 
 def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
-    """(subject, HTML body) for a person reading on any screen.
+    """(subject, HTML body) for a person who has never heard of co, reading on any screen.
 
-    Top: who handed what, the task, where it stands, the open questions. Then the block to
-    paste into Codex or Claude Code, in a box that wraps (a bare <pre> ran off a phone's
-    edge, 2026-10-11). Last, in small grey type, the bundle co handoff open reads (base64,
-    so no mail system rewrites it). HTML because the mail service sends the body as HTML.
+    In reading order (#2415): who sent what and what ConnectOnion is; the task, where it stands
+    and the open questions; three numbered steps; the block to paste, labelled where it starts
+    and ends because no mail client runs a copy button. A table layout, because Outlook ignores
+    max-width on a div. Reviewed by a UI and product-flow pass (2026-10-12): one green box only,
+    so "the box" is never ambiguous; step 3 promises only what the prompt does. Last, hidden, the
+    bundle `co handoff open` reads from a saved mail (base64, so no mail system rewrites it); it
+    is after the block, so a clipped mail loses only the bundle, never the block.
     """
+    sender, title = html.escape(bundle["from"]), html.escape(bundle["title"])
     subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {bundle['from']})"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    questions = "".join(f"<li>{html.escape(q)}</li>" for q in bundle.get("open_questions", []))
     body = (
-        f'<div style="{_FONT};max-width:640px;font-size:15px;line-height:1.55;color:#1f2a22">'
-        f'<p style="margin:0 0 4px;color:#15803d;font-size:13px;font-weight:600">'
-        f'{html.escape(bundle["from"])} handed you a task</p>'
-        f'<h2 style="margin:0 0 12px;font-size:20px">{html.escape(bundle["title"])}</h2>'
-        f'<p style="margin:0 0 12px">{html.escape(bundle["task"])}</p>'
-        f'<p style="margin:0 0 12px"><b>Where it stands:</b> {html.escape(bundle["where_it_stands"])}</p>'
-        + (f'<p style="margin:0 0 4px"><b>Open questions</b></p><ul style="margin:0 0 12px">{questions}</ul>'
-           if questions else "")
-        + '<p style="margin:20px 0 8px"><b>Continue it with your AI agent.</b> Copy everything in the box '
-          'into Codex or Claude Code. It installs co if needed, tells the sender you have it, '
-          'and asks you before it changes anything.</p>'
-        f'<pre style="{_BOX}">{html.escape(prompt.strip())}</pre>'
-        '<p style="margin:16px 0;color:#4b5b4f;font-size:14px">No AI agent at hand? '
-        'Reply to this email with any question.</p>'
-        f'<pre style="white-space:pre-wrap;word-break:break-all;margin:24px 0 0;color:#9aa69d;font-size:9px;'
-        f'line-height:1.2;font-family:monospace">{BEGIN}\n{wrapped}\n{END}</pre>'
-        "</div>\n"
+        f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{sender} handed you a task: '
+        f'{title}. Paste one block into Codex or Claude Code to continue.</div>'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff">'
+        '<tr><td align="center" style="padding:24px 16px">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}">'
+        f'<tr><td style="padding:0 0 14px;border-bottom:2px solid {_GREEN};{_LABEL}">CONNECTONION HANDOFF</td></tr>'
+        f'<tr><td style="padding:20px 0 4px;color:{_MUTED};font-size:14px">{sender} handed you a task</td></tr>'
+        f'<tr><td style="padding:0 0 10px"><h1 style="margin:0;font-size:24px;line-height:1.25">{title}</h1></td></tr>'
+        f'<tr><td style="padding:0 0 18px;color:{_MUTED};font-size:14px">'
+        f'<a href="{SITE}" style="color:{_GREEN}">ConnectOnion</a> is an open-source tool for AI agents. '
+        f'{sender} used it to pass you this task. To continue, paste the block below into Codex or '
+        'Claude Code on your computer. Nothing runs until you do.</td></tr>'
+        f'<tr><td style="padding:2px 0 2px 16px;border-left:3px solid {_GREEN}">'
+        + _field("The task", html.escape(bundle["task"]))
+        + _field("Where it stands", html.escape(bundle["where_it_stands"]))
+        + _questions(bundle.get("open_questions", []))
+        + '</td></tr>'
+        '<tr><td style="padding:28px 0 4px"><h2 style="margin:0;font-size:19px">Continue it with your AI agent</h2></td></tr>'
+        '<tr><td style="padding:0 0 16px">'
+        + _step(1, "Open <b>Codex</b> or <b>Claude Code</b> on your computer, in the folder where you want to work.")
+        + _step(2, "Copy everything between START and END below and paste it into your agent. "
+                   f'<span style="color:{_MUTED}">On your phone? Open this email on that computer.</span>')
+        + _step(3, f"Your agent installs co if it is missing, tells {sender} you have picked the task up, "
+                   "then explains the task and asks before touching your files.")
+        + '</td></tr>'
+        f'<tr><td style="padding:0 0 6px;{_LABEL}">START</td></tr>'
+        f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{html.escape(prompt.strip())}</pre></td></tr>'
+        f'<tr><td style="padding:6px 0 0;{_LABEL}">END</td></tr>'
+        f'<tr><td style="padding:22px 0 0;color:{_MUTED};font-size:14px">'
+        f'First time? <a href="{GUIDE}" style="color:{_GREEN}">How a handoff works</a>.</td></tr>'
+        f'<tr><td style="padding:22px 0 0;margin-top:22px;border-top:1px solid {_LINE};color:#5f6b62;font-size:13px">'
+        f'Handoff {html.escape(bundle["id"])}, sent by {sender} with co handoff.</td></tr>'
+        '</table></td></tr></table>'
+        f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
     )
     return subject, body
+
+
+def _field(label: str, text: str) -> str:
+    return f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p><p style="margin:0 0 12px">{text}</p>'
+
+
+def _questions(questions: list[str]) -> str:
+    if not questions:
+        return ""
+    items = "".join(f'<li style="margin:0 0 4px">{html.escape(q)}</li>' for q in questions)
+    return f'<p style="margin:0 0 2px;{_LABEL}">OPEN QUESTIONS</p><ul style="margin:0 0 8px;padding-left:20px">{items}</ul>'
+
+
+def _step(number: int, text: str) -> str:
+    return ('<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 0"><tr>'
+            '<td valign="top" style="width:30px"><div style="width:22px;height:22px;border-radius:11px;'
+            f'background:{_GREEN};color:#ffffff;font-size:12px;font-weight:700;line-height:22px;'
+            f'text-align:center">{number}</div></td><td style="font-size:15px">{text}</td></tr></table>')
 
 
 def from_saved_mail(text: str) -> dict | None:
@@ -268,13 +314,17 @@ def from_saved_mail(text: str) -> dict | None:
     whose text part may be quoted-printable or base64 encoded."""
     message = email.message_from_string(text, policy=email.policy.default)
     if message["MIME-Version"] or message["Content-Type"]:
-        body = message.get_body(preferencelist=("plain",))
-        text = body.get_content() if body else ""
+        parts = [message.get_body(preferencelist=(kind,)) for kind in ("plain", "html")]
+        text = "\n".join(part.get_content() for part in parts if part)
     return from_mail(text)
 
 
 def prompt_in(body: str) -> str:
-    """The text of a handoff message before its bundle block, as a person reads it: the prompt is in it."""
+    """The block a person pastes: the first <pre> of a handoff mail, or for a mail read as plain text,
+    everything before its bundle block."""
+    box = re.search(r"(?s)<pre[^>]*>(.*?)</pre>", body or "")
+    if box and not re.search(_marker(BEGIN), box.group(1)):
+        return html.unescape(box.group(1)).strip()
     found = re.search(r"(?s)(.*?)" + _marker(BEGIN), html.unescape(re.sub(r"<[^>]+>", "", body or "")))
     return found.group(1).strip() if found else ""
 
@@ -335,11 +385,16 @@ def _listed(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items) or "- none recorded"
 
 
-def conversation_text(bundle: dict) -> str:
-    turns = []
-    for n, e in enumerate(bundle["conversation"], 1):
-        turns.append(f"[{n}] {bundle['from']}:\n{e['user']}" + (f"\n\nAI, in summary: {e['ai']}" if e["ai"] else ""))
-    return "\n\n".join(turns)
+def conversation_text(bundle: dict, chars: int = None) -> str:
+    turns = [f"[{n}] {bundle['from']}:\n{e['user']}" + (f"\n\nAI, in summary: {e['ai']}" if e["ai"] else "")
+             for n, e in enumerate(bundle["conversation"], 1)]
+    kept = turns
+    while chars and len(kept) > 1 and sum(len(t) + 2 for t in kept) > chars:
+        kept = kept[1:]
+    if len(kept) == len(turns):
+        return "\n\n".join(turns)
+    return (f"[Messages 1 to {len(turns) - len(kept)} are left out to keep this mail short; the sender's agent "
+            f"sends the whole session with its first answer.]\n\n" + "\n\n".join(kept))
 
 
 def header(bundle: dict) -> str:
@@ -348,15 +403,17 @@ def header(bundle: dict) -> str:
             f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
 
 
-def brief_markdown(bundle: dict) -> str:
-    """The whole handoff: preview, mail, HANDOFF.md and co handoff show all print this."""
+def brief_markdown(bundle: dict, conversation_chars: int = None) -> str:
+    """The whole handoff: preview, mail, HANDOFF.md and co handoff show all print this.
+
+    `conversation_chars` keeps the newest messages that fit, for the block pasted from a mail."""
     return (f"{header(bundle)}\n\n"
             f"## Task\n{_asked(bundle)}{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n"
-            f"## Decided\n{_listed(bundle.get('decided', []))}\n\n"
-            f"## Rejected\n{_listed(bundle.get('rejected', []))}\n\n"
-            f"## Open questions\n{questions_text(bundle)}\n\n"
+            + "".join(f"## {name}\n{_listed(bundle[key])}\n\n"
+                      for name, key in (("Decided", "decided"), ("Rejected", "rejected")) if bundle.get(key))
+            + f"## Open questions\n{questions_text(bundle)}\n\n"
             f"## Code\n{code_text(bundle)}\n\n"
             + (f"## Issues and PRs mentioned\n{_mentioned(bundle)}\n\n" if bundle.get("mentioned") else "")
             + f"## Conversation\nEvery message {bundle['from']} wrote, word for word; the AI's replies in summary. "
-            f"Anything not here, ask the sender.\n\n{conversation_text(bundle)}\n")
+            f"Anything not here, ask the sender.\n\n{conversation_text(bundle, conversation_chars)}\n")

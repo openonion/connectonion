@@ -88,18 +88,14 @@ def _code(text: str) -> str:
 
 def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands(world):
     body = _send(world)
-    assert "Copy everything in the box into Codex or Claude Code" in body
+    assert "Copy everything between START and END" in body
     assert "Reject B." in body and "JS cannot read it" in body                      # the handoff, inline
-    # Plain `pip install connectonion` gets the last stable release, which has no co handoff accept.
-    from connectonion.handoff.replies import MIN_VERSION
-    # A pre-release floor admits pre-releases of co by itself (PEP 440); --pre would admit them for dependencies too.
-    floor = f'"connectonion>={MIN_VERSION}"'
-    # Isolated installs only, in this order; never the recipient's global Python (#2396).
-    uv, pipx = body.index(f"uv tool install {floor}"), body.index(f"pipx install --force {floor}")
-    venv = body.index(f"python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install {floor}")
-    assert uv < pipx < venv
-    assert "pip install --upgrade" not in body and "--pre" not in body
-    assert "do not run co init" in body and "co init --yes" in body
+    # One isolated install that also sets co up (#2415); never the recipient's global Python (#2396).
+    from connectonion.handoff.replies import INSTALLER, MIN_VERSION
+    assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in body
+    assert f'uv tool install "connectonion=={MIN_VERSION}"' in body                 # Windows: no sh
+    assert "pip install" not in body and "--pre" not in body
+    assert f"If it prints {MIN_VERSION} or newer, go to step 2" in body
     assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
@@ -289,7 +285,7 @@ def test_the_install_floor_is_a_published_version_not_the_senders_build(world, m
     from connectonion.handoff import replies
     monkeypatch.setattr("connectonion._version.__version__", "9.9.9.dev1")
     body = _send(world)
-    assert f'"connectonion>={replies.MIN_VERSION}"' in body
+    assert f"CO_VERSION={replies.MIN_VERSION} sh" in body
     assert ".dev" not in body
 
 
@@ -297,8 +293,8 @@ def test_a_person_reads_the_task_before_the_agent_steps_and_sees_no_markdown_fen
     body = _send(world)
     raw = world["mails"][-1]["message"]
     assert "```" not in raw
-    assert body.index("handed you a task") < body.index("Copy everything in the box") < body.index("1. Run co --version")
-    assert body.index("Where it stands:") < body.index("1. Run co --version")
+    assert body.index("handed you a task") < body.index("Copy everything between START and END") < body.index("1. Run co --version")
+    assert body.index("WHERE IT STANDS") < body.index("1. Run co --version")
 
 
 def test_the_install_floor_is_never_newer_than_this_release():

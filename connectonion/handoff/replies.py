@@ -84,20 +84,21 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
 # replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
 # automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
-MIN_VERSION = "1.9.2b13"
+MIN_VERSION = "1.9.2b13"   # the install line is install.sh, which pins exactly this version
+# From the floor's own tag, so what runs is the script that was released, not whatever main has now.
+INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
 
 def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
     """One block for Codex or Claude Code: the grey box in the mail, and what send prints for chat."""
-    floor = f'"connectonion>={MIN_VERSION}"'
+    pin = f'"connectonion=={MIN_VERSION}"'
     steps = [
         f"{sender} handed you a task with ConnectOnion (handoff {handoff_id}). Do these steps in order.",
-        f"1. Run co --version. If it prints {MIN_VERSION} or newer, go to step 2 and do not run co init. "
-        f"If co is missing or older, install it in its own environment, never into the global Python: "
-        f"if uv is available, uv tool install {floor}; otherwise, if pipx is available, "
-        f"pipx install --force {floor}; otherwise python3 -m venv ~/.co-venv && "
-        f"~/.co-venv/bin/pip install {floor}. Use that co for every co command below "
-        f"(uv and pipx put it in ~/.local/bin, the venv in ~/.co-venv/bin), and only then run co init --yes.",
+        f"1. Run co --version. If it prints {MIN_VERSION} or newer, go to step 2. Otherwise install it in its "
+        f"own environment, never into the global Python (this also sets co up):\n"
+        f"   macOS or Linux: curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh\n"
+        f"   Windows: uv tool install {pin}, then co init --yes (uv: https://docs.astral.sh/uv)\n"
+        f"   Use that co (in ~/.local/bin) for every co command below.",
         "2. Save everything below, from its first line '# Handoff:' to the end, as HANDOFF.md in the current directory.",
         f"3. Accept the handoff, which tells the sender it arrived: co handoff accept {code} --brief HANDOFF.md "
         f"(it sends mail and writes ~/.co/handoff, so in a sandbox ask me to run it with network access).",

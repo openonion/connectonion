@@ -177,7 +177,8 @@ def _deliver(bundle: dict) -> None:
     secret = replies.new_secret()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"],
                               "id": bundle["id"], "hash": bundle["content_hash"], "secret": secret})
-    prompt = replies.prompt(bundles.brief_markdown(bundle), code, bundle["id"], bundle["from"])
+    # Gmail clips a mail past about 102 KB, and the block to paste must arrive whole.
+    prompt = replies.prompt(bundles.brief_markdown(bundle, conversation_chars=50_000), code, bundle["id"], bundle["from"])
     subject, body = bundles.to_mail(bundle, prompt)
     result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"])
     if not result.get("success"):
