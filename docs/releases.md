@@ -25,15 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b15**: in `co handoff`, every question is answered exactly once,
-including weeks later, when two programs check at once, or when the session is
-long or gone. See [1.9.2b15 notes](releases/1.9.2b15.md).
+Beta **1.9.2b16**: the person you handed work to can hand it back with the
+line their agent was given, `co trust list --global` shows who your handoffs
+introduced, and the record says which handoff did it. See
+[1.9.2b16 notes](releases/1.9.2b16.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b15'
+python -m pip install --upgrade 'connectonion==1.9.2b16'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b15**: in `co handoff`, every question is answered exactly once,
+including weeks later, when two programs check at once, or when the session is
+long or gone. See [1.9.2b15 notes](releases/1.9.2b15.md).
 
 Beta **1.9.2b14**: your agent keeps a record of everything it does for anyone
 (`co approvals`), and three kinds of action (credentials and money, anything

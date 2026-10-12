@@ -400,16 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b15
+## Current Version: 1.9.2b16
 
-1.9.2b15 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, each question
-is answered exactly once, a month later as well as today: answered questions are
-remembered by when they were asked, the `co ai` watcher and `co handoff status`
-answer under one lock, a session copy too large for the inbox keeps its newest
-part, and a session that was deleted gets an answer saying so. The agent inbox
-is read to its newest message and skips messages that are not handoffs. The
-install floor stays 1.9.2b13. See [1.9.2b15 notes](docs/releases/1.9.2b15.md).
+1.9.2b16 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, the recipient
+can hand work back with the line `accept` prints, also when the sender is on an
+agent mailbox, whose contact name starts with `0x` (#2426). `co trust list
+--global` shows the global identity's contacts, the ones a handoff adds (#2430),
+and the record names the handoff that made each contact (#2429). The install
+floor is 1.9.2b16, since the hand-back fix is on the recipient's side. See
+[1.9.2b16 notes](docs/releases/1.9.2b16.md).
 
+- 1.9.2b16 (Hand the work back).
 - 1.9.2b15 (Every question answered once, on day thirty-one too).
 - 1.9.2b14 (See what your agent did, and for whom).
 - 1.9.2b13 (Questions answer themselves).
