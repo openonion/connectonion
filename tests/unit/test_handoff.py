@@ -771,3 +771,8 @@ def test_the_session_copy_never_carries_a_handoff_code():
     code = "coh2.EOaPbf85qxxQzEjqHHTn_WznJpqm6BI4KbNE5X0AVQjgdBg-O3ErLLX3FVu1_pw9O-lBGRPKYWFyb24ueGllQG1haWwub3Blbm9uaW9uLmFpRW2Mkw"
     text = bundles.redact(f"run co handoff accept {code} --brief HANDOFF.md, or the old coh1.{code[5:]}")
     assert "coh2.EOaP" not in text and "coh1.EOaP" not in text and "[removed: " in text
+
+
+def test_a_credentials_file_printed_in_a_tool_output_is_redacted():
+    text = bundles.redact('{"client_secret": "GOCSPX-abcdefghijklmnopqrstuv", "password": "hunter2hunter2hunter2"}')
+    assert "GOCSPX" not in text and "hunter2" not in text

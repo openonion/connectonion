@@ -137,18 +137,30 @@ def _read_messages() -> list[dict]:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.get(f"{backend_url()}/api/v1/messages", params={"limit": 500},
-                            headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
-    if response.status_code == 404:
-        return []
-    response.raise_for_status()
-    return [_as_mail(m) for m in response.json()["messages"]]
+    headers, rows = {"Authorization": f"Bearer {require_ambient_api_key()}"}, []
+    while True:   # the backend pages oldest first, so read to the end for the newest
+        response = requests.get(f"{backend_url()}/api/v1/messages", headers=headers, timeout=30,
+                                params={"after": rows[-1]["id"] if rows else 0, "limit": PAGE})
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        page = response.json()["messages"]
+        rows += page
+        if len(page) < PAGE:
+            break
+    return [mail for mail in map(_as_mail, rows) if mail]
 
 
-def _as_mail(message: dict) -> dict:
-    content = json.loads(message["body"])
+PAGE = 500
+
+
+def _as_mail(message: dict) -> dict | None:
+    """A handoff message as a mail-shaped dict; None for anything else another agent posted."""
+    content = json.loads(message["body"])   # the backend takes only JSON objects
+    if not isinstance(content, dict) or not isinstance(content.get("subject"), str):
+        return None
     return {"id": f"agent-message-{message['id']}", "from": content.get("from") or message["from_address"],
-            "subject": content["subject"], "message": content["message"], "timestamp": message["created_at"]}
+            "subject": content["subject"], "message": content.get("message", ""), "timestamp": message["created_at"]}
 
 
 def sent_status(to: str, subject: str) -> dict | None:
