@@ -400,16 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b15
+## Current Version: 1.9.2b16
 
-1.9.2b15 is a 1.9.2 beta; stable remains 1.9.1. In `co handoff`, each question
-is answered exactly once, a month later as well as today: answered questions are
-remembered by when they were asked, the `co ai` watcher and `co handoff status`
-answer under one lock, a session copy too large for the inbox keeps its newest
-part, and a session that was deleted gets an answer saying so. The agent inbox
-is read to its newest message and skips messages that are not handoffs. The
-install floor stays 1.9.2b13. See [1.9.2b15 notes](docs/releases/1.9.2b15.md).
+1.9.2b16 is a 1.9.2 beta; stable remains 1.9.1. The first `co handoff` mail is
+rewritten for a person who has never heard of ConnectOnion: who sent it and what
+ConnectOnion is, the task, three steps and one block marked START and END, in a
+layout that holds in Outlook and survives Gmail's clipping (#2415). The prompt
+installs co with the release's own `install.sh`. `status --wait` notices an
+answer that came before it, and the brief never passes on the sender's own
+permissions (#2404). The install floor is 1.9.2b16. See
+[1.9.2b16 notes](docs/releases/1.9.2b16.md).
 
+- 1.9.2b16 (A first handoff mail a stranger can read).
 - 1.9.2b15 (Every question answered once, on day thirty-one too).
 - 1.9.2b14 (See what your agent did, and for whom).
 - 1.9.2b13 (Questions answer themselves).
