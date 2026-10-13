@@ -49,7 +49,7 @@ def _fail(message: str, next_cmd: str) -> None:
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
                 draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1,
-                via: str = "auto", no_code: bool = False) -> None:
+                via: str = "auto", no_code: bool = False, lang: str = "") -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -59,7 +59,7 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
             _fail(f"Draft {draft_id} was prepared for {bundle['to']}, not {to}. A draft is approved for one recipient.",
                   f'co handoff send {shlex.quote(who)} "<what to hand off>"')
     else:
-        bundle = _new_bundle(to, what, from_file, agent, session, since)
+        bundle = _new_bundle(to, what, from_file, agent, session, since, lang)
     if no_code:
         bundle = _without_code(bundle)
     if edit:
@@ -90,13 +90,29 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
     _deliver(bundle, via)
 
 
+def handle_withdraw(handoff_id: str) -> None:
+    from ...environment import load_environment
+    load_environment()
+    path = _home() / "sent" / f"{handoff_id}.json"
+    if not path.exists():
+        _fail(f"No handoff {handoff_id} was sent from here.", "co handoff status")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not record.get("page"):
+        _fail(f"Handoff {handoff_id} has no page to take down.", f"co handoff status {handoff_id}")
+    transport.withdraw(record["page"])
+    record["withdrawn_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    out.print(f"Handoff {handoff_id} taken down: {record['page']} and its pickup no longer open. "
+              f"The mail already in {record['to']}'s mailbox stays there.")
+
+
 def _from_line(via: str, to: str) -> str:
     """Which mailbox the mail goes out from; the agent's is last, because it reads like spam (#2478)."""
-    channel, own = transport.channel_for(via), transport.own_mailbox()
+    channel = transport.channel_for(via)
     if channel == "mcp":
         return f"Your AI sends it to {to} with its own mail tool, from your address."
     if channel in ("gmail", "outlook"):
-        return f"It goes from your {channel.title()}, {own[1]}, to {to}."
+        return f"It goes from your {channel.title()}, {transport.own_mailboxes().get(channel, '')}, to {to}."
     return (f"It goes from your agent's mailbox, {os.getenv('AGENT_EMAIL')}, which a stranger may take for spam. "
             "To send from your own Gmail or Outlook instead, connect it once: co auth google (or co auth microsoft).")
 
@@ -114,7 +130,7 @@ def _recipient(who: str) -> str:
 
 
 def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[str],
-                session: Optional[str], since: int = 1) -> dict:
+                session: Optional[str], since: int = 1, lang: str = "") -> dict:
     if from_file:
         path = Path(from_file).resolve()
         talk = [{"at": "", "user": path.read_text(encoding="utf-8"), "ai": ""}]
@@ -135,11 +151,11 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
                           "the AI's replies quoted…"))
-    top = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"])
+    top = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"], lang=lang)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
                               code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name(),
-                              keep=[_my_email()])
+                              keep=[_my_email()], lang=lang)
     if any(patches):    # stays on this machine until send puts it in the drop (#2469)
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
@@ -850,6 +866,7 @@ def make_handoff_app(factory) -> typer.Typer:
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
         via: str = typer.Option("auto", "--via", hidden=True, help="For an AI with its own mail tool: mcp prints the mail for that tool to send"),
         no_code: bool = typer.Option(False, "--no-code", help="Send no code with it, even unpushed work"),
+        lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
 
@@ -862,7 +879,14 @@ def make_handoff_app(factory) -> typer.Typer:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
         if via not in transport.VIA:
             _fail(f"--via must be one of {', '.join(transport.VIA)}, not {via}.", f'co handoff send {shlex.quote(who)} --via auto')
-        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via, no_code)
+        if lang not in ("", "en", "zh"):
+            _fail(f"--lang must be en or zh, not {lang}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --lang en')
+        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via, no_code, lang)
+
+    @app.command("withdraw", epilog="Example:  co handoff withdraw ho-1a2b3c4d")
+    def withdraw(handoff_id: str = typer.Argument(..., help="The ho-… id of a handoff you sent")):
+        """Take a handoff you sent off the web: its page and its pickup stop working at once. Mail already delivered stays in their mailbox."""
+        handle_withdraw(handoff_id)
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
     def accept(

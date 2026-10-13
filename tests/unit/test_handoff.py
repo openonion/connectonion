@@ -111,7 +111,7 @@ def mailbox(monkeypatch):
 
     monkeypatch.setattr(transport, "deliver", deliver)
     monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
-    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     pages, held = {}, {}
 
     def drop(bundle, drop_id=None, prompt="", **kw):   # the backend's drops (#2459); b24 keeps the prompt for the page
@@ -999,3 +999,14 @@ def test_a_credential_in_the_code_points_to_a_way_out(project, model, mailbox, t
     _session_in(project, repo)
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 1 and "--no-code" in result.output
+
+
+def test_lang_sets_the_language_of_the_report_and_the_mail_not_of_the_quotes(project, model, mailbox):
+    """Students read English; Aaron's session is in Chinese and there was no way to choose (b25)."""
+    write_codex_session(project, extra=" 这一步先别改代码，只看日志")
+    result = _invoke("handoff", "send", SELF, "task", "--lang", "en")
+    assert result.exit_code == 0, result.output
+    assert "Write every field in English" in model[-1]
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert draft["lang"] == "en" and "这一步先别改代码" in draft["conversation"][0]["user"]
+    assert _invoke("handoff", "send", SELF, "task", "--lang", "fr").exit_code != 0

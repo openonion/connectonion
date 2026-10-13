@@ -85,7 +85,7 @@ AGENTS = {"codex": "Codex", "claude": "Claude Code"}
 
 
 def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
-          agent: str = "") -> Top:
+          agent: str = "", lang: str = "") -> Top:
     """The report on top, written from the newest TOP_CHARS of the conversation with every AI turn quoted."""
     from ..llm_do import llm_do
     kwargs = {"model": model} if model else {}
@@ -99,7 +99,8 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     who = (f"The Sender is {sender or 'unnamed'}, working with {AGENTS.get(agent, 'their AI')}"
            + (f", on {day}." if day else "."))
     han = len(re.findall(r"[\u4e00-\u9fff]", said_by_sender := " ".join(e["user"] for e in exchanges)))
-    lang = "Chinese" if han > len(re.findall(r"[A-Za-z]+", said_by_sender)) / 2 else "English"
+    lang = {"zh": "Chinese", "en": "English"}.get(lang) or (
+        "Chinese" if han > len(re.findall(r"[A-Za-z]+", said_by_sender)) / 2 else "English")
     top = llm_do(TOP_PROMPT.format(who=who, lang=lang, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
     top.diagram = diagram_lines(top.diagram)
@@ -134,7 +135,7 @@ def _turn(exchange: dict) -> dict:
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
              top: Top, exchanges: list[dict], titles: dict[str, str] = None,
-             sender_name: str = "", keep: list[str] = ()) -> dict:
+             sender_name: str = "", keep: list[str] = (), lang: str = "") -> dict:
     said = [_turn(e) for e in exchanges]
     emails, phones = others(json.dumps([top.model_dump(), said], ensure_ascii=False), [sender, to, *keep])
     bundle = {
@@ -142,6 +143,7 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
         "id": handoff_id,
         "from": sender,
         **({"from_name": sender_name} if sender_name else {}),
+        **({"lang": lang} if lang else {}),
         "to": to,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,

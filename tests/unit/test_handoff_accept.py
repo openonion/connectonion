@@ -62,7 +62,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
     monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
-    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.chdir(tmp_path)
     return {"mails": mails, "inbox": inbox, "be": be, "drops": drops}
@@ -808,7 +808,7 @@ class _FakeGmail:
 
 def test_with_a_gmail_connected_the_handoff_goes_from_it_not_the_agent_mailbox(world, monkeypatch):
     _FakeGmail.sent = []
-    monkeypatch.setattr(transport, "own_mailbox", lambda: ("gmail", "alice.liddell@gmail.com"))
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "alice.liddell@gmail.com"})
     monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
@@ -866,3 +866,32 @@ def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(worl
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output
     assert "ho-1a2b3c4d" in listed
+
+
+def test_sent_from_outlook_it_names_the_outlook_address_even_with_gmail_connected_too(world, monkeypatch):
+    """Live b25: --via outlook said "from your Outlook (openonionai@gmail.com)", the first mailbox found."""
+    _FakeGmail.sent = []
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "g@gmail.com", "outlook": "aaron@outlook.com"})
+    monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    preview = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
+    assert "It goes from your Outlook, aaron@outlook.com" in preview
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes", "--via", "outlook")
+    assert "from your Outlook (aaron@outlook.com)" in sent.output
+    record = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())
+    assert record["from"] == "aaron@outlook.com"
+
+
+def test_the_sender_can_take_the_page_down(world, monkeypatch):
+    """A page that shows what it should not (#2492) comes down at once, not in 30 days."""
+    _send(world)
+    gone = []
+    monkeypatch.setattr(transport, "_delete_drop", lambda drop_id: (gone.append(drop_id), world["drops"].pop(drop_id)))
+    page = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())["page"]
+    result = _invoke("handoff", "withdraw", "ho-1a2b3c4d")
+    assert result.exit_code == 0, result.output
+    assert gone == [page.rsplit("/", 1)[1]] and not world["drops"]
+    assert "taken down" in result.output and page in result.output
