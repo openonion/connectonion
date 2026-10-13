@@ -648,6 +648,9 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     _mail_ready()
     # Fetched before the sender is told: a handoff that cannot be read is not accepted (#2459).
     picked = transport.pickup(code) if code.get("drop") and not brief else None
+    if picked and picked.get("taken"):
+        _fail(f"Someone else's agent already accepted it, so it is theirs to do. Ask {code['mailbox']} to send "
+              "you a handoff of your own.", "co handoff inbox")
     folder = _home() / "accepted" / code["id"]
     folder.mkdir(parents=True, exist_ok=True)
     result = replies.send("accept", code, code["mailbox"], agent=_their_agent(code), reply_to=os.getenv("AGENT_EMAIL"))
@@ -877,7 +880,7 @@ def _from_page_in(text: str) -> Optional[dict]:
     """A person's mail carries no copy since 1.9.2rc1, only the page link: fetch it by the code the page holds."""
     page = re.search(re.escape(transport.VIEWER) + r"([A-Za-z0-9_-]+)", bundles.saved_mail_text(text))
     found = re.search(r"co handoff accept (\S+)", transport.page_prompt(page.group(1))) if page else None
-    return transport.pickup(replies.parse_code(found.group(1)))["bundle"] if found else None
+    return transport.page_bundle(replies.parse_code(found.group(1))) if found else None   # claims nothing
 
 
 def handle_show(handoff_id: str) -> None:

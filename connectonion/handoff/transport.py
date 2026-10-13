@@ -235,6 +235,19 @@ def agent_url(drop_id: str) -> str:
     return viewer_url(drop_id) + "/codex"
 
 
+def page_bundle(code: dict) -> dict:
+    """The handoff as its public page shows it, checked against the code: reading it claims nothing."""
+    from .bundle import seal
+    import requests
+    from ..backend import backend_url
+    response = requests.get(f"{backend_url()}/api/v1/drops/{code['drop']}/view", timeout=30)
+    response.raise_for_status()
+    bundle = response.json()["bundle"]
+    if seal(bundle)["content_hash"] != code["hash"]:
+        raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
+    return bundle
+
+
 def page_prompt(drop_id: str) -> str:
     """The whole prompt a handoff's page shows its recipient's agent (public, like the page)."""
     import requests
@@ -261,7 +274,10 @@ def pickup(code: dict) -> dict:
     and each patch matches the digest the approved bundle records."""
     from .bundle import seal
     from .sessions import patch_digest
-    body = json.loads(_get_drop(code["drop"], code["secret"]))
+    held = _get_drop(code["drop"], code["secret"])
+    if not held:   # another agent read it first and claimed it (oo-api#267)
+        return {"taken": True}
+    body = json.loads(held)
     if seal(body["bundle"])["content_hash"] != code["hash"]:
         raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
     for entry, patch in zip(body["bundle"].get("code") or [], body.get("code") or []):
@@ -300,6 +316,8 @@ def _get_drop(drop_id: str, key: str) -> str:
     from ..credentials import require_ambient_api_key
     response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}", timeout=30,
                             headers={"Authorization": f"Bearer {require_ambient_api_key()}", "X-Drop-Key": key})
+    if response.status_code == 409:   # already accepted by another agent: "" says so
+        return ""
     response.raise_for_status()
     return response.json()["body"]
 

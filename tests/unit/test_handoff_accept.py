@@ -58,10 +58,14 @@ def world(monkeypatch, tmp_path):
         drops[drop_id], keys[drop_id] = body, key_hash
         return drop_id
 
-    def get_drop(drop_id, key):   # as oo-api#267: the whole drop only for the holder of its key (#2496)
+    def get_drop(drop_id, key):   # as oo-api#267: the whole drop only for the holder of its key, who claims it
         import hashlib
         assert keys[drop_id] and hashlib.sha256(key.encode()).hexdigest() == keys[drop_id], "no key, or the wrong one"
-        return drops[drop_id]
+        reader = claimed.setdefault(drop_id, transport.my_address())
+        return drops[drop_id] if reader == transport.my_address() else ""
+
+    claimed = {}
+    monkeypatch.setattr(transport, "page_bundle", lambda code: json.loads(drops[code["drop"]])["bundle"])
 
     drops, keys = {}, {}
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
@@ -275,7 +279,7 @@ def test_a_wrong_secret_or_a_second_acceptor_is_not_recorded(world):
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert f"Accepted by {RECIPIENT['mail']}" in status.output
-    assert "let me in" not in status.output and "Ignored 2 acceptance or question(s)" in status.output
+    assert "let me in" not in status.output                        # the server refused the second holder
 
 
 def test_ask_before_accept_is_refused_with_the_accept_command(world):
@@ -989,13 +993,9 @@ def test_a_second_holder_is_told_it_is_taken_and_stops_waiting(world):
     _invoke("handoff", "accept", code)
     other = {"mail": "0xc3c3c3c3c3@mail.openonion.ai", "address": "0x" + "c3" * 32}
     world["be"](other)
-    _invoke("handoff", "accept", code)
-    world["be"](SENDER)
-    _invoke("handoff", "status", "ho-1a2b3c4d")
-    _invoke("handoff", "status", "ho-1a2b3c4d")                     # told once, not on every status
-    world["be"](other)
-    said = " ".join(_invoke("handoff", "status", "ho-1a2b3c4d").output.split())
-    assert "already accepted by" in said and RECIPIENT["mail"] in said and said.count("already accepted by") == 1
+    said = _invoke("handoff", "accept", code)                       # the server says it is claimed (oo-api#267)
+    assert said.exit_code != 0 and "already accepted it" in " ".join(said.output.split())
+    assert not (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d").exists()
 
 
 def test_wait_gives_up_after_its_timeout_with_the_carry_on_rule(world, monkeypatch):

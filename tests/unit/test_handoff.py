@@ -119,6 +119,7 @@ def mailbox(monkeypatch):
         return drop_id
     monkeypatch.setattr(transport, "drop", drop)
     monkeypatch.setattr(transport, "page_prompt", lambda drop_id: pages[drop_id])
+    monkeypatch.setattr(transport, "page_bundle", lambda code: held[code["drop"]])      # the public view
     monkeypatch.setattr(transport, "pickup", lambda code: {"bundle": held[code["drop"]], "code": [], "context": ""})
     monkeypatch.setattr(transport, "fetch", lambda last=200: [
         m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]])
