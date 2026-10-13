@@ -207,13 +207,22 @@ def redact(text: str, known_secrets: list[str] = ()) -> str:
 # Other people's contact details. A handoff page opens for anyone with its link, and a session that
 # ran co rem has read a mailbox: a relative's address reached a live page (Aaron, 2026-10-14). The
 # sender's and the recipient's own addresses stay, and so do example ones (RFC 2606) and git@host.
-EMAIL = re.compile(r"(?<![\w.%+-])[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-PHONE = re.compile(r"\+\d[\d \-]{7,}\d|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)")
+# Tool output quotes JSON, so a literal \\n can sit right before an address: it is not part of it.
+_START = r"(?:(?<=\\[nrt])|(?<![\w.%+\\-]))"
+EMAIL = re.compile(_START + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+PHONE = re.compile(r"\+\d[\d \-]{7,}\d"                               # +61 412 000 111
+                   r"|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)"          # 0412 000 111
+                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?![\d.])"  # (02) 9065 4432, 0873918410
+                   r"|(?<!\d)1[38]00[ -]?\d{3}[ -]?\d{3}(?!\d)")          # 1800 737 633
+IP = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+NOT_AN_IP = {"127.0.0.1", "0.0.0.0"}
 NOT_A_PERSON = re.compile(r"^git@|@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|example|test|invalid|localhost)$", re.I)
-
-
-ROLE_MAILBOXES = {"noreply", "no-reply", "notifications", "newsletter", "support", "automated", "express",
-                  "discover", "mailer-daemon", "hello", "admin", "team", "contact", "billing", "security"}
+# Pointers at a person that are not an address: co rem's people/<name>-<10 hex>.md (bare too, but not
+# orgs/ or projects/ ones), a LinkedIn id, and the name in a mail header whose address was masked.
+PERSON_PAGE = re.compile(r"(?:(?<=people/)|(?<=\\[nrt])|(?<![\w/\\-]))[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{10}(?=\.md|[^\w-]|$)")
+LINKEDIN = re.compile(r"(linkedin\.com/in/)[\w%-]+")
+HEADER_NAME = re.compile(r"(?:\"[^\"<>\n]{1,60}\"|(?<![\w'’-])[A-Z][\w'’-]{0,30}\.?(?: [A-Z][\w'’-]{0,30}\.?){0,3}"
+                         r"|(?<![\u4e00-\u9fff])[\u4e00-\u9fff·][\u4e00-\u9fff· ]{1,8})\s*(?=<\[email removed\]>)")
 
 
 def others(text: str, keep=()) -> tuple[set[str], set[str]]:
@@ -224,17 +233,20 @@ def others(text: str, keep=()) -> tuple[set[str], set[str]]:
 
 
 def mask(text: str, keep=(), emails: set[str] = None) -> str:
-    """`text` with other people's addresses and numbers removed, and the page names made from them.
-    `emails` names them when they were found across more than this one text."""
+    """`text` with other people's addresses, numbers and IPs removed, and what else points at them.
+    `emails` names the addresses when they were found across more than this one text."""
     emails = others(text, keep)[0] if emails is None else emails
-    for address in sorted(emails, key=len, reverse=True):
-        text = text.replace(address, "[email removed]")
-        text = text.replace(re.sub(r"[@.]", "-", address.lower()), "someone")   # co rem's people/<slug>.md
-    # What is left of them on their own: "kevin.chin1@ (all @student…)", "grep ivvli0000 *.md".
-    names = {a.split("@")[0] for a in emails} - ROLE_MAILBOXES
-    names = [re.escape(n) for n in sorted(names, key=len, reverse=True) if len(n) >= 6]
+    text = EMAIL.sub(lambda m: "[email removed]" if m.group(0) in emails else m.group(0), text)   # one pass
+    # What is left of one on its own ("kevin.chin1@ (all @student…)", "grep ivvli0000"), when it cannot be
+    # an ordinary word: "anyone@x.com" must not turn "anyone can read it" into "someone can".
+    names = sorted({a.split("@")[0] for a in emails if re.search(r"[\d._]", a.split("@")[0])}, key=len, reverse=True)
     if names:
-        text = re.sub(r"(?<![\w.-])(?:" + "|".join(names) + r")(?![\w])", "someone", text)
+        text = re.sub(r"(?<![\w.-])(?:" + "|".join(map(re.escape, names)) + r")(?![\w])", "someone", text)
+    text = PERSON_PAGE.sub("[person]", text)
+    text = LINKEDIN.sub(r"\1[person]", text)
+    text = HEADER_NAME.sub("[person] ", text)
+    text = IP.sub(lambda m: m.group(0) if m.group(0) in NOT_AN_IP or max(map(int, m.group(0).split("."))) > 255
+                  else "[ip removed]", text)
     return PHONE.sub("[phone removed]", text)
 
 

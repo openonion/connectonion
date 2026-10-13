@@ -441,3 +441,26 @@ def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
     copy = replies.unpack(replies._copy({"sent_at": "2026-10-14T00:00:00Z", "to": "r@x.co", "owner": "me@home.net"},
                                         {"kind": "claude", "path": str(session)}))
     assert "whittle" not in copy and "me@home.net" in copy
+
+
+def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
+    """#2493 review: "anyone" and "notify" became "someone" because anyone@x.com and notify@x.com were
+    masked; a literal \\n before an address read as part of it, so a kept address was not recognised."""
+    text = "anyone@x.com said anyone can read notify.py; log: 'sent\\nxietianle@outlook.com\\nnotify@x.com'"
+    out = bundles.mask(text, ["xietianle@outlook.com"])
+    assert "anyone can read notify.py" in out and "xietianle@outlook.com" in out
+    assert "anyone@x.com" not in out and "notify@x.com" not in out
+
+
+def test_masking_reaches_names_profiles_numbers_and_ips_that_point_at_a_person():
+    """#2493 review on a real session: co rem page names, mail-header names, LinkedIn ids, landlines,
+    1800 numbers and IP addresses all survived."""
+    text = ("people/tamara-berryman-324b6af6e8.md; ~/.co/rem/people/vern-chan-cccf24fb07.md; for f in david-burt-daaa78c99a; do; orgs/unsw-edu-au-921856d25b.md\n"
+            "From: Jiexuan Deng <jd@student.unsw.edu.au>\n"
+            "https://www.linkedin.com/in/mia-chen-data/ call 02 9065 4432, (02) 7235 5365, 1800 737 633, 0873918410\n"
+            "ssh onion@100.71.113.43 and 35.189.30.72; bind 127.0.0.1 or 0.0.0.0")
+    out = bundles.mask(text)
+    for gone in ("tamara-berryman", "vern-chan", "david-burt", "Jiexuan Deng", "mia-chen-data", "9065 4432", "7235 5365",
+                 "737 633", "0873918410", "100.71.113.43", "35.189.30.72"):
+        assert gone not in out, gone
+    assert "orgs/unsw-edu-au-921856d25b.md" in out and "127.0.0.1" in out and "0.0.0.0" in out
