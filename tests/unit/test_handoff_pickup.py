@@ -252,3 +252,31 @@ def test_a_sender_with_no_name_is_someone_never_an_agent_address():
     assert "0x9c0a8bf90c" not in mail["text"].split("LINE")[0]
     named = bundles.seal(dict(_bundle(RECIPIENT["mail"]), from_name="Aaron Xie"))
     assert bundles.notice(named, "LINE")["subject"].startswith("Aaron Xie passed you")
+
+
+
+# ---- B11: on the recipient's side the sender may exchange handoffs only (Aaron, 2026-10-13) ----
+
+def test_accepting_lets_the_sender_send_handoffs_but_not_use_the_recipients_tools(world, drops):
+    """"发送方…那些权限直接让他用就好了…接收方的话 它是需要有些限制的". The sender lands on a level the Trust
+    Agent can raise later (#2407), with the handoff in the record; the sender's side is unchanged."""
+    import os
+    from pathlib import Path
+    from connectonion.network.trust import tools
+    from connectonion.network.trust.fast_rules import evaluate_request
+    _send(world)
+    world["be"](RECIPIENT)
+    said = _invoke("handoff", "accept", _code(_page(world))).output
+    mine = Path(os.environ["AGENT_CONFIG_PATH"])
+    assert tools.get_level(SENDER["address"], mine) == "handoffs" and not tools.is_contact(SENDER["address"], mine)
+    config = {"allow": ["whitelisted", "contact"], "default": "deny"}       # a Host that pre-authorises contacts
+    assert evaluate_request(config, SENDER["address"], {}, co_dir=mine) != "allow"
+    assert "can send you handoffs and questions; they can't run tools on your machine" in " ".join(said.split())
+    record = (mine / "approvals.jsonl").read_text()
+    assert "add to handoffs" in record and "sent us handoff ho-1a2b3c4d" in record
+    tools.promote_to_contact(SENDER["address"], mine)                      # what the Trust Agent may do later
+    assert tools.get_level(SENDER["address"], mine) == "contact"
+
+    world["be"](SENDER)                                                    # the sender's side: unchanged
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert tools.is_contact(RECIPIENT["address"], Path(os.environ["AGENT_CONFIG_PATH"]))

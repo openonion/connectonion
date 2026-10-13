@@ -152,7 +152,9 @@ def test_a_handoff_code_is_not_an_invite_code(world):
     assert evaluate_request(config, RECIPIENT["address"], {"invite_code": code}, co_dir=co_dir) != "allow"
 
 
-def test_after_acceptance_each_side_is_the_others_agent_contact(world):
+def test_after_acceptance_the_sender_has_a_contact_and_the_recipient_a_handoff_peer(world):
+    """Asymmetric (Aaron, 2026-10-13): the recipient's agent may use what the sender's Host pre-authorises;
+    the sender, on the recipient's side, may only exchange handoffs."""
     from connectonion.network.trust import tools
     world["be"](SENDER)
     assert _invoke("handoff", "contact", "Bob", RECIPIENT["mail"]).exit_code == 0
@@ -160,8 +162,8 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
     world["be"](RECIPIENT)
     assert not tools.is_contact(SENDER["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
     accepted = _invoke("handoff", "accept", code)
-    assert f"The sender {SENDER['address']} is now your agent's contact alice (co trust list --global)" in accepted.output
-    assert tools.is_contact(SENDER["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
+    assert "can send you handoffs and questions; they can't run tools on your machine" in " ".join(accepted.output.split())
+    assert tools.get_level(SENDER["address"], Path(os.environ["AGENT_CONFIG_PATH"])) == "handoffs"
     assert transport.resolve("alice") == SENDER["mail"]
 
     world["be"](SENDER)
@@ -178,7 +180,7 @@ def test_after_acceptance_each_side_is_the_others_agent_contact(world):
 def test_the_record_says_which_handoff_made_each_side_a_contact(world):
     def reasons():
         lines = (Path(os.environ["AGENT_CONFIG_PATH"]) / "approvals.jsonl").read_text().splitlines()
-        return [(e["subject"], e["reason"]) for e in map(json.loads, lines) if e["tool"] == "add to contacts"]
+        return [(e["subject"], e["reason"]) for e in map(json.loads, lines) if e["tool"] in ("add to contacts", "add to handoffs")]
 
     code = _code(_send(world))
     world["be"](RECIPIENT)

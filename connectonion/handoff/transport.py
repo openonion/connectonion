@@ -47,7 +47,7 @@ def add_contact(name: str, address: str) -> str:
     return mail
 
 
-def meet(mail: str, agent: str, inbox: bool = False, reason: str = None) -> str:
+def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: str = "contact") -> str:
     """After a handoff is accepted, each side makes the other its agent's contact. Returns their name.
 
     `inbox` records that their co reads the agent inbox (they used a coh2 code), so later
@@ -58,8 +58,9 @@ def meet(mail: str, agent: str, inbox: bool = False, reason: str = None) -> str:
     gains the agent; anyone else is saved under the mailbox's name. `reason` (which handoff)
     goes into the record.
     """
-    from ..network.trust.tools import promote_to_contact
-    promote_to_contact(agent, global_config_dir(), reason)
+    from ..network.trust.tools import admit_for_handoffs, promote_to_contact
+    admit = admit_for_handoffs if level == "handoffs" else promote_to_contact
+    admit(agent, global_config_dir(), reason)
     book = contacts()
     name = next((n for n, e in book.items() if e["mail"] == mail or e.get("agent") == agent), None)
     if name is None:

@@ -499,9 +499,12 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
             (folder / "session.md").write_text(replies.unpack(picked["context"]), encoding="utf-8")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
-    name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}")
-    out.print(f"The sender {code['address']} is now your agent's contact {name} (co trust list --global); "
-              f"co handoff send {shlex.quote(name)} hands work back.")
+    # Asymmetric (Aaron, 2026-10-13): on this side the sender may send handoffs, not use our tools.
+    name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}",
+                          level="handoffs")
+    who = bundles.person_name(picked["bundle"]) if picked else name
+    out.print(f"{who} can send you handoffs and questions; they can't run tools on your machine "
+              f"(co trust list --global). co handoff send {shlex.quote(name)} hands work back.", markup=False)
     if picked:
         out.print("")
         print(bundles.report(picked["bundle"]) + f"\n\n## Code\n{bundles.code_text(picked['bundle'])}")   # plain print: Rich would eat the diagram's spacing

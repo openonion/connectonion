@@ -289,6 +289,14 @@ def promote_to_contact(client_id: str, co_dir: Path = None, reason: str = None) 
     return f"{client_id} promoted to contact."
 
 
+def admit_for_handoffs(client_id: str, co_dir: Path = None, reason: str = None) -> str:
+    """Stranger → handoffs only: someone whose handoff you accepted (Aaron, 2026-10-13: "接收方的话 它是
+    需要有些限制的"). They exchange handoffs and questions with you through the agent inbox, but a Host
+    that pre-authorises contacts does not count them as one. A level the Trust Agent can raise (#2407)."""
+    _add_to_list("handoffs", client_id, co_dir, reason)
+    return f"{client_id} may send you handoffs."
+
+
 def promote_to_whitelist(client_id: str, co_dir: Path = None) -> str:
     """Contact → Whitelist"""
     _add_to_list("whitelist", client_id, co_dir)
@@ -328,13 +336,15 @@ def unblock(client_id: str, co_dir: Path = None) -> str:
 # === Queries ===
 
 def get_level(client_id: str, co_dir: Path = None) -> str:
-    """Returns: stranger, contact, whitelist, or blocked."""
+    """Returns: stranger, handoffs, contact, whitelist, or blocked."""
     if is_blocked(client_id, co_dir):
         return "blocked"
     if is_whitelisted(client_id, co_dir):
         return "whitelist"
     if _check_list("contacts", client_id, co_dir):
         return "contact"
+    if _check_list("handoffs", client_id, co_dir):
+        return "handoffs"
     return "stranger"
 
 

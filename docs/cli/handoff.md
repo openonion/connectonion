@@ -266,18 +266,28 @@ planned with #2351/#2353.
 becomes that agent's mailbox `0x<first 10 hex>@mail.openonion.ai`. An unknown
 name exits 1 and prints the exact `co handoff contact` line.
 
-Once a handoff is accepted, each side is the other's **agent contact**, the
-same list `co trust list --global` shows for your global identity (`~/.co`). The
-recipient adds the sender when it runs `co handoff accept`. The sender adds the
-recipient's agent when `co handoff status` (or a running `co ai`) sees the
-acceptance. Only the first valid acceptance counts. Each side also gets a name
+Once a handoff is accepted, the two sides know each other, at different levels,
+both shown by `co trust list --global` for your global identity (`~/.co`):
+
+- **On the sender's side the recipient's agent is a contact.** It may use the
+  tools the sender's Host pre-authorises (EXEC) and Remote Browser, the same as a
+  contact who joined by invite. The sender adds it when `co handoff status` (or a
+  running host) sees the acceptance.
+- **On the recipient's side the sender may send handoffs only.** `co handoff
+  accept` puts them on the *handoffs* level: handoffs, questions, answers and
+  `done` go through the agent inbox, and a Host that pre-authorises contacts does
+  not count them as one. accept says so: "Aaron can send you handoffs and
+  questions; they can't run tools on your machine."
+
+Both changes are in the record (`approvals.jsonl`) with the handoff that made
+them. Only the first valid acceptance counts. Each side also gets a name
 for `co handoff send`: a contact you already had keeps its name and its mail
 address and gains the agent's `0x` address, and anyone new is saved under
 their mailbox name.
 
-A contact may use the tools your Host pre-authorises (EXEC) and Remote
-Browser, the same as a contact who joined by invite. A policy per contact,
-set by an AI from what co rem knows about them, is #2401. `co trust remove <0x…>`
+The handoffs level can be raised: `co trust add <0x…>` makes them a contact. A
+policy per contact, set and raised by the Trust Agent from what co rem knows
+about the two of you, is #2401 / #2407. `co trust remove <0x…>`
 takes someone off the list.
 
 ## Transport
