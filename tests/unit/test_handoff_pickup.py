@@ -252,10 +252,10 @@ def test_a_sender_with_no_name_is_someone_never_an_agent_address():
     """b22 mail: "0x9c0a8bf90c@mail.openonion.ai passed you some work". An address is not a name."""
     nameless = bundles.seal(dict(_bundle(RECIPIENT["mail"]), **{"from": "0x9c0a8bf90c@mail.openonion.ai"}))
     mail = bundles.notice(nameless, "LINE", "https://o.openonion.ai/h/x")
-    assert "0x9c0a8bf90c" not in mail["subject"] and mail["subject"].startswith("Someone passed you")
-    assert "0x9c0a8bf90c" not in mail["text"].split("LINE")[0]
+    assert "0x9c0a8bf90c" not in mail["subject"] and "0x9c0a8bf90c" not in mail["text"]
+    assert "Thanks,\nSomeone" not in mail["text"]                       # a nameless note is signed off by no one
     named = bundles.seal(dict(_bundle(RECIPIENT["mail"]), from_name="Aaron Xie"))
-    assert bundles.notice(named, "LINE")["subject"].startswith("Aaron Xie passed you")
+    assert "Thanks,\nAaron Xie" in bundles.notice(named, "LINE")["text"]
 
 
 
@@ -349,3 +349,23 @@ def test_an_unanswered_question_ends_in_a_stated_assumption_not_a_wait_forever(w
     world["be"](RECIPIENT)
     said = " ".join(_invoke("handoff", "accept", _code(_page(world))).output.split())
     assert "about 10 minutes" in said and "Assumed:" in said
+
+
+# ---- the replayed Codex thread, as Aaron looked for it in the app on Parrot ----
+
+def test_the_replayed_thread_is_listed_in_the_codex_app_with_short_labels_and_real_times(tmp_path):
+    """b24 audit: "source": "exec" threads are omitted from thread/list, so the app's sidebar never showed
+    it; labels read "(from Aaron Test, who handed this over · 2026-10-13)"; every row said "now"; turns
+    where the AI only ran tools showed "(no reply recorded)"."""
+    from connectonion.handoff import opener
+    zh = dict(_bundle(RECIPIENT["mail"]), from_name="Aaron Xie", lang="zh", conversation=[
+        {"at": "2026-10-13T02:13:00Z", "user": "看一下日志", "ai": ""},
+        {"at": "2026-10-13T02:18:00Z", "user": "邮件只做提醒", "ai": "好的"}])
+    rows = opener.replay_lines(bundles.seal(zh), "t1", tmp_path, "2026-10-13T09:00:00.000Z", "m")
+    assert rows[0]["payload"]["source"] == "cli"
+    said = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "user_message"]
+    assert said[0].startswith("(Aaron Xie · 10月13日)") and "who handed this over" not in said[0]
+    replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
+    assert replied == ["(Aaron Xie 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
+    assert {r["timestamp"] for r in rows[1:6]} == {"2026-10-13T02:13:00.000Z"}        # a turn with no reply: 5 rows
+    assert opener.REPORT.startswith("(co handoff)")

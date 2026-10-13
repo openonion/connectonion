@@ -579,7 +579,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "paste this line" in mail["message"] and "https://o.openonion.ai/h/" in mail["message"]
+    assert "paste the line" in mail["message"] and "https://o.openonion.ai/h/" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 
@@ -843,17 +843,17 @@ def test_each_exchange_is_a_finished_turn_labelled_with_who_said_it(tmp_path):
     assert rows[0]["type"] == "session_meta" and rows[0]["payload"]["id"] == "t-1"
     events = [r["payload"]["type"] for r in rows if r["type"] == "event_msg"]
     # Without the events the model sees the history but the app and the phone show nothing.
-    assert events == ["task_started", "user_message", "agent_message", "task_complete"] * 2
+    # A turn where the AI only ran tools has no reply bubble (b24 audit: "(no reply recorded)").
+    assert events == ["task_started", "user_message", "agent_message", "task_complete",
+                      "task_started", "user_message", "task_complete"]
     said = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "user_message"]
     replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
-    assert said[0].startswith("(from aaron, who handed this over · 2026-10-12)")
-    assert "Cookie or localStorage?" in said[0]
-    assert replied[0].startswith("(aaron's Claude Code, in summary)")
+    assert said[0].startswith("(aaron · 12 Oct)") and "Cookie or localStorage?" in said[0]
+    assert replied[0].startswith("(aaron's Claude Code)")
     named = opener.replay_lines(dict(REPLAY, from_name="Aaron Xie", ai_quoted=True), "t-1", tmp_path,
                                 "2026-10-13T00:00:00.000Z", "gpt-5")
-    assert "(from Aaron Xie, who handed this over" in named[4]["payload"]["message"]
-    assert named[6]["payload"]["message"].startswith("(Aaron Xie's Claude Code)\n\n")   # quoted, not summarised
-    assert "(no reply recorded)" in replied[1]
+    assert named[4]["payload"]["message"].startswith("(Aaron Xie · 12 Oct)")
+    assert named[6]["payload"]["message"].startswith("(Aaron Xie's Claude Code)\n\n")
 
 
 def test_the_thread_is_written_where_codex_finds_it_and_named(tmp_path, monkeypatch):
@@ -872,6 +872,8 @@ def test_a_codex_that_refuses_the_replay_gets_one_seeded_turn(tmp_path, monkeypa
     calls = []
 
     def run(argv, **kw):
+        if argv == ["codex", "--version"]:
+            return opener.subprocess.CompletedProcess(argv, 0, stdout="codex-cli 0.162.1", stderr="")
         calls.append((argv, kw.get("input")))
         if "resume" in argv:
             return opener.subprocess.CompletedProcess(argv, 1, stdout="", stderr="unsupported rollout")
@@ -956,3 +958,43 @@ def test_a_credential_in_the_code_that_travels_is_refused(project, model, mailbo
     _session_in(project, repo)
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 1 and "Refusing to send" in result.output and mailbox == []
+
+
+def test_only_the_repository_the_session_worked_in_last_travels_and_the_files_are_named(project, model, mailbox, tmp_path):
+    """b24 audit: a long session carried three repositories, a shared checkout with 30 files of other
+    sessions' work and a private journal among them; nobody could see or stop it."""
+    older, latest = tmp_path / "journal", tmp_path / "slugs"
+    _unpushed_repo(older)
+    _unpushed_repo(latest)
+    from datetime import datetime, timedelta, timezone
+    path = write_claude_session(project)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    now = datetime.now(timezone.utc)
+    rows[1].update(cwd=str(older), gitBranch="main", timestamp=(now - timedelta(minutes=5)).isoformat())
+    rows[2].update(cwd=str(latest), timestamp=now.isoformat())
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    result = _invoke("handoff", "send", SELF, "task")
+    code = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.code.json").read_text())
+    assert [p["name"] for p in code if p] == ["slugs"]
+    assert "slug.py" in result.output                                        # which files go, by name
+
+
+def test_no_code_sends_the_handoff_without_any_code_even_from_a_draft(project, model, mailbox, tmp_path):
+    repo = tmp_path / "slugs"
+    _unpushed_repo(repo)
+    _session_in(project, repo)
+    handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
+    again = _invoke("handoff", "send", SELF, "--draft", handoff_id, "--no-code")
+    assert again.exit_code == 0, again.output
+    assert not (Path.home() / ".co/handoff/drafts" / f"{handoff_id}.code.json").exists()
+    assert "The code goes with it" not in again.output
+
+
+def test_a_credential_in_the_code_points_to_a_way_out(project, model, mailbox, tmp_path):
+    repo = tmp_path / "slugs"
+    _unpushed_repo(repo)
+    (repo / "settings.py").write_text("OPENAI_API_KEY = 'sk-proj-abcdefghijklmnopqrstuvwx'\n")
+    _git(repo, "add", "settings.py")
+    _session_in(project, repo)
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 1 and "--no-code" in result.output

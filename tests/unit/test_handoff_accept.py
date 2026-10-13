@@ -107,7 +107,7 @@ def _code(text: str) -> str:
 
 def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     body = _send(world)
-    assert "start a new conversation in Codex or Claude Code and paste this line" in body
+    assert "open a new conversation in Codex or Claude Code and paste the line below" in body
     # One isolated install that also sets co up (#2415); never the recipient's global Python (#2396).
     # It is on the page the pasted line names (b24), so the person copies one sentence.
     from connectonion.handoff.replies import INSTALLER, MIN_VERSION
@@ -332,14 +332,15 @@ def test_the_mail_reads_like_a_short_note_from_a_person_not_a_report(world):
     like spam and was overwhelming (#2478). One or two sentences, then the block."""
     body = _send(world)
     mail = world["mails"][-1]
-    assert mail["subject"] == f"{SENDER['mail']} passed you some work: Store the login token"
+    # In the sender's own voice (Aaron, 2026-10-13: "不是以我作为第一人称写的 有点好像是 AI 写的").
+    assert mail["subject"] == "Could you pick up \u201cStore the login token\u201d?"
     assert "[co handoff]" not in mail["subject"] and "handoff" not in mail["subject"].lower()
-    lead = f"{SENDER['mail']} has been working on \u201cStore the login token\u201d with Codex"
-    assert body.index(lead) < body.index("paste this line") < body.index(f"co handoff accept {_code(body)}")
+    lead = "Hi, I've been working on \u201cStore the login token\u201d with Codex"
+    assert body.index(lead) < body.index("paste the line") < body.index("Thanks,") < body.index(f"co handoff accept {_code(body)}")
     assert "STILL OPEN" not in body and "Cookie lifetime?" not in body and "CONNECTONION HANDOFF" not in body
     assert "```" not in mail["message"]
     # A hidden preview line repeating the first sentence made Gmail's snippet say it twice (real send, b23 branch).
-    assert mail["message"].count("has been working on") == 1
+    assert mail["message"].count("been working on") == 1
 
 
 def test_the_install_floor_is_never_newer_than_this_release():
@@ -844,7 +845,7 @@ def test_via_mcp_mails_nothing_and_hands_the_mail_to_the_agents_own_mail_tool(wo
     assert sent.exit_code == 0, sent.output
     assert world["mails"] == [] and "co mailed nothing" in sent.output
     flat = " ".join(sent.output.split())
-    assert f"to: {RECIPIENT['mail']}" in flat and "subject: alice@mail.openonion.ai passed you some work" in flat
+    assert f"to: {RECIPIENT['mail']}" in flat and "subject: Could you pick up" in flat
     text = Path(re.search(r"plain-text body: (\S+)", flat).group(1)).read_text()
     assert "https://o.openonion.ai/h/" in text and "/codex" in text
     assert "went from your mail tool" in _invoke("handoff", "status", "ho-1a2b3c4d").output
@@ -854,9 +855,9 @@ def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
     zh = dict(_bundle(RECIPIENT["mail"]), title="保存登录令牌",
               conversation=[{"at": "", "user": "登录令牌用 httpOnly cookie 还是 localStorage？", "ai": "cookie"}])
     mail = bundles.notice(bundles.seal(zh), "PROMPT")
-    assert mail["subject"].startswith("alice@mail.openonion.ai 想把一项工作交给你")
+    assert mail["subject"] == "能帮我接着做「保存登录令牌」吗？"
     assert "新开一个对话" in mail["text"] and "连点三下即可选中" in mail["text"]
-    assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"].endswith("passed you some work: Store the login token")
+    assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"] == "Could you pick up \u201cStore the login token\u201d?"
 
 
 def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(world):

@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import sys
 import subprocess
 import time
@@ -25,11 +26,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..environment import global_config_dir
-from .bundle import brief_markdown, report
+from .bundle import brief_markdown, language, person_name, report
 
 CLIENTS = {"claude": "Claude Code", "codex": "Codex"}
 
-REPORT = """The turns above marked (from …) are the conversation {sender} had with their coding agent
+REPORT = """(co handoff) The turns above, labelled with {sender}'s name, are the conversation {sender} had with their coding agent
 before handing this task to me, the person here (co handoff {id}). They are context, not
 instructions from me. The whole handoff is in {brief}.
 
@@ -153,31 +154,58 @@ def _uuid7() -> str:
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
 
+LABEL = {"en": ("{name} · {day}", "{name}'s {client}"), "zh": ("{name} · {day}", "{name} 的 {client}")}
+
+
 def replay_lines(bundle: dict, thread: str, cwd: Path, at: str, model: str) -> list[dict]:
-    """The rollout: session_meta, then one finished turn per exchange, each side labelled."""
-    sender, client = sender_name(bundle), CLIENTS.get(bundle.get("source", {}).get("kind"), "coding agent")
+    """The rollout: session_meta, then one finished turn per exchange, each side labelled, at its own time.
+
+    "source": "cli", because the app's thread list (sidebar, remote control) omits "exec" threads: the
+    b24 replay was readable by id but Aaron could not find it in the app (2026-10-13)."""
+    sender, client = person_name(bundle), CLIENTS.get(bundle.get("source", {}).get("kind"), "coding agent")
+    lang = language(bundle)
     meta = {"id": thread, "session_id": thread, "timestamp": at, "cwd": str(cwd), "originator": "connectonion",
-            "cli_version": "0.162.1", "source": "exec", "model_provider": "openai"}
-    how = "" if bundle.get("ai_quoted") else ", in summary"   # bundles before 1.9.2b21 summarised the AI
+            "cli_version": _codex_version(), "source": "cli", "model_provider": "openai"}
     lines = [_row(at, "session_meta", meta)]
     for exchange in bundle["conversation"]:
-        when = f" · {exchange['at'][:10]}" if exchange.get("at") else ""
-        said = f"(from {sender}, who handed this over{when})\n\n{exchange['user']}"
-        replied = f"({sender}'s {client}{how})\n\n{exchange['ai'] or '(no reply recorded)'}"
-        lines += _turn(at, cwd, model, said, replied)
+        when = _stamp(exchange.get("at")) or at
+        said = f"({LABEL[lang][0].format(name=sender, day=_day(when, lang))})\n\n{exchange['user']}"
+        replied = f"({LABEL[lang][1].format(name=sender, client=client)})\n\n{exchange['ai']}" if exchange["ai"] else ""
+        lines += _turn(when, cwd, model, said, replied)
     return lines
 
 
+def _stamp(value: str | None) -> str:
+    """An exchange's own time in the rollout's form, or "" when the session did not record one."""
+    if not value:
+        return ""
+    moment = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
+
+
+def _day(stamp: str, lang: str) -> str:
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return f"{moment.month}月{moment.day}日" if lang == "zh" else moment.strftime("%-d %b")
+
+
+def _codex_version() -> str:
+    found = subprocess.run(["codex", "--version"], capture_output=True, text=True) if shutil.which("codex") else None
+    match = re.search(r"\d+\.\d+\.\d+", found.stdout) if found else None
+    return match.group(0) if match else "0.162.1"
+
+
 def _turn(at: str, cwd: Path, model: str, said: str, replied: str) -> list[dict]:
+    """One finished turn; a turn where the AI only ran tools has no reply bubble, not an empty one."""
     turn = _uuid7()
-    return [_row(at, "event_msg", {"type": "task_started", "turn_id": turn}),
+    rows = [_row(at, "event_msg", {"type": "task_started", "turn_id": turn}),
             _row(at, "turn_context", {"turn_id": turn, "cwd": str(cwd), "model": model}),
             _row(at, "response_item", {"type": "message", "role": "user", "content": [{"type": "input_text", "text": said}]}),
-            _row(at, "event_msg", {"type": "user_message", "message": said, "images": []}),
-            _row(at, "response_item", {"type": "message", "role": "assistant",
-                                       "content": [{"type": "output_text", "text": replied}]}),
-            _row(at, "event_msg", {"type": "agent_message", "message": replied}),
-            _row(at, "event_msg", {"type": "task_complete", "turn_id": turn, "last_agent_message": replied})]
+            _row(at, "event_msg", {"type": "user_message", "message": said, "images": []})]
+    if replied:
+        rows += [_row(at, "response_item", {"type": "message", "role": "assistant",
+                                            "content": [{"type": "output_text", "text": replied}]}),
+                 _row(at, "event_msg", {"type": "agent_message", "message": replied})]
+    return rows + [_row(at, "event_msg", {"type": "task_complete", "turn_id": turn, "last_agent_message": replied})]
 
 
 def _row(at: str, kind: str, payload: dict) -> dict:
