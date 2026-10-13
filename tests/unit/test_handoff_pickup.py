@@ -369,3 +369,45 @@ def test_the_replayed_thread_is_listed_in_the_codex_app_with_short_labels_and_re
     assert replied == ["(Aaron Xie 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
     assert {r["timestamp"] for r in rows[1:6]} == {"2026-10-13T02:13:00.000Z"}        # a turn with no reply: 5 rows
     assert opener.REPORT.startswith("(co handoff)")
+
+
+# ---- the conversation as the viewer shows it: one reply per turn, no repeats, clean cuts ----
+
+def test_a_turn_shows_the_ais_final_reply_and_counts_the_steps_before_it():
+    """b25 chat review: one bubble glued every text segment between tool calls ("…能不能发 HTML 邮件：
+    Now my part of #2477. Tests first: 129 passed…"), switching language and ending on colons."""
+    from connectonion.handoff import sessions
+    turns = [{"role": "user", "text": "Ship it", "timestamp": "2026-10-13T01:00:00Z"},
+             {"role": "assistant", "text": "Tests first:", "timestamp": "2026-10-13T01:00:05Z"},
+             {"role": "assistant", "text": "129 passed. Opening the PR:", "timestamp": "2026-10-13T01:01:00Z"},
+             {"role": "assistant", "text": "Done: PR #1 is merged.", "timestamp": "2026-10-13T01:02:00Z"}]
+    [turn] = sessions.exchanges(turns)
+    assert turn["final"] == "Done: PR #1 is merged." and turn["steps"] == 2
+    assert "Tests first:" in turn["ai"]                     # the report on top still reads all of it
+    cut_short = sessions.exchanges(turns + [{"role": "assistant", "text": "Now the docs:", "timestamp": "t"}])
+    assert cut_short[0]["final"] == "Done: PR #1 is merged." and cut_short[0]["steps"] == 3
+    bundle = bundles.assemble(handoff_id="h", sender="a@b", to="c@d", what="w", source={"kind": "claude"}, code=[],
+                              top=bundles.Top(title="t", task="t", where_it_stands="w"), exchanges=[turn])
+    assert bundle["conversation"] == [{"at": turn["at"], "user": "Ship it", "ai": "Done: PR #1 is merged.", "steps": 2}]
+
+
+def test_a_message_typed_while_the_ai_was_busy_is_not_shown_twice():
+    """b25 chat review: Claude Code records it as a queued_command and again when it is delivered."""
+    from connectonion.handoff import sessions
+    turns = [{"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-13T01:00:00Z"},
+             {"role": "assistant", "text": "Noted.", "timestamp": "2026-10-13T01:00:30Z"},
+             {"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-13T01:02:00Z"},
+             {"role": "assistant", "text": "Shortened it.", "timestamp": "2026-10-13T01:03:00Z"},
+             {"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-14T09:00:00Z"}]
+    said = sessions.exchanges(turns)
+    assert [e["user"] for e in said] == ["Keep the mail short"] * 2       # the next day it is a new request
+    assert said[0]["final"] == "Shortened it." and said[0]["steps"] == 1
+
+
+def test_a_long_reply_is_cut_between_lines_not_inside_words():
+    """b25 chat review: "…then openi[cut]y` 和纯文本 `body`" left half-words and half a code span."""
+    text = "\n".join(f"line {n}: `code {n}` and some words" for n in range(80))
+    cut = bundles.quote(text)
+    head, mark, tail = cut.partition("\n[…")
+    assert text.startswith(head) and head.endswith("words")
+    assert tail.split("]\n", 1)[1].startswith("line ") and len(cut) < 900

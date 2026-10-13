@@ -344,8 +344,8 @@ def test_each_user_message_carries_the_ai_replies_that_followed_it():
              {"role": "assistant", "text": "first", "timestamp": "t2"},
              {"role": "assistant", "text": "second", "timestamp": "t3"},
              {"role": "user", "text": "B?", "timestamp": "t4"}]
-    assert sessions.exchanges(turns) == [{"at": "t1", "user": "A?", "ai": "first\n\nsecond"},
-                                         {"at": "t4", "user": "B?", "ai": ""}]
+    assert sessions.exchanges(turns) == [{"at": "t1", "user": "A?", "ai": "first\n\nsecond", "final": "second", "steps": 1},
+                                         {"at": "t4", "user": "B?", "ai": "", "final": "", "steps": 0}]
 
 
 def test_the_handoff_quotes_the_users_words_and_the_ais_own_words(project, model, mailbox):
@@ -460,10 +460,9 @@ def test_a_long_ai_reply_keeps_its_start_and_its_end_and_says_what_was_cut():
 def test_the_report_call_reads_at_most_a_bounded_transcript_newest_first(project, model, mailbox, monkeypatch):
     monkeypatch.setattr(bundles, "TOP_CHARS", 500)
     talk = [{"at": "", "user": f"question {n}", "ai": "x" * 200} for n in range(1, 7)]
-    top, said = bundles.draft(talk, "task")
+    bundles.draft(talk, "task")
     assert len(model) == 1 and len(model[0]) < 500 + len(bundles.TOP_PROMPT) + 300
     assert "question 6" in model[0] and "question 1" not in model[0] and "left out" in model[0]
-    assert said[1] == "x" * 200                                           # the bundle still quotes all of it
 
 
 def test_decided_and_rejected_are_at_the_top(project, model, mailbox):

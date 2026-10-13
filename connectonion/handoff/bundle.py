@@ -85,8 +85,8 @@ AGENTS = {"codex": "Codex", "claude": "Claude Code"}
 
 
 def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
-          agent: str = "") -> tuple[Top, dict[int, str]]:
-    """The AI's side quoted, and the report on top written from the newest TOP_CHARS of it."""
+          agent: str = "") -> Top:
+    """The report on top, written from the newest TOP_CHARS of the conversation with every AI turn quoted."""
     from ..llm_do import llm_do
     kwargs = {"model": model} if model else {}
     said = {n: quote(e["ai"]) for n, e in enumerate(exchanges, 1) if e["ai"]}
@@ -103,7 +103,7 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     top = llm_do(TOP_PROMPT.format(who=who, lang=lang, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
     top.diagram = diagram_lines(top.diagram)
-    return top, said
+    return top
 
 
 def diagram_lines(diagram: str) -> str:
@@ -116,12 +116,24 @@ def quote(text: str) -> str:
     if len(text) <= QUOTE_CHARS:
         return text
     head, tail = QUOTE_CHARS // 4, QUOTE_CHARS - QUOTE_CHARS // 4
-    return (f"{text[:head]}\n[… {len(text) - head - tail:,} characters cut; the full session comes with the first "
-            f"answer]\n{text[-tail:]}")
+    start, end = text[:head], text[-tail:]
+    # Cut between lines where a line ends near the limit, so no word or `code` span is cut in half.
+    start = start[:start.rindex("\n")] if "\n" in start[head // 2:] else start
+    end = end[end.index("\n") + 1:] if "\n" in end[:tail // 2] else end
+    return (f"{start}\n[… {len(text) - len(start) - len(end):,} characters cut; the full session comes with the "
+            f"first answer]\n{end}")
+
+
+def _turn(exchange: dict) -> dict:
+    """One turn as the recipient reads it: the sender's words whole, the AI's final reply quoted, and how
+    many running remarks came before it (the session copy has those)."""
+    final = exchange.get("final", exchange["ai"])
+    return {"at": exchange["at"], "user": exchange["user"], "ai": quote(final) if final else "",
+            **({"steps": exchange["steps"]} if exchange.get("steps") else {})}
 
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
-             top: Top, said: dict[int, str], exchanges: list[dict], titles: dict[str, str] = None,
+             top: Top, exchanges: list[dict], titles: dict[str, str] = None,
              sender_name: str = "") -> dict:
     bundle = {
         "format": FORMAT,
@@ -134,8 +146,7 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
         "asked": what,
         **top.model_dump(),
         "code": code,
-        "conversation": [{"at": e["at"], "user": e["user"], "ai": said.get(n, "")}
-                         for n, e in enumerate(exchanges, 1)],
+        "conversation": [_turn(e) for e in exchanges],
         "ai_quoted": True,   # 1.9.2b21: "ai" is the AI's own text, not a summary of it
     }
     # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.

@@ -135,10 +135,10 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
                           "the AI's replies quoted…"))
-    top, said = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"])
+    top = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"])
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
-                              code=code, top=top, said=said, exchanges=talk, titles=titles, sender_name=_my_name())
+                              code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name())
     if any(patches):    # stays on this machine until send puts it in the drop (#2469)
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
