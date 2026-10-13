@@ -280,3 +280,17 @@ def test_accepting_lets_the_sender_send_handoffs_but_not_use_the_recipients_tool
     world["be"](SENDER)                                                    # the sender's side: unchanged
     _invoke("handoff", "status", "ho-1a2b3c4d")
     assert tools.is_contact(RECIPIENT["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
+
+
+def test_send_shows_the_sender_the_page_the_recipient_will_see(world, drops):
+    """Aaron, 2026-10-13: "直接给我一个网页…这样我就可以打开看一下 知道到底分享了什么东西"."""
+    world["be"](SENDER)
+    import os
+    from pathlib import Path
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes").output
+    [drop_id] = drops
+    assert f"What you shared, as they see it: https://o.openonion.ai/h/{drop_id}" in sent
+    assert _invoke("handoff", "status", "ho-1a2b3c4d").output.count(f"https://o.openonion.ai/h/{drop_id}") == 1

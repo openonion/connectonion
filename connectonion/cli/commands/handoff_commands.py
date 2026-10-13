@@ -300,7 +300,8 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": mail["subject"],
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
               "secret": secret, "sent_at": sent_at,
-              "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False)}
+              "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False),
+              "page": transport.viewer_url(drop)}
     if _my_email():   # where a question that waits on the sender reaches them (#2454)
         record["owner"] = _my_email()
     if session:
@@ -316,6 +317,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
         _print_for_mail_tool(bundle, mail)
     else:
         out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" from {_mailbox_name(record)}.")
+    out.print(f"What you shared, as they see it: {record['page']}", markup=False)
     if record["in_their_inbox"]:
         out.print("They are a contact, so it is also in their agent's inbox (co handoff inbox on their side).")
     if record["via"] != "mcp" and not result["mailed"]:
@@ -372,6 +374,8 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
     handoff_id = record["id"]
     out.print(style.heading(f"Handoff {handoff_id} (sent)"))
     out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
+    if record.get("page"):
+        out.print(f"What you shared, as they see it: {record['page']}", markup=False)
     if "secret" not in record:
         out.print("Sent before acceptance existed: the recipient opens it with co handoff open.")
         _next(f"co handoff open {handoff_id}  (run by the recipient)")
