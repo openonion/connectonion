@@ -1043,4 +1043,4 @@ def test_the_preview_says_how_often_the_recipient_is_named_and_lists_it_on_reque
 def test_the_preview_names_messages_that_mention_health_visa_legal_or_money(project, model, mailbox):
     write_codex_session(project, extra=" 签证被拒了，睡眠检查报告也出来了")
     said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
-    assert "mention" in said and "签证" in said and "--edit" in said
+    assert "mention" in said and "签证" in said and "--edit" in said and "[co.warn]" not in said

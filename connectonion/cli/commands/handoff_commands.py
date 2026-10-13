@@ -296,9 +296,9 @@ def _preview(bundle: dict, path: Path) -> None:
     out.print(style.muted(_masked_line(bundle)))
     touchy = _touchy(bundle)
     if touchy:
-        out.print(style.warn(f"Messages {', '.join(map(str, touchy))} mention "
-                             f"{', '.join(sorted({w for n in touchy for w in touchy[n]}))}: read them, and --edit to drop "
-                             "any that should not go."), markup=False)
+        out.print(style.warn(escape(f"Messages {', '.join(map(str, touchy))} mention "
+                                    f"{', '.join(sorted({w for n in touchy for w in touchy[n]}))}: read them, and --edit "
+                                    "to drop any that should not go.")))
     for name in _their_names(bundle["to"]):
         n = len(_mentions(bundle, name))
         if n:
