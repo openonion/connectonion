@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
+Beta **1.9.2b22**: everything arrives with `co handoff accept`: the code the
+recipient cannot fetch and the sender's session copy, and the pasted block tells
+their agent to do the work without waiting. See
+[1.9.2b22 notes](releases/1.9.2b22.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b22'
+```
+
+## Previous previews
+
 Beta **1.9.2b21**: a handoff opens on what the sender discussed and concluded.
 The mail is a reminder and a three-line paste; `co handoff accept` fetches the
 handoff, and a question the sender left open reaches them by mail. See
 [1.9.2b21 notes](releases/1.9.2b21.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2b21'
-```
-
-## Previous previews
 
 Beta **1.9.2b20**: a `co handoff` runs without the person stepping in. The
 recipient's agent accepts, does the work and says when it is done; the result

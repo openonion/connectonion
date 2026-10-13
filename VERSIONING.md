@@ -400,17 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b21
+## Current Version: 1.9.2b22
 
-1.9.2b21 is a 1.9.2 beta; stable remains 1.9.1. A handoff opens on what the
-sender discussed and concluded: the mail is a reminder and a three-line paste,
-and `co handoff accept` fetches the handoff from the backend by code (#2459).
-The brief leads with a report and quotes the AI's own words (#2460). Every
-hosted agent answers questions on handoffs it sent (#2453), and each new
-question is mailed to the sender (#2454). `install.sh` waits for a version PyPI
-has not listed yet (#2457). The install floor is 1.9.2b21. See
-[1.9.2b21 notes](docs/releases/1.9.2b21.md).
+1.9.2b22 is a 1.9.2 beta; stable remains 1.9.1. Everything arrives with
+`co handoff accept`: the code the recipient cannot fetch, as patches it rebuilds
+in their folder (#2469), and the sender's session copy, so nothing waits on the
+sender's machine. The pasted block tells the agent to do the work without
+waiting (#2452), and `co handoff open` keeps waiting for answers (#2473). The
+install floor is 1.9.2b22. See [1.9.2b22 notes](docs/releases/1.9.2b22.md).
 
+- 1.9.2b22 (Everything arrives with accept).
 - 1.9.2b21 (A handoff that opens on what you discussed).
 - 1.9.2b20 (A handoff nobody has to babysit).
 - 1.9.2b19 (One host, whichever way you start it).
