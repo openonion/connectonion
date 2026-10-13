@@ -97,7 +97,7 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
 # replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
 # automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
-MIN_VERSION = "1.9.2b21"   # 1.9.2b21: the code is coh3 and accept fetches the handoff it points to (#2459). The install line is install.sh, which pins exactly this version
+MIN_VERSION = "1.9.2b22"   # 1.9.2b22: accept brings the code and the session copy, and the paste says to do the work (#2469, #2452). The install line is install.sh, which pins exactly this version
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
