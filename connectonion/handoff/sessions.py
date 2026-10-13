@@ -323,7 +323,12 @@ def _branch_of(git, commit: str) -> str:
 
 
 def code_for(agent: str, path: Path, limit: int = 3, since: str = "") -> list[dict]:
-    """The repositories the session worked in, most recent first, one entry per repository and commit.
+    """The repositories the session worked in, most recent first, one entry per repository and commit."""
+    return [code for code, _ in code_with_folders(agent, path, limit, since)]
+
+
+def code_with_folders(agent: str, path: Path, limit: int = 3, since: str = "") -> list[tuple[dict, Path]]:
+    """code_for, with the local folder of each, which never leaves this machine.
 
     `since` (the first handed-off message's time) leaves out folders the session only worked in
     before it: with --since, the other work earlier in the session is not the recipient's."""
@@ -332,9 +337,43 @@ def code_for(agent: str, path: Path, limit: int = 3, since: str = "") -> list[di
         if since and _moment(when) < _moment(since):
             continue
         code = code_at(folder, branch, when)
-        if code and all((c["repository"], c["commit"]) != (code["repository"], code["commit"]) for c in found):
-            found.append(code)
+        if code and all((c["repository"], c["commit"]) != (code["repository"], code["commit"]) for c, _ in found):
+            found.append((code, Path(folder)))
     return found[:limit]
+
+
+def code_patch(folder: Path, code: dict) -> dict | None:
+    """What the recipient cannot fetch (#2469): commits on no remote, as `git format-patch` text, and
+    changes not committed, as a diff (new files included). None when everything is pushed."""
+    if code["pushed"] and not code["uncommitted"]:
+        return None
+    git = lambda *args, ok=(0,): _git_out(folder, args, ok)
+    base = ""
+    if not code["pushed"] and code["repository"]:
+        oldest = git("rev-list", "--reverse", code["commit"], "--not", "--remotes").split()[:1]
+        # Nothing on the remote yet: the oldest unpushed commit is the root, which has no parent.
+        base = git("rev-parse", "--verify", "-q", f"{oldest[0]}^", ok=(0, 1)).strip() if oldest else code["commit"]
+    commits = "" if code["pushed"] else git("format-patch", "--stdout", "--binary",
+                                             *([f"{base}..{code['commit']}"] if base else ["--root", code["commit"]]))
+    changes = git("diff", "--binary", code["commit"]) if code["uncommitted"] else ""
+    for new in git("ls-files", "--others", "--exclude-standard").splitlines() if code["uncommitted"] else []:
+        changes += git("diff", "--binary", "--no-index", "/dev/null", new, ok=(0, 1))
+    return {"name": Path(folder).name, "base": base or (code["commit"] if code["pushed"] else ""),
+            "commits": commits, "changes": changes}
+
+
+def _git_out(folder: Path, args: tuple, ok: tuple) -> str:
+    done = subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
+    if done.returncode not in ok:
+        raise RuntimeError(f"git {' '.join(args)} failed in {folder}: {done.stderr.strip()}")
+    return done.stdout
+
+
+def patch_digest(patch: dict) -> dict:
+    """What the sealed bundle records about a patch that travels beside it, so accept can check it."""
+    import hashlib
+    body = json.dumps(patch, sort_keys=True).encode()
+    return {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body)}
 
 
 def _moment(stamp: str) -> datetime:

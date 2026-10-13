@@ -115,7 +115,9 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
             f"   Windows: uv tool install \"connectonion=={MIN_VERSION}\", then co init --yes\n"
             f"2. Run this yourself; it fetches the handoff and says what to do next:\n"
             f"   co handoff accept {code}\n"
-            f"3. Then tell me, the person here, in a few lines what {sender} was working on and what you will do.\n")
+            f"3. Do what accept says, here in this folder, without waiting for me: the work, questions to {sender} "
+            f"with co handoff ask, and co handoff done when it is finished. Then tell me, the person here, in a few "
+            f"lines what {sender} was working on and what you did.\n")
 
 
 # ---- reply messages ----
@@ -188,8 +190,8 @@ WITH_COPY = ("Answered automatically by the sender's agent. A copy of the sessio
              "up to when it was sent, comes with this answer: every message, what the AI said, and every "
              "tool call with its output (credentials removed). co handoff status shows where it is saved; "
              "search it for your question.")
-POINTER = ("Answered automatically by the sender's agent: search the session copy that came with the first "
-           "answer (co handoff status shows where it is saved).")
+POINTER = ("Answered automatically by the sender's agent: search the session copy you already have "
+           "(co handoff status shows where it is saved).")
 
 
 NO_COPY = ("Answered automatically by the sender's agent, but the session this handoff came from is no longer "
@@ -311,13 +313,14 @@ def answered_keys(record: dict, questions: list[dict]) -> list[str]:
     return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
 
 
-def _copy(record: dict, session: dict) -> str:
+def _copy(record: dict, session: dict, budget: int = None) -> str:
     """The redacted session, packed; its newest part when the whole would not fit the inbox."""
+    budget = budget or COPY_BUDGET
     text = bundles.redact(sessions.transcript(session["kind"], session["path"], session.get("since", ""),
                                               record["sent_at"]), bundles.known_secrets())
     packed = _pack(text)
-    while len(packed) > COPY_BUDGET:
-        text = text[-int(len(text) * COPY_BUDGET / len(packed) * 0.9):]
+    while len(packed) > budget:
+        text = text[-int(len(text) * budget / len(packed) * 0.9):]
         packed = _pack(EARLIER_CUT + text)
     return packed
 

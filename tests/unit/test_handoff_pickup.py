@@ -33,15 +33,15 @@ def test_the_paste_is_the_install_line_and_the_accept_line_only(world, drops):
     assert re.search(r"co handoff accept coh3\.[A-Za-z0-9_-]+", paste)
     assert f"CO_VERSION={replies.MIN_VERSION}" in paste
     assert "Reject B." not in paste and "Cookie lifetime?" not in paste   # the handoff is not in the paste
-    assert "co handoff ask" not in paste and "co handoff status" not in paste
-    assert len(paste) < 900, paste
+    assert "co handoff status" not in paste and "--wait" not in paste
+    assert len(paste) < 1100, paste
 
 
 def test_accept_picks_up_exactly_the_handoff_the_sender_approved(world, drops):
     _send(world)
     code = replies.parse_code(re.search(r"co handoff accept (\S+)", _paste(world)).group(1))
     picked = transport.pickup(code)
-    assert picked == _bundle(RECIPIENT["mail"])
+    assert picked["bundle"] == _bundle(RECIPIENT["mail"]) and picked["code"] == []
 
 
 def test_a_dropped_handoff_that_differs_from_the_approved_one_is_refused(world, drops):
@@ -133,3 +133,64 @@ def test_a_question_reaches_the_sender_by_mail_with_the_line_that_answers_it(wor
     world["be"](RECIPIENT)
     theirs = _invoke("handoff", "status", "ho-1a2b3c4d").output
     assert "has been told" in theirs and "--wait" in theirs
+
+
+def test_the_persons_block_tells_the_agent_to_do_the_work_without_waiting(world, drops):
+    """b21, on Parrot (Codex 0.162) and melbourne-2 (Codex 0.156): step 3 said "tell me ... what you will do",
+    in the person's voice, which outranks the rules accept prints, so both agents stopped after saying
+    what they would do. b20, whose paste said to do it, finished with zero person steps."""
+    _send(world)
+    paste = _paste(world)
+    assert "without waiting for me" in paste and "co handoff done" in paste
+    assert "what you will do" not in paste
+
+
+# ---- b22: the code and the session copy arrive with accept ----
+
+def test_accept_rebuilds_unpushed_code_in_this_folder(world, tmp_path, monkeypatch):
+    import os
+    import subprocess
+    from pathlib import Path
+    from connectonion.handoff import sessions
+    repo = tmp_path / "alice" / "slugs"
+    repo.mkdir(parents=True)
+    git = lambda *a, cwd=repo: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, text=True).stdout
+    git("init", "-q", "-b", "main")
+    (repo / "slug.py").write_text("def slugify(t):\n    return t.lower()\n")
+    git("add", ".")
+    git("-c", "user.email=a@b", "-c", "user.name=Alice", "commit", "-q", "-m", "slugify")
+    (repo / "slug.py").write_text("def slugify(t):\n    return t.lower().strip()\n")
+    entry = sessions.code_at(repo, "main")
+    patch = sessions.code_patch(repo, entry)
+    entry["patch"] = sessions.patch_digest(patch)
+
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(bundles.seal({**_bundle(RECIPIENT["mail"]), "code": [entry]})))
+    (drafts / "ho-1a2b3c4d.code.json").write_text(json.dumps([patch]))
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
+    assert sent.exit_code == 0, sent.output
+
+    world["be"](RECIPIENT)
+    here = tmp_path / "bob-work"
+    here.mkdir()
+    monkeypatch.chdir(here)
+    said = _invoke("handoff", "accept", re.search(r"co handoff accept (\S+)", _paste(world)).group(1)).output
+    assert (here / "slugs" / "slug.py").read_text() == "def slugify(t):\n    return t.lower().strip()\n"
+    assert "slugify" in git("log", "--format=%s", cwd=here / "slugs")
+    assert f"The code is in {here / 'slugs'}" in said
+
+
+def test_accept_saves_the_senders_session_at_once(world, tmp_path):
+    """b21 round 2: the work turn waited for the session copy, which only went out when the sender's
+    machine next looked at its mail; nothing was running there."""
+    import os
+    from pathlib import Path
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    said = _invoke("handoff", "accept", code).output
+    copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
+    assert "maxAge = 30 days (product asked)" in copy.read_text()
+    assert f"The sender's whole session: {copy}" in said.replace("\n", "")
