@@ -110,7 +110,7 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
     handed to them. `accept` fetches the handoff and says what to do next."""
     return (f"{sender} handed you \"{title}\" with ConnectOnion (handoff {handoff_id}).\n\n"
             f"1. If co --version prints nothing or a version older than {MIN_VERSION}, install it (it keeps "
-            f"to its own environment):\n"
+            f"to its own environment; right after a release it can wait a few minutes for PyPI, so let it finish):\n"
             f"   macOS or Linux: curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh\n"
             f"   Windows: uv tool install \"connectonion=={MIN_VERSION}\", then co init --yes\n"
             f"2. Run this yourself; it fetches the handoff and says what to do next:\n"

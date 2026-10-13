@@ -194,3 +194,22 @@ def test_accept_saves_the_senders_session_at_once(world, tmp_path):
     copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
     assert "maxAge = 30 days (product asked)" in copy.read_text()
     assert f"The sender's whole session: {copy}" in said.replace("\n", "")
+
+
+# ---- #2477: rough edges from the 1.9.2b22 stranger run ----
+
+def test_the_code_section_says_the_code_goes_with_the_handoff_when_it_does():
+    """The b22 preview said "The code goes with it" while the brief said "ask the sender to push it"."""
+    travelling = {"repository": None, "branch": "main", "commit": "a" * 40, "pushed": False, "uncommitted": 1,
+                  "patch": {"sha256": "b" * 64, "bytes": 900}}
+    text = bundles.code_text({"code": [travelling]})
+    assert "ask the sender to push it" not in text and "goes with this handoff" in text
+    stuck = dict(travelling, patch={"too_large": 3_000_000})
+    assert "ask the sender to push it" in bundles.code_text({"code": [stuck]})
+
+
+def test_the_paste_says_a_slow_install_should_be_left_to_finish(world, drops):
+    """b22 on melbourne-2: install.sh waited out PyPI's lag; Codex sees output only at the end, took it for a
+    hang, and ran its own install in parallel. The two raced into "No module named 'connectonion.core'"."""
+    _send(world)
+    assert "let it finish" in _paste(world)
