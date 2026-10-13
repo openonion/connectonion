@@ -436,16 +436,12 @@ def conversation_text(bundle: dict, chars: int = None) -> str:
 def header(bundle: dict) -> str:
     # A blank line, not a single newline: the mail service joins single newlines in the text part.
     return (f"# Handoff: {bundle['title']}\n\n"
-            f"From: {_from(bundle)} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+            f"From: {person_name(bundle)} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
 
 
 def sender_name(bundle: dict) -> str:
     """The sender as a person knows them: their name when the bundle carries it, else their address."""
     return bundle.get("from_name") or bundle["from"]
-
-
-def _from(bundle: dict) -> str:
-    return f"{bundle['from_name']} ({bundle['from']})" if bundle.get("from_name") else bundle["from"]
 
 
 def report(bundle: dict) -> str:

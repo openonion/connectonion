@@ -103,7 +103,11 @@ def test_the_sender_is_named_by_their_git_name_not_only_an_address(tmp_path, mon
     assert handoff_commands._my_name() == "Aaron Xie"
     named = bundles.seal({**_bundle(RECIPIENT["mail"]), "from_name": "Aaron Xie"})
     assert bundles.sender_name(named) == "Aaron Xie"
-    assert f"From: Aaron Xie ({SENDER['mail']})" in bundles.brief_markdown(named)
+    # The agent mailbox is how replies route, not who sent the mail: a person reads a name (Aaron, 2026-10-13:
+    # "默认不应该是用 Gmail 发出去吗 怎么又用 agent email 发出去了", reading the preview's From line).
+    assert "From: Aaron Xie ·" in bundles.brief_markdown(named) and SENDER["mail"] not in bundles.header(named)
+    nameless = bundles.seal(dict(_bundle(RECIPIENT["mail"]), **{"from": "0x9c0a8bf90c@mail.openonion.ai"}))
+    assert "From: Someone ·" in bundles.header(nameless)
 
 
 # ---- #2454: a question the session copy cannot answer reaches the sender in person ----
