@@ -33,8 +33,8 @@ def test_the_paste_is_the_install_line_and_the_accept_line_only(world, drops):
     assert re.search(r"co handoff accept coh3\.[A-Za-z0-9_-]+", paste)
     assert f"CO_VERSION={replies.MIN_VERSION}" in paste
     assert "Reject B." not in paste and "Cookie lifetime?" not in paste   # the handoff is not in the paste
-    assert "co handoff ask" not in paste and "co handoff status" not in paste
-    assert len(paste) < 900, paste
+    assert "co handoff status" not in paste and "--wait" not in paste
+    assert len(paste) < 1100, paste
 
 
 def test_accept_picks_up_exactly_the_handoff_the_sender_approved(world, drops):
@@ -133,3 +133,13 @@ def test_a_question_reaches_the_sender_by_mail_with_the_line_that_answers_it(wor
     world["be"](RECIPIENT)
     theirs = _invoke("handoff", "status", "ho-1a2b3c4d").output
     assert "has been told" in theirs and "--wait" in theirs
+
+
+def test_the_persons_block_tells_the_agent_to_do_the_work_without_waiting(world, drops):
+    """b21, on Parrot (Codex 0.162) and melbourne-2 (Codex 0.156): step 3 said "tell me ... what you will do",
+    in the person's voice, which outranks the rules accept prints, so both agents stopped after saying
+    what they would do. b20, whose paste said to do it, finished with zero person steps."""
+    _send(world)
+    paste = _paste(world)
+    assert "without waiting for me" in paste and "co handoff done" in paste
+    assert "what you will do" not in paste

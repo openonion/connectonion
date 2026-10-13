@@ -115,7 +115,9 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
             f"   Windows: uv tool install \"connectonion=={MIN_VERSION}\", then co init --yes\n"
             f"2. Run this yourself; it fetches the handoff and says what to do next:\n"
             f"   co handoff accept {code}\n"
-            f"3. Then tell me, the person here, in a few lines what {sender} was working on and what you will do.\n")
+            f"3. Do what accept says, here in this folder, without waiting for me: the work, questions to {sender} "
+            f"with co handoff ask, and co handoff done when it is finished. Then tell me, the person here, in a few "
+            f"lines what {sender} was working on and what you did.\n")
 
 
 # ---- reply messages ----
