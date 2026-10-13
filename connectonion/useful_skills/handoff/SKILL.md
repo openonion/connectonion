@@ -117,20 +117,32 @@ their approval.** If either of you edits it, show it again. No answer means not
 sent. A grant for "this person" does not cover a different recipient or a
 broader brief; a draft is bound to the recipient it was prepared for.
 
-## 5a. Send by email
+## 5a. Send by email, from the user's own mailbox
 
-```bash
-co handoff send <who> --draft <id> --yes
-```
+Send from a mailbox the recipient will recognise. Mail from an agent's
+mailbox looks unfamiliar and often lands in spam. In order of preference:
 
-This sends exactly the previewed draft (same content hash) from your agent's
-address. The mail tells the person what was discussed, concluded and still
-open, then gives one short block to paste into Codex or Claude Code: install co
-if missing, and `co handoff accept <code>`. The handoff itself waits on the
-backend under an id in the code; `accept` fetches it, checks it against what you
-approved, and tells their agent what to do next. `send` prints the same block,
-so the user can also pass it on by chat. The recipient never needs an id, an
-inbox or a saved file.
+1. **You have a mail tool** (a Gmail or Outlook MCP connector, e.g. `send_message`):
+   ```bash
+   co handoff send <who> --draft <id> --yes --via mcp
+   ```
+   co mails nothing. It prints the recipient, the subject, and the paths of an
+   HTML and a plain-text body. Send that mail with your tool from the user's own
+   address, using the HTML file as the HTML body and the text file as the plain
+   one. Then tell the user it went.
+2. **No mail tool:** `co handoff send <who> --draft <id> --yes`. co sends from
+   the user's Gmail or Outlook when one is connected with `co auth google` or
+   `co auth microsoft`. Otherwise it sends from the agent's mailbox, and the
+   preview says so. Suggest connecting their own mailbox first.
+
+The mail is a short note in the language the user wrote in. It says who has been
+working on what with their AI, and what they talked through. Then comes one
+block to paste into a new Codex or Claude Code conversation: install co if
+missing, and `co handoff accept <code>`. The handoff itself waits on the backend
+under an id in the code. `accept` fetches it, with the code and the session,
+checks it against what you approved, and tells their agent what to do next.
+`send` prints the same block, so the user can also pass it on by chat. The
+recipient never needs an id, an inbox or a saved file.
 
 The `coh3.…` code in it is handoff-scoped: it lets one agent accept this one
 handoff and ask about it. It is not an invite and grants nothing on your agent.

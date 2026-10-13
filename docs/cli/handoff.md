@@ -15,9 +15,10 @@ co handoff answer ho-98fb1cb3 "30 days"
 co handoff status ho-98fb1cb3                   # "Done, …" and any file they sent back
 ```
 
-Ody does not type any of this. The mail says who sent it, what the task is,
-where it stands and what is still open, then gives three steps and one block,
-marked START and END, to paste into Codex or Claude Code. He pastes it, and his
+Ody does not type any of this. The mail comes from your own mailbox and reads
+like a short note from you: who has been working on what with their AI, what
+they talked through, and one block to paste into a new Codex or Claude Code
+conversation. He pastes it, and his
 agent installs co if needed, accepts by itself, tells him in a few lines what the
 task is, does it, and tells you with `co handoff done` when it is finished. He
 is asked only before something that cannot be undone or that leaves his
@@ -25,10 +26,28 @@ machine. The chat message `send` prints is the same block.
 
 ## The mail and the prompt
 
-The mail is a reminder, written for the person: who handed them what, one line
-on what it is about, what was discussed, what was concluded and what is still
-open. Then one short block to paste into Codex or Claude Code. With the code
-shortened and the version as a 1.9.2b22 sender writes it:
+The mail is a short note, written for a person who may not know co, in the
+language you wrote in (Chinese or English). The subject is "Aaron Xie passed you
+some work: <title>", with no co terms in it. The body has one or two sentences:
+who has been working on what with which AI, and the first thing they talked
+through. Then comes one block to paste into a new Codex or Claude Code
+conversation, and a one-line footer. What was decided and what is still open
+reach their agent when it accepts, not the mail.
+
+It goes from the best mailbox there is, with no option to pick:
+
+1. **Your AI's own mail tool**, when the agent running `send` has one (a Gmail
+   or Outlook MCP connector). The handoff skill has it send the mail itself,
+   from your address.
+2. **Your Gmail**, connected with `co auth google`.
+3. **Your Outlook**, connected with `co auth microsoft`.
+4. **Your agent's mailbox**, last, because a stranger may take mail from it for
+   spam. The preview says so, and says how to connect your own.
+
+The preview's last line names the mailbox. A question that waits on you, and the
+note that a handoff is done, go to that mailbox from itself.
+
+The block, with the code shortened and the version as a 1.9.2b22 sender writes it:
 
 ```text
 Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion (handoff ho-5359a292).
@@ -78,11 +97,13 @@ frozen into a mail.
   floor's release tag, not from `main`, so what runs is what was released. For a
   few minutes after a release PyPI's index may not list it yet: `install.sh`
   waits for it (up to about 5 minutes) instead of failing.
-- The mail is HTML with the prompt in `<pre>` inside a framed table cell: the
-  mail service sends the body as HTML, plain text lost its line breaks, and
-  Outlook ignores padding and wrapping on `<pre>`.
-- The bundle is also hidden at the very end of the mail, base64, for
-  `co handoff open <saved mail>`.
+- The mail has a plain-text part and an HTML part. In the HTML the prompt is in
+  `<pre>` inside a framed table cell, because Outlook ignores padding and
+  wrapping on `<pre>`. The agent mailbox's mail service sends only the HTML
+  (plain text lost its line breaks there).
+- The bundle is also hidden at the very end of the HTML, base64, for
+  `co handoff open <saved mail>`. A mail to an agent mailbox is found in
+  `co handoff inbox` by that block, not its subject.
 - There are no `<placeholders>` in it; the mail service drops anything shaped
   like a tag.
 

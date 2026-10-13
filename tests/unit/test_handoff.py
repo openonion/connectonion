@@ -104,15 +104,17 @@ def mailbox(monkeypatch):
     """The agent mailbox, faked at the transport's two functions."""
     mails = []
 
-    def deliver(to, subject, body, idempotency_key, mail_too=False):
+    def deliver(to, subject, body, idempotency_key, agent=None):
         mails.append({"id": str(len(mails) + 1), "from": SELF, "to": to, "subject": subject,
                       "message": body, "timestamp": "2026-10-10T10:05:00"})
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": SELF}
 
     monkeypatch.setattr(transport, "deliver", deliver)
+    monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
+    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
     monkeypatch.setattr(transport, "drop", lambda bundle, **kw: "drop" + "0" * 28)   # the backend's drops (#2459)
-    monkeypatch.setattr(transport, "fetch", lambda last=200: [m for m in reversed(mails)
-                                                              if m["subject"].startswith(transport.SUBJECT_PREFIX)])
+    monkeypatch.setattr(transport, "fetch", lambda last=200: [
+        m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.setattr(transport, "my_address", lambda: "0x" + "ab" * 32)
     return mails
@@ -240,17 +242,16 @@ def test_no_text_in_the_mail_sits_bare_in_a_table_cell():
     in a cell ran into the next one: "CONNECTONION HANDOFF0xf9e5…", "ENDFirst time?" (b17, 2026-10-13)."""
     bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a@b.c",
                            "to": "d@e.f", "created_at": "2026-10-10", "where_it_stands": "w"})
-    _, body = bundles.to_mail(bundle, "prompt")
+    body = bundles.notice(bundle, "prompt")["html"]
     assert re.findall(r"<td[^>]*>[^<]*\w[^<]*<", body) == []
 
 
 def test_a_changed_bundle_is_not_verified():
     bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a", "to": "b",
                            "created_at": "2026-10-10", "where_it_stands": ""})
-    subject, body = bundles.to_mail(bundle, "prompt")
-    assert bundles.from_mail(body)["verified"]
+    assert bundles.from_mail(bundles.notice(bundle, "prompt")["html"])["verified"]
     tampered = dict(bundle, task="something else")          # keeps the approved hash
-    assert not bundles.from_mail(bundles.to_mail(tampered, "prompt")[1])["verified"]
+    assert not bundles.from_mail(bundles.notice(tampered, "prompt")["html"])["verified"]
 
 
 # ---- recipient ----
@@ -571,7 +572,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "Copy everything between START and END" in mail["message"]
+    assert "paste the block below" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 
