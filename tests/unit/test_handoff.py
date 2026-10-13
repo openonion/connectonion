@@ -891,3 +891,8 @@ def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagra
     assert "Aaron and Claude Code, 12 Oct" in with_overview and "ask ─► cookie" in with_overview
     work = opener.work_prompt(REPLAY, tmp_path, "coh2.abc")
     assert "co handoff done coh2.abc" in work
+    # b21 on Parrot: it asked, ran status once without --wait, and stopped "blocked" 90 s before the answer.
+    flat = " ".join(work.split())
+    assert f"co handoff status {REPLAY['id']} --wait and let it return" in flat and "do not stop" in flat
+    assert "session.md" in flat and "search it before asking" in flat
+    assert '"The code is in …", work there' in flat                                  # where b22's accept puts it
