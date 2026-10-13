@@ -112,7 +112,13 @@ def mailbox(monkeypatch):
     monkeypatch.setattr(transport, "deliver", deliver)
     monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
     monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
-    monkeypatch.setattr(transport, "drop", lambda bundle, **kw: "drop" + "0" * 28)   # the backend's drops (#2459)
+    pages = {}
+
+    def drop(bundle, drop_id=None, prompt="", **kw):   # the backend's drops (#2459); b24 keeps the prompt for the page
+        pages[drop_id] = prompt
+        return drop_id
+    monkeypatch.setattr(transport, "drop", drop)
+    monkeypatch.setattr(transport, "page_prompt", lambda drop_id: pages[drop_id])
     monkeypatch.setattr(transport, "fetch", lambda last=200: [
         m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
@@ -572,7 +578,7 @@ def _fake_open(monkeypatch) -> list:
 def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
     # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "paste the block below" in mail["message"]
+    assert "paste this line" in mail["message"] and "https://o.openonion.ai/h/" in mail["message"]
     assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 

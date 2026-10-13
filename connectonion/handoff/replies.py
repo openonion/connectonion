@@ -120,6 +120,22 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
             f"tell me in a few lines what {sender} was working on and what you did.\n")
 
 
+PASTE = {   # one line a person pastes; the page it names holds the prompt above (Aaron, 2026-10-13)
+    "en": "{sender} handed you \"{title}\" with ConnectOnion. Read {url} and do what it says, here in this folder, "
+          "without waiting for me. If you cannot open it, ask me to allow network access.",
+    "zh": "{sender} 用 ConnectOnion 把「{title}」交给了你。读 {url} 并照着做，就在这个文件夹里，不用等我。"
+          "如果打不开，请让我允许联网。",
+}
+
+
+def paste(sender: str, title: str, url: str, lang: str = "en") -> str:
+    """The line to paste into a new Codex or Claude Code conversation (#2478): one action, any screen.
+
+    Tested on melbourne-2 (Codex 0.156.1, empty HOME): with network it read the page, installed,
+    accepted and finished with no person steps; without, it asked once for network access."""
+    return PASTE[lang].format(sender=sender, title=bundles._one_line(title, 80), url=url) + "\n"
+
+
 # ---- reply messages ----
 
 def send(kind: str, code: dict, to: str, agent: str | None = None, **extra) -> dict:

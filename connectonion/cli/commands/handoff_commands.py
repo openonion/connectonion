@@ -285,18 +285,23 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     session = _drafts() / f"{bundle['id']}.session.json"
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
     context = replies._copy({"sent_at": sent_at}, session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
-    drop = transport.drop(bundle, code=_draft_code(bundle["id"]), context=context)
+    drop = transport.new_drop_id()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
                               "hash": bundle["content_hash"], "secret": secret, "drop": drop})
-    prompt = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
-    mail = bundles.notice(bundle, prompt)
+    full = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
+    transport.drop(bundle, code=_draft_code(bundle["id"]), context=context, drop_id=drop, prompt=full)
+    prompt = replies.paste(bundles.person_name(bundle), bundle["title"], transport.agent_url(drop), bundles.language(bundle))
+    mail = bundles.notice(bundle, prompt, transport.viewer_url(drop))
+    # Their agent reads the inbox copy itself: it carries the whole prompt, code and all (co handoff show).
+    mail["inbox_html"] = bundles.notice(bundle, full, transport.viewer_url(drop))["html"]
     result = transport.hand_over(bundle["to"], mail, idempotency_key=bundle["id"], via=via)
     if not result.get("success"):
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": mail["subject"],
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
               "secret": secret, "sent_at": sent_at,
-              "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False)}
+              "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False),
+              "page": transport.viewer_url(drop)}
     if _my_email():   # where a question that waits on the sender reaches them (#2454)
         record["owner"] = _my_email()
     if session:
@@ -312,6 +317,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
         _print_for_mail_tool(bundle, mail)
     else:
         out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" from {_mailbox_name(record)}.")
+    out.print(f"What you shared, as they see it: {record['page']}", markup=False)
     if record["in_their_inbox"]:
         out.print("They are a contact, so it is also in their agent's inbox (co handoff inbox on their side).")
     if record["via"] != "mcp" and not result["mailed"]:
@@ -368,6 +374,8 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
     handoff_id = record["id"]
     out.print(style.heading(f"Handoff {handoff_id} (sent)"))
     out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
+    if record.get("page"):
+        out.print(f"What you shared, as they see it: {record['page']}", markup=False)
     if "secret" not in record:
         out.print("Sent before acceptance existed: the recipient opens it with co handoff open.")
         _next(f"co handoff open {handoff_id}  (run by the recipient)")
@@ -495,9 +503,12 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
             (folder / "session.md").write_text(replies.unpack(picked["context"]), encoding="utf-8")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
-    name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}")
-    out.print(f"The sender {code['address']} is now your agent's contact {name} (co trust list --global); "
-              f"co handoff send {shlex.quote(name)} hands work back.")
+    # Asymmetric (Aaron, 2026-10-13): on this side the sender may send handoffs, not use our tools.
+    name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}",
+                          level="handoffs")
+    who = bundles.person_name(picked["bundle"]) if picked else name
+    out.print(f"{who} can send you handoffs and questions; they can't run tools on your machine "
+              f"(co trust list --global). co handoff send {shlex.quote(name)} hands work back.", markup=False)
     if picked:
         out.print("")
         print(bundles.report(picked["bundle"]) + f"\n\n## Code\n{bundles.code_text(picked['bundle'])}")   # plain print: Rich would eat the diagram's spacing
@@ -628,6 +639,7 @@ def _incoming() -> list[tuple[dict, dict]]:
         if bundle and bundle["id"] not in ids:
             ids.add(bundle["id"])
             found.append((mail, bundle))
+        if bundle:   # both copies: the person's mail names a page, the inbox copy carries the code (b24)
             _keep(bundle, mail.get("message", ""))
     return found
 
@@ -641,7 +653,7 @@ def _keep(bundle: dict, message: str = "") -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "bundle.json").write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     prompt = bundles.prompt_in(message)
-    if prompt:
+    if prompt and ("co handoff accept" in prompt or not (folder / "prompt.txt").exists()):
         (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
 
 
@@ -739,7 +751,11 @@ def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
 def _accept_code(handoff_id: str) -> Optional[str]:
     """The code in the prompt this handoff came with; a copy opened from a bundle alone has none."""
     prompt = _home() / "received" / handoff_id / "prompt.txt"
-    found = re.search(r"co handoff accept (\S+)", prompt.read_text(encoding="utf-8")) if prompt.exists() else None
+    text = prompt.read_text(encoding="utf-8") if prompt.exists() else ""
+    page = re.search(re.escape(transport.VIEWER) + r"([A-Za-z0-9_-]+)", text)
+    if page and "co handoff accept" not in text:   # b24: the mail holds one line; its page holds the prompt
+        text = transport.page_prompt(page.group(1))
+    found = re.search(r"co handoff accept (\S+)", text)
     return found.group(1) if found else None
 
 

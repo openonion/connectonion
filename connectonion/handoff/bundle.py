@@ -244,17 +244,19 @@ WORDS = {   # the mail in the language the sender wrote in (Aaron, 2026-10-13)
     "en": {"subject": "{name} passed you some work: {title}",
            "lead": "{name} has been working on “{title}” with {client}, and would like you to take it from here.",
            "talked": "They talked through: {point}.",
-           "how": "To pick it up, start a new conversation in Codex or Claude Code and paste the block below. "
+           "view": "See what {name} handed you",
+           "how": "Or continue it right away: start a new conversation in Codex or Claude Code and paste this line. "
                   "{name}'s session continues there, with the code. Nothing runs until you paste it.",
-           "select": "Triple-click the grey box to select all of it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
+           "select": "Triple-click the line to select it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
            "footer": "Sent with co handoff, from ConnectOnion (open source).", "guide": "How it works",
            "space": " ", "colon": ": "},
     "zh": {"subject": "{name} 想把一项工作交给你：{title}",
            "lead": "{name} 一直在和 {client} 一起做「{title}」，想请你接着做下去。",
            "talked": "他们讨论了：{point}。",
-           "how": "想接手的话，在 Codex 或 Claude Code 里新开一个对话，把下面这段粘贴进去，{name} 的会话就会在那里接着进行，"
+           "view": "看看 {name} 交给你的内容",
+           "how": "或者直接接着做：在 Codex 或 Claude Code 里新开一个对话，粘贴下面这一行，{name} 的会话就会在那里接着进行，"
                   "代码也会一起过来。粘贴之前，什么都不会运行。",
-           "select": "在灰色框里连点三下即可全选，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
+           "select": "在这一行上连点三下即可选中，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
            "footer": "由 ConnectOnion（开源）的 co handoff 发送。", "guide": "了解更多",
            "space": "", "colon": "："},
 }
@@ -274,7 +276,17 @@ def _sentence_case(text: str) -> str:
     return text[0].lower() + text[1:] if len(text) > 1 and text[1].islower() else text
 
 
-def notice(bundle: dict, prompt: str) -> dict:
+SOMEONE = {"en": "Someone", "zh": "有人"}
+
+
+def person_name(bundle: dict) -> str:
+    """The sender as a person reading a mail knows them: their name, else "Someone". An agent address
+    (0x…@mail.openonion.ai) is not a name; the b22 mail said "0x9c0a8bf90c@… passed you some work"."""
+    name = sender_name(bundle)
+    return SOMEONE[language(bundle)] if re.fullmatch(r"0x[0-9a-f]+@\S+", name, re.I) else name
+
+
+def notice(bundle: dict, prompt: str, viewer: str = "") -> dict:
     """{subject, text, html}: the mail a person gets, short, like a note from someone they know (#2478).
 
     Aaron, 2026-10-13: the 1.9.2b22 mail ("[co handoff] … (from …)", a ConnectOnion banner, every
@@ -285,7 +297,7 @@ def notice(bundle: dict, prompt: str) -> dict:
     is one (transport.hand_over). The HTML keeps the block in the first <pre> and the bundle hidden
     at the end, which co handoff inbox and open read back."""
     words = WORDS[language(bundle)]
-    name, title = sender_name(bundle), _one_line(bundle["title"], 80)
+    name, title = person_name(bundle), _one_line(bundle["title"], 80)
     client = CLIENT_NAMES.get(bundle.get("source", {}).get("kind"), "AI")
     lead = words["lead"].format(name=name, title=title, client=client)
     points = bundle.get("discussed") or []
@@ -293,7 +305,8 @@ def notice(bundle: dict, prompt: str) -> dict:
     said = words["space"].join(part for part in (lead, talked) if part)
     subject = words["subject"].format(name=name, title=_one_line(bundle["title"], 60))
     how = words["how"].format(name=name)
-    text = (f"{said}\n\n{how}\n\n"
+    view = words["view"].format(name=name)
+    text = (f"{said}\n\n" + (f"{view}: {viewer}\n\n" if viewer else "") + f"{how}\n\n"
             f"{words['select']}\n\n{prompt.strip()}\n\n"
             f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
@@ -305,7 +318,8 @@ def notice(bundle: dict, prompt: str) -> dict:
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}"><tr><td>'
         f'<p style="margin:0 0 14px">{e(said)}</p>'
-        f'<p style="margin:0 0 14px">{e(how)}</p>'
+        + (_button(viewer, view) if viewer else "")
+        + f'<p style="margin:0 0 14px">{e(how)}</p>'
         f'<p style="margin:0 0 6px;color:{_MUTED};font-size:13px">{e(words["select"])}</p>'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
         f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{e(prompt.strip())}</pre></td></tr></table>'
@@ -316,6 +330,14 @@ def notice(bundle: dict, prompt: str) -> dict:
         f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
     )
     return {"subject": subject, "text": text, "html": page}
+
+
+def _button(href: str, label: str) -> str:
+    """A link drawn as a button that every mail client renders, Outlook included (a padded table cell)."""
+    return ('<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px"><tr>'
+            f'<td style="background:{_GREEN};border-radius:8px">'
+            f'<a href="{html.escape(href)}" style="display:inline-block;padding:12px 20px;color:#ffffff;'
+            f'font-weight:600;text-decoration:none;{_FONT}">{html.escape(label)}</a></td></tr></table>')
 
 
 def from_saved_mail(text: str) -> dict | None:

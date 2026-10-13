@@ -121,8 +121,16 @@ def handle_trust_list(co_dir=None):
         console.print("  [dim]Empty[/dim]")
     console.print()
 
+    # Handoffs only: senders whose handoff this agent accepted (Aaron, 2026-10-13)
+    handoffs = [a for a in _read_list("handoffs", co_dir) if a not in contacts]
+    if handoffs:
+        console.print("[bold]Handoffs only[/bold] [dim](they can send you handoffs, not run tools here)[/dim]")
+        for addr in handoffs:
+            console.print(f"  {addr}")
+        console.print()
+
     # Contacts
-    console.print("[bold]Contacts[/bold] [dim](invite, payment or an accepted handoff)[/dim]")
+    console.print("[bold]Contacts[/bold] [dim](invite, payment, or an accepted handoff of yours)[/dim]")
     if contacts:
         for addr in contacts:
             console.print(f"  {addr}")
