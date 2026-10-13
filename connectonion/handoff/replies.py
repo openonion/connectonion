@@ -267,6 +267,35 @@ def _tell_owner(record: dict, who: dict, question: dict) -> None:
                           body, idempotency_key=f"{record['id']}-told-{hashlib.sha256(question_key(question).encode()).hexdigest()[:12]}")
 
 
+def tell_owner_of_done(record: dict, state: dict) -> None:
+    """Mail the person who sent the handoff each result once (#2470): the text and, inline, a short file.
+
+    Whatever reads replies calls this (co handoff status, co ai's watcher); record["done_told"] keeps it to once."""
+    if not record.get("owner"):
+        return
+    told = record.setdefault("done_told", [])
+    for done in [d for d in state["done"] if d["at"] not in told]:
+        transport.mail_person(record["owner"], f"[co handoff] Done: {_short(done['text'])}",
+                              _done_body(record, state["accepted"], done), idempotency_key=f"{record['id']}-done-{done['at']}")
+        told.append(done["at"])
+
+
+INLINE_FILE = 20_000   # a patch this short reads in the mail; a longer one waits in co handoff status
+
+
+def _done_body(record: dict, who: dict, done: dict) -> str:
+    body = (f"<p>{html.escape(who['mailbox'])} finished your handoff "
+            f"<b>{html.escape(record.get('subject', record['id']))}</b>:</p>"
+            f"<blockquote>{html.escape(done['text'])}</blockquote>")
+    if "file" in done:
+        content = unpack_file(done["file"])
+        text = content.decode("utf-8", errors="replace")
+        body += (f"<p>{html.escape(done['name'])}:</p><pre>{html.escape(text)}</pre>" if len(content) <= INLINE_FILE
+                 else f"<p>They sent {html.escape(done['name'])} ({len(content):,} bytes).</p>")
+        body += f"<p>co handoff status {record['id']} saves it under ~/.co/handoff/results/{record['id']}/.</p>"
+    return body
+
+
 def _short(text: str) -> str:
     text = " ".join(text.split())
     return text if len(text) <= 60 else text[:59] + "…"

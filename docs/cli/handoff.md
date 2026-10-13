@@ -95,7 +95,7 @@ handoffs each acceptor took.
 |---|---|---|
 | recipient | `co handoff accept <code>` | fetches the handoff, checks it against the code, sends the acceptance with their agent address to the sender's agent, and keeps the brief under `~/.co/handoff/accepted/<id>/` (`--brief HANDOFF.md` for a coh2 code) |
 | recipient | `co handoff ask <code> "<question>"` | sends a question about this handoff |
-| recipient | `co handoff done <code> "<what you did>" [--file result.patch]` | tells the sender it is finished, with an optional file (at most 3.5 MB packed) |
+| recipient | `co handoff done <code> "<what you did>" [--file result.patch]` | tells the sender it is finished, with an optional file (at most 3.5 MB packed). The sender's status shows it, and the sender is also mailed once at their git `user.email`, with a patch under 20 KB inline |
 | sender | `co handoff status <id>` | "Accepted by 0x… (mailbox) at …", each question, and "Done, …"; a file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>` |
 | sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted |
 | recipient | `co handoff status <id>` | the sender's answers |
@@ -255,20 +255,34 @@ file, or `co email read <#> > handoff.txt`. The mail itself says so. The file
 must hold the whole mail, including the `BEGIN/END CO HANDOFF BUNDLE` block;
 the content hash is checked and a mismatch is printed as a warning.
 
-`co handoff open <id>` writes `HANDOFF.md` and `bundle.json` to
-`~/.co/handoff/received/<id>/`, then runs one read-only `codex exec` turn seeded
-with the brief (or `claude -p` with `--agent claude`). It prints:
+`co handoff open <id>` takes the handoff over in your own coding agent, in a
+folder you can find: `~/handoffs/<title>` (or `--cd <dir>`).
 
-```
-Continue it:  cd ~/.co/handoff/received/<id> && codex resume <session>
-Ask one question:  cd … && codex exec resume --skip-git-repo-check <session> "<your question>"
-```
+- **Codex**: the sender's conversation becomes a thread named
+  `Handoff from <sender>: <title>`, one turn per exchange. The sender's words
+  are labelled `(from <sender>, who handed this over · <date>)`, and their AI's
+  replies `(<sender>'s Claude Code, in summary)`. It shows in the Codex app,
+  and on a phone that remote-controls it, like any other thread.
+- **The first real turn** accepts the handoff and replies with a report short
+  enough for a phone: who handed what, Discussed, Concluded (each with its
+  reason), Still open, a small ASCII diagram of how the conversation went, the
+  next step, and "You can keep asking me here."
+- **The second turn** runs in the background. It does the work in the folder,
+  asks the sender what the handoff does not say, and finishes with
+  `co handoff done`. Its log is `~/.co/handoff/received/<id>/work-codex.log`.
+- **Claude Code** (`--agent claude`) gets the same two turns, without the
+  replayed thread.
 
-`--cd <dir>` runs the session in your project instead. Opening the same
-handoff again with the same `--agent` prints the existing session and creates no
-second one. Nothing
-runs before `open`; after it, your own Codex/Claude settings decide what the
-agent may do.
+Both turns run with full access in that folder (`codex exec -s danger-full-access`,
+`claude --permission-mode bypassPermissions`). Opening the same handoff again
+prints the existing session and creates no second one.
+
+The replay is written in Codex's own session format
+(`$CODEX_HOME/sessions/…/rollout-*.jsonl`, with the turn events as well as the
+messages, and the name in `session_index.jsonl`). Codex has no public API for
+injecting history, so this was verified against codex-cli 0.162.1. If
+`codex exec resume` refuses the file, open falls back to one turn seeded with
+the whole brief on stdin.
 
 ## Not yet
 
