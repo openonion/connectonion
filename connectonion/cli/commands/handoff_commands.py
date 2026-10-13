@@ -49,7 +49,7 @@ def _fail(message: str, next_cmd: str) -> None:
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
                 draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1,
-                via: str = "auto") -> None:
+                via: str = "auto", no_code: bool = False) -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -60,6 +60,8 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
                   f'co handoff send {shlex.quote(who)} "<what to hand off>"')
     else:
         bundle = _new_bundle(to, what, from_file, agent, session, since)
+    if no_code:
+        bundle = _without_code(bundle)
     if edit:
         bundle = _edit(bundle)
     path = _save_draft(bundle)
@@ -69,7 +71,8 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
         for hit in hits:
             out.print(f"  {hit}")
         out.print(f"Remove it from {style.path(path)} (the draft never left this machine).")
-        _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} --edit")
+        in_code = any(h.startswith("code_patches") for h in hits)
+        _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} " + ("--no-code  (it is in the code that would travel)" if in_code else "--edit"))
         raise typer.Exit(1)
     if draft_id and yes and not edit:
         # The person approved this exact draft from its preview; say what goes, not all of it again.
@@ -125,7 +128,9 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
                   "messages": len(talk)}
         found = sessions.code_with_folders(kind, path, since=talk[0]["at"] if since > 1 and talk else "")
-        code, patches = [entry for entry, _ in found], [_travelling(entry, folder) for entry, folder in found]
+        # Only where the handed-off work happened last travels; a long session also visited a shared
+        # checkout with others' changes and a private repository (b24 audit). The rest are listed only.
+        code, patches = [entry for entry, _ in found], [_travelling(*found[0])] + [None] * (len(found) - 1) if found else []
         titles = sessions.titles(kind, path)
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
@@ -158,6 +163,13 @@ def _travelling(entry: dict, folder: Path) -> Optional[dict]:
         return None
     entry["patch"] = digest
     return patch
+
+
+def _without_code(bundle: dict) -> dict:
+    """The draft with no code going along: its patches dropped, the record of them too."""
+    (_drafts() / f"{bundle['id']}.code.json").unlink(missing_ok=True)
+    code = [{k: v for k, v in entry.items() if k != "patch"} for entry in bundle.get("code") or []]
+    return bundles.seal(dict(bundle, code=code))
 
 
 def _draft_code(handoff_id: str) -> list:
@@ -270,7 +282,10 @@ def _code_line(repo: dict, patch: Optional[dict]) -> str:
         parts = [f"{commits} commit{'s' if commits != 1 else ''}"] if commits else []
         parts += ["uncommitted changes"] if patch["changes"] else []
         size = sessions.patch_digest(patch)["bytes"] // 1024
-        return f"The code goes with it: {' and '.join(parts)} from {where} ({size} KB, checked for credentials)."
+        files = sorted(set(re.findall(r"^diff --git a/(\S+) b/", patch["commits"] + patch["changes"], re.M)))
+        shown = ", ".join(files[:8]) + (f" and {len(files) - 8} more" if len(files) > 8 else "")
+        return (f"The code goes with it: {' and '.join(parts)} from {where} ({size} KB, checked for credentials): "
+                f"{shown}. To send no code: --no-code.")
     if (repo.get("patch") or {}).get("too_large"):
         return (f"! The code in {where} is too large to send ({repo['patch']['too_large'] // 1024} KB): push it "
                 "first, or they will ask you to.")
@@ -827,6 +842,7 @@ def make_handoff_app(factory) -> typer.Typer:
         edit: bool = typer.Option(False, "--edit", help="Open the draft in $EDITOR before the preview"),
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
         via: str = typer.Option("auto", "--via", hidden=True, help="For an AI with its own mail tool: mcp prints the mail for that tool to send"),
+        no_code: bool = typer.Option(False, "--no-code", help="Send no code with it, even unpushed work"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
 
@@ -839,7 +855,7 @@ def make_handoff_app(factory) -> typer.Typer:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
         if via not in transport.VIA:
             _fail(f"--via must be one of {', '.join(transport.VIA)}, not {via}.", f'co handoff send {shlex.quote(who)} --via auto')
-        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via)
+        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via, no_code)
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
     def accept(

@@ -90,7 +90,9 @@ approved (its content hash is in the code), saves it as
 agent what to do next. Two more things come with it, so nothing waits on your
 machine being online:
 
-- **Your code, when they cannot fetch it.** Commits on no remote go as
+- **Your code, when they cannot fetch it,** from the one repository the handed-off
+  messages worked in last; other repositories the session visited are listed, not
+  sent. `--no-code` sends none, and also works on a saved draft. Commits on no remote go as
   `git format-patch` text, and uncommitted changes (new files included) as a
   diff. The preview says which ("The code goes with it: 1 commit and
   uncommitted changes …"), the credential check covers them, and the approved

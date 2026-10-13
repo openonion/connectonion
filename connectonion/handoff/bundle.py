@@ -242,25 +242,28 @@ GUIDE = "https://connectonion.com"   # a short public page, not the 310-line eng
 
 CLIENT_NAMES = {"claude": "Claude Code", "codex": "Codex"}
 
-WORDS = {   # the mail in the language the sender wrote in (Aaron, 2026-10-13)
-    "en": {"subject": "{name} passed you some work: {title}",
-           "lead": "{name} has been working on “{title}” with {client}, and would like you to take it from here.",
-           "talked": "They talked through: {point}.",
-           "view": "See what {name} handed you",
-           "how": "Or continue it right away: start a new conversation in Codex or Claude Code and paste this line. "
-                  "{name}'s session continues there, with the code. Nothing runs until you paste it.",
+WORDS = {   # the mail in the language the sender wrote in, in their own voice (Aaron, 2026-10-13:
+           # "不是以我作为第一人称写的 有点好像是 AI 写的 这个不够亲切友好 不够能够取得别人的信任")
+    "en": {"subject": "Could you pick up “{title}”?",
+           "lead": "Hi, I've been working on “{title}” with {client}, and I'd love your help taking it from here.",
+           "talked": "Where we got to: {point}.",
+           "view": "See what I'm passing you",
+           "how": "Or carry on straight away: open a new conversation in Codex or Claude Code and paste the line "
+                  "below. My session continues there, with the code. Nothing runs until you paste it.",
            "select": "Triple-click the line to select it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
-           "footer": "Sent with co handoff, from ConnectOnion (open source).", "guide": "How it works",
-           "space": " ", "colon": ": "},
-    "zh": {"subject": "{name} 想把一项工作交给你：{title}",
-           "lead": "{name} 一直在和 {client} 一起做「{title}」，想请你接着做下去。",
-           "talked": "他们讨论了：{point}。",
-           "view": "看看 {name} 交给你的内容",
-           "how": "或者直接接着做：在 Codex 或 Claude Code 里新开一个对话，粘贴下面这一行，{name} 的会话就会在那里接着进行，"
-                  "代码也会一起过来。粘贴之前，什么都不会运行。",
+           "sign": "Thanks,\n{name}",
+           "footer": "Sent with ConnectOnion (open source).", "guide": "What's this?",
+           "space": " ", "colon": " "},
+    "zh": {"subject": "能帮我接着做「{title}」吗？",
+           "lead": "你好，我最近在用 {client} 做「{title}」，想请你帮忙接着做下去。",
+           "talked": "我们目前讨论到：{point}。",
+           "view": "看看我交给你的内容",
+           "how": "如果想直接接着做：在 Codex 或 Claude Code 里新开一个对话，粘贴下面这一行，我的会话和代码会在那里接着进行。"
+                  "粘贴之前，什么都不会运行。",
            "select": "在这一行上连点三下即可选中，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
-           "footer": "由 ConnectOnion（开源）的 co handoff 发送。", "guide": "了解更多",
-           "space": "", "colon": "："},
+           "sign": "谢谢！\n{name}",
+           "footer": "通过 ConnectOnion（开源）发送。", "guide": "这是什么？",
+           "space": "", "colon": ""},
 }
 
 
@@ -285,7 +288,9 @@ def person_name(bundle: dict) -> str:
     """The sender as a person reading a mail knows them: their name, else "Someone". An agent address
     (0x…@mail.openonion.ai) is not a name; the b22 mail said "0x9c0a8bf90c@… passed you some work"."""
     name = sender_name(bundle)
-    return SOMEONE[language(bundle)] if re.fullmatch(r"0x[0-9a-f]+@\S+", name, re.I) else name
+    if re.fullmatch(r"0x[0-9a-f]+@\S+", name, re.I):
+        return SOMEONE[language(bundle)]
+    return name.split("@")[0] if "@" in name else name
 
 
 def notice(bundle: dict, prompt: str, viewer: str = "", carry_bundle: bool = False) -> dict:
@@ -306,11 +311,12 @@ def notice(bundle: dict, prompt: str, viewer: str = "", carry_bundle: bool = Fal
     same = points and (bool(re.search(r"[\u4e00-\u9fff]", points[0])) == (language(bundle) == "zh"))
     talked = words["talked"].format(point=_sentence_case(_one_line(points[0].rstrip(".。"), 160))) if same else ""
     said = words["space"].join(part for part in (lead, talked) if part)
-    subject = words["subject"].format(name=name, title=_one_line(bundle["title"], 60))
+    subject = words["subject"].format(title=_one_line(bundle["title"], 60))
+    sign = words["sign"].format(name=name) if name != SOMEONE[language(bundle)] else words["sign"].split("\n")[0]
     how = words["how"].format(name=name)
     view = words["view"].format(name=name)
     text = (f"{said}\n\n" + (f"{view}: {viewer}\n\n" if viewer else "") + f"{how}\n\n"
-            f"{words['select']}\n\n{prompt.strip()}\n\n"
+            f"{words['select']}\n\n{prompt.strip()}\n\n{sign}\n\n"
             f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
     # The hidden copy is for an agent that reads this mail (co handoff inbox); a person has the page,
     # and a plain-text reader showed it as a wall of base64.
@@ -329,6 +335,7 @@ def notice(bundle: dict, prompt: str, viewer: str = "", carry_bundle: bool = Fal
         f'<p style="margin:0 0 6px;color:{_MUTED};font-size:13px">{e(words["select"])}</p>'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
         f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{e(prompt.strip())}</pre></td></tr></table>'
+        f'<p style="margin:18px 0 0">{e(sign).replace(chr(10), "<br>")}</p>'
         '<div style="height:18px"></div>'
         f'<p style="margin:0;color:{_MUTED};font-size:13px">{e(words["footer"])}{words["space"]}'
         f'<a href="{GUIDE}" style="color:{_GREEN}">{e(words["guide"])}</a></p>'
