@@ -244,19 +244,40 @@ def answer_automatically(record: dict, state: dict) -> list[str]:
         record["answered"] = answered_keys(on_disk, state["questions"])
         record["copy_sent"] = on_disk.get("copy_sent", False)
         record["copy_with"] = on_disk.get("copy_with")
+        record["waiting"] = on_disk.get("waiting", [])
         news = []
         for question in [q for q in state["questions"] if question_key(q) not in record["answered"]]:
-            sent, line = _answer(record, who, session, question)
+            sent, line = _answer(record, who, session, question, state["questions"])
             news.append(line)
             if not sent:
                 break
-        on_disk.update(answered=record["answered"], copy_sent=record["copy_sent"], copy_with=record["copy_with"])
+        on_disk.update(answered=record["answered"], copy_sent=record["copy_sent"], copy_with=record["copy_with"],
+                       waiting=record["waiting"])
         path.write_text(json.dumps(on_disk, indent=2) + "\n", encoding="utf-8")
     return news
 
 
-def _answer(record: dict, who: dict, session: dict, question: dict) -> tuple[bool, str]:
+# A question that says the copy does not answer it, or asks again, gets no second pointer to the copy
+# (b24 demo: "I read the entire session.md… it contains no max-length discussion" got the pointer back).
+COPY_WORDS = re.compile(r"session\.md|session copy|the copy|transcript|副本|会话记录|聊天记录", re.I)
+NOT_THERE = re.compile(r"\b(?:no|not|nothing|none|without|doesn't|does not|isn't|missing)\b|没有|不包含|找不到|没提到", re.I)
+
+
+def _past_the_copy(record: dict, question: dict, questions: list[dict]) -> bool:
+    asked_before = any(q["text"].strip() == question["text"].strip() and question_key(q) in record["answered"]
+                       for q in questions if q is not question)
+    text = question["text"]
+    return record["copy_sent"] and (asked_before or bool(COPY_WORDS.search(text) and NOT_THERE.search(text)))
+
+
+def _answer(record: dict, who: dict, session: dict, question: dict, questions: list[dict] = ()) -> tuple[bool, str]:
     """One answer, and the line to tell the sender; marks the question answered in `record` when it went out."""
+    if _past_the_copy(record, question, questions):
+        record["answered"].append(question_key(question))
+        record["waiting"].append(question_key(question))
+        if record.get("owner"):
+            _tell_owner(record, who, question, waiting=True)
+        return True, f"[handoff] {record['id']} waits on you: {question['text']}"
     copy = not record["copy_sent"] and Path(session["path"]).exists()
     extra = {"context": _copy(record, session)} if copy else {}
     text = (POINTER if record["copy_sent"] else WITH_COPY if copy else NO_COPY) + _who_else(record)
@@ -273,15 +294,18 @@ def _answer(record: dict, who: dict, session: dict, question: dict) -> tuple[boo
     return True, f"[handoff] {record['id']} answered automatically{label}: {question['text']}"
 
 
-def _tell_owner(record: dict, who: dict, question: dict) -> None:
+def _tell_owner(record: dict, who: dict, question: dict, waiting: bool = False) -> None:
     """Mail the person who sent the handoff: the question, and the one line that answers it."""
     asked = html.escape(question["text"])
+    how = ("They have your session already and say the answer is not in it, so only you can answer. Answer"
+           if waiting else "Your agent sent them your session to search. If the answer is not in it (a decision you "
+           "have not made yet, say), answer")
     body = (f"<p>{html.escape(who['mailbox'])} asked about your handoff <b>{html.escape(record.get('subject', record['id']))}</b>:</p>"
             f"<blockquote>{asked}</blockquote>"
-            "<p>Your agent sent them your session to search. If the answer is not in it (a decision you have not "
-            "made yet, say), answer from any terminal on this machine, or ask your AI to:</p>"
+            f"<p>{how} from any terminal on this machine, or ask your AI to:</p>"
             f"<pre>co handoff answer {record['id']} \"your answer\"</pre>")
-    transport.mail_person(record["owner"], f"[co handoff] Question on {record['id']}: {_short(question['text'])}",
+    subject = "Waiting on you" if waiting else "Question"
+    transport.mail_person(record["owner"], f"[co handoff] {subject} on {record['id']}: {_short(question['text'])}",
                           body, idempotency_key=f"{record['id']}-told-{hashlib.sha256(question_key(question).encode()).hexdigest()[:12]}")
 
 

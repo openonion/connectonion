@@ -486,7 +486,8 @@ def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_t
     write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
     result = _invoke("handoff", "send", SELF, "task")
     said = " ".join(result.output.split())
-    assert "Masked other people's contact details: 1 email address and 1 phone number" in said
+    assert "Masked other people's contact details: 1 email address and 1 phone number in the brief" in said
+    assert "in the session copy that goes with it" in said
     assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
 
 
@@ -1010,3 +1011,11 @@ def test_lang_sets_the_language_of_the_report_and_the_mail_not_of_the_quotes(pro
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
     assert draft["lang"] == "en" and "这一步先别改代码" in draft["conversation"][0]["user"]
     assert _invoke("handoff", "send", SELF, "task", "--lang", "fr").exit_code != 0
+
+
+def test_a_long_handoff_previews_its_newest_messages_not_all_of_it(project, model, mailbox):
+    """P0-4: a long session's preview ran past 100,000 characters."""
+    write_codex_session(project, extra=" " + "word " * 9000)
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 0, result.output
+    assert len(result.output) < 30_000 and "characters in full" in result.output

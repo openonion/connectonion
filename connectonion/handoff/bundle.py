@@ -223,9 +223,9 @@ NOT_A_PERSON = re.compile(r"^git@|@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|exam
 # Pointers at a person that are not an address: co rem's people/<name>-<10 hex>.md (bare too, but not
 # orgs/ or projects/ ones), a LinkedIn id, and the name in a mail header whose address was masked.
 PERSON_PAGE = re.compile(r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_/\\-]))[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{10}(?=\.md|[^\w-]|$)")
-PEOPLE_PATH = re.compile(r"(?<![A-Za-z0-9_])people/[^\s/'\"`)\]>,;:|*]+")
+PEOPLE_PATH = re.compile(r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_]))people/[^\s/'\"`)\]>,;:|*]+")
 LINKEDIN = re.compile(r"(linkedin\.com/in/)[\w%-]+")
-HEADER_NAME = re.compile(r"(?:\"[^\"<>\n]{1,60}\"|(?<![\w'’-])[A-Z][\w'’-]{0,30}\.?(?: [A-Z][\w'’-]{0,30}\.?){0,3}"
+HEADER_NAME = re.compile(r"(?:\"[^\"<>\n]{1,60}\"|(?:(?<=\\[nrt])|(?<![\w'’-]))[A-Z][\w'’-]{0,30}\.?(?: [A-Z][\w'’-]{0,30}\.?){0,3}"
                          r"|(?<![\u4e00-\u9fff])[\u4e00-\u9fff·][\u4e00-\u9fff· ]{1,8})\s*(?=<\[email removed\]>)")
 
 

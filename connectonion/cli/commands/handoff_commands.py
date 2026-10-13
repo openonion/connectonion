@@ -29,6 +29,7 @@ from ...handoff import opener, replies, sessions, transport
 out = style.console()
 # Past this, the message is a lot to paste into a coding agent's box; the preview suggests --since.
 LONG_CHARS = 30_000
+PREVIEW_CHARS = 12_000
 
 
 def _home() -> Path:
@@ -112,7 +113,8 @@ def _from_line(via: str, to: str) -> str:
     if channel == "mcp":
         return f"Your AI sends it to {to} with its own mail tool, from your address."
     if channel in ("gmail", "outlook"):
-        return f"It goes from your {channel.title()}, {transport.own_mailboxes().get(channel, '')}, to {to}."
+        address = transport.own_mailboxes().get(channel)
+        return f"It goes from your {channel.title()}{f', {address},' if address else ''} to {to}."
     return (f"It goes from your agent's mailbox, {os.getenv('AGENT_EMAIL')}, which a stranger may take for spam. "
             "To send from your own Gmail or Outlook instead, connect it once: co auth google (or co auth microsoft).")
 
@@ -215,7 +217,7 @@ def _where_it_went(record: dict) -> str:
 
 def _mailbox_name(record: dict) -> str:
     names = {"gmail": "your Gmail", "outlook": "your Outlook", "agent mailbox": "your agent's mailbox"}
-    return f"{names.get(record['via'], record['via'])} ({record.get('from') or 'unknown'})"
+    return names.get(record["via"], record["via"]) + (f" ({record['from']})" if record.get("from") else "")
 
 
 def _print_for_mail_tool(bundle: dict, mail: dict) -> None:
@@ -274,16 +276,15 @@ def _preview(bundle: dict, path: Path) -> None:
               "no files, rem pages or mail.")
     out.print("-" * 60)
     brief = bundles.brief_markdown(bundle)
-    out.print(brief, markup=False)
+    # A long session previewed whole ran past 100,000 characters (P0-4): the newest messages show here,
+    # and the whole of it is the draft file and the page.
+    out.print(bundles.brief_markdown(bundle, PREVIEW_CHARS) if len(brief) > LONG_CHARS else brief, markup=False)
     out.print("-" * 60)
     if len(brief) > LONG_CHARS:
-        out.print(style.warn(f"It is {len(brief):,} characters, a lot to paste into a coding agent. If the session "
-                             f"covered other work first, start where this task starts: --since <N>, with N from the [N] list."))
-    masked = bundle.get("masked") or {}
-    if masked.get("emails") or masked.get("phones"):
-        n, m = masked.get("emails", 0), masked.get("phones", 0)
-        out.print(style.muted(f"Masked other people's contact details: {n} email address{'es' if n != 1 else ''} and "
-                              f"{m} phone number{'s' if m != 1 else ''}, here and in the session copy."))
+        out.print(style.warn(f"It is {len(brief):,} characters in full (the newest messages are shown above; all of it "
+                             f"is in the draft file below). If the session covered other work first, start where this "
+                             f"task starts: --since <N>, with N from the [N] list."))
+    out.print(style.muted(_masked_line(bundle)))
     private = bundles.find_private(bundle)
     if private:
         out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "
@@ -294,6 +295,22 @@ def _preview(bundle: dict, path: Path) -> None:
         out.print(_code_line(repo, patch), markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
+
+
+def _masked_line(bundle: dict) -> str:
+    """How many of other people's contact details were taken out, in the brief and in the session copy."""
+    def count(emails: int, phones: int) -> str:
+        return f"{emails} email address{'es' if emails != 1 else ''} and {phones} phone number{'s' if phones != 1 else ''}"
+    masked = bundle.get("masked") or {}
+    said = f"Masked other people's contact details: {count(masked.get('emails', 0), masked.get('phones', 0))} in the brief"
+    session = _drafts() / f"{bundle['id']}.session.json"
+    if session.exists():
+        session = json.loads(session.read_text(encoding="utf-8"))
+        if Path(session["path"]).exists():
+            text = sessions.transcript(session["kind"], session["path"], session.get("since", ""))
+            emails, phones = bundles.others(text, [bundle["to"], bundle["from"], _my_email()])
+            said += f"; {count(len(emails), len(phones))} in the session copy that goes with it"
+    return said + "."
 
 
 def _code_line(repo: dict, patch: Optional[dict]) -> str:
@@ -367,7 +384,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
 
 # ---- status: either side ----
 
-def handle_status(handoff_id: str, wait: bool = False) -> None:
+def handle_status(handoff_id: str, wait: bool = False, verbose: bool = False) -> None:
     sent = _home() / "sent" / f"{handoff_id}.json"
     accepted = _home() / "accepted" / handoff_id / "code.json"
     if not sent.exists() and not accepted.exists():
@@ -383,7 +400,7 @@ def handle_status(handoff_id: str, wait: bool = False) -> None:
         _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), mails, quiet=sent.exists())
     if sent.exists():
         record = json.loads(sent.read_text(encoding="utf-8"))
-        _sender_status(record, mails)
+        _sender_status(record, mails, verbose)
         sent.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")   # what was answered
     _shown_file(handoff_id).write_text(json.dumps(sorted(map(_key, replies.received(handoff_id, mails)))) + "\n")
 
@@ -408,19 +425,18 @@ def _key(block: dict) -> str:
     return f"{block['kind']} {block.get('at')} {block.get('address')}"
 
 
-def _sender_status(record: dict, mails: list[dict]) -> None:
+def _sender_status(record: dict, mails: list[dict], verbose: bool = False) -> None:
     handoff_id = record["id"]
     out.print(style.heading(f"Handoff {handoff_id} (sent)"))
-    out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
-    if record.get("page"):
-        out.print(f"What you shared, as they see it: {record['page']}", markup=False)
     if "secret" not in record:
+        out.print(f"To {record['to']}, sent {record['sent_at']}")
         out.print("Sent before acceptance existed: the recipient opens it with co handoff open.")
         _next(f"co handoff open {handoff_id}  (run by the recipient)")
         return
     state = replies.settle(record, mails)
     who = state["accepted"]
     if not who:
+        _sent_line(record, verbose)
         out.print(f"Not accepted yet. {_where_it_went(record)}")
         out.print("Acceptance arrives when their agent runs the prompt from the mail.")
         if state["ignored"]:
@@ -428,26 +444,81 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
         _next(f"co handoff status {handoff_id}")
         return
     name = replies.remember_peer(who["address"], who["mailbox"], handoff_id, record["to"], record.get("inbox", False))
-    out.print(style.ok(f"Accepted by {who['address']} ({who['mailbox']}) at {who['at']}"))
-    out.print(f"{who['address']} is now your agent's contact {name} (co trust list --global); "
-              f"co handoff send {shlex.quote(name)} reaches them again.")
+    replies.tell_owner_of_done(record, state)
+    news = replies.answer_automatically(record, state)
+    files = [_save_result(handoff_id, d) for d in state["done"] if "file" in d]
+    out.print(style.ok(_where_it_stands(name, record, state, files).replace("[", "\\[")))
+    _sent_line(record, verbose)
+    out.print(f"Accepted by {who['mailbox']} at {who['at']}" + (f" ({who['address']})" if verbose else ""))
+    out.print(f"They are now your agent's contact {name}; co handoff send {shlex.quote(name)} reaches them again."
+              + (f" {who['address']} (co trust list --global)." if verbose else ""))
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
-    replies.tell_owner_of_done(record, state)
     for done in state["done"]:
         out.print(style.ok(f"Done, {done['at']}: ") + done["text"].replace("[", "\\["))
-        if "file" in done:
-            out.print(f"  Their file: {style.path(_save_result(handoff_id, done))}")
-    news = replies.answer_automatically(record, state)
-    answered = [q for q in state["questions"] if replies.question_key(q) in record.get("answered", [])]
-    for q in state["questions"]:
-        out.print(f"Question, {q['at']}: {q['text']}", markup=False)
-        if q in answered:
-            out.print(f"  Answered automatically: {_how_answered(record, q)}", markup=False)
+    for path in files:
+        out.print(f"  Their file: {style.path(path)}")
+    _questions(record, state)
     for line in [n for n in news if " could not answer " in n]:
         out.print(line.replace(f"[handoff] {handoff_id} could not", "Could not"), markup=False)
-    if state["questions"] and not state["done"]:
-        also = "  (only if the session copy does not answer it)" if len(answered) == len(state["questions"]) else ""
+    _sender_next(record, state, files)
+
+
+def _sent_line(record: dict, verbose: bool) -> None:
+    out.print(f"To {record['to']}, sent {record['sent_at']}" + (f", content hash {record['content_hash']}" if verbose else ""))
+    if record.get("page"):
+        out.print(f"What you shared, as they see it: {record['page']}", markup=False)
+
+
+def _where_it_stands(name: str, record: dict, state: dict, files: list[Path]) -> str:
+    """One line first (round-4 audit): who, how far, what came back, what waits on you."""
+    asked, mine = len(state["questions"]), len(_by_hand(record, state["questions"]))
+    parts = [f"{name} {'finished it' if state['done'] else 'is working on it'}"]
+    if files:
+        parts.append("their file saved")
+    if asked:
+        parts.append(f"{asked} question{'s' if asked != 1 else ''}" + (f" (you answered {mine})" if mine else ""))
+    waiting = [q for q in state["questions"] if replies.question_key(q) in record.get("waiting", [])
+               and replies.question_key(q) not in _by_hand(record, state["questions"])]
+    if waiting:
+        parts.append(f"{len(waiting)} waiting on you")
+    return " · ".join(parts)
+
+
+def _by_hand(record: dict, questions: list[dict]) -> dict[str, dict]:
+    """Each answer typed with co handoff answer, under the question it followed (the latest asked before it)."""
+    found = {}
+    for answer in record.get("mine", []):
+        before = [q for q in questions if q["at"] <= answer["at"]]
+        if before:
+            found.setdefault(replies.question_key(before[-1]), answer)
+    return found
+
+
+def _questions(record: dict, state: dict) -> None:
+    mine = _by_hand(record, state["questions"])
+    for q in state["questions"]:
+        key = replies.question_key(q)
+        out.print(f"Question, {q['at']}: {q['text']}", markup=False)
+        if key in mine:
+            out.print(f"  You answered, {mine[key]['at']}: {mine[key]['text']}", markup=False)
+        elif key in record.get("waiting", []):
+            out.print("  Waiting on you: they have the session copy and say the answer is not in it.", markup=False)
+        elif key in record.get("answered", []):
+            out.print(f"  Answered automatically: {_how_answered(record, q)}", markup=False)
+
+
+def _sender_next(record: dict, state: dict, files: list[Path]) -> None:
+    handoff_id = record["id"]
+    patches = [p for p in files if p.suffix in (".patch", ".diff", ".mbox")]
+    if state["done"] and patches:
+        how = "git am" if patches[-1].read_text(encoding="utf-8", errors="replace").startswith("From ") else "git apply"
+        _next(f"{how} {patches[-1]}  (in the repository it changes)")
+    elif state["questions"] and not state["done"]:
+        mine = _by_hand(record, state["questions"])
+        open_ = [replies.question_key(q) for q in state["questions"] if replies.question_key(q) not in mine]
+        settled = all(k in record.get("answered", []) and k not in record.get("waiting", []) for k in open_)
+        also = "  (only if the session copy does not answer it)" if settled else ""
         _next(f'co handoff answer {handoff_id} "<your answer>"{also}')
     elif state["done"]:
         _next(f"co handoff status {handoff_id}")
@@ -606,7 +677,8 @@ def _rules(code_text: str, handoff_id: str) -> str:
             f"co handoff status {handoff_id} --wait in the background. If they have not answered in about 10 minutes, carry on "
             "with the most conservative reasonable choice and say so in done as \"Assumed: …; tell me if you want …\". "
             f"When it is done: co handoff done {code_text} "
-            "\"what you did, and the branch or PR\" (add --file result.patch for a patch).")
+            "\"what you did, and the branch or PR\" (add --file result.patch for a patch). In what you tell the person here, "
+            "name the work folder and the files you changed; do not mention the handoff skill, its file or other internal paths.")
 
 
 def handle_ask(code_text: str, question: str) -> None:
@@ -654,6 +726,8 @@ def handle_answer(handoff_id: str, text: str) -> None:
                           agent=who["address"] if record.get("inbox") else None, text=text)
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f'co handoff answer {handoff_id} "<your answer>"')
+    record.setdefault("mine", []).append({"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "text": text})
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     out.print(style.ok(f"Answered {who['mailbox']} about {handoff_id}."))
     _next(f"co handoff status {handoff_id}")
 
@@ -930,9 +1004,10 @@ def make_handoff_app(factory) -> typer.Typer:
     def status(
         handoff_id: str = typer.Argument(..., help="Handoff id printed by co handoff send"),
         wait: bool = typer.Option(False, "--wait", help="Return only when an acceptance, question or answer arrives; run it in the background"),
+        verbose: bool = typer.Option(False, "--verbose", help="Also show agent addresses and the content hash"),
     ):
         """Show where a handoff stands: who accepted it and their questions (sender), or the sender's answers (recipient). Read-only."""
-        handle_status(handoff_id, wait)
+        handle_status(handoff_id, wait, verbose)
 
     @app.command("contact", epilog="Example:  co handoff contact ody ody@example.com")
     def contact(
