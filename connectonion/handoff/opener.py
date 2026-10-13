@@ -44,9 +44,10 @@ Without asking me:
    - last line: "You can keep asking me here."
 Do not change any file in this turn.{drafted}"""
 
-WORK = """Now do the work, here in {cwd}. Get the code from the Code section of the brief: clone it if it
-is pushed. If it is not, rebuild what you need from the sender's session ({session}, when it is there:
-search it before asking anything), and ask the sender only for what is not in it.
+WORK = """Now do the work, here in {cwd}. The code: when accepting printed "The code is in …", work
+there; when it printed how to rebuild it on a clone, do that. Otherwise take it from the Code section of
+the brief, and rebuild what you need from the sender's session ({session}, when it is there: search it
+before asking anything). Ask the sender only for what is not in it.
 
 To ask: co handoff ask {code} "your question", then run co handoff status {id} --wait and let it
 return. The answer can take minutes, because the sender's machine answers when it next checks; do not
