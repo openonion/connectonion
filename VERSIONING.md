@@ -400,16 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b19
+## Current Version: 1.9.2b20
 
-1.9.2b19 is a 1.9.2 beta; stable remains 1.9.1. One host serves the same things
-however it was started: `co host` (new: runs `agent.py` with co's own Python,
-so it works after the one-line installer), `python agent.py`, `co deploy` and
-`co ai` all serve the agent, REM (unless `rem: false` in `.co/host.yaml`) and
-the channels in `listen:` (#2438, #2439). The host docs match the code again
-(#2440). The handoff install floor stays 1.9.2b18. See
-[1.9.2b19 notes](docs/releases/1.9.2b19.md).
+1.9.2b20 is a 1.9.2 beta; stable remains 1.9.1. A `co handoff` now runs without
+the person stepping in: the recipient's agent accepts by itself and does the
+work, asking only before what cannot be undone or leaves the machine (#2447).
+`co handoff done` brings the result, and a file, back to the sender's
+`co handoff status` (#2448). A handoff to a contact is mailed to the person too
+(#2449), and the preview warns about unpushed code and lists every private
+detail (#2450, #2451). The install floor is 1.9.2b20. See
+[1.9.2b20 notes](docs/releases/1.9.2b20.md).
 
+- 1.9.2b20 (A handoff nobody has to babysit).
 - 1.9.2b19 (One host, whichever way you start it).
 - 1.9.2b18 (A handoff a stranger can start from nothing).
 - 1.9.2b17 (A session copy with nothing secret in it).

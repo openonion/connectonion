@@ -25,15 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b19**: one host serves the agent, REM and your channels however you
-start it, and the new `co host` works right after the one-line installer. See
-[1.9.2b19 notes](releases/1.9.2b19.md).
+Beta **1.9.2b20**: a `co handoff` runs without the person stepping in. The
+recipient's agent accepts, does the work and says when it is done; the result
+comes back to the sender's `co handoff status`. See
+[1.9.2b20 notes](releases/1.9.2b20.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b19'
+python -m pip install --upgrade 'connectonion==1.9.2b20'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b19**: one host serves the agent, REM and your channels however you
+start it, and the new `co host` works right after the one-line installer. See
+[1.9.2b19 notes](releases/1.9.2b19.md).
 
 Beta **1.9.2b18**: a `co handoff` starts cleanly on a machine that has never
 seen co, inside Codex's sandbox too, and the sender sees each question's state
