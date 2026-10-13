@@ -400,15 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b22
+## Current Version: 1.9.2b23
 
-1.9.2b22 is a 1.9.2 beta; stable remains 1.9.1. Everything arrives with
-`co handoff accept`: the code the recipient cannot fetch, as patches it rebuilds
-in their folder (#2469), and the sender's session copy, so nothing waits on the
-sender's machine. The pasted block tells the agent to do the work without
-waiting (#2452), and `co handoff open` keeps waiting for answers (#2473). The
-install floor is 1.9.2b22. See [1.9.2b22 notes](docs/releases/1.9.2b22.md).
+1.9.2b23 is a 1.9.2 beta; stable remains 1.9.1. The first handoff mail is a short
+note from the sender's own mailbox: their AI's mail tool first, then their Gmail or
+Outlook through co, the agent mailbox last (#2478). It is written in the language
+they used, and the paste is one paragraph a triple-click selects. `co handoff open`
+picks up the drop and feeds the sender's answers back into the session until it is
+done (#2479). The Code section says when the code travels, and the paste says to
+let a slow install finish (#2477). The install floor is 1.9.2b23. See
+[1.9.2b23 notes](docs/releases/1.9.2b23.md).
 
+- 1.9.2b23 (A note from someone you know).
 - 1.9.2b22 (Everything arrives with accept).
 - 1.9.2b21 (A handoff that opens on what you discussed).
 - 1.9.2b20 (A handoff nobody has to babysit).
