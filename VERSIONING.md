@@ -400,15 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b24
+## Current Version: 1.9.2b25
 
-1.9.2b24 is a 1.9.2 beta; stable remains 1.9.1. A handoff's recipient reads it on
-a web page first (o.openonion.ai/h/<id>), then pastes one line into a new Codex
-conversation; the page that line names holds the whole prompt (#2478). Accepting
-someone's handoff lets them send you handoffs and questions, not run tools on
-your machine; the sender's side is unchanged. The install floor is 1.9.2b24. See
-[1.9.2b24 notes](docs/releases/1.9.2b24.md).
+1.9.2b25 is a 1.9.2 beta; stable remains 1.9.1. The handoff mail is in the sender's own
+voice and language, with a button every mail client draws; the replayed conversation
+appears in the recipient's Codex app with each message labelled; only the repository the
+handed-off work happened in last travels (`--no-code` sends none); AI turns are quoted to
+800 characters; an unanswered question ends in a stated assumption. The install floor is
+1.9.2b25. See [1.9.2b25 notes](docs/releases/1.9.2b25.md).
 
+- 1.9.2b25 (A note in your own voice).
 - 1.9.2b24 (Read it first, then one line).
 - 1.9.2b23 (A note from someone you know).
 - 1.9.2b22 (Everything arrives with accept).
