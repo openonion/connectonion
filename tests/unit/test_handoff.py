@@ -110,7 +110,7 @@ def mailbox(monkeypatch):
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": SELF}
 
     monkeypatch.setattr(transport, "deliver", deliver)
-    monkeypatch.setattr(transport, "drop", lambda bundle: "drop" + "0" * 28)   # the backend's drops (#2459)
+    monkeypatch.setattr(transport, "drop", lambda bundle, **kw: "drop" + "0" * 28)   # the backend's drops (#2459)
     monkeypatch.setattr(transport, "fetch", lambda last=200: [m for m in reversed(mails)
                                                               if m["subject"].startswith(transport.SUBJECT_PREFIX)])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
@@ -381,10 +381,12 @@ def test_the_code_is_where_the_session_worked_not_where_send_runs(project, model
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     result = _invoke("handoff", "send", SELF, "task")
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
-    assert draft["code"] == [{"repository": "https://github.com/acme/login-app.git", "branch": "login-token",
-                              "commit": commit, "pushed": False, "uncommitted": 1}]
+    assert [{k: v for k, v in c.items() if k != "patch"} for c in draft["code"]] == [{
+        "repository": "https://github.com/acme/login-app.git", "branch": "login-token",
+        "commit": commit, "pushed": False, "uncommitted": 1}]
+    assert draft["code"][0]["patch"]["sha256"]                          # the unpushed part goes with it (#2469)
     assert "hunter2pass" not in json.dumps(draft) and str(worktree) not in json.dumps(draft)
-    assert "https://github.com/acme/login-app.git" in result.output and "not pushed" in result.output
+    assert "https://github.com/acme/login-app.git" in result.output and "The code goes with it" in result.output
 
 
 def test_with_since_the_code_is_only_where_the_handed_off_messages_worked(tmp_path):
@@ -896,3 +898,50 @@ def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagra
     assert f"co handoff status {REPLAY['id']} --wait and let it return" in flat and "do not stop" in flat
     assert "session.md" in flat and "search it before asking" in flat
     assert '"The code is in …", work there' in flat                                  # where b22's accept puts it
+
+
+def _unpushed_repo(folder: Path) -> str:
+    """A repository with no remote: one commit, and one change not committed yet."""
+    folder.mkdir(parents=True)
+    _git(folder, "init", "-q", "-b", "main")
+    (folder / "slug.py").write_text("def slugify(t):\n    return t.lower()\n")
+    _git(folder, "add", ".")
+    _git(folder, "-c", "user.email=a@b", "-c", "user.name=Alice", "commit", "-q", "-m", "slugify")
+    (folder / "slug.py").write_text("def slugify(t):\n    return t.lower().strip()\n")
+    return _git(folder, "rev-parse", "HEAD")
+
+
+def _session_in(project, folder):
+    from datetime import datetime, timezone
+    path = write_claude_session(project)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows[1]["cwd"], rows[1]["gitBranch"] = str(folder), "main"
+    rows[1]["timestamp"] = datetime.now(timezone.utc).isoformat()
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+
+def test_unpushed_code_travels_with_the_handoff_and_the_preview_says_so(project, model, mailbox, tmp_path):
+    """#2469: every e2e recipient started in an empty folder and rebuilt the code from the session copy."""
+    repo = tmp_path / "slugs"
+    _unpushed_repo(repo)
+    _session_in(project, repo)
+    result = _invoke("handoff", "send", SELF, "task")
+    handoff_id = _draft_id(result.output)
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{handoff_id}.json").read_text())
+    code = json.loads((Path.home() / ".co/handoff/drafts" / f"{handoff_id}.code.json").read_text())
+    assert "return t.lower()" in code[0]["commits"] and "Subject: [PATCH] slugify" in code[0]["commits"]
+    assert "+    return t.lower().strip()" in code[0]["changes"]
+    import hashlib
+    assert draft["code"][0]["patch"]["sha256"] == hashlib.sha256(json.dumps(code[0], sort_keys=True).encode()).hexdigest()
+    assert "The code goes with it: 1 commit and uncommitted changes" in result.output
+    assert str(repo) not in json.dumps(draft)
+
+
+def test_a_credential_in_the_code_that_travels_is_refused(project, model, mailbox, tmp_path):
+    repo = tmp_path / "slugs"
+    _unpushed_repo(repo)
+    (repo / "settings.py").write_text("OPENAI_API_KEY = 'sk-proj-abcdefghijklmnopqrstuvwx'\n")
+    _git(repo, "add", "settings.py")
+    _session_in(project, repo)
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 1 and "Refusing to send" in result.output and mailbox == []

@@ -62,7 +62,7 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
     if edit:
         bundle = _edit(bundle)
     path = _save_draft(bundle)
-    hits = bundles.find_credentials(bundle, bundles.known_secrets())
+    hits = bundles.find_credentials({**bundle, "code_patches": _draft_code(bundle["id"])}, bundles.known_secrets())
     if hits:
         out.print(style.error("Refusing to send: the handoff contains what looks like a credential."))
         for hit in hits:
@@ -102,7 +102,7 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     if from_file:
         path = Path(from_file).resolve()
         talk = [{"at": "", "user": path.read_text(encoding="utf-8"), "ai": ""}]
-        source, code, titles = {"kind": "notes file", "session": path.name, "messages": 1}, [], {}
+        source, code, titles, patches = {"kind": "notes file", "session": path.name, "messages": 1}, [], {}, []
     else:
         try:
             kind, path = sessions.find_by_id(session) if session else sessions.find_session(Path.cwd(), agent)
@@ -111,7 +111,8 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
         talk = sessions.exchanges(sessions.read_turns(kind, path))[since - 1:]
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
                   "messages": len(talk)}
-        code = sessions.code_for(kind, path, since=talk[0]["at"] if since > 1 and talk else "")
+        found = sessions.code_with_folders(kind, path, since=talk[0]["at"] if since > 1 and talk else "")
+        code, patches = [entry for entry, _ in found], [_travelling(entry, folder) for entry, folder in found]
         titles = sessions.titles(kind, path)
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
@@ -120,11 +121,35 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
                               code=code, top=top, said=said, exchanges=talk, titles=titles, sender_name=_my_name())
+    if any(patches):    # stays on this machine until send puts it in the drop (#2469)
+        _drafts().mkdir(parents=True, exist_ok=True)
+        (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
     if not from_file:   # stays on this machine: what an automatic answer copies from
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.session.json").write_text(json.dumps(
             {"kind": kind, "path": str(path), "since": talk[0]["at"] if since > 1 and talk else ""}), encoding="utf-8")
     return bundle
+
+
+CODE_BUDGET = 1_500_000   # the drop holds 5 MB: the bundle and this, and the session copy
+
+
+def _travelling(entry: dict, folder: Path) -> Optional[dict]:
+    """The patch of what the recipient cannot fetch, recorded in `entry` so the approved hash covers it."""
+    patch = sessions.code_patch(folder, entry)
+    if not patch:
+        return None
+    digest = sessions.patch_digest(patch)
+    if digest["bytes"] > CODE_BUDGET:
+        entry["patch"] = {"too_large": digest["bytes"]}
+        return None
+    entry["patch"] = digest
+    return patch
+
+
+def _draft_code(handoff_id: str) -> list:
+    path = _drafts() / f"{handoff_id}.code.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
 def _my_name() -> str:
@@ -184,19 +209,38 @@ def _preview(bundle: dict, path: Path) -> None:
                              f"--since <N>, unless the recipient needs them."))
         for hit in private:
             out.print(f"  {hit}", markup=False)
-    unpushed = [c for c in bundle.get("code") or [] if not c.get("pushed")]
-    for repo in unpushed:
-        where = repo.get("repository") or "a repository with no remote"
-        out.print(style.warn(escape(f"The code is not pushed ({where}, {repo.get('branch')}): they cannot get it, only "
-                                    "the session copy. Push it first (git push), or they will ask you to.")))
+    for repo, patch in zip(bundle.get("code") or [], _draft_code(bundle["id"]) or [None] * len(bundle.get("code") or [])):
+        out.print(_code_line(repo, patch), markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
 
 
+def _code_line(repo: dict, patch: Optional[dict]) -> str:
+    """What happens to one repository's code: it is fetchable, it goes with the handoff, or it cannot."""
+    where = f"{repo.get('repository') or 'a repository with no remote'}, {repo.get('branch')}"
+    if patch:
+        commits = len(re.findall(r"^From [0-9a-f]{40} ", patch["commits"], re.M))
+        parts = [f"{commits} commit{'s' if commits != 1 else ''}"] if commits else []
+        parts += ["uncommitted changes"] if patch["changes"] else []
+        size = sessions.patch_digest(patch)["bytes"] // 1024
+        return f"The code goes with it: {' and '.join(parts)} from {where} ({size} KB, checked for credentials)."
+    if (repo.get("patch") or {}).get("too_large"):
+        return (f"! The code in {where} is too large to send ({repo['patch']['too_large'] // 1024} KB): push it "
+                "first, or they will ask you to.")
+    if not repo.get("pushed"):
+        return f"! The code is not pushed ({where}) and does not go with it: git push first, or they will ask you to."
+    return f"The code is pushed ({where}): they can fetch it."
+
+
 def _deliver(bundle: dict) -> None:
     secret = replies.new_secret()
+    sent_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    session = _drafts() / f"{bundle['id']}.session.json"
+    session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
+    context = replies._copy({"sent_at": sent_at}, session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
+    drop = transport.drop(bundle, code=_draft_code(bundle["id"]), context=context)
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
-                              "hash": bundle["content_hash"], "secret": secret, "drop": transport.drop(bundle)})
+                              "hash": bundle["content_hash"], "secret": secret, "drop": drop})
     prompt = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
     subject, body = bundles.to_mail(bundle, prompt)
     result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"], mail_too=True)
@@ -204,13 +248,14 @@ def _deliver(bundle: dict) -> None:
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": subject,
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
-              "secret": secret, "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "secret": secret, "sent_at": sent_at,
               "inbox": True, "via": result.get("via", "mail")}
     if _my_email():   # where a question that waits on the sender reaches them (#2454)
         record["owner"] = _my_email()
-    session = _drafts() / f"{bundle['id']}.session.json"
-    if session.exists():
-        record["session"] = json.loads(session.read_text(encoding="utf-8"))
+    if session:
+        record["session"] = session
+    if context:   # it went with the handoff: an answer points to it (b21 e2e: the first answer waited on this machine)
+        record.update(copy_sent=True, copy_with="the handoff")
     sent = _home() / "sent"
     sent.mkdir(parents=True, exist_ok=True)
     path = sent / f"{bundle['id']}.json"
@@ -328,6 +373,8 @@ def _save_result(handoff_id: str, done: dict) -> Path:
 
 
 def _how_answered(record: dict, question: dict) -> str:
+    if record.get("copy_with") == "the handoff":
+        return "your agent pointed them to the session copy that went with the handoff."
     if record.get("copy_with") == replies.question_key(question):
         return "your agent sent them the session copy to search."
     if record.get("copy_sent"):
@@ -348,6 +395,9 @@ def _recipient_status(code: dict, mails: list[dict], quiet: bool = False) -> Non
             out.print(f"The sender's session, up to the handoff: {style.path(copy)} (search it before asking again)")
     if not answers:
         out.print("No answers from the sender yet.")
+    whole = _home() / "accepted" / handoff_id / "session.md"
+    if whole.exists() and not any(a.get("context") for a in answers):
+        out.print(f"The sender's session, up to the handoff: {style.path(whole)} (search it before asking again)")
     brief = _home() / "accepted" / handoff_id / "HANDOFF.md"
     if brief.exists():
         out.print(f"Brief: {style.path(brief)}")
@@ -392,8 +442,10 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     if brief:
         shutil.copyfile(brief, folder / "HANDOFF.md")
     if picked:
-        (folder / "HANDOFF.md").write_text(bundles.brief_markdown(picked), encoding="utf-8")
-        (folder / "bundle.json").write_text(json.dumps(picked, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        (folder / "HANDOFF.md").write_text(bundles.brief_markdown(picked["bundle"]), encoding="utf-8")
+        (folder / "bundle.json").write_text(json.dumps(picked["bundle"], indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        if picked["context"]:
+            (folder / "session.md").write_text(replies.unpack(picked["context"]), encoding="utf-8")
     out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
               f"with your agent {transport.my_address()}.")
     name = transport.meet(code["mailbox"], code["address"], code["inbox"], f"sent us handoff {code['id']}")
@@ -401,12 +453,51 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
               f"co handoff send {shlex.quote(name)} hands work back.")
     if picked:
         out.print("")
-        print(bundles.report(picked) + f"\n\n## Code\n{bundles.code_text(picked)}")   # plain print: Rich would eat the diagram's spacing
+        print(bundles.report(picked["bundle"]) + f"\n\n## Code\n{bundles.code_text(picked['bundle'])}")   # plain print: Rich would eat the diagram's spacing
+        for line in _unpack_code(picked["bundle"].get("code") or [], picked["code"], folder):
+            print(line)
         out.print("")
+        if picked["context"]:
+            print(f"The sender's whole session: {folder / 'session.md'} (search it before asking them anything)")
     if brief or picked:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
     out.print(_rules(code_text, code["id"]), markup=False)
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
+
+
+def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
+    """Rebuild code the recipient cannot fetch (#2469) here: commits with `git am`, then the uncommitted
+    changes. With a remote, the patches are saved and the agent applies them to its own clone."""
+    lines = []
+    for entry, patch in zip(entries, patches):
+        if not patch:
+            continue
+        saved = folder / "code" / patch["name"]
+        saved.mkdir(parents=True, exist_ok=True)
+        (saved / "commits.mbox").write_text(patch["commits"], encoding="utf-8")
+        (saved / "changes.diff").write_text(patch["changes"], encoding="utf-8")
+        if entry.get("repository"):
+            lines.append(f"The code is on {entry['repository']} up to {patch['base'][:12]}; the rest is in {saved}: "
+                         f"clone it, check out {patch['base'][:12]}, then git am {saved / 'commits.mbox'} and "
+                         f"git apply {saved / 'changes.diff'}.")
+            continue
+        target = Path.cwd() / patch["name"]
+        target = target if not target.exists() else Path.cwd() / f"{patch['name']}-{entry['commit'][:7]}"
+        _rebuild(target, saved, patch)
+        lines.append(f"The code is in {target} (branch {entry['branch']}, with the sender's uncommitted changes applied).")
+    return lines
+
+
+def _rebuild(target: Path, saved: Path, patch: dict) -> None:
+    git = lambda *args: subprocess.run(["git", "-C", str(target), "-c", "user.name=co handoff",
+                                        "-c", "user.email=handoff@connectonion", *args],
+                                       check=True, capture_output=True, text=True)
+    target.mkdir(parents=True)
+    git("init", "-q", "-b", "main")
+    if patch["commits"]:
+        git("am", "-q", "--committer-date-is-author-date", str(saved / "commits.mbox"))
+    if patch["changes"]:
+        git("apply", str(saved / "changes.diff"))
 
 
 def _rules(code_text: str, handoff_id: str) -> str:

@@ -28,27 +28,43 @@ machine. The chat message `send` prints is the same block.
 The mail is a reminder, written for the person: who handed them what, one line
 on what it is about, what was discussed, what was concluded and what is still
 open. Then one short block to paste into Codex or Claude Code. With the code
-shortened and the version as a 1.9.2b21 sender writes it:
+shortened and the version as a 1.9.2b22 sender writes it:
 
 ```text
 Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion (handoff ho-5359a292).
 
-1. If co --version prints nothing or a version older than 1.9.2b21, install it (it keeps to its own environment):
-   macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b21/install.sh | CO_VERSION=1.9.2b21 sh
-   Windows: uv tool install "connectonion==1.9.2b21", then co init --yes
+1. If co --version prints nothing or a version older than 1.9.2b22, install it (it keeps to its own environment):
+   macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh
+   Windows: uv tool install "connectonion==1.9.2b22", then co init --yes
 2. Run this yourself; it fetches the handoff and says what to do next:
    co handoff accept coh3.…
-3. Then tell me, the person here, in a few lines what Aaron Xie was working on and what you will do.
+3. Do what accept says, here in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me, the person here, in a few lines what Aaron Xie was working on and what you did.
 ```
 
 That block becomes the first message of the recipient's thread, so it carries
-nothing else. The handoff itself waits on the backend under an id the code
+nothing else. It is in the person's voice, so it says to do the work: in 1.9.2b21
+its last step said "tell me what you will do", which outranked the rules accept
+prints, and two Codex versions stopped there. The handoff itself waits on the backend under an id the code
 carries (`POST /api/v1/drops`, kept 30 days): before they install co, the
 recipient has no agent address, so the agent inbox cannot hold it for them.
 `co handoff accept` fetches it, refuses it unless it is exactly what you
 approved (its content hash is in the code), saves it as
 `~/.co/handoff/accepted/<id>/HANDOFF.md`, prints the report part, and tells the
-agent what to do next: do the work in this folder without asking the person,
+agent what to do next. Two more things come with it, so nothing waits on your
+machine being online:
+
+- **Your code, when they cannot fetch it.** Commits on no remote go as
+  `git format-patch` text, and uncommitted changes (new files included) as a
+  diff. The preview says which ("The code goes with it: 1 commit and
+  uncommitted changes …"), the credential check covers them, and the approved
+  bundle records their digest. Without a remote, accept rebuilds the repository
+  in the current folder and says "The code is in …"; with one, it saves the
+  patches and says how to apply them to a clone. Over 1.5 MB it does not go,
+  and the preview says to push.
+- **The session copy**, the same redacted copy an answer used to bring, saved
+  as `session.md`. Answers point to it.
+
+The rules accept prints: do the work in this folder without asking the person,
 ask them only before something that cannot be undone or leaves the machine,
 ask the sender rather than guess, and `co handoff done` at the end. Those rules
 come from the installed co, so they improve with each release instead of being

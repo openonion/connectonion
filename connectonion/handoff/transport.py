@@ -148,21 +148,27 @@ def _post_message(agent: str, body: str) -> dict:
             "from": os.getenv("AGENT_EMAIL"), "via": "agent inbox"}
 
 
-def drop(bundle: dict) -> str:
-    """Hold the bundle on the backend until the recipient accepts; returns the id their code carries.
+def drop(bundle: dict, code: list = (), context: str = "") -> str:
+    """Hold the handoff on the backend until the recipient accepts; returns the id their code carries.
 
     A first recipient has no agent address until they install co, so the agent inbox cannot hold it
-    for them, and the mail used to carry all of it (#2459). Drops expire after 30 days."""
-    return _put_drop(json.dumps({"bundle": bundle}, ensure_ascii=False))
+    for them (#2459). With it go the code they cannot fetch (#2469) and the redacted session copy, so
+    nothing waits on the sender's machine being online. Drops expire after 30 days."""
+    return _put_drop(json.dumps({"bundle": bundle, "code": list(code), "context": context}, ensure_ascii=False))
 
 
 def pickup(code: dict) -> dict:
-    """The bundle `code` names: refused unless it is exactly what the sender approved."""
+    """{bundle, code, context} for `code`: refused unless the bundle is exactly what the sender approved
+    and each patch matches the digest the approved bundle records."""
     from .bundle import seal
-    bundle = json.loads(_get_drop(code["drop"]))["bundle"]
-    if seal(bundle)["content_hash"] != code["hash"]:
+    from .sessions import patch_digest
+    body = json.loads(_get_drop(code["drop"]))
+    if seal(body["bundle"])["content_hash"] != code["hash"]:
         raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
-    return bundle
+    for entry, patch in zip(body["bundle"].get("code") or [], body.get("code") or []):
+        if patch and patch_digest(patch)["sha256"] != (entry.get("patch") or {}).get("sha256"):
+            raise ValueError(f"the code for {code['id']} on the server differs from what the sender approved")
+    return {"bundle": body["bundle"], "code": body.get("code") or [], "context": body.get("context", "")}
 
 
 def _put_drop(body: str) -> str:

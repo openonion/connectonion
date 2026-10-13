@@ -455,8 +455,7 @@ def test_each_question_is_answered_once_and_the_copy_is_sent_once(world, tmp_pat
     watch.check()
     answers = [replies._decode(transport._as_mail(m)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
     assert len(answers) == 2
-    assert "context" in answers[0] and "context" not in answers[1]
-    assert "session copy" in answers[1]["text"]
+    assert all("context" not in a and "session copy you already have" in a["text"] for a in answers)  # b22: it went with the handoff
 
 
 def _answers(world) -> list[dict]:
@@ -506,11 +505,11 @@ def test_status_says_which_answer_carried_the_session_copy(world, tmp_path):
     _invoke("handoff", "ask", code, "q2?")
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert "q1?\n  Answered automatically: your agent sent them the session copy" in status.output
-    assert "q2?\n  Answered automatically: your agent pointed them to the session copy" in status.output
+    for q in ("q1?", "q2?"):   # b22: the copy went with the handoff, so every answer points to it
+        assert f"{q}\n  Answered automatically: your agent pointed them to the session copy that went with the handoff" in status.output
 
 
-def test_a_session_file_that_is_gone_still_gets_an_answer_without_the_copy(world, tmp_path):
+def test_a_session_file_that_is_gone_after_send_still_gets_an_answer(world, tmp_path):
     code = _send_from_session(world, tmp_path)
     world["be"](RECIPIENT)
     _invoke("handoff", "accept", code)
@@ -520,7 +519,7 @@ def test_a_session_file_that_is_gone_still_gets_an_answer_without_the_copy(world
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert status.exit_code == 0, status.output
     [answer] = _answers(world)
-    assert "context" not in answer and "no longer" in answer["text"]
+    assert "context" not in answer and "session copy you already have" in answer["text"]   # it went with the handoff
 
 
 def test_an_acceptance_that_was_not_delivered_does_not_let_questions_through(world, monkeypatch):
@@ -600,7 +599,7 @@ def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, t
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert "Not accepted yet" not in status.output
-    assert "q1?\n  Answered automatically: your agent sent them the session copy" in status.output
+    assert "q1?\n  Answered automatically: your agent pointed them to the session copy" in status.output
 
 
 # ---- 2026-10-13: nobody in the loop, and the work comes back (#2447–#2451) ----
