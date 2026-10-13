@@ -379,25 +379,26 @@ def answered_keys(record: dict, questions: list[dict]) -> list[str]:
     return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
 
 
-def copy_text(session: dict, until: str, keep=(), masked: bool = True) -> str:
+def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_names=()) -> str:
     """The session copy as text: the conversation the sender approved, each message whole and each AI
     turn in full, and nothing else. Never tool calls or their output (#2496): in a session that ran
     co rem they are whole pages about other people, and the sender's own mail."""
     turns = sessions.exchanges(sessions.read_turns(session["kind"], session["path"]))
-    approved = set(session.get("keep") or [])
+    approved = None if session.get("keep") is None else set(session["keep"])   # None: a record from before keep
     since = session.get("since", "")
-    kept = [e for e in turns if (not approved or e["at"] in approved) and (not since or e["at"] >= since)
+    kept = [e for e in turns if (approved is None or e["at"] in approved) and (not since or e["at"] >= since)
             and (not until or not e["at"] or e["at"] <= until)]
     text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
                        for e in kept) + "\n"
     text = bundles.redact(text, bundles.known_secrets())
-    return bundles.mask(text, keep) if masked else text
+    return bundles.mask(text, keep, names=bundles.rem_names(keep_names)) if masked else text
 
 
 def _copy(record: dict, session: dict, budget: int = None) -> str:
     """The session copy, packed; its newest part when the whole would not fit the inbox."""
     budget = budget or COPY_BUDGET
-    text = copy_text(session, record["sent_at"], [record.get("to"), record.get("from"), record.get("owner")])
+    text = copy_text(session, record["sent_at"], [record.get("to"), record.get("from"), record.get("owner")],
+                     keep_names=record.get("keep_names", []))
     packed = _pack(text)
     while len(packed) > budget:
         text = text[-int(len(text) * budget / len(packed) * 0.9):]

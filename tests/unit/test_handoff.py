@@ -486,7 +486,7 @@ def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_t
     write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
     result = _invoke("handoff", "send", SELF, "task")
     said = " ".join(result.output.split())
-    assert "Masked other people's contact details: 1 email address and 1 phone number in the brief" in said
+    assert "Masked other people's contact details: 1 email address and 1 phone number and 0 names from your co rem pages in the brief" in said
     assert "in the session copy that goes with it" in said and "no commands or their output" in said
     assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
 

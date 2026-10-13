@@ -160,7 +160,7 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
                               code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name(),
-                              keep=[_my_email()], lang=lang)
+                              keep=[_my_email()], lang=lang, keep_names=_their_names(to))
     if any(patches):    # stays on this machine until send puts it in the drop (#2469)
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
@@ -338,7 +338,8 @@ def _masked_line(bundle: dict) -> str:
     def count(emails: int, phones: int) -> str:
         return f"{emails} email address{'es' if emails != 1 else ''} and {phones} phone number{'s' if phones != 1 else ''}"
     masked = bundle.get("masked") or {}
-    said = f"Masked other people's contact details: {count(masked.get('emails', 0), masked.get('phones', 0))} in the brief"
+    said = (f"Masked other people's contact details: {count(masked.get('emails', 0), masked.get('phones', 0))}"
+            f" and {masked.get('names', 0)} name{'s' if masked.get('names', 0) != 1 else ''} from your co rem pages in the brief")
     session = _drafts() / f"{bundle['id']}.session.json"
     if session.exists():
         session = json.loads(session.read_text(encoding="utf-8"))
@@ -346,9 +347,10 @@ def _masked_line(bundle: dict) -> str:
             session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
             text = replies.copy_text(session, "", masked=False)
             emails, phones = bundles.others(text, [bundle["to"], bundle["from"], _my_email()])
-            said += (f"; {count(len(emails), len(phones))} in the session copy that goes with it. The copy is the "
-                     f"{len(session['keep'])} messages above with each AI reply in full, {len(text) // 1024:,} KB, "
-                     "and no commands or their output")
+            names = [n for n in bundles.rem_names([bundles.sender_name(bundle), *_their_names(bundle["to"])]) if n in text]
+            said += (f"; {count(len(emails), len(phones))} and {len(names)} names in the session copy that goes with "
+                     f"it. The copy is the {len(session['keep'])} messages above with each AI reply in full, "
+                     f"{len(text.encode()) // 1024:,} KB, and no commands or their output")
     return said + "."
 
 
@@ -379,7 +381,9 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
     if session:   # only the conversation as approved: a message removed with --edit stays out of the copy too
         session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
-    context = replies._copy({"sent_at": sent_at, "to": bundle["to"], "from": bundle["from"], "owner": _my_email()},
+    keep_names = [bundles.sender_name(bundle), *_their_names(bundle["to"])]
+    context = replies._copy({"sent_at": sent_at, "to": bundle["to"], "from": bundle["from"], "owner": _my_email(),
+                             "keep_names": keep_names},
                             session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
     drop = transport.new_drop_id()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
@@ -395,7 +399,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": mail["subject"],
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
-              "secret": secret, "sent_at": sent_at,
+              "secret": secret, "sent_at": sent_at, "keep_names": keep_names,
               "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False),
               "page": transport.viewer_url(drop)}
     if _my_email():   # where a question that waits on the sender reaches them (#2454)

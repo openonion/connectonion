@@ -510,3 +510,26 @@ def test_a_one_word_lowercase_git_name_reads_as_a_name():
     assert handoff_commands._as_name("aaron") == "Aaron"
     assert handoff_commands._as_name("Aaron Xie") == "Aaron Xie" and handoff_commands._as_name("") == ""
     assert handoff_commands._as_name("de la cruz") == "de la cruz"      # several words: written as they chose
+
+
+def test_removing_every_message_leaves_an_empty_copy_not_the_whole_session(tmp_path):
+    """#2495 review: keep=[] read as 'no filter' and sent all 385,232 characters."""
+    session = tmp_path / "s.jsonl"
+    session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-10T10:00:00Z", "message": {"content": "hello"}}) + "\n")
+    assert "hello" not in replies.copy_text({"kind": "claude", "path": str(session), "keep": []}, "")
+    assert "hello" in replies.copy_text({"kind": "claude", "path": str(session)}, "")     # a record from before keep
+
+
+def test_co_rem_names_and_handoff_links_are_masked_too(tmp_path, monkeypatch):
+    """#2495 review: the copy named 17 of the sender's contacts from co rem pages, and carried live handoff links."""
+    people = tmp_path / ".co" / "rem" / "people"
+    people.mkdir(parents=True)
+    (people / "谢-红瑛-e381998ef8.md").write_text("# 谢 红瑛\n\nbody")
+    (people / "sasha-whittle-1.md").write_text("# Sasha Whittle\n")
+    (people / "ody-zhou-c6.md").write_text("# Ody Zhou\n")
+    monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
+    text = ("谢 红瑛 sent materials; User asked Sasha Whittle for credits, and Sasha said yes; Ody Zhou will test; "
+            "see https://o.openonion.ai/h/eaBga94HJudPRKYNztwRY8AnMEV8WVJT/codex")
+    out = bundles.mask(text, names=bundles.rem_names(keep_names=["Ody Zhou"]))
+    assert "谢 红瑛" not in out and "Sasha" not in out and "Ody Zhou" in out
+    assert "eaBga94" not in out and "[handoff link]" in out
