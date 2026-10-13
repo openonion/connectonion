@@ -1038,3 +1038,9 @@ def test_the_preview_says_how_often_the_recipient_is_named_and_lists_it_on_reque
     assert "Ody is named 2 times in what they will read" in said and "--mentions Ody" in said
     listed = _invoke("handoff", "send", "Ody", "--draft", _draft_id(result.output), "--mentions", "Ody")
     assert "Ody's page is a mess" in listed.output
+
+
+def test_the_preview_names_messages_that_mention_health_visa_legal_or_money(project, model, mailbox):
+    write_codex_session(project, extra=" 签证被拒了，睡眠检查报告也出来了")
+    said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
+    assert "mention" in said and "签证" in said and "--edit" in said

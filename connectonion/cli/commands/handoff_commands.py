@@ -167,7 +167,8 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     if not from_file:   # stays on this machine: what an automatic answer copies from
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.session.json").write_text(json.dumps(
-            {"kind": kind, "path": str(path), "since": talk[0]["at"] if since > 1 and talk else ""}), encoding="utf-8")
+            {"kind": kind, "path": str(path), "since": talk[0]["at"] if since > 1 and talk else "",
+             "drafted": bundle["conversation"]}, ensure_ascii=False), encoding="utf-8")
     return bundle
 
 
@@ -293,6 +294,11 @@ def _preview(bundle: dict, path: Path) -> None:
                              f"is in the draft file below). If the session covered other work first, start where this "
                              f"task starts: --since <N>, with N from the [N] list."))
     out.print(style.muted(_masked_line(bundle)))
+    touchy = _touchy(bundle)
+    if touchy:
+        out.print(style.warn(f"Messages {', '.join(map(str, touchy))} mention "
+                             f"{', '.join(sorted({w for n in touchy for w in touchy[n]}))}: read them, and --edit to drop "
+                             "any that should not go."), markup=False)
     for name in _their_names(bundle["to"]):
         n = len(_mentions(bundle, name))
         if n:
@@ -308,6 +314,22 @@ def _preview(bundle: dict, path: Path) -> None:
         out.print(_code_line(repo, patch), markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
+
+
+# Words for what a person keeps private: health, visas, the law and money (b27 review: replies about
+# a sleep study and a refused visa went to students). The sender reads them; nothing is removed for them.
+TOUCHY = re.compile(r"签证|睡眠|医院|看病|牙科|体检|律师|法院|工资|借款|贷款|病历|心理|visa|medical|health|dentist|dental|"
+                    r"diagnos\w*|therapy|lawyer|lawsuit|court|salary|loan|debt", re.I)
+
+
+def _touchy(bundle: dict) -> dict[int, set[str]]:
+    """Each message, by its [N], that mentions one of them."""
+    found = {}
+    for n, turn in enumerate(bundle.get("conversation", []), 1):
+        words = {m.group(0).lower() for m in TOUCHY.finditer(f"{turn.get('user', '')} {turn.get('ai', '')}")}
+        if words:
+            found[n] = words
+    return found
 
 
 def _their_names(to: str) -> list[str]:
@@ -345,6 +367,7 @@ def _masked_line(bundle: dict) -> str:
         session = json.loads(session.read_text(encoding="utf-8"))
         if Path(session["path"]).exists():
             session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
+            session["approved"] = bundle.get("conversation", [])
             text = replies.copy_text(session, "", masked=False)
             emails, phones = bundles.others(text, [bundle["to"], bundle["from"], _my_email()])
             names = [n for n in bundles.rem_names([bundles.sender_name(bundle), *_their_names(bundle["to"])], bundle["to"])
@@ -382,6 +405,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
     if session:   # only the conversation as approved: a message removed with --edit stays out of the copy too
         session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
+        session["approved"] = bundle.get("conversation", [])
     keep_names = [bundles.sender_name(bundle), *_their_names(bundle["to"])]
     context = replies._copy({"sent_at": sent_at, "to": bundle["to"], "from": bundle["from"], "owner": _my_email(),
                              "keep_names": keep_names},
