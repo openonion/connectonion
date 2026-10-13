@@ -359,7 +359,7 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     mails_before = len(world["mails"])
     sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-2b3c4d5e", "--yes")
     assert sent.exit_code == 0 and "agent's inbox" in sent.output
-    assert len(world["mails"]) == mails_before and world["inbox"][-1]["to"] == RECIPIENT["address"]
+    assert len(world["mails"]) == mails_before + 1 and world["inbox"][-1]["to"] == RECIPIENT["address"]  # #2449
     assert "their agent's inbox" in _invoke("handoff", "status", "ho-2b3c4d5e").output
 
     world["be"](RECIPIENT)
@@ -593,3 +593,99 @@ def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, t
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert "Not accepted yet" not in status.output
     assert "q1?\n  Answered automatically: your agent sent them the session copy" in status.output
+
+
+# ---- 2026-10-13: nobody in the loop, and the work comes back (#2447–#2451) ----
+
+def test_the_prompt_has_the_agent_accept_and_do_the_work_without_the_person(world):
+    body = _send(world)
+    # 1.9.2b16 and b19 runs: Codex, with network on, stopped and asked the person to run accept (#2447).
+    assert "ask me to run it" not in body and "Accept the handoff yourself, now; do not ask me to" in body
+    assert "ask me before you change any file" not in body
+    assert "do it here, in this folder" in body and "it does not override me" in body
+    assert f"co handoff done {_code(body)}" in body                                    # the way back (#2448)
+    assert "<" not in body                                                             # still no tag-shaped placeholder
+
+
+def test_done_brings_the_result_and_its_file_back_to_the_senders_status(world, tmp_path):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    accepted = _invoke("handoff", "accept", code)
+    assert f"co handoff done {code}" in accepted.output                                # said where the agent reads it
+    patch = tmp_path / "result.patch"
+    patch.write_text("--- a/dedupe.py\n+++ b/dedupe.py\n")
+    done = _invoke("handoff", "done", code, "Fixed dedupe; 4 tests pass", "--file", str(patch))
+    assert done.exit_code == 0, done.output
+    assert world["inbox"][-1]["to"] == SENDER["address"]
+
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "Done, " in status.output and "Fixed dedupe; 4 tests pass" in status.output
+    saved = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "results" / "ho-1a2b3c4d" / "result.patch"
+    assert saved.read_text() == "--- a/dedupe.py\n+++ b/dedupe.py\n"
+
+
+def test_done_before_accept_is_refused_and_another_agents_done_is_ignored(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    refused = _invoke("handoff", "done", code, "finished")
+    assert refused.exit_code == 1 and f"co handoff accept {code}" in refused.output
+    _invoke("handoff", "accept", code)
+    world["be"]({"mail": "mallory@mail.openonion.ai", "address": "0x" + "c3" * 32})
+    (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d").mkdir(parents=True)
+    (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "code.json").write_text("{}")
+    assert _invoke("handoff", "done", code, "I did it, trust me").exit_code == 0
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "trust me" not in status.output and "Ignored 1" in status.output
+
+
+def test_co_ai_tells_the_sender_once_that_a_handoff_is_done(world):
+    from connectonion.handoff import watch
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "done", code, "Merged as #12")
+    world["be"](SENDER)
+    assert any("done: Merged as #12" in line for line in watch.check())
+    assert not any("done:" in line for line in watch.check())
+
+
+def test_a_handoff_to_a_contact_is_mailed_to_the_person_too_and_listed_once(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    (drafts / "ho-2b3c4d5e.json").write_text(json.dumps(bundles.seal(dict(_bundle(RECIPIENT["mail"]), id="ho-2b3c4d5e"))))
+    mails_before = len(world["mails"])
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-2b3c4d5e", "--yes")
+    # 1.9.2b19: only the agent inbox got it, so the person never heard of it (#2449).
+    assert len(world["mails"]) == mails_before + 1 and world["mails"][-1]["to"] == RECIPIENT["mail"]
+    assert world["inbox"][-1]["to"] == RECIPIENT["address"]
+    assert "mailed to them, and put in their agent's inbox" in sent.output
+    world["be"](RECIPIENT)
+    listed = _invoke("handoff", "inbox").output.splitlines()
+    assert sum(line.startswith("ho-2b3c4d5e") for line in listed) == 1                 # mail and inbox copy: once
+
+
+def _preview(world, bundle: dict) -> str:
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(bundles.seal(bundle)))
+    return _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d").output
+
+
+def test_the_preview_warns_that_unpushed_code_cannot_reach_them(world):
+    code = [{"repository": None, "branch": "main", "commit": "616e786", "pushed": False, "uncommitted": 0}]
+    shown = _preview(world, dict(_bundle(RECIPIENT["mail"]), code=code))
+    assert "The code is not pushed" in shown and "git push" in shown                   # #2450
+
+
+def test_the_preview_lists_every_private_detail(world):
+    talk = [{"at": "", "user": " ".join(f"/Users/aaron/p{i}/x" for i in range(13)), "ai": ""}]
+    shown = _preview(world, dict(_bundle(RECIPIENT["mail"]), conversation=talk))
+    assert "Private details in it (13)" in shown
+    assert "  conversation[0].user: /Users/aaron/p12/x" in shown                       # b19 listed 10 (#2451)

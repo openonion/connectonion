@@ -98,14 +98,20 @@ def resolve(who: str) -> str | None:
     return None
 
 
-def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
+def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None,
+            mail_too: bool = False) -> dict:
     """Send to `agent`'s inbox when known (passed, or a contact that reads its inbox), else mail `to`.
 
-    Returns send_email's result dict; an inbox delivery adds "via": "agent inbox"."""
+    `mail_too` mails the person as well: a new handoff, which a person has to hear about, while
+    their agent's inbox keeps it for `co handoff inbox` (#2449). Returns send_email's result dict;
+    an inbox delivery adds "via": "agent inbox", and "mailed" when the mail went too."""
     agent = agent or next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
-    if agent:
-        return _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
-    return _send_mail(to, subject, body, idempotency_key)
+    if not agent:
+        return _send_mail(to, subject, body, idempotency_key)
+    result = _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
+    if result.get("success") and mail_too:
+        result["mailed"] = _send_mail(to, subject, body, idempotency_key).get("success", False)
+    return result
 
 
 def fetch(last: int = 200) -> list[dict]:
