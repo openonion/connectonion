@@ -480,12 +480,14 @@ def test_since_starts_the_conversation_at_that_message(project, model, mailbox):
     assert "Which for the login token?" not in json.dumps(draft) and "Which for the login token?" not in "".join(model)
 
 
-def test_email_addresses_and_phone_numbers_are_listed_in_the_preview(project, model, mailbox):
+def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_them(project, model, mailbox):
+    """Listing them for the sender to remove by hand reached a public page anyway (2026-10-14): now they are
+    masked before anything leaves, and the preview says how many, up front."""
     write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
     result = _invoke("handoff", "send", SELF, "task")
-    private = result.output.split("Private details in it")[1].split("Draft:")[0]
-    assert "bob.smith@gmail.com" in private and "+61 435 525 634" in private
-    assert SELF not in private                                         # the sender's own address is the header
+    said = " ".join(result.output.split())
+    assert "Masked other people's contact details: 1 email address and 1 phone number" in said
+    assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
 
 
 def test_session_by_id_or_path(project, tmp_path):

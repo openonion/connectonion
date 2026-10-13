@@ -334,6 +334,7 @@ def _copy(record: dict, session: dict, budget: int = None) -> str:
     budget = budget or COPY_BUDGET
     text = bundles.redact(sessions.transcript(session["kind"], session["path"], session.get("since", ""),
                                               record["sent_at"]), bundles.known_secrets())
+    text = bundles.mask(text, [record.get("to"), record.get("from"), record.get("owner")])
     packed = _pack(text)
     while len(packed) > budget:
         text = text[-int(len(text) * budget / len(packed) * 0.9):]

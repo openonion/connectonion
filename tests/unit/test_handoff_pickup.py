@@ -411,3 +411,33 @@ def test_a_long_reply_is_cut_between_lines_not_inside_words():
     head, mark, tail = cut.partition("\n[…")
     assert text.startswith(head) and head.endswith("words")
     assert tail.split("]\n", 1)[1].startswith("line ") and len(cut) < 900
+
+
+# ---- other people's contact details never reach the page, the mail or the session copy ----
+
+def test_other_peoples_addresses_and_numbers_are_masked_on_the_page():
+    """Aaron, 2026-10-14: "mailto:ivvli0000@outlook.com 这个是错误的". A co rem run had quoted a relative's
+    address; the handoff copied it onto a page anyone with the link can open. The sender's and the
+    recipient's own addresses stay, and so do example addresses."""
+    talk = [{"at": "2026-10-13T01:00:00Z", "user": "Mail me at aaron@home.net, not ivvli0000@outlook.com",
+             "ai": "Done. people/ivvli0000-outlook-com-e381998ef8.md (grep ivvli0000 *.md) has her number +61 412 000 111 and "
+                   "0435 525 634; bob@example.com is the test user; ody@x.co got it.",
+             "final": "", "steps": 0}]
+    talk[0]["final"] = talk[0]["ai"]
+    bundle = bundles.assemble(handoff_id="h", sender="0xabc@mail.openonion.ai", to="ody@x.co", what="w",
+                              source={"kind": "claude"}, code=[], keep=["aaron@home.net"],
+                              top=bundles.Top(title="t", task="ask ivvli0000@outlook.com", where_it_stands="w"),
+                              exchanges=talk)
+    text = json.dumps(bundle, ensure_ascii=False)
+    assert "ivvli0000" not in text and "412 000 111" not in text and "525 634" not in text
+    assert "aaron@home.net" in text and "ody@x.co" in text and "bob@example.com" in text
+    assert "[email removed]" in bundle["conversation"][0]["user"]
+
+
+def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
+    session = tmp_path / "s.jsonl"
+    session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-13T01:00:00Z",
+                                   "message": {"content": "write to s.whittle@unsw.edu.au and me@home.net"}}) + "\n")
+    copy = replies.unpack(replies._copy({"sent_at": "2026-10-14T00:00:00Z", "to": "r@x.co", "owner": "me@home.net"},
+                                        {"kind": "claude", "path": str(session)}))
+    assert "whittle" not in copy and "me@home.net" in copy

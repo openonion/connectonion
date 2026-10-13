@@ -138,7 +138,8 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     top = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"])
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
-                              code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name())
+                              code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name(),
+                              keep=[_my_email()])
     if any(patches):    # stays on this machine until send puts it in the drop (#2469)
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
@@ -262,6 +263,11 @@ def _preview(bundle: dict, path: Path) -> None:
     if len(brief) > LONG_CHARS:
         out.print(style.warn(f"It is {len(brief):,} characters, a lot to paste into a coding agent. If the session "
                              f"covered other work first, start where this task starts: --since <N>, with N from the [N] list."))
+    masked = bundle.get("masked") or {}
+    if masked.get("emails") or masked.get("phones"):
+        n, m = masked.get("emails", 0), masked.get("phones", 0)
+        out.print(style.muted(f"Masked other people's contact details: {n} email address{'es' if n != 1 else ''} and "
+                              f"{m} phone number{'s' if m != 1 else ''}, here and in the session copy."))
     private = bundles.find_private(bundle)
     if private:
         out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "
@@ -299,7 +305,8 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     sent_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     session = _drafts() / f"{bundle['id']}.session.json"
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
-    context = replies._copy({"sent_at": sent_at}, session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
+    context = replies._copy({"sent_at": sent_at, "to": bundle["to"], "from": bundle["from"], "owner": _my_email()},
+                            session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
     drop = transport.new_drop_id()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
                               "hash": bundle["content_hash"], "secret": secret, "drop": drop})

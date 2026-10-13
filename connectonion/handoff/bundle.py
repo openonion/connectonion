@@ -134,7 +134,9 @@ def _turn(exchange: dict) -> dict:
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
              top: Top, exchanges: list[dict], titles: dict[str, str] = None,
-             sender_name: str = "") -> dict:
+             sender_name: str = "", keep: list[str] = ()) -> dict:
+    said = [_turn(e) for e in exchanges]
+    emails, phones = others(json.dumps([top.model_dump(), said], ensure_ascii=False), [sender, to, *keep])
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -144,9 +146,10 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
         "asked": what,
-        **top.model_dump(),
+        **_masked(top.model_dump(), emails),
         "code": code,
-        "conversation": [_turn(e) for e in exchanges],
+        "conversation": _masked(said, emails),
+        "masked": {"emails": len(emails), "phones": len(phones)},
         "ai_quoted": True,   # 1.9.2b21: "ai" is the AI's own text, not a summary of it
     }
     # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.
@@ -199,6 +202,50 @@ def redact(text: str, known_secrets: list[str] = ()) -> str:
     for secret in known_secrets:
         text = text.replace(secret, "[removed: a value from keys.env]")
     return text
+
+
+# Other people's contact details. A handoff page opens for anyone with its link, and a session that
+# ran co rem has read a mailbox: a relative's address reached a live page (Aaron, 2026-10-14). The
+# sender's and the recipient's own addresses stay, and so do example ones (RFC 2606) and git@host.
+EMAIL = re.compile(r"(?<![\w.%+-])[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+PHONE = re.compile(r"\+\d[\d \-]{7,}\d|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)")
+NOT_A_PERSON = re.compile(r"^git@|@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|example|test|invalid|localhost)$", re.I)
+
+
+ROLE_MAILBOXES = {"noreply", "no-reply", "notifications", "newsletter", "support", "automated", "express",
+                  "discover", "mailer-daemon", "hello", "admin", "team", "contact", "billing", "security"}
+
+
+def others(text: str, keep=()) -> tuple[set[str], set[str]]:
+    """The email addresses and phone numbers in `text` that belong to neither side of the handoff."""
+    kept = {k.lower() for k in keep if k}
+    emails = {m for m in EMAIL.findall(text) if m.lower() not in kept and not NOT_A_PERSON.search(m)}
+    return emails, set(PHONE.findall(text))
+
+
+def mask(text: str, keep=(), emails: set[str] = None) -> str:
+    """`text` with other people's addresses and numbers removed, and the page names made from them.
+    `emails` names them when they were found across more than this one text."""
+    emails = others(text, keep)[0] if emails is None else emails
+    for address in sorted(emails, key=len, reverse=True):
+        text = text.replace(address, "[email removed]")
+        text = text.replace(re.sub(r"[@.]", "-", address.lower()), "someone")   # co rem's people/<slug>.md
+    # What is left of them on their own: "kevin.chin1@ (all @student…)", "grep ivvli0000 *.md".
+    names = {a.split("@")[0] for a in emails} - ROLE_MAILBOXES
+    names = [re.escape(n) for n in sorted(names, key=len, reverse=True) if len(n) >= 6]
+    if names:
+        text = re.sub(r"(?<![\w.-])(?:" + "|".join(names) + r")(?![\w])", "someone", text)
+    return PHONE.sub("[phone removed]", text)
+
+
+def _masked(value, emails):
+    if isinstance(value, str):
+        return mask(value, emails=emails)
+    if isinstance(value, list):
+        return [_masked(v, emails) for v in value]
+    if isinstance(value, dict):
+        return {k: _masked(v, emails) for k, v in value.items()}
+    return value
 
 
 def known_secrets() -> list[str]:
