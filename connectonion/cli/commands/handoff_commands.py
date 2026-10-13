@@ -506,9 +506,11 @@ def _keep(bundle: dict, message: str = "") -> None:
         (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
 
 
-def _sender(address: str) -> str:
-    """'parrot (0x…@mail…)' when the sender is a saved contact, else the address."""
-    names = [name for name, entry in transport.contacts().items() if entry["mail"] == address]
+def _sender(bundle: dict) -> str:
+    """'Aaron Xie (aaron@…)' from the name the sender's bundle carries, else a saved contact's name, else the address."""
+    address = bundle["from"]
+    names = [bundle["from_name"]] if bundle.get("from_name") else \
+        [name for name, entry in transport.contacts().items() if entry["mail"] == address]
     return f"{names[0]} ({address})" if names else address
 
 
@@ -523,7 +525,7 @@ def handle_inbox() -> None:
     out.print(style.heading(f"Incoming handoffs ({len(found)}) at {mailbox}"))
     for mail, bundle in found:
         opened = " · opened" if any((_home() / "received" / bundle["id"]).glob("session-*.json")) else ""
-        out.print(f"{style.command(bundle['id'])}  from {_sender(bundle['from'])}  {str(mail.get('timestamp', ''))[:16]}{opened}")
+        out.print(f"{style.command(bundle['id'])}  from {_sender(bundle)}  {str(mail.get('timestamp', ''))[:16]}{opened}")
         out.print(f"    {bundle['title']}", markup=False)
     out.print("Nothing runs until you open one.")
     _next(f"co handoff show {found[0][1]['id']}")

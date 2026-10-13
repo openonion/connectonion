@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..environment import global_config_dir
 from .bundle import brief_markdown, report
 
 CLIENTS = {"claude": "Claude Code", "codex": "Codex"}
@@ -43,13 +44,19 @@ Without asking me:
    - last line: "You can keep asking me here."
 Do not change any file in this turn.{drafted}"""
 
-WORK = """Now do the work, here in {cwd}. Get the code from the Code section of the brief (clone it if it
-is pushed; otherwise ask the sender). Anything the handoff does not say, ask the sender rather than
-guess: co handoff ask {code} "your question", then co handoff status {id} --wait. Ask me only before
-something you cannot undo or that leaves this machine (other than co handoff commands). When it is
-done, tell the sender: co handoff done {code} "what you did, and the branch or PR" (add --file result.patch
-for a patch). Then reply to me in a few lines: what you did, how you checked it, what is left, and
-"You can keep asking me here.\""""
+WORK = """Now do the work, here in {cwd}. Get the code from the Code section of the brief: clone it if it
+is pushed. If it is not, rebuild what you need from the sender's session ({session}, when it is there:
+search it before asking anything), and ask the sender only for what is not in it.
+
+To ask: co handoff ask {code} "your question", then run co handoff status {id} --wait and let it
+return. The answer can take minutes, because the sender's machine answers when it next checks; do not
+stop or report that you are blocked while it waits. Anything the handoff does not say, ask rather than
+guess. Ask me only before something you cannot undo or that leaves this machine (other than co
+handoff commands).
+
+When it is done, tell the sender: co handoff done {code} "what you did, and the branch or PR" (add
+--file result.patch for a patch). Then reply to me in a few lines: what you did, how you checked it,
+what is left, and "You can keep asking me here."""""
 
 
 def materialize(bundle: dict, folder: Path) -> Path:
@@ -86,7 +93,8 @@ def report_prompt(bundle: dict, brief: Path, cwd: Path, code: str | None) -> str
 
 
 def work_prompt(bundle: dict, cwd: Path, code: str | None) -> str:
-    return WORK.format(cwd=cwd, id=bundle["id"], code=code or "(no code: ask the person here)")
+    session = global_config_dir() / "handoff" / "accepted" / bundle["id"] / "session.md"
+    return WORK.format(cwd=cwd, id=bundle["id"], code=code or "(no code: ask the person here)", session=session)
 
 
 def start(agent: str, bundle: dict, brief: Path, cwd: Path, code: str | None) -> dict:

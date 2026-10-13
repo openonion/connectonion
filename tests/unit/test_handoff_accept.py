@@ -720,3 +720,19 @@ def test_the_sender_hears_by_mail_once_that_the_handoff_is_done_with_a_short_pat
     told = [m for m in world["mails"] if m["to"] == "alice@personal.example" and "Done" in m["subject"]]
     assert len(told) == 1 and "Fixed; 6 tests pass" in told[0]["message"]
     assert "+    return slug" in told[0]["message"] and "result.patch" in told[0]["message"]
+
+
+def test_the_inbox_names_the_sender_by_the_name_their_handoff_carries(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    named = dict(_bundle(RECIPIENT["mail"]), id="ho-2b3c4d5e", from_name="Alice Liddell")
+    (drafts / "ho-2b3c4d5e.json").write_text(json.dumps(bundles.seal(named)))
+    _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-2b3c4d5e", "--yes")
+    world["be"](RECIPIENT)
+    listed = _invoke("handoff", "inbox").output
+    # b21 on Parrot listed "from 0x5fb5bef013 (0x5fb5bef013@mail…)" for a sender whose bundle said Aaron Test.
+    assert f"from Alice Liddell ({SENDER['mail']})" in listed
