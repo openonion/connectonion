@@ -400,17 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b20
+## Current Version: 1.9.2b21
 
-1.9.2b20 is a 1.9.2 beta; stable remains 1.9.1. A `co handoff` now runs without
-the person stepping in: the recipient's agent accepts by itself and does the
-work, asking only before what cannot be undone or leaves the machine (#2447).
-`co handoff done` brings the result, and a file, back to the sender's
-`co handoff status` (#2448). A handoff to a contact is mailed to the person too
-(#2449), and the preview warns about unpushed code and lists every private
-detail (#2450, #2451). The install floor is 1.9.2b20. See
-[1.9.2b20 notes](docs/releases/1.9.2b20.md).
+1.9.2b21 is a 1.9.2 beta; stable remains 1.9.1. A handoff opens on what the
+sender discussed and concluded: the mail is a reminder and a three-line paste,
+and `co handoff accept` fetches the handoff from the backend by code (#2459).
+The brief leads with a report and quotes the AI's own words (#2460). Every
+hosted agent answers questions on handoffs it sent (#2453), and each new
+question is mailed to the sender (#2454). `install.sh` waits for a version PyPI
+has not listed yet (#2457). The install floor is 1.9.2b21. See
+[1.9.2b21 notes](docs/releases/1.9.2b21.md).
 
+- 1.9.2b21 (A handoff that opens on what you discussed).
 - 1.9.2b20 (A handoff nobody has to babysit).
 - 1.9.2b19 (One host, whichever way you start it).
 - 1.9.2b18 (A handoff a stranger can start from nothing).
