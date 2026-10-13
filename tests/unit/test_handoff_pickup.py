@@ -549,3 +549,28 @@ def test_names_mask_every_capitalised_word_and_keep_the_recipient_found_by_addre
     names = bundles.rem_names(["Ody"], to="richard.lai@student.unsw.edu.au")
     out = bundles.mask("Larry's phone; a GIF; Melody Chan said; Richard Lai will test", names=names)
     assert "Larry" not in out and "GIF" in out and "Melody" not in out and "Richard Lai" in out
+
+
+def test_an_edited_sentence_goes_as_edited_in_the_copy_too(world, tmp_path):
+    """b27 review: --edit changed the brief, but the copy re-read the raw session and kept the sentence."""
+    import os
+    from pathlib import Path
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path, edit=lambda turn: dict(turn, ai="The cookie lives a month."))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    copy = (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md").read_text()
+    assert "The cookie lives a month." in copy and "as product asked" not in copy
+
+
+def test_a_chinese_name_is_masked_by_its_given_name_and_written_together():
+    import tempfile
+    from pathlib import Path
+    folder = Path(tempfile.mkdtemp())
+    (folder / "x.md").write_text("# 谢 红瑛\n")
+    original = bundles.rem_people_dir
+    bundles.rem_people_dir = lambda: folder
+    names = bundles.rem_names([])
+    bundles.rem_people_dir = original
+    out = bundles.mask("红瑛那页的武汉行程；谢红瑛；谢 红瑛", names=names)
+    assert "红瑛" not in out

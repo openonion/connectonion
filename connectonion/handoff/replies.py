@@ -379,6 +379,16 @@ def answered_keys(record: dict, questions: list[dict]) -> list[str]:
     return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
 
 
+def _as_approved(exchange: dict, session: dict) -> dict:
+    """A turn the sender changed with --edit goes as they left it; an untouched one keeps the AI's whole
+    reply, of which the brief quotes 800 characters (b27 review: an edited sentence stayed in the copy)."""
+    drafted = {t["at"]: t for t in session.get("drafted") or []}.get(exchange["at"])
+    approved = {t["at"]: t for t in session.get("approved") or []}.get(exchange["at"])
+    if drafted and approved and (drafted["user"], drafted["ai"]) != (approved["user"], approved["ai"]):
+        return {**exchange, "user": approved["user"], "ai": approved["ai"]}
+    return exchange
+
+
 def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_names=()) -> str:
     """The session copy as text: the conversation the sender approved, each message whole and each AI
     turn in full, and nothing else. Never tool calls or their output (#2496): in a session that ran
@@ -388,6 +398,7 @@ def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_name
     since = session.get("since", "")
     kept = [e for e in turns if (approved is None or e["at"] in approved) and (not since or e["at"] >= since)
             and (not until or not e["at"] or e["at"] <= until)]
+    kept = [_as_approved(e, session) for e in kept]
     text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
                        for e in kept) + "\n"
     text = bundles.redact(text, bundles.known_secrets())

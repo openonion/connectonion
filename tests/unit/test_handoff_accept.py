@@ -426,7 +426,7 @@ def test_a_contact_from_before_the_inbox_still_gets_mail(world):
 
 # ---- the sender's agent answers by itself, with a copy of the session ----
 
-def _send_from_session(world, tmp_path) -> str:
+def _send_from_session(world, tmp_path, edit=None) -> str:
     """Alice sends a handoff drafted from a real session file; returns the code."""
     session = tmp_path / "alice-session.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in [
@@ -442,10 +442,13 @@ def _send_from_session(world, tmp_path) -> str:
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
     drafts.mkdir(parents=True)
-    approved = dict(_bundle(RECIPIENT["mail"]), conversation=[    # the second message was removed with --edit
-        {"at": "2026-10-11T09:00:00Z", "user": "Store the login token.", "ai": "The cookie lives 30 days, as product asked."}])
+    drafted = [{"at": "2026-10-11T09:00:00Z", "user": "Store the login token.", "ai": "The cookie lives 30 days, as product asked."},
+               {"at": "2026-10-11T09:05:00Z", "user": "Also, my dentist moved to Friday.", "ai": ""}]
+    kept = [(edit or (lambda turn: turn))(drafted[0])]                 # the second message was removed with --edit
+    approved = dict(_bundle(RECIPIENT["mail"]), conversation=kept)
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(bundles.seal({k: v for k, v in approved.items() if k != "content_hash"})))
-    (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": ""}))
+    (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": "",
+                                                                 "drafted": drafted}))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
     return _code(_page(world))

@@ -271,6 +271,11 @@ named in what they will read; `--mentions <name>` lists each place and sends
 nothing. Masking removes contact details, not what the session says about the
 person reading it.
 
+A message you change with `--edit` goes into the session copy as you changed it,
+not as the session had it. The preview names each message that mentions health,
+visas, the law or money (签证, 睡眠, lawyer, salary…) so you can read it and drop
+it with `--edit`; nothing is removed for you.
+
 `--lang en` or `--lang zh` writes the report and the mail in that language; your
 own words stay as you wrote them. Without it, the language is the one you wrote
 in. A long handoff previews its newest messages; all of it is in the draft file.
