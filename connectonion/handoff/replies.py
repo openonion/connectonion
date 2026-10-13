@@ -97,7 +97,7 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
 # replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
 # automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
-MIN_VERSION = "1.9.2b26"   # 1.9.2b26: accept keeps internal paths out of the report to the person. The install line is install.sh, which pins exactly this version
+MIN_VERSION = "1.9.2b27"   # 1.9.2b27: the drop is read with the code's secret and claimed by its first reader (oo-api#267); b26 cannot read it.
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
@@ -391,7 +391,8 @@ def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_name
     text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
                        for e in kept) + "\n"
     text = bundles.redact(text, bundles.known_secrets())
-    return bundles.mask(text, keep, names=bundles.rem_names(keep_names)) if masked else text
+    to = next((k for k in keep if k), "")   # the recipient comes first in `keep`
+    return bundles.mask(text, keep, names=bundles.rem_names(keep_names, to)) if masked else text
 
 
 def _copy(record: dict, session: dict, budget: int = None) -> str:

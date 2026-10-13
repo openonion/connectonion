@@ -147,7 +147,7 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
     said = [_turn(e) for e in exchanges]
     whole = json.dumps([top.model_dump(), said], ensure_ascii=False)
     emails, phones = others(whole, [sender, to, *keep])
-    names = [n for n in rem_names([sender_name, *keep_names]) if n in whole]
+    names = [n for n in rem_names([sender_name, *keep_names], to) if n in whole]
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -254,18 +254,27 @@ def rem_people_dir() -> Path:
     return Path.home() / ".co" / "rem" / "people"
 
 
-def rem_names(keep_names=()) -> list[str]:
-    """The names of the people co rem keeps pages on here, from each page's title, except `keep_names`
-    (the sender and the recipient): a session that ran co rem talks about them by name (#2495 review)."""
+def rem_names(keep_names=(), to: str = "") -> list[str]:
+    """The names of the people co rem keeps pages on here, from each page's title, except the sender's
+    and the recipient's (`keep_names`, and the page that holds the `to` address): a session that ran
+    co rem talks about them by name (#2495 review)."""
     folder = rem_people_dir()
-    titles = [p.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0].lstrip("# ").strip()
-              for p in folder.glob("*.md")] if folder.is_dir() else []
-    kept = {k.lower() for k in keep_names if k}
-    named = {t for t in titles if len(t) >= 2 and not re.fullmatch(r"[\w.+-]+@[\w.-]+", t)
-             and not any(k in t.lower() or t.lower() in k for k in kept)}
-    # A session says "Sasha" as often as "Sasha Whittle": a full name's first word goes too.
-    firsts = {t.split()[0] for t in named if " " in t and re.fullmatch(r"[A-Z][a-z]{3,}", t.split()[0])}
-    return sorted(named | {f for f in firsts if f.lower() not in kept}, key=len, reverse=True)
+    pages = [p.read_text(encoding="utf-8", errors="replace") for p in folder.glob("*.md")] if folder.is_dir() else []
+    kept = {w.lower() for k in keep_names if k for w in k.split()}
+    kept |= {w.lower() for page in pages if to and to.lower() in page.lower() for w in _title(page).split()}
+    named = set()
+    for title in map(_title, pages):
+        words = title.split()
+        if len(title) < 2 or re.fullmatch(r"[\w.+-]+@[\w.-]+|[A-Z0-9]+", title) or kept & {w.lower() for w in words}:
+            continue   # an address, an acronym ("GIF"), or the sender or recipient
+        named.add(title)
+        # A session says "Sasha" or "Larry" as often as the whole title: each name-like word goes too.
+        named |= {w for w in words if len(words) > 1 and re.fullmatch(r"[A-Z][a-z]{3,}", w)}
+    return sorted(named, key=len, reverse=True)
+
+
+def _title(page: str) -> str:
+    return page.split("\n", 1)[0].lstrip("# ").strip()
 
 
 def mask(text: str, keep=(), emails: set[str] = None, names=()) -> str:

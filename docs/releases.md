@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b26**: a handoff no longer carries anyone else's email address, phone
-number or IP, and you can take its page down at once; status says where it stands in one
-line. See [1.9.2b26 notes](releases/1.9.2b26.md).
+Beta **1.9.2b27**: the copy of your session that goes with a handoff is only the
+conversation you approved, never commands or their output, and only the person who accepts
+it can read it. See [1.9.2b27 notes](releases/1.9.2b27.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b26'
+python -m pip install --upgrade 'connectonion==1.9.2b27'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b26**: a handoff no longer carries anyone else's email address, phone
+number or IP, and you can take its page down at once; status says where it stands in one
+line. See [1.9.2b26 notes](releases/1.9.2b26.md).
 
 Beta **1.9.2b25**: the handoff mail reads like a note from you, in your own voice and
 language; the conversation shows up in the recipient's Codex app with your name on each

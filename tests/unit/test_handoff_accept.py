@@ -61,6 +61,8 @@ def world(monkeypatch, tmp_path):
     def get_drop(drop_id, key):   # as oo-api#267: the whole drop only for the holder of its key, who claims it
         import hashlib
         assert keys[drop_id] and hashlib.sha256(key.encode()).hexdigest() == keys[drop_id], "no key, or the wrong one"
+        if drop_id not in drops:
+            return None
         reader = claimed.setdefault(drop_id, transport.my_address())
         return drops[drop_id] if reader == transport.my_address() else ""
 
@@ -1010,3 +1012,12 @@ def test_wait_gives_up_after_its_timeout_with_the_carry_on_rule(world, monkeypat
     assert said.exit_code == 0, said.output
     assert "No news on ho-1a2b3c4d in 2 minutes" in " ".join(said.output.split())
     assert "Assumed:" in said.output
+
+
+def test_accepting_a_handoff_that_was_taken_down_says_so_in_a_sentence(world, monkeypatch):
+    """b27 review: a 404 from the drop crashed accept with an HTTPError traceback."""
+    code = _code(_send(world))
+    world["drops"].clear()
+    world["be"](RECIPIENT)
+    said = _invoke("handoff", "accept", code)
+    assert said.exit_code != 0 and "no longer there" in " ".join(said.output.split()) and "Traceback" not in said.output

@@ -533,3 +533,19 @@ def test_co_rem_names_and_handoff_links_are_masked_too(tmp_path, monkeypatch):
     out = bundles.mask(text, names=bundles.rem_names(keep_names=["Ody Zhou"]))
     assert "谢 红瑛" not in out and "Sasha" not in out and "Ody Zhou" in out
     assert "eaBga94" not in out and "[handoff link]" in out
+
+
+def test_names_mask_every_capitalised_word_and_keep_the_recipient_found_by_address(tmp_path, monkeypatch):
+    """b27 review: 'Larry' survived a page titled 'Lee Larry'; a page titled 'GIF' masked the word GIF;
+    the recipient (no handoff contact, but a rem page holding their address) was masked in their own copy;
+    'Melody Chan' was kept because it contains 'ody'."""
+    people = tmp_path / "people"
+    people.mkdir()
+    (people / "lee-larry-1.md").write_text("# Lee Larry\n")
+    (people / "gif-2.md").write_text("# GIF\n")
+    (people / "melody-chan-3.md").write_text("# Melody Chan\n")
+    (people / "richard-lai-4.md").write_text("# Richard Lai\n\n- Email: richard.lai@student.unsw.edu.au\n")
+    monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
+    names = bundles.rem_names(["Ody"], to="richard.lai@student.unsw.edu.au")
+    out = bundles.mask("Larry's phone; a GIF; Melody Chan said; Richard Lai will test", names=names)
+    assert "Larry" not in out and "GIF" in out and "Melody" not in out and "Richard Lai" in out

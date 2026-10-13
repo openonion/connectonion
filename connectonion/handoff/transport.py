@@ -275,7 +275,9 @@ def pickup(code: dict) -> dict:
     from .bundle import seal
     from .sessions import patch_digest
     held = _get_drop(code["drop"], code["secret"])
-    if not held:   # another agent read it first and claimed it (oo-api#267)
+    if held is None:   # withdrawn, expired, or sent by co 1.9.2b26 or earlier, whose copy is not served
+        return {"gone": True}
+    if not held:       # another agent read it first and claimed it (oo-api#267)
         return {"taken": True}
     body = json.loads(held)
     if seal(body["bundle"])["content_hash"] != code["hash"]:
@@ -310,7 +312,7 @@ def withdraw(page: str) -> None:
     _delete_drop(page.rstrip("/").rsplit("/", 1)[1])
 
 
-def _get_drop(drop_id: str, key: str) -> str:
+def _get_drop(drop_id: str, key: str) -> str | None:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
@@ -318,6 +320,8 @@ def _get_drop(drop_id: str, key: str) -> str:
                             headers={"Authorization": f"Bearer {require_ambient_api_key()}", "X-Drop-Key": key})
     if response.status_code == 409:   # already accepted by another agent: "" says so
         return ""
+    if response.status_code == 404:   # gone: None says so
+        return None
     response.raise_for_status()
     return response.json()["body"]
 

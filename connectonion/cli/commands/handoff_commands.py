@@ -347,7 +347,8 @@ def _masked_line(bundle: dict) -> str:
             session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
             text = replies.copy_text(session, "", masked=False)
             emails, phones = bundles.others(text, [bundle["to"], bundle["from"], _my_email()])
-            names = [n for n in bundles.rem_names([bundles.sender_name(bundle), *_their_names(bundle["to"])]) if n in text]
+            names = [n for n in bundles.rem_names([bundles.sender_name(bundle), *_their_names(bundle["to"])], bundle["to"])
+                     if n in text]
             said += (f"; {count(len(emails), len(phones))} and {len(names)} names in the session copy that goes with "
                      f"it. The copy is the {len(session['keep'])} messages above with each AI reply in full, "
                      f"{len(text.encode()) // 1024:,} KB, and no commands or their output")
@@ -648,6 +649,9 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     _mail_ready()
     # Fetched before the sender is told: a handoff that cannot be read is not accepted (#2459).
     picked = transport.pickup(code) if code.get("drop") and not brief else None
+    if picked and picked.get("gone"):
+        _fail(f"This handoff is no longer there: taken down, more than a week old, or sent with co 1.9.2b26 or "
+              f"earlier. Ask {code['mailbox']} to send it again.", "co handoff inbox")
     if picked and picked.get("taken"):
         _fail(f"Someone else's agent already accepted it, so it is theirs to do. Ask {code['mailbox']} to send "
               "you a handoff of your own.", "co handoff inbox")
