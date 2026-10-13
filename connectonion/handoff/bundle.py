@@ -231,90 +231,91 @@ def _strings(value, field: str = ""):
 
 _FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 _INK, _MUTED, _GREEN, _TINT, _LINE = "#1f2a22", "#4b5b4f", "#15803d", "#f3f8f4", "#cfe3d4"
-_LABEL = f"color:{_GREEN};font-size:13px;font-weight:700;letter-spacing:.05em"
 # Outlook's Word engine ignores padding, border and wrapping on <pre>, so the frame is the cell.
 _FRAME = f"padding:14px 16px;background:{_TINT};border:1px solid {_LINE}"
 _PRE = ("margin:0;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;"
         f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:{_INK}")
 GUIDE = "https://github.com/openonion/connectonion/blob/main/docs/cli/handoff.md"
-SITE = "https://github.com/openonion/connectonion"
 
 
-def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
-    """(subject, HTML body) for a person who has never heard of co, reading on any screen.
+CLIENT_NAMES = {"claude": "Claude Code", "codex": "Codex"}
 
-    In reading order (#2415): who sent what and what ConnectOnion is; the task, where it stands
-    and the open questions; three numbered steps; the block to paste, labelled where it starts
-    and ends because no mail client runs a copy button. A table layout, because Outlook ignores
-    max-width on a div. Reviewed by a UI and product-flow pass (2026-10-12): one green box only,
-    so "the box" is never ambiguous; step 3 promises only what the prompt does. Last, hidden, the
-    bundle `co handoff open` reads from a saved mail (base64, so no mail system rewrites it); it
-    is after the block, so a clipped mail loses only the bundle, never the block. Text sits in a
-    <div>, never bare in a cell: the mail service writes the text part from this HTML and breaks
-    lines only at blocks, so bare cells ran together ("ENDFirst time?").
-    """
-    sender, title = html.escape(sender_name(bundle)), html.escape(bundle["title"])
-    subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {sender_name(bundle)})"
+WORDS = {   # the mail in the language the sender wrote in (Aaron, 2026-10-13)
+    "en": {"subject": "{name} passed you some work: {title}",
+           "lead": "{name} has been working on “{title}” with {client}, and would like you to take it from here.",
+           "talked": "They talked through: {point}.",
+           "how": "To pick it up, start a new conversation in Codex or Claude Code and paste the block below. "
+                  "{name}'s session continues there, with the code. Nothing runs until you paste it.",
+           "select": "Triple-click the grey box to select all of it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
+           "footer": "Sent with co handoff, from ConnectOnion (open source).", "guide": "How it works",
+           "space": " ", "colon": ": "},
+    "zh": {"subject": "{name} 想把一项工作交给你：{title}",
+           "lead": "{name} 一直在和 {client} 一起做「{title}」，想请你接着做下去。",
+           "talked": "他们讨论了：{point}。",
+           "how": "想接手的话，在 Codex 或 Claude Code 里新开一个对话，把下面这段粘贴进去，{name} 的会话就会在那里接着进行，"
+                  "代码也会一起过来。粘贴之前，什么都不会运行。",
+           "select": "在灰色框里连点三下即可全选，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
+           "footer": "由 ConnectOnion（开源）的 co handoff 发送。", "guide": "了解更多",
+           "space": "", "colon": "："},
+}
+
+
+def language(bundle: dict) -> str:
+    """"zh" or "en": the bundle's own "lang", else whichever the sender's own words are mostly written in."""
+    if bundle.get("lang") in WORDS:
+        return bundle["lang"]
+    said = " ".join([bundle.get("asked", "")] + [e["user"] for e in bundle.get("conversation", [])])
+    han = len(re.findall(r"[\u4e00-\u9fff]", said))
+    return "zh" if han > len(re.findall(r"[A-Za-z]+", said)) / 2 else "en"
+
+
+def _sentence_case(text: str) -> str:
+    """"Shortcomings of …" reads mid-sentence as "shortcomings of …"; "API limits" stays as it is."""
+    return text[0].lower() + text[1:] if len(text) > 1 and text[1].islower() else text
+
+
+def notice(bundle: dict, prompt: str) -> dict:
+    """{subject, text, html}: the mail a person gets, short, like a note from someone they know (#2478).
+
+    Aaron, 2026-10-13: the 1.9.2b22 mail ("[co handoff] … (from …)", a ConnectOnion banner, every
+    finding laid out, from an agent mailbox) looked like spam and was overwhelming. So: a short
+    subject without co's words, one or two sentences on who worked on what with their AI and what
+    they talked through, the block, one line of footer, in the language the sender wrote in. What
+    they decided reaches the agent when it accepts. It goes from the sender's own mailbox when there
+    is one (transport.hand_over). The HTML keeps the block in the first <pre> and the bundle hidden
+    at the end, which co handoff inbox and open read back."""
+    words = WORDS[language(bundle)]
+    name, title = sender_name(bundle), _one_line(bundle["title"], 80)
+    client = CLIENT_NAMES.get(bundle.get("source", {}).get("kind"), "AI")
+    lead = words["lead"].format(name=name, title=title, client=client)
+    points = bundle.get("discussed") or []
+    talked = words["talked"].format(point=_sentence_case(_one_line(points[0].rstrip(".。"), 160))) if points else ""
+    said = words["space"].join(part for part in (lead, talked) if part)
+    subject = words["subject"].format(name=name, title=_one_line(bundle["title"], 60))
+    how = words["how"].format(name=name)
+    text = (f"{said}\n\n{how}\n\n"
+            f"{words['select']}\n\n{prompt.strip()}\n\n"
+            f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    body = (
-        f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{sender} handed you a task: '
-        f'{title}. Paste one block into Codex or Claude Code to continue.</div>'
+    e = html.escape
+    page = (
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff">'
-        '<tr><td align="center" style="padding:24px 16px">'
+        '<tr><td style="padding:16px 12px">'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}">'
-        f'<tr><td style="padding:0 0 14px;border-bottom:2px solid {_GREEN};{_LABEL}"><div>CONNECTONION HANDOFF</div></td></tr>'
-        f'<tr><td style="padding:20px 0 4px;color:{_MUTED};font-size:14px"><div>{sender} handed you a task</div></td></tr>'
-        f'<tr><td style="padding:0 0 10px"><h1 style="margin:0;font-size:24px;line-height:1.25">{title}</h1></td></tr>'
-        f'<tr><td style="padding:0 0 18px;color:{_MUTED};font-size:14px"><div>'
-        f'<a href="{SITE}" style="color:{_GREEN}">ConnectOnion</a> is an open-source tool for AI agents. '
-        f'{sender} used it to pass you this task. To continue, paste the block below into Codex or '
-        'Claude Code on your computer. Nothing runs until you do.</div></td></tr>'
-        f'<tr><td style="padding:2px 0 2px 16px;border-left:3px solid {_GREEN}">'
-        + (_field("", html.escape(bundle["headline"])) if bundle.get("headline") else _field("The task", html.escape(bundle["task"])))
-        + _items("Discussed", bundle.get("discussed", []))
-        + _items("Concluded", bundle.get("decided", []))
-        + _items("Still open", bundle.get("open_questions", []))
-        + '</td></tr>'
-        '<tr><td style="padding:28px 0 4px"><h2 style="margin:0;font-size:19px">Continue it with your AI agent</h2></td></tr>'
-        '<tr><td style="padding:0 0 16px">'
-        + _step(1, "Open <b>Codex</b> or <b>Claude Code</b> on your computer, in the folder where you want to work.")
-        + _step(2, "Copy everything between START and END below and paste it into your agent. "
-                   f'<span style="color:{_MUTED}">On your phone? Open this email on that computer.</span>')
-        + _step(3, f"Your agent installs co if it is missing, fetches the handoff, and opens it as "
-                   f"{sender}'s session: what they discussed, what they concluded, what is still open.")
-        + '</td></tr>'
-        f'<tr><td style="padding:0 0 6px;{_LABEL}"><div>START</div></td></tr>'
-        f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{html.escape(prompt.strip())}</pre></td></tr>'
-        f'<tr><td style="padding:6px 0 0;{_LABEL}"><div>END</div></td></tr>'
-        f'<tr><td style="padding:22px 0 0;color:{_MUTED};font-size:14px">'
-        f'<div>First time? <a href="{GUIDE}" style="color:{_GREEN}">How a handoff works</a>.</div></td></tr>'
-        f'<tr><td style="padding:22px 0 0;margin-top:22px;border-top:1px solid {_LINE};color:#5f6b62;font-size:13px">'
-        f'<div>Handoff {html.escape(bundle["id"])}, sent by {sender} with co handoff.</div></td></tr>'
-        '</table></td></tr></table>'
+        f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}"><tr><td>'
+        f'<p style="margin:0 0 14px">{e(said)}</p>'
+        f'<p style="margin:0 0 14px">{e(how)}</p>'
+        f'<p style="margin:0 0 6px;color:{_MUTED};font-size:13px">{e(words["select"])}</p>'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{e(prompt.strip())}</pre></td></tr></table>'
+        '<div style="height:18px"></div>'
+        f'<p style="margin:0;color:{_MUTED};font-size:13px">{e(words["footer"])}{words["space"]}'
+        f'<a href="{GUIDE}" style="color:{_GREEN}">{e(words["guide"])}</a></p>'
+        '</td></tr></table></td></tr></table>'
         f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
     )
-    return subject, body
-
-
-def _field(label: str, text: str) -> str:
-    head = f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p>' if label else ""
-    return f'{head}<p style="margin:0 0 12px">{text}</p>'
-
-
-def _items(label: str, items: list[str]) -> str:
-    if not items:
-        return ""
-    lis = "".join(f'<li style="margin:0 0 4px">{html.escape(item)}</li>' for item in items)
-    return f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p><ul style="margin:0 0 8px;padding-left:20px">{lis}</ul>'
-
-
-def _step(number: int, text: str) -> str:
-    return ('<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 0"><tr>'
-            '<td valign="top" style="width:30px"><div style="width:22px;height:22px;border-radius:11px;'
-            f'background:{_GREEN};color:#ffffff;font-size:12px;font-weight:700;line-height:22px;'
-            f'text-align:center">{number}</div></td><td style="font-size:15px"><div>{text}</div></td></tr></table>')
+    return {"subject": subject, "text": text, "html": page}
 
 
 def from_saved_mail(text: str) -> dict | None:

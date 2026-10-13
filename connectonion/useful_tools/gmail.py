@@ -890,7 +890,7 @@ class Gmail(GmailMailbox):
         return message
 
     def send(self, to: str, subject: str, body: str, cc: str = None,
-             bcc: str = None, attachments: list = None) -> str:
+             bcc: str = None, attachments: list = None, html: str = None) -> str:
         """Send email via Gmail API, optionally with files attached.
 
         Args:
@@ -900,6 +900,7 @@ class Gmail(GmailMailbox):
             cc: Optional CC recipients (comma-separated)
             bcc: Optional BCC recipients (comma-separated)
             attachments: Optional list of file paths to attach
+            html: Optional HTML version of the body; the plain body stays as the text alternative
 
         Returns:
             Confirmation message with sent message ID
@@ -918,6 +919,11 @@ class Gmail(GmailMailbox):
             with ExitStack() as stack:
                 opened = self._open_attachments(attachments, stack)
                 message = self._multipart_with(body, opened)
+        elif html:
+            from email.mime.multipart import MIMEMultipart
+            message = MIMEMultipart("alternative")
+            message.attach(MIMEText(body, "plain"))
+            message.attach(MIMEText(html, "html"))
         else:
             message = MIMEText(body)
         message['To'] = to

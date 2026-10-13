@@ -48,7 +48,8 @@ def _fail(message: str, next_cmd: str) -> None:
 # ---- send ----
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
-                draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1) -> None:
+                draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1,
+                via: str = "auto") -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -80,9 +81,21 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
         out.print(style.warn("Preview only. Nothing has been sent."))
         out.print("If you are an agent: stop here. Show the person this preview and ask whether to send it. "
                   "Being asked to hand something off is not approval of this text; only their yes to this preview is.")
+        out.print(_from_line(via, bundle["to"]), markup=False)
         _next(f"once the person approves this preview, co handoff send {shlex.quote(who)} --draft {bundle['id']} --yes")
         return
-    _deliver(bundle)
+    _deliver(bundle, via)
+
+
+def _from_line(via: str, to: str) -> str:
+    """Which mailbox the mail goes out from; the agent's is last, because it reads like spam (#2478)."""
+    channel, own = transport.channel_for(via), transport.own_mailbox()
+    if channel == "mcp":
+        return f"Your AI sends it to {to} with its own mail tool, from your address."
+    if channel in ("gmail", "outlook"):
+        return f"It goes from your {channel.title()}, {own[1]}, to {to}."
+    return (f"It goes from your agent's mailbox, {os.getenv('AGENT_EMAIL')}, which a stranger may take for spam. "
+            "To send from your own Gmail or Outlook instead, connect it once: co auth google (or co auth microsoft).")
 
 
 def _recipient(who: str) -> str:
@@ -159,8 +172,42 @@ def _my_name() -> str:
     return found.stdout.strip()
 
 
+def _where_it_went(record: dict) -> str:
+    if record.get("via") == "agent inbox":   # sent by 1.9.2b22 or earlier
+        return "It is in their agent's inbox (co handoff inbox on their side)."
+    inbox = "It is in their agent's inbox (co handoff inbox on their side), and " if record.get("in_their_inbox") else "It "
+    if record.get("via") == "mcp":
+        return f"{inbox}went from your mail tool."
+    if record.get("via") in ("gmail", "outlook"):
+        return f"{inbox}went from {_mailbox_name(record)}."
+    mail = transport.sent_status(record["to"], record["subject"])
+    return f"{inbox}went from your agent's mailbox; mail service: {(mail or {}).get('status', 'no record of this message yet')}."
+
+
+def _mailbox_name(record: dict) -> str:
+    names = {"gmail": "your Gmail", "outlook": "your Outlook", "agent mailbox": "your agent's mailbox"}
+    return f"{names.get(record['via'], record['via'])} ({record.get('from') or 'unknown'})"
+
+
+def _print_for_mail_tool(bundle: dict, mail: dict) -> None:
+    """--via mcp: the mail for the coding agent to send with its own mail tool, from the person's mailbox."""
+    folder = _home() / "sent"
+    folder.mkdir(parents=True, exist_ok=True)
+    text, page = folder / f"{bundle['id']}.mail.txt", folder / f"{bundle['id']}.mail.html"
+    text.write_text(mail["text"], encoding="utf-8")
+    page.write_text(mail["html"], encoding="utf-8")
+    out.print(style.ok(f"Handoff {bundle['id']} is ready; co mailed nothing."))
+    out.print("Send this mail now with your mail tool (Gmail or Outlook), from the person's own address:", markup=False)
+    out.print(f"  to: {bundle['to']}\n  subject: {mail['subject']}\n  HTML body: {page}\n  plain-text body: {text}",
+              markup=False)
+
+
 def _my_email() -> str:
-    """The sender's git user.email: where they hear about a question only they can answer ("" when unset)."""
+    """Where the sender hears about a question only they can answer: their own connected mailbox, else
+    their git user.email ("" when neither)."""
+    own = transport.own_mailbox()
+    if own and own[1]:
+        return own[1]
     import subprocess
     found = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True)
     return found.stdout.strip()
@@ -232,7 +279,7 @@ def _code_line(repo: dict, patch: Optional[dict]) -> str:
     return f"The code is pushed ({where}): they can fetch it."
 
 
-def _deliver(bundle: dict) -> None:
+def _deliver(bundle: dict, via: str = "auto") -> None:
     secret = replies.new_secret()
     sent_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     session = _drafts() / f"{bundle['id']}.session.json"
@@ -242,14 +289,14 @@ def _deliver(bundle: dict) -> None:
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
                               "hash": bundle["content_hash"], "secret": secret, "drop": drop})
     prompt = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
-    subject, body = bundles.to_mail(bundle, prompt)
-    result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"], mail_too=True)
+    mail = bundles.notice(bundle, prompt)
+    result = transport.hand_over(bundle["to"], mail, idempotency_key=bundle["id"], via=via)
     if not result.get("success"):
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
-    record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": subject,
+    record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": mail["subject"],
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
               "secret": secret, "sent_at": sent_at,
-              "inbox": True, "via": result.get("via", "mail")}
+              "inbox": True, "via": result.get("via", "mail"), "in_their_inbox": result.get("inbox", False)}
     if _my_email():   # where a question that waits on the sender reaches them (#2454)
         record["owner"] = _my_email()
     if session:
@@ -261,10 +308,14 @@ def _deliver(bundle: dict) -> None:
     path = sent / f"{bundle['id']}.json"
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     path.chmod(0o600)
-    out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" (message {record['message_id']}).")
-    if record["via"] == "agent inbox":
-        mailed = "mailed to them, and " if result.get("mailed") else "not mailed (the mail service failed), only "
-        out.print(f"They are a contact, so it was {mailed}put in their agent's inbox (co handoff inbox on their side).")
+    if record["via"] == "mcp":
+        _print_for_mail_tool(bundle, mail)
+    else:
+        out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" from {_mailbox_name(record)}.")
+    if record["in_their_inbox"]:
+        out.print("They are a contact, so it is also in their agent's inbox (co handoff inbox on their side).")
+    if record["via"] != "mcp" and not result["mailed"]:
+        out.print(style.warn(escape(f"The mail did not go: {result.get('error')}")))
     out.print("It is this prompt. To use another channel (chat, WhatsApp), send them the same block:")
     print(prompt)   # plain print: Rich would wrap the code and the commands
     _next(f"co handoff status {bundle['id']} --wait  (in the background: it returns when they accept or ask)")
@@ -324,11 +375,7 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
     state = replies.settle(record, mails)
     who = state["accepted"]
     if not who:
-        if record.get("via") == "agent inbox":
-            out.print("Not accepted yet. It is in their agent's inbox (co handoff inbox on their side).")
-        else:
-            mail = transport.sent_status(record["to"], record["subject"])
-            out.print(f"Not accepted yet. Mail service: {(mail or {}).get('status', 'no record of this message yet')}.")
+        out.print(f"Not accepted yet. {_where_it_went(record)}")
         out.print("Acceptance arrives when their agent runs the prompt from the mail.")
         if state["ignored"]:
             out.print(style.warn(f"Ignored {state['ignored']} message(s) that did not carry this handoff's code."))
@@ -753,6 +800,7 @@ def make_handoff_app(factory) -> typer.Typer:
         draft: Optional[str] = typer.Option(None, "--draft", help="Use this saved draft id exactly, instead of drafting again"),
         edit: bool = typer.Option(False, "--edit", help="Open the draft in $EDITOR before the preview"),
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
+        via: str = typer.Option("auto", "--via", hidden=True, help="For an AI with its own mail tool: mcp prints the mail for that tool to send"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
 
@@ -763,7 +811,9 @@ def make_handoff_app(factory) -> typer.Typer:
         """
         if agent and agent not in AGENTS:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
-        handle_send(who, what, from_file, agent, draft, edit, yes, session, since)
+        if via not in transport.VIA:
+            _fail(f"--via must be one of {', '.join(transport.VIA)}, not {via}.", f'co handoff send {shlex.quote(who)} --via auto')
+        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via)
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
     def accept(

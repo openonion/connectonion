@@ -74,12 +74,14 @@ def test_the_brief_leads_with_discussed_concluded_still_open_and_the_diagram():
     assert "Cookie lifetime?" in brief.split("## Still open")[1].split("##")[0]
 
 
-def test_the_mail_tells_the_person_what_was_discussed_and_concluded(world, drops):
+def test_the_mail_says_what_was_talked_through_and_leaves_the_rest_to_accept(world, drops):
+    """Aaron, 2026-10-13: the mail was overwhelming. It names the first thing discussed; what was
+    concluded and is still open reaches the agent when it accepts (#2478)."""
     world["be"](SENDER)
     _send_bundle(world, {**_bundle(RECIPIENT["mail"]), **SUMMARY})
     shown = html.unescape(re.sub(r"<[^>]+>", " ", world["mails"][-1]["message"].split("BEGIN CO HANDOFF")[0]))
-    for text in (SUMMARY["headline"], "localStorage or an httpOnly cookie", "JS cannot read it", "Cookie lifetime?"):
-        assert text in shown
+    assert "localStorage or an httpOnly cookie" in shown                                # the first thing discussed
+    assert "JS cannot read it" not in shown and "Cookie lifetime?" not in shown
 
 
 def _send_bundle(world, bundle):

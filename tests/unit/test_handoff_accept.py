@@ -63,6 +63,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
     monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
+    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.chdir(tmp_path)
     return {"mails": mails, "inbox": inbox, "be": be, "drops": drops}
@@ -96,13 +97,18 @@ def _code(text: str) -> str:
 
 def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     body = _send(world)
-    assert "Copy everything between START and END" in body
+    assert "start a new conversation in Codex or Claude Code and paste the block below" in body
     # One isolated install that also sets co up (#2415); never the recipient's global Python (#2396).
     from connectonion.handoff.replies import INSTALLER, MIN_VERSION
     assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in body
     assert f'uv tool install "connectonion=={MIN_VERSION}"' in body                 # Windows: no sh
     assert "pip install" not in body and "--pre" not in body
-    assert f"older than {MIN_VERSION}, install it" in body
+    assert f"older than {MIN_VERSION}, install co first" in body and "let it finish" in body
+    # One paragraph: a mail cannot run a copy button, and a triple-click selects a whole paragraph (Aaron, 2026-10-13).
+    from connectonion.handoff import replies as replies_module
+    pasted = replies_module.prompt(_code(body), "ho-1a2b3c4d", "alice", "Store the login token")
+    assert "\n" not in pasted.strip() and "without waiting for me" in pasted
+    assert "Triple-click the grey box to select all of it" in body and "Copy from here" not in body
     assert f"co handoff accept {_code(body)}" in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
@@ -310,11 +316,19 @@ def test_the_install_floor_is_a_published_version_not_the_senders_build(world, m
     assert ".dev" not in body
 
 
-def test_a_person_reads_the_task_before_the_agent_steps_and_sees_no_markdown_fences(world):
+def test_the_mail_reads_like_a_short_note_from_a_person_not_a_report(world):
+    """Aaron, 2026-10-13: the b22 mail ("[co handoff] … (from …)", a banner, every finding laid out) read
+    like spam and was overwhelming (#2478). One or two sentences, then the block."""
     body = _send(world)
-    raw = world["mails"][-1]["message"]
-    assert "```" not in raw
-    assert body.index("handed you a task") < body.index("STILL OPEN") < body.index("Copy everything between START and END")
+    mail = world["mails"][-1]
+    assert mail["subject"] == f"{SENDER['mail']} passed you some work: Store the login token"
+    assert "[co handoff]" not in mail["subject"] and "handoff" not in mail["subject"].lower()
+    lead = f"{SENDER['mail']} has been working on \u201cStore the login token\u201d with Codex"
+    assert body.index(lead) < body.index("paste the block below") < body.index(f"co handoff accept {_code(body)}")
+    assert "STILL OPEN" not in body and "Cookie lifetime?" not in body and "CONNECTONION HANDOFF" not in body
+    assert "```" not in mail["message"]
+    # A hidden preview line repeating the first sentence made Gmail's snippet say it twice (real send, b23 branch).
+    assert mail["message"].count("has been working on") == 1
 
 
 def test_the_install_floor_is_never_newer_than_this_release():
@@ -608,7 +622,7 @@ def test_accept_tells_the_agent_to_do_the_work_without_the_person(world):
     """1.9.2b16 and b19 runs: Codex, with network on, stopped and asked the person to run accept (#2447).
     The rules now come from accept's output, so they improve with each release (#2459)."""
     body = _send(world)
-    assert "Run this yourself" in body and "ask me to run it" not in body
+    assert f"run co handoff accept {_code(body)} yourself" in body and "ask me to run it" not in body
     world["be"](RECIPIENT)
     code = _code(body)
     said = _invoke("handoff", "accept", code).output
@@ -676,7 +690,7 @@ def test_a_handoff_to_a_contact_is_mailed_to_the_person_too_and_listed_once(worl
     # 1.9.2b19: only the agent inbox got it, so the person never heard of it (#2449).
     assert len(world["mails"]) == mails_before + 1 and world["mails"][-1]["to"] == RECIPIENT["mail"]
     assert world["inbox"][-1]["to"] == RECIPIENT["address"]
-    assert "mailed to them, and put in their agent's inbox" in sent.output
+    assert "from your agent's mailbox" in sent.output and "also in their agent's inbox" in sent.output
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output.splitlines()
     assert sum(line.startswith("ho-2b3c4d5e") for line in listed) == 1                 # mail and inbox copy: once
@@ -768,3 +782,75 @@ def test_follow_feeds_the_senders_own_answer_back_into_the_opened_session_until_
     handoff_commands.handle_follow("ho-1a2b3c4d", "codex", "thread-1", tmp_path)
     assert len(turns) == 2 and "No: the suffix may exceed N." in turns[1]
     assert not any("Answered automatically" in t for t in turns)                 # only the sender's own words
+
+
+# ---- #2478: the mail goes from the person's own mailbox ----
+
+class _FakeGmail:
+    sent = []
+
+    def send(self, to, subject, body, html=None):
+        self.sent.append({"to": to, "subject": subject, "text": body, "html": html})
+        return f"Email sent successfully to {to}. Message ID: g-{len(self.sent)}"
+
+
+def test_with_a_gmail_connected_the_handoff_goes_from_it_not_the_agent_mailbox(world, monkeypatch):
+    _FakeGmail.sent = []
+    monkeypatch.setattr(transport, "own_mailbox", lambda: ("gmail", "alice.liddell@gmail.com"))
+    monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    preview = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d").output
+    assert "It goes from your Gmail, alice.liddell@gmail.com" in preview
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
+    assert sent.exit_code == 0, sent.output
+    assert world["mails"] == [] and len(_FakeGmail.sent) == 1                    # nothing from the agent mailbox
+    mail = _FakeGmail.sent[0]
+    assert mail["to"] == RECIPIENT["mail"] and "co handoff accept coh3." in mail["text"]
+    assert "<pre" in mail["html"] and "from your Gmail (alice.liddell@gmail.com)" in sent.output
+    world["be"](RECIPIENT)                                                         # the prompt in it still works
+    assert _invoke("handoff", "accept", _code(mail["text"])).exit_code == 0
+
+
+def test_without_one_the_preview_says_the_agent_mailbox_may_read_as_spam_and_how_to_avoid_it(world):
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    preview = " ".join(_invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d").output.split())
+    assert "from your agent's mailbox" in preview and "may take for spam" in preview
+    assert "co auth google" in preview and "--via" not in preview                   # no flag for the person (Aaron)
+
+
+def test_via_mcp_mails_nothing_and_hands_the_mail_to_the_agents_own_mail_tool(world):
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes", "--via", "mcp")
+    assert sent.exit_code == 0, sent.output
+    assert world["mails"] == [] and "co mailed nothing" in sent.output
+    flat = " ".join(sent.output.split())
+    assert f"to: {RECIPIENT['mail']}" in flat and "subject: alice@mail.openonion.ai passed you some work" in flat
+    text = Path(re.search(r"plain-text body: (\S+)", flat).group(1)).read_text()
+    assert "co handoff accept coh3." in text
+    assert "went from your mail tool" in _invoke("handoff", "status", "ho-1a2b3c4d").output
+
+
+def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
+    zh = dict(_bundle(RECIPIENT["mail"]), title="保存登录令牌",
+              conversation=[{"at": "", "user": "登录令牌用 httpOnly cookie 还是 localStorage？", "ai": "cookie"}])
+    mail = bundles.notice(bundles.seal(zh), "PROMPT")
+    assert mail["subject"].startswith("alice@mail.openonion.ai 想把一项工作交给你")
+    assert "新开一个对话" in mail["text"] and "连点三下即可全选" in mail["text"]
+    assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"].endswith("passed you some work: Store the login token")
+
+
+def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(world):
+    # The person's mail no longer starts "[co handoff]"; an agent mailbox finds it by the bundle in it.
+    _send(world)
+    world["be"](RECIPIENT)
+    listed = _invoke("handoff", "inbox").output
+    assert "ho-1a2b3c4d" in listed

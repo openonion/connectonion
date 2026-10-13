@@ -682,7 +682,7 @@ class Outlook:
         return f" with attachment(s): {names}"
 
     def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
-             attachments: list = None, send_at: str = None) -> str:
+             attachments: list = None, send_at: str = None, html: str = None) -> str:
         """Send email via Microsoft Graph API, immediately or at a scheduled time.
 
         Args:
@@ -695,13 +695,14 @@ class Outlook:
                 screenshots, PDFs, etc. — Graph sendMail limit is ~3MB total)
             send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
                 schedule delivery — Exchange holds the email until then
+            html: Optional HTML body, sent instead of the plain one (Graph takes one body)
 
         Returns:
             Confirmation message
         """
         message = {
             "subject": subject,
-            "body": {
+            "body": {"contentType": "HTML", "content": html} if html else {
                 "contentType": "Text",
                 "content": body
             },

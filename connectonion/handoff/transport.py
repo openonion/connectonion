@@ -8,6 +8,7 @@ Both work while the other side is offline, and no Host has to be running. `deliv
 and `fetch` are the only two functions that know this.
 """
 
+import html
 import json
 import os
 import re
@@ -16,6 +17,7 @@ from ..address import agent_email
 from ..environment import global_config_dir
 
 SUBJECT_PREFIX = "[co handoff] "
+MARKER = "BEGIN CO HANDOFF"   # in every handoff body: a first mail's subject reads like a person's, not like co
 
 
 def contacts_file():
@@ -98,32 +100,88 @@ def resolve(who: str) -> str | None:
     return None
 
 
-def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None,
-            mail_too: bool = False) -> dict:
-    """Send to `agent`'s inbox when known (passed, or a contact that reads its inbox), else mail `to`.
+def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
+    """A reply: to `agent`'s inbox when known (passed, or a contact that reads its inbox), else mail `to`.
 
-    `mail_too` mails the person as well: a new handoff, which a person has to hear about, while
-    their agent's inbox keeps it for `co handoff inbox` (#2449). Returns send_email's result dict;
-    an inbox delivery adds "via": "agent inbox", and "mailed" when the mail went too."""
-    agent = agent or next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
-    if not agent:
-        return _send_mail(to, subject, body, idempotency_key)
-    result = _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
-    if result.get("success") and mail_too:
-        result["mailed"] = _send_mail(to, subject, body, idempotency_key).get("success", False)
-    return result
+    Returns send_email's result dict; an inbox delivery adds "via": "agent inbox"."""
+    agent = agent or _inbox_agent(to)
+    if agent:
+        return _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
+    return _send_mail(to, subject, body, idempotency_key)
+
+
+def _inbox_agent(to: str) -> str | None:
+    return next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
+
+
+VIA = ("auto", "mcp", "gmail", "outlook", "agent")
+
+
+def own_mailbox() -> tuple[str, str] | None:
+    """("gmail" | "outlook", address) for a mailbox of the person's own connected to co with send access."""
+    from ..provider_credentials import resolve_provider_credentials
+    for provider, channel, scope in (("google", "gmail", "gmail.send"), ("microsoft", "outlook", "Mail.Send")):
+        record = resolve_provider_credentials(provider)
+        if scope in record.scopes and (record.get("ACCESS_TOKEN") or record.get("REFRESH_TOKEN")):
+            return channel, record.get("EMAIL") or ""
+    return None
+
+
+def channel_for(via: str) -> str:
+    """Which mailbox a new handoff goes out from: asked for, else the person's own, else the agent's (#2478)."""
+    return via if via != "auto" else (own_mailbox() or ("agent", ""))[0]
+
+
+def hand_over(to: str, mail: dict, idempotency_key: str, via: str = "auto") -> dict:
+    """A new handoff: the person's mail through `via`, and a copy in their agent's inbox when they are a contact.
+
+    "mcp" mails nothing: the coding agent sends `mail` with its own mail tool, from the person's mailbox.
+    Returns {success, via, from, message_id, inbox, mailed, error}: success when either arrived."""
+    agent = _inbox_agent(to)
+    if agent:   # the subject prefix and hidden bundle are how co handoff inbox finds it there
+        posted = _post_message(agent, json.dumps({"subject": SUBJECT_PREFIX + mail["subject"],
+                                                  "message": mail["html"], "from": os.getenv("AGENT_EMAIL")}))
+        if not posted.get("success"):
+            return posted
+    channel = channel_for(via)
+    sent = {"success": True, "via": "mcp"} if channel == "mcp" else _mail_from(channel, to, mail, idempotency_key)
+    mailed = channel != "mcp" and bool(sent.get("success"))
+    return {**sent, "inbox": bool(agent), "mailed": mailed, "success": bool(sent.get("success")) or bool(agent)}
+
+
+def _mail_from(channel: str, to: str, mail: dict, idempotency_key: str) -> dict:
+    if channel == "agent":
+        return {**_send_mail(to, mail["subject"], mail["html"], idempotency_key), "via": "agent mailbox"}
+    tool = _own_tool(channel)
+    said = tool.send(to, mail["subject"], mail["text"], html=mail["html"])
+    found = re.search(r"Message ID: (\S+)", said)
+    return {"success": True, "via": channel, "from": own_mailbox()[1], "message_id": found.group(1) if found else ""}
+
+
+def _own_tool(channel: str):
+    if channel == "gmail":
+        from ..useful_tools.gmail import Gmail
+        return Gmail(emails_csv=None, contacts_csv=None)
+    from ..useful_tools.outlook import Outlook
+    return Outlook()
 
 
 def fetch(last: int = 200) -> list[dict]:
     """Recent mail and inbox messages that carry a handoff, newest first, in the mail's shape."""
     found = [m for m in _read_mail(last) + _read_messages()
-             if m.get("subject", "").startswith(SUBJECT_PREFIX)]
+             if m.get("subject", "").startswith(SUBJECT_PREFIX) or MARKER in m.get("message", "")]
     return sorted(found, key=lambda m: str(m.get("timestamp", "")), reverse=True)
 
 
 def mail_person(to: str, subject: str, body: str, idempotency_key: str) -> dict:
-    """Mail a person directly (never their agent's inbox): the sender's own address, when a question waits on them."""
-    return _send_mail(to, subject, body, idempotency_key)
+    """Mail a person directly (never their agent's inbox): the sender's own address, when a question waits on them.
+
+    From their own mailbox when co has one (to itself, so it lands in their inbox, not spam), else the agent's."""
+    own = own_mailbox()
+    if not own:
+        return _send_mail(to, subject, body, idempotency_key)
+    text = html.unescape(re.sub(r"<[^>]+>", "", body))
+    return _mail_from(own[0], to, {"subject": subject, "text": text, "html": body}, idempotency_key)
 
 
 def _send_mail(to: str, subject: str, body: str, idempotency_key: str) -> dict:
