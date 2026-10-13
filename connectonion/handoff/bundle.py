@@ -371,12 +371,16 @@ def code_text(bundle: dict) -> str:
         return "- The session did not work in a git repository. Ask the sender where the code is."
     lines = []
     for code in places:
-        pushed = "pushed" if code["pushed"] else "not pushed yet: ask the sender to push it"
+        travels = "sha256" in (code.get("patch") or {})
+        pushed = ("pushed" if code["pushed"] and not travels else
+                  "not pushed; it goes with this handoff and accept rebuilds it" if travels else
+                  "not pushed yet: ask the sender to push it")
         branch = "detached" if code["branch"] == "HEAD" else f"branch {code['branch']}"
         lines.append(f"- {code['repository'] or 'a repository with no remote'}, {branch}, "
                      f"commit {code['commit']} ({pushed})")
         if code["uncommitted"]:
-            lines.append(f"  {code['uncommitted']} changed file(s) on the sender's machine are not in that commit")
+            lines.append(f"  {code['uncommitted']} changed file(s) on the sender's machine are not in that commit"
+                         + ("; they go with this handoff too" if travels else ""))
     return "\n".join(lines)
 
 

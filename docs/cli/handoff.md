@@ -33,7 +33,7 @@ shortened and the version as a 1.9.2b22 sender writes it:
 ```text
 Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion (handoff ho-5359a292).
 
-1. If co --version prints nothing or a version older than 1.9.2b22, install it (it keeps to its own environment):
+1. If co --version prints nothing or a version older than 1.9.2b22, install it (it keeps to its own environment; right after a release it can wait a few minutes for PyPI, so let it finish):
    macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh
    Windows: uv tool install "connectonion==1.9.2b22", then co init --yes
 2. Run this yourself; it fetches the handoff and says what to do next:
