@@ -184,3 +184,36 @@ def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_
              "usage": {"input_tokens": 1_200_000, "cached_input_tokens": 200_000}} for n in (1, 2)]
     assert quota.run_spent(start, now, [earlier, *mine], began) == 2
     assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 5   # the meter, when it says more
+
+
+
+def test_status_quota_line_stays_friendly_when_the_meter_raises(monkeypatch, tmp_path):
+    """#2445: co rem status must not echo RuntimeError: … in the Codex week line."""
+    from connectonion.rem import service
+    from connectonion.rem.config import default_config
+    from connectonion.cli.commands import rem_status
+    from rich.text import Text
+
+    _signed_in(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "connectonion.rem.quota.read",
+        lambda config, request=None: {
+            "unknown": "Codex did not report its quota (RuntimeError: Codex quota exceeded)"
+        },
+    )
+    bits = service._quota_status(default_config(), [])
+    assert "RuntimeError" not in bits["codex_week"]
+    assert "unavailable" in bits["codex_week"].lower()
+    assert "skipped" in bits["codex_week"].lower()
+    # Structured detail stays for --json / --verbose
+    assert "RuntimeError" in bits["quota"]["unknown"]
+
+    for name in ("_notebook", "_today", "_mailboxes", "_archive"):
+        monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
+    monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem"])
+    monkeypatch.setattr(rem_status, "notebook", lambda root: {})
+    monkeypatch.setattr(rem_status, "_last_run", lambda *a: "none")
+    monkeypatch.setattr(rem_status, "_zone", lambda root: None)
+    text = Text.from_markup(rem_status.dashboard(tmp_path, bits, lambda arguments: "co rem")).plain
+    assert "RuntimeError" not in text
+    assert "skipped" in text.lower()
