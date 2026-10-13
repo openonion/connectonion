@@ -156,7 +156,7 @@ handoffs each acceptor took.
 | sender | `co handoff status <id>` | one line first, such as "bob finished it · their file saved · 2 questions (you answered 1)", then who accepted, each question with how it was answered ("You answered", "Answered automatically", or "Waiting on you"), and "Done, …". A file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>`, and when it is a patch the Next line is the `git apply` (or `git am`) that applies it. `--verbose` adds agent addresses and the content hash |
 | sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted; status shows it as yours |
 | sender | `co handoff withdraw <id>` | takes the handoff's page and pickup down at once, instead of after 30 days; mail already delivered stays in their mailbox |
-| recipient | `co handoff status <id>` | the sender's answers |
+| recipient | `co handoff status <id>` | the sender's answers. With `--wait` it returns when something new arrives, or after `--timeout` seconds (default 600) with the rule to carry on and say "Assumed: …" in done. A second holder of the same code (a forwarded mail, a shared paste) is told the handoff is already accepted by someone else, and stops |
 
 Each is a small base64 block sent to the other agent's inbox (see
 [Transport](#transport)). While the sender's agent is hosted, however it was
@@ -264,6 +264,11 @@ enforcement:** in two full-auto Codex runs the agent read it and sent anyway.
 The real gate today is the coding client's own command approval (Codex asks
 before a networked command outside its sandbox); a person-only approval is
 planned with #2351/#2353.
+
+When the recipient is one of your contacts, the preview says how often they are
+named in what they will read; `--mentions <name>` lists each place and sends
+nothing. Masking removes contact details, not what the session says about the
+person reading it.
 
 `--lang en` or `--lang zh` writes the report and the mail in that language; your
 own words stay as you wrote them. Without it, the language is the one you wrote

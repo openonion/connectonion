@@ -50,7 +50,7 @@ def _fail(message: str, next_cmd: str) -> None:
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
                 draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None, since: int = 1,
-                via: str = "auto", no_code: bool = False, lang: str = "") -> None:
+                via: str = "auto", no_code: bool = False, lang: str = "", mentions: str = "") -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -75,6 +75,9 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
         in_code = any(h.startswith("code_patches") for h in hits)
         _next(f"co handoff send {shlex.quote(who)} --draft {bundle['id']} " + ("--no-code  (it is in the code that would travel)" if in_code else "--edit"))
         raise typer.Exit(1)
+    if mentions:
+        _print_mentions(bundle, mentions)
+        return
     if draft_id and yes and not edit:
         # The person approved this exact draft from its preview; say what goes, not all of it again.
         out.print(f"Sending draft {bundle['id']} (content hash {bundle['content_hash']}) to {bundle['to']}: "
@@ -290,6 +293,11 @@ def _preview(bundle: dict, path: Path) -> None:
                              f"is in the draft file below). If the session covered other work first, start where this "
                              f"task starts: --since <N>, with N from the [N] list."))
     out.print(style.muted(_masked_line(bundle)))
+    for name in _their_names(bundle["to"]):
+        n = len(_mentions(bundle, name))
+        if n:
+            out.print(style.warn(f"{name} is named {n} time{'s' if n != 1 else ''} in what they will read. See each "
+                                 f"before you send: co handoff send {shlex.quote(name)} --draft {bundle['id']} --mentions {shlex.quote(name)}"))
     private = bundles.find_private(bundle)
     if private:
         out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "
@@ -300,6 +308,29 @@ def _preview(bundle: dict, path: Path) -> None:
         out.print(_code_line(repo, patch), markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
+
+
+def _their_names(to: str) -> list[str]:
+    """What the recipient is called here: the contact names that reach their address."""
+    return [_as_name(name) for name, entry in transport.contacts().items() if entry.get("mail", "").lower() == to.lower()]
+
+
+def _mentions(bundle: dict, name: str) -> list[tuple[str, str]]:
+    """Each place the brief names `name`: (field, the text around it). What a session says about the
+    person reading it is not contact data, so masking leaves it; the sender should see it first."""
+    found = []
+    for field, text in bundles._strings({k: v for k, v in bundle.items() if k not in ("code", "from", "to")}):
+        for m in re.finditer(rf"(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])", text, re.I):
+            found.append((field, " ".join(text[max(0, m.start() - 70):m.end() + 70].split())))
+    return found
+
+
+def _print_mentions(bundle: dict, name: str) -> None:
+    found = _mentions(bundle, name)
+    out.print(style.heading(f"{name} in handoff {bundle['id']}: {len(found)}"))
+    for field, around in found:
+        out.print(f"  {field}: …{around}…", markup=False)
+    _next(f"co handoff send {shlex.quote(name)} --draft {bundle['id']} --edit  (to change any of it), or --yes to send as is")
 
 
 def _masked_line(bundle: dict) -> str:
@@ -389,7 +420,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
 
 # ---- status: either side ----
 
-def handle_status(handoff_id: str, wait: bool = False, verbose: bool = False) -> None:
+def handle_status(handoff_id: str, wait: bool = False, verbose: bool = False, timeout: int = 600) -> None:
     sent = _home() / "sent" / f"{handoff_id}.json"
     accepted = _home() / "accepted" / handoff_id / "code.json"
     if not sent.exists() and not accepted.exists():
@@ -398,7 +429,7 @@ def handle_status(handoff_id: str, wait: bool = False, verbose: bool = False) ->
     from .project_cmd_lib import load_api_key
     load_api_key()
     if wait:
-        _wait_for_news(handoff_id)
+        _wait_for_news(handoff_id, timeout=timeout)
     mails = transport.fetch()   # one read, so what is shown is exactly what is remembered as shown
     # Both exist when you handed something to yourself: one Next line, the sender's.
     if accepted.exists():
@@ -410,13 +441,21 @@ def handle_status(handoff_id: str, wait: bool = False, verbose: bool = False) ->
     _shown_file(handoff_id).write_text(json.dumps(sorted(map(_key, replies.received(handoff_id, mails)))) + "\n")
 
 
-def _wait_for_news(handoff_id: str, every: int = 30) -> None:
-    """Return once a reply about this handoff (acceptance, question, answer) arrives that status has not shown.
+def _wait_for_news(handoff_id: str, every: int = 30, timeout: int = 600) -> None:
+    """Return once a reply about this handoff (acceptance, question, answer) arrives that status has not shown,
+    or after `timeout` seconds: an agent blocked in here cannot apply the 10-minute carry-on rule itself.
 
     Not "since the wait began": an answer that landed between `ask` and the wait would be missed."""
     shown = set(json.loads(_shown_file(handoff_id).read_text())) if _shown_file(handoff_id).exists() else set()
-    out.print(style.muted(f"Waiting for news on {handoff_id}, checking every {every}s…"))
+    out.print(style.muted(f"Waiting for news on {handoff_id}, checking every {every}s, for {timeout // 60} minutes…"))
+    until = time.monotonic() + timeout
     while all(_key(b) in shown for b in replies.received(handoff_id)):
+        if time.monotonic() >= until:
+            recipient = (_home() / "accepted" / handoff_id / "code.json").exists()
+            out.print(style.warn(f"No news on {handoff_id} in {timeout // 60} minutes."
+                                 + (" Carry on with the most conservative reasonable choice and say \"Assumed: …\" "
+                                    "in done." if recipient else "")))
+            return
         time.sleep(every)
 
 
@@ -451,6 +490,7 @@ def _sender_status(record: dict, mails: list[dict], verbose: bool = False) -> No
     name = replies.remember_peer(who["address"], who["mailbox"], handoff_id, record["to"], record.get("inbox", False))
     replies.tell_owner_of_done(record, state)
     news = replies.answer_automatically(record, state)
+    replies.tell_taken(record, state)
     files = [_save_result(handoff_id, d) for d in state["done"] if "file" in d]
     out.print(style.ok(_where_it_stands(name, record, state, files).replace("[", "\\[")))
     _sent_line(record, verbose)
@@ -945,6 +985,7 @@ def make_handoff_app(factory) -> typer.Typer:
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
         via: str = typer.Option("auto", "--via", hidden=True, help="For an AI with its own mail tool: mcp prints the mail for that tool to send"),
         no_code: bool = typer.Option(False, "--no-code", help="Send no code with it, even unpushed work"),
+        mentions: str = typer.Option("", "--mentions", help="List every place this name appears in the draft, and send nothing"),
         lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
@@ -960,7 +1001,7 @@ def make_handoff_app(factory) -> typer.Typer:
             _fail(f"--via must be one of {', '.join(transport.VIA)}, not {via}.", f'co handoff send {shlex.quote(who)} --via auto')
         if lang not in ("", "en", "zh"):
             _fail(f"--lang must be en or zh, not {lang}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --lang en')
-        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via, no_code, lang)
+        handle_send(who, what, from_file, agent, draft, edit, yes, session, since, via, no_code, lang, mentions)
 
     @app.command("withdraw", epilog="Example:  co handoff withdraw ho-1a2b3c4d")
     def withdraw(handoff_id: str = typer.Argument(..., help="The ho-… id of a handoff you sent")):
@@ -1010,9 +1051,10 @@ def make_handoff_app(factory) -> typer.Typer:
         handoff_id: str = typer.Argument(..., help="Handoff id printed by co handoff send"),
         wait: bool = typer.Option(False, "--wait", help="Return only when an acceptance, question or answer arrives; run it in the background"),
         verbose: bool = typer.Option(False, "--verbose", help="Also show agent addresses and the content hash"),
+        timeout: int = typer.Option(600, "--timeout", min=30, help="With --wait: give up after this many seconds (default 10 minutes)"),
     ):
         """Show where a handoff stands: who accepted it and their questions (sender), or the sender's answers (recipient). Read-only."""
-        handle_status(handoff_id, wait, verbose)
+        handle_status(handoff_id, wait, verbose, timeout)
 
     @app.command("contact", epilog="Example:  co handoff contact ody ody@example.com")
     def contact(

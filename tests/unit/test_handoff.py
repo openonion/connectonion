@@ -1019,3 +1019,14 @@ def test_a_long_handoff_previews_its_newest_messages_not_all_of_it(project, mode
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 0, result.output
     assert len(result.output) < 30_000 and "characters in full" in result.output
+
+
+def test_the_preview_says_how_often_the_recipient_is_named_and_lists_it_on_request(project, model, mailbox):
+    """The Ody send: he was named 61 times in what he would read, and the preview never said so."""
+    assert _invoke("handoff", "contact", "Ody", SELF).exit_code == 0
+    write_codex_session(project, extra=" Ody's page is a mess; ask Ody later")
+    result = _invoke("handoff", "send", "Ody", "task")
+    said = " ".join(result.output.split())
+    assert "Ody is named 2 times in what they will read" in said and "--mentions Ody" in said
+    listed = _invoke("handoff", "send", "Ody", "--draft", _draft_id(result.output), "--mentions", "Ody")
+    assert "Ody's page is a mess" in listed.output

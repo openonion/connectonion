@@ -969,3 +969,34 @@ def test_with_no_address_stored_for_outlook_the_line_names_no_empty_address(worl
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     said = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
     assert f"It goes from your Outlook to {RECIPIENT['mail']}" in " ".join(said.split()) and ", ," not in said
+
+
+# ---- b26 melbourne-2 run: a second holder of the same code waited forever ----
+
+def test_a_second_holder_is_told_it_is_taken_and_stops_waiting(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    other = {"mail": "0xc3c3c3c3c3@mail.openonion.ai", "address": "0x" + "c3" * 32}
+    world["be"](other)
+    _invoke("handoff", "accept", code)
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    _invoke("handoff", "status", "ho-1a2b3c4d")                     # told once, not on every status
+    world["be"](other)
+    said = " ".join(_invoke("handoff", "status", "ho-1a2b3c4d").output.split())
+    assert "already accepted by" in said and RECIPIENT["mail"] in said and said.count("already accepted by") == 1
+
+
+def test_wait_gives_up_after_its_timeout_with_the_carry_on_rule(world, monkeypatch):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    clock = iter(range(0, 10_000, 30))
+    monkeypatch.setattr("time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    said = _invoke("handoff", "status", "ho-1a2b3c4d", "--wait", "--timeout", "120")
+    assert said.exit_code == 0, said.output
+    assert "No news on ho-1a2b3c4d in 2 minutes" in " ".join(said.output.split())
+    assert "Assumed:" in said.output
