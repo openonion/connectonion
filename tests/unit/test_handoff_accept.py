@@ -103,7 +103,12 @@ def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in body
     assert f'uv tool install "connectonion=={MIN_VERSION}"' in body                 # Windows: no sh
     assert "pip install" not in body and "--pre" not in body
-    assert f"older than {MIN_VERSION}, install it" in body
+    assert f"older than {MIN_VERSION}, install co first" in body and "let it finish" in body
+    # One paragraph: a mail cannot run a copy button, and a triple-click selects a whole paragraph (Aaron, 2026-10-13).
+    from connectonion.handoff import replies as replies_module
+    pasted = replies_module.prompt(_code(body), "ho-1a2b3c4d", "alice", "Store the login token")
+    assert "\n" not in pasted.strip() and "without waiting for me" in pasted
+    assert "Triple-click the grey box to select all of it" in body and "Copy from here" not in body
     assert f"co handoff accept {_code(body)}" in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
@@ -617,7 +622,7 @@ def test_accept_tells_the_agent_to_do_the_work_without_the_person(world):
     """1.9.2b16 and b19 runs: Codex, with network on, stopped and asked the person to run accept (#2447).
     The rules now come from accept's output, so they improve with each release (#2459)."""
     body = _send(world)
-    assert "Run this yourself" in body and "ask me to run it" not in body
+    assert f"run co handoff accept {_code(body)} yourself" in body and "ask me to run it" not in body
     world["be"](RECIPIENT)
     code = _code(body)
     said = _invoke("handoff", "accept", code).output
@@ -839,7 +844,7 @@ def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
               conversation=[{"at": "", "user": "登录令牌用 httpOnly cookie 还是 localStorage？", "ai": "cookie"}])
     mail = bundles.notice(bundles.seal(zh), "PROMPT")
     assert mail["subject"].startswith("alice@mail.openonion.ai 想把一项工作交给你")
-    assert "新开一个对话" in mail["text"] and "从这里复制" in mail["text"]
+    assert "新开一个对话" in mail["text"] and "连点三下即可全选" in mail["text"]
     assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"].endswith("passed you some work: Store the login token")
 
 

@@ -47,17 +47,13 @@ It goes from the best mailbox there is, with no option to pick:
 The preview's last line names the mailbox. A question that waits on you, and the
 note that a handoff is done, go to that mailbox from itself.
 
-The block, with the code shortened and the version as a 1.9.2b22 sender writes it:
+The block, with the code shortened and the version as a 1.9.2b22 sender writes it.
+It is one paragraph with no line breaks: a mail cannot run a copy button, and a
+triple-click selects a whole paragraph in any mail client. The mail says so
+right above it:
 
 ```text
-Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion (handoff ho-5359a292).
-
-1. If co --version prints nothing or a version older than 1.9.2b22, install it (it keeps to its own environment; right after a release it can wait a few minutes for PyPI, so let it finish):
-   macOS or Linux: curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh
-   Windows: uv tool install "connectonion==1.9.2b22", then co init --yes
-2. Run this yourself; it fetches the handoff and says what to do next:
-   co handoff accept coh3.…
-3. Do what accept says, here in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me, the person here, in a few lines what Aaron Xie was working on and what you did.
+Aaron Xie handed you "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Aaron Xie was working on and what you did.
 ```
 
 That block becomes the first message of the recipient's thread, so it carries

@@ -246,7 +246,7 @@ WORDS = {   # the mail in the language the sender wrote in (Aaron, 2026-10-13)
            "talked": "They talked through: {point}.",
            "how": "To pick it up, start a new conversation in Codex or Claude Code and paste the block below. "
                   "{name}'s session continues there, with the code. Nothing runs until you paste it.",
-           "from": "Copy from here", "to": "to here",
+           "select": "Triple-click the grey box to select all of it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
            "footer": "Sent with co handoff, from ConnectOnion (open source).", "guide": "How it works",
            "space": " ", "colon": ": "},
     "zh": {"subject": "{name} 想把一项工作交给你：{title}",
@@ -254,7 +254,7 @@ WORDS = {   # the mail in the language the sender wrote in (Aaron, 2026-10-13)
            "talked": "他们讨论了：{point}。",
            "how": "想接手的话，在 Codex 或 Claude Code 里新开一个对话，把下面这段粘贴进去，{name} 的会话就会在那里接着进行，"
                   "代码也会一起过来。粘贴之前，什么都不会运行。",
-           "from": "从这里复制", "to": "到这里",
+           "select": "在灰色框里连点三下即可全选，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
            "footer": "由 ConnectOnion（开源）的 co handoff 发送。", "guide": "了解更多",
            "space": "", "colon": "："},
 }
@@ -294,8 +294,7 @@ def notice(bundle: dict, prompt: str) -> dict:
     subject = words["subject"].format(name=name, title=_one_line(bundle["title"], 60))
     how = words["how"].format(name=name)
     text = (f"{said}\n\n{how}\n\n"
-            f"---------------- {words['from']} ----------------\n{prompt.strip()}\n"
-            f"---------------- {words['to']} ----------------\n\n"
+            f"{words['select']}\n\n{prompt.strip()}\n\n"
             f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
@@ -307,10 +306,10 @@ def notice(bundle: dict, prompt: str) -> dict:
         f'style="max-width:600px;{_FONT};font-size:15px;line-height:1.55;color:{_INK}"><tr><td>'
         f'<p style="margin:0 0 14px">{e(said)}</p>'
         f'<p style="margin:0 0 14px">{e(how)}</p>'
-        f'<p style="margin:0 0 4px;color:{_MUTED};font-size:13px">{e(words["from"])}</p>'
+        f'<p style="margin:0 0 6px;color:{_MUTED};font-size:13px">{e(words["select"])}</p>'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
         f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{e(prompt.strip())}</pre></td></tr></table>'
-        f'<p style="margin:4px 0 18px;color:{_MUTED};font-size:13px">{e(words["to"])}</p>'
+        '<div style="height:18px"></div>'
         f'<p style="margin:0;color:{_MUTED};font-size:13px">{e(words["footer"])}{words["space"]}'
         f'<a href="{GUIDE}" style="color:{_GREEN}">{e(words["guide"])}</a></p>'
         '</td></tr></table></td></tr></table>'

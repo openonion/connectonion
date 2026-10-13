@@ -103,21 +103,21 @@ INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VER
 
 
 def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
-    """The block a person pastes into Codex or Claude Code: install co if needed, then accept.
+    """The block a person pastes into Codex or Claude Code: install co if needed, accept, do it.
 
-    Nothing else (#2459): it is the first message of the recipient's thread, and the install
-    steps, rules and brief it used to carry buried the one thing they care about, the session
-    handed to them. `accept` fetches the handoff and says what to do next."""
-    return (f"{sender} handed you \"{title}\" with ConnectOnion (handoff {handoff_id}).\n\n"
-            f"1. If co --version prints nothing or a version older than {MIN_VERSION}, install it (it keeps "
-            f"to its own environment; right after a release it can wait a few minutes for PyPI, so let it finish):\n"
-            f"   macOS or Linux: curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh\n"
-            f"   Windows: uv tool install \"connectonion=={MIN_VERSION}\", then co init --yes\n"
-            f"2. Run this yourself; it fetches the handoff and says what to do next:\n"
-            f"   co handoff accept {code}\n"
-            f"3. Do what accept says, here in this folder, without waiting for me: the work, questions to {sender} "
-            f"with co handoff ask, and co handoff done when it is finished. Then tell me, the person here, in a few "
-            f"lines what {sender} was working on and what you did.\n")
+    One paragraph with no line breaks: a mail cannot run a copy button (Aaron clicked "Copy from
+    here" and nothing happened, 2026-10-13), and a triple-click selects a whole paragraph in any
+    mail client. Nothing else (#2459): it is the first message of the recipient's thread, and
+    `accept` fetches the handoff and says what to do next."""
+    return (f"{sender} handed you \"{title}\" (handoff {handoff_id}). If co --version prints nothing or a version "
+            f"older than {MIN_VERSION}, install co first, which keeps to its own environment (right after a release it can wait a few minutes "
+            f"for PyPI, so let it finish): "
+            f"on macOS or Linux run "
+            f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh, and on Windows run "
+            f"uv tool install \"connectonion=={MIN_VERSION}\" then co init --yes. Then run co handoff accept {code} "
+            f"yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for "
+            f"me: the work, questions to {sender} with co handoff ask, and co handoff done when it is finished. Then "
+            f"tell me in a few lines what {sender} was working on and what you did.\n")
 
 
 # ---- reply messages ----
