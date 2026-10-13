@@ -9,6 +9,7 @@ and `fetch` are the only two functions that know this.
 """
 
 import html
+import hashlib
 import json
 import os
 import re
@@ -234,6 +235,19 @@ def agent_url(drop_id: str) -> str:
     return viewer_url(drop_id) + "/codex"
 
 
+def page_bundle(code: dict) -> dict:
+    """The handoff as its public page shows it, checked against the code: reading it claims nothing."""
+    from .bundle import seal
+    import requests
+    from ..backend import backend_url
+    response = requests.get(f"{backend_url()}/api/v1/drops/{code['drop']}/view", timeout=30)
+    response.raise_for_status()
+    bundle = response.json()["bundle"]
+    if seal(bundle)["content_hash"] != code["hash"]:
+        raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
+    return bundle
+
+
 def page_prompt(drop_id: str) -> str:
     """The whole prompt a handoff's page shows its recipient's agent (public, like the page)."""
     import requests
@@ -243,14 +257,16 @@ def page_prompt(drop_id: str) -> str:
     return response.json().get("prompt", "")
 
 
-def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "") -> str:
+def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "", key: str = "") -> str:
     """Hold the handoff on the backend until the recipient accepts; returns the id their code carries.
 
     A first recipient has no agent address until they install co, so the agent inbox cannot hold it
     for them (#2459). With it go the code they cannot fetch (#2469) and the redacted session copy, so
-    nothing waits on the sender's machine being online. Drops expire after 30 days."""
+    nothing waits on the sender's machine being online. Drops expire after 30 days. `key` is the code's
+    secret: only its hash goes to the server, which then gives the whole drop to its holder alone (#2496)."""
     body = {"bundle": bundle, "code": list(code), "context": context, "prompt": prompt}
-    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id())
+    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id(),
+                     hashlib.sha256(key.encode()).hexdigest() if key else None)
 
 
 def pickup(code: dict) -> dict:
@@ -258,7 +274,12 @@ def pickup(code: dict) -> dict:
     and each patch matches the digest the approved bundle records."""
     from .bundle import seal
     from .sessions import patch_digest
-    body = json.loads(_get_drop(code["drop"]))
+    held = _get_drop(code["drop"], code["secret"])
+    if held is None:   # withdrawn, expired, or sent by co 1.9.2b26 or earlier, whose copy is not served
+        return {"gone": True}
+    if not held:       # another agent read it first and claimed it (oo-api#267)
+        return {"taken": True}
+    body = json.loads(held)
     if seal(body["bundle"])["content_hash"] != code["hash"]:
         raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
     for entry, patch in zip(body["bundle"].get("code") or [], body.get("code") or []):
@@ -267,11 +288,11 @@ def pickup(code: dict) -> dict:
     return {"bundle": body["bundle"], "code": body.get("code") or [], "context": body.get("context", "")}
 
 
-def _put_drop(body: str, drop_id: str) -> str:
+def _put_drop(body: str, drop_id: str, key_hash: str | None) -> str:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.post(f"{backend_url()}/api/v1/drops", json={"id": drop_id, "body": body},
+    response = requests.post(f"{backend_url()}/api/v1/drops", json={"id": drop_id, "body": body, "key_hash": key_hash},
                              headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
     response.raise_for_status()
     return response.json()["id"]
@@ -291,12 +312,16 @@ def withdraw(page: str) -> None:
     _delete_drop(page.rstrip("/").rsplit("/", 1)[1])
 
 
-def _get_drop(drop_id: str) -> str:
+def _get_drop(drop_id: str, key: str) -> str | None:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}",
-                            headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}", timeout=30,
+                            headers={"Authorization": f"Bearer {require_ambient_api_key()}", "X-Drop-Key": key})
+    if response.status_code == 409:   # already accepted by another agent: "" says so
+        return ""
+    if response.status_code == 404:   # gone: None says so
+        return None
     response.raise_for_status()
     return response.json()["body"]
 

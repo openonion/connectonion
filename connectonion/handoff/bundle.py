@@ -21,6 +21,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -142,9 +143,11 @@ def _turn(exchange: dict) -> dict:
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
              top: Top, exchanges: list[dict], titles: dict[str, str] = None,
-             sender_name: str = "", keep: list[str] = (), lang: str = "") -> dict:
+             sender_name: str = "", keep: list[str] = (), lang: str = "", keep_names: list[str] = ()) -> dict:
     said = [_turn(e) for e in exchanges]
-    emails, phones = others(json.dumps([top.model_dump(), said], ensure_ascii=False), [sender, to, *keep])
+    whole = json.dumps([top.model_dump(), said], ensure_ascii=False)
+    emails, phones = others(whole, [sender, to, *keep])
+    names = [n for n in rem_names([sender_name, *keep_names], to) if n in whole]
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -155,10 +158,10 @@ def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, 
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
         "asked": what,
-        **_masked(top.model_dump(), emails),
+        **_masked(top.model_dump(), emails, names),
         "code": code,
-        "conversation": _masked(said, emails),
-        "masked": {"emails": len(emails), "phones": len(phones)},
+        "conversation": _masked(said, emails, names),
+        "masked": {"emails": len(emails), "phones": len(phones), "names": len(names)},
         "ai_quoted": True,   # 1.9.2b21: "ai" is the AI's own text, not a summary of it
     }
     # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.
@@ -243,10 +246,45 @@ def others(text: str, keep=()) -> tuple[set[str], set[str]]:
     return emails, set(PHONE.findall(text))
 
 
-def mask(text: str, keep=(), emails: set[str] = None) -> str:
+# A handoff page's link is a capability: whoever holds it can read the page and its code (#2495 review).
+HANDOFF_LINK = re.compile(r"(?:https?://)?o\.openonion\.ai/h/[A-Za-z0-9_-]{16,}(?:/codex)?")
+
+
+def rem_people_dir() -> Path:
+    return Path.home() / ".co" / "rem" / "people"
+
+
+def rem_names(keep_names=(), to: str = "") -> list[str]:
+    """The names of the people co rem keeps pages on here, from each page's title, except the sender's
+    and the recipient's (`keep_names`, and the page that holds the `to` address): a session that ran
+    co rem talks about them by name (#2495 review)."""
+    folder = rem_people_dir()
+    pages = [p.read_text(encoding="utf-8", errors="replace") for p in folder.glob("*.md")] if folder.is_dir() else []
+    kept = {w.lower() for k in keep_names if k for w in k.split()}
+    kept |= {w.lower() for page in pages if to and to.lower() in page.lower() for w in _title(page).split()}
+    named = set()
+    for title in map(_title, pages):
+        words = title.split()
+        if len(title) < 2 or re.fullmatch(r"[\w.+-]+@[\w.-]+|[A-Z0-9]+", title) or kept & {w.lower() for w in words}:
+            continue   # an address, an acronym ("GIF"), or the sender or recipient
+        named.add(title)
+        # A session says "Sasha" or "Larry" as often as the whole title: each name-like word goes too.
+        named |= {w for w in words if len(words) > 1 and re.fullmatch(r"[A-Z][a-z]{3,}", w)}
+    return sorted(named, key=len, reverse=True)
+
+
+def _title(page: str) -> str:
+    return page.split("\n", 1)[0].lstrip("# ").strip()
+
+
+def mask(text: str, keep=(), emails: set[str] = None, names=()) -> str:
     """`text` with other people's addresses, numbers and IPs removed, and what else points at them.
-    `emails` names the addresses when they were found across more than this one text."""
+    `emails` names the addresses when they were found across more than this one text; `names` are
+    people's names to remove (rem_names)."""
     emails = others(text, keep)[0] if emails is None else emails
+    text = HANDOFF_LINK.sub("[handoff link]", text)
+    if names:
+        text = re.sub(r"(?<![A-Za-z])(?:" + "|".join(map(re.escape, names)) + r")(?![A-Za-z])", "[person]", text)
     text = EMAIL.sub(lambda m: "[email removed]" if m.group(0) in emails else m.group(0), text)   # one pass
     # What is left of one on its own ("kevin.chin1@ (all @student…)", "grep ivvli0000"), when it cannot be
     # an ordinary word: "anyone@x.com" must not turn "anyone can read it" into "someone can".
@@ -262,13 +300,13 @@ def mask(text: str, keep=(), emails: set[str] = None) -> str:
     return PHONE.sub("[phone removed]", text)
 
 
-def _masked(value, emails):
+def _masked(value, emails, names=()):
     if isinstance(value, str):
-        return mask(value, emails=emails)
+        return mask(value, emails=emails, names=names)
     if isinstance(value, list):
-        return [_masked(v, emails) for v in value]
+        return [_masked(v, emails, names) for v in value]
     if isinstance(value, dict):
-        return {k: _masked(v, emails) for k, v in value.items()}
+        return {k: _masked(v, emails, names) for k, v in value.items()}
     return value
 
 

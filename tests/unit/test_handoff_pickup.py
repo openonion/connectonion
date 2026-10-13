@@ -196,8 +196,23 @@ def test_accept_saves_the_senders_session_at_once(world, tmp_path):
     world["be"](RECIPIENT)
     said = _invoke("handoff", "accept", code).output
     copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
-    assert "maxAge = 30 days (product asked)" in copy.read_text()
+    assert "The cookie lives 30 days, as product asked." in copy.read_text()
     assert f"The sender's whole session: {copy}" in said.replace("\n", "")
+
+
+def test_the_session_copy_is_the_approved_conversation_without_tool_calls_or_their_output(world, tmp_path):
+    """#2496: the Ody copy was 6.7 MB of raw session, 3,765 tool calls with their output: whole co rem
+    pages on 41 people and the sender's own dental and visa mail. A message removed with --edit went too."""
+    import os
+    from pathlib import Path
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    copy = (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md").read_text()
+    assert "Store the login token." in copy and "The cookie lives 30 days" in copy
+    assert "auth/session.py:12" not in copy and "grep -n maxAge" not in copy        # no tool call, no output
+    assert "dentist" not in copy                                                    # removed before it was approved
 
 
 # ---- #2477: rough edges from the 1.9.2b22 stranger run ----
@@ -495,3 +510,42 @@ def test_a_one_word_lowercase_git_name_reads_as_a_name():
     assert handoff_commands._as_name("aaron") == "Aaron"
     assert handoff_commands._as_name("Aaron Xie") == "Aaron Xie" and handoff_commands._as_name("") == ""
     assert handoff_commands._as_name("de la cruz") == "de la cruz"      # several words: written as they chose
+
+
+def test_removing_every_message_leaves_an_empty_copy_not_the_whole_session(tmp_path):
+    """#2495 review: keep=[] read as 'no filter' and sent all 385,232 characters."""
+    session = tmp_path / "s.jsonl"
+    session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-10T10:00:00Z", "message": {"content": "hello"}}) + "\n")
+    assert "hello" not in replies.copy_text({"kind": "claude", "path": str(session), "keep": []}, "")
+    assert "hello" in replies.copy_text({"kind": "claude", "path": str(session)}, "")     # a record from before keep
+
+
+def test_co_rem_names_and_handoff_links_are_masked_too(tmp_path, monkeypatch):
+    """#2495 review: the copy named 17 of the sender's contacts from co rem pages, and carried live handoff links."""
+    people = tmp_path / ".co" / "rem" / "people"
+    people.mkdir(parents=True)
+    (people / "谢-红瑛-e381998ef8.md").write_text("# 谢 红瑛\n\nbody")
+    (people / "sasha-whittle-1.md").write_text("# Sasha Whittle\n")
+    (people / "ody-zhou-c6.md").write_text("# Ody Zhou\n")
+    monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
+    text = ("谢 红瑛 sent materials; User asked Sasha Whittle for credits, and Sasha said yes; Ody Zhou will test; "
+            "see https://o.openonion.ai/h/eaBga94HJudPRKYNztwRY8AnMEV8WVJT/codex")
+    out = bundles.mask(text, names=bundles.rem_names(keep_names=["Ody Zhou"]))
+    assert "谢 红瑛" not in out and "Sasha" not in out and "Ody Zhou" in out
+    assert "eaBga94" not in out and "[handoff link]" in out
+
+
+def test_names_mask_every_capitalised_word_and_keep_the_recipient_found_by_address(tmp_path, monkeypatch):
+    """b27 review: 'Larry' survived a page titled 'Lee Larry'; a page titled 'GIF' masked the word GIF;
+    the recipient (no handoff contact, but a rem page holding their address) was masked in their own copy;
+    'Melody Chan' was kept because it contains 'ody'."""
+    people = tmp_path / "people"
+    people.mkdir()
+    (people / "lee-larry-1.md").write_text("# Lee Larry\n")
+    (people / "gif-2.md").write_text("# GIF\n")
+    (people / "melody-chan-3.md").write_text("# Melody Chan\n")
+    (people / "richard-lai-4.md").write_text("# Richard Lai\n\n- Email: richard.lai@student.unsw.edu.au\n")
+    monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
+    names = bundles.rem_names(["Ody"], to="richard.lai@student.unsw.edu.au")
+    out = bundles.mask("Larry's phone; a GIF; Melody Chan said; Richard Lai will test", names=names)
+    assert "Larry" not in out and "GIF" in out and "Melody" not in out and "Richard Lai" in out

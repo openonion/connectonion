@@ -43,6 +43,7 @@ def check() -> list[str]:
                  for d in state["done"] if d["at"] not in seen["done"]]
         replies.tell_owner_of_done(record, state)
         news += replies.answer_automatically(record, state)
+        replies.tell_taken(record, state)
         record["seen"] = {"accepted": bool(who), "questions": [replies.question_key(q) for q in state["questions"]],
                           "done": [d["at"] for d in state["done"]]}
         path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

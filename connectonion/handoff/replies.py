@@ -97,7 +97,7 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
 # replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
 # automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
-MIN_VERSION = "1.9.2b26"   # 1.9.2b26: accept keeps internal paths out of the report to the person. The install line is install.sh, which pins exactly this version
+MIN_VERSION = "1.9.2b27"   # 1.9.2b27: the drop is read with the code's secret and claimed by its first reader (oo-api#267); b26 cannot read it.
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
@@ -182,7 +182,7 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
     mail's From: the mail service delivers with a per-message sender address.
     """
     # The acceptance is kept in the record: on a busy mailbox it falls out of the newest 200 mails.
-    state = {"accepted": record.get("accepted"), "questions": [], "done": [], "ignored": 0}
+    state = {"accepted": record.get("accepted"), "questions": [], "done": [], "ignored": 0, "others": {}}
     for block in received(record["id"], mails):
         if block["secret"] != record["secret"] or block["kind"] == "answer":
             continue
@@ -196,6 +196,7 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
             state["done"].append({key: block[key] for key in ("text", "at", "file", "name") if key in block})
         elif not ours:
             state["ignored"] += 1
+            state["others"][block["address"]] = block.get("reply_to") or ""   # another holder of the code
     record["accepted"] = state["accepted"]
     return state
 
@@ -203,8 +204,8 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
 # ---- the sender's agent answers by itself ----
 
 WITH_COPY = ("Answered automatically by the sender's agent. A copy of the session this handoff came from, "
-             "up to when it was sent, comes with this answer: every message, what the AI said, and every "
-             "tool call with its output (credentials removed). co handoff status shows where it is saved; "
+             "up to when it was sent, comes with this answer: every message and what the AI said, without "
+             "tool calls or their output (credentials and other people's contact details removed). co handoff status shows where it is saved; "
              "search it for your question.")
 POINTER = ("Answered automatically by the sender's agent: search the session copy you already have "
            "(co handoff status shows where it is saved).")
@@ -294,6 +295,31 @@ def _answer(record: dict, who: dict, session: dict, question: dict, questions: l
     return True, f"[handoff] {record['id']} answered automatically{label}: {question['text']}"
 
 
+TAKEN = ("This handoff was already accepted by {mailbox} on {day}, so it is theirs to do. Stop here, and tell "
+         "the person you are working with: to take part, they ask the sender to send them a handoff of their own.")
+
+
+def tell_taken(record: dict, state: dict) -> None:
+    """Each other holder of the code (a forwarded mail, a shared paste) is told once that it is taken,
+    so their agent stops instead of waiting on a sender who ignores it (b26, melbourne-2)."""
+    who = state["accepted"]
+    if not who or not state["others"]:
+        return
+    path = global_config_dir() / "handoff" / "sent" / f"{record['id']}.json"
+    with env_lock(path, timeout=300):
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        told = on_disk.get("told_taken", [])
+        for address, mailbox in state["others"].items():
+            if address in told or not mailbox:
+                continue
+            text = TAKEN.format(mailbox=who["mailbox"], day=who["at"][:10])
+            if send("answer", {"id": record["id"], "secret": record["secret"]}, mailbox,
+                    agent=address if record.get("inbox") else None, text=text).get("success"):
+                told.append(address)
+        on_disk["told_taken"] = record["told_taken"] = told
+        path.write_text(json.dumps(on_disk, indent=2) + "\n", encoding="utf-8")
+
+
 def _tell_owner(record: dict, who: dict, question: dict, waiting: bool = False) -> None:
     """Mail the person who sent the handoff: the question, and the one line that answers it."""
     asked = html.escape(question["text"])
@@ -353,12 +379,27 @@ def answered_keys(record: dict, questions: list[dict]) -> list[str]:
     return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
 
 
+def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_names=()) -> str:
+    """The session copy as text: the conversation the sender approved, each message whole and each AI
+    turn in full, and nothing else. Never tool calls or their output (#2496): in a session that ran
+    co rem they are whole pages about other people, and the sender's own mail."""
+    turns = sessions.exchanges(sessions.read_turns(session["kind"], session["path"]))
+    approved = None if session.get("keep") is None else set(session["keep"])   # None: a record from before keep
+    since = session.get("since", "")
+    kept = [e for e in turns if (approved is None or e["at"] in approved) and (not since or e["at"] >= since)
+            and (not until or not e["at"] or e["at"] <= until)]
+    text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
+                       for e in kept) + "\n"
+    text = bundles.redact(text, bundles.known_secrets())
+    to = next((k for k in keep if k), "")   # the recipient comes first in `keep`
+    return bundles.mask(text, keep, names=bundles.rem_names(keep_names, to)) if masked else text
+
+
 def _copy(record: dict, session: dict, budget: int = None) -> str:
-    """The redacted session, packed; its newest part when the whole would not fit the inbox."""
+    """The session copy, packed; its newest part when the whole would not fit the inbox."""
     budget = budget or COPY_BUDGET
-    text = bundles.redact(sessions.transcript(session["kind"], session["path"], session.get("since", ""),
-                                              record["sent_at"]), bundles.known_secrets())
-    text = bundles.mask(text, [record.get("to"), record.get("from"), record.get("owner")])
+    text = copy_text(session, record["sent_at"], [record.get("to"), record.get("from"), record.get("owner")],
+                     keep_names=record.get("keep_names", []))
     packed = _pack(text)
     while len(packed) > budget:
         text = text[-int(len(text) * budget / len(packed) * 0.9):]

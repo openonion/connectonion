@@ -400,16 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b26
+## Current Version: 1.9.2b27
 
-1.9.2b26 is a 1.9.2 beta; stable remains 1.9.1. Other people's email addresses, phone numbers,
-IPs and co rem page names are masked in everything a handoff sends (#2492), and
-`co handoff withdraw` takes a page down at once; `--lang en|zh` sets the report's and the mail's
-language; status leads with one line on where it stands, shows your own answers as yours, and
-lets a question the session copy cannot answer wait on you; the page's conversation reads as a
-chat with each AI turn's final reply. The install floor is 1.9.2b26. See
-[1.9.2b26 notes](docs/releases/1.9.2b26.md).
+1.9.2b27 is a 1.9.2 beta; stable remains 1.9.1. The session copy that goes with a handoff is
+only the conversation the sender approved, never tool calls or their output, and names from
+co rem pages are masked (#2496); the drop is read with the code's secret and claimed by its first
+reader, and one nobody accepts is gone in 7 days (oo-api#267); a second holder is told at once;
+`status --wait` gives up after 10 minutes; the preview says how often the recipient is named.
+Send with b27 or later: the server no longer serves the copy of an older drop. The install floor
+is 1.9.2b27. See [1.9.2b27 notes](docs/releases/1.9.2b27.md).
 
+- 1.9.2b27 (Only what you approved).
 - 1.9.2b26 (Nobody else's details).
 - 1.9.2b25 (A note in your own voice).
 - 1.9.2b24 (Read it first, then one line).

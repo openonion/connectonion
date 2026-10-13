@@ -54,13 +54,24 @@ def world(monkeypatch, tmp_path):
         m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
     monkeypatch.setattr(transport, "_read_messages", lambda: [
         transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
-    def put_drop(body, drop_id):
-        drops[drop_id] = body
+    def put_drop(body, drop_id, key_hash):
+        drops[drop_id], keys[drop_id] = body, key_hash
         return drop_id
 
-    drops = {}
+    def get_drop(drop_id, key):   # as oo-api#267: the whole drop only for the holder of its key, who claims it
+        import hashlib
+        assert keys[drop_id] and hashlib.sha256(key.encode()).hexdigest() == keys[drop_id], "no key, or the wrong one"
+        if drop_id not in drops:
+            return None
+        reader = claimed.setdefault(drop_id, transport.my_address())
+        return drops[drop_id] if reader == transport.my_address() else ""
+
+    claimed = {}
+    monkeypatch.setattr(transport, "page_bundle", lambda code: json.loads(drops[code["drop"]])["bundle"])
+
+    drops, keys = {}, {}
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
-    monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
+    monkeypatch.setattr(transport, "_get_drop", get_drop)
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
     monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
@@ -270,7 +281,7 @@ def test_a_wrong_secret_or_a_second_acceptor_is_not_recorded(world):
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
     assert f"Accepted by {RECIPIENT['mail']}" in status.output
-    assert "let me in" not in status.output and "Ignored 2 acceptance or question(s)" in status.output
+    assert "let me in" not in status.output                        # the server refused the second holder
 
 
 def test_ask_before_accept_is_refused_with_the_accept_command(world):
@@ -424,11 +435,16 @@ def _send_from_session(world, tmp_path) -> str:
             {"type": "tool_use", "id": "t", "name": "Bash", "input": {"command": "grep -n maxAge auth/session.py"}}]}},
         {"type": "user", "timestamp": "2026-10-11T09:00:02Z", "message": {"role": "user", "content": [
             {"type": "tool_result", "tool_use_id": "t", "content": "auth/session.py:12: maxAge = 30 days (product asked)"}]}},
+        {"type": "assistant", "timestamp": "2026-10-11T09:00:03Z", "message": {"role": "assistant", "content": [
+            {"type": "text", "text": "The cookie lives 30 days, as product asked."}]}},
+        {"type": "user", "timestamp": "2026-10-11T09:05:00Z", "message": {"role": "user", "content": "Also, my dentist moved to Friday."}},
     ]) + "\n")
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
     drafts.mkdir(parents=True)
-    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    approved = dict(_bundle(RECIPIENT["mail"]), conversation=[    # the second message was removed with --edit
+        {"at": "2026-10-11T09:00:00Z", "user": "Store the login token.", "ai": "The cookie lives 30 days, as product asked."}])
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(bundles.seal({k: v for k, v in approved.items() if k != "content_hash"})))
     (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": ""}))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
@@ -448,7 +464,7 @@ def test_a_question_is_answered_by_the_senders_agent_with_a_copy_of_the_session(
     world["be"](RECIPIENT)
     theirs = _invoke("handoff", "status", "ho-1a2b3c4d")
     copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
-    assert "maxAge = 30 days (product asked)" in copy.read_text()   # the answer was only in a tool output
+    assert "The cookie lives 30 days, as product asked." in copy.read_text()
     assert str(copy) in theirs.output
 
 
@@ -969,3 +985,39 @@ def test_with_no_address_stored_for_outlook_the_line_names_no_empty_address(worl
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     said = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
     assert f"It goes from your Outlook to {RECIPIENT['mail']}" in " ".join(said.split()) and ", ," not in said
+
+
+# ---- b26 melbourne-2 run: a second holder of the same code waited forever ----
+
+def test_a_second_holder_is_told_it_is_taken_and_stops_waiting(world):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    other = {"mail": "0xc3c3c3c3c3@mail.openonion.ai", "address": "0x" + "c3" * 32}
+    world["be"](other)
+    said = _invoke("handoff", "accept", code)                       # the server says it is claimed (oo-api#267)
+    assert said.exit_code != 0 and "already accepted it" in " ".join(said.output.split())
+    assert not (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d").exists()
+
+
+def test_wait_gives_up_after_its_timeout_with_the_carry_on_rule(world, monkeypatch):
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    clock = iter(range(0, 10_000, 30))
+    monkeypatch.setattr("time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    said = _invoke("handoff", "status", "ho-1a2b3c4d", "--wait", "--timeout", "120")
+    assert said.exit_code == 0, said.output
+    assert "No news on ho-1a2b3c4d in 2 minutes" in " ".join(said.output.split())
+    assert "Assumed:" in said.output
+
+
+def test_accepting_a_handoff_that_was_taken_down_says_so_in_a_sentence(world, monkeypatch):
+    """b27 review: a 404 from the drop crashed accept with an HTTPError traceback."""
+    code = _code(_send(world))
+    world["drops"].clear()
+    world["be"](RECIPIENT)
+    said = _invoke("handoff", "accept", code)
+    assert said.exit_code != 0 and "no longer there" in " ".join(said.output.split()) and "Traceback" not in said.output

@@ -168,7 +168,9 @@ them and send their answer with `co handoff answer <id> "<their answer>"`.
 Other people's email addresses, phone numbers and IPs are masked before anything
 leaves; the preview says how many. If a page shows what it should not, take it down
 at once: `co handoff withdraw <id>`. For a recipient who reads another language,
-`--lang en|zh` sets the report's and the mail's language.
+`--lang en|zh` sets the report's and the mail's language. When the preview says
+the recipient is named N times, show the user `--mentions <name>` before asking
+whether to send.
 The mail service's own record of the send is in `co email sent`. A recipient
 without an agent replies by plain email; answer them with `co email send` only
 after the user approves the text.

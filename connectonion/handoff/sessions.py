@@ -125,65 +125,6 @@ def read_turns(agent: str, path: Path) -> list[dict]:
     return turns
 
 
-# A tool's output longer than this keeps its start and end: a file dump is rarely what is asked about.
-OUTPUT_CHARS = 3_000
-
-
-def transcript(agent: str, path: Path, since: str = "", until: str = "") -> str:
-    """The session as plain text, oldest first: what the person typed, what the AI said, and every
-    tool call with its output. Reasoning is left out.
-
-    This is the copy an automatic answer sends (replies.answer_automatically): the brief carries
-    what was said, but a requirement can live only in a tool call (study B, T3, 2026-10-11).
-    `since` and `until` bound it to the handed-off messages, up to when the handoff was sent."""
-    parts = []
-    with Path(path).open(encoding="utf-8") as f:
-        for line in f:
-            row = json.loads(line) if line.strip() else {}
-            when = row.get("timestamp", "")
-            if not when or (since and _moment(when) < _moment(since)) or (until and _moment(when) > _moment(until)):
-                continue
-            parts += [f"[{when[:19]}] {who}:\n{_clip(text)}" for who, text in
-                      (_codex_parts(row) if agent == "codex" else _claude_parts(row))]
-    return "\n\n".join(parts) + "\n"
-
-
-def _claude_parts(row: dict) -> list[tuple[str, str]]:
-    turn = _claude_turn(row)
-    if turn:
-        return [(turn["role"], turn["text"])]
-    content = (row.get("message") or {}).get("content")
-    if row.get("type") not in ("user", "assistant") or row.get("isSidechain") or not isinstance(content, list):
-        return []
-    parts = []
-    for part in content:
-        if not isinstance(part, dict):
-            continue
-        if part.get("type") == "tool_use":
-            parts.append((f"tool call {part.get('name')}", json.dumps(part.get("input"), ensure_ascii=False)))
-        elif part.get("type") == "tool_result":
-            output = part.get("content")
-            parts.append(("tool output", _text(output) if isinstance(output, list) else str(output)))
-    return parts
-
-
-def _codex_parts(row: dict) -> list[tuple[str, str]]:
-    turn = _codex_turn(row)
-    if turn:
-        return [(turn["role"], turn["text"])]
-    payload = (row.get("payload") or {}) if row.get("type") == "response_item" else {}
-    if payload.get("type") in ("function_call", "custom_tool_call"):
-        return [(f"tool call {payload.get('name')}", str(payload.get("arguments") or payload.get("input") or ""))]
-    if payload.get("type") in ("function_call_output", "custom_tool_call_output"):
-        return [("tool output", str(payload.get("output") or ""))]
-    return []
-
-
-def _clip(text: str) -> str:
-    half = OUTPUT_CHARS // 2
-    return text if len(text) <= OUTPUT_CHARS else f"{text[:half]}\n[… {len(text) - OUTPUT_CHARS:,} characters …]\n{text[-half:]}"
-
-
 # Claude Code records a message typed while it is busy twice: queued, then delivered.
 REPEAT_WITHIN = 600   # seconds
 

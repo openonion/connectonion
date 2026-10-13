@@ -156,7 +156,7 @@ handoffs each acceptor took.
 | sender | `co handoff status <id>` | one line first, such as "bob finished it · their file saved · 2 questions (you answered 1)", then who accepted, each question with how it was answered ("You answered", "Answered automatically", or "Waiting on you"), and "Done, …". A file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>`, and when it is a patch the Next line is the `git apply` (or `git am`) that applies it. `--verbose` adds agent addresses and the content hash |
 | sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted; status shows it as yours |
 | sender | `co handoff withdraw <id>` | takes the handoff's page and pickup down at once, instead of after 30 days; mail already delivered stays in their mailbox |
-| recipient | `co handoff status <id>` | the sender's answers |
+| recipient | `co handoff status <id>` | the sender's answers. With `--wait` it returns when something new arrives, or after `--timeout` seconds (default 600) with the rule to carry on and say "Assumed: …" in done. A second holder of the same code (a forwarded mail, a shared paste) is told the handoff is already accepted by someone else, and stops |
 
 Each is a small base64 block sent to the other agent's inbox (see
 [Transport](#transport)). While the sender's agent is hosted, however it was
@@ -169,16 +169,17 @@ is waiting, and prints
 
 The sender's agent answers every question by itself; no one reviews the answer
 first. The first answer carries a copy of the session the handoff came from:
-every message, what the AI said, and every tool call with its output (a long
-output keeps its start and end). It covers only the handed-off messages
-(`--since`) up to the moment the handoff was sent, and credential-shaped strings
-and values from your keys.env are removed. The recipient's `co handoff status`
+the messages you approved in the preview (`--since` and `--edit` apply), each
+whole, with each AI reply in full rather than quoted. Tool calls and their output
+never go: in a session that ran `co rem` they are whole pages about other people
+and your own mail (#2496). Credential-shaped strings, values from your keys.env
+and other people's contact details are removed. The recipient's `co handoff status`
 saves it as `~/.co/handoff/accepted/<id>/session.md`, so their agent searches it
 instead of asking again. Later questions are answered with a pointer to that
 copy, unless the question says the copy does not answer it, or asks again: then
 no pointer goes, status shows it as "Waiting on you", and the mail to you says
-"Waiting on you" in its subject. The brief leaves tool output out on purpose; this copy is how a
-requirement that only ever appeared in a tool call still reaches the recipient.
+"Waiting on you" in its subject. A requirement that only ever appeared in a
+tool's output does not reach the recipient this way; they ask, and it waits on you.
 
 It happens wherever the sender's side checks for replies: the host's watcher,
 `co handoff status`, and `status --wait`. A copy cannot answer a question you
@@ -264,6 +265,11 @@ enforcement:** in two full-auto Codex runs the agent read it and sent anyway.
 The real gate today is the coding client's own command approval (Codex asks
 before a networked command outside its sandbox); a person-only approval is
 planned with #2351/#2353.
+
+When the recipient is one of your contacts, the preview says how often they are
+named in what they will read; `--mentions <name>` lists each place and sends
+nothing. Masking removes contact details, not what the session says about the
+person reading it.
 
 `--lang en` or `--lang zh` writes the report and the mail in that language; your
 own words stay as you wrote them. Without it, the language is the one you wrote
