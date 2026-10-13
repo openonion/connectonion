@@ -57,6 +57,9 @@ part they read first; it is a guide to the quotes, which go with it.
   recipient's. Never pass one on, and never mention one. An owed action that needs permission
   (merge, publish, release, deploy, pay, delete) waits on the Sender, unless the Sender gave that
   permission to the recipient by name.
+- Limits the Sender put on their own AI ("don't change files", "just explain", "read only") are not
+  passed on either: they were for that session. The Sender's own words about what to hand off say what
+  the recipient does, and "done" is that. Never list such a limit as decided, rejected or open.
 - where_it_stands: what is finished, in progress and tried, with the numbers. Later messages
   override earlier ones: something requested early and done later is done.
 - decided / rejected: every decision and every ruled-out option, each with its reason.

@@ -807,3 +807,12 @@ def test_the_headline_names_the_sender_their_ai_and_the_day_and_the_diagram_has_
     bundles.draft(talk, "task", sender="Aaron Xie", agent="codex")
     assert "The Sender is Aaron Xie, working with Codex, on 2026-10-13." in model[-1]
     assert bundles.diagram_lines(top.diagram) == "a ─► b\n└─► c"
+
+
+def test_limits_the_sender_put_on_their_own_ai_are_not_the_recipients_task(project, model, mailbox):
+    """b20 e2e: the sender handed off "fix slugify per the docs team rules", but their only message told their
+    own AI "Don't change files. Explain the fix". The draft made "without modifying any files" the recipient's
+    Done, so Codex only reviewed. The same came back live on b21: "Do not modify tempconv.py yet"."""
+    bundles.draft([{"at": "", "user": "Don't change files. Explain the fix.", "ai": "ok"}], "fix slugify")
+    prompt = model[-1]
+    assert "Limits the Sender put on their own AI" in prompt and "are not passed on either" in prompt
