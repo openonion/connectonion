@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import urllib.error
 import importlib.util
 import io
 import json
@@ -145,3 +146,100 @@ def test_recovery_rejects_an_extra_or_missing_pypi_file(tmp_path):
             tmp_path / "published",
             opener=opener,
         )
+
+
+def test_recovery_waits_when_pypi_metadata_404s_right_after_publish(tmp_path):
+    """#2467: finalize saw HTTP 404 on /pypi/.../json seconds after publish succeeded."""
+    version = "1.6.0"
+    local_dir = tmp_path / "dist"
+    output_dir = tmp_path / "published"
+    local_dir.mkdir()
+    wheel_name = f"connectonion-{version}-py3-none-any.whl"
+    sdist_name = f"connectonion-{version}.tar.gz"
+    wheel_bytes = _wheel(local_dir / wheel_name, b"reviewed")
+    sdist_bytes = _sdist(local_dir / sdist_name, b"reviewed")
+    file_urls = {
+        wheel_name: f"https://files.pythonhosted.org/packages/{wheel_name}",
+        sdist_name: f"https://files.pythonhosted.org/packages/{sdist_name}",
+    }
+    blobs = {file_urls[wheel_name]: wheel_bytes, file_urls[sdist_name]: sdist_bytes}
+    metadata = {
+        "urls": [
+            {
+                "filename": name,
+                "url": url,
+                "digests": {"sha256": hashlib.sha256(blobs[url]).hexdigest()},
+            }
+            for name, url in file_urls.items()
+        ]
+    }
+    calls = {"metadata": 0, "slept": []}
+
+    def opener(url, timeout):
+        del timeout
+        if url.endswith("/json"):
+            calls["metadata"] += 1
+            if calls["metadata"] < 3:
+                raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+            return Response(json.dumps(metadata).encode())
+        return Response(blobs[url])
+
+    def sleeper(seconds):
+        calls["slept"].append(seconds)
+
+    recovered = MODULE.recover_published_artifacts(
+        version,
+        local_dir,
+        output_dir,
+        opener=opener,
+        sleeper=sleeper,
+        metadata_attempts=5,
+        metadata_wait_seconds=0,
+    )
+
+    assert calls["metadata"] == 3
+    assert calls["slept"] == [0, 0]
+    assert {path.name for path in recovered} == {wheel_name, sdist_name}
+
+
+def test_recovery_gives_up_when_pypi_metadata_stays_404(tmp_path):
+    calls = {"metadata": 0}
+
+    def opener(url, timeout):
+        del timeout
+        calls["metadata"] += 1
+        raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+    with pytest.raises(MODULE.ArtifactError, match="cannot read PyPI metadata"):
+        MODULE.recover_published_artifacts(
+            "1.6.0",
+            tmp_path / "dist",
+            tmp_path / "published",
+            opener=opener,
+            sleeper=lambda _s: None,
+            metadata_attempts=3,
+            metadata_wait_seconds=0,
+        )
+    assert calls["metadata"] == 3
+
+
+def test_recovery_does_not_retry_a_non_404_metadata_failure(tmp_path):
+    calls = {"metadata": 0, "slept": 0}
+
+    def opener(url, timeout):
+        del timeout
+        calls["metadata"] += 1
+        raise urllib.error.HTTPError(url, 500, "Server Error", hdrs=None, fp=None)
+
+    with pytest.raises(MODULE.ArtifactError, match="cannot read PyPI metadata"):
+        MODULE.recover_published_artifacts(
+            "1.6.0",
+            tmp_path / "dist",
+            tmp_path / "published",
+            opener=opener,
+            sleeper=lambda _s: calls.__setitem__("slept", calls["slept"] + 1),
+            metadata_attempts=5,
+            metadata_wait_seconds=0,
+        )
+    assert calls["metadata"] == 1
+    assert calls["slept"] == 0
