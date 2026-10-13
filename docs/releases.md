@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
+Beta **1.9.2b21**: a handoff opens on what the sender discussed and concluded.
+The mail is a reminder and a three-line paste; `co handoff accept` fetches the
+handoff, and a question the sender left open reaches them by mail. See
+[1.9.2b21 notes](releases/1.9.2b21.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b21'
+```
+
+## Previous previews
+
 Beta **1.9.2b20**: a `co handoff` runs without the person stepping in. The
 recipient's agent accepts, does the work and says when it is done; the result
 comes back to the sender's `co handoff status`. See
 [1.9.2b20 notes](releases/1.9.2b20.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2b20'
-```
-
-## Previous previews
 
 Beta **1.9.2b19**: one host serves the agent, REM and your channels however you
 start it, and the new `co host` works right after the one-line installer. See
