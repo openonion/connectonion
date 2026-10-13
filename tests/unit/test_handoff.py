@@ -892,6 +892,7 @@ def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagra
     work = opener.work_prompt(REPLAY, tmp_path, "coh2.abc")
     assert "co handoff done coh2.abc" in work
     # b21 on Parrot: it asked, ran status once without --wait, and stopped "blocked" 90 s before the answer.
-    assert f"co handoff status {REPLAY['id']} --wait and let it\nreturn" in work and "do not\nstop" in work
-    assert "session.md" in work and "search it before asking" in work
-    assert '"The code is in …", work\nthere' in work                                 # where b22's accept puts it
+    flat = " ".join(work.split())
+    assert f"co handoff status {REPLAY['id']} --wait and let it return" in flat and "do not stop" in flat
+    assert "session.md" in flat and "search it before asking" in flat
+    assert '"The code is in …", work there' in flat                                  # where b22's accept puts it
