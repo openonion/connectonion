@@ -369,3 +369,129 @@ def test_the_replayed_thread_is_listed_in_the_codex_app_with_short_labels_and_re
     assert replied == ["(Aaron Xie 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
     assert {r["timestamp"] for r in rows[1:6]} == {"2026-10-13T02:13:00.000Z"}        # a turn with no reply: 5 rows
     assert opener.REPORT.startswith("(co handoff)")
+
+
+# ---- the conversation as the viewer shows it: one reply per turn, no repeats, clean cuts ----
+
+def test_a_turn_shows_the_ais_final_reply_and_counts_the_steps_before_it():
+    """b25 chat review: one bubble glued every text segment between tool calls ("…能不能发 HTML 邮件：
+    Now my part of #2477. Tests first: 129 passed…"), switching language and ending on colons."""
+    from connectonion.handoff import sessions
+    turns = [{"role": "user", "text": "Ship it", "timestamp": "2026-10-13T01:00:00Z"},
+             {"role": "assistant", "text": "Tests first:", "timestamp": "2026-10-13T01:00:05Z"},
+             {"role": "assistant", "text": "129 passed. Opening the PR:", "timestamp": "2026-10-13T01:01:00Z"},
+             {"role": "assistant", "text": "Done: PR #1 is merged.", "timestamp": "2026-10-13T01:02:00Z"}]
+    [turn] = sessions.exchanges(turns)
+    assert turn["final"] == "Done: PR #1 is merged." and turn["steps"] == 2
+    assert "Tests first:" in turn["ai"]                     # the report on top still reads all of it
+    cut_short = sessions.exchanges(turns + [{"role": "assistant", "text": "Now the docs:", "timestamp": "t"}])
+    assert cut_short[0]["final"] == "Done: PR #1 is merged." and cut_short[0]["steps"] == 3
+    bundle = bundles.assemble(handoff_id="h", sender="a@b", to="c@d", what="w", source={"kind": "claude"}, code=[],
+                              top=bundles.Top(title="t", task="t", where_it_stands="w"), exchanges=[turn])
+    assert bundle["conversation"] == [{"at": turn["at"], "user": "Ship it", "ai": "Done: PR #1 is merged.", "steps": 2}]
+
+
+def test_a_message_typed_while_the_ai_was_busy_is_not_shown_twice():
+    """b25 chat review: Claude Code records it as a queued_command and again when it is delivered."""
+    from connectonion.handoff import sessions
+    turns = [{"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-13T01:00:00Z"},
+             {"role": "assistant", "text": "Noted.", "timestamp": "2026-10-13T01:00:30Z"},
+             {"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-13T01:02:00Z"},
+             {"role": "assistant", "text": "Shortened it.", "timestamp": "2026-10-13T01:03:00Z"},
+             {"role": "user", "text": "Keep the mail short", "timestamp": "2026-10-14T09:00:00Z"}]
+    said = sessions.exchanges(turns)
+    assert [e["user"] for e in said] == ["Keep the mail short"] * 2       # the next day it is a new request
+    assert said[0]["final"] == "Shortened it." and said[0]["steps"] == 1
+
+
+def test_a_long_reply_is_cut_between_lines_not_inside_words():
+    """b25 chat review: "…then openi[cut]y` 和纯文本 `body`" left half-words and half a code span."""
+    text = "\n".join(f"line {n}: `code {n}` and some words" for n in range(80))
+    cut = bundles.quote(text)
+    head, mark, tail = cut.partition("\n[…")
+    assert text.startswith(head) and head.endswith("words")
+    assert tail.split("]\n", 1)[1].startswith("line ") and len(cut) < 900
+
+
+# ---- other people's contact details never reach the page, the mail or the session copy ----
+
+def test_other_peoples_addresses_and_numbers_are_masked_on_the_page():
+    """Aaron, 2026-10-14: "mailto:ivvli0000@outlook.com 这个是错误的". A co rem run had quoted a relative's
+    address; the handoff copied it onto a page anyone with the link can open. The sender's and the
+    recipient's own addresses stay, and so do example addresses."""
+    talk = [{"at": "2026-10-13T01:00:00Z", "user": "Mail me at aaron@home.net, not ivvli0000@outlook.com",
+             "ai": "Done. people/ivvli0000-outlook-com-e381998ef8.md (grep ivvli0000 *.md) has her number +61 412 000 111 and "
+                   "0435 525 634; bob@example.com is the test user; ody@x.co got it.",
+             "final": "", "steps": 0}]
+    talk[0]["final"] = talk[0]["ai"]
+    bundle = bundles.assemble(handoff_id="h", sender="0xabc@mail.openonion.ai", to="ody@x.co", what="w",
+                              source={"kind": "claude"}, code=[], keep=["aaron@home.net"],
+                              top=bundles.Top(title="t", task="ask ivvli0000@outlook.com", where_it_stands="w"),
+                              exchanges=talk)
+    text = json.dumps(bundle, ensure_ascii=False)
+    assert "ivvli0000" not in text and "412 000 111" not in text and "525 634" not in text
+    assert "aaron@home.net" in text and "ody@x.co" in text and "bob@example.com" in text
+    assert "[email removed]" in bundle["conversation"][0]["user"]
+
+
+def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
+    session = tmp_path / "s.jsonl"
+    session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-13T01:00:00Z",
+                                   "message": {"content": "write to s.whittle@unsw.edu.au and me@home.net"}}) + "\n")
+    copy = replies.unpack(replies._copy({"sent_at": "2026-10-14T00:00:00Z", "to": "r@x.co", "owner": "me@home.net"},
+                                        {"kind": "claude", "path": str(session)}))
+    assert "whittle" not in copy and "me@home.net" in copy
+
+
+def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
+    """#2493 review: "anyone" and "notify" became "someone" because anyone@x.com and notify@x.com were
+    masked; a literal \\n before an address read as part of it, so a kept address was not recognised."""
+    text = "anyone@x.com said anyone can read notify.py; log: 'sent\\nxietianle@outlook.com\\nnotify@x.com'"
+    out = bundles.mask(text, ["xietianle@outlook.com"])
+    assert "anyone can read notify.py" in out and "xietianle@outlook.com" in out
+    assert "anyone@x.com" not in out and "notify@x.com" not in out
+
+
+def test_masking_reaches_names_profiles_numbers_and_ips_that_point_at_a_person():
+    """#2493 review on a real session: co rem page names, mail-header names, LinkedIn ids, landlines,
+    1800 numbers and IP addresses all survived."""
+    text = ("people/tamara-berryman-324b6af6e8.md; ~/.co/rem/people/vern-chan-cccf24fb07.md; for f in david-burt-daaa78c99a; do; orgs/unsw-edu-au-921856d25b.md\n"
+            "From: Jiexuan Deng <jd@student.unsw.edu.au>\n"
+            "https://www.linkedin.com/in/mia-chen-data/ call 02 9065 4432, (02) 7235 5365, 1800 737 633, 0873918410\n"
+            "ssh onion@100.71.113.43 and 35.189.30.72; bind 127.0.0.1 or 0.0.0.0")
+    out = bundles.mask(text)
+    for gone in ("tamara-berryman", "vern-chan", "david-burt", "Jiexuan Deng", "mia-chen-data", "9065 4432", "7235 5365",
+                 "737 633", "0873918410", "100.71.113.43", "35.189.30.72"):
+        assert gone not in out, gone
+    assert "orgs/unsw-edu-au-921856d25b.md" in out and "127.0.0.1" in out and "0.0.0.0" in out
+
+
+def test_masking_also_reaches_cjk_glued_addresses_chinese_mobiles_and_every_people_page():
+    """Second review of #2493 on the real session, verbatim cases."""
+    text = ("'邮箱s.whittle@unsw.edu.au'] the phone number 02 7235 5365. 电话：138 0013 8000，或 13800138000；"
+            "+86 139 1234 5678. see people/vern.md, people/emma and people/david-burt.md; orgs/unsw.md stays."
+            "x\\npeople/sasha.md and ```\\npeople/tamara-berryman-….md: failed")
+    out = bundles.mask(text)
+    for gone in ("whittle", "7235 5365", "0013 8000", "13800138000", "1234 5678", "vern", "emma", "david-burt",
+                 "sasha", "tamara"):
+        assert gone not in out, gone
+    assert "orgs/unsw.md" in out and "people/[person]" in out
+
+
+def test_the_title_is_the_work_not_an_order_so_the_subject_does_not_repeat_its_verb(monkeypatch):
+    """b26 review: 'Could you pick up "Pick up co rem improvements…"?'"""
+    import sys
+    import connectonion.llm_do  # noqa: F401
+    for drafted, kept in [("Pick up co rem improvements", "co rem improvements"),
+                          ("Continue: the login fix", "the login fix"), ("接着做 co rem 改进", "co rem 改进"),
+                          ("co rem improvements", "co rem improvements")]:
+        monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", lambda prompt, output=None, **kw: (
+            bundles.Top(title=drafted, task="t", where_it_stands="w")))
+        assert bundles.draft([{"at": "", "user": "u", "ai": ""}], "w").title == kept
+
+
+def test_a_one_word_lowercase_git_name_reads_as_a_name():
+    from connectonion.cli.commands import handoff_commands
+    assert handoff_commands._as_name("aaron") == "Aaron"
+    assert handoff_commands._as_name("Aaron Xie") == "Aaron Xie" and handoff_commands._as_name("") == ""
+    assert handoff_commands._as_name("de la cruz") == "de la cruz"      # several words: written as they chose

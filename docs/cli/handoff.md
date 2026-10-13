@@ -153,8 +153,9 @@ handoffs each acceptor took.
 | recipient | `co handoff accept <code>` | fetches the handoff, checks it against the code, sends the acceptance with their agent address to the sender's agent, and keeps the brief under `~/.co/handoff/accepted/<id>/` (`--brief HANDOFF.md` for a coh2 code) |
 | recipient | `co handoff ask <code> "<question>"` | sends a question about this handoff |
 | recipient | `co handoff done <code> "<what you did>" [--file result.patch]` | tells the sender it is finished, with an optional file (at most 3.5 MB packed). The sender's status shows it, and the sender is also mailed once at their git `user.email`, with a patch under 20 KB inline |
-| sender | `co handoff status <id>` | "Accepted by 0x… (mailbox) at …", each question, and "Done, …"; a file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>` |
-| sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted |
+| sender | `co handoff status <id>` | one line first, such as "bob finished it · their file saved · 2 questions (you answered 1)", then who accepted, each question with how it was answered ("You answered", "Answered automatically", or "Waiting on you"), and "Done, …". A file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>`, and when it is a patch the Next line is the `git apply` (or `git am`) that applies it. `--verbose` adds agent addresses and the content hash |
+| sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted; status shows it as yours |
+| sender | `co handoff withdraw <id>` | takes the handoff's page and pickup down at once, instead of after 30 days; mail already delivered stays in their mailbox |
 | recipient | `co handoff status <id>` | the sender's answers |
 
 Each is a small base64 block sent to the other agent's inbox (see
@@ -174,7 +175,9 @@ output keeps its start and end). It covers only the handed-off messages
 and values from your keys.env are removed. The recipient's `co handoff status`
 saves it as `~/.co/handoff/accepted/<id>/session.md`, so their agent searches it
 instead of asking again. Later questions are answered with a pointer to that
-copy. The brief leaves tool output out on purpose; this copy is how a
+copy, unless the question says the copy does not answer it, or asks again: then
+no pointer goes, status shows it as "Waiting on you", and the mail to you says
+"Waiting on you" in its subject. The brief leaves tool output out on purpose; this copy is how a
 requirement that only ever appeared in a tool call still reaches the recipient.
 
 It happens wherever the sender's side checks for replies: the host's watcher,
@@ -195,7 +198,8 @@ One message, kept the way a compaction keeps a conversation:
 | Task, Where it stands, Rejected | the detail under it. Task opens with your own words from `send` ("Handed off as: …"); the rest is written from your messages and the summaries below. A review stays a review, later messages override earlier ones, and permissions you gave your own AI ("merge it yourself") are never passed on |
 | Code | up to three repositories the session worked in (Claude Code's `cwd`/`gitBranch` on each row; Codex's `session_meta`, `turn_context` and each command's `workdir`), most recent first: remote (any `user:token@` removed), branch, the last commit on it by the time the session last worked there (for a detached checkout, where the reflog says HEAD was), whether it is pushed, and how many files are changed but not committed |
 | Issues and PRs mentioned | each `#N` in the handoff with its title, taken from `gh` output the session already read (`--json`, `view`, `list`); nothing is fetched at send time, so it works for a private repository. A number the session never looked up stays a number |
-| Conversation | every message you typed in the session, word for word and never cut; under each, the AI's own text for that turn, quoted. One over 800 characters keeps its start and its end and says how many characters were cut between them. Originals, not summaries: a summary drops what its writer thought unimportant, and the reader cannot tell what is missing |
+| Conversation | every message you typed in the session, word for word and never cut; under each, the AI's final reply for that turn in its own words, with a count of the running remarks it made between tools before it ("Tests first:"; the session copy has those). A message typed while the AI was busy, recorded twice by Claude Code, appears once. A reply over 800 characters keeps its start and its end, cut between lines, and says how many characters were left out. Originals, not summaries: a summary drops what its writer thought unimportant, and the reader cannot tell what is missing |
+| Other people's contact details | email addresses, phone numbers (mobile, landline, 1300/1800) and IP addresses that belong to neither you nor the recipient are replaced with `[email removed]` / `[phone removed]` / `[ip removed]` everywhere: the page, the mail, and the session copy (a session that ran `co rem` has read a mailbox). So is what else points at a person: `co rem` page names (`people/[person].md`), LinkedIn ids, and the name in a mail header whose address was removed. Your own addresses, the recipient's, `git@…`, example addresses, `127.0.0.1` and `0.0.0.0` stay, and ordinary words are never touched. The preview says how many were masked. |
 
 Not sent with the handoff: tool calls and their output, reasoning, anything the
 client injects (AGENTS.md, skill bodies, environment context), and the session
@@ -260,6 +264,10 @@ enforcement:** in two full-auto Codex runs the agent read it and sent anyway.
 The real gate today is the coding client's own command approval (Codex asks
 before a networked command outside its sandbox); a person-only approval is
 planned with #2351/#2353.
+
+`--lang en` or `--lang zh` writes the report and the mail in that language; your
+own words stay as you wrote them. Without it, the language is the one you wrote
+in. A long handoff previews its newest messages; all of it is in the draft file.
 
 ## Recipients
 

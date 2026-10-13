@@ -184,15 +184,32 @@ def _clip(text: str) -> str:
     return text if len(text) <= OUTPUT_CHARS else f"{text[:half]}\n[… {len(text) - OUTPUT_CHARS:,} characters …]\n{text[-half:]}"
 
 
+# Claude Code records a message typed while it is busy twice: queued, then delivered.
+REPEAT_WITHIN = 600   # seconds
+
+
 def exchanges(turns: list[dict]) -> list[dict]:
-    """Each user message with the AI text that followed it: {at, user, ai}."""
+    """Each user message with the AI text that followed it: {at, user, ai, final, steps}. ``ai`` is all of
+    it; ``final`` is the reply the person read at the end, after ``steps`` running remarks between tools.
+    A turn the person cut short by typing ends on a remark like "Tests first:"; the last one that is not
+    a lead-in stands for it then."""
     found = []
     for turn in turns:
-        if turn["role"] == "user":
-            found.append({"at": turn["timestamp"], "user": turn["text"], "ai": ""})
-        elif found:
-            found[-1]["ai"] = (found[-1]["ai"] + "\n\n" + turn["text"]).strip()
+        if turn["role"] == "user" and not _repeat(found, turn):
+            found.append({"at": turn["timestamp"], "user": turn["text"], "ai": "", "final": "", "steps": 0})
+        elif turn["role"] == "assistant" and found:
+            last = found[-1]
+            last["steps"] += bool(last["ai"])
+            last["ai"] = (last["ai"] + "\n\n" + turn["text"]).strip()
+            if not last["final"] or not turn["text"].endswith((":", "：")):
+                last["final"] = turn["text"]
     return found
+
+
+def _repeat(found: list[dict], turn: dict) -> bool:
+    if not found or found[-1]["user"] != turn["text"] or not (found[-1]["at"] and turn["timestamp"]):
+        return False
+    return abs((_moment(turn["timestamp"]) - _moment(found[-1]["at"])).total_seconds()) < REPEAT_WITHIN
 
 
 def find_by_id(ref: str) -> tuple[str, Path]:

@@ -30,7 +30,8 @@ END = "----- END CO HANDOFF BUNDLE -----"
 
 
 class Top(BaseModel):
-    title: str = Field(description="The task in one line")
+    title: str = Field(description="The work in one line, as a name for it, not an instruction: never start with "
+                       "'Pick up', 'Continue', 'Take over' or 接着做/继续 (the mail already asks them to pick it up)")
     headline: str = Field(default="", description="Who worked on what, and when, in one line a stranger understands")
     discussed: list[str] = Field(default_factory=list, description="3 to 5 things the conversation covered, in plain words")
     task: str = Field(description="What the sender asked for, and what 'done' means")
@@ -85,8 +86,8 @@ AGENTS = {"codex": "Codex", "claude": "Claude Code"}
 
 
 def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
-          agent: str = "") -> tuple[Top, dict[int, str]]:
-    """The AI's side quoted, and the report on top written from the newest TOP_CHARS of it."""
+          agent: str = "", lang: str = "") -> Top:
+    """The report on top, written from the newest TOP_CHARS of the conversation with every AI turn quoted."""
     from ..llm_do import llm_do
     kwargs = {"model": model} if model else {}
     said = {n: quote(e["ai"]) for n, e in enumerate(exchanges, 1) if e["ai"]}
@@ -99,11 +100,18 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     who = (f"The Sender is {sender or 'unnamed'}, working with {AGENTS.get(agent, 'their AI')}"
            + (f", on {day}." if day else "."))
     han = len(re.findall(r"[\u4e00-\u9fff]", said_by_sender := " ".join(e["user"] for e in exchanges)))
-    lang = "Chinese" if han > len(re.findall(r"[A-Za-z]+", said_by_sender)) / 2 else "English"
+    lang = {"zh": "Chinese", "en": "English"}.get(lang) or (
+        "Chinese" if han > len(re.findall(r"[A-Za-z]+", said_by_sender)) / 2 else "English")
     top = llm_do(TOP_PROMPT.format(who=who, lang=lang, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
     top.diagram = diagram_lines(top.diagram)
-    return top, said
+    top.title = ORDER.sub("", top.title).strip() or top.title
+    return top
+
+
+# The mail asks "Could you pick up “{title}”?"; a title that is itself an order repeats the verb (b26 review).
+ORDER = re.compile(r"^\s*(?:(?:pick up|continue(?: with)?|take over|hand off|finish)\b[\s:：-]*|(?:接着做|继续做|继续|接手)[\s:：-]*)",
+                   re.I)
 
 
 def diagram_lines(diagram: str) -> str:
@@ -116,26 +124,41 @@ def quote(text: str) -> str:
     if len(text) <= QUOTE_CHARS:
         return text
     head, tail = QUOTE_CHARS // 4, QUOTE_CHARS - QUOTE_CHARS // 4
-    return (f"{text[:head]}\n[… {len(text) - head - tail:,} characters cut; the full session comes with the first "
-            f"answer]\n{text[-tail:]}")
+    start, end = text[:head], text[-tail:]
+    # Cut between lines where a line ends near the limit, so no word or `code` span is cut in half.
+    start = start[:start.rindex("\n")] if "\n" in start[head // 2:] else start
+    end = end[end.index("\n") + 1:] if "\n" in end[:tail // 2] else end
+    return (f"{start}\n[… {len(text) - len(start) - len(end):,} characters cut; the full session comes with the "
+            f"first answer]\n{end}")
+
+
+def _turn(exchange: dict) -> dict:
+    """One turn as the recipient reads it: the sender's words whole, the AI's final reply quoted, and how
+    many running remarks came before it (the session copy has those)."""
+    final = exchange.get("final", exchange["ai"])
+    return {"at": exchange["at"], "user": exchange["user"], "ai": quote(final) if final else "",
+            **({"steps": exchange["steps"]} if exchange.get("steps") else {})}
 
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
-             top: Top, said: dict[int, str], exchanges: list[dict], titles: dict[str, str] = None,
-             sender_name: str = "") -> dict:
+             top: Top, exchanges: list[dict], titles: dict[str, str] = None,
+             sender_name: str = "", keep: list[str] = (), lang: str = "") -> dict:
+    said = [_turn(e) for e in exchanges]
+    emails, phones = others(json.dumps([top.model_dump(), said], ensure_ascii=False), [sender, to, *keep])
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
         "from": sender,
         **({"from_name": sender_name} if sender_name else {}),
+        **({"lang": lang} if lang else {}),
         "to": to,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
         "asked": what,
-        **top.model_dump(),
+        **_masked(top.model_dump(), emails),
         "code": code,
-        "conversation": [{"at": e["at"], "user": e["user"], "ai": said.get(n, "")}
-                         for n, e in enumerate(exchanges, 1)],
+        "conversation": _masked(said, emails),
+        "masked": {"emails": len(emails), "phones": len(phones)},
         "ai_quoted": True,   # 1.9.2b21: "ai" is the AI's own text, not a summary of it
     }
     # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.
@@ -188,6 +211,65 @@ def redact(text: str, known_secrets: list[str] = ()) -> str:
     for secret in known_secrets:
         text = text.replace(secret, "[removed: a value from keys.env]")
     return text
+
+
+# Other people's contact details. A handoff page opens for anyone with its link, and a session that
+# ran co rem has read a mailbox: a relative's address reached a live page (Aaron, 2026-10-14). The
+# sender's and the recipient's own addresses stay, and so do example ones (RFC 2606) and git@host.
+# Tool output quotes JSON, so a literal \\n can sit right before an address: it is not part of it.
+_START = r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_.%+\\-]))"   # ASCII: 邮箱abc@x.com starts at the a
+EMAIL = re.compile(_START + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+PHONE = re.compile(r"\+\d[\d \-]{7,}\d"                               # +61 412 000 111
+                   r"|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)"          # 0412 000 111
+                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?!\d|\.\d)"  # (02) 9065 4432, 0873918410
+                   r"|(?<!\d)1[38]00[ -]?\d{3}[ -]?\d{3}(?!\d)"           # 1800 737 633
+                   r"|(?<![\d.])(?:\+86[ -]?)?1[3-9]\d[ -]?\d{4}[ -]?\d{4}(?!\d)")   # 138 0013 8000
+IP = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+NOT_AN_IP = {"127.0.0.1", "0.0.0.0"}
+NOT_A_PERSON = re.compile(r"^git@|@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|example|test|invalid|localhost)$", re.I)
+# Pointers at a person that are not an address: co rem's people/<name>-<10 hex>.md (bare too, but not
+# orgs/ or projects/ ones), a LinkedIn id, and the name in a mail header whose address was masked.
+PERSON_PAGE = re.compile(r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_/\\-]))[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{10}(?=\.md|[^\w-]|$)")
+PEOPLE_PATH = re.compile(r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_]))people/[^\s/'\"`)\]>,;:|*]+")
+LINKEDIN = re.compile(r"(linkedin\.com/in/)[\w%-]+")
+HEADER_NAME = re.compile(r"(?:\"[^\"<>\n]{1,60}\"|(?:(?<=\\[nrt])|(?<![\w'’-]))[A-Z][\w'’-]{0,30}\.?(?: [A-Z][\w'’-]{0,30}\.?){0,3}"
+                         r"|(?<![\u4e00-\u9fff])[\u4e00-\u9fff·][\u4e00-\u9fff· ]{1,8})\s*(?=<\[email removed\]>)")
+
+
+def others(text: str, keep=()) -> tuple[set[str], set[str]]:
+    """The email addresses and phone numbers in `text` that belong to neither side of the handoff."""
+    kept = {k.lower() for k in keep if k}
+    emails = {m for m in EMAIL.findall(text) if m.lower() not in kept and not NOT_A_PERSON.search(m)}
+    return emails, set(PHONE.findall(text))
+
+
+def mask(text: str, keep=(), emails: set[str] = None) -> str:
+    """`text` with other people's addresses, numbers and IPs removed, and what else points at them.
+    `emails` names the addresses when they were found across more than this one text."""
+    emails = others(text, keep)[0] if emails is None else emails
+    text = EMAIL.sub(lambda m: "[email removed]" if m.group(0) in emails else m.group(0), text)   # one pass
+    # What is left of one on its own ("kevin.chin1@ (all @student…)", "grep ivvli0000"), when it cannot be
+    # an ordinary word: "anyone@x.com" must not turn "anyone can read it" into "someone can".
+    names = sorted({a.split("@")[0] for a in emails if re.search(r"[\d._]", a.split("@")[0])}, key=len, reverse=True)
+    if names:
+        text = re.sub(r"(?<![A-Za-z0-9_.-])(?:" + "|".join(map(re.escape, names)) + r")(?![A-Za-z0-9_])", "someone", text)
+    text = PEOPLE_PATH.sub("people/[person]", text)
+    text = PERSON_PAGE.sub("[person]", text)
+    text = LINKEDIN.sub(r"\1[person]", text)
+    text = HEADER_NAME.sub("[person] ", text)
+    text = IP.sub(lambda m: m.group(0) if m.group(0) in NOT_AN_IP or max(map(int, m.group(0).split("."))) > 255
+                  else "[ip removed]", text)
+    return PHONE.sub("[phone removed]", text)
+
+
+def _masked(value, emails):
+    if isinstance(value, str):
+        return mask(value, emails=emails)
+    if isinstance(value, list):
+        return [_masked(v, emails) for v in value]
+    if isinstance(value, dict):
+        return {k: _masked(v, emails) for k, v in value.items()}
+    return value
 
 
 def known_secrets() -> list[str]:

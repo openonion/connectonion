@@ -111,7 +111,7 @@ def mailbox(monkeypatch):
 
     monkeypatch.setattr(transport, "deliver", deliver)
     monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
-    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     pages, held = {}, {}
 
     def drop(bundle, drop_id=None, prompt="", **kw):   # the backend's drops (#2459); b24 keeps the prompt for the page
@@ -344,8 +344,8 @@ def test_each_user_message_carries_the_ai_replies_that_followed_it():
              {"role": "assistant", "text": "first", "timestamp": "t2"},
              {"role": "assistant", "text": "second", "timestamp": "t3"},
              {"role": "user", "text": "B?", "timestamp": "t4"}]
-    assert sessions.exchanges(turns) == [{"at": "t1", "user": "A?", "ai": "first\n\nsecond"},
-                                         {"at": "t4", "user": "B?", "ai": ""}]
+    assert sessions.exchanges(turns) == [{"at": "t1", "user": "A?", "ai": "first\n\nsecond", "final": "second", "steps": 1},
+                                         {"at": "t4", "user": "B?", "ai": "", "final": "", "steps": 0}]
 
 
 def test_the_handoff_quotes_the_users_words_and_the_ais_own_words(project, model, mailbox):
@@ -460,10 +460,9 @@ def test_a_long_ai_reply_keeps_its_start_and_its_end_and_says_what_was_cut():
 def test_the_report_call_reads_at_most_a_bounded_transcript_newest_first(project, model, mailbox, monkeypatch):
     monkeypatch.setattr(bundles, "TOP_CHARS", 500)
     talk = [{"at": "", "user": f"question {n}", "ai": "x" * 200} for n in range(1, 7)]
-    top, said = bundles.draft(talk, "task")
+    bundles.draft(talk, "task")
     assert len(model) == 1 and len(model[0]) < 500 + len(bundles.TOP_PROMPT) + 300
     assert "question 6" in model[0] and "question 1" not in model[0] and "left out" in model[0]
-    assert said[1] == "x" * 200                                           # the bundle still quotes all of it
 
 
 def test_decided_and_rejected_are_at_the_top(project, model, mailbox):
@@ -481,12 +480,15 @@ def test_since_starts_the_conversation_at_that_message(project, model, mailbox):
     assert "Which for the login token?" not in json.dumps(draft) and "Which for the login token?" not in "".join(model)
 
 
-def test_email_addresses_and_phone_numbers_are_listed_in_the_preview(project, model, mailbox):
+def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_them(project, model, mailbox):
+    """Listing them for the sender to remove by hand reached a public page anyway (2026-10-14): now they are
+    masked before anything leaves, and the preview says how many, up front."""
     write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
     result = _invoke("handoff", "send", SELF, "task")
-    private = result.output.split("Private details in it")[1].split("Draft:")[0]
-    assert "bob.smith@gmail.com" in private and "+61 435 525 634" in private
-    assert SELF not in private                                         # the sender's own address is the header
+    said = " ".join(result.output.split())
+    assert "Masked other people's contact details: 1 email address and 1 phone number in the brief" in said
+    assert "in the session copy that goes with it" in said
+    assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
 
 
 def test_session_by_id_or_path(project, tmp_path):
@@ -998,3 +1000,22 @@ def test_a_credential_in_the_code_points_to_a_way_out(project, model, mailbox, t
     _session_in(project, repo)
     result = _invoke("handoff", "send", SELF, "task")
     assert result.exit_code == 1 and "--no-code" in result.output
+
+
+def test_lang_sets_the_language_of_the_report_and_the_mail_not_of_the_quotes(project, model, mailbox):
+    """Students read English; Aaron's session is in Chinese and there was no way to choose (b25)."""
+    write_codex_session(project, extra=" 这一步先别改代码，只看日志")
+    result = _invoke("handoff", "send", SELF, "task", "--lang", "en")
+    assert result.exit_code == 0, result.output
+    assert "Write every field in English" in model[-1]
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert draft["lang"] == "en" and "这一步先别改代码" in draft["conversation"][0]["user"]
+    assert _invoke("handoff", "send", SELF, "task", "--lang", "fr").exit_code != 0
+
+
+def test_a_long_handoff_previews_its_newest_messages_not_all_of_it(project, model, mailbox):
+    """P0-4: a long session's preview ran past 100,000 characters."""
+    write_codex_session(project, extra=" " + "word " * 9000)
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 0, result.output
+    assert len(result.output) < 30_000 and "characters in full" in result.output

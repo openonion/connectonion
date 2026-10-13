@@ -62,7 +62,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
     monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
-    monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.chdir(tmp_path)
     return {"mails": mails, "inbox": inbox, "be": be, "drops": drops}
@@ -170,7 +170,7 @@ def test_after_acceptance_the_sender_has_a_contact_and_the_recipient_a_handoff_p
     co_dir = Path(os.environ["AGENT_CONFIG_PATH"])
     assert not tools.is_contact(RECIPIENT["address"], co_dir)          # not before the sender sees the acceptance
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert f"{RECIPIENT['address']} is now your agent's contact bob (co trust list --global)" in status.output
+    assert "They are now your agent's contact bob; co handoff send bob reaches them again" in status.output
     assert tools.is_contact(RECIPIENT["address"], co_dir) and not tools.is_whitelisted(RECIPIENT["address"], co_dir)
     assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True}}  # kept its name; reads the inbox
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
@@ -233,7 +233,7 @@ def test_accept_reaches_the_sender_and_status_shows_it(world, tmp_path):
 
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert f"Accepted by {RECIPIENT['address']} ({RECIPIENT['mail']})" in status.output
+    assert f"Accepted by {RECIPIENT['mail']}" in status.output
 
 
 def test_question_and_answer_round_trip(world):
@@ -269,7 +269,7 @@ def test_a_wrong_secret_or_a_second_acceptor_is_not_recorded(world):
     _invoke("handoff", "ask", code, "let me in")
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert f"Accepted by {RECIPIENT['address']}" in status.output
+    assert f"Accepted by {RECIPIENT['mail']}" in status.output
     assert "let me in" not in status.output and "Ignored 2 acceptance or question(s)" in status.output
 
 
@@ -363,7 +363,7 @@ def test_after_the_first_mail_every_reply_goes_to_the_agent_inbox(world):
 
     world["be"](SENDER)
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert f"Accepted by {RECIPIENT['address']}" in status.output and "7 days or 30?" in status.output
+    assert f"Accepted by {RECIPIENT['mail']}" in status.output and "7 days or 30?" in status.output
     assert _invoke("handoff", "answer", "ho-1a2b3c4d", "30 days").exit_code == 0
     assert world["inbox"][-1]["to"] == RECIPIENT["address"]
 
@@ -808,7 +808,7 @@ class _FakeGmail:
 
 def test_with_a_gmail_connected_the_handoff_goes_from_it_not_the_agent_mailbox(world, monkeypatch):
     _FakeGmail.sent = []
-    monkeypatch.setattr(transport, "own_mailbox", lambda: ("gmail", "alice.liddell@gmail.com"))
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "alice.liddell@gmail.com"})
     monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
@@ -866,3 +866,106 @@ def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(worl
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output
     assert "ho-1a2b3c4d" in listed
+
+
+def test_sent_from_outlook_it_names_the_outlook_address_even_with_gmail_connected_too(world, monkeypatch):
+    """Live b25: --via outlook said "from your Outlook (openonionai@gmail.com)", the first mailbox found."""
+    _FakeGmail.sent = []
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "g@gmail.com", "outlook": "aaron@outlook.com"})
+    monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    preview = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
+    assert "It goes from your Outlook, aaron@outlook.com" in preview
+    sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes", "--via", "outlook")
+    assert "from your Outlook (aaron@outlook.com)" in sent.output
+    record = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())
+    assert record["from"] == "aaron@outlook.com"
+
+
+def test_the_sender_can_take_the_page_down(world, monkeypatch):
+    """A page that shows what it should not (#2492) comes down at once, not in 30 days."""
+    _send(world)
+    gone = []
+    monkeypatch.setattr(transport, "_delete_drop", lambda drop_id: (gone.append(drop_id), world["drops"].pop(drop_id)))
+    page = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())["page"]
+    result = _invoke("handoff", "withdraw", "ho-1a2b3c4d")
+    assert result.exit_code == 0, result.output
+    assert gone == [page.rsplit("/", 1)[1]] and not world["drops"]
+    assert "taken down" in result.output and page in result.output
+
+
+# ---- b24/b25 audit, round 4: what the sender reads after sending ----
+
+def test_status_leads_with_one_line_on_where_it_stands_and_no_hex(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    world["be"](SENDER)
+    said = _invoke("handoff", "status", "ho-1a2b3c4d").output
+    first = said.split("What you shared")[0].splitlines()[1]
+    assert " is working on it · 1 question" in first and RECIPIENT["address"] not in said, first
+    assert RECIPIENT["address"] in _invoke("handoff", "status", "ho-1a2b3c4d", "--verbose").output
+
+
+def test_an_answer_you_typed_is_shown_as_yours_not_as_automatic(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "max length?")
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert _invoke("handoff", "answer", "ho-1a2b3c4d", "80 characters").exit_code == 0
+    said = _invoke("handoff", "status", "ho-1a2b3c4d").output
+    assert "max length?\n  You answered" in said and "80 characters" in said
+    assert "max length?\n  Answered automatically" not in said
+
+
+def test_a_question_saying_the_copy_lacks_it_waits_on_the_sender_instead_of_another_pointer(world, tmp_path):
+    """b24 demo: 'I read the entire session.md… it contains no max-length discussion' got the same pointer back."""
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    _invoke("handoff", "ask", code, "q1?")
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    world["be"](RECIPIENT)
+    _invoke("handoff", "ask", code, "I read the entire session.md; it has no max-length discussion. Which limit?")
+    before = len(world["inbox"])
+    world["be"](SENDER)
+    said = _invoke("handoff", "status", "ho-1a2b3c4d").output
+    assert "Which limit?\n  Waiting on you" in said
+    assert not [m for m in world["inbox"][before:] if "answer" in transport._as_mail(m)["subject"]]
+    assert 'co handoff answer ho-1a2b3c4d "<your answer>"' in said
+
+
+def test_after_done_with_a_patch_the_next_step_is_to_apply_it(world, tmp_path):
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    patch = tmp_path / "result.patch"
+    patch.write_text("diff --git a/x b/x\n")
+    _invoke("handoff", "done", code, "fixed", "--file", str(patch))
+    world["be"](SENDER)
+    said = " ".join(_invoke("handoff", "status", "ho-1a2b3c4d").output.split())
+    assert "Next: git apply " in said and "result.patch" in said and "Next: co handoff status" not in said
+
+
+def test_the_rules_keep_internal_paths_out_of_what_the_recipient_is_told(world):
+    world["be"](RECIPIENT)
+    said = " ".join(_invoke("handoff", "accept", _code(_send(world))).output.split())
+    assert "do not mention the handoff skill" in said
+
+
+def test_with_no_address_stored_for_outlook_the_line_names_no_empty_address(world, monkeypatch):
+    """Review: 'It goes from your Outlook, , to …' when the record kept no EMAIL."""
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"outlook": ""})
+    world["be"](SENDER)
+    drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    said = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
+    assert f"It goes from your Outlook to {RECIPIENT['mail']}" in " ".join(said.split()) and ", ," not in said

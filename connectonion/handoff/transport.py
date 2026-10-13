@@ -118,14 +118,20 @@ def _inbox_agent(to: str) -> str | None:
 VIA = ("auto", "mcp", "gmail", "outlook", "agent")
 
 
-def own_mailbox() -> tuple[str, str] | None:
-    """("gmail" | "outlook", address) for a mailbox of the person's own connected to co with send access."""
+def own_mailboxes() -> dict[str, str]:
+    """{"gmail" | "outlook": address} for each mailbox of the person's own connected with send access."""
     from ..provider_credentials import resolve_provider_credentials
+    found = {}
     for provider, channel, scope in (("google", "gmail", "gmail.send"), ("microsoft", "outlook", "Mail.Send")):
         record = resolve_provider_credentials(provider)
         if scope in record.scopes and (record.get("ACCESS_TOKEN") or record.get("REFRESH_TOKEN")):
-            return channel, record.get("EMAIL") or ""
-    return None
+            found[channel] = record.get("EMAIL") or ""
+    return found
+
+
+def own_mailbox() -> tuple[str, str] | None:
+    """The first of them, Gmail before Outlook: where a handoff goes from unless --via names one."""
+    return next(iter(own_mailboxes().items()), None)
 
 
 def channel_for(via: str) -> str:
@@ -157,7 +163,8 @@ def _mail_from(channel: str, to: str, mail: dict, idempotency_key: str) -> dict:
     tool = _own_tool(channel)
     said = tool.send(to, mail["subject"], mail["text"], html=mail["html"])
     found = re.search(r"Message ID: (\S+)", said)
-    return {"success": True, "via": channel, "from": own_mailbox()[1], "message_id": found.group(1) if found else ""}
+    return {"success": True, "via": channel, "from": own_mailboxes().get(channel, ""),
+            "message_id": found.group(1) if found else ""}
 
 
 def _own_tool(channel: str):
@@ -268,6 +275,20 @@ def _put_drop(body: str, drop_id: str) -> str:
                              headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
     response.raise_for_status()
     return response.json()["id"]
+
+
+def _delete_drop(drop_id: str) -> None:
+    import requests
+    from ..backend import backend_url
+    from ..credentials import require_ambient_api_key
+    response = requests.delete(f"{backend_url()}/api/v1/drops/{drop_id}",
+                               headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    response.raise_for_status()
+
+
+def withdraw(page: str) -> None:
+    """Take a handoff's page down, and its pickup with it: only the agent that dropped it can (#2492)."""
+    _delete_drop(page.rstrip("/").rsplit("/", 1)[1])
 
 
 def _get_drop(drop_id: str) -> str:
