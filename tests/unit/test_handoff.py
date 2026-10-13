@@ -109,7 +109,7 @@ def mailbox(monkeypatch):
     """The agent mailbox, faked at the transport's two functions."""
     mails = []
 
-    def deliver(to, subject, body, idempotency_key):
+    def deliver(to, subject, body, idempotency_key, mail_too=False):
         mails.append({"id": str(len(mails) + 1), "from": SELF, "to": to, "subject": subject,
                       "message": body, "timestamp": "2026-10-10T10:05:00"})
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": SELF}

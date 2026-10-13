@@ -167,8 +167,13 @@ def _preview(bundle: dict, path: Path) -> None:
     if private:
         out.print(style.warn(f"Private details in it ({len(private)}): remove them with --edit, or start later with "
                              f"--since <N>, unless the recipient needs them."))
-        for hit in private[:10]:
+        for hit in private:
             out.print(f"  {hit}", markup=False)
+    unpushed = [c for c in bundle.get("code") or [] if not c.get("pushed")]
+    for repo in unpushed:
+        where = repo.get("repository") or "a repository with no remote"
+        out.print(style.warn(f"The code is not pushed ({where}, {repo.get('branch')}): they cannot get it, only the "
+                             "session copy. Push it first (git push), or they will ask you to."), markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
 
@@ -180,7 +185,7 @@ def _deliver(bundle: dict) -> None:
     # Gmail clips a mail past about 102 KB, and the block to paste must arrive whole.
     prompt = replies.prompt(bundles.brief_markdown(bundle, conversation_chars=50_000), code, bundle["id"], bundle["from"])
     subject, body = bundles.to_mail(bundle, prompt)
-    result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"])
+    result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"], mail_too=True)
     if not result.get("success"):
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": subject,
@@ -197,8 +202,8 @@ def _deliver(bundle: dict) -> None:
     path.chmod(0o600)
     out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" (message {record['message_id']}).")
     if record["via"] == "agent inbox":
-        out.print("They are a contact, so it went to their agent's inbox, not their mail: "
-                  "co handoff inbox shows it on their side.")
+        mailed = "mailed to them, and " if result.get("mailed") else "not mailed (the mail service failed), only "
+        out.print(f"They are a contact, so it was {mailed}put in their agent's inbox (co handoff inbox on their side).")
     out.print("It is this prompt. To use another channel (chat, WhatsApp), send them the same block:")
     print(prompt)   # plain print: Rich would wrap the code and the commands
     _next(f"co handoff status {bundle['id']} --wait  (in the background: it returns when they accept or ask)")
@@ -274,6 +279,10 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
               f"co handoff send {shlex.quote(name)} reaches them again.")
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
+    for done in state["done"]:
+        out.print(style.ok(f"Done, {done['at']}: ") + done["text"].replace("[", "\\["))
+        if "file" in done:
+            out.print(f"  Their file: {style.path(_save_result(handoff_id, done))}")
     news = replies.answer_automatically(record, state)
     answered = [q for q in state["questions"] if replies.question_key(q) in record.get("answered", [])]
     for q in state["questions"]:
@@ -282,12 +291,23 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
             out.print(f"  Answered automatically: {_how_answered(record, q)}", markup=False)
     for line in [n for n in news if " could not answer " in n]:
         out.print(line.replace(f"[handoff] {handoff_id} could not", "Could not"), markup=False)
-    if state["questions"]:
+    if state["questions"] and not state["done"]:
         also = "  (only if the session copy does not answer it)" if len(answered) == len(state["questions"]) else ""
         _next(f'co handoff answer {handoff_id} "<your answer>"{also}')
+    elif state["done"]:
+        _next(f"co handoff status {handoff_id}")
     else:
         out.print("No questions yet.")
         _next(f"co handoff status {handoff_id}")
+
+
+def _save_result(handoff_id: str, done: dict) -> Path:
+    """The file a recipient sent with `done`, under ~/.co/handoff/results/<id>/ (its name, never its path)."""
+    folder = _home() / "results" / handoff_id
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / Path(done["name"]).name
+    path.write_bytes(replies.unpack_file(done["file"]))
+    return path
 
 
 def _how_answered(record: dict, question: dict) -> str:
@@ -359,8 +379,9 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
               f"co handoff send {shlex.quote(name)} hands work back.")
     if brief:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
-    out.print("Continue from the brief; ask the person here before changing anything.")
-    _next(f'co handoff ask {code_text} "<question the brief does not answer>"')
+    out.print("Continue from the brief. Ask the sender what it does not say: "
+              f'co handoff ask {code_text} "<question>"', markup=False)
+    _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
 
 
 def handle_ask(code_text: str, question: str) -> None:
@@ -372,6 +393,22 @@ def handle_ask(code_text: str, question: str) -> None:
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f'co handoff ask {code_text} "<question>"')
     out.print(style.ok(f"Asked {code['mailbox']} about {code['id']}."))
+    _next(f"co handoff status {code['id']}")
+
+
+def handle_done(code_text: str, text: str, file: Optional[Path]) -> None:
+    code = _parse(code_text)
+    if not (_home() / "accepted" / code["id"] / "code.json").exists():
+        _fail(f"Handoff {code['id']} is not accepted on this machine yet.", f"co handoff accept {code_text}")
+    _mail_ready()
+    extra = {"file": replies.pack_file(file), "name": file.name} if file else {}
+    if len(extra.get("file", "")) > replies.COPY_BUDGET:
+        _fail(f"{file.name} is too large to send with a handoff ({len(extra['file']):,} bytes packed, at most "
+              f"{replies.COPY_BUDGET:,}).", f'push it, then co handoff done {code_text} "<what you did, and the branch>"')
+    result = replies.send("done", code, code["mailbox"], agent=_their_agent(code), text=text, **extra)
+    if not result.get("success"):
+        _fail(f"Not delivered: {result.get('error')}", f'co handoff done {code_text} "<what you did>"')
+    out.print(style.ok(f"Told {code['mailbox']} that {code['id']} is done") + (f", with {file.name}." if file else "."))
     _next(f"co handoff status {code['id']}")
 
 
@@ -410,10 +447,11 @@ def _incoming() -> list[tuple[dict, dict]]:
     from .project_cmd_lib import load_api_key
     if not load_api_key():
         _fail("Not signed in, so the agent mailbox cannot be read.", "co auth")
-    found = []
-    for mail in transport.fetch():
+    found, ids = [], set()
+    for mail in transport.fetch():   # a handoff to a contact arrives twice: mailed, and in the agent inbox
         bundle = bundles.from_mail(mail.get("message", ""))
-        if bundle:
+        if bundle and bundle["id"] not in ids:
+            ids.add(bundle["id"])
             found.append((mail, bundle))
             _keep(bundle, mail.get("message", ""))
     return found
@@ -580,6 +618,15 @@ def make_handoff_app(factory) -> typer.Typer:
     ):
         """Ask the sender of an accepted handoff a question. Sends it to their agent mailbox; their answer shows in co handoff status."""
         handle_ask(code, question)
+
+    @app.command("done", epilog='Example:  co handoff done coh2.k1C7... "Fixed in dedupe.py; 4 tests pass" --file result.patch')
+    def done(
+        code: str = typer.Argument(..., help="The coh2.… code from the handoff prompt"),
+        text: str = typer.Argument(..., help="What you did, and where the result is (branch, PR)"),
+        file: Optional[Path] = typer.Option(None, "--file", exists=True, dir_okay=False, help="A patch or result file to send with it"),
+    ):
+        """Tell the sender a handoff you accepted is done: what you did, and optionally a file. Sends it to their agent; their co handoff status shows it."""
+        handle_done(code, text, file)
 
     @app.command("answer", epilog='Example:  co handoff answer ho-1a2b3c4d "30 days"')
     def answer(

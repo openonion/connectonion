@@ -1,4 +1,4 @@
-"""While co ai runs, notice acceptances and questions on handoffs this agent sent.
+"""While co ai runs, notice acceptances, questions and results on handoffs this agent sent.
 
 It only polls the mailbox while a handoff sent in the last 14 days is waiting,
 so an agent that never hands anything off makes no requests. `co handoff status`
@@ -31,7 +31,7 @@ def check() -> list[str]:
     for path in waiting:
         record = json.loads(path.read_text(encoding="utf-8"))
         state = replies.settle(record, mails)
-        seen = record.get("seen", {"accepted": False, "questions": []})
+        seen = {"done": [], **record.get("seen", {"accepted": False, "questions": []})}
         told = replies.answered_keys({"answered": seen["questions"]}, state["questions"])   # 1.9.2b13 kept a count
         who = state["accepted"]
         if who and not seen["accepted"]:
@@ -39,8 +39,11 @@ def check() -> list[str]:
             news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as contact {name}")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
                  for q in state["questions"] if replies.question_key(q) not in told]
+        news += [f"[handoff] {record['id']} done: {d['text']}  (co handoff status {record['id']})"
+                 for d in state["done"] if d["at"] not in seen["done"]]
         news += replies.answer_automatically(record, state)
-        record["seen"] = {"accepted": bool(who), "questions": [replies.question_key(q) for q in state["questions"]]}
+        record["seen"] = {"accepted": bool(who), "questions": [replies.question_key(q) for q in state["questions"]],
+                          "done": [d["at"] for d in state["done"]]}
         path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return news
 
