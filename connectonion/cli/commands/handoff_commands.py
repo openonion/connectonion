@@ -200,7 +200,12 @@ def _my_name() -> str:
     """The sender's git user.name, so a person reads a name and not only 0x… ("" when unset)."""
     import subprocess
     found = subprocess.run(["git", "config", "--global", "user.name"], capture_output=True, text=True)
-    return found.stdout.strip()
+    return _as_name(found.stdout.strip())
+
+
+def _as_name(name: str) -> str:
+    """A one-word, all-lowercase git name ("aaron") signs a mail as "Aaron"; anything else as written."""
+    return name.capitalize() if name.islower() and " " not in name else name
 
 
 def _where_it_went(record: dict) -> str:

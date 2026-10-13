@@ -30,7 +30,8 @@ END = "----- END CO HANDOFF BUNDLE -----"
 
 
 class Top(BaseModel):
-    title: str = Field(description="The task in one line")
+    title: str = Field(description="The work in one line, as a name for it, not an instruction: never start with "
+                       "'Pick up', 'Continue', 'Take over' or 接着做/继续 (the mail already asks them to pick it up)")
     headline: str = Field(default="", description="Who worked on what, and when, in one line a stranger understands")
     discussed: list[str] = Field(default_factory=list, description="3 to 5 things the conversation covered, in plain words")
     task: str = Field(description="What the sender asked for, and what 'done' means")
@@ -104,7 +105,13 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     top = llm_do(TOP_PROMPT.format(who=who, lang=lang, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
     top.diagram = diagram_lines(top.diagram)
+    top.title = ORDER.sub("", top.title).strip() or top.title
     return top
+
+
+# The mail asks "Could you pick up “{title}”?"; a title that is itself an order repeats the verb (b26 review).
+ORDER = re.compile(r"^\s*(?:(?:pick up|continue(?: with)?|take over|hand off|finish)\b[\s:：-]*|(?:接着做|继续做|继续|接手)[\s:：-]*)",
+                   re.I)
 
 
 def diagram_lines(diagram: str) -> str:

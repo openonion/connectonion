@@ -476,3 +476,22 @@ def test_masking_also_reaches_cjk_glued_addresses_chinese_mobiles_and_every_peop
                  "sasha", "tamara"):
         assert gone not in out, gone
     assert "orgs/unsw.md" in out and "people/[person]" in out
+
+
+def test_the_title_is_the_work_not_an_order_so_the_subject_does_not_repeat_its_verb(monkeypatch):
+    """b26 review: 'Could you pick up "Pick up co rem improvements…"?'"""
+    import sys
+    import connectonion.llm_do  # noqa: F401
+    for drafted, kept in [("Pick up co rem improvements", "co rem improvements"),
+                          ("Continue: the login fix", "the login fix"), ("接着做 co rem 改进", "co rem 改进"),
+                          ("co rem improvements", "co rem improvements")]:
+        monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", lambda prompt, output=None, **kw: (
+            bundles.Top(title=drafted, task="t", where_it_stands="w")))
+        assert bundles.draft([{"at": "", "user": "u", "ai": ""}], "w").title == kept
+
+
+def test_a_one_word_lowercase_git_name_reads_as_a_name():
+    from connectonion.cli.commands import handoff_commands
+    assert handoff_commands._as_name("aaron") == "Aaron"
+    assert handoff_commands._as_name("Aaron Xie") == "Aaron Xie" and handoff_commands._as_name("") == ""
+    assert handoff_commands._as_name("de la cruz") == "de la cruz"      # several words: written as they chose
