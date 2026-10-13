@@ -735,3 +735,36 @@ def test_the_inbox_names_the_sender_by_the_name_their_handoff_carries(world):
     listed = _invoke("handoff", "inbox").output
     # b21 on Parrot listed "from 0x5fb5bef013 (0x5fb5bef013@mail…)" for a sender whose bundle said Aaron Test.
     assert f"from Alice Liddell ({SENDER['mail']})" in listed
+
+
+def test_follow_feeds_the_senders_own_answer_back_into_the_opened_session_until_done(world, monkeypatch, tmp_path):
+    """b22 on Parrot: the agent asked what only the sender knew, the sender answered by hand, and nothing
+    picked it up: the session had ended. follow runs the work turn, then each hand answer, until done."""
+    from connectonion.cli.commands import handoff_commands
+    from connectonion.handoff import opener
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    turns = []
+
+    def turn(agent, session, cwd, prompt):
+        turns.append(prompt)
+        if len(turns) == 1:                                          # the work turn asks, the sender answers
+            _invoke("handoff", "ask", code, "Suffix inside the limit?")
+            world["be"](SENDER)
+            _invoke("handoff", "status", "ho-1a2b3c4d")                 # their agent answers automatically
+            _invoke("handoff", "answer", "ho-1a2b3c4d", "No: the suffix may exceed N.")
+            world["be"](RECIPIENT)
+        else:
+            _invoke("handoff", "done", code, "Truncation with suffixes, 6 tests pass")
+    monkeypatch.setattr(opener, "turn", turn)
+    monkeypatch.setattr(handoff_commands.time, "sleep", lambda s: None)
+    monkeypatch.setattr(handoff_commands, "_accept_code", lambda handoff_id: code)
+    # The first answer must arrive after the work turn's own snapshot, as it did on Parrot.
+    real = handoff_commands._answers_by_hand
+    calls = []
+    monkeypatch.setattr(handoff_commands, "_answers_by_hand",
+                        lambda hid: (calls.append(1), [] if len(calls) == 1 else real(hid))[1])
+    handoff_commands.handle_follow("ho-1a2b3c4d", "codex", "thread-1", tmp_path)
+    assert len(turns) == 2 and "No: the suffix may exceed N." in turns[1]
+    assert not any("Answered automatically" in t for t in turns)                 # only the sender's own words

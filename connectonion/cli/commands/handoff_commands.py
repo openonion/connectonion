@@ -535,6 +535,7 @@ def handle_done(code_text: str, text: str, file: Optional[Path]) -> None:
     result = replies.send("done", code, code["mailbox"], agent=_their_agent(code), text=text, **extra)
     if not result.get("success"):
         _fail(f"Not delivered: {result.get('error')}", f'co handoff done {code_text} "<what you did>"')
+    (_home() / "accepted" / code["id"] / "done.json").write_text(json.dumps({"text": text}) + "\n", encoding="utf-8")
     out.print(style.ok(f"Told {code['mailbox']} that {code['id']} is done") + (f", with {file.name}." if file else "."))
     _next(f"co handoff status {code['id']}")
 
@@ -695,6 +696,32 @@ def _accept_code(handoff_id: str) -> Optional[str]:
     return found.group(1) if found else None
 
 
+FOLLOW_DAYS = 7   # how long a followed handoff keeps waiting for the sender to answer
+
+
+def handle_follow(handoff_id: str, agent: str, session: str, cwd: Path) -> None:
+    """The work turn, then each answer the sender gives by hand goes back into the same session, until done."""
+    from .project_cmd_lib import load_api_key
+    load_api_key()
+    bundle = _find(handoff_id)
+    opener.turn(agent, session, cwd, opener.work_prompt(bundle, cwd, _accept_code(handoff_id)))
+    seen = {a["at"] for a in _answers_by_hand(handoff_id)}   # the work turn waited for these itself
+    deadline = time.time() + FOLLOW_DAYS * 86400
+    while not (_home() / "accepted" / handoff_id / "done.json").exists() and time.time() < deadline:
+        for answer in [a for a in _answers_by_hand(handoff_id) if a["at"] not in seen]:
+            opener.turn(agent, session, cwd, opener.answered_prompt(bundle, answer["text"]))
+            seen |= {a["at"] for a in _answers_by_hand(handoff_id)}
+        time.sleep(60)
+
+
+def _answers_by_hand(handoff_id: str) -> list[dict]:
+    """The sender's own answers on a handoff accepted here; their agent's automatic ones are left out."""
+    code = json.loads((_home() / "accepted" / handoff_id / "code.json").read_text(encoding="utf-8"))
+    return [b for b in replies.received(handoff_id)
+            if b["kind"] == "answer" and b["secret"] == code["secret"] and b["address"] == code["address"]
+            and not b.get("text", "").startswith("Answered automatically")]
+
+
 def _print_resume(handoff_id: str, record: dict) -> None:
     out.print(f"Continue it:  {record['resume']}", markup=False)
     out.print(f"Ask one question:  {record['ask']}", markup=False)
@@ -803,6 +830,16 @@ def make_handoff_app(factory) -> typer.Typer:
     ):
         """Read one incoming handoff: the task, the code, and the conversation. Read-only."""
         handle_show(handoff_id)
+
+    @app.command("follow", hidden=True)
+    def follow(
+        handoff_id: str = typer.Argument(..., help="Handoff id"),
+        agent: str = typer.Option("codex", "--agent", help="codex or claude"),
+        session: str = typer.Option(..., "--session", help="The session co handoff open started"),
+        cd: Path = typer.Option(..., "--cd", help="The folder it works in"),
+    ):
+        """Run by co handoff open in the background: the work turn, then the sender's answers into the same session until done. Runs model turns."""
+        handle_follow(handoff_id, agent, session, cd)
 
     @app.command("open", epilog="Examples:  co handoff open ho-1a2b3c4d  |  co handoff open handoff.eml --agent claude --cd ~/project")
     def open_(
