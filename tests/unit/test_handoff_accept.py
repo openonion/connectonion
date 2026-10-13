@@ -54,13 +54,18 @@ def world(monkeypatch, tmp_path):
         m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
     monkeypatch.setattr(transport, "_read_messages", lambda: [
         transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
-    def put_drop(body, drop_id):
-        drops[drop_id] = body
+    def put_drop(body, drop_id, key_hash):
+        drops[drop_id], keys[drop_id] = body, key_hash
         return drop_id
 
-    drops = {}
+    def get_drop(drop_id, key):   # as oo-api#267: the whole drop only for the holder of its key (#2496)
+        import hashlib
+        assert keys[drop_id] and hashlib.sha256(key.encode()).hexdigest() == keys[drop_id], "no key, or the wrong one"
+        return drops[drop_id]
+
+    drops, keys = {}, {}
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
-    monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
+    monkeypatch.setattr(transport, "_get_drop", get_drop)
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
     monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")

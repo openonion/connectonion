@@ -385,7 +385,7 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
                               "hash": bundle["content_hash"], "secret": secret, "drop": drop})
     full = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
-    transport.drop(bundle, code=_draft_code(bundle["id"]), context=context, drop_id=drop, prompt=full)
+    transport.drop(bundle, code=_draft_code(bundle["id"]), context=context, drop_id=drop, prompt=full, key=secret)
     prompt = replies.paste(bundles.person_name(bundle), bundle["title"], transport.agent_url(drop), bundles.language(bundle))
     mail = bundles.notice(bundle, prompt, transport.viewer_url(drop))
     # Their agent reads the inbox copy itself: it carries the whole prompt, code and all (co handoff show).

@@ -9,6 +9,7 @@ and `fetch` are the only two functions that know this.
 """
 
 import html
+import hashlib
 import json
 import os
 import re
@@ -243,14 +244,16 @@ def page_prompt(drop_id: str) -> str:
     return response.json().get("prompt", "")
 
 
-def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "") -> str:
+def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "", key: str = "") -> str:
     """Hold the handoff on the backend until the recipient accepts; returns the id their code carries.
 
     A first recipient has no agent address until they install co, so the agent inbox cannot hold it
     for them (#2459). With it go the code they cannot fetch (#2469) and the redacted session copy, so
-    nothing waits on the sender's machine being online. Drops expire after 30 days."""
+    nothing waits on the sender's machine being online. Drops expire after 30 days. `key` is the code's
+    secret: only its hash goes to the server, which then gives the whole drop to its holder alone (#2496)."""
     body = {"bundle": bundle, "code": list(code), "context": context, "prompt": prompt}
-    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id())
+    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id(),
+                     hashlib.sha256(key.encode()).hexdigest() if key else None)
 
 
 def pickup(code: dict) -> dict:
@@ -258,7 +261,7 @@ def pickup(code: dict) -> dict:
     and each patch matches the digest the approved bundle records."""
     from .bundle import seal
     from .sessions import patch_digest
-    body = json.loads(_get_drop(code["drop"]))
+    body = json.loads(_get_drop(code["drop"], code["secret"]))
     if seal(body["bundle"])["content_hash"] != code["hash"]:
         raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
     for entry, patch in zip(body["bundle"].get("code") or [], body.get("code") or []):
@@ -267,11 +270,11 @@ def pickup(code: dict) -> dict:
     return {"bundle": body["bundle"], "code": body.get("code") or [], "context": body.get("context", "")}
 
 
-def _put_drop(body: str, drop_id: str) -> str:
+def _put_drop(body: str, drop_id: str, key_hash: str | None) -> str:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.post(f"{backend_url()}/api/v1/drops", json={"id": drop_id, "body": body},
+    response = requests.post(f"{backend_url()}/api/v1/drops", json={"id": drop_id, "body": body, "key_hash": key_hash},
                              headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
     response.raise_for_status()
     return response.json()["id"]
@@ -291,12 +294,12 @@ def withdraw(page: str) -> None:
     _delete_drop(page.rstrip("/").rsplit("/", 1)[1])
 
 
-def _get_drop(drop_id: str) -> str:
+def _get_drop(drop_id: str, key: str) -> str:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}",
-                            headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}", timeout=30,
+                            headers={"Authorization": f"Bearer {require_ambient_api_key()}", "X-Drop-Key": key})
     response.raise_for_status()
     return response.json()["body"]
 
