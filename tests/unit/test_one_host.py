@@ -134,3 +134,35 @@ def test_co_ai_answers_each_channel_once_through_the_host(monkeypatch):
 
     assert [c.provider for c in hosted["listen"]] == ["telegram"]
     assert {t.name for t in threading.enumerate()} - before == set()
+
+
+def test_any_host_answers_questions_on_handoffs_it_sent(project, monkeypatch):
+    """#2453: only co ai ran the handoff watcher, so a sender on co host, python agent.py or co deploy
+    never answered; the recipient's `status --wait` waited until the sender happened to run status."""
+    from connectonion.handoff import watch
+    started, stopped = [], []
+
+    class Stop:
+        def set(self):
+            stopped.append(True)
+    monkeypatch.setattr(watch, "start", lambda *a, **kw: started.append(True) or Stop())
+    built = _host(project, monkeypatch, "")
+    asyncio.run(built["on_startup"]())
+    asyncio.run(built["on_shutdown"]())
+    assert started == [True] and stopped == [True]
+
+
+def test_co_ai_does_not_start_a_second_handoff_watcher(monkeypatch):
+    from connectonion.cli.commands import ai_commands
+    from connectonion.cli.co_ai import main as co_ai_main
+    from connectonion.handoff import watch
+    started = []
+    monkeypatch.setattr(watch, "start", lambda *a, **kw: started.append(True))
+    monkeypatch.setattr(ai_commands, "_channels", lambda override: [])
+    hosted = {}
+    monkeypatch.setattr(co_ai_main, "host", lambda *a, **kw: hosted.update(kw))
+    monkeypatch.setenv("OPENONION_API_KEY", "k")
+    assert CliRunner().invoke(app, ["ai", "--no-launch", "--port", "8127"]).exit_code == 0
+    asyncio.run(hosted["on_agent_startup"]())
+    asyncio.run(hosted["on_agent_shutdown"]())
+    assert started == []

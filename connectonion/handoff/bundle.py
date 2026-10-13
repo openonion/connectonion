@@ -1,9 +1,11 @@
 """The handoff bundle: what crosses from one person's agent to another's.
 
-One message, kept the way a compaction keeps a conversation: every message the
-sender typed, word for word, and each stretch of the AI's replies summarised,
-plus a short Task / Where it stands / Open questions on top and where the code is.
-The AI's own text, tool output and the session file never leave the machine; the
+One message: every message the sender typed, word for word, and the AI's own text
+after each, quoted (a long one keeps its start and end), with a short report on
+top (Discussed, Concluded, Still open, a diagram) as a guide to the quotes, and
+where the code is. Originals over summaries (decision 076): a summary drops what
+its writer thought unimportant, and the reader cannot tell what is missing. Tool
+output and the session file stay on the machine until the first answer; the
 recipient asks for anything missing (co handoff ask). `content_hash` covers
 everything the sender saw in the preview, so the copy that arrives can be checked
 against the one that was approved.
@@ -27,42 +29,26 @@ BEGIN = "----- BEGIN CO HANDOFF BUNDLE -----"
 END = "----- END CO HANDOFF BUNDLE -----"
 
 
-class Reply(BaseModel):
-    n: int = Field(description="The number of the [n] message the AI was answering")
-    said: str = Field(description="What the AI said or did in reply")
-
-
-class Replies(BaseModel):
-    replies: list[Reply] = Field(default_factory=list, description="One per numbered message that has an AI part")
-
-
 class Top(BaseModel):
     title: str = Field(description="The task in one line")
+    headline: str = Field(default="", description="Who worked on what, and when, in one line a stranger understands")
+    discussed: list[str] = Field(default_factory=list, description="3 to 5 things the conversation covered, in plain words")
     task: str = Field(description="What the sender asked for, and what 'done' means")
     where_it_stands: str = Field(description="What is finished, what is in progress, what was tried, with the numbers")
     decided: list[str] = Field(default_factory=list, description="Each decision, with its reason")
     rejected: list[str] = Field(default_factory=list, description="Each option ruled out, with why")
     open_questions: list[str] = Field(default_factory=list, description="Each undecided question or action still owed, and who it waits on")
+    diagram: str = Field(default="", description="A small ASCII diagram of the flow or decision, or empty")
 
 
-# One model call reads at most this much conversation; a longer session is summarised in pieces.
-# 1.1M characters in one call took 241 s on a real 124 MB Claude Code session (study A, s12).
-CHUNK_CHARS = 120_000
-
-REPLIES_PROMPT = """These are numbered messages from a conversation between a person (Sender) and their
-coding AI. The Sender's words travel to a colleague word for word; you summarise the AI's side.
-
-For EVERY [n] that has an "AI:" part, even a short one, say what the AI said or did in reply:
-its findings with their numbers, what it decided or ruled out and why, what it changed
-(repository paths, commits, PRs, releases), and what it left unfinished. One to three
-sentences; up to six for a long stretch, but never drop a number, decision or change.
-Name things so a stranger understands them. Never copy a credential, token, key, invite
-code, or a path under a home directory.
-
-{transcript}"""
+# The AI's text for one turn, quoted: past this it keeps its start and (mostly) its end, where a
+# turn reports what it found and did. The report call reads at most TOP_CHARS, newest first.
+QUOTE_CHARS = 2_000
+TOP_CHARS = 400_000
 
 TOP_PROMPT = """A colleague's coding agent will continue this work from the conversation below: the
-Sender's messages word for word, and a summary of each AI reply. Write the part they read first.
+Sender's messages and the AI's replies, word for word (a long reply is cut in the middle). Write the
+part they read first; it is a guide to the quotes, which go with it.
 
 - task: the work the Sender names below ("own words"), not other work in the conversation, with
   what "done" means. A review stays a review and a question stays a question; never turn either
@@ -71,12 +57,21 @@ Sender's messages word for word, and a summary of each AI reply. Write the part 
   recipient's. Never pass one on, and never mention one. An owed action that needs permission
   (merge, publish, release, deploy, pay, delete) waits on the Sender, unless the Sender gave that
   permission to the recipient by name.
+- Limits the Sender put on their own AI ("don't change files", "just explain", "read only") are not
+  passed on either: they were for that session. The Sender's own words about what to hand off say what
+  the recipient does, and "done" is that. Never list such a limit as decided, rejected or open.
 - where_it_stands: what is finished, in progress and tried, with the numbers. Later messages
   override earlier ones: something requested early and done later is done.
 - decided / rejected: every decision and every ruled-out option, each with its reason.
 - open_questions: what is undecided or still owed (an action such as "revoke the key"), and who it waits on.
+- headline: one line a stranger understands: who, on what, and when ("Alice and Codex, 11 Oct: storing
+  the login token"). discussed: 3 to 5 plain bullets a person can read on a phone.
+- diagram: at most 10 lines of ASCII (─ │ ├ └ ► and spaces) showing the flow or the decision, with the
+  open branch marked "(open)"; empty when there is nothing to draw. Every box in it must come from the
+  conversation.
 Write only what the conversation established; if something is uncertain, say so.
 
+{who}
 The Sender's own words about what to hand off: {what}
 
 {transcript}"""
@@ -86,51 +81,60 @@ def new_id() -> str:
     return "ho-" + uuid.uuid4().hex[:8]
 
 
-def draft(exchanges: list[dict], what: str, model: str = None) -> tuple[Top, dict[int, str]]:
-    """The AI's side summarised in bounded pieces (in parallel), then the top written from all of it."""
-    from concurrent.futures import ThreadPoolExecutor
+AGENTS = {"codex": "Codex", "claude": "Claude Code"}
+
+
+def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
+          agent: str = "") -> tuple[Top, dict[int, str]]:
+    """The AI's side quoted, and the report on top written from the newest TOP_CHARS of it."""
     from ..llm_do import llm_do
     kwargs = {"model": model} if model else {}
-    pieces = _pieces([(n, e) for n, e in enumerate(exchanges, 1) if e["ai"]])
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        found = pool.map(lambda text: llm_do(REPLIES_PROMPT.format(transcript=text), output=Replies, **kwargs), pieces)
-        said = {r.n: r.said for result in found for r in result.replies}
-    transcript = "\n\n".join(f"[{n}] Sender: {e['user']}" + (f"\nAI, in summary: {said[n]}" if n in said else "")
-                             for n, e in enumerate(exchanges, 1))
-    top = llm_do(TOP_PROMPT.format(what=what or "(not stated; infer the task from the conversation)",
+    said = {n: quote(e["ai"]) for n, e in enumerate(exchanges, 1) if e["ai"]}
+    turns = [f"[{n}] Sender: {e['user']}" + (f"\nAI: {said[n]}" if n in said else "") for n, e in enumerate(exchanges, 1)]
+    kept = turns
+    while len(kept) > 1 and sum(len(t) + 2 for t in kept) > TOP_CHARS:
+        kept = kept[1:]
+    transcript = (f"[Messages 1 to {len(turns) - len(kept)} are left out here.]\n\n" if len(kept) < len(turns) else "") + "\n\n".join(kept)
+    day = next((e["at"][:10] for e in reversed(exchanges) if e["at"]), "")
+    who = (f"The Sender is {sender or 'unnamed'}, working with {AGENTS.get(agent, 'their AI')}"
+           + (f", on {day}." if day else "."))
+    top = llm_do(TOP_PROMPT.format(who=who, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
+    top.diagram = diagram_lines(top.diagram)
     return top, said
 
 
-def _pieces(numbered: list[tuple[int, dict]]) -> list[str]:
-    """Consecutive exchanges packed into pieces of at most CHUNK_CHARS. One reply longer than that
-    keeps its end, where an AI turn reports what it found and did."""
-    pieces, current = [], ""
-    for n, e in numbered:
-        ai = e["ai"] if len(e["ai"]) <= CHUNK_CHARS // 2 else "[…start cut…]\n" + e["ai"][-(CHUNK_CHARS // 2):]
-        text = f"[{n}] Sender: {e['user'][:CHUNK_CHARS // 4]}\nAI: {ai}"
-        if current and len(current) + len(text) > CHUNK_CHARS:
-            pieces.append(current)
-            current = ""
-        current += ("\n\n" if current else "") + text
-    return pieces + ([current] if current else [])
+def diagram_lines(diagram: str) -> str:
+    """Models sometimes return the diagram's line breaks as a literal backslash-n (seen live, 1.9.2b21)."""
+    return diagram.replace("\\n", "\n").rstrip()
+
+
+def quote(text: str) -> str:
+    """The AI's own words for one turn; a long one keeps its start and its end, and says how much was cut."""
+    if len(text) <= QUOTE_CHARS:
+        return text
+    head, tail = QUOTE_CHARS // 4, QUOTE_CHARS - QUOTE_CHARS // 4
+    return (f"{text[:head]}\n[… {len(text) - head - tail:,} characters cut; the full session comes with the first "
+            f"answer]\n{text[-tail:]}")
 
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
-             top: Top, said: dict[int, str], exchanges: list[dict], titles: dict[str, str] = None) -> dict:
+             top: Top, said: dict[int, str], exchanges: list[dict], titles: dict[str, str] = None,
+             sender_name: str = "") -> dict:
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
         "from": sender,
+        **({"from_name": sender_name} if sender_name else {}),
         "to": to,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
         "asked": what,
         **top.model_dump(),
         "code": code,
-        # The AI's own words stay here: only the summary of them goes.
         "conversation": [{"at": e["at"], "user": e["user"], "ai": said.get(n, "")}
                          for n, e in enumerate(exchanges, 1)],
+        "ai_quoted": True,   # 1.9.2b21: "ai" is the AI's own text, not a summary of it
     }
     # Each #N the handoff mentions, named from what the session itself read; numbers alone mean nothing.
     mentioned = dict.fromkeys(re.findall(r"#(\d{1,6})\b", json.dumps(bundle, ensure_ascii=False)))
@@ -155,7 +159,7 @@ CREDENTIAL_PATTERNS = {
     "private key block": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "ConnectOnion invite code": r"\b[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}\b",
     # A handoff code is the secret that accepts or asks on one handoff (replies.make_code).
-    "ConnectOnion handoff code": r"\bcoh[12]\.[A-Za-z0-9_-]{40,}",
+    "ConnectOnion handoff code": r"\bcoh[123]\.[A-Za-z0-9_-]{40,}",
     "JWT": r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
     "secret assignment": r"(?i)\b[A-Z0-9_]*(?:api[_-]?key|secret|token|password|passwd)[A-Z0-9_]*\\*['\"]?\s*[:=]\s*\\*['\"]?[A-Za-z0-9_\-/+=.]{16,}",
 }
@@ -249,8 +253,8 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
     <div>, never bare in a cell: the mail service writes the text part from this HTML and breaks
     lines only at blocks, so bare cells ran together ("ENDFirst time?").
     """
-    sender, title = html.escape(bundle["from"]), html.escape(bundle["title"])
-    subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {bundle['from']})"
+    sender, title = html.escape(sender_name(bundle)), html.escape(bundle["title"])
+    subject = f"[co handoff] {_one_line(bundle['title'], 70)} (from {sender_name(bundle)})"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
     body = (
@@ -268,17 +272,18 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
         f'{sender} used it to pass you this task. To continue, paste the block below into Codex or '
         'Claude Code on your computer. Nothing runs until you do.</div></td></tr>'
         f'<tr><td style="padding:2px 0 2px 16px;border-left:3px solid {_GREEN}">'
-        + _field("The task", html.escape(bundle["task"]))
-        + _field("Where it stands", html.escape(bundle["where_it_stands"]))
-        + _questions(bundle.get("open_questions", []))
+        + (_field("", html.escape(bundle["headline"])) if bundle.get("headline") else _field("The task", html.escape(bundle["task"])))
+        + _items("Discussed", bundle.get("discussed", []))
+        + _items("Concluded", bundle.get("decided", []))
+        + _items("Still open", bundle.get("open_questions", []))
         + '</td></tr>'
         '<tr><td style="padding:28px 0 4px"><h2 style="margin:0;font-size:19px">Continue it with your AI agent</h2></td></tr>'
         '<tr><td style="padding:0 0 16px">'
         + _step(1, "Open <b>Codex</b> or <b>Claude Code</b> on your computer, in the folder where you want to work.")
         + _step(2, "Copy everything between START and END below and paste it into your agent. "
                    f'<span style="color:{_MUTED}">On your phone? Open this email on that computer.</span>')
-        + _step(3, f"Your agent installs co if it is missing, tells {sender} you have picked the task up, "
-                   "then explains the task and asks before touching your files.")
+        + _step(3, f"Your agent installs co if it is missing, fetches the handoff, and opens it as "
+                   f"{sender}'s session: what they discussed, what they concluded, what is still open.")
         + '</td></tr>'
         f'<tr><td style="padding:0 0 6px;{_LABEL}"><div>START</div></td></tr>'
         f'<tr><td style="{_FRAME}"><pre style="{_PRE}">{html.escape(prompt.strip())}</pre></td></tr>'
@@ -294,14 +299,15 @@ def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
 
 
 def _field(label: str, text: str) -> str:
-    return f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p><p style="margin:0 0 12px">{text}</p>'
+    head = f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p>' if label else ""
+    return f'{head}<p style="margin:0 0 12px">{text}</p>'
 
 
-def _questions(questions: list[str]) -> str:
-    if not questions:
+def _items(label: str, items: list[str]) -> str:
+    if not items:
         return ""
-    items = "".join(f'<li style="margin:0 0 4px">{html.escape(q)}</li>' for q in questions)
-    return f'<p style="margin:0 0 2px;{_LABEL}">OPEN QUESTIONS</p><ul style="margin:0 0 8px;padding-left:20px">{items}</ul>'
+    lis = "".join(f'<li style="margin:0 0 4px">{html.escape(item)}</li>' for item in items)
+    return f'<p style="margin:0 0 2px;{_LABEL}">{label.upper()}</p><ul style="margin:0 0 8px;padding-left:20px">{lis}</ul>'
 
 
 def _step(number: int, text: str) -> str:
@@ -388,7 +394,8 @@ def _listed(items: list[str]) -> str:
 
 
 def conversation_text(bundle: dict, chars: int = None) -> str:
-    turns = [f"[{n}] {bundle['from']}:\n{e['user']}" + (f"\n\nAI, in summary: {e['ai']}" if e["ai"] else "")
+    label = "AI" if bundle.get("ai_quoted") else "AI, in summary"
+    turns = [f"[{n}] {sender_name(bundle)}:\n{e['user']}" + (f"\n\n{label}: {e['ai']}" if e["ai"] else "")
              for n, e in enumerate(bundle["conversation"], 1)]
     kept = turns
     while chars and len(kept) > 1 and sum(len(t) + 2 for t in kept) > chars:
@@ -402,20 +409,43 @@ def conversation_text(bundle: dict, chars: int = None) -> str:
 def header(bundle: dict) -> str:
     # A blank line, not a single newline: the mail service joins single newlines in the text part.
     return (f"# Handoff: {bundle['title']}\n\n"
-            f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+            f"From: {_from(bundle)} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+
+
+def sender_name(bundle: dict) -> str:
+    """The sender as a person knows them: their name when the bundle carries it, else their address."""
+    return bundle.get("from_name") or bundle["from"]
+
+
+def _from(bundle: dict) -> str:
+    return f"{bundle['from_name']} ({bundle['from']})" if bundle.get("from_name") else bundle["from"]
+
+
+def report(bundle: dict) -> str:
+    """What a person reads first (#2460): who and what, what was discussed and concluded, what is
+    still open, and a small diagram. Bundles from before 1.9.2b21 have no headline: it is skipped."""
+    parts = [bundle["headline"]] if bundle.get("headline") else []
+    if bundle.get("discussed"):
+        parts.append(f"## Discussed\n{_listed(bundle['discussed'])}")
+    if bundle.get("decided"):
+        parts.append(f"## Concluded\n{_listed(bundle['decided'])}")
+    parts.append(f"## Still open\n{questions_text(bundle)}")
+    if bundle.get("diagram", "").strip():
+        parts.append(f"```\n{bundle['diagram'].rstrip()}\n```")
+    return "\n\n".join(parts)
 
 
 def brief_markdown(bundle: dict, conversation_chars: int = None) -> str:
-    """The whole handoff: preview, mail, HANDOFF.md and co handoff show all print this.
+    """The whole handoff: preview, HANDOFF.md and co handoff show all print this. The report
+    first, then the detail for whoever wants it.
 
-    `conversation_chars` keeps the newest messages that fit, for the block pasted from a mail."""
-    return (f"{header(bundle)}\n\n"
+    `conversation_chars` keeps the newest messages that fit."""
+    return (f"{header(bundle)}\n\n{report(bundle)}\n\n"
             f"## Task\n{_asked(bundle)}{bundle['task']}\n\n"
             f"## Where it stands\n{bundle['where_it_stands']}\n\n"
-            + "".join(f"## {name}\n{_listed(bundle[key])}\n\n"
-                      for name, key in (("Decided", "decided"), ("Rejected", "rejected")) if bundle.get(key))
-            + f"## Open questions\n{questions_text(bundle)}\n\n"
-            f"## Code\n{code_text(bundle)}\n\n"
+            + (f"## Rejected\n{_listed(bundle['rejected'])}\n\n" if bundle.get("rejected") else "")
+            + f"## Code\n{code_text(bundle)}\n\n"
             + (f"## Issues and PRs mentioned\n{_mentioned(bundle)}\n\n" if bundle.get("mentioned") else "")
-            + f"## Conversation\nEvery message {bundle['from']} wrote, word for word; the AI's replies in summary. "
-            f"Anything not here, ask the sender.\n\n{conversation_text(bundle, conversation_chars)}\n")
+            + f"## Conversation\nEvery message {sender_name(bundle)} wrote, word for word; the AI's replies "
+            + ("word for word, a long one cut in the middle. " if bundle.get("ai_quoted") else "in summary. ")
+            + f"Anything not here, ask the sender.\n\n{conversation_text(bundle, conversation_chars)}\n")

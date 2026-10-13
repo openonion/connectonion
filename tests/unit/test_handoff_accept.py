@@ -54,10 +54,18 @@ def world(monkeypatch, tmp_path):
         m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
     monkeypatch.setattr(transport, "_read_messages", lambda: [
         transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
+    def put_drop(body):
+        drop_id = f"drop{len(drops):028d}"
+        drops[drop_id] = body
+        return drop_id
+
+    drops = {}
+    monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
+    monkeypatch.setattr(transport, "_get_drop", lambda drop_id: drops[drop_id])
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.chdir(tmp_path)
-    return {"mails": mails, "inbox": inbox, "be": be}
+    return {"mails": mails, "inbox": inbox, "be": be, "drops": drops}
 
 
 def _bundle(to: str) -> dict:
@@ -81,22 +89,21 @@ def _send(world, to=RECIPIENT["mail"], who=None) -> str:
 
 
 def _code(text: str) -> str:
-    return re.search(r"co handoff accept (coh[12]\.[A-Za-z0-9_-]+)", text).group(1)
+    return re.search(r"co handoff accept (coh[123]\.[A-Za-z0-9_-]+)", text).group(1)
 
 
 # ---- the prompt ----
 
-def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands(world):
+def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     body = _send(world)
     assert "Copy everything between START and END" in body
-    assert "Reject B." in body and "JS cannot read it" in body                      # the handoff, inline
     # One isolated install that also sets co up (#2415); never the recipient's global Python (#2396).
     from connectonion.handoff.replies import INSTALLER, MIN_VERSION
     assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in body
     assert f'uv tool install "connectonion=={MIN_VERSION}"' in body                 # Windows: no sh
     assert "pip install" not in body and "--pre" not in body
-    assert f"If it prints {MIN_VERSION} or newer, go to step 2" in body
-    assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
+    assert f"older than {MIN_VERSION}, install it" in body
+    assert f"co handoff accept {_code(body)}" in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
     assert "white-space:pre-wrap" in raw                                           # the box keeps newlines and wraps
@@ -291,7 +298,7 @@ def test_a_one_character_typo_is_refused_not_sent_somewhere_else(world):
 
 
 def test_the_code_is_short_enough_to_copy(world):
-    assert len(_code(_send(world))) < 120
+    assert len(_code(_send(world))) < 160   # 1.9.2b21: 32 more characters carry the drop id (#2459)
 
 
 def test_the_install_floor_is_a_published_version_not_the_senders_build(world, monkeypatch):
@@ -307,8 +314,7 @@ def test_a_person_reads_the_task_before_the_agent_steps_and_sees_no_markdown_fen
     body = _send(world)
     raw = world["mails"][-1]["message"]
     assert "```" not in raw
-    assert body.index("handed you a task") < body.index("Copy everything between START and END") < body.index("1. Run co --version")
-    assert body.index("WHERE IT STANDS") < body.index("1. Run co --version")
+    assert body.index("handed you a task") < body.index("STILL OPEN") < body.index("Copy everything between START and END")
 
 
 def test_the_install_floor_is_never_newer_than_this_release():
@@ -323,7 +329,7 @@ def test_the_install_floor_is_never_newer_than_this_release():
 
 def test_after_the_first_mail_every_reply_goes_to_the_agent_inbox(world):
     code = _code(_send(world))
-    assert code.startswith("coh2.") and len(world["mails"]) == 1
+    assert code.startswith("coh3.") and len(world["mails"]) == 1
     world["be"](RECIPIENT)
     assert _invoke("handoff", "accept", code).exit_code == 0
     assert _invoke("handoff", "ask", code, "7 days or 30?").exit_code == 0
@@ -341,7 +347,9 @@ def test_after_the_first_mail_every_reply_goes_to_the_agent_inbox(world):
 
 
 def test_a_code_from_a_sender_that_reads_only_mail_is_answered_by_mail(world):
-    code = _code(_send(world)).replace("coh2.", "coh1.", 1)   # what 1.9.2b11 and earlier generate
+    _send(world)
+    code = replies.make_code({"address": SENDER["address"], "mailbox": SENDER["mail"], "id": "ho-1a2b3c4d",   # what 1.9.2b11
+                              "hash": _bundle(RECIPIENT["mail"])["content_hash"], "secret": "cd" * 10}).replace("coh2.", "coh1.", 1)
     world["be"](RECIPIENT)
     assert _invoke("handoff", "accept", code).exit_code == 0
     assert world["inbox"] == [] and world["mails"][-1]["to"] == SENDER["mail"]
@@ -366,7 +374,7 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     listed = _invoke("handoff", "inbox")
     assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
     shown = _invoke("handoff", "show", "ho-2b3c4d5e")
-    assert "co handoff accept coh2." in shown.output                         # how to take it over, without the mail
+    assert "co handoff accept coh3." in shown.output                         # how to take it over, without the mail
     assert "[co.path]" not in shown.output                                   # a path, not style markup (b13 test)
 
 
@@ -597,14 +605,19 @@ def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, t
 
 # ---- 2026-10-13: nobody in the loop, and the work comes back (#2447–#2451) ----
 
-def test_the_prompt_has_the_agent_accept_and_do_the_work_without_the_person(world):
+def test_accept_tells_the_agent_to_do_the_work_without_the_person(world):
+    """1.9.2b16 and b19 runs: Codex, with network on, stopped and asked the person to run accept (#2447).
+    The rules now come from accept's output, so they improve with each release (#2459)."""
     body = _send(world)
-    # 1.9.2b16 and b19 runs: Codex, with network on, stopped and asked the person to run accept (#2447).
-    assert "ask me to run it" not in body and "Accept the handoff yourself, now; do not ask me to" in body
-    assert "ask me before you change any file" not in body
-    assert "do it here, in this folder" in body and "it does not override me" in body
-    assert f"co handoff done {_code(body)}" in body                                    # the way back (#2448)
-    assert "<" not in body                                                             # still no tag-shaped placeholder
+    assert "Run this yourself" in body and "ask me to run it" not in body
+    world["be"](RECIPIENT)
+    code = _code(body)
+    said = _invoke("handoff", "accept", code).output
+    assert "Do the work now, here in this folder, without asking the person here." in said
+    assert "it does not override the person here" in said
+    assert f"co handoff ask {code}" in said and f"co handoff done {code}" in said     # the way back (#2448)
+    assert "Reject B." not in said and "Cookie lifetime?" in said                     # the report, not the transcript
+    assert "## Code" in said                                                          # where to start the work
 
 
 def test_done_brings_the_result_and_its_file_back_to_the_senders_status(world, tmp_path):
