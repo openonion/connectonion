@@ -695,6 +695,7 @@ def test_the_preview_warns_that_unpushed_code_cannot_reach_them(world):
     code = [{"repository": None, "branch": "main", "commit": "616e786", "pushed": False, "uncommitted": 0}]
     shown = _preview(world, dict(_bundle(RECIPIENT["mail"]), code=code))
     assert "The code is not pushed" in shown and "git push" in shown                   # #2450
+    assert "[co.warn]" not in shown                                                    # b20 printed the style tag
 
 
 def test_the_preview_lists_every_private_detail(world):
@@ -702,3 +703,20 @@ def test_the_preview_lists_every_private_detail(world):
     shown = _preview(world, dict(_bundle(RECIPIENT["mail"]), conversation=talk))
     assert "Private details in it (13)" in shown
     assert "  conversation[0].user: /Users/aaron/p12/x" in shown                       # b19 listed 10 (#2451)
+
+
+def test_the_sender_hears_by_mail_once_that_the_handoff_is_done_with_a_short_patch_inline(world, tmp_path, monkeypatch):
+    # b20: done reached the sender's status and co ai, never the person (#2470).
+    monkeypatch.setattr("connectonion.cli.commands.handoff_commands._my_email", lambda: "alice@personal.example")
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    patch = tmp_path / "result.patch"
+    patch.write_text("+    return slug\n")
+    _invoke("handoff", "done", code, "Fixed; 6 tests pass", "--file", str(patch))
+    world["be"](SENDER)
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    _invoke("handoff", "status", "ho-1a2b3c4d")
+    told = [m for m in world["mails"] if m["to"] == "alice@personal.example" and "Done" in m["subject"]]
+    assert len(told) == 1 and "Fixed; 6 tests pass" in told[0]["message"]
+    assert "+    return slug" in told[0]["message"] and "result.patch" in told[0]["message"]

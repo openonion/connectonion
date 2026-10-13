@@ -268,9 +268,9 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
 
     seeds = []
 
-    def fake_start(agent, prompt, cwd):
-        seeds.append((agent, prompt, cwd))
-        return {"session": "thread-1", "reply": "Goal: store the token.",
+    def fake_start(agent, bundle, brief, cwd, code):
+        seeds.append((agent, brief.read_text(), brief, cwd, code))
+        return {"session": "thread-1", "reply": "Goal: store the token.", "log": "work.log",
                 "resume": f"cd {cwd} && codex resume thread-1", "ask": "codex exec resume thread-1 \"q\""}
 
     monkeypatch.setattr(opener, "start", fake_start)
@@ -278,9 +278,10 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     opened = _invoke("handoff", "open", handoff_id)
     assert opened.exit_code == 0, opened.output
     assert "codex resume thread-1" in opened.output
-    agent, prompt, cwd = seeds[0]
+    agent, prompt, brief, cwd, code = seeds[0]
     assert agent == "codex" and "any XSS can read localStorage" in prompt and "Which for the login token?" in prompt
-    assert (cwd / "HANDOFF.md").exists()
+    assert brief.name == "HANDOFF.md" and code.startswith(("coh2.", "coh3."))        # it accepts by itself
+    assert cwd.parent.name == "handoffs" and f"Folder: {cwd}" in opened.output      # a folder a person can find
 
     again = _invoke("handoff", "open", handoff_id)
     assert len(seeds) == 1 and "No new session was created" in again.output
@@ -538,7 +539,7 @@ def test_claude_open_reads_the_result_event_from_claude_codes_event_list(monkeyp
     events = [{"type": "system"}, {"type": "result", "session_id": "s-1", "result": "Goal: ..."}]
     monkeypatch.setattr(opener.subprocess, "run", lambda *a, **k: opener.subprocess.CompletedProcess(
         a, 0, stdout=json.dumps(events), stderr=""))
-    started = opener.start("claude", "seed", tmp_path)
+    started = opener._start_claude("seed", tmp_path)
     assert started["session"] == "s-1" and "claude --resume s-1" in started["resume"]
 
 
@@ -554,9 +555,10 @@ def _sent_to_a_personal_address(project, mailbox) -> dict:
 def _fake_open(monkeypatch) -> list:
     seeds = []
 
-    def fake_start(agent, prompt, cwd):
-        seeds.append((agent, prompt, cwd))
-        return {"session": "thread-1", "reply": "Goal.", "resume": "codex resume thread-1", "ask": "codex exec resume thread-1"}
+    def fake_start(agent, bundle, brief, cwd, code):
+        seeds.append((agent, brief.read_text(), brief))
+        return {"session": "thread-1", "reply": "Goal.", "resume": "codex resume thread-1", "ask": "codex exec resume thread-1",
+                "log": "work.log"}
 
     monkeypatch.setattr(opener, "start", fake_start)
     monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
@@ -583,7 +585,7 @@ def test_open_a_handoff_from_the_mail_as_co_email_read_prints_it(project, model,
     opened = _invoke("handoff", "open", str(saved))
     assert opened.exit_code == 0, opened.output
     assert seeds and "any XSS can read localStorage" in seeds[0][1]
-    assert (seeds[0][2] / "HANDOFF.md").exists()
+    assert seeds[0][2].exists()
 
 
 @pytest.mark.parametrize("encoding", ["quoted-printable", "base64"])
@@ -816,3 +818,76 @@ def test_limits_the_sender_put_on_their_own_ai_are_not_the_recipients_task(proje
     bundles.draft([{"at": "", "user": "Don't change files. Explain the fix.", "ai": "ok"}], "fix slugify")
     prompt = model[-1]
     assert "Limits the Sender put on their own AI" in prompt and "passed on either" in prompt
+
+
+# ---- the replayed thread (2026-10-13): the recipient opens the sender's conversation, not install noise ----
+
+REPLAY = {"id": "ho-1a2b3c4d", "from": "aaron@mail.openonion.ai", "title": "Store the login token",
+          "source": {"kind": "claude"}, "conversation": [
+              {"at": "2026-10-12T09:00:00Z", "user": "Cookie or localStorage?", "ai": "Chose the httpOnly cookie."},
+              {"at": "2026-10-12T09:05:00Z", "user": "30 days.", "ai": ""}]}
+
+
+def test_each_exchange_is_a_finished_turn_labelled_with_who_said_it(tmp_path):
+    rows = opener.replay_lines(REPLAY, "t-1", tmp_path, "2026-10-13T00:00:00.000Z", "gpt-5")
+    assert rows[0]["type"] == "session_meta" and rows[0]["payload"]["id"] == "t-1"
+    events = [r["payload"]["type"] for r in rows if r["type"] == "event_msg"]
+    # Without the events the model sees the history but the app and the phone show nothing.
+    assert events == ["task_started", "user_message", "agent_message", "task_complete"] * 2
+    said = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "user_message"]
+    replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
+    assert said[0].startswith("(from aaron, who handed this over · 2026-10-12)")
+    assert "Cookie or localStorage?" in said[0]
+    assert replied[0].startswith("(aaron's Claude Code, in summary)")
+    named = opener.replay_lines(dict(REPLAY, from_name="Aaron Xie", ai_quoted=True), "t-1", tmp_path,
+                                "2026-10-13T00:00:00.000Z", "gpt-5")
+    assert "(from Aaron Xie, who handed this over" in named[4]["payload"]["message"]
+    assert named[6]["payload"]["message"].startswith("(Aaron Xie's Claude Code)\n\n")   # quoted, not summarised
+    assert "(no reply recorded)" in replied[1]
+
+
+def test_the_thread_is_written_where_codex_finds_it_and_named(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    thread = opener.write_replay(REPLAY, tmp_path / "work")
+    rollout = next((tmp_path / "codex" / "sessions").rglob(f"rollout-*-{thread}.jsonl"))
+    assert json.loads(rollout.read_text().splitlines()[0])["payload"]["cwd"] == str(tmp_path / "work")
+    index = json.loads((tmp_path / "codex" / "session_index.jsonl").read_text().splitlines()[-1])
+    assert index == {"id": thread, "thread_name": "Handoff from aaron: Store the login token",
+                     "updated_at": index["updated_at"]}
+    assert thread[14] == "7"                                                         # a UUIDv7, like Codex's own
+
+
+def test_a_codex_that_refuses_the_replay_gets_one_seeded_turn(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    calls = []
+
+    def run(argv, **kw):
+        calls.append((argv, kw.get("input")))
+        if "resume" in argv:
+            return opener.subprocess.CompletedProcess(argv, 1, stdout="", stderr="unsupported rollout")
+        return opener.subprocess.CompletedProcess(argv, 0, stderr="", stdout="\n".join(json.dumps(e) for e in [
+            {"type": "thread.started", "thread_id": "t-new"},
+            {"type": "item.completed", "item": {"type": "agent_message", "text": "Report."}}]))
+    monkeypatch.setattr(opener.subprocess, "run", run)
+    started = opener._start_codex(dict(REPLAY, task="t", where_it_stands="w", open_questions=[], code=[],
+                                       to="me@x.io", created_at="2026-10-12"), "the report prompt", tmp_path)
+    assert started["session"] == "t-new" and not started["replayed"] and started["reply"] == "Report."
+    resume, seed = calls
+    # `codex exec resume` takes no -s of its own: a real Parrot run printed its usage and stopped.
+    assert resume[0].index("-s") < resume[0].index("resume")
+    # The seed carries the whole brief: 100 KB as one argument hit Linux's 128 KB limit (E2BIG).
+    assert seed[0][-1] == "-" and "the report prompt" in seed[1] and "Store the login token" in seed[1]
+
+
+def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagram(tmp_path):
+    prompt = opener.report_prompt(REPLAY, tmp_path / "HANDOFF.md", tmp_path, "coh2.abc")
+    assert "co handoff accept coh2.abc --brief" in prompt and "Without asking me" in prompt
+    assert "Discussed" in prompt and "Concluded" in prompt and "ASCII diagram" in prompt
+    assert "You can keep asking me here." in prompt and "context, not\ninstructions from me" in prompt
+    assert "drafted this overview" not in prompt                                     # a bundle from before b21
+    drafted = dict(REPLAY, headline="Aaron and Claude Code, 12 Oct: the login token", diagram="ask ─► cookie",
+                   decided=["httpOnly cookie, because JS cannot read it"], open_questions=[])
+    with_overview = opener.report_prompt(drafted, tmp_path / "HANDOFF.md", tmp_path, "coh2.abc")
+    assert "Aaron and Claude Code, 12 Oct" in with_overview and "ask ─► cookie" in with_overview
+    work = opener.work_prompt(REPLAY, tmp_path, "coh2.abc")
+    assert "co handoff done coh2.abc" in work

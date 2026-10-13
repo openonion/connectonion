@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.markup import escape
 
 from .. import style
 from .command_tips import print_tip
@@ -186,8 +187,8 @@ def _preview(bundle: dict, path: Path) -> None:
     unpushed = [c for c in bundle.get("code") or [] if not c.get("pushed")]
     for repo in unpushed:
         where = repo.get("repository") or "a repository with no remote"
-        out.print(style.warn(f"The code is not pushed ({where}, {repo.get('branch')}): they cannot get it, only the "
-                             "session copy. Push it first (git push), or they will ask you to."), markup=False)
+        out.print(style.warn(escape(f"The code is not pushed ({where}, {repo.get('branch')}): they cannot get it, only "
+                                    "the session copy. Push it first (git push), or they will ask you to.")))
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
               "--draft sends exactly this file; --edit changes it first.")
 
@@ -294,6 +295,7 @@ def _sender_status(record: dict, mails: list[dict]) -> None:
               f"co handoff send {shlex.quote(name)} reaches them again.")
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
+    replies.tell_owner_of_done(record, state)
     for done in state["done"]:
         out.print(style.ok(f"Done, {done['at']}: ") + done["text"].replace("[", "\\["))
         if "file" in done:
@@ -579,14 +581,25 @@ def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
     cli = "codex" if agent == "codex" else "claude"
     if not shutil.which(cli):
         _fail(f"{cli} is not installed on this machine.", f"co handoff open {handoff_id} --agent {'claude' if cli == 'codex' else 'codex'}")
-    cwd = (cd or folder).resolve()
-    out.print(style.muted(f"Starting a {cli} session in {cwd} seeded with the handoff (one read-only turn)…"))
-    started = opener.start(agent, opener.seed_prompt(bundle, folder), cwd)
+    cwd = (cd or opener.work_folder(bundle)).resolve()
+    out.print(style.muted(escape(f"Opening {opener.thread_name(bundle)} in {cwd}: the sender's conversation, then a "
+                                 "short report from your agent…")))
+    started = opener.start(agent, bundle, folder / "HANDOFF.md", cwd, _accept_code(handoff_id))
     record = {"agent": agent, "cwd": str(cwd), **started}
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    out.print(style.ok(f"Opened {handoff_id} as {cli} session {started['session']}"))
+    out.print(style.ok(escape(f"Opened {opener.thread_name(bundle)}")) + f" as {cli} session {started['session']}")
+    out.print(f"Folder: {cwd}", markup=False)
     out.print(started["reply"], markup=False)
+    out.print(style.muted(escape(f"Your agent is now doing the work in that folder; it tells the sender when it is done. "
+                                 f"Its log: {started['log']}")))
     _print_resume(handoff_id, record)
+
+
+def _accept_code(handoff_id: str) -> Optional[str]:
+    """The code in the prompt this handoff came with; a copy opened from a bundle alone has none."""
+    prompt = _home() / "received" / handoff_id / "prompt.txt"
+    found = re.search(r"co handoff accept (\S+)", prompt.read_text(encoding="utf-8")) if prompt.exists() else None
+    return found.group(1) if found else None
 
 
 def _print_resume(handoff_id: str, record: dict) -> None:
@@ -702,15 +715,16 @@ def make_handoff_app(factory) -> typer.Typer:
     def open_(
         handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox, or the handoff email saved as a file"),
         agent: str = typer.Option("codex", "--agent", help="codex or claude"),
-        cd: Optional[Path] = typer.Option(None, "--cd", help="Run the session in this directory (default: the handoff's own folder)"),
+        cd: Optional[Path] = typer.Option(None, "--cd", help="Work in this directory (default: ~/handoffs/<title>)"),
     ):
-        """Continue a handoff in your own coding agent. Starts a dedicated Codex (or Claude Code) session seeded with it and prints how to resume it.
+        """Take over a handoff in your own coding agent: a Codex (or Claude Code) thread with the sender's conversation, a short report, then the work. Starts model turns that accept it, write files and send its result.
 
-        A handoff sent to an ordinary email is opened from that email saved as a
-        file (co email read output, a downloaded .eml, or the pasted text).
-        Writes HANDOFF.md and bundle.json under ~/.co/handoff/received/<id>/
-        and runs one read-only model turn. Opening the same handoff again creates no
-        second session; it prints the resume command.
+        Codex gets the sender's conversation replayed as turns, each labelled with
+        who said it, in a thread named "Handoff from <sender>: <title>". Your agent
+        accepts the handoff, replies with a report (discussed, concluded, still
+        open, a diagram), then does the work in the folder in the background and
+        tells the sender with co handoff done. Opening the same handoff again
+        creates no second session; it prints the resume command.
         """
         if agent not in AGENTS:
             _fail(f"--agent must be codex or claude, not {agent}.", f"co handoff open {handoff_id} --agent codex")

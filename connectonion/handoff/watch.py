@@ -41,6 +41,7 @@ def check() -> list[str]:
                  for q in state["questions"] if replies.question_key(q) not in told]
         news += [f"[handoff] {record['id']} done: {d['text']}  (co handoff status {record['id']})"
                  for d in state["done"] if d["at"] not in seen["done"]]
+        replies.tell_owner_of_done(record, state)
         news += replies.answer_automatically(record, state)
         record["seen"] = {"accepted": bool(who), "questions": [replies.question_key(q) for q in state["questions"]],
                           "done": [d["at"] for d in state["done"]]}
