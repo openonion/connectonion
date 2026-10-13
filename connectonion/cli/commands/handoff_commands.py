@@ -285,11 +285,15 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     session = _drafts() / f"{bundle['id']}.session.json"
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
     context = replies._copy({"sent_at": sent_at}, session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
-    drop = transport.drop(bundle, code=_draft_code(bundle["id"]), context=context)
+    drop = transport.new_drop_id()
     code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"], "id": bundle["id"],
                               "hash": bundle["content_hash"], "secret": secret, "drop": drop})
-    prompt = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
-    mail = bundles.notice(bundle, prompt)
+    full = replies.prompt(code, bundle["id"], bundles.sender_name(bundle), bundle["title"])
+    transport.drop(bundle, code=_draft_code(bundle["id"]), context=context, drop_id=drop, prompt=full)
+    prompt = replies.paste(bundles.person_name(bundle), bundle["title"], transport.agent_url(drop), bundles.language(bundle))
+    mail = bundles.notice(bundle, prompt, transport.viewer_url(drop))
+    # Their agent reads the inbox copy itself: it carries the whole prompt, code and all (co handoff show).
+    mail["inbox_html"] = bundles.notice(bundle, full, transport.viewer_url(drop))["html"]
     result = transport.hand_over(bundle["to"], mail, idempotency_key=bundle["id"], via=via)
     if not result.get("success"):
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
@@ -628,6 +632,7 @@ def _incoming() -> list[tuple[dict, dict]]:
         if bundle and bundle["id"] not in ids:
             ids.add(bundle["id"])
             found.append((mail, bundle))
+        if bundle:   # both copies: the person's mail names a page, the inbox copy carries the code (b24)
             _keep(bundle, mail.get("message", ""))
     return found
 
@@ -641,7 +646,7 @@ def _keep(bundle: dict, message: str = "") -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "bundle.json").write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     prompt = bundles.prompt_in(message)
-    if prompt:
+    if prompt and ("co handoff accept" in prompt or not (folder / "prompt.txt").exists()):
         (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
 
 
@@ -739,7 +744,11 @@ def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
 def _accept_code(handoff_id: str) -> Optional[str]:
     """The code in the prompt this handoff came with; a copy opened from a bundle alone has none."""
     prompt = _home() / "received" / handoff_id / "prompt.txt"
-    found = re.search(r"co handoff accept (\S+)", prompt.read_text(encoding="utf-8")) if prompt.exists() else None
+    text = prompt.read_text(encoding="utf-8") if prompt.exists() else ""
+    page = re.search(re.escape(transport.VIEWER) + r"([A-Za-z0-9_-]+)", text)
+    if page and "co handoff accept" not in text:   # b24: the mail holds one line; its page holds the prompt
+        text = transport.page_prompt(page.group(1))
+    found = re.search(r"co handoff accept (\S+)", text)
     return found.group(1) if found else None
 
 

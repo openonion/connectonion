@@ -140,7 +140,8 @@ def hand_over(to: str, mail: dict, idempotency_key: str, via: str = "auto") -> d
     agent = _inbox_agent(to)
     if agent:   # the subject prefix and hidden bundle are how co handoff inbox finds it there
         posted = _post_message(agent, json.dumps({"subject": SUBJECT_PREFIX + mail["subject"],
-                                                  "message": mail["html"], "from": os.getenv("AGENT_EMAIL")}))
+                                                  "message": mail.get("inbox_html", mail["html"]),
+                                                  "from": os.getenv("AGENT_EMAIL")}))
         if not posted.get("success"):
             return posted
     channel = channel_for(via)
@@ -206,13 +207,42 @@ def _post_message(agent: str, body: str) -> dict:
             "from": os.getenv("AGENT_EMAIL"), "via": "agent inbox"}
 
 
-def drop(bundle: dict, code: list = (), context: str = "") -> str:
+VIEWER = "https://o.openonion.ai/h/"
+
+
+def new_drop_id() -> str:
+    """Chosen here, not by the backend: the prompt that goes in the drop carries a code that names it."""
+    import secrets
+    return secrets.token_urlsafe(24)
+
+
+def viewer_url(drop_id: str) -> str:
+    """The page a person reads the handoff on, before installing anything (oo-frontend /h/<id>)."""
+    return VIEWER + drop_id
+
+
+def agent_url(drop_id: str) -> str:
+    """The plain-text page the one line a person pastes tells their agent to read: the whole prompt."""
+    return viewer_url(drop_id) + "/codex"
+
+
+def page_prompt(drop_id: str) -> str:
+    """The whole prompt a handoff's page shows its recipient's agent (public, like the page)."""
+    import requests
+    from ..backend import backend_url
+    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}/view", timeout=30)
+    response.raise_for_status()
+    return response.json().get("prompt", "")
+
+
+def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "") -> str:
     """Hold the handoff on the backend until the recipient accepts; returns the id their code carries.
 
     A first recipient has no agent address until they install co, so the agent inbox cannot hold it
     for them (#2459). With it go the code they cannot fetch (#2469) and the redacted session copy, so
     nothing waits on the sender's machine being online. Drops expire after 30 days."""
-    return _put_drop(json.dumps({"bundle": bundle, "code": list(code), "context": context}, ensure_ascii=False))
+    body = {"bundle": bundle, "code": list(code), "context": context, "prompt": prompt}
+    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id())
 
 
 def pickup(code: dict) -> dict:
@@ -229,11 +259,11 @@ def pickup(code: dict) -> dict:
     return {"bundle": body["bundle"], "code": body.get("code") or [], "context": body.get("context", "")}
 
 
-def _put_drop(body: str) -> str:
+def _put_drop(body: str, drop_id: str) -> str:
     import requests
     from ..backend import backend_url
     from ..credentials import require_ambient_api_key
-    response = requests.post(f"{backend_url()}/api/v1/drops", json={"body": body},
+    response = requests.post(f"{backend_url()}/api/v1/drops", json={"id": drop_id, "body": body},
                              headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
     response.raise_for_status()
     return response.json()["id"]

@@ -30,9 +30,20 @@ The mail is a short note, written for a person who may not know co, in the
 language you wrote in (Chinese or English). The subject is "Aaron Xie passed you
 some work: <title>", with no co terms in it. The body has one or two sentences:
 who has been working on what with which AI, and the first thing they talked
-through. Then comes one block to paste into a new Codex or Claude Code
-conversation, and a one-line footer. What was decided and what is still open
-reach their agent when it accepts, not the mail.
+through. Then come two ways in, the web page first:
+
+1. **See what Aaron handed you**: a button to `https://o.openonion.ai/h/<id>`.
+   The page shows who passed what, what was discussed, decided and still open,
+   the diagram and the conversation, in a browser, with nothing to install. Its
+   own copy button does step 2.
+2. **One line to paste** into a new Codex or Claude Code conversation. A
+   triple-click selects it. It names the page's agent text,
+   `https://o.openonion.ai/h/<id>/codex`, and the agent reads that and does the
+   rest. Without network access it asks the person for it, once, in one sentence.
+
+A sender without a name (no `git config user.name`) appears as "Someone", never
+as an agent address. What was decided and what is still open reach their agent
+when it accepts.
 
 It goes from the best mailbox there is, with no option to pick:
 
@@ -47,10 +58,21 @@ It goes from the best mailbox there is, with no option to pick:
 The preview's last line names the mailbox. A question that waits on you, and the
 note that a handoff is done, go to that mailbox from itself.
 
-The block, with the code shortened and the version as a 1.9.2b22 sender writes it.
-It is one paragraph with no line breaks: a mail cannot run a copy button, and a
-triple-click selects a whole paragraph in any mail client. The mail says so
-right above it:
+The line, as a 1.9.2b24 sender writes it:
+
+```text
+Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion. Read https://o.openonion.ai/h/Hk3…/codex and do what it says, here in this folder, without waiting for me. If you cannot open it, ask me to allow network access.
+```
+
+What the page at `/codex` holds is the whole prompt co wrote: install co if it is
+missing, `co handoff accept <code>`, do the work without waiting, ask the sender
+rather than guess, and `co handoff done`. co picks the page's id itself, so the
+accept code inside it can name the same handoff; the handoff and the prompt go
+to the backend together (`POST /api/v1/drops`, kept 30 days). The copy in a
+contact's agent inbox carries the whole prompt, so `co handoff show` and `open`
+work from it, and `open` on a saved mail reads the prompt from the page.
+
+The prompt on that page, with the code shortened and the version as a 1.9.2b22 sender wrote it:
 
 ```text
 Aaron Xie handed you "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Aaron Xie was working on and what you did.

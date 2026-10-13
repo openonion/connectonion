@@ -54,8 +54,7 @@ def world(monkeypatch, tmp_path):
         m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
     monkeypatch.setattr(transport, "_read_messages", lambda: [
         transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
-    def put_drop(body):
-        drop_id = f"drop{len(drops):028d}"
+    def put_drop(body, drop_id):
         drops[drop_id] = body
         return drop_id
 
@@ -86,7 +85,18 @@ def _send(world, to=RECIPIENT["mail"], who=None) -> str:
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(to)))
     result = _invoke("handoff", "send", who or to, "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
-    return html.unescape(re.sub(r"<[^>]+>", "", world["mails"][-1]["message"]))   # as a mail client shows it
+    shown = html.unescape(re.sub(r"<[^>]+>", "", world["mails"][-1]["message"]))   # as a mail client shows it
+    return shown + "\n" + _page(world)
+
+
+def _paste(world) -> str:
+    """The one line a person copies from the mail (b24)."""
+    return bundles.prompt_in(world["mails"][-1]["message"])
+
+
+def _page(world) -> str:
+    """What the recipient's agent reads at the URL the pasted line names: the whole prompt (b24)."""
+    return json.loads(list(world["drops"].values())[-1])["prompt"]
 
 
 def _code(text: str) -> str:
@@ -97,19 +107,18 @@ def _code(text: str) -> str:
 
 def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     body = _send(world)
-    assert "start a new conversation in Codex or Claude Code and paste the block below" in body
+    assert "start a new conversation in Codex or Claude Code and paste this line" in body
     # One isolated install that also sets co up (#2415); never the recipient's global Python (#2396).
+    # It is on the page the pasted line names (b24), so the person copies one sentence.
     from connectonion.handoff.replies import INSTALLER, MIN_VERSION
-    assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in body
-    assert f'uv tool install "connectonion=={MIN_VERSION}"' in body                 # Windows: no sh
+    page = _page(world)
+    assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in page
+    assert f'uv tool install "connectonion=={MIN_VERSION}"' in page                 # Windows: no sh
     assert "pip install" not in body and "--pre" not in body
-    assert f"older than {MIN_VERSION}, install co first" in body and "let it finish" in body
-    # One paragraph: a mail cannot run a copy button, and a triple-click selects a whole paragraph (Aaron, 2026-10-13).
-    from connectonion.handoff import replies as replies_module
-    pasted = replies_module.prompt(_code(body), "ho-1a2b3c4d", "alice", "Store the login token")
-    assert "\n" not in pasted.strip() and "without waiting for me" in pasted
-    assert "Triple-click the grey box to select all of it" in body and "Copy from here" not in body
-    assert f"co handoff accept {_code(body)}" in body
+    assert f"older than {MIN_VERSION}, install co first" in page and "let it finish" in page
+    assert "\n" not in _paste(world).strip() and "without waiting for me" in _paste(world)
+    assert "Triple-click the line to select it" in body and "Copy from here" not in body
+    assert f"co handoff accept {_code(page)}" in page
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]
     assert "white-space:pre-wrap" in raw                                           # the box keeps newlines and wraps
@@ -122,7 +131,7 @@ def test_send_prints_the_same_prompt_for_any_other_channel(world):
     drafts.mkdir(parents=True)
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
-    assert _code(result.output) == _code(html.unescape(world["mails"][-1]["message"]))
+    assert _paste(world).strip() in result.output
 
 
 # ---- the code ----
@@ -324,7 +333,7 @@ def test_the_mail_reads_like_a_short_note_from_a_person_not_a_report(world):
     assert mail["subject"] == f"{SENDER['mail']} passed you some work: Store the login token"
     assert "[co handoff]" not in mail["subject"] and "handoff" not in mail["subject"].lower()
     lead = f"{SENDER['mail']} has been working on \u201cStore the login token\u201d with Codex"
-    assert body.index(lead) < body.index("paste the block below") < body.index(f"co handoff accept {_code(body)}")
+    assert body.index(lead) < body.index("paste this line") < body.index(f"co handoff accept {_code(body)}")
     assert "STILL OPEN" not in body and "Cookie lifetime?" not in body and "CONNECTONION HANDOFF" not in body
     assert "```" not in mail["message"]
     # A hidden preview line repeating the first sentence made Gmail's snippet say it twice (real send, b23 branch).
@@ -420,7 +429,7 @@ def _send_from_session(world, tmp_path) -> str:
     (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": ""}))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
-    return _code(html.unescape(world["mails"][-1]["message"]))
+    return _code(_page(world))
 
 
 def test_a_question_is_answered_by_the_senders_agent_with_a_copy_of_the_session(world, tmp_path):
@@ -808,10 +817,10 @@ def test_with_a_gmail_connected_the_handoff_goes_from_it_not_the_agent_mailbox(w
     assert sent.exit_code == 0, sent.output
     assert world["mails"] == [] and len(_FakeGmail.sent) == 1                    # nothing from the agent mailbox
     mail = _FakeGmail.sent[0]
-    assert mail["to"] == RECIPIENT["mail"] and "co handoff accept coh3." in mail["text"]
+    assert mail["to"] == RECIPIENT["mail"] and "https://o.openonion.ai/h/" in mail["text"]
     assert "<pre" in mail["html"] and "from your Gmail (alice.liddell@gmail.com)" in sent.output
-    world["be"](RECIPIENT)                                                         # the prompt in it still works
-    assert _invoke("handoff", "accept", _code(mail["text"])).exit_code == 0
+    world["be"](RECIPIENT)                                                         # the page it names still works
+    assert _invoke("handoff", "accept", _code(_page(world))).exit_code == 0
 
 
 def test_without_one_the_preview_says_the_agent_mailbox_may_read_as_spam_and_how_to_avoid_it(world):
@@ -835,7 +844,7 @@ def test_via_mcp_mails_nothing_and_hands_the_mail_to_the_agents_own_mail_tool(wo
     flat = " ".join(sent.output.split())
     assert f"to: {RECIPIENT['mail']}" in flat and "subject: alice@mail.openonion.ai passed you some work" in flat
     text = Path(re.search(r"plain-text body: (\S+)", flat).group(1)).read_text()
-    assert "co handoff accept coh3." in text
+    assert "https://o.openonion.ai/h/" in text and "/codex" in text
     assert "went from your mail tool" in _invoke("handoff", "status", "ho-1a2b3c4d").output
 
 
@@ -844,7 +853,7 @@ def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
               conversation=[{"at": "", "user": "登录令牌用 httpOnly cookie 还是 localStorage？", "ai": "cookie"}])
     mail = bundles.notice(bundles.seal(zh), "PROMPT")
     assert mail["subject"].startswith("alice@mail.openonion.ai 想把一项工作交给你")
-    assert "新开一个对话" in mail["text"] and "连点三下即可全选" in mail["text"]
+    assert "新开一个对话" in mail["text"] and "连点三下即可选中" in mail["text"]
     assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"].endswith("passed you some work: Store the login token")
 
 
