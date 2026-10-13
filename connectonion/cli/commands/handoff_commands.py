@@ -959,7 +959,7 @@ def make_handoff_app(factory) -> typer.Typer:
 
     @app.command("withdraw", epilog="Example:  co handoff withdraw ho-1a2b3c4d")
     def withdraw(handoff_id: str = typer.Argument(..., help="The ho-… id of a handoff you sent")):
-        """Take a handoff you sent off the web: its page and its pickup stop working at once. Mail already delivered stays in their mailbox."""
+        """Deletes a handoff you sent from the web: its page and its pickup stop working at once. Mail already delivered stays in their mailbox."""
         handle_withdraw(handoff_id)
 
     @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
