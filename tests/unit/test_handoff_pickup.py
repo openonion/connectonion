@@ -196,8 +196,23 @@ def test_accept_saves_the_senders_session_at_once(world, tmp_path):
     world["be"](RECIPIENT)
     said = _invoke("handoff", "accept", code).output
     copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
-    assert "maxAge = 30 days (product asked)" in copy.read_text()
+    assert "The cookie lives 30 days, as product asked." in copy.read_text()
     assert f"The sender's whole session: {copy}" in said.replace("\n", "")
+
+
+def test_the_session_copy_is_the_approved_conversation_without_tool_calls_or_their_output(world, tmp_path):
+    """#2496: the Ody copy was 6.7 MB of raw session, 3,765 tool calls with their output: whole co rem
+    pages on 41 people and the sender's own dental and visa mail. A message removed with --edit went too."""
+    import os
+    from pathlib import Path
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    _invoke("handoff", "accept", code)
+    copy = (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md").read_text()
+    assert "Store the login token." in copy and "The cookie lives 30 days" in copy
+    assert "auth/session.py:12" not in copy and "grep -n maxAge" not in copy        # no tool call, no output
+    assert "dentist" not in copy                                                    # removed before it was approved
 
 
 # ---- #2477: rough edges from the 1.9.2b22 stranger run ----

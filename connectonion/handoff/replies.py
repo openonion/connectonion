@@ -204,8 +204,8 @@ def settle(record: dict, mails: list[dict] = None) -> dict:
 # ---- the sender's agent answers by itself ----
 
 WITH_COPY = ("Answered automatically by the sender's agent. A copy of the session this handoff came from, "
-             "up to when it was sent, comes with this answer: every message, what the AI said, and every "
-             "tool call with its output (credentials removed). co handoff status shows where it is saved; "
+             "up to when it was sent, comes with this answer: every message and what the AI said, without "
+             "tool calls or their output (credentials and other people's contact details removed). co handoff status shows where it is saved; "
              "search it for your question.")
 POINTER = ("Answered automatically by the sender's agent: search the session copy you already have "
            "(co handoff status shows where it is saved).")
@@ -379,12 +379,25 @@ def answered_keys(record: dict, questions: list[dict]) -> list[str]:
     return [question_key(q) for q in questions[:answered]] if isinstance(answered, int) else answered
 
 
+def copy_text(session: dict, until: str, keep=(), masked: bool = True) -> str:
+    """The session copy as text: the conversation the sender approved, each message whole and each AI
+    turn in full, and nothing else. Never tool calls or their output (#2496): in a session that ran
+    co rem they are whole pages about other people, and the sender's own mail."""
+    turns = sessions.exchanges(sessions.read_turns(session["kind"], session["path"]))
+    approved = set(session.get("keep") or [])
+    since = session.get("since", "")
+    kept = [e for e in turns if (not approved or e["at"] in approved) and (not since or e["at"] >= since)
+            and (not until or not e["at"] or e["at"] <= until)]
+    text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
+                       for e in kept) + "\n"
+    text = bundles.redact(text, bundles.known_secrets())
+    return bundles.mask(text, keep) if masked else text
+
+
 def _copy(record: dict, session: dict, budget: int = None) -> str:
-    """The redacted session, packed; its newest part when the whole would not fit the inbox."""
+    """The session copy, packed; its newest part when the whole would not fit the inbox."""
     budget = budget or COPY_BUDGET
-    text = bundles.redact(sessions.transcript(session["kind"], session["path"], session.get("since", ""),
-                                              record["sent_at"]), bundles.known_secrets())
-    text = bundles.mask(text, [record.get("to"), record.get("from"), record.get("owner")])
+    text = copy_text(session, record["sent_at"], [record.get("to"), record.get("from"), record.get("owner")])
     packed = _pack(text)
     while len(packed) > budget:
         text = text[-int(len(text) * budget / len(packed) * 0.9):]

@@ -169,16 +169,17 @@ is waiting, and prints
 
 The sender's agent answers every question by itself; no one reviews the answer
 first. The first answer carries a copy of the session the handoff came from:
-every message, what the AI said, and every tool call with its output (a long
-output keeps its start and end). It covers only the handed-off messages
-(`--since`) up to the moment the handoff was sent, and credential-shaped strings
-and values from your keys.env are removed. The recipient's `co handoff status`
+the messages you approved in the preview (`--since` and `--edit` apply), each
+whole, with each AI reply in full rather than quoted. Tool calls and their output
+never go: in a session that ran `co rem` they are whole pages about other people
+and your own mail (#2496). Credential-shaped strings, values from your keys.env
+and other people's contact details are removed. The recipient's `co handoff status`
 saves it as `~/.co/handoff/accepted/<id>/session.md`, so their agent searches it
 instead of asking again. Later questions are answered with a pointer to that
 copy, unless the question says the copy does not answer it, or asks again: then
 no pointer goes, status shows it as "Waiting on you", and the mail to you says
-"Waiting on you" in its subject. The brief leaves tool output out on purpose; this copy is how a
-requirement that only ever appeared in a tool call still reaches the recipient.
+"Waiting on you" in its subject. A requirement that only ever appeared in a
+tool's output does not reach the recipient this way; they ask, and it waits on you.
 
 It happens wherever the sender's side checks for replies: the host's watcher,
 `co handoff status`, and `status --wait`. A copy cannot answer a question you

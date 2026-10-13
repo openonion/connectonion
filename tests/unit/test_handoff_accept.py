@@ -424,11 +424,16 @@ def _send_from_session(world, tmp_path) -> str:
             {"type": "tool_use", "id": "t", "name": "Bash", "input": {"command": "grep -n maxAge auth/session.py"}}]}},
         {"type": "user", "timestamp": "2026-10-11T09:00:02Z", "message": {"role": "user", "content": [
             {"type": "tool_result", "tool_use_id": "t", "content": "auth/session.py:12: maxAge = 30 days (product asked)"}]}},
+        {"type": "assistant", "timestamp": "2026-10-11T09:00:03Z", "message": {"role": "assistant", "content": [
+            {"type": "text", "text": "The cookie lives 30 days, as product asked."}]}},
+        {"type": "user", "timestamp": "2026-10-11T09:05:00Z", "message": {"role": "user", "content": "Also, my dentist moved to Friday."}},
     ]) + "\n")
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
     drafts.mkdir(parents=True)
-    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
+    approved = dict(_bundle(RECIPIENT["mail"]), conversation=[    # the second message was removed with --edit
+        {"at": "2026-10-11T09:00:00Z", "user": "Store the login token.", "ai": "The cookie lives 30 days, as product asked."}])
+    (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(bundles.seal({k: v for k, v in approved.items() if k != "content_hash"})))
     (drafts / "ho-1a2b3c4d.session.json").write_text(json.dumps({"kind": "claude", "path": str(session), "since": ""}))
     result = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes")
     assert result.exit_code == 0, result.output
@@ -448,7 +453,7 @@ def test_a_question_is_answered_by_the_senders_agent_with_a_copy_of_the_session(
     world["be"](RECIPIENT)
     theirs = _invoke("handoff", "status", "ho-1a2b3c4d")
     copy = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "session.md"
-    assert "maxAge = 30 days (product asked)" in copy.read_text()   # the answer was only in a tool output
+    assert "The cookie lives 30 days, as product asked." in copy.read_text()
     assert str(copy) in theirs.output
 
 

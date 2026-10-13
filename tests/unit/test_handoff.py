@@ -487,7 +487,7 @@ def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_t
     result = _invoke("handoff", "send", SELF, "task")
     said = " ".join(result.output.split())
     assert "Masked other people's contact details: 1 email address and 1 phone number in the brief" in said
-    assert "in the session copy that goes with it" in said
+    assert "in the session copy that goes with it" in said and "no commands or their output" in said
     assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
 
 
@@ -771,17 +771,24 @@ def _tool_session(tmp_path: Path) -> Path:
     return path
 
 
-def test_the_session_copy_has_the_tool_calls_a_summary_leaves_out(tmp_path):
-    text = sessions.transcript("claude", _tool_session(tmp_path), since="2026-10-10T10:00:00Z",
-                               until="2026-10-10T10:30:00+00:00")
+def test_the_session_copy_is_the_conversation_and_never_a_tool_call_or_its_output(tmp_path):
+    """#2496 reverses study B T3 (2026-10-11): tool output went for the one requirement that lived there,
+    and with it whole co rem pages about other people and the sender's own mail."""
+    from connectonion.handoff import replies
+    text = replies.copy_text({"kind": "claude", "path": str(_tool_session(tmp_path)), "since": "2026-10-10T10:00:00Z"},
+                             "2026-10-10T10:30:00+00:00")
     assert "Fix co keys." in text and "Done: values are hidden." in text
-    assert "co keys list --json" in text and "must hide values unless --show" in text   # tool call and its output
+    assert "co keys list --json" not in text and "must hide values unless --show" not in text
     assert "unrelated earlier work" not in text and "after the handoff" not in text    # --since, and sent at
     assert "private reasoning" not in text
 
 
 def test_the_session_copy_never_carries_a_credential(tmp_path):
-    text = bundles.redact(sessions.transcript("claude", _tool_session(tmp_path)), known_secrets=["hunter2hunter2"])
+    from connectonion.handoff import replies
+    session = tmp_path / "s.jsonl"
+    session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-10T10:00:00Z", "message": {
+        "content": "my key is sk-proj-abcdefghijklmnopqrstuvwx"}}) + "\n")
+    text = replies.copy_text({"kind": "claude", "path": str(session)}, "")
     assert "sk-proj-abcdefghijklmnopqrstuvwx" not in text and "[removed: " in text
     assert "hunter2hunter2" not in bundles.redact("pw hunter2hunter2", known_secrets=["hunter2hunter2"])
 

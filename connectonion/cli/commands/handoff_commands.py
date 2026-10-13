@@ -334,7 +334,7 @@ def _print_mentions(bundle: dict, name: str) -> None:
 
 
 def _masked_line(bundle: dict) -> str:
-    """How many of other people's contact details were taken out, in the brief and in the session copy."""
+    """What goes besides the brief, and how many of other people's contact details were taken out of each."""
     def count(emails: int, phones: int) -> str:
         return f"{emails} email address{'es' if emails != 1 else ''} and {phones} phone number{'s' if phones != 1 else ''}"
     masked = bundle.get("masked") or {}
@@ -343,9 +343,12 @@ def _masked_line(bundle: dict) -> str:
     if session.exists():
         session = json.loads(session.read_text(encoding="utf-8"))
         if Path(session["path"]).exists():
-            text = sessions.transcript(session["kind"], session["path"], session.get("since", ""))
+            session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
+            text = replies.copy_text(session, "", masked=False)
             emails, phones = bundles.others(text, [bundle["to"], bundle["from"], _my_email()])
-            said += f"; {count(len(emails), len(phones))} in the session copy that goes with it"
+            said += (f"; {count(len(emails), len(phones))} in the session copy that goes with it. The copy is the "
+                     f"{len(session['keep'])} messages above with each AI reply in full, {len(text) // 1024:,} KB, "
+                     "and no commands or their output")
     return said + "."
 
 
@@ -374,6 +377,8 @@ def _deliver(bundle: dict, via: str = "auto") -> None:
     sent_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     session = _drafts() / f"{bundle['id']}.session.json"
     session = json.loads(session.read_text(encoding="utf-8")) if session.exists() else None
+    if session:   # only the conversation as approved: a message removed with --edit stays out of the copy too
+        session["keep"] = [turn["at"] for turn in bundle.get("conversation", []) if turn.get("at")]
     context = replies._copy({"sent_at": sent_at, "to": bundle["to"], "from": bundle["from"], "owner": _my_email()},
                             session, budget=3_000_000) if session and Path(session["path"]).exists() else ""
     drop = transport.new_drop_id()
