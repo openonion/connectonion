@@ -831,14 +831,18 @@ def make_handoff_app(factory) -> typer.Typer:
         """Read one incoming handoff: the task, the code, and the conversation. Read-only."""
         handle_show(handoff_id)
 
-    @app.command("follow", hidden=True)
+    @app.command("follow", epilog="Example:  co handoff follow ho-1a2b3c4d --session 01a1… --cd ~/handoffs/fix-slugify")
     def follow(
-        handoff_id: str = typer.Argument(..., help="Handoff id"),
+        handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox"),
         agent: str = typer.Option("codex", "--agent", help="codex or claude"),
         session: str = typer.Option(..., "--session", help="The session co handoff open started"),
         cd: Path = typer.Option(..., "--cd", help="The folder it works in"),
     ):
-        """Run by co handoff open in the background: the work turn, then the sender's answers into the same session until done. Runs model turns."""
+        """Keep an opened handoff going: runs the work turn, then each answer the sender writes goes back into the same session, until it is done. Runs model turns.
+
+        co handoff open starts this in the background; run it yourself only to
+        restart one that stopped.
+        """
         handle_follow(handoff_id, agent, session, cd)
 
     @app.command("open", epilog="Examples:  co handoff open ho-1a2b3c4d  |  co handoff open handoff.eml --agent claude --cd ~/project")
