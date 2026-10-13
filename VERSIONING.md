@@ -400,17 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b23
+## Current Version: 1.9.2b24
 
-1.9.2b23 is a 1.9.2 beta; stable remains 1.9.1. The first handoff mail is a short
-note from the sender's own mailbox: their AI's mail tool first, then their Gmail or
-Outlook through co, the agent mailbox last (#2478). It is written in the language
-they used, and the paste is one paragraph a triple-click selects. `co handoff open`
-picks up the drop and feeds the sender's answers back into the session until it is
-done (#2479). The Code section says when the code travels, and the paste says to
-let a slow install finish (#2477). The install floor is 1.9.2b23. See
-[1.9.2b23 notes](docs/releases/1.9.2b23.md).
+1.9.2b24 is a 1.9.2 beta; stable remains 1.9.1. A handoff's recipient reads it on
+a web page first (o.openonion.ai/h/<id>), then pastes one line into a new Codex
+conversation; the page that line names holds the whole prompt (#2478). Accepting
+someone's handoff lets them send you handoffs and questions, not run tools on
+your machine; the sender's side is unchanged. The install floor is 1.9.2b24. See
+[1.9.2b24 notes](docs/releases/1.9.2b24.md).
 
+- 1.9.2b24 (Read it first, then one line).
 - 1.9.2b23 (A note from someone you know).
 - 1.9.2b22 (Everything arrives with accept).
 - 1.9.2b21 (A handoff that opens on what you discussed).
