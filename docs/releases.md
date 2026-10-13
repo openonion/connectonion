@@ -25,16 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
+Beta **1.9.2b25**: the handoff mail reads like a note from you, in your own voice and
+language; the conversation shows up in the recipient's Codex app with your name on each
+message; only the code you worked on goes. See [1.9.2b25 notes](releases/1.9.2b25.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b25'
+```
+
+## Previous previews
+
 Beta **1.9.2b24**: the person you hand work to reads it on a web page first, then
 copies one line into a new Codex conversation. Accepting someone's handoff lets
 them send you handoffs, not run tools on your machine. See
 [1.9.2b24 notes](releases/1.9.2b24.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2b24'
-```
-
-## Previous previews
 
 Beta **1.9.2b23**: the handoff mail is a short note from the sender's own mailbox
 (their AI's mail tool, their Gmail or Outlook, the agent mailbox only last), in the
