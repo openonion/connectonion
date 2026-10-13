@@ -80,16 +80,11 @@ def write_claude_session(cwd: Path) -> Path:
 
 @pytest.fixture
 def model(monkeypatch):
-    """The one llm_do call, faked: records the prompt and returns a fixed draft."""
+    """The one llm_do call (the report on top), faked: records the prompt and returns a fixed draft."""
     prompts = []
 
     def fake_llm_do(prompt, output=None, **kwargs):
         prompts.append(prompt)
-        if output is bundles.Replies:
-            numbers = [int(n) for n in re.findall(r"^\[(\d+)\] Sender:", prompt, re.M)]
-            return bundles.Replies(replies=[bundles.Reply(
-                n=n, said="Rejected localStorage (XSS can read it); chose the httpOnly cookie." if n == 1
-                else f"summary of {n}") for n in numbers])
         return bundles.Top(
             title="Store the login token",
             task="Store the login session token; done when the cookie is set on login.",
@@ -115,6 +110,7 @@ def mailbox(monkeypatch):
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": SELF}
 
     monkeypatch.setattr(transport, "deliver", deliver)
+    monkeypatch.setattr(transport, "drop", lambda bundle: "drop" + "0" * 28)   # the backend's drops (#2459)
     monkeypatch.setattr(transport, "fetch", lambda last=200: [m for m in reversed(mails)
                                                               if m["subject"].startswith(transport.SUBJECT_PREFIX)])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
@@ -161,7 +157,7 @@ def test_send_previews_by_default_and_sends_nothing(project, model, mailbox):
     assert result.exit_code == 0, result.output
     assert mailbox == []
     assert "Nothing has been sent" in result.output
-    assert "XSS can read it" in result.output                        # the AI's part, summarised
+    assert "any XSS can read localStorage" in result.output          # the AI's part, quoted
     assert "Which for the login token?" in result.output             # the user's words, verbatim
     assert "Which for the login token?" in model[0]
     draft = Path.home() / ".co" / "handoff" / "drafts" / f"{_draft_id(result.output)}.json"
@@ -174,7 +170,7 @@ def test_yes_with_draft_sends_exactly_the_previewed_bundle(project, model, mailb
     handoff_id = _draft_id(preview.output)
     sent = _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
     assert sent.exit_code == 0, sent.output
-    assert len(mailbox) == 1 and len(model) == 2                     # drafted once (replies + top), not again on send
+    assert len(mailbox) == 1 and len(model) == 1                     # drafted once (the report), not again on send
     arrived = bundles.from_mail(mailbox[0]["message"])
     previewed = json.loads((Path.home() / ".co/handoff/drafts" / f"{handoff_id}.json").read_text())
     assert arrived["verified"] and arrived["content_hash"] == previewed["content_hash"]
@@ -283,7 +279,7 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     assert opened.exit_code == 0, opened.output
     assert "codex resume thread-1" in opened.output
     agent, prompt, cwd = seeds[0]
-    assert agent == "codex" and "XSS can read it" in prompt and "Which for the login token?" in prompt
+    assert agent == "codex" and "any XSS can read localStorage" in prompt and "Which for the login token?" in prompt
     assert (cwd / "HANDOFF.md").exists()
 
     again = _invoke("handoff", "open", handoff_id)
@@ -343,7 +339,9 @@ def test_each_user_message_carries_the_ai_replies_that_followed_it():
                                          {"at": "t4", "user": "B?", "ai": ""}]
 
 
-def test_the_handoff_keeps_the_users_words_and_only_a_summary_of_the_ai(project, model, mailbox):
+def test_the_handoff_quotes_the_users_words_and_the_ais_own_words(project, model, mailbox):
+    """Originals over summaries (decision 076, Aaron 2026-10-13): a summary drops what its writer
+    thought unimportant, and the recipient cannot tell what is missing."""
     long_ask = "Keep every word of this. " * 400
     write_codex_session(project, extra=" " + long_ask)
     result = _invoke("handoff", "send", SELF, "the login token task")
@@ -351,10 +349,9 @@ def test_the_handoff_keeps_the_users_words_and_only_a_summary_of_the_ai(project,
     draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
     said = [e["user"] for e in draft["conversation"]]
     assert said[0].endswith(long_ask.strip()) and len(said) == 2      # verbatim, never cut
-    assert draft["conversation"][0]["ai"] == "Rejected localStorage (XSS can read it); chose the httpOnly cookie."
-    assert "Reject B: any XSS can read localStorage" not in json.dumps(draft)   # the AI's own text stays here
-    assert "Reject B: any XSS can read localStorage" in model[0]                # but the summary was made from it
-    assert "Which for the login token?" in result.output
+    assert "Reject B: any XSS can read localStorage" in draft["conversation"][0]["ai"]   # the AI's own words
+    assert draft["ai_quoted"] is True and len(model) == 1                              # one call: the report on top
+    assert "AI, in summary" not in result.output and "Which for the login token?" in result.output
 
 
 def _git(folder, *args):
@@ -441,27 +438,28 @@ def test_a_session_outside_any_repository_has_no_code_reference(project, model, 
     assert "Ask the sender where the code is" in result.output
 
 
-def test_a_long_session_is_summarised_in_bounded_pieces(project, model, mailbox, monkeypatch):
-    monkeypatch.setattr(bundles, "CHUNK_CHARS", 300)
+def test_a_long_ai_reply_keeps_its_start_and_its_end_and_says_what_was_cut():
+    quoted = bundles.quote("start " + "y" * 5000 + " CONCLUSION")
+    assert quoted.startswith("start ") and quoted.endswith(" CONCLUSION")
+    assert "characters cut; the full session comes with the first answer]" in quoted
+    assert len(quoted) < bundles.QUOTE_CHARS + 200
+    assert bundles.quote("short") == "short"
+
+
+def test_the_report_call_reads_at_most_a_bounded_transcript_newest_first(project, model, mailbox, monkeypatch):
+    monkeypatch.setattr(bundles, "TOP_CHARS", 500)
     talk = [{"at": "", "user": f"question {n}", "ai": "x" * 200} for n in range(1, 7)]
     top, said = bundles.draft(talk, "task")
-    assert len(model) > 2 and all(len(p) < 300 + len(bundles.REPLIES_PROMPT) + 200 for p in model[:-1])
-    assert said == {1: "Rejected localStorage (XSS can read it); chose the httpOnly cookie.",
-                    **{n: f"summary of {n}" for n in range(2, 7)}}
-    assert "question 6" in model[-1] and "summary of 6" in model[-1]     # the top is written from all of it
-
-
-def test_one_huge_ai_reply_keeps_its_end(project, model, mailbox, monkeypatch):
-    monkeypatch.setattr(bundles, "CHUNK_CHARS", 1000)
-    bundles.draft([{"at": "", "user": "go", "ai": "start " + "y" * 5000 + " CONCLUSION"}], "task")
-    assert "CONCLUSION" in model[0] and len(model[0]) < 1000 + len(bundles.REPLIES_PROMPT) + 200
+    assert len(model) == 1 and len(model[0]) < 500 + len(bundles.TOP_PROMPT) + 300
+    assert "question 6" in model[0] and "question 1" not in model[0] and "left out" in model[0]
+    assert said[1] == "x" * 200                                           # the bundle still quotes all of it
 
 
 def test_decided_and_rejected_are_at_the_top(project, model, mailbox):
     write_codex_session(project)
     result = _invoke("handoff", "send", SELF, "task")
     top = result.output.split("## Conversation")[0]
-    assert "## Decided\n- Use an httpOnly cookie" in top and "## Rejected\n- localStorage" in top
+    assert "## Concluded\n- Use an httpOnly cookie" in top and "## Rejected\n- localStorage" in top
 
 
 def test_since_starts_the_conversation_at_that_message(project, model, mailbox):
@@ -584,7 +582,7 @@ def test_open_a_handoff_from_the_mail_as_co_email_read_prints_it(project, model,
 
     opened = _invoke("handoff", "open", str(saved))
     assert opened.exit_code == 0, opened.output
-    assert seeds and "XSS can read it" in seeds[0][1]
+    assert seeds and "any XSS can read localStorage" in seeds[0][1]
     assert (seeds[0][2] / "HANDOFF.md").exists()
 
 
@@ -799,3 +797,13 @@ def test_a_secret_in_a_tool_input_shown_as_escaped_json_is_redacted():
     # A tool call's input reaches the copy as JSON, so a credentials file it wrote has escaped quotes.
     text = bundles.redact('{"content": "{\\"client_secret\\": \\"GOCSPX-abcdefghijklmnopqrstuv\\"}"}')
     assert "GOCSPX" not in text
+
+
+def test_the_headline_names_the_sender_their_ai_and_the_day_and_the_diagram_has_real_lines(project, model, mailbox):
+    """A live b21 draft said "Sender and AI: reviewing tempconv.py" (the model had no name to use), and its
+    diagram came back with a literal backslash-n where the line break should be."""
+    top = bundles.Top(title="t", task="t", where_it_stands="w", diagram="a ─► b\\n└─► c")
+    talk = [{"at": "2026-10-13T03:09:46Z", "user": "go", "ai": "ok"}]
+    bundles.draft(talk, "task", sender="Aaron Xie", agent="codex")
+    assert "The Sender is Aaron Xie, working with Codex, on 2026-10-13." in model[-1]
+    assert bundles.diagram_lines(top.diagram) == "a ─► b\n└─► c"

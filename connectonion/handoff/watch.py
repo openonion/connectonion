@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from ..environment import global_config_dir
 from . import replies, transport
 
-INTERVAL = 300
+INTERVAL = 60   # a question waits on this; it reads the mailbox only while a handoff is waiting
 FRESH = timedelta(days=14)
 
 

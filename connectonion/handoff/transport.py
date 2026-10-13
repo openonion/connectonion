@@ -121,6 +121,11 @@ def fetch(last: int = 200) -> list[dict]:
     return sorted(found, key=lambda m: str(m.get("timestamp", "")), reverse=True)
 
 
+def mail_person(to: str, subject: str, body: str, idempotency_key: str) -> dict:
+    """Mail a person directly (never their agent's inbox): the sender's own address, when a question waits on them."""
+    return _send_mail(to, subject, body, idempotency_key)
+
+
 def _send_mail(to: str, subject: str, body: str, idempotency_key: str) -> dict:
     from ..useful_tools.send_email import send_email
     return send_email(to, subject, body, idempotency_key=idempotency_key)
@@ -141,6 +146,43 @@ def _post_message(agent: str, body: str) -> dict:
         return {"success": False, "error": f"agent inbox answered {response.status_code}: {response.text[:200]}"}
     return {"success": True, "message_id": f"agent-message-{response.json()['id']}",
             "from": os.getenv("AGENT_EMAIL"), "via": "agent inbox"}
+
+
+def drop(bundle: dict) -> str:
+    """Hold the bundle on the backend until the recipient accepts; returns the id their code carries.
+
+    A first recipient has no agent address until they install co, so the agent inbox cannot hold it
+    for them, and the mail used to carry all of it (#2459). Drops expire after 30 days."""
+    return _put_drop(json.dumps({"bundle": bundle}, ensure_ascii=False))
+
+
+def pickup(code: dict) -> dict:
+    """The bundle `code` names: refused unless it is exactly what the sender approved."""
+    from .bundle import seal
+    bundle = json.loads(_get_drop(code["drop"]))["bundle"]
+    if seal(bundle)["content_hash"] != code["hash"]:
+        raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
+    return bundle
+
+
+def _put_drop(body: str) -> str:
+    import requests
+    from ..backend import backend_url
+    from ..credentials import require_ambient_api_key
+    response = requests.post(f"{backend_url()}/api/v1/drops", json={"body": body},
+                             headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    response.raise_for_status()
+    return response.json()["id"]
+
+
+def _get_drop(drop_id: str) -> str:
+    import requests
+    from ..backend import backend_url
+    from ..credentials import require_ambient_api_key
+    response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}",
+                            headers={"Authorization": f"Bearer {require_ambient_api_key()}"}, timeout=30)
+    response.raise_for_status()
+    return response.json()["body"]
 
 
 def _read_messages() -> list[dict]:

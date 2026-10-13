@@ -856,6 +856,23 @@ def _create_cleanup_lifespan(registry):
 
     return on_startup, on_shutdown
 
+def _create_handoff_lifespan():
+    """Watch the handoffs this agent sent: acceptances, questions (answered automatically) and done.
+
+    It reads the mailbox only while a handoff sent in the last 14 days is waiting (handoff/watch.py)."""
+    from ...handoff import watch
+    stop = []
+
+    async def on_startup():
+        stop.append(watch.start())
+
+    async def on_shutdown():
+        for event in stop:
+            event.set()
+
+    return on_startup, on_shutdown
+
+
 def _both(first, second):
     """Run two lifespan callbacks as one, in order.
 
@@ -1395,6 +1412,10 @@ def host(
 
     on_startup = _both(on_startup, cleanup_startup)
     on_shutdown = _both(cleanup_shutdown, on_shutdown)
+    # Handoffs this agent sent get their questions answered whichever command started the host (#2453).
+    handoff_startup, handoff_shutdown = _create_handoff_lifespan()
+    on_startup = _both(on_startup, handoff_startup)
+    on_shutdown = _both(handoff_shutdown, on_shutdown)
     on_startup = _both(on_startup, on_agent_startup)
     on_shutdown = _both(on_agent_shutdown, on_shutdown)
 

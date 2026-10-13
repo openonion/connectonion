@@ -20,7 +20,15 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "Installing $spec..."
-uv tool install --force --quiet "$spec"
+# A version released minutes ago can be missing from PyPI's index, which uv reads, for a few
+# minutes: wait for it rather than fail the handoff that pinned it (#2457).
+tries=0 refresh=""
+until uv tool install --force --quiet $refresh "$spec"; do
+  tries=$((tries + 1)) refresh="--refresh"
+  if [ -z "${CO_VERSION:-}" ] || [ "$tries" -ge 10 ]; then exit 1; fi
+  echo "$CO_VERSION may have been released minutes ago and not be on PyPI's index yet; trying again in ${CO_INSTALL_WAIT:-30}s ($tries/9)..."
+  sleep "${CO_INSTALL_WAIT:-30}"
+done
 bin="$(uv tool dir --bin)"
 uv tool update-shell >/dev/null 2>&1 || true
 
