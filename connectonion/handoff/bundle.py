@@ -43,7 +43,7 @@ class Top(BaseModel):
 
 # The AI's text for one turn, quoted: past this it keeps its start and (mostly) its end, where a
 # turn reports what it found and did. The report call reads at most TOP_CHARS, newest first.
-QUOTE_CHARS = 2_000
+QUOTE_CHARS = 800   # Aaron, 2026-10-13: the AI's side compressed, the sender's words kept whole
 TOP_CHARS = 400_000
 
 TOP_PROMPT = """A colleague's coding agent will continue this work from the conversation below: the
@@ -71,7 +71,7 @@ part they read first; it is a guide to the quotes, which go with it.
   conversation.
 Write only what the conversation established; if something is uncertain, say so.
 
-{who}
+{who} Write every field in {lang}, the language the Sender mostly wrote in.
 The Sender's own words about what to hand off: {what}
 
 {transcript}"""
@@ -98,7 +98,9 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     day = next((e["at"][:10] for e in reversed(exchanges) if e["at"]), "")
     who = (f"The Sender is {sender or 'unnamed'}, working with {AGENTS.get(agent, 'their AI')}"
            + (f", on {day}." if day else "."))
-    top = llm_do(TOP_PROMPT.format(who=who, what=what or "(not stated; infer the task from the conversation)",
+    han = len(re.findall(r"[\u4e00-\u9fff]", said_by_sender := " ".join(e["user"] for e in exchanges)))
+    lang = "Chinese" if han > len(re.findall(r"[A-Za-z]+", said_by_sender)) / 2 else "English"
+    top = llm_do(TOP_PROMPT.format(who=who, lang=lang, what=what or "(not stated; infer the task from the conversation)",
                                    transcript=transcript), output=Top, **kwargs)
     top.diagram = diagram_lines(top.diagram)
     return top, said
@@ -235,7 +237,7 @@ _INK, _MUTED, _GREEN, _TINT, _LINE = "#1f2a22", "#4b5b4f", "#15803d", "#f3f8f4",
 _FRAME = f"padding:14px 16px;background:{_TINT};border:1px solid {_LINE}"
 _PRE = ("margin:0;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;"
         f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;color:{_INK}")
-GUIDE = "https://github.com/openonion/connectonion/blob/main/docs/cli/handoff.md"
+GUIDE = "https://connectonion.com"   # a short public page, not the 310-line engineering doc (b24 audit)
 
 
 CLIENT_NAMES = {"claude": "Claude Code", "codex": "Codex"}
@@ -286,7 +288,7 @@ def person_name(bundle: dict) -> str:
     return SOMEONE[language(bundle)] if re.fullmatch(r"0x[0-9a-f]+@\S+", name, re.I) else name
 
 
-def notice(bundle: dict, prompt: str, viewer: str = "") -> dict:
+def notice(bundle: dict, prompt: str, viewer: str = "", carry_bundle: bool = False) -> dict:
     """{subject, text, html}: the mail a person gets, short, like a note from someone they know (#2478).
 
     Aaron, 2026-10-13: the 1.9.2b22 mail ("[co handoff] … (from …)", a ConnectOnion banner, every
@@ -301,7 +303,8 @@ def notice(bundle: dict, prompt: str, viewer: str = "") -> dict:
     client = CLIENT_NAMES.get(bundle.get("source", {}).get("kind"), "AI")
     lead = words["lead"].format(name=name, title=title, client=client)
     points = bundle.get("discussed") or []
-    talked = words["talked"].format(point=_sentence_case(_one_line(points[0].rstrip(".。"), 160))) if points else ""
+    same = points and (bool(re.search(r"[\u4e00-\u9fff]", points[0])) == (language(bundle) == "zh"))
+    talked = words["talked"].format(point=_sentence_case(_one_line(points[0].rstrip(".。"), 160))) if same else ""
     said = words["space"].join(part for part in (lead, talked) if part)
     subject = words["subject"].format(name=name, title=_one_line(bundle["title"], 60))
     how = words["how"].format(name=name)
@@ -309,6 +312,9 @@ def notice(bundle: dict, prompt: str, viewer: str = "") -> dict:
     text = (f"{said}\n\n" + (f"{view}: {viewer}\n\n" if viewer else "") + f"{how}\n\n"
             f"{words['select']}\n\n{prompt.strip()}\n\n"
             f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
+    # The hidden copy is for an agent that reads this mail (co handoff inbox); a person has the page,
+    # and a plain-text reader showed it as a wall of base64.
+    carry = carry_bundle or bundle["to"].lower().endswith("@mail.openonion.ai")
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
     e = html.escape
@@ -327,27 +333,36 @@ def notice(bundle: dict, prompt: str, viewer: str = "") -> dict:
         f'<p style="margin:0;color:{_MUTED};font-size:13px">{e(words["footer"])}{words["space"]}'
         f'<a href="{GUIDE}" style="color:{_GREEN}">{e(words["guide"])}</a></p>'
         '</td></tr></table></td></tr></table>'
-        f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
+        + (f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{BEGIN}\n{wrapped}\n{END}</div>\n'
+           if carry else "")
     )
     return {"subject": subject, "text": text, "html": page}
 
 
 def _button(href: str, label: str) -> str:
     """A link drawn as a button that every mail client renders, Outlook included (a padded table cell)."""
+    # Gmail on iOS dropped the cell's `background` and left white text on white (2026-10-13): the colour
+    # goes on the cell as an attribute and a property, and on the link itself, so any one survives.
     return ('<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px"><tr>'
-            f'<td style="background:{_GREEN};border-radius:8px">'
-            f'<a href="{html.escape(href)}" style="display:inline-block;padding:12px 20px;color:#ffffff;'
-            f'font-weight:600;text-decoration:none;{_FONT}">{html.escape(label)}</a></td></tr></table>')
+            f'<td bgcolor="{_GREEN}" style="background-color:{_GREEN};border-radius:8px">'
+            f'<a href="{html.escape(href)}" style="display:inline-block;padding:12px 20px;background-color:{_GREEN};'
+            f'border:1px solid {_GREEN};border-radius:8px;color:#ffffff;font-weight:600;text-decoration:none;{_FONT}">'
+            f'<span style="color:#ffffff">{html.escape(label)}</span></a></td></tr></table>')
 
 
 def from_saved_mail(text: str) -> dict | None:
     """The bundle in a mail saved by any client: `co email read` output, the pasted body, or a downloaded .eml,
     whose text part may be quoted-printable or base64 encoded."""
+    return from_mail(saved_mail_text(text))
+
+
+def saved_mail_text(text: str) -> str:
+    """A saved mail's readable text: a downloaded .eml's parts decoded (quoted-printable splits long links)."""
     message = email.message_from_string(text, policy=email.policy.default)
     if message["MIME-Version"] or message["Content-Type"]:
         parts = [message.get_body(preferencelist=(kind,)) for kind in ("plain", "html")]
         text = "\n".join(part.get_content() for part in parts if part)
-    return from_mail(text)
+    return text
 
 
 def prompt_in(body: str) -> str:

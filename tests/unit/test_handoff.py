@@ -112,13 +112,14 @@ def mailbox(monkeypatch):
     monkeypatch.setattr(transport, "deliver", deliver)
     monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
     monkeypatch.setattr(transport, "own_mailbox", lambda: None)                       # no Gmail or Outlook connected
-    pages = {}
+    pages, held = {}, {}
 
     def drop(bundle, drop_id=None, prompt="", **kw):   # the backend's drops (#2459); b24 keeps the prompt for the page
-        pages[drop_id] = prompt
+        pages[drop_id], held[drop_id] = prompt, bundle
         return drop_id
     monkeypatch.setattr(transport, "drop", drop)
     monkeypatch.setattr(transport, "page_prompt", lambda drop_id: pages[drop_id])
+    monkeypatch.setattr(transport, "pickup", lambda code: {"bundle": held[code["drop"]], "code": [], "context": ""})
     monkeypatch.setattr(transport, "fetch", lambda last=200: [
         m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
@@ -255,9 +256,9 @@ def test_no_text_in_the_mail_sits_bare_in_a_table_cell():
 def test_a_changed_bundle_is_not_verified():
     bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a", "to": "b",
                            "created_at": "2026-10-10", "where_it_stands": ""})
-    assert bundles.from_mail(bundles.notice(bundle, "prompt")["html"])["verified"]
+    assert bundles.from_mail(bundles.notice(bundle, "prompt", carry_bundle=True)["html"])["verified"]
     tampered = dict(bundle, task="something else")          # keeps the approved hash
-    assert not bundles.from_mail(bundles.notice(tampered, "prompt")["html"])["verified"]
+    assert not bundles.from_mail(bundles.notice(tampered, "prompt", carry_bundle=True)["html"])["verified"]
 
 
 # ---- recipient ----
