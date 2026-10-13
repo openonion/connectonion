@@ -464,3 +464,13 @@ def test_masking_reaches_names_profiles_numbers_and_ips_that_point_at_a_person()
                  "737 633", "0873918410", "100.71.113.43", "35.189.30.72"):
         assert gone not in out, gone
     assert "orgs/unsw-edu-au-921856d25b.md" in out and "127.0.0.1" in out and "0.0.0.0" in out
+
+
+def test_masking_also_reaches_cjk_glued_addresses_chinese_mobiles_and_every_people_page():
+    """Second review of #2493 on the real session, verbatim cases."""
+    text = ("'邮箱s.whittle@unsw.edu.au'] the phone number 02 7235 5365. 电话：138 0013 8000，或 13800138000；"
+            "+86 139 1234 5678. see people/vern.md, people/emma and people/david-burt.md; orgs/unsw.md stays.")
+    out = bundles.mask(text)
+    for gone in ("whittle", "7235 5365", "0013 8000", "13800138000", "1234 5678", "vern", "emma", "david-burt"):
+        assert gone not in out, gone
+    assert "orgs/unsw.md" in out and "people/[person]" in out

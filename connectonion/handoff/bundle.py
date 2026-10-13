@@ -210,18 +210,20 @@ def redact(text: str, known_secrets: list[str] = ()) -> str:
 # ran co rem has read a mailbox: a relative's address reached a live page (Aaron, 2026-10-14). The
 # sender's and the recipient's own addresses stay, and so do example ones (RFC 2606) and git@host.
 # Tool output quotes JSON, so a literal \\n can sit right before an address: it is not part of it.
-_START = r"(?:(?<=\\[nrt])|(?<![\w.%+\\-]))"
+_START = r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_.%+\\-]))"   # ASCII: 邮箱abc@x.com starts at the a
 EMAIL = re.compile(_START + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 PHONE = re.compile(r"\+\d[\d \-]{7,}\d"                               # +61 412 000 111
                    r"|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)"          # 0412 000 111
-                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?![\d.])"  # (02) 9065 4432, 0873918410
-                   r"|(?<!\d)1[38]00[ -]?\d{3}[ -]?\d{3}(?!\d)")          # 1800 737 633
+                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?!\d|\.\d)"  # (02) 9065 4432, 0873918410
+                   r"|(?<!\d)1[38]00[ -]?\d{3}[ -]?\d{3}(?!\d)"           # 1800 737 633
+                   r"|(?<![\d.])(?:\+86[ -]?)?1[3-9]\d[ -]?\d{4}[ -]?\d{4}(?!\d)")   # 138 0013 8000
 IP = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 NOT_AN_IP = {"127.0.0.1", "0.0.0.0"}
 NOT_A_PERSON = re.compile(r"^git@|@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|example|test|invalid|localhost)$", re.I)
 # Pointers at a person that are not an address: co rem's people/<name>-<10 hex>.md (bare too, but not
 # orgs/ or projects/ ones), a LinkedIn id, and the name in a mail header whose address was masked.
-PERSON_PAGE = re.compile(r"(?:(?<=people/)|(?<=\\[nrt])|(?<![\w/\\-]))[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{10}(?=\.md|[^\w-]|$)")
+PERSON_PAGE = re.compile(r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_/\\-]))[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{10}(?=\.md|[^\w-]|$)")
+PEOPLE_PATH = re.compile(r"(?<![A-Za-z0-9_])people/[^\s/'\"`)\]>,;:|*]+")
 LINKEDIN = re.compile(r"(linkedin\.com/in/)[\w%-]+")
 HEADER_NAME = re.compile(r"(?:\"[^\"<>\n]{1,60}\"|(?<![\w'’-])[A-Z][\w'’-]{0,30}\.?(?: [A-Z][\w'’-]{0,30}\.?){0,3}"
                          r"|(?<![\u4e00-\u9fff])[\u4e00-\u9fff·][\u4e00-\u9fff· ]{1,8})\s*(?=<\[email removed\]>)")
@@ -243,7 +245,8 @@ def mask(text: str, keep=(), emails: set[str] = None) -> str:
     # an ordinary word: "anyone@x.com" must not turn "anyone can read it" into "someone can".
     names = sorted({a.split("@")[0] for a in emails if re.search(r"[\d._]", a.split("@")[0])}, key=len, reverse=True)
     if names:
-        text = re.sub(r"(?<![\w.-])(?:" + "|".join(map(re.escape, names)) + r")(?![\w])", "someone", text)
+        text = re.sub(r"(?<![A-Za-z0-9_.-])(?:" + "|".join(map(re.escape, names)) + r")(?![A-Za-z0-9_])", "someone", text)
+    text = PEOPLE_PATH.sub("people/[person]", text)
     text = PERSON_PAGE.sub("[person]", text)
     text = LINKEDIN.sub(r"\1[person]", text)
     text = HEADER_NAME.sub("[person] ", text)
