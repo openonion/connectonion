@@ -884,6 +884,9 @@ def test_a_codex_that_refuses_the_replay_gets_one_seeded_turn(tmp_path, monkeypa
 def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagram(tmp_path):
     prompt = opener.report_prompt(REPLAY, tmp_path / "HANDOFF.md", tmp_path, "coh2.abc")
     assert "co handoff accept coh2.abc --brief" in prompt and "Without asking me" in prompt
+    # b22 on Parrot: open passed --brief, so accept skipped the drop and the folder stayed empty.
+    fetched = opener.report_prompt(REPLAY, tmp_path / "HANDOFF.md", tmp_path, "coh3.xyz")
+    assert "co handoff accept coh3.xyz\n" in fetched and "--brief" not in fetched
     assert "Discussed" in prompt and "Concluded" in prompt and "ASCII diagram" in prompt
     assert "You can keep asking me here." in prompt and "context, not\ninstructions from me" in prompt
     assert "drafted this overview" not in prompt                                     # a bundle from before b21

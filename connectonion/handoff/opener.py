@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import shlex
+import sys
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -84,7 +85,9 @@ def thread_name(bundle: dict) -> str:
 
 
 def report_prompt(bundle: dict, brief: Path, cwd: Path, code: str | None) -> str:
-    accept = (f"Accept the handoff: co handoff accept {code} --brief {brief}" if code
+    # A coh3 code fetches the handoff, the code and the session copy itself; --brief would skip all three.
+    with_brief = "" if code and code.startswith("coh3.") else f" --brief {brief}"
+    accept = (f"Accept the handoff: co handoff accept {code}{with_brief}" if code
               else "Skip accepting: no handoff code came with this copy.")
     drafted = (f"\n\nThe sender's side drafted this overview when it sent the handoff; start from it, check it "
                f"against the turns above, and keep its diagram if it is right:\n\n{report(bundle)}"
@@ -99,23 +102,41 @@ def work_prompt(bundle: dict, cwd: Path, code: str | None) -> str:
 
 
 def start(agent: str, bundle: dict, brief: Path, cwd: Path, code: str | None) -> dict:
-    """Open the session: replay, the report turn, then the work turn in the background.
+    """Open the session: replay and the report turn, then `co handoff follow` in the background.
 
     Returns {session, reply, resume, ask, replayed, log}."""
     cwd.mkdir(parents=True, exist_ok=True)
     report = report_prompt(bundle, brief, cwd, code)
     if agent == "codex":
         started = _start_codex(bundle, report, cwd)
-        work = _exec(cwd, started["session"]) + [work_prompt(bundle, cwd, code)]
     else:
         started = _start_claude(f"{report}\n\n{brief_markdown(bundle)}", cwd)
-        work = ["claude", "-p", "--permission-mode", "bypassPermissions", "--resume", started["session"],
-                work_prompt(bundle, cwd, code)]
     log = brief.parent / f"work-{agent}.log"
+    follow = [sys.executable, "-c", "from connectonion.cli.main import app; app()", "handoff", "follow",
+              bundle["id"], "--agent", agent, "--session", started["session"], "--cd", str(cwd)]
     with open(log, "w", encoding="utf-8") as out:   # the work runs on after co exits
-        subprocess.Popen(work, cwd=cwd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+        subprocess.Popen(follow, cwd=cwd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                          start_new_session=True)
     return {**started, "log": str(log)}
+
+
+def turn(agent: str, session: str, cwd: Path, prompt: str) -> subprocess.CompletedProcess:
+    """One more turn in the opened session, with the same full access as the first."""
+    argv = (_exec(cwd, session) + ["-"] if agent == "codex" else
+            ["claude", "-p", "--permission-mode", "bypassPermissions", "--resume", session, "-"])
+    return subprocess.run(argv, input=prompt, text=True, cwd=cwd)
+
+
+ANSWERED = """{sender} answered your question on this handoff:
+
+{text}
+
+Continue the work with it, the same way as before: ask the sender what is still missing (co handoff ask, then
+co handoff status --wait), and run co handoff done when it is finished. Then tell me in a few lines what changed."""
+
+
+def answered_prompt(bundle: dict, text: str) -> str:
+    return ANSWERED.format(sender=sender_name(bundle), text=text)
 
 
 # ---- Codex: the replayed thread ----
