@@ -103,7 +103,11 @@ def test_the_sender_is_named_by_their_git_name_not_only_an_address(tmp_path, mon
     assert handoff_commands._my_name() == "Aaron Xie"
     named = bundles.seal({**_bundle(RECIPIENT["mail"]), "from_name": "Aaron Xie"})
     assert bundles.sender_name(named) == "Aaron Xie"
-    assert f"From: Aaron Xie ({SENDER['mail']})" in bundles.brief_markdown(named)
+    # The agent mailbox is how replies route, not who sent the mail: a person reads a name (Aaron, 2026-10-13:
+    # "默认不应该是用 Gmail 发出去吗 怎么又用 agent email 发出去了", reading the preview's From line).
+    assert "From: Aaron Xie ·" in bundles.brief_markdown(named) and SENDER["mail"] not in bundles.header(named)
+    nameless = bundles.seal(dict(_bundle(RECIPIENT["mail"]), **{"from": "0x9c0a8bf90c@mail.openonion.ai"}))
+    assert "From: Someone ·" in bundles.header(nameless)
 
 
 # ---- #2454: a question the session copy cannot answer reaches the sender in person ----
@@ -294,3 +298,54 @@ def test_send_shows_the_sender_the_page_the_recipient_will_see(world, drops):
     [drop_id] = drops
     assert f"What you shared, as they see it: https://o.openonion.ai/h/{drop_id}" in sent
     assert _invoke("handoff", "status", "ho-1a2b3c4d").output.count(f"https://o.openonion.ai/h/{drop_id}") == 1
+
+
+# ---- the b24 mail as Aaron's Gmail on iOS showed it (2026-10-13 screenshot) ----
+
+def test_the_button_survives_a_client_that_drops_cell_backgrounds():
+    """Gmail iOS dropped the cell's `background`, leaving white text on white: a blank gap, no button."""
+    html_ = bundles.notice(_bundle(RECIPIENT["mail"]), "LINE", "https://o.openonion.ai/h/x")["html"]
+    cell = re.search(r'<td bgcolor="#[0-9a-f]{6}"[^>]*>(.*?)</td>', html_, re.S)
+    assert cell and "background-color:" in cell.group(0)
+    assert re.search(r'<a [^>]*style="[^"]*background-color:#[0-9a-f]{6}', cell.group(1))      # the link carries it too
+
+
+def test_a_persons_mail_carries_no_hidden_copy_but_an_agent_mailbox_does():
+    """The hidden base64 bundle is a wall of text in plain-text readers; a person's mail has the page."""
+    person = bundles.notice(_bundle("bob@gmail.com"), "LINE", "https://o.openonion.ai/h/x")["html"]
+    agent = bundles.notice(_bundle(RECIPIENT["mail"]), "LINE", "https://o.openonion.ai/h/x")["html"]
+    assert bundles.BEGIN not in person and bundles.BEGIN in agent        # co handoff inbox reads an agent's copy
+
+
+def test_the_mail_never_mixes_languages():
+    """b24: "Aaron Xie 一直在和 Claude Code 一起做「co handoff refinement…」…他们讨论了：switching handoff…"."""
+    zh = dict(_bundle("bob@gmail.com"), conversation=[{"at": "", "user": "邮件里不需要把所有的内容都写清楚", "ai": ""}],
+              discussed=["Switching handoff delivery to lightweight notifications"])
+    text = bundles.notice(bundles.seal(zh), "LINE")["text"]
+    assert "他们讨论了" not in text and "Switching handoff" not in text
+
+
+def test_the_report_is_written_in_the_language_the_sender_wrote_in(monkeypatch):
+    seen = []
+    import sys
+    import connectonion.llm_do  # noqa: F401  (the module, not the function the package re-exports)
+    monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", lambda prompt, output=None, **kw: (
+        seen.append(prompt), bundles.Top(title="t", task="t", where_it_stands="w"))[1])
+    bundles.draft([{"at": "", "user": "邮件只是让对方安装，或者起一个提醒作用", "ai": "好"}], "交接")
+    assert "Write every field in Chinese" in seen[-1]
+    bundles.draft([{"at": "", "user": "Keep the mail short", "ai": "ok"}], "the mail")
+    assert "Write every field in English" in seen[-1]
+
+
+def test_an_ai_turn_is_quoted_short_and_the_senders_words_whole():
+    """Aaron, 2026-10-13: "可以把 AI 的回答压缩一下…同时 把用户的原文要求保存下来"."""
+    assert bundles.QUOTE_CHARS <= 800
+    assert len(bundles.quote("x" * 5000)) < 900
+
+
+def test_an_unanswered_question_ends_in_a_stated_assumption_not_a_wait_forever(world, drops):
+    """b24 audit, same input twice: one run assumed and finished, the other waited indefinitely."""
+    _send(world)
+    world["be"](RECIPIENT)
+    said = " ".join(_invoke("handoff", "accept", _code(_page(world))).output.split())
+    assert "about 10 minutes" in said and "Assumed:" in said
