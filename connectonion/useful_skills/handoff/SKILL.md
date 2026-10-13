@@ -156,14 +156,19 @@ address:
 2. after the user confirms it is that person, run `co trust add <0xaddress>`.
 
 Tell the user it went, and run `co handoff status <id> --wait` in the background:
-it returns when their agent accepts, asks or finishes. `co handoff status <id>` shows "Accepted by …" once their
-agent accepts, their questions, and "Done, …" with any file they sent back
-(saved under `~/.co/handoff/results/<id>/`); a hosted agent (`co host`, `co ai`, a
+it returns when their agent accepts, asks or finishes. `co handoff status <id>` starts with one line on where it stands
+("bob finished it · their file saved · 2 questions (you answered 1)"), then their
+questions and "Done, …" with any file they sent back (saved under
+`~/.co/handoff/results/<id>/`; for a patch the Next line is the `git apply` to run); a hosted agent (`co host`, `co ai`, a
 deploy) also prints them while it runs. Each question is answered automatically
 with a copy of the session (credentials removed), and mailed once to the user's
 `git config user.email`, because a copy cannot answer a question they left open.
-When a question is one only the user can decide, tell them and send their answer
-with `co handoff answer <id> "<their answer>"`.
+When a question is one only the user can decide (status says "Waiting on you"), tell
+them and send their answer with `co handoff answer <id> "<their answer>"`.
+Other people's email addresses, phone numbers and IPs are masked before anything
+leaves; the preview says how many. If a page shows what it should not, take it down
+at once: `co handoff withdraw <id>`. For a recipient who reads another language,
+`--lang en|zh` sets the report's and the mail's language.
 The mail service's own record of the send is in `co email sent`. A recipient
 without an agent replies by plain email; answer them with `co email send` only
 after the user approves the text.

@@ -153,8 +153,9 @@ handoffs each acceptor took.
 | recipient | `co handoff accept <code>` | fetches the handoff, checks it against the code, sends the acceptance with their agent address to the sender's agent, and keeps the brief under `~/.co/handoff/accepted/<id>/` (`--brief HANDOFF.md` for a coh2 code) |
 | recipient | `co handoff ask <code> "<question>"` | sends a question about this handoff |
 | recipient | `co handoff done <code> "<what you did>" [--file result.patch]` | tells the sender it is finished, with an optional file (at most 3.5 MB packed). The sender's status shows it, and the sender is also mailed once at their git `user.email`, with a patch under 20 KB inline |
-| sender | `co handoff status <id>` | "Accepted by 0x… (mailbox) at …", each question, and "Done, …"; a file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>` |
-| sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted |
+| sender | `co handoff status <id>` | one line first, such as "bob finished it · their file saved · 2 questions (you answered 1)", then who accepted, each question with how it was answered ("You answered", "Answered automatically", or "Waiting on you"), and "Done, …". A file sent with `done` is saved as `~/.co/handoff/results/<id>/<name>`, and when it is a patch the Next line is the `git apply` (or `git am`) that applies it. `--verbose` adds agent addresses and the content hash |
+| sender | `co handoff answer <id> "<text>"` | sends the answer to the agent that accepted; status shows it as yours |
+| sender | `co handoff withdraw <id>` | takes the handoff's page and pickup down at once, instead of after 30 days; mail already delivered stays in their mailbox |
 | recipient | `co handoff status <id>` | the sender's answers |
 
 Each is a small base64 block sent to the other agent's inbox (see
@@ -174,7 +175,9 @@ output keeps its start and end). It covers only the handed-off messages
 and values from your keys.env are removed. The recipient's `co handoff status`
 saves it as `~/.co/handoff/accepted/<id>/session.md`, so their agent searches it
 instead of asking again. Later questions are answered with a pointer to that
-copy. The brief leaves tool output out on purpose; this copy is how a
+copy, unless the question says the copy does not answer it, or asks again: then
+no pointer goes, status shows it as "Waiting on you", and the mail to you says
+"Waiting on you" in its subject. The brief leaves tool output out on purpose; this copy is how a
 requirement that only ever appeared in a tool call still reaches the recipient.
 
 It happens wherever the sender's side checks for replies: the host's watcher,
@@ -261,6 +264,10 @@ enforcement:** in two full-auto Codex runs the agent read it and sent anyway.
 The real gate today is the coding client's own command approval (Codex asks
 before a networked command outside its sandbox); a person-only approval is
 planned with #2351/#2353.
+
+`--lang en` or `--lang zh` writes the report and the mail in that language; your
+own words stay as you wrote them. Without it, the language is the one you wrote
+in. A long handoff previews its newest messages; all of it is in the draft file.
 
 ## Recipients
 

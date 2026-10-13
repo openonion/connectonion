@@ -400,15 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b25
+## Current Version: 1.9.2b26
 
-1.9.2b25 is a 1.9.2 beta; stable remains 1.9.1. The handoff mail is in the sender's own
-voice and language, with a button every mail client draws; the replayed conversation
-appears in the recipient's Codex app with each message labelled; only the repository the
-handed-off work happened in last travels (`--no-code` sends none); AI turns are quoted to
-800 characters; an unanswered question ends in a stated assumption. The install floor is
-1.9.2b25. See [1.9.2b25 notes](docs/releases/1.9.2b25.md).
+1.9.2b26 is a 1.9.2 beta; stable remains 1.9.1. Other people's email addresses, phone numbers,
+IPs and co rem page names are masked in everything a handoff sends (#2492), and
+`co handoff withdraw` takes a page down at once; `--lang en|zh` sets the report's and the mail's
+language; status leads with one line on where it stands, shows your own answers as yours, and
+lets a question the session copy cannot answer wait on you; the page's conversation reads as a
+chat with each AI turn's final reply. The install floor is 1.9.2b26. See
+[1.9.2b26 notes](docs/releases/1.9.2b26.md).
 
+- 1.9.2b26 (Nobody else's details).
 - 1.9.2b25 (A note in your own voice).
 - 1.9.2b24 (Read it first, then one line).
 - 1.9.2b23 (A note from someone you know).
