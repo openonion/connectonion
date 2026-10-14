@@ -16,7 +16,7 @@ Enforcing control over context produced three critical failures:
 
 ## Decision: Context over control
 
-We restore the foundational principle: **give the agent sufficient context and tools; authorize upfront, ensure traceability afterwards.**
+We restore the foundational principle: **give the agent sufficient context and tools; quote originals rather than summarise them; authorize upfront, ensure traceability afterwards.**
 
 ### 1. Tools authorized upfront
 
@@ -29,14 +29,33 @@ For investigation stages (`init` and `investigate`):
 
 Project investigations supply live local repository paths alongside snapshots. A tool-capable model can inspect `git log`, `README.md`, `pyproject.toml`, `package.json` and relevant source files, then cite verifiable paths and revisions.
 
-### 3. Traceability afterwards
+### 3. Originals over summaries
+
+When a session, a mailbox or a document has to be made smaller (compacted,
+handed off, summarised for a reader), keep the original words and quote them,
+rather than writing a summary in their place. An AI summary drops what it
+did not think mattered, and nobody can tell afterwards what was dropped. A
+quote can be checked against its source, and a summary cannot.
+
+- Quote first, and say where each quote comes from (message number, file,
+  commit). A summary may sit next to the quotes as a guide, never instead of
+  them.
+- When the whole will not fit, cut whole items (the oldest messages, the
+  longest tool output) and say how many were left out and where the full copy
+  is. Do not paraphrase them into the space.
+- A model that only summarises is a reading aid. Its output is not the record.
+
+This is the same failure as the quick pass above: 24 items cut to 2,500
+characters each lost the evidence that decided the claim.
+
+### 4. Traceability afterwards
 
 Each completed investigation preserves an execution audit trail:
 - Task results and scheduled run records retain supplied source IDs, local file paths, timestamps and the model's full inspection report. The report names files actually inspected; the evidence list records what was supplied, not proof it was read.
 - Markdown dossiers retain numbered citations (`[1]`, `[2]`) pointing to source IDs or identifiable local files, with dates or revisions. Repository path lists remain reading leads and cannot serve as claim evidence.
 - Directly cited working files are retained by content hash; historical Git files are retained by exact commit and path. The reader opens these retained excerpts even if the working tree later changes.
 
-### 4. Security note (deferred)
+### 5. Security note (deferred)
 
 Incoming email remains untrusted text in unattended runs. Containment and hardening are deferred to a future runtime milestone. Utility, tool authorization and complete context come first.
 
