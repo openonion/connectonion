@@ -84,7 +84,7 @@ def new_id() -> str:
 
 
 AGENTS = {"codex": "Codex", "claude": "Claude Code", "gemini": "Gemini CLI", "opencode": "opencode", "droid": "droid",
-          "cursor": "Cursor"}
+          "cursor": "Cursor", "grok": "Grok"}
 
 
 def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",

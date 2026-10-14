@@ -12,6 +12,9 @@ Where each one keeps a session, as found on a real machine (2026-10-14):
   cursor    Cursor's own database (globalStorage/state.vscdb): composerData:<id> lists its bubbles,
             bubbleId:<id>:<bubble> {type: 1 user | 2 assistant, text}; a workspace's own state.vscdb
             names the conversations held for its folder. Copied out to ~/.co/handoff/imported/cursor/.
+  grok      xAI's Grok CLI: $GROK_HOME (~/.grok)/sessions/<folder, encoded>/<id>/; summary.json holds
+            info.cwd, updates.jsonl the conversation as session/update rows: user_message_chunk and
+            agent_message_chunk carry the text, _meta.agentTimestampMs the time; tool rows are skipped
 """
 
 import hashlib
@@ -24,21 +27,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-AGENTS = ("gemini", "opencode", "droid", "cursor")
-NAMES = {"gemini": "Gemini CLI", "opencode": "opencode", "droid": "droid", "cursor": "Cursor"}
+AGENTS = ("gemini", "opencode", "droid", "cursor", "grok")
+NAMES = {"gemini": "Gemini CLI", "opencode": "opencode", "droid": "droid", "cursor": "Cursor", "grok": "Grok"}
 INJECTED = re.compile(r"^\s*<(?:system-reminder|session_context)>")
 
 
 def candidates(agent: str, cwd: Path) -> list[Path]:
     """The sessions `agent` holds for `cwd`, newest first by when they were last written."""
     found = {"gemini": _gemini_sessions, "opencode": _opencode_sessions, "droid": _droid_sessions,
-             "cursor": _cursor_sessions}[agent](Path(cwd).resolve())
+             "cursor": _cursor_sessions, "grok": _grok_sessions}[agent](Path(cwd).resolve())
     return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def turns(agent: str, path: Path) -> list[dict]:
     rows = {"gemini": _gemini_turns, "opencode": _opencode_turns, "droid": _droid_turns,
-            "cursor": _imported_turns}[agent](Path(path))
+            "cursor": _imported_turns, "grok": _grok_turns}[agent](Path(path))
     return [t for t in (_turn(role, text, when) for role, text, when in rows) if t]
 
 
@@ -50,6 +53,8 @@ def folder(agent: str, path: Path) -> Path | None:
         return Path(root.read_text(encoding="utf-8").strip()) if root.exists() else None
     if agent == "opencode":
         return Path(json.loads(path.read_text(encoding="utf-8"))["directory"])
+    if agent == "grok":
+        return Path(json.loads((path.parent / "summary.json").read_text(encoding="utf-8"))["info"]["cwd"])
     if agent == "droid":
         with path.open(encoding="utf-8") as f:
             first = json.loads(f.readline() or "{}")
@@ -63,7 +68,7 @@ def kind_of(path: Path) -> str | None:
     """Which of AGENTS wrote the session at `path`, by where it is kept."""
     path = Path(path).resolve()
     homes = {"gemini": _gemini_home() / "tmp", "opencode": _opencode_home() / "session",
-             "droid": _droid_home() / "sessions", "cursor": imported_home() / "cursor"}
+             "droid": _droid_home() / "sessions", "cursor": imported_home() / "cursor", "grok": _grok_home() / "sessions"}
     return next((agent for agent, home in homes.items() if home.resolve() in path.parents), None)
 
 
@@ -228,3 +233,28 @@ def _export(composer_id: str, cwd: Path) -> Path | None:
 def _imported_turns(path: Path) -> list[tuple]:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
     return [(r["role"], r["text"], r["timestamp"]) for r in rows]
+
+
+# ---- Grok (xAI's CLI) ----
+
+def _grok_home() -> Path:
+    return Path(os.environ.get("GROK_HOME") or Path.home() / ".grok")
+
+
+def _grok_sessions(cwd: Path) -> list[Path]:
+    """By the cwd its summary records: a long folder name is a slug and a hash, not the path."""
+    return [s.parent / "updates.jsonl" for s in (_grok_home() / "sessions").glob("*/*/summary.json")
+            if (json.loads(s.read_text(encoding="utf-8")).get("info") or {}).get("cwd") == str(cwd)
+            and (s.parent / "updates.jsonl").exists()]
+
+
+def _grok_turns(path: Path) -> list[tuple]:
+    role = {"user_message_chunk": "user", "agent_message_chunk": "assistant"}
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        params = (json.loads(line) if line.strip() else {}).get("params") or {}
+        update = params.get("update") or {}
+        if update.get("sessionUpdate") in role:
+            when = (params.get("_meta") or {}).get("agentTimestampMs")
+            rows.append((role[update["sessionUpdate"]], (update.get("content") or {}).get("text", ""), _iso(when) if when else ""))
+    return rows

@@ -237,14 +237,15 @@ the recipient can tell the copy is the one you approved.
 | Gemini CLI | `~/.gemini/tmp/<project>/chats/session-*.json(l)` | the newest whose `projectHash` is this directory's sha256 |
 | opencode | `~/.local/share/opencode/storage/session/<project>/ses_*.json` | the newest whose `directory` is this directory |
 | droid | `~/.factory/sessions/<cwd, non-alphanumerics as ->/<id>.jsonl` | the newest file there |
+| Grok | `$GROK_HOME` (`~/.grok`)`/sessions/<folder, encoded>/<id>/updates.jsonl` | the newest whose `summary.json` `info.cwd` is this directory |
 | Cursor | Cursor's own database (`…/Cursor/User/globalStorage/state.vscdb`), read without writing to it | the conversation this folder's workspace touched last, copied to `~/.co/handoff/imported/cursor/` |
 
 With no `--agent`, the newest session of any of them for this directory is the
 one drafted. Only what was said is read: the messages and the AI's replies,
-never tool calls or their output. Grok's CLI is not read yet.
+never tool calls or their output.
 
 `--session <thread id | session id | path>` picks any session;
-`--agent codex|claude|gemini|opencode|droid|cursor` picks one client;
+`--agent codex|claude|gemini|opencode|droid|cursor|grok` picks one client;
 `--from-file notes.md` sends a notes file as the one message instead.
 
 Both clients keep the whole history on disk and only mark a compaction, so the

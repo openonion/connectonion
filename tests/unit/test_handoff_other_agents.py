@@ -143,3 +143,30 @@ def test_no_session_names_every_place_it_looked(cwd):
         sessions.find_session(cwd)
     for name in ("Gemini CLI", "opencode", "droid", "Cursor"):
         assert name in str(missing.value)
+
+
+def test_a_grok_session_is_found_by_its_summarys_cwd_and_read_without_tool_rows(cwd):
+    """xAI's Grok CLI: the folder name is the cwd encoded (a slug and a hash when long), so the match is
+    summary.json's info.cwd; updates.jsonl holds what was said, with tool calls and reasoning between."""
+    folder = Path.home() / ".grok" / "sessions" / "a-slug-and-hash" / "01a13809-1cae"
+    folder.mkdir(parents=True)
+    (folder / "summary.json").write_text(json.dumps({"info": {"id": "01a13809-1cae", "cwd": str(cwd)}}))
+
+    def row(kind, text=None, ms=1791941484827, method="session/update", **extra):
+        update = {"sessionUpdate": kind, **({"content": {"type": "text", "text": text}} if text else {}), **extra}
+        return json.dumps({"timestamp": ms // 1000 + 6, "method": method,
+                           "params": {"sessionId": "01a13809-1cae", "update": update, "_meta": {"agentTimestampMs": ms}}})
+    (folder / "updates.jsonl").write_text("\n".join([
+        row("user_message_chunk", "Cookie or localStorage for the token?"),
+        row("agent_thought_chunk", "thinking about XSS", ms=1791941490000),
+        row("tool_call", title="read_file", rawInput={"target_file": "SECRET.txt"}, ms=1791941495371),
+        row("tool_call_update", status="completed", rawOutput="SECRET BODY", ms=1791941496000),
+        row("agent_message_chunk", "The cookie: JS cannot read it.", ms=1791941497578),
+        row("turn_completed", method="_x.ai/session/update", ms=1791941498000)]) + "\n")
+    path = folder / "updates.jsonl"
+    assert sessions.find_session(cwd) == ("grok", path)
+    turns = sessions.read_turns("grok", path)
+    assert [(t["role"], t["text"]) for t in turns] == [("user", "Cookie or localStorage for the token?"),
+                                                      ("assistant", "The cookie: JS cannot read it.")]
+    assert turns[0]["timestamp"] == "2026-10-14T01:31:24.827Z"     # when it was said, not when written
+    assert sessions.places("grok", path) == [(cwd, "", "")] and sessions.find_by_id(str(path)) == ("grok", path)

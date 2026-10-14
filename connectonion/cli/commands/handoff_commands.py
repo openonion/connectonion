@@ -2,7 +2,7 @@
 Purpose: `co handoff` — hand a task discussed in one coding-agent session to another person's coding agent
 LLM-Note:
   Dependencies: imports from [typer, handoff.{sessions,bundle,transport,opener}, cli.style, command_tips.print_tip] | registered in cli/main.py via make_handoff_app(_typer_app)
-  Data flow: send → resolve recipient → read the current coding-agent session: Codex, Claude Code, Gemini CLI, opencode, droid or Cursor (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
+  Data flow: send → resolve recipient → read the current coding-agent session: Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
   State/Effects: ~/.co/handoff/{contacts.json, drafts/<id>.json, sent/<id>.json, received/<id>/} | mail only with --yes | a model call in send (draft) and open (seed turn)
 """
 
@@ -1095,7 +1095,7 @@ def make_handoff_app(factory) -> typer.Typer:
         who: str = typer.Argument(..., help="Contact name (co handoff contact), an email, or a 0x agent address"),
         what: str = typer.Argument("", help="What to hand off, in your words; the draft is built around it"),
         from_file: Optional[Path] = typer.Option(None, "--from-file", help="Draft from these notes instead of the current session"),
-        agent: Optional[str] = typer.Option(None, "--agent", help="Read this agent's current session: codex, claude, gemini, opencode, droid or cursor (default: whichever is newest here)"),
+        agent: Optional[str] = typer.Option(None, "--agent", help="Read this agent's current session: codex, claude, gemini, opencode, droid, cursor or grok (default: whichever is newest here)"),
         session: Optional[str] = typer.Option(None, "--session", help="Draft from this session instead: a Codex thread id, Claude Code session id, or a session file's path"),
         since: int = typer.Option(1, "--since", min=1, help="Start at message N of the preview's [N] list, leaving out earlier, unrelated work"),
         draft: Optional[str] = typer.Option(None, "--draft", help="Use this saved draft id exactly, instead of drafting again"),
@@ -1107,7 +1107,7 @@ def make_handoff_app(factory) -> typer.Typer:
         lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
         """Hand a task to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
-        Gemini CLI, opencode, droid or Cursor) and previews it. Sends only with --yes; writes a local draft.
+        Gemini CLI, opencode, droid, Cursor or Grok) and previews it. Sends only with --yes; writes a local draft.
 
         Drafting reads the whole session (or --from-file): every message you wrote goes
         word for word, and the AI's replies quoted (a long one cut in the middle). The preview shows the
