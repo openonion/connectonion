@@ -380,11 +380,11 @@ def test_the_recipient_installs_the_release_that_sent_it(world):
     assert f"/v{__version__}/install.sh" in page
 
 
-def test_an_agent_is_told_a_preview_is_older_than_the_release(world):
+def test_an_agent_is_told_a_preview_is_older_than_the_release():
     # "older than 1.9.2" alone lets an agent keep 1.9.2b27, the version this floor exists to replace.
-    from connectonion.handoff.replies import MIN_VERSION
-    _send(world)
-    assert f"older than {MIN_VERSION} (its previews, such as {MIN_VERSION}b27, are older)" in _page(world)
+    from connectonion.handoff.replies import older_than
+    assert older_than("1.9.2") == "older than 1.9.2 (its previews, such as 1.9.2b27, are older)"
+    assert older_than("1.9.3b1") == "older than 1.9.3b1"
 
 
 # ---- #2410: mail finds the agent, the agent inbox carries the rest ----

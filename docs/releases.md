@@ -23,6 +23,16 @@ one line, and the result comes back as a patch. Neither side gets more than the 
 python -m pip install --upgrade 'connectonion==1.9.2'
 ```
 
+## Current preview
+
+Beta **1.9.3b1**: the person you hand a session to installs the release you sent it from,
+not 1.9.2b27, so 1.9.2's permission defaults reach them too. See
+[1.9.3b1 notes](releases/1.9.3b1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3b1'
+```
+
 ## Previous previews
 
 Release candidate **1.9.2rc1**: handing a session to someone else's agent, checked end to end
