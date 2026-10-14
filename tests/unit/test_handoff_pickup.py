@@ -296,9 +296,10 @@ def test_accepting_lets_the_sender_send_handoffs_but_not_use_the_recipients_tool
     tools.promote_to_contact(SENDER["address"], mine)                      # what the Trust Agent may do later
     assert tools.get_level(SENDER["address"], mine) == "contact"
 
-    world["be"](SENDER)                                                    # the sender's side: unchanged
+    world["be"](SENDER)       # the sender's side too, since the audit (2026-10-14): handoffs, not contact
     _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert tools.is_contact(RECIPIENT["address"], Path(os.environ["AGENT_CONFIG_PATH"]))
+    theirs = Path(os.environ["AGENT_CONFIG_PATH"])
+    assert tools.get_level(RECIPIENT["address"], theirs) == "handoffs" and not tools.is_contact(RECIPIENT["address"], theirs)
 
 
 def test_send_shows_the_sender_the_page_the_recipient_will_see(world, drops):

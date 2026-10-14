@@ -163,9 +163,11 @@ def test_a_handoff_code_is_not_an_invite_code(world):
     assert evaluate_request(config, RECIPIENT["address"], {"invite_code": code}, co_dir=co_dir) != "allow"
 
 
-def test_after_acceptance_the_sender_has_a_contact_and_the_recipient_a_handoff_peer(world):
-    """Asymmetric (Aaron, 2026-10-13): the recipient's agent may use what the sender's Host pre-authorises;
-    the sender, on the recipient's side, may only exchange handoffs."""
+def test_after_acceptance_each_side_holds_the_other_at_handoffs_only(world):
+    """Was asymmetric (2026-10-13): the acceptor became a full contact of the sender's agent. The permission
+    audit (2026-10-14) found that under careful a contact drives that agent and approves its own tool calls,
+    and the acceptor is whoever opened the page link first. Now neither side gains more than handoffs:
+    letting someone use your agent is your own `co trust add`."""
     from connectonion.network.trust import tools
     world["be"](SENDER)
     assert _invoke("handoff", "contact", "Bob", RECIPIENT["mail"]).exit_code == 0
@@ -181,8 +183,9 @@ def test_after_acceptance_the_sender_has_a_contact_and_the_recipient_a_handoff_p
     co_dir = Path(os.environ["AGENT_CONFIG_PATH"])
     assert not tools.is_contact(RECIPIENT["address"], co_dir)          # not before the sender sees the acceptance
     status = _invoke("handoff", "status", "ho-1a2b3c4d")
-    assert "They are now your agent's contact bob; co handoff send bob reaches them again" in status.output
-    assert tools.is_contact(RECIPIENT["address"], co_dir) and not tools.is_whitelisted(RECIPIENT["address"], co_dir)
+    said = " ".join(status.output.split())
+    assert "co handoff send bob reaches them again" in said and "they can't use your agent" in said
+    assert tools.get_level(RECIPIENT["address"], co_dir) == "handoffs" and not tools.is_contact(RECIPIENT["address"], co_dir)
     assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True}}  # kept its name; reads the inbox
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
     assert peers[RECIPIENT["address"]] == {"mailbox": RECIPIENT["mail"], "scope": "handoff", "handoffs": ["ho-1a2b3c4d"]}
@@ -792,7 +795,7 @@ def test_follow_feeds_the_senders_own_answer_back_into_the_opened_session_until_
     _invoke("handoff", "accept", code)
     turns = []
 
-    def turn(agent, session, cwd, prompt):
+    def turn(agent, session, cwd, prompt, full_access=False):
         turns.append(prompt)
         if len(turns) == 1:                                          # the work turn asks, the sender answers
             _invoke("handoff", "ask", code, "Suffix inside the limit?")
@@ -1024,3 +1027,78 @@ def test_accepting_a_handoff_that_was_taken_down_says_so_in_a_sentence(world, mo
     world["be"](RECIPIENT)
     said = _invoke("handoff", "accept", code)
     assert said.exit_code != 0 and "no longer there" in " ".join(said.output.split()) and "Traceback" not in said.output
+
+
+
+# ---- what each side may do to the other (permission audit, 2026-10-14) ----
+
+def test_a_handoffs_peer_is_refused_by_the_host_without_asking_a_model(world, monkeypatch):
+    """A handoff counterpart may exchange handoff messages, not talk to your agent; a model must not decide."""
+    from connectonion.network.trust import TrustAgent, tools
+    world["be"](SENDER)
+    co_dir = Path(os.environ["AGENT_CONFIG_PATH"])
+    tools.admit_for_handoffs(RECIPIENT["address"], co_dir, "accepted our handoff")
+    trust = TrustAgent("careful", co_dir=co_dir)
+    trust._config = {"allow": ["whitelisted", "contact"], "default": "ask"}   # a Host with no door to onboard by
+    monkeypatch.setattr(trust, "_llm_decide", lambda *a: pytest.fail("a model was asked"))
+    assert trust.should_allow(RECIPIENT["address"], {"input": "run ls ~"}).allow is False
+
+
+def test_an_inbox_reply_whose_authenticated_sender_is_someone_else_is_ignored(world):
+    """The secret is in the public page's prompt, so a block's own `address` proves nothing: an agent-inbox
+    message is believed only when the backend's authenticated sender is the address it claims."""
+    code = _code(_send(world))
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    genuine = [m for m in world["inbox"] if m["from_address"] == RECIPIENT["address"]]
+    assert genuine
+    for message in genuine:                                  # Mallory relays it as her own post
+        message["from_address"] = "0x" + "e3" * 32
+    world["be"](SENDER)
+    status = _invoke("handoff", "status", "ho-1a2b3c4d")
+    assert "Not accepted yet" in status.output
+
+
+def test_a_patch_named_to_escape_stays_inside_the_handoff_folder(world, tmp_path):
+    """The patch's folder name comes from the sender: ../../x wrote outside the work folder, .claude into it."""
+    from connectonion.cli.commands import handoff_commands as hc
+    folder = tmp_path / "accepted" / "ho-1"
+    entries = [{"repository": "https://example.com/r.git", "commit": "a" * 40, "branch": "main"}] * 3
+    patches = [{"name": name, "base": "b" * 40, "commits": "", "changes": ""} for name in ("../../escaped", ".claude", "")]
+    hc._unpack_code(entries, patches, folder)
+    written = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.diff"))
+    assert written and all(p.startswith("accepted/ho-1/code/") for p in written)
+    assert not any("/." in p or p.startswith("escaped") for p in written)
+
+
+def test_an_opened_handoff_runs_in_the_recipients_agent_without_full_access_unless_asked(monkeypatch, tmp_path):
+    """co handoff open ran Claude with bypassPermissions and Codex with danger-full-access, and fed the
+    sender's answers in for seven days. Now the work folder sandbox, and full access only on request."""
+    from connectonion.handoff import opener
+    runs = []
+    monkeypatch.setattr(opener.subprocess, "run", lambda argv, **kw: runs.append(argv) or type("D", (), {"returncode": 0})())
+    for agent in ("codex", "claude"):
+        opener.turn(agent, "s1", tmp_path, "go")
+    assert not any("bypassPermissions" in a or "danger-full-access" in a for a in runs), runs
+    assert "workspace-write" in runs[0] and "acceptEdits" in runs[1]
+    runs.clear()
+    for agent in ("codex", "claude"):
+        opener.turn(agent, "s1", tmp_path, "go", full_access=True)
+    assert "danger-full-access" in runs[0] and "bypassPermissions" in runs[1]
+
+
+def test_the_senders_uncommitted_changes_are_their_own_commit_so_the_result_is_only_the_recipients(tmp_path):
+    """b30 Codex TUI gate: the rebuilt repo had the sender's uncommitted change in the working tree, so the
+    recipient's `git diff > result.patch` carried it back and the sender's `git apply` could not apply it."""
+    import subprocess
+    from connectonion.cli.commands import handoff_commands as hc
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    (saved / "commits.mbox").write_text("")
+    (saved / "changes.diff").write_text("diff --git a/slug.py b/slug.py\nnew file mode 100644\n--- /dev/null\n"
+                                        "+++ b/slug.py\n@@ -0,0 +1 @@\n+fold = 'NFKD'\n")
+    target = tmp_path / "slugify"
+    hc._rebuild(target, saved, {"commits": "", "changes": "x"})
+    git = lambda *a: subprocess.run(["git", "-C", str(target), *a], capture_output=True, text=True).stdout
+    assert git("status", "--porcelain") == ""                        # nothing of the sender's left to diff
+    assert "uncommitted changes" in git("log", "-1", "--format=%s") and "fold = 'NFKD'" in (target / "slug.py").read_text()

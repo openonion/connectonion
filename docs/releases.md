@@ -25,14 +25,17 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b30**: hand off a session from Gemini CLI, opencode, droid, Cursor or Grok, not
-only Codex and Claude Code. See [1.9.2b30 notes](releases/1.9.2b30.md).
+Beta **1.9.2b31**: accepting a handoff gives the other side nothing but messages about that
+handoff; using your agent stays your own decision. See [1.9.2b31 notes](releases/1.9.2b31.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b30'
+python -m pip install --upgrade 'connectonion==1.9.2b31'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b30**: hand off a session from Gemini CLI, opencode, droid, Cursor or Grok, not
+only Codex and Claude Code. See [1.9.2b30 notes](releases/1.9.2b30.md).
 
 Beta **1.9.2b29**: before you see a handoff's preview, your own Codex or Claude Code takes
 out the private sentences, in the page and in the session copy, and tells you where. See

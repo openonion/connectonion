@@ -36,7 +36,7 @@ def check() -> list[str]:
         who = state["accepted"]
         if who and not seen["accepted"]:
             name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"], record.get("inbox", False))
-            news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as contact {name}")
+            news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as {name}; they can send you handoff messages, not use your agent")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
                  for q in state["questions"] if replies.question_key(q) not in told]
         news += [f"[handoff] {record['id']} done: {d['text']}  (co handoff status {record['id']})"
