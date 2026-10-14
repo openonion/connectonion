@@ -127,14 +127,14 @@ notebook you can explore without connecting an account.*
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.1
+### Try co rem · 1.9.2
 
 Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.1'
+pip install --upgrade 'connectonion==1.9.2'
 # build your map and first pages; approve nightly upkeep when prompted
 co rem init
 # read the local notebook
@@ -312,9 +312,18 @@ Codex ([`co skills`](docs/cli/skills.md)).
 ConnectOnion is also a Python framework for building your own agents on the
 same harness; see the [documentation](https://docs.connectonion.com).
 
+### Hand a session to someone · 1.9.2
+
+Say "hand this to Bob" in Codex or Claude Code. You see exactly what would
+leave your machine, with private sentences already taken out by your own agent;
+Bob pastes one line into his agent, which picks up where yours stopped and sends
+the result back as a patch. Neither side gets more than the handoff. See
+[openonion/handoff](https://github.com/openonion/handoff) and
+[the guide](docs/cli/handoff.md).
+
 ## Project
 
-**Stable 1.9.1** is what `pip install connectonion` installs; previews
+**Stable 1.9.2** is what `pip install connectonion` installs; previews
 remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)
