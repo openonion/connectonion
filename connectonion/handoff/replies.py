@@ -27,7 +27,7 @@ from ..address import agent_email
 from ..env_file import env_lock
 from ..environment import global_config_dir
 from . import bundle as bundles
-from . import sessions, transport
+from . import private, sessions, transport
 
 PREFIX = "coh2."
 DROP_PREFIX = "coh3."        # the handoff itself waits on the backend under a drop id (#2459)
@@ -398,12 +398,22 @@ def copy_text(session: dict, until: str, keep=(), masked: bool = True, keep_name
     since = session.get("since", "")
     kept = [e for e in turns if (approved is None or e["at"] in approved) and (not since or e["at"] >= since)
             and (not until or not e["at"] or e["at"] <= until)]
-    kept = [_as_approved(e, session) for e in kept]
+    kept = [_as_approved(_without_private(e, session), session) for e in kept]
     text = "\n\n".join(f"[{e['at'][:19]}] Sender:\n{e['user']}" + (f"\n\n[{e['at'][:19]}] AI:\n{e['ai']}" if e["ai"] else "")
                        for e in kept) + "\n"
     text = bundles.redact(text, bundles.known_secrets())
     to = next((k for k in keep if k), "")   # the recipient comes first in `keep`
-    return bundles.mask(text, keep, names=bundles.rem_names(keep_names, to)) if masked else text
+    names = sorted({*bundles.rem_names(keep_names, to), *session.get("names", [])}, key=len, reverse=True)
+    return bundles.mask(text, keep, names=names) if masked else text
+
+
+def _without_private(exchange: dict, session: dict) -> dict:
+    """The whole turn with the sentences the private pass removed from it at drafting (#2500): the copy
+    carries each AI reply in full, and the private part of one is often past its quoted 800 characters."""
+    found = (session.get("removed") or {}).get(exchange["at"])
+    if not found:
+        return exchange
+    return {**exchange, "user": private.remove(exchange["user"], found), "ai": private.remove(exchange["ai"], found)}
 
 
 def _copy(record: dict, session: dict, budget: int = None) -> str:

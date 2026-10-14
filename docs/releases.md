@@ -25,15 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
-Beta **1.9.2b28**: what you change in a handoff's draft is what goes, in the session copy
-too, and the preview points at messages about health, visas, the law or money. See
-[1.9.2b28 notes](releases/1.9.2b28.md).
+Beta **1.9.2b29**: before you see a handoff's preview, your own Codex or Claude Code takes
+out the private sentences, in the page and in the session copy, and tells you where. See
+[1.9.2b29 notes](releases/1.9.2b29.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2b28'
+python -m pip install --upgrade 'connectonion==1.9.2b29'
 ```
 
 ## Previous previews
+
+Beta **1.9.2b28**: what you change in a handoff's draft is what goes, in the session copy
+too, and the preview points at messages about health, visas, the law or money. See
+[1.9.2b28 notes](releases/1.9.2b28.md).
 
 Beta **1.9.2b27**: the copy of your session that goes with a handoff is only the
 conversation you approved, never commands or their output, and only the person who accepts

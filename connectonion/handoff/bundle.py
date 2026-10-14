@@ -143,11 +143,13 @@ def _turn(exchange: dict) -> dict:
 
 def assemble(*, handoff_id: str, sender: str, to: str, what: str, source: dict, code: list[dict],
              top: Top, exchanges: list[dict], titles: dict[str, str] = None,
-             sender_name: str = "", keep: list[str] = (), lang: str = "", keep_names: list[str] = ()) -> dict:
+             sender_name: str = "", keep: list[str] = (), lang: str = "", keep_names: list[str] = (),
+             names: list[str] = ()) -> dict:
+    """`names` are people's names found besides co rem's (the private-sentence pass, #2500)."""
     said = [_turn(e) for e in exchanges]
     whole = json.dumps([top.model_dump(), said], ensure_ascii=False)
     emails, phones = others(whole, [sender, to, *keep])
-    names = [n for n in rem_names([sender_name, *keep_names], to) if n in whole]
+    names = sorted({n for n in [*rem_names([sender_name, *keep_names], to), *names] if n in whole}, key=len, reverse=True)
     bundle = {
         "format": FORMAT,
         "id": handoff_id,
@@ -263,7 +265,7 @@ def rem_names(keep_names=(), to: str = "") -> list[str]:
     kept = {w.lower() for k in keep_names if k for w in k.split()}
     kept |= {w.lower() for page in pages if to and to.lower() in page.lower() for w in _title(page).split()}
     named = set()
-    for title in map(_title, pages):
+    for title in [part.strip() for page in pages for part in _names_in(_title(page))]:
         words = title.split()
         if len(title) < 2 or re.fullmatch(r"[\w.+-]+@[\w.-]+|[A-Z0-9]+", title) or kept & {w.lower() for w in words}:
             continue   # an address, an acronym ("GIF"), or the sender or recipient
@@ -277,6 +279,12 @@ def rem_names(keep_names=(), to: str = "") -> list[str]:
 
 def _title(page: str) -> str:
     return page.split("\n", 1)[0].lstrip("# ").strip()
+
+
+def _names_in(title: str) -> list[str]:
+    """"Mei-Ling Wu (Mimi)" → the name and the nickname: the session said the nickname, not the name (2026-10-14)."""
+    nicknames = re.findall(r"[(（]([^()（）]+)[)）]", title)
+    return [re.sub(r"\s*[(（][^()（）]*[)）]", "", title), *nicknames]
 
 
 def mask(text: str, keep=(), emails: set[str] = None, names=()) -> str:
