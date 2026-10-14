@@ -209,5 +209,5 @@ class TestTheGlobalIdentityHasItsOwnLists:
         result = CliRunner().invoke(app, ['trust', 'list', '--global'], env={'COLUMNS': '200'})
         assert result.exit_code == 0
         assert '0x' + 'b2' * 32 in result.output
-        assert 'accepted handoff' in result.output
+        assert 'added by you' in result.output   # since 1.9.2b31 a handoff makes no contact
         assert str(home) in result.output.replace('\n', '')

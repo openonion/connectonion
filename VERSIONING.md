@@ -400,15 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b31
+## Current Version: 1.9.2rc1
 
-1.9.2b31 is a 1.9.2 beta; stable remains 1.9.1. Accepting a handoff no longer makes anyone a
-contact: each side holds the other at `handoffs`, which exchanges messages about that handoff and
-nothing else, and a host refuses them without asking a model. Agent-inbox replies count only from
-their authenticated poster, a sender's patch folder name stays inside the handoff folder, and
-`co handoff open` works inside the folder unless `--full-access`. Trust starts from cost (DD-078).
-The install floor stays 1.9.2b27. See [1.9.2b31 notes](docs/releases/1.9.2b31.md).
+1.9.2rc1 is the 1.9.2 release candidate; stable remains 1.9.1. After 1.9.2b31 passed a real
+handoff in both directions between Claude Code and Codex, and Codex to Codex, each ending with the
+returned patch applied on the sender's side, `co trust list` stops saying a handoff makes a
+contact, and the recipient's agent is told its patch holds only its own changes. See
+[1.9.2rc1 notes](docs/releases/1.9.2rc1.md).
 
+- 1.9.2rc1 (Both directions, end to end).
 - 1.9.2b31 (Nobody gets more than the handoff).
 - 1.9.2b30 (From whichever agent you used).
 - 1.9.2b29 (Read by your own agent).

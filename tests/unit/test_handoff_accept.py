@@ -1102,3 +1102,22 @@ def test_the_senders_uncommitted_changes_are_their_own_commit_so_the_result_is_o
     git = lambda *a: subprocess.run(["git", "-C", str(target), *a], capture_output=True, text=True).stdout
     assert git("status", "--porcelain") == ""                        # nothing of the sender's left to diff
     assert "uncommitted changes" in git("log", "-1", "--format=%s") and "fold = 'NFKD'" in (target / "slug.py").read_text()
+
+
+def test_trust_list_no_longer_says_a_handoff_makes_a_contact(world):
+    """Since 1.9.2b31 both sides of a handoff sit at handoffs; the Contacts heading still said otherwise."""
+    from connectonion.network.trust import tools
+    world["be"](SENDER)
+    co_dir = Path(os.environ["AGENT_CONFIG_PATH"])
+    tools.promote_to_contact("0x" + "c3" * 32, co_dir)
+    tools.admit_for_handoffs(RECIPIENT["address"], co_dir)
+    said = " ".join(_invoke("trust", "list", "--global").output.split())
+    assert "Contacts" in said and "accepted handoff" not in said.split("Handoffs only")[0]
+    assert "either side of a handoff" in said
+
+
+def test_the_recipient_is_told_what_its_patch_is_relative_to():
+    """b31 gate: the recipient's done note said its patch included the sender's uncommitted change; it did not."""
+    from connectonion.cli.commands import handoff_commands as hc
+    rules = " ".join(hc._rules("coh3.x", "ho-1").split())
+    assert "only your own changes" in rules and "The sender's uncommitted changes" in rules
