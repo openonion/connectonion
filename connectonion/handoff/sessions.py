@@ -351,6 +351,33 @@ def titles(agent: str, path: Path) -> dict[str, str]:
     return found
 
 
+# What a session read that is the sender's own and not the work: every leak on 2026-10-14 came from
+# an AI reply quoting one of them.
+READS = {"mail": re.compile(r"\bco (?:gmail|outlook|email|inbox)\b|Gmail__|search_threads|get_thread|\bgws gmail\b"),
+         "co rem pages": re.compile(r"\bco rem\b|\.co/rem\b")}
+
+
+def reads_private(agent: str, path: Path) -> list[str]:
+    """Which of READS the session's tool calls touched, from the calls themselves, not what anyone said."""
+    found = set()
+    with Path(path).open(encoding="utf-8") as f:
+        for line in f:
+            if "tool_use" in line or "function_call" in line or "custom_tool_call" in line:
+                calls = re.sub(r'\\?"\s*,\s*\\?"', " ", " ".join(_tool_calls(json.loads(line))))   # ["co", "rem"]
+                found |= {what for what, pattern in READS.items() if pattern.search(calls)}
+    return sorted(found, key=list(READS).index)
+
+
+def _tool_calls(row: dict) -> list[str]:
+    payload = row.get("payload") or {}
+    if payload.get("type") in ("function_call", "custom_tool_call", "local_shell_call"):
+        return [json.dumps(payload.get("arguments") or payload.get("input") or payload.get("action") or "")
+                + " " + str(payload.get("name", ""))]
+    content = (row.get("message") or {}).get("content")
+    return [part.get("name", "") + " " + json.dumps(part.get("input")) for part in content
+            if isinstance(part, dict) and part.get("type") == "tool_use"] if isinstance(content, list) else []
+
+
 def _tool_outputs(row: dict) -> list[str]:
     payload = row.get("payload") or {}
     if payload.get("type") in ("function_call_output", "custom_tool_call_output"):

@@ -166,7 +166,10 @@ with a copy of the session (credentials removed), and mailed once to the user's
 When a question is one only the user can decide (status says "Waiting on you"), tell
 them and send their answer with `co handoff answer <id> "<their answer>"`.
 Other people's email addresses, phone numbers and IPs are masked before anything
-leaves; the preview says how many. If a page shows what it should not, take it down
+leaves; the preview says how many. Private sentences (health, family, personal
+travel, money, visas, a third party's own business) are replaced with
+`[removed: <why>]` by the user's own Codex or Claude Code before the preview, which
+lists where; show the user that line, and `--edit` if they want one back. If a page shows what it should not, take it down
 at once: `co handoff withdraw <id>`. For a recipient who reads another language,
 `--lang en|zh` sets the report's and the mail's language. When the preview says
 the recipient is named N times, show the user `--mentions <name>` before asking

@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 from connectonion.handoff import bundle as bundles
-from connectonion.handoff import opener, sessions, transport
+from connectonion.handoff import opener, private, replies, sessions, transport
 
 runner = CliRunner()
 THREAD = "01a12594-63de-7210-809d-2a727b96f400"
@@ -84,6 +84,8 @@ def model(monkeypatch):
     prompts = []
 
     def fake_llm_do(prompt, output=None, **kwargs):
+        if output is private.Found:     # the private-sentence pass (#2500); `prompts` keeps the report's
+            return _fake_filter(prompt)
         prompts.append(prompt)
         return bundles.Top(
             title="Store the login token",
@@ -96,7 +98,18 @@ def model(monkeypatch):
 
     import connectonion.llm_do  # noqa: F401  (the module, not the function the package re-exports)
     monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", fake_llm_do)
+    monkeypatch.setattr(private, "reader", lambda agent="": "co")      # no Codex or Claude Code in a test
     return prompts
+
+
+# The private-sentence pass, faked as a reader who knows a few private words and one name.
+FAKE_PRIVATE = {"visa": "legal and immigration", "dentist": "health", "Lanzhou": "travel and home"}
+
+
+def _fake_filter(prompt: str):
+    hits = [private.Hit(id=int(n), categories=[c for w, c in FAKE_PRIVATE.items() if w in text])
+            for n, text in re.findall(r"^\[(\d+)\] (.*)$", prompt, re.M) if any(w in text for w in FAKE_PRIVATE)]
+    return private.Found(private=hits, names=["Priya"] if "Priya" in prompt else [])
 
 
 @pytest.fixture
@@ -1044,3 +1057,164 @@ def test_the_preview_names_messages_that_mention_health_visa_legal_or_money(proj
     write_codex_session(project, extra=" 签证被拒了，睡眠检查报告也出来了")
     said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
     assert "mention" in said and "签证" in said and "--edit" in said and "[co.warn]" not in said
+
+
+# ---- private sentences out before the preview (#2500) ----
+
+def _draft_and_copy(output: str) -> tuple[dict, str]:
+    drafts = Path.home() / ".co/handoff/drafts"
+    handoff_id = _draft_id(output)
+    draft = json.loads((drafts / f"{handoff_id}.json").read_text())
+    session = json.loads((drafts / f"{handoff_id}.session.json").read_text())
+    session["keep"] = [t["at"] for t in draft["conversation"]]
+    session["approved"] = draft["conversation"]
+    return draft, replies.copy_text(session, "", [SELF])
+
+
+def test_private_sentences_leave_the_brief_and_the_copy_before_the_preview(project, model, mailbox):
+    """Flagging them was not enough: health, visa and family details reached students and a colleague in
+    the AI's replies (2026-10-14). Each private sentence is replaced, and the preview says where."""
+    write_codex_session(project, extra=" My visa was refused again. Also the dentist moved to Friday. The cookie needs SameSite.")
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 0, result.output
+    draft, copy = _draft_and_copy(result.output)
+    for text in (result.output, json.dumps(draft, ensure_ascii=False), copy):
+        assert "visa" not in text and "dentist" not in text
+    assert "The cookie needs SameSite." in copy and "[removed: legal and immigration]" in copy
+    said = " ".join(result.output.split())
+    assert "Removed 2 private sentences: message 1 (health, legal and immigration)" in said and "--edit" in said
+
+
+def test_the_whole_ai_reply_in_the_copy_is_filtered_not_only_its_quote(project, model, mailbox):
+    """A copy carried every AI reply in full; the private part sat past the 800 quoted characters."""
+    write_codex_session(project)
+    path = next((Path.home() / ".codex/sessions").rglob("*.jsonl"))
+    path.write_text(path.read_text() + _codex_message("assistant", "Done. " + "x " * 600 + "\nYour Lanzhou trip page lists the hotel.\n" + "y " * 600) + "\n")
+    result = _invoke("handoff", "send", SELF, "task")
+    draft, copy = _draft_and_copy(result.output)
+    assert "Lanzhou" not in copy and "[removed: travel and home]" in copy
+    assert "x x x" in copy                                            # the rest of the reply still goes
+
+
+def test_a_name_no_rule_caught_is_masked_too(project, model, mailbox):
+    write_codex_session(project, extra=" Remind me to call Priya about the cookie.")
+    result = _invoke("handoff", "send", SELF, "task")
+    draft, copy = _draft_and_copy(result.output)
+    assert "Priya" not in json.dumps(draft) and "Priya" not in copy and "call [person]" in copy
+
+
+def test_the_report_on_top_is_filtered_as_well(project, model, mailbox, monkeypatch):
+    real = sys.modules["connectonion.llm_do"].llm_do
+
+    def report_with_a_private_line(prompt, output=None, **kwargs):
+        top = real(prompt, output=output, **kwargs)
+        if output is bundles.Top:
+            top.where_it_stands = "Option chosen. Aaron is at the dentist on Friday."
+        return top
+    monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", report_with_a_private_line)
+    write_codex_session(project)
+    result = _invoke("handoff", "send", SELF, "task")
+    draft, _ = _draft_and_copy(result.output)
+    assert draft["where_it_stands"] == "Option chosen. [removed: health]"
+    assert "the report" in " ".join(result.output.split())
+
+
+def test_the_filter_is_read_by_the_senders_own_agent_and_asks_for_recall(project, model, mailbox, monkeypatch):
+    """Aaron, 2026-10-14: Codex or Claude Code reads it, on the sender's own plan, not our model provider."""
+    asked = []
+
+    def fake_codex(prompt, **kw):
+        asked.append((prompt, kw))
+        return json.dumps({"last_message": "Here you go:\n" + _fake_filter(prompt).model_dump_json(), "error": None})
+    monkeypatch.setattr(_module("connectonion.useful_tools.codex"), "codex", fake_codex)
+    monkeypatch.setattr(private, "reader", lambda agent="": "codex" if agent == "codex" else "co")
+    write_codex_session(project, extra=" My visa was refused again.")
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 0, result.output
+    assert asked and all(kw["sandbox"] == "read-only" and kw["approval"] == "deny" for _, kw in asked)
+    assert "when unsure" in asked[0][0].lower() and "Codex is reading" in result.output
+    assert "visa" not in _draft_and_copy(result.output)[1]
+
+
+def _module(name: str):
+    """The module itself: connectonion.useful_tools re-exports a function under the same name."""
+    __import__(name)
+    return sys.modules[name]
+
+
+def test_the_reader_is_the_agent_the_session_came_from(monkeypatch):
+    codex, claude = _module("connectonion.useful_tools.codex"), _module("connectonion.useful_tools.claude_code")
+    monkeypatch.setattr(codex, "_base_command", lambda: ["codex"])
+    monkeypatch.setattr(claude, "_claude_command", lambda: (["claude"], ""))
+    assert private.reader("codex") == "codex" and private.reader("claude") == "claude-code"
+    monkeypatch.setattr(codex, "_base_command", lambda: None)
+    assert private.reader("codex") == "claude-code"
+    monkeypatch.setattr(claude, "_claude_command", lambda: (None, "not found"))
+    assert private.reader("codex") == "co"
+
+
+def test_a_categories_word_alone_is_not_private(project, model, mailbox):
+    """The privacy-label design table names health, visa and family as categories: that is work."""
+    assert private.sentences("| 敏感 | `[sensitive]` | 健康、签证、家人 |\nNext line. And another!") == [
+        "| 敏感 | `[sensitive]` | 健康、签证、家人 |", "Next line.", "And another!"]
+    assert private.sentences("我在等签证结果。体检报告出来了。") == ["我在等签证结果。", "体检报告出来了。"]
+
+
+def test_a_nickname_in_a_rem_title_is_masked(project):
+    people = bundles.rem_people_dir()
+    people.mkdir(parents=True)
+    (people / "mimi.md").write_text("# Mei-Ling Wu (Mimi)\n\nIntern.\n")
+    names = bundles.rem_names()
+    assert "Mimi" in names and "Mei-Ling Wu" in names
+    assert bundles.mask("Mimi's deck", names=names) == "[person]'s deck"
+
+
+def test_the_preview_says_when_the_session_read_mail_or_co_rem_pages(project, model, mailbox):
+    """Every leak on 2026-10-14 came the same way: the session read mail or rem pages, and the AI quoted them."""
+    write_codex_session(project)
+    path = next((Path.home() / ".codex/sessions").rglob("*.jsonl"))
+    path.write_text(path.read_text() + _row("response_item", {"type": "function_call", "name": "shell",
+                                                              "arguments": json.dumps({"command": ["co", "rem", "show", "mimi"]})}) + "\n")
+    said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
+    assert "This session read your co rem pages" in said
+    assert sessions.reads_private("codex", path) == ["co rem pages"]
+
+
+def test_diagnosis_alone_is_not_touchy(project, model, mailbox):
+    """b28 flagged "The diagnosis is clear: History reads like…", a diagnosis of a page, not of a person."""
+    write_codex_session(project, extra=" The diagnosis is clear: History reads like a list of emails.")
+    said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
+    assert "mention" not in said.split("Masked other")[1]
+
+
+def test_one_touchy_message_reads_in_the_singular(project, model, mailbox):
+    write_codex_session(project, extra=" 我在等签证结果")
+    said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
+    assert "Message 1 mentions 签证" in said
+
+
+def _flag_only(*words):
+    """A reader that marks only sentences with one of `words`: the miss b29's audit found."""
+    def ask(batch, keep, by):
+        return private.Found(private=[private.Hit(id=n, categories=["travel and home"]) for n, (_, s) in batch
+                                      if any(w in s for w in words)])
+    return ask
+
+
+def test_a_sentence_sharing_a_removed_trips_place_goes_too(monkeypatch):
+    """b29 audit: four sentences about a real trip were removed and a fifth, quoting the same trip as an
+    example in a design reply, was kept. A place named in two removed sentences takes the rest with it."""
+    monkeypatch.setattr(private, "reader", lambda agent="": "co")
+    monkeypatch.setattr(private, "_ask", _flag_only("下周去丽江", "丽江的酒店", "Avalon trip", "Avalon hotel"))
+    texts = {(0, "ai"): "下周去丽江。丽江的酒店订好了。标签放在句子末尾，比如“……下周回丽江探亲。`[personal]`”。页面要写清楚。",
+             (1, "ai"): "Your Avalon trip is on Friday. The Avalon hotel is booked. Example: 'flying to Avalon'. "
+                        "Labels cover health, visa and family. The page needs a summary."}
+    found, _ = private.find(texts)
+    removed = {s for hits in found.values() for s, _ in hits}
+    assert "标签放在句子末尾，比如“……下周回丽江探亲。" in removed and "Example: 'flying to Avalon'." in removed
+    assert "页面要写清楚。" not in removed and "The page needs a summary." not in removed
+    assert "Labels cover health, visa and family." not in removed      # a category is not a place
+
+
+def test_the_reader_is_told_a_real_life_example_is_private():
+    assert "example" in private.PROMPT.lower() and "real life" in private.PROMPT.lower()

@@ -271,10 +271,21 @@ named in what they will read; `--mentions <name>` lists each place and sends
 nothing. Masking removes contact details, not what the session says about the
 person reading it.
 
+Before the preview, your own coding agent reads every sentence that would go,
+yours and the AI's, the whole reply and not only the quoted part, and the report
+on top: Codex for a Codex session, Claude Code for a Claude Code one, on your own
+plan (the other one if that one is not installed, ConnectOnion's default model if
+neither is). Each sentence about someone's health, family, personal travel or
+home, money, visa or legal matters, or a third party's own business is replaced
+with `[removed: <why>]`, in the page and in the session copy, and a person's name
+no rule caught becomes `[person]`. It removes when unsure. The preview says how
+many went and from which messages; put any back with `--edit`. When the session
+read your mail or your co rem pages, the preview says so: that is where the AI's
+replies pick up private details.
+
 A message you change with `--edit` goes into the session copy as you changed it,
-not as the session had it. The preview names each message that mentions health,
-visas, the law or money (签证, 睡眠, lawyer, salary…) so you can read it and drop
-it with `--edit`; nothing is removed for you.
+not as the session had it. The preview also names each message that still
+mentions health, visas, the law or money (签证, 睡眠, lawyer, salary…).
 
 `--lang en` or `--lang zh` writes the report and the mail in that language; your
 own words stay as you wrote them. Without it, the language is the one you wrote

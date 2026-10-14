@@ -400,13 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b28
+## Current Version: 1.9.2b29
 
-1.9.2b28 is a 1.9.2 beta; stable remains 1.9.1. A message changed with `--edit` goes into the
-session copy as changed; a Chinese name from a co rem page is masked by its given name and written
-together; the preview names the messages that mention health, visas, the law or money. The install
-floor stays 1.9.2b27. See [1.9.2b28 notes](docs/releases/1.9.2b28.md).
+1.9.2b29 is a 1.9.2 beta; stable remains 1.9.1. Before the preview, the sender's own Codex or
+Claude Code reads every sentence that would go and replaces each private one (health, family,
+personal travel, money, visas, a third party's business) with `[removed: <why>]`, in the page
+and in the session copy; names no rule caught are masked, a nickname in a co rem title is too,
+and the preview says when the session read mail or co rem pages (#2500). The install floor
+stays 1.9.2b27. See [1.9.2b29 notes](docs/releases/1.9.2b29.md).
 
+- 1.9.2b29 (Read by your own agent).
 - 1.9.2b28 (As you edited it).
 - 1.9.2b27 (Only what you approved).
 - 1.9.2b26 (Nobody else's details).

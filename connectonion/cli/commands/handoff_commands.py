@@ -24,7 +24,7 @@ from .. import style
 from .command_tips import print_tip
 from ...environment import global_config_dir
 from ...handoff import bundle as bundles
-from ...handoff import opener, replies, sessions, transport
+from ...handoff import opener, private, replies, sessions, transport
 
 out = style.console()
 # Past this, the message is a lot to paste into a coding agent's box; the preview suggests --since.
@@ -156,11 +156,14 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
     # The local path is printed here and never put in the bundle.
     out.print(style.muted(f"Drafting from {path}: {len(talk)} of your messages go word for word, "
                           "the AI's replies quoted…"))
+    keep_names = [_my_name(), *_their_names(to)]
+    talk, removed, names = _without_private(talk, keep_names, source["kind"])
     top = bundles.draft(talk, what, sender=_my_name(), agent=source["kind"], lang=lang)
+    top, more = _report_without_private(top, keep_names, source["kind"])
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     bundle = bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what, source=source,
                               code=code, top=top, exchanges=talk, titles=titles, sender_name=_my_name(),
-                              keep=[_my_email()], lang=lang, keep_names=_their_names(to))
+                              keep=[_my_email()], lang=lang, keep_names=_their_names(to), names=names + more)
     if any(patches):    # stays on this machine until send puts it in the drop (#2469)
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.code.json").write_text(json.dumps(patches), encoding="utf-8")
@@ -168,8 +171,39 @@ def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[s
         _drafts().mkdir(parents=True, exist_ok=True)
         (_drafts() / f"{bundle['id']}.session.json").write_text(json.dumps(
             {"kind": kind, "path": str(path), "since": talk[0]["at"] if since > 1 and talk else "",
-             "drafted": bundle["conversation"]}, ensure_ascii=False), encoding="utf-8")
+             "drafted": bundle["conversation"], "removed": removed, "names": names + more,
+             "read": sessions.reads_private(kind, path)}, ensure_ascii=False), encoding="utf-8")
     return bundle
+
+
+def _without_private(talk: list[dict], keep_names: list[str], agent: str) -> tuple[list[dict], dict, list[str]]:
+    """Every message with its private sentences replaced (#2500); what was removed, by message time, for
+    the session copy, which reads the whole AI reply from the session file again; and names no rule caught."""
+    out.print(style.muted(f"{private.READERS[private.reader(agent)]} is reading {len(talk)} messages for private "
+                          "sentences…"))
+    found, names = private.find({(n, f): e[f] for n, e in enumerate(talk) for f in ("user", "ai") if e[f]}, keep_names, agent)
+    talk = [dict(e) for e in talk]
+    removed = {}
+    for (n, field), hits in found.items():
+        talk[n][field] = private.remove(talk[n][field], hits)
+        if field == "ai" and talk[n].get("final"):
+            talk[n]["final"] = private.remove(talk[n]["final"], hits)
+        removed.setdefault(talk[n]["at"], []).extend(hits)
+    return talk, removed, names
+
+
+def _report_without_private(top: "bundles.Top", keep_names: list[str], agent: str) -> tuple["bundles.Top", list[str]]:
+    """The report is written from the filtered messages, and can still put a private line back together."""
+    fields = top.model_dump()
+    texts = {(k, i): v for k, value in fields.items() if k != "diagram"
+             for i, v in (enumerate(value) if isinstance(value, list) else [(None, value)]) if v}
+    found, names = private.find(texts, keep_names, agent)
+    for (k, i), hits in found.items():
+        if i is None:
+            fields[k] = private.remove(fields[k], hits)
+        else:
+            fields[k][i] = private.remove(fields[k][i], hits)
+    return bundles.Top(**fields), names
 
 
 CODE_BUDGET = 1_500_000   # the drop holds 5 MB: the bundle and this, and the session copy
@@ -294,9 +328,15 @@ def _preview(bundle: dict, path: Path) -> None:
                              f"is in the draft file below). If the session covered other work first, start where this "
                              f"task starts: --since <N>, with N from the [N] list."))
     out.print(style.muted(_masked_line(bundle)))
+    removed = _removed_line(bundle)
+    if removed:
+        out.print(style.warn(removed))
+    for what in (_session_record(bundle["id"]) or {}).get("read", []):
+        out.print(style.warn(f"This session read your {what}; the AI's replies quote them. Read what goes with that in mind."))
     touchy = _touchy(bundle)
     if touchy:
-        out.print(style.warn(escape(f"Messages {', '.join(map(str, touchy))} mention "
+        out.print(style.warn(escape(f"Message{'s' if len(touchy) > 1 else ''} {', '.join(map(str, touchy))} "
+                                    f"mention{'' if len(touchy) > 1 else 's'} "
                                     f"{', '.join(sorted({w for n in touchy for w in touchy[n]}))}: read them, and --edit "
                                     "to drop any that should not go.")))
     for name in _their_names(bundle["to"]):
@@ -319,14 +359,19 @@ def _preview(bundle: dict, path: Path) -> None:
 # Words for what a person keeps private: health, visas, the law and money (b27 review: replies about
 # a sleep study and a refused visa went to students). The sender reads them; nothing is removed for them.
 TOUCHY = re.compile(r"签证|睡眠|医院|看病|牙科|体检|律师|法院|工资|借款|贷款|病历|心理|visa|medical|health|dentist|dental|"
-                    r"diagnos\w*|therapy|lawyer|lawsuit|court|salary|loan|debt", re.I)
+                    r"therapy|lawyer|lawsuit|court|salary|loan|debt", re.I)
+# "The diagnosis is clear: History reads like…" is about a page (b28 students' sample): only beside a health word.
+DIAGNOSIS = re.compile(r"diagnos\w*|诊断", re.I)
+HEALTH = re.compile(r"medical|doctor|hospital|patient|clinic|医生|医院|体检|病", re.I)
 
 
 def _touchy(bundle: dict) -> dict[int, set[str]]:
     """Each message, by its [N], that mentions one of them."""
     found = {}
     for n, turn in enumerate(bundle.get("conversation", []), 1):
-        words = {m.group(0).lower() for m in TOUCHY.finditer(f"{turn.get('user', '')} {turn.get('ai', '')}")}
+        text = REMOVED.sub("", f"{turn.get('user', '')} {turn.get('ai', '')}")   # "[removed: health]" is not a mention
+        words = {m.group(0).lower() for m in TOUCHY.finditer(text)}
+        words |= {m.group(0).lower() for m in DIAGNOSIS.finditer(text)} if HEALTH.search(text) else set()
         if words:
             found[n] = words
     return found
@@ -376,6 +421,38 @@ def _masked_line(bundle: dict) -> str:
                      f"it. The copy is the {len(session['keep'])} messages above with each AI reply in full, "
                      f"{len(text.encode()) // 1024:,} KB, and no commands or their output")
     return said + "."
+
+
+REMOVED = re.compile(r"\[removed: ([^\]]+)\]")
+REPORT_FIELDS = ("title", "headline", "discussed", "task", "where_it_stands", "decided", "rejected", "open_questions")
+
+
+def _session_record(handoff_id: str) -> Optional[dict]:
+    path = _drafts() / f"{handoff_id}.session.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def _removed_line(bundle: dict) -> str:
+    """Where the private-sentence pass took something out (#2500): by message, and in the report on top."""
+    numbered = {}
+    for n, turn in enumerate(bundle.get("conversation", []), 1):
+        numbered.setdefault(turn.get("at"), n)
+    session = _session_record(bundle["id"]) or {}
+    if "removed" in session:   # the copy's whole replies too, not only what the brief quotes
+        per = {numbered[at]: [cats for _, cats in hits] for at, hits in session["removed"].items() if at in numbered}
+    else:
+        per = {n: [m.split(", ") for m in REMOVED.findall(f"{t.get('user', '')} {t.get('ai', '')}")]
+               for n, t in enumerate(bundle.get("conversation", []), 1)}
+    per = {n: hits for n, hits in sorted(per.items()) if hits}
+    report = len(REMOVED.findall(json.dumps({k: bundle.get(k) for k in REPORT_FIELDS}, ensure_ascii=False)))
+    total = sum(map(len, per.values())) + report
+    if not total:
+        return ""
+    where = [f"message{'s' if len(per) > 1 else ''} " + ", ".join(
+        f"{n} ({', '.join(sorted({c for cats in hits for c in cats}))})" for n, hits in per.items())] if per else []
+    where += [f"the report on top ({report})"] if report else []
+    return (f"Removed {total} private sentence{'s' if total != 1 else ''}: {'; '.join(where)}. They read "
+            "\"[removed: <why>]\" in its place; --edit puts any back.")
 
 
 def _code_line(repo: dict, patch: Optional[dict]) -> str:
