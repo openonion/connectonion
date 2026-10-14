@@ -234,10 +234,18 @@ the recipient can tell the copy is the one you approved.
 |---|---|---|
 | Codex | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*-<thread>.jsonl` | `$CODEX_THREAD_ID` inside Codex, else the newest rollout whose `session_meta.cwd` is this directory |
 | Claude Code | `~/.claude/projects/<cwd, non-alphanumerics as ->/<session>.jsonl` | `$CLAUDE_CODE_SESSION_ID` inside Claude Code, else the newest file there |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/session-*.json(l)` | the newest whose `projectHash` is this directory's sha256 |
+| opencode | `~/.local/share/opencode/storage/session/<project>/ses_*.json` | the newest whose `directory` is this directory |
+| droid | `~/.factory/sessions/<cwd, non-alphanumerics as ->/<id>.jsonl` | the newest file there |
+| Cursor | Cursor's own database (`…/Cursor/User/globalStorage/state.vscdb`), read without writing to it | the conversation this folder's workspace touched last, copied to `~/.co/handoff/imported/cursor/` |
 
-`--session <thread id | session id | path.jsonl>` picks any session;
-`--agent codex|claude` picks one client; `--from-file notes.md` sends a notes file
-as the one message instead.
+With no `--agent`, the newest session of any of them for this directory is the
+one drafted. Only what was said is read: the messages and the AI's replies,
+never tool calls or their output. Grok's CLI is not read yet.
+
+`--session <thread id | session id | path>` picks any session;
+`--agent codex|claude|gemini|opencode|droid|cursor` picks one client;
+`--from-file notes.md` sends a notes file as the one message instead.
 
 Both clients keep the whole history on disk and only mark a compaction, so the
 whole conversation is read from its first message:

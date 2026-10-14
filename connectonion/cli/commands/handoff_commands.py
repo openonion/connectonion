@@ -2,7 +2,7 @@
 Purpose: `co handoff` — hand a task discussed in one coding-agent session to another person's coding agent
 LLM-Note:
   Dependencies: imports from [typer, handoff.{sessions,bundle,transport,opener}, cli.style, command_tips.print_tip] | registered in cli/main.py via make_handoff_app(_typer_app)
-  Data flow: send → resolve recipient → read current Codex/Claude Code session (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
+  Data flow: send → resolve recipient → read the current coding-agent session: Codex, Claude Code, Gemini CLI, opencode, droid or Cursor (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
   State/Effects: ~/.co/handoff/{contacts.json, drafts/<id>.json, sent/<id>.json, received/<id>/} | mail only with --yes | a model call in send (draft) and open (seed turn)
 """
 
@@ -24,7 +24,7 @@ from .. import style
 from .command_tips import print_tip
 from ...environment import global_config_dir
 from ...handoff import bundle as bundles
-from ...handoff import opener, private, replies, sessions, transport
+from ...handoff import opener, other_agents, private, replies, sessions, transport
 
 out = style.console()
 # Past this, the message is a lot to paste into a coding agent's box; the preview suggests --since.
@@ -1077,7 +1077,8 @@ def _print_resume(handoff_id: str, record: dict) -> None:
 
 # ---- registration ----
 
-AGENTS = ("codex", "claude")
+AGENTS = ("codex", "claude")   # the agents a received handoff opens in
+READ_FROM = (*AGENTS, *other_agents.AGENTS)   # the agents a handoff is drafted from (#2501)
 
 
 def make_handoff_app(factory) -> typer.Typer:
@@ -1094,8 +1095,8 @@ def make_handoff_app(factory) -> typer.Typer:
         who: str = typer.Argument(..., help="Contact name (co handoff contact), an email, or a 0x agent address"),
         what: str = typer.Argument("", help="What to hand off, in your words; the draft is built around it"),
         from_file: Optional[Path] = typer.Option(None, "--from-file", help="Draft from these notes instead of the current session"),
-        agent: Optional[str] = typer.Option(None, "--agent", help="Read the current codex or claude session (default: whichever is newest here)"),
-        session: Optional[str] = typer.Option(None, "--session", help="Draft from this session instead: a Codex thread id, Claude Code session id, or .jsonl path"),
+        agent: Optional[str] = typer.Option(None, "--agent", help="Read this agent's current session: codex, claude, gemini, opencode, droid or cursor (default: whichever is newest here)"),
+        session: Optional[str] = typer.Option(None, "--session", help="Draft from this session instead: a Codex thread id, Claude Code session id, or a session file's path"),
         since: int = typer.Option(1, "--since", min=1, help="Start at message N of the preview's [N] list, leaving out earlier, unrelated work"),
         draft: Optional[str] = typer.Option(None, "--draft", help="Use this saved draft id exactly, instead of drafting again"),
         edit: bool = typer.Option(False, "--edit", help="Open the draft in $EDITOR before the preview"),
@@ -1105,15 +1106,17 @@ def make_handoff_app(factory) -> typer.Typer:
         mentions: str = typer.Option("", "--mentions", help="List every place this name appears in the draft, and send nothing"),
         lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
-        """Hand a task to someone: drafts a handoff from this directory's Codex or Claude Code session and previews it. Sends only with --yes; writes a local draft.
+        """Hand a task to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
+        Gemini CLI, opencode, droid or Cursor) and previews it. Sends only with --yes; writes a local draft.
 
         Drafting reads the whole session (or --from-file): every message you wrote goes
         word for word, and the AI's replies quoted (a long one cut in the middle). The preview shows the
         recipient and every byte that would leave this machine; credentials are refused.
         Send exactly what you saw with --draft <id> --yes.
         """
-        if agent and agent not in AGENTS:
-            _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
+        if agent and agent not in READ_FROM:
+            _fail(f"--agent must be one of {', '.join(READ_FROM)}, not {agent}.",
+                  f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
         if via not in transport.VIA:
             _fail(f"--via must be one of {', '.join(transport.VIA)}, not {via}.", f'co handoff send {shlex.quote(who)} --via auto')
         if lang not in ("", "en", "zh"):

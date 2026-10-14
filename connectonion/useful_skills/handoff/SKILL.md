@@ -79,7 +79,9 @@ Your own replies, tool output and the session file stay on this machine.
 
 - The session also covered other work: `--since <N>` starts at message `[N]` of
   the preview.
-- Another session: `--session <thread id, session id or .jsonl path>`.
+- Another session: `--session <thread id, session id or session file path>`.
+- Another agent: `--agent gemini|opencode|droid|cursor` (Codex and Claude Code too);
+  without it, the newest session of any of them for this folder is drafted.
 - No session (a plain terminal): write notes to a file, `--from-file notes.md`.
 - Push the branch first if the recipient needs the code: the preview says
   "not pushed yet" otherwise.

@@ -63,17 +63,22 @@ def claude_slug(cwd: Path) -> str:
 
 
 def find_session(cwd: Path, agent: str = None) -> tuple[str, Path]:
-    """The current session for `cwd`: (agent, path). `agent` is codex, claude or None for either."""
+    """The current session for `cwd`: (agent, path). `agent` is one of AGENTS, or None for any."""
+    from . import other_agents
     cwd = Path(cwd).resolve()
     found = []
     if agent in (None, "codex"):
         found += [("codex", p) for p in _codex_candidates(cwd)]
     if agent in (None, "claude"):
         found += [("claude", p) for p in _claude_candidates(cwd)]
+    for other in other_agents.AGENTS:
+        if agent in (None, other):
+            found += [(other, p) for p in other_agents.candidates(other, cwd)[:1]]
     if not found:
         where = {"codex": f"{codex_home() / 'sessions'} (cwd {cwd})",
-                 "claude": str(Path.home() / ".claude" / "projects" / claude_slug(cwd))}
-        looked = "; ".join(where[a] for a in (["codex", "claude"] if agent is None else [agent]))
+                 "claude": str(Path.home() / ".claude" / "projects" / claude_slug(cwd)),
+                 **{a: other_agents.NAMES[a] for a in other_agents.AGENTS}}
+        looked = "; ".join(where[a] for a in (list(where) if agent is None else [agent]))
         raise SessionNotFound(f"No coding-agent session found for {cwd}. Looked in: {looked}")
     # The live session is the one being written to right now.
     return max(found, key=lambda item: item[1].stat().st_mtime)
@@ -111,6 +116,9 @@ def _claude_candidates(cwd: Path) -> list[Path]:
 
 def read_turns(agent: str, path: Path) -> list[dict]:
     """The whole conversation, oldest first: {role: user|assistant, text, timestamp}."""
+    from . import other_agents
+    if agent in other_agents.AGENTS:
+        return other_agents.turns(agent, path)
     parse = _codex_turn if agent == "codex" else _claude_turn
     turns, goals = [], set()
     with Path(path).open(encoding="utf-8") as f:
@@ -155,7 +163,10 @@ def _repeat(found: list[dict], turn: dict) -> bool:
 
 def find_by_id(ref: str) -> tuple[str, Path]:
     """A session named by path, Codex thread id or Claude Code session id."""
+    from . import other_agents
     path = Path(ref).expanduser()
+    if path.is_file() and other_agents.kind_of(path):
+        return other_agents.kind_of(path), path.resolve()
     if path.is_file():
         with path.open(encoding="utf-8") as f:
             first = json.loads(f.readline() or "{}")
@@ -219,6 +230,10 @@ def places(agent: str, path: Path) -> list[tuple[Path, str, str]]:
     every `turn_context`, but a session started above the repositories works in them
     through each command's `workdir`.
     """
+    from . import other_agents
+    if agent in other_agents.AGENTS:
+        where = other_agents.folder(agent, path)
+        return [(where, "", "")] if where else []
     last = {}
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
@@ -343,6 +358,8 @@ def titles(agent: str, path: Path) -> dict[str, str]:
 
     So a handoff can say what #1043 is without fetching anything, even for a private repository."""
     found = {}
+    if agent not in ("codex", "claude", "droid"):   # the others keep tool output elsewhere, or not at all
+        return found
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
             if '"title' in line or "title:" in line or "\\t" in line:
@@ -360,6 +377,8 @@ READS = {"mail": re.compile(r"\bco (?:gmail|outlook|email|inbox)\b|Gmail__|searc
 def reads_private(agent: str, path: Path) -> list[str]:
     """Which of READS the session's tool calls touched, from the calls themselves, not what anyone said."""
     found = set()
+    if agent not in ("codex", "claude", "droid"):
+        return []
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
             if "tool_use" in line or "function_call" in line or "custom_tool_call" in line:

@@ -1218,3 +1218,19 @@ def test_a_sentence_sharing_a_removed_trips_place_goes_too(monkeypatch):
 
 def test_the_reader_is_told_a_real_life_example_is_private():
     assert "example" in private.PROMPT.lower() and "real life" in private.PROMPT.lower()
+def test_a_handoff_is_drafted_from_a_gemini_cli_session(project, model, mailbox):
+    """#2501: Codex and Claude Code were the only sources; Gemini CLI, opencode, droid and Cursor are read too."""
+    import hashlib
+    project_hash = hashlib.sha256(str(project).encode()).hexdigest()
+    chats = Path.home() / ".gemini" / "tmp" / project_hash / "chats"
+    chats.mkdir(parents=True)
+    (chats / "session-2026-10-14T09-00-aaaa.json").write_text(json.dumps({"projectHash": project_hash, "messages": [
+        {"timestamp": "2026-10-14T09:00:01.000Z", "type": "user", "content": "Cookie or localStorage for the token?"},
+        {"timestamp": "2026-10-14T09:00:02.000Z", "type": "gemini", "content": "The cookie: JS cannot read it."}]}))
+    result = _invoke("handoff", "send", SELF, "task", "--agent", "gemini")
+    assert result.exit_code == 0, result.output
+    draft, _ = _draft_and_copy(result.output)
+    assert draft["source"]["kind"] == "gemini" and "working with Gemini CLI" in model[-1]
+    assert draft["conversation"][0]["user"] == "Cookie or localStorage for the token?"
+    wrong = _invoke("handoff", "send", SELF, "task", "--agent", "nope")
+    assert wrong.exit_code != 0 and "gemini, opencode, droid, cursor" in wrong.output

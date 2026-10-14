@@ -83,7 +83,8 @@ def new_id() -> str:
     return "ho-" + uuid.uuid4().hex[:8]
 
 
-AGENTS = {"codex": "Codex", "claude": "Claude Code"}
+AGENTS = {"codex": "Codex", "claude": "Claude Code", "gemini": "Gemini CLI", "opencode": "opencode", "droid": "droid",
+          "cursor": "Cursor"}
 
 
 def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
