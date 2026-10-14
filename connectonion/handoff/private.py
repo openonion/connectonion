@@ -47,6 +47,9 @@ Not private, leave these:
   (their private matters are still private)
 - a category named only as a category ("labels for health, visa and family" in a design)
 
+An example that quotes someone's real life is private even inside a design or a test ("e.g. 'next
+week I visit my aunt in <city>'" when that trip is real): judge the sentence by what it reveals.
+
 Also list every personal name in the text of someone other than {keep}, as written, people only
 (not products, companies or AI models).
 
@@ -95,14 +98,40 @@ def find(texts: dict, keep=(), agent: str = "") -> tuple[dict, list[str]]:
     by = reader(agent)
     with ThreadPoolExecutor(max_workers=4) as pool:
         answers = list(pool.map(lambda batch: _ask(batch, keep, by), [b for b in batches if b]))
-    found, names = {}, []
+    hits, names = {}, []
     for answer in answers:
         names += answer.names
-        for hit in answer.private:
-            if 0 <= hit.id < len(units):
-                key, sentence = units[hit.id]
-                found.setdefault(key, []).append([sentence, [c for c in hit.categories if c in CATEGORIES] or ["private"]])
+        hits.update({hit.id: [c for c in hit.categories if c in CATEGORIES] or ["private"]
+                     for hit in answer.private if 0 <= hit.id < len(units)})
+    found = {}
+    for n, categories in {**hits, **_alike(units, hits)}.items():
+        key, sentence = units[n]
+        found.setdefault(key, []).append([sentence, categories])
     return found, sorted(set(names) - set(keep), key=len, reverse=True)
+
+
+# Words a design about privacy uses for its categories: shared by removed and kept sentences alike.
+NOT_DISTINCT = {"健康", "签证", "家人", "行程", "旅行", "私人", "隐私", "个人", "敏感", "财务", "法律", "感情", "情绪",
+                "朋友", "住处", "爱好", "证件", "号码", "标签", "页面", "内容", "句子"}
+
+
+def _terms(sentence: str) -> set[str]:
+    """A sentence's distinctive words: each pair of Han characters, and capitalised words past its first."""
+    han = {run[i:i + 2] for run in re.findall(r"[\u4e00-\u9fff]{2,}", sentence) for i in range(len(run) - 1)}
+    names = set(re.findall(r"(?<=\s)[A-Z][a-z]{2,}", sentence))
+    return (han | names) - NOT_DISTINCT
+
+
+def _alike(units: list, hits: dict) -> dict:
+    """Kept sentences that share a distinctive word with two or more removed ones, and with few kept ones:
+    the model removed four sentences about a trip and kept a fifth quoting it as an example (b29 audit)."""
+    removed, kept = {}, {}
+    for n, (_, sentence) in enumerate(units):
+        for term in _terms(sentence):
+            (removed if n in hits else kept).setdefault(term, set()).add(n)
+    distinct = {t for t, ns in removed.items() if len(ns) >= 2 and len(kept.get(t, ())) <= min(2, len(ns) - 1)}
+    return {n: sorted({c for t in distinct & terms for m in removed[t] for c in hits[m]})
+            for n, terms in ((n, _terms(s)) for n, (_, s) in enumerate(units) if n not in hits) if distinct & terms}
 
 
 def _ask(batch: list, keep, by: str) -> Found:

@@ -1191,3 +1191,30 @@ def test_one_touchy_message_reads_in_the_singular(project, model, mailbox):
     write_codex_session(project, extra=" 我在等签证结果")
     said = " ".join(_invoke("handoff", "send", SELF, "task").output.split())
     assert "Message 1 mentions 签证" in said
+
+
+def _flag_only(*words):
+    """A reader that marks only sentences with one of `words`: the miss b29's audit found."""
+    def ask(batch, keep, by):
+        return private.Found(private=[private.Hit(id=n, categories=["travel and home"]) for n, (_, s) in batch
+                                      if any(w in s for w in words)])
+    return ask
+
+
+def test_a_sentence_sharing_a_removed_trips_place_goes_too(monkeypatch):
+    """b29 audit: four sentences about a real trip were removed and a fifth, quoting the same trip as an
+    example in a design reply, was kept. A place named in two removed sentences takes the rest with it."""
+    monkeypatch.setattr(private, "reader", lambda agent="": "co")
+    monkeypatch.setattr(private, "_ask", _flag_only("下周去丽江", "丽江的酒店", "Avalon trip", "Avalon hotel"))
+    texts = {(0, "ai"): "下周去丽江。丽江的酒店订好了。标签放在句子末尾，比如“……下周回丽江探亲。`[personal]`”。页面要写清楚。",
+             (1, "ai"): "Your Avalon trip is on Friday. The Avalon hotel is booked. Example: 'flying to Avalon'. "
+                        "Labels cover health, visa and family. The page needs a summary."}
+    found, _ = private.find(texts)
+    removed = {s for hits in found.values() for s, _ in hits}
+    assert "标签放在句子末尾，比如“……下周回丽江探亲。" in removed and "Example: 'flying to Avalon'." in removed
+    assert "页面要写清楚。" not in removed and "The page needs a summary." not in removed
+    assert "Labels cover health, visa and family." not in removed      # a category is not a place
+
+
+def test_the_reader_is_told_a_real_life_example_is_private():
+    assert "example" in private.PROMPT.lower() and "real life" in private.PROMPT.lower()
