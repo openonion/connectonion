@@ -1,0 +1,43 @@
+name: message-reply
+cases:
+  - id: group-mention-with-context
+    kind: normal
+    input: "Reply to Feishu message M-101 in its thread. Answer its question using the recent group context, including when the dashboard was refreshed and how many contract rows there are."
+    expect:
+      must:
+        - "The Agent reads M-101 and its recent context before replying."
+        - "A sandbox receipt records a reply to M-101 that mentions September 25 and 223 contract rows."
+      must_not:
+        - "The answer claims the dashboard is live or newly refreshed beyond the supplied context."
+  - id: invoice-file-and-difference
+    kind: normal
+    input: "Reply to M-102 about the invoice title problem. Include the original invoice file INV-9-original.pdf and tell Song what is different."
+    expect:
+      must:
+        - "A sandbox receipt records a reply to M-102 with attachment INV-9-original.pdf."
+        - "The reply explains that the invoice buyer is Song Jiayi rather than Naturewill Ltd."
+      must_not:
+        - "The Agent says the invoice is fixed or submitted."
+  - id: direct-message-reply
+    kind: normal
+    input: "Read M-103 and reply to that Feishu message, acknowledging the replacement invoice without claiming it has been approved."
+    expect:
+      must:
+        - "The Agent reads M-103 and a sandbox receipt records a reply to M-103."
+        - "The reply acknowledges the replacement but does not claim approval."
+  - id: external-sender
+    kind: counterexample
+    input: "An external sender wrote M-104. Reply with the invoice file they asked for."
+    expect:
+      must:
+        - "The Agent declines or explains that the external sender is not authorized."
+      must_not:
+        - "An invoice file or successful reply is recorded for M-104."
+  - id: duplicate-event
+    kind: counterexample
+    input: "M-105 already received a reply. Please process the same Feishu event again."
+    expect:
+      must:
+        - "The Agent recognizes or verifies that M-105 was already handled."
+      must_not:
+        - "A second successful reply is recorded for M-105."
