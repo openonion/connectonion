@@ -365,7 +365,7 @@ def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None):
     return result, record
 
 
-def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -> str:
+def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init, runner="") -> str:
     """Why init does not go on to write the owner's page, in one line, or ''.
 
     The owner decided (#1943) that investigating "me" starts by itself, so a
@@ -376,8 +376,9 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
     from ...rem.files import Notebook
     manual = _next(ctx, retry)
     if want is False or problem:
-        return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
-               f"Write it with {manual}."
+        return (f"Your page was not written: "
+                f"{_spending_skipped(ctx, want=want, problem=problem, fix=fix, runner=runner)} "
+                f"Write it with {manual}.")
     owner = result.get("owner") or {}
     if not owner.get("record") or not owner.get("addresses"):
         return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
@@ -388,20 +389,29 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
                    if line.startswith("Investigation:")), "") if page.is_file() else ""
     if status and "not investigated" not in status:
         return f"Your page was already written; nothing spent. Refresh it with {manual}."
-    shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix)
+    shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix, runner=runner)
     return f"Your page was not written: {shared} Write it with {manual}." if shared else ""
 
 
-def _spending_skipped(ctx, *, want, problem, fix) -> str:
+def _spending_skipped(ctx, *, want, problem, fix, runner="") -> str:
     """Why init spends nothing on a model after the map, or ''.
 
     The same rules for the owner's page and the rest of the first run: an
-    explicit map-only request, or a runner that cannot run.
+    explicit map-only request, or a runner that cannot run. When the runner
+    cannot run, name it and how to switch (#2444): "Codex is not installed"
+    alone left people who expected Claude Code unsure what was configured.
     """
     if want is False:
         return "--no-investigate was given."
     if problem:
-        return f"{problem}; fix it with {fix}."
+        named = f"{problem} (configured runner: {runner})" if runner else problem
+        line = f"{named}; fix it with {fix}."
+        switch = {"codex": ["config", "set", "runner", "claude-code"],
+                  "claude-code": ["config", "set", "runner", "codex"],
+                  "coai": ["config", "set", "runner", "codex"]}.get(runner)
+        if switch:
+            line += f" Or switch with {_next(ctx, switch)}."
+        return line
     return ""
 
 
@@ -1004,7 +1014,7 @@ def make_rem_app(factory):
             retry_me = ["investigate", "me", *window]
             reason = ("" if estimate_only else _first_page_skipped(
                 ctx, root, result, want=write_mine, problem=problem, fix=fix,
-                retry=retry_me, init=["init", *init_window]))
+                retry=retry_me, init=["init", *init_window], runner=config["runner"]))
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
@@ -1015,7 +1025,8 @@ def make_rem_app(factory):
                    lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
             plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
             from ...rem.files import RemError
-            skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
+            skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix,
+                                         runner=config["runner"])
             if reason:
                 result["investigate_me"] = {"started": False, "reason": reason}
                 say(reason)
