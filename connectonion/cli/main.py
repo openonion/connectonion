@@ -2514,6 +2514,32 @@ app.add_typer(canny_app, name="canny")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
+# Asana (F13DBREAD-8): our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
+from .commands.asana_commands import asana_app
+app.add_typer(asana_app, name="asana")
+
+
+# Obsidian (F13DBREAD-2): registered vaults only; discovery never imports notes.
+obsidian_app = _typer_app(
+    help="Discover registered Obsidian vaults without importing notes. Read-only.",
+    epilog="Example:  co obsidian vaults  |  co obsidian vaults --json",
+    invoke_without_command=True,
+)
+app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.callback(invoke_without_command=True)
+def _obsidian_default(ctx: typer.Context):
+    """Show command help when no Obsidian subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@obsidian_app.command("vaults", epilog="Example:  co obsidian vaults  |  co obsidian vaults --json")
+def _obsidian_vaults(json_output: bool = typer.Option(False, "--json", help="Print registered vault records as JSON")):
+    """List registered vault names, paths, availability and open status. Read-only."""
+    from .commands.obsidian_commands import handle_obsidian_vaults
+    handle_obsidian_vaults(json_output=json_output)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

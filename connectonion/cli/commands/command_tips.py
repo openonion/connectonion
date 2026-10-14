@@ -267,6 +267,12 @@ NEXT = {
     "co linear create": HANDLER,
     "co linear update": HANDLER,
     "co linear comment": HANDLER,
+    "co asana check": HANDLER,
+    "co asana projects": HANDLER,     # names the first row, or what to widen when nothing is listed (F13DBREAD-9)
+    "co asana tasks": HANDLER,
+    "co asana task": HANDLER,         # the task's stories (F13DBREAD-10)
+    "co asana stories": HANDLER,
+    "co obsidian vaults": HANDLER,
     # Every co rem command already ends by naming one next command, chosen from what
     # it found: `list` points at the first page, `search` at the first hit, a failed
     # `show` back at the category. A static line here would contradict that.
