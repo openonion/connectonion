@@ -1263,3 +1263,34 @@ def test_status_wait_rides_out_a_brief_server_error_but_not_a_refusal(project, m
 
     monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: (_ for _ in ()).throw(error(401)))
     assert _invoke("handoff", "status", handoff_id, "--wait").exit_code != 0       # a refusal is not waited out
+
+
+def test_send_inside_a_sandbox_without_network_asks_for_network_up_front(project, model, mailbox, monkeypatch):
+    """#2504: in Codex's default sandbox the private-sentence pass failed on DNS with a traceback, and Codex
+    gave up instead of asking for network. It is told what to do before anything is drafted."""
+    write_codex_session(project)
+    monkeypatch.setenv("CODEX_SANDBOX_NETWORK_DISABLED", "1")
+    result = _invoke("handoff", "send", SELF, "task")
+    said = " ".join(result.output.split())
+    assert result.exit_code != 0 and "Traceback" not in said
+    assert "needs network" in said and "again with network access" in said and model == []
+
+
+def test_untracked_bytecode_does_not_travel_with_the_code(tmp_path):
+    """#2504 side finding: a bundle shipped __pycache__/slug.cpython-314.pyc from a repo with no .gitignore."""
+    import subprocess
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "slug.py").write_text("x = 1\n")
+    git("add", "slug.py")
+    git("commit", "-qm", "one")
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "slug.cpython-314.pyc").write_bytes(b"\x00compiled")
+    (repo / "new.py").write_text("y = 2\n")
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    patch = sessions.code_patch(repo, {"pushed": True, "uncommitted": 2, "repository": "", "commit": commit})
+    assert "new.py" in patch["changes"] and "pycache" not in patch["changes"] and ".pyc" not in patch["changes"]

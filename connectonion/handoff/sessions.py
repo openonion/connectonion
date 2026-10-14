@@ -329,10 +329,14 @@ def code_patch(folder: Path, code: dict) -> dict | None:
     commits = "" if code["pushed"] else git("format-patch", "--stdout", "--binary",
                                              *([f"{base}..{code['commit']}"] if base else ["--root", code["commit"]]))
     changes = git("diff", "--binary", code["commit"]) if code["uncommitted"] else ""
-    for new in git("ls-files", "--others", "--exclude-standard").splitlines() if code["uncommitted"] else []:
+    untracked = git("ls-files", "--others", "--exclude-standard").splitlines() if code["uncommitted"] else []
+    for new in [f for f in untracked if not BYTECODE.search(f)]:   # a repo with no .gitignore keeps its .pyc
         changes += git("diff", "--binary", "--no-index", "/dev/null", new, ok=(0, 1))
     return {"name": Path(folder).name, "base": base or (code["commit"] if code["pushed"] else ""),
             "commits": commits, "changes": changes}
+
+
+BYTECODE = re.compile(r"(^|/)__pycache__/|\.py[co]$")
 
 
 def _git_out(folder: Path, args: tuple, ok: tuple) -> str:

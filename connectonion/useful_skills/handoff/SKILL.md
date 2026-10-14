@@ -46,6 +46,11 @@ From the directory of this session:
 co handoff send <who> "<what to hand off, in the user's words>"
 ```
 
+Every `co handoff` command needs network: the draft is written by a model, your
+own coding agent reads it for private sentences, and sending, status and
+`--wait` talk to the server. In Codex, run them with network access from the
+first try (outside the sandbox); inside it, `send` stops and says so.
+
 It reads this whole session, across compactions (Codex: `$CODEX_THREAD_ID`;
 Claude Code: `$CLAUDE_CODE_SESSION_ID`; otherwise the newest session whose working
 directory is here), quotes your replies (a long one cut in the middle), writes the report on top with the model, and prints the message as it will go:

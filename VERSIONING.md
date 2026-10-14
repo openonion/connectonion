@@ -405,7 +405,8 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.9.2b30 is a 1.9.2 beta; stable remains 1.9.1. A handoff is drafted from Gemini CLI, opencode,
 droid, Cursor and Grok sessions as well as Codex and Claude Code, each read where that agent keeps
 its own, without tool calls or their output (#2501); `co handoff status --wait` rides out a brief
-server error instead of ending on it (#2497). The install floor stays 1.9.2b27. See
+server error instead of ending on it (#2497); inside Codex's sandbox `send` asks for network
+instead of failing on DNS (#2504). The install floor stays 1.9.2b27. See
 [1.9.2b30 notes](docs/releases/1.9.2b30.md).
 
 - 1.9.2b30 (From whichever agent you used).

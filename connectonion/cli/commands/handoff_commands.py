@@ -53,6 +53,12 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
                 via: str = "auto", no_code: bool = False, lang: str = "", mentions: str = "") -> None:
     from ...environment import load_environment
     load_environment()
+    if os.environ.get("CODEX_SANDBOX_NETWORK_DISABLED") == "1" and not mentions:
+        # Codex's default sandbox has no network: the draft, the private-sentence pass and the send all
+        # need it, and a DNS traceback made Codex give up instead of asking for it (#2504).
+        _fail("co handoff send needs network: it drafts with a model, has your own coding agent read it for "
+              "private sentences, and sends it. Nothing was drafted or sent. Run this same command again with "
+              "network access (outside the sandbox).", f"co handoff send {shlex.quote(who)} ... (with network access)")
     to = _recipient(who)
     if draft_id:
         bundle = _load_draft(draft_id)
