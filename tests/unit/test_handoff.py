@@ -1265,15 +1265,15 @@ def test_status_wait_rides_out_a_brief_server_error_but_not_a_refusal(project, m
     assert _invoke("handoff", "status", handoff_id, "--wait").exit_code != 0       # a refusal is not waited out
 
 
-def test_send_inside_a_sandbox_without_network_asks_for_network_up_front(project, model, mailbox, monkeypatch):
-    """#2504: in Codex's default sandbox the private-sentence pass failed on DNS with a traceback, and Codex
-    gave up instead of asking for network. It is told what to do before anything is drafted."""
+def test_send_inside_codexs_sandbox_asks_to_run_outside_it_up_front(project, model, mailbox, monkeypatch):
+    """#2504: in Codex's sandbox the private-sentence pass failed with a traceback (a Codex started in there
+    cannot connect, network or not), and Codex gave up instead of asking to run it outside."""
     write_codex_session(project)
-    monkeypatch.setenv("CODEX_SANDBOX_NETWORK_DISABLED", "1")
+    monkeypatch.setenv("CODEX_SANDBOX", "seatbelt")
     result = _invoke("handoff", "send", SELF, "task")
     said = " ".join(result.output.split())
-    assert result.exit_code != 0 and "Traceback" not in said
-    assert "needs network" in said and "again with network access" in said and model == []
+    assert result.exit_code != 0 and "Traceback" not in said and model == []
+    assert "inside Codex's sandbox" in said and "again outside the sandbox (with escalated permissions)" in said
 
 
 def test_untracked_bytecode_does_not_travel_with_the_code(tmp_path):

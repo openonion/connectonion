@@ -48,8 +48,9 @@ co handoff send <who> "<what to hand off, in the user's words>"
 
 Every `co handoff` command needs network: the draft is written by a model, your
 own coding agent reads it for private sentences, and sending, status and
-`--wait` talk to the server. In Codex, run them with network access from the
-first try (outside the sandbox); inside it, `send` stops and says so.
+`--wait` talk to the server. In Codex, run every `co handoff` command outside
+the sandbox (escalated) from the first try: a Codex started inside the sandbox
+cannot connect even with network on, and `send` stops there and says so.
 
 It reads this whole session, across compactions (Codex: `$CODEX_THREAD_ID`;
 Claude Code: `$CLAUDE_CODE_SESSION_ID`; otherwise the newest session whose working
