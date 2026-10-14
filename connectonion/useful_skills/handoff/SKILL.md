@@ -46,6 +46,12 @@ From the directory of this session:
 co handoff send <who> "<what to hand off, in the user's words>"
 ```
 
+Every `co handoff` command needs network: the draft is written by a model, your
+own coding agent reads it for private sentences, and sending, status and
+`--wait` talk to the server. In Codex, run every `co handoff` command outside
+the sandbox (escalated) from the first try: a Codex started inside the sandbox
+cannot connect even with network on, and `send` stops there and says so.
+
 It reads this whole session, across compactions (Codex: `$CODEX_THREAD_ID`;
 Claude Code: `$CLAUDE_CODE_SESSION_ID`; otherwise the newest session whose working
 directory is here), quotes your replies (a long one cut in the middle), writes the report on top with the model, and prints the message as it will go:
@@ -79,7 +85,9 @@ Your own replies, tool output and the session file stay on this machine.
 
 - The session also covered other work: `--since <N>` starts at message `[N]` of
   the preview.
-- Another session: `--session <thread id, session id or .jsonl path>`.
+- Another session: `--session <thread id, session id or session file path>`.
+- Another agent: `--agent gemini|opencode|droid|cursor|grok` (Codex and Claude Code too);
+  without it, the newest session of any of them for this folder is drafted.
 - No session (a plain terminal): write notes to a file, `--from-file notes.md`.
 - Push the branch first if the recipient needs the code: the preview says
   "not pushed yet" otherwise.

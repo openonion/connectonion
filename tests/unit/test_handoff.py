@@ -1218,3 +1218,79 @@ def test_a_sentence_sharing_a_removed_trips_place_goes_too(monkeypatch):
 
 def test_the_reader_is_told_a_real_life_example_is_private():
     assert "example" in private.PROMPT.lower() and "real life" in private.PROMPT.lower()
+def test_a_handoff_is_drafted_from_a_gemini_cli_session(project, model, mailbox):
+    """#2501: Codex and Claude Code were the only sources; Gemini CLI, opencode, droid and Cursor are read too."""
+    import hashlib
+    project_hash = hashlib.sha256(str(project).encode()).hexdigest()
+    chats = Path.home() / ".gemini" / "tmp" / project_hash / "chats"
+    chats.mkdir(parents=True)
+    (chats / "session-2026-10-14T09-00-aaaa.json").write_text(json.dumps({"projectHash": project_hash, "messages": [
+        {"timestamp": "2026-10-14T09:00:01.000Z", "type": "user", "content": "Cookie or localStorage for the token?"},
+        {"timestamp": "2026-10-14T09:00:02.000Z", "type": "gemini", "content": "The cookie: JS cannot read it."}]}))
+    result = _invoke("handoff", "send", SELF, "task", "--agent", "gemini")
+    assert result.exit_code == 0, result.output
+    draft, _ = _draft_and_copy(result.output)
+    assert draft["source"]["kind"] == "gemini" and "working with Gemini CLI" in model[-1]
+    assert draft["conversation"][0]["user"] == "Cookie or localStorage for the token?"
+    wrong = _invoke("handoff", "send", SELF, "task", "--agent", "nope")
+    assert wrong.exit_code != 0 and "gemini, opencode, droid, cursor" in wrong.output
+
+
+def test_status_wait_rides_out_a_brief_server_error_but_not_a_refusal(project, model, mailbox, monkeypatch):
+    """#2497: during the oo-api deploy one 502 ended an hour's --wait with a traceback."""
+    import requests
+    write_codex_session(project)
+    handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
+    _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
+    from connectonion.handoff import replies
+
+    def error(code):
+        return requests.HTTPError(f"{code} Server Error", response=type("R", (), {"status_code": code})())
+    arrivals = iter([error(502), requests.ConnectionError("reset"), [{"kind": "ask"}], [{"kind": "ask"}], [{"kind": "ask"}]])
+
+    def received(handoff_id, mails=None):
+        got = next(arrivals)
+        if isinstance(got, Exception):
+            raise got
+        return got
+    monkeypatch.setattr(replies, "received", received)
+    monkeypatch.setattr(replies, "settle", lambda record, mails=None: {"accepted": None, "questions": [], "ignored": 0})
+    monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    result = _invoke("handoff", "status", handoff_id, "--wait")
+    assert result.exit_code == 0, result.output
+    assert "could not be reached" in " ".join(result.output.split()) and f"Handoff {handoff_id} (sent)" in result.output
+
+    monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: (_ for _ in ()).throw(error(401)))
+    assert _invoke("handoff", "status", handoff_id, "--wait").exit_code != 0       # a refusal is not waited out
+
+
+def test_send_inside_codexs_sandbox_asks_to_run_outside_it_up_front(project, model, mailbox, monkeypatch):
+    """#2504: in Codex's sandbox the private-sentence pass failed with a traceback (a Codex started in there
+    cannot connect, network or not), and Codex gave up instead of asking to run it outside."""
+    write_codex_session(project)
+    monkeypatch.setenv("CODEX_SANDBOX", "seatbelt")
+    result = _invoke("handoff", "send", SELF, "task")
+    said = " ".join(result.output.split())
+    assert result.exit_code != 0 and "Traceback" not in said and model == []
+    assert "inside Codex's sandbox" in said and "again outside the sandbox (with escalated permissions)" in said
+
+
+def test_untracked_bytecode_does_not_travel_with_the_code(tmp_path):
+    """#2504 side finding: a bundle shipped __pycache__/slug.cpython-314.pyc from a repo with no .gitignore."""
+    import subprocess
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "slug.py").write_text("x = 1\n")
+    git("add", "slug.py")
+    git("commit", "-qm", "one")
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "slug.cpython-314.pyc").write_bytes(b"\x00compiled")
+    (repo / "new.py").write_text("y = 2\n")
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    patch = sessions.code_patch(repo, {"pushed": True, "uncommitted": 2, "repository": "", "commit": commit})
+    assert "new.py" in patch["changes"] and "pycache" not in patch["changes"] and ".pyc" not in patch["changes"]

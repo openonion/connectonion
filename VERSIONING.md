@@ -400,15 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b29
+## Current Version: 1.9.2b30
 
-1.9.2b29 is a 1.9.2 beta; stable remains 1.9.1. Before the preview, the sender's own Codex or
-Claude Code reads every sentence that would go and replaces each private one (health, family,
-personal travel, money, visas, a third party's business) with `[removed: <why>]`, in the page
-and in the session copy; names no rule caught are masked, a nickname in a co rem title is too,
-and the preview says when the session read mail or co rem pages (#2500). The install floor
-stays 1.9.2b27. See [1.9.2b29 notes](docs/releases/1.9.2b29.md).
+1.9.2b30 is a 1.9.2 beta; stable remains 1.9.1. A handoff is drafted from Gemini CLI, opencode,
+droid, Cursor and Grok sessions as well as Codex and Claude Code, each read where that agent keeps
+its own, without tool calls or their output (#2501); `co handoff status --wait` rides out a brief
+server error instead of ending on it (#2497); inside Codex's sandbox `send` asks to run outside
+it instead of failing (#2504). The install floor stays 1.9.2b27. See
+[1.9.2b30 notes](docs/releases/1.9.2b30.md).
 
+- 1.9.2b30 (From whichever agent you used).
 - 1.9.2b29 (Read by your own agent).
 - 1.9.2b28 (As you edited it).
 - 1.9.2b27 (Only what you approved).
