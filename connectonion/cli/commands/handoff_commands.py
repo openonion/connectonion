@@ -628,8 +628,9 @@ def _sender_status(record: dict, mails: list[dict], verbose: bool = False) -> No
     out.print(style.ok(_where_it_stands(name, record, state, files).replace("[", "\\[")))
     _sent_line(record, verbose)
     out.print(f"Accepted by {who['mailbox']} at {who['at']}" + (f" ({who['address']})" if verbose else ""))
-    out.print(f"They are now your agent's contact {name}; co handoff send {shlex.quote(name)} reaches them again."
-              + (f" {who['address']} (co trust list --global)." if verbose else ""))
+    out.print(f"Saved as {name}: co handoff send {shlex.quote(name)} reaches them again. They can send you handoff "
+              "messages, but they can't use your agent"
+              + (f"; to let them: co trust add {who['address']}." if verbose else " (--verbose says how to let them)."))
     if state["ignored"]:
         out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
     for done in state["done"]:
@@ -816,14 +817,22 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
 
 
+def _safe_name(name: str, fallback: str) -> str:
+    """A folder name the sender chose, kept to one plain name: "../../x" wrote outside the work folder and
+    ".claude" into the project's agent settings (permission audit, 2026-10-14)."""
+    name = Path(str(name or "")).name
+    return name if name and not name.startswith(".") else fallback
+
+
 def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
     """Rebuild code the recipient cannot fetch (#2469) here: commits with `git am`, then the uncommitted
     changes. With a remote, the patches are saved and the agent applies them to its own clone."""
     lines = []
-    for entry, patch in zip(entries, patches):
+    for n, (entry, patch) in enumerate(zip(entries, patches), 1):
         if not patch:
             continue
-        saved = folder / "code" / patch["name"]
+        name = _safe_name(patch["name"], f"code-{n}")
+        saved = folder / "code" / name
         saved.mkdir(parents=True, exist_ok=True)
         (saved / "commits.mbox").write_text(patch["commits"], encoding="utf-8")
         (saved / "changes.diff").write_text(patch["changes"], encoding="utf-8")
@@ -832,8 +841,8 @@ def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
                          f"clone it, check out {patch['base'][:12]}, then git am {saved / 'commits.mbox'} and "
                          f"git apply {saved / 'changes.diff'}.")
             continue
-        target = Path.cwd() / patch["name"]
-        target = target if not target.exists() else Path.cwd() / f"{patch['name']}-{entry['commit'][:7]}"
+        target = Path.cwd() / name
+        target = target if not target.exists() else Path.cwd() / f"{name}-{entry['commit'][:7]}"
         _rebuild(target, saved, patch)
         lines.append(f"The code is in {target} (branch {entry['branch']}, with the sender's uncommitted changes applied).")
     return lines
@@ -1024,7 +1033,7 @@ def handle_show(handoff_id: str) -> None:
     _next(f"co handoff open {handoff_id}")
 
 
-def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
+def handle_open(handoff_id: str, agent: str, cd: Optional[Path], full_access: bool = False) -> None:
     bundle = _find(handoff_id)
     handoff_id = bundle["id"]   # the argument may have been a saved mail file
     if not bundle.get("verified", True):
@@ -1043,7 +1052,7 @@ def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
     cwd = (cd or opener.work_folder(bundle)).resolve()
     out.print(style.muted(escape(f"Opening {opener.thread_name(bundle)} in {cwd}: the sender's conversation, then a "
                                  "short report from your agent…")))
-    started = opener.start(agent, bundle, folder / "HANDOFF.md", cwd, _accept_code(handoff_id))
+    started = opener.start(agent, bundle, folder / "HANDOFF.md", cwd, _accept_code(handoff_id), full_access)
     record = {"agent": agent, "cwd": str(cwd), **started}
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     out.print(style.ok(escape(f"Opened {opener.thread_name(bundle)}")) + f" as {cli} session {started['session']}")
@@ -1068,17 +1077,17 @@ def _accept_code(handoff_id: str) -> Optional[str]:
 FOLLOW_DAYS = 7   # how long a followed handoff keeps waiting for the sender to answer
 
 
-def handle_follow(handoff_id: str, agent: str, session: str, cwd: Path) -> None:
+def handle_follow(handoff_id: str, agent: str, session: str, cwd: Path, full_access: bool = False) -> None:
     """The work turn, then each answer the sender gives by hand goes back into the same session, until done."""
     from .project_cmd_lib import load_api_key
     load_api_key()
     bundle = _find(handoff_id)
-    opener.turn(agent, session, cwd, opener.work_prompt(bundle, cwd, _accept_code(handoff_id)))
+    opener.turn(agent, session, cwd, opener.work_prompt(bundle, cwd, _accept_code(handoff_id)), full_access)
     seen = {a["at"] for a in _answers_by_hand(handoff_id)}   # the work turn waited for these itself
     deadline = time.time() + FOLLOW_DAYS * 86400
     while not (_home() / "accepted" / handoff_id / "done.json").exists() and time.time() < deadline:
         for answer in [a for a in _answers_by_hand(handoff_id) if a["at"] not in seen]:
-            opener.turn(agent, session, cwd, opener.answered_prompt(bundle, answer["text"]))
+            opener.turn(agent, session, cwd, opener.answered_prompt(bundle, answer["text"]), full_access)
             seen |= {a["at"] for a in _answers_by_hand(handoff_id)}
         time.sleep(60)
 
@@ -1224,19 +1233,22 @@ def make_handoff_app(factory) -> typer.Typer:
         agent: str = typer.Option("codex", "--agent", help="codex or claude"),
         session: str = typer.Option(..., "--session", help="The session co handoff open started"),
         cd: Path = typer.Option(..., "--cd", help="The folder it works in"),
+        full_access: bool = typer.Option(False, "--full-access", help="As co handoff open --full-access started it"),
     ):
         """Keep an opened handoff going: runs the work turn, then each answer the sender writes goes back into the same session, until it is done. Runs model turns.
 
         co handoff open starts this in the background; run it yourself only to
         restart one that stopped.
         """
-        handle_follow(handoff_id, agent, session, cd)
+        handle_follow(handoff_id, agent, session, cd, full_access)
 
     @app.command("open", epilog="Examples:  co handoff open ho-1a2b3c4d  |  co handoff open handoff.eml --agent claude --cd ~/project")
     def open_(
         handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox, or the handoff email saved as a file"),
         agent: str = typer.Option("codex", "--agent", help="codex or claude"),
         cd: Optional[Path] = typer.Option(None, "--cd", help="Work in this directory (default: ~/handoffs/<title>)"),
+        full_access: bool = typer.Option(False, "--full-access", help="Let your agent run anything on this machine; "
+                                         "by default it works inside the folder"),
     ):
         """Take over a handoff in your own coding agent: a Codex (or Claude Code) thread with the sender's conversation, a short report, then the work. Starts model turns that accept it, write files and send its result.
 
@@ -1249,6 +1261,6 @@ def make_handoff_app(factory) -> typer.Typer:
         """
         if agent not in AGENTS:
             _fail(f"--agent must be codex or claude, not {agent}.", f"co handoff open {handoff_id} --agent codex")
-        handle_open(handoff_id, agent, cd)
+        handle_open(handoff_id, agent, cd, full_access)
 
     return app

@@ -162,9 +162,15 @@ def received(handoff_id: str, mails: list[dict] = None) -> list[dict]:
     found = []
     for mail in reversed(transport.fetch() if mails is None else mails):   # fetch is newest first
         block = _decode(mail.get("message", ""))
-        if block and block.get("id") == handoff_id and block.get("kind") in KINDS:
+        if block and block.get("id") == handoff_id and block.get("kind") in KINDS and _from_who_it_says(block, mail):
             found.append(block)
     return sorted(found, key=lambda b: b.get("at", ""))
+
+
+def _from_who_it_says(block: dict, mail: dict) -> bool:
+    """An agent-inbox message counts only when the backend's authenticated poster is the address the block
+    claims: the secret is in the public page's prompt, so the block's own `address` proves nothing."""
+    return "sender" not in mail or str(block.get("address", "")).lower() == str(mail["sender"]).lower()
 
 
 def _decode(body: str) -> dict | None:
@@ -446,7 +452,8 @@ def unpack_file(packed: str) -> bytes:
 
 
 def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: bool = False) -> str:
-    """The acceptor becomes this agent's contact, named after whoever `to` was; returns that name.
+    """The acceptor may send this agent handoff messages, named after whoever `to` was; returns that name.
+    Only that: a contact drives this agent and approves its own tool calls (audit, 2026-10-14).
 
     peers.json keeps which handoffs they took.
     """
@@ -456,7 +463,7 @@ def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: b
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return transport.meet(to, address, inbox, f"accepted our handoff {handoff_id}")
+    return transport.meet(to, address, inbox, f"accepted our handoff {handoff_id}", level="handoffs")
 
 
 def _now() -> str:

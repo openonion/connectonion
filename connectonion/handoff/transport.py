@@ -48,8 +48,9 @@ def add_contact(name: str, address: str) -> str:
     return mail
 
 
-def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: str = "contact") -> str:
-    """After a handoff is accepted, each side makes the other its agent's contact. Returns their name.
+def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: str = "handoffs") -> str:
+    """After a handoff is accepted, each side admits the other at `level`: handoffs, which exchanges handoff
+    messages and nothing else, unless a caller asks for more. Returns their name.
 
     `inbox` records that their co reads the agent inbox (they used a coh2 code), so later
     handoffs to them go there; a contact without it gets mail, which every version reads.
@@ -354,6 +355,7 @@ def _as_mail(message: dict) -> dict | None:
     if not isinstance(content, dict) or not isinstance(content.get("subject"), str):
         return None
     return {"id": f"agent-message-{message['id']}", "from": content.get("from") or message["from_address"],
+            "sender": message["from_address"],   # who the backend says posted it; "from" is the poster's own word
             "subject": content["subject"], "message": content.get("message", ""), "timestamp": message["created_at"]}
 
 

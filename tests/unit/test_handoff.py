@@ -290,7 +290,7 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
 
     seeds = []
 
-    def fake_start(agent, bundle, brief, cwd, code):
+    def fake_start(agent, bundle, brief, cwd, code, full_access=False):
         seeds.append((agent, brief.read_text(), brief, cwd, code))
         return {"session": "thread-1", "reply": "Goal: store the token.", "log": "work.log",
                 "resume": f"cd {cwd} && codex resume thread-1", "ask": "codex exec resume thread-1 \"q\""}
@@ -581,7 +581,7 @@ def _sent_to_a_personal_address(project, mailbox) -> dict:
 def _fake_open(monkeypatch) -> list:
     seeds = []
 
-    def fake_start(agent, bundle, brief, cwd, code):
+    def fake_start(agent, bundle, brief, cwd, code, full_access=False):
         seeds.append((agent, brief.read_text(), brief))
         return {"session": "thread-1", "reply": "Goal.", "resume": "codex resume thread-1", "ask": "codex exec resume thread-1",
                 "log": "work.log"}

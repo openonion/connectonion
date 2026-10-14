@@ -102,29 +102,30 @@ def work_prompt(bundle: dict, cwd: Path, code: str | None) -> str:
     return WORK.format(cwd=cwd, id=bundle["id"], code=code or "(no code: ask the person here)", session=session)
 
 
-def start(agent: str, bundle: dict, brief: Path, cwd: Path, code: str | None) -> dict:
+def start(agent: str, bundle: dict, brief: Path, cwd: Path, code: str | None, full_access: bool = False) -> dict:
     """Open the session: replay and the report turn, then `co handoff follow` in the background.
 
     Returns {session, reply, resume, ask, replayed, log}."""
     cwd.mkdir(parents=True, exist_ok=True)
     report = report_prompt(bundle, brief, cwd, code)
     if agent == "codex":
-        started = _start_codex(bundle, report, cwd)
+        started = _start_codex(bundle, report, cwd, full_access)
     else:
-        started = _start_claude(f"{report}\n\n{brief_markdown(bundle)}", cwd)
+        started = _start_claude(f"{report}\n\n{brief_markdown(bundle)}", cwd, full_access)
     log = brief.parent / f"work-{agent}.log"
     follow = [sys.executable, "-c", "from connectonion.cli.main import app; app()", "handoff", "follow",
-              bundle["id"], "--agent", agent, "--session", started["session"], "--cd", str(cwd)]
+              bundle["id"], "--agent", agent, "--session", started["session"], "--cd", str(cwd),
+              *(["--full-access"] if full_access else [])]
     with open(log, "w", encoding="utf-8") as out:   # the work runs on after co exits
         subprocess.Popen(follow, cwd=cwd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                          start_new_session=True)
     return {**started, "log": str(log)}
 
 
-def turn(agent: str, session: str, cwd: Path, prompt: str) -> subprocess.CompletedProcess:
-    """One more turn in the opened session, with the same full access as the first."""
-    argv = (_exec(cwd, session) + ["-"] if agent == "codex" else
-            ["claude", "-p", "--permission-mode", "bypassPermissions", "--resume", session, "-"])
+def turn(agent: str, session: str, cwd: Path, prompt: str, full_access: bool = False) -> subprocess.CompletedProcess:
+    """One more turn in the opened session, with the same access as the first."""
+    argv = (_exec(cwd, session, full_access) + ["-"] if agent == "codex" else
+            ["claude", "-p", *_claude_access(full_access), "--resume", session, "-"])
     return subprocess.run(argv, input=prompt, text=True, cwd=cwd)
 
 
@@ -233,12 +234,12 @@ def _model() -> str:
     return found.group(1) if found else "gpt-5"
 
 
-def _start_codex(bundle: dict, report: str, cwd: Path) -> dict:
+def _start_codex(bundle: dict, report: str, cwd: Path, full_access: bool = False) -> dict:
     thread = write_replay(bundle, cwd)
-    out = _codex(report, cwd, thread)
+    out = _codex(report, cwd, thread, full_access)
     replayed = out.returncode == 0
     if not replayed:   # a Codex whose rollout format moved on: one seeded turn instead
-        out = _codex(f"{report}\n\n{brief_markdown(bundle)}", cwd)
+        out = _codex(f"{report}\n\n{brief_markdown(bundle)}", cwd, None, full_access)
         _require_ok(out, "codex exec")
     events = [json.loads(line) for line in out.stdout.splitlines() if line.startswith("{")]
     thread = next((e["thread_id"] for e in events if e.get("type") == "thread.started"), thread)
@@ -250,19 +251,35 @@ def _start_codex(bundle: dict, report: str, cwd: Path) -> dict:
             "ask": f'cd {where} && codex exec resume --skip-git-repo-check {thread} "<your question>"'}
 
 
-def _codex(prompt: str, cwd: Path, thread: str | None = None) -> subprocess.CompletedProcess:
+def _codex(prompt: str, cwd: Path, thread: str | None = None, full_access: bool = False) -> subprocess.CompletedProcess:
     """One turn; options go before `resume`, which takes none of its own. The prompt goes in on
     stdin (`-`): a replayed session's seed is longer than one argument may be (Linux: 128 KB)."""
-    return subprocess.run(_exec(cwd, thread) + ["-"], input=prompt, capture_output=True, text=True, cwd=cwd)
+    return subprocess.run(_exec(cwd, thread, full_access) + ["-"], input=prompt, capture_output=True, text=True, cwd=cwd)
 
 
-def _exec(cwd: Path, thread: str | None) -> list[str]:
-    head = ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "danger-full-access", "-C", str(cwd)]
+def _exec(cwd: Path, thread: str | None, full_access: bool = False) -> list[str]:
+    head = ["codex", "exec", "--json", "--skip-git-repo-check", *_codex_access(full_access), "-C", str(cwd)]
     return head + (["resume", thread] if thread else [])
 
 
-def _start_claude(prompt: str, cwd: Path) -> dict:
-    out = subprocess.run(["claude", "-p", "--output-format", "json", "--permission-mode", "bypassPermissions", prompt],
+# The sender's words drive these turns, and the sender's answers keep arriving for days: by default the
+# recipient's agent works inside the folder (and co's own records, to send its result), not the whole
+# machine. Full access is the recipient's choice: co handoff open --full-access (audit, 2026-10-14).
+def _codex_access(full_access: bool) -> list[str]:
+    if full_access:
+        return ["-s", "danger-full-access"]
+    return ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",
+            "--add-dir", str(global_config_dir())]
+
+
+def _claude_access(full_access: bool) -> list[str]:
+    if full_access:
+        return ["--permission-mode", "bypassPermissions"]
+    return ["--permission-mode", "acceptEdits", "--allowedTools", "Bash(co handoff:*)"]
+
+
+def _start_claude(prompt: str, cwd: Path, full_access: bool = False) -> dict:
+    out = subprocess.run(["claude", "-p", "--output-format", "json", *_claude_access(full_access), prompt],
                          stdin=subprocess.DEVNULL, capture_output=True, text=True, cwd=cwd)
     _require_ok(out, "claude -p")
     result = json.loads(out.stdout)

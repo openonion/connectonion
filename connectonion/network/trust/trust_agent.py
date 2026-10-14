@@ -257,7 +257,9 @@ class TrustAgent:
         #
         # The LLM stays for what a policy can actually defer on: a known level
         # (a contact, say) that a custom policy does not admit outright.
-        if self.get_level(client_id) == "stranger":
+        # A handoff counterpart exchanges handoff messages through the inbox; using this agent is the
+        # operator's `co trust add`, never a model's call (handoff permission audit, 2026-10-14).
+        if self.get_level(client_id) in ("stranger", "handoffs"):
             self.logger.info(f"[TRUST] Stranger {client_id[:10]}... refused: no door open")
             return Decision(
                 allow=False,
