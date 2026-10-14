@@ -560,7 +560,7 @@ def _wait_for_news(handoff_id: str, every: int = 30, timeout: int = 600) -> None
     shown = set(json.loads(_shown_file(handoff_id).read_text())) if _shown_file(handoff_id).exists() else set()
     out.print(style.muted(f"Waiting for news on {handoff_id}, checking every {every}s, for {timeout // 60} minutes…"))
     until = time.monotonic() + timeout
-    while all(_key(b) in shown for b in replies.received(handoff_id)):
+    while all(_key(b) in shown for b in _received_through_blips(handoff_id)):
         if time.monotonic() >= until:
             recipient = (_home() / "accepted" / handoff_id / "code.json").exists()
             out.print(style.warn(f"No news on {handoff_id} in {timeout // 60} minutes."
@@ -568,6 +568,21 @@ def _wait_for_news(handoff_id: str, every: int = 30, timeout: int = 600) -> None
                                     "in done." if recipient else "")))
             return
         time.sleep(every)
+
+
+def _received_through_blips(handoff_id: str) -> list[dict]:
+    """What has arrived; nothing yet when the server is briefly down (a 5xx or a dropped connection), so
+    the wait carries on. A deploy's 502 ended an hour's wait with a traceback (#2497). A refusal (4xx) is
+    not a blip and still fails."""
+    import requests
+    try:
+        return replies.received(handoff_id)
+    except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as error:
+        response = getattr(error, "response", None)
+        if response is not None and response.status_code < 500:
+            raise
+        out.print(style.muted(f"The server could not be reached ({error}); still waiting."))
+        return []
 
 
 def _shown_file(handoff_id: str) -> Path:

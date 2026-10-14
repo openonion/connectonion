@@ -1234,3 +1234,32 @@ def test_a_handoff_is_drafted_from_a_gemini_cli_session(project, model, mailbox)
     assert draft["conversation"][0]["user"] == "Cookie or localStorage for the token?"
     wrong = _invoke("handoff", "send", SELF, "task", "--agent", "nope")
     assert wrong.exit_code != 0 and "gemini, opencode, droid, cursor" in wrong.output
+
+
+def test_status_wait_rides_out_a_brief_server_error_but_not_a_refusal(project, model, mailbox, monkeypatch):
+    """#2497: during the oo-api deploy one 502 ended an hour's --wait with a traceback."""
+    import requests
+    write_codex_session(project)
+    handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
+    _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
+    from connectonion.handoff import replies
+
+    def error(code):
+        return requests.HTTPError(f"{code} Server Error", response=type("R", (), {"status_code": code})())
+    arrivals = iter([error(502), requests.ConnectionError("reset"), [{"kind": "ask"}], [{"kind": "ask"}], [{"kind": "ask"}]])
+
+    def received(handoff_id, mails=None):
+        got = next(arrivals)
+        if isinstance(got, Exception):
+            raise got
+        return got
+    monkeypatch.setattr(replies, "received", received)
+    monkeypatch.setattr(replies, "settle", lambda record, mails=None: {"accepted": None, "questions": [], "ignored": 0})
+    monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    result = _invoke("handoff", "status", handoff_id, "--wait")
+    assert result.exit_code == 0, result.output
+    assert "could not be reached" in " ".join(result.output.split()) and f"Handoff {handoff_id} (sent)" in result.output
+
+    monkeypatch.setattr(replies, "received", lambda handoff_id, mails=None: (_ for _ in ()).throw(error(401)))
+    assert _invoke("handoff", "status", handoff_id, "--wait").exit_code != 0       # a refusal is not waited out
