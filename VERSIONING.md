@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2
+## Current Version: 1.9.3b1
+
+1.9.3b1 is a 1.9.3 beta; stable remains 1.9.2. The line a handoff's recipient pastes installed
+1.9.2b27, because the install floor was not raised for b29 to 1.9.2, so recipients ran without the
+1.9.2 permission defaults: on Parrot `co handoff open` worked with full access. The recipient now
+installs the release that sent the handoff, and a test holds the floor at each release's own
+version (#2512). See [1.9.3b1 notes](docs/releases/1.9.3b1.md).
+
+- 1.9.3b1 (The recipient runs the release that sent it).
+
+## Stable release: 1.9.2
 
 Stable 1.9.2 hands a coding session to someone else's agent. `co handoff send` drafts it from the
 session (Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok), has the sender's own

@@ -126,7 +126,7 @@ def test_the_mail_is_one_short_prompt_and_no_power_user_commands(world):
     assert f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh" in page
     assert f'uv tool install "connectonion=={MIN_VERSION}"' in page                 # Windows: no sh
     assert "pip install" not in body and "--pre" not in body
-    assert f"older than {MIN_VERSION}, install co first" in page and "let it finish" in page
+    assert f"older than {MIN_VERSION}" in page and "install co first" in page and "let it finish" in page
     assert "\n" not in _paste(world).strip() and "without waiting for me" in _paste(world)
     assert "Triple-click the line to select it" in body and "Copy from here" not in body
     assert f"co handoff accept {_code(page)}" in page
@@ -363,6 +363,28 @@ def test_the_install_floor_is_never_newer_than_this_release():
     from connectonion import __version__
     from connectonion.handoff.replies import MIN_VERSION
     assert Version(MIN_VERSION) <= Version(__version__)
+
+
+def test_the_recipient_installs_the_release_that_sent_it(world):
+    # A 1.9.2 sender's page installed 1.9.2b27 on Parrot (2026-10-14): its work turn ran with
+    # danger-full-access, and none of 1.9.2's permission defaults reached the recipient.
+    # A dev build keeps the last release's floor: its own version is on no index.
+    from packaging.version import Version
+    from connectonion import __version__
+    if Version(__version__).is_devrelease:
+        pytest.skip("a dev build pins the last release")
+    _send(world)
+    page = _page(world)
+    assert f"CO_VERSION={__version__} sh" in page
+    assert f'uv tool install "connectonion=={__version__}"' in page
+    assert f"/v{__version__}/install.sh" in page
+
+
+def test_an_agent_is_told_a_preview_is_older_than_the_release():
+    # "older than 1.9.2" alone lets an agent keep 1.9.2b27, the version this floor exists to replace.
+    from connectonion.handoff.replies import older_than
+    assert older_than("1.9.2") == "older than 1.9.2 (its previews, such as 1.9.2b27, are older)"
+    assert older_than("1.9.3b1") == "older than 1.9.3b1"
 
 
 # ---- #2410: mail finds the agent, the agent inbox carries the rest ----

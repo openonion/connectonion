@@ -97,9 +97,19 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # step 5 runs `co handoff status --wait`, which 1.9.2b10 does not have. 1.9.2b12: the code is coh2 and
 # replies go to the agent inbox; 1.9.2b11 cannot parse coh2 and never reads the inbox. 1.9.2b13: the first
 # automatic answer carries the sender's session, and only 1.9.2b13 saves it where the prompt says to look.
-MIN_VERSION = "1.9.2b27"   # 1.9.2b27: the drop is read with the code's secret and claimed by its first reader (oo-api#267); b26 cannot read it.
+# 1.9.2b27: the drop is read with the code's secret and claimed by its first reader (oo-api#267).
+# 1.9.2: the recipient's defaults are the permission audit's (the work turn stays in its folder, a
+# sender's folder name cannot leave it); a 1.9.2 sender pinning b27 installed none of that (Parrot,
+# 2026-10-14). A test now holds this at each release's own version, so it cannot be forgotten again.
+MIN_VERSION = "1.9.3b1"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
+
+
+def older_than(version: str) -> str:
+    """An agent reading "older than 1.9.2" may take 1.9.2b27 for 1.9.2 and keep it."""
+    return f"older than {version}" + ("" if re.search(r"[a-z]", version) else
+                                      f" (its previews, such as {version}b27, are older)")
 
 
 def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
@@ -110,7 +120,7 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
     mail client. Nothing else (#2459): it is the first message of the recipient's thread, and
     `accept` fetches the handoff and says what to do next."""
     return (f"{sender} handed you \"{title}\" (handoff {handoff_id}). If co --version prints nothing or a version "
-            f"older than {MIN_VERSION}, install co first, which keeps to its own environment (right after a release it can wait a few minutes "
+            f"{older_than(MIN_VERSION)}, install co first, which keeps to its own environment (right after a release it can wait a few minutes "
             f"for PyPI, so let it finish): "
             f"on macOS or Linux run "
             f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh, and on Windows run "
