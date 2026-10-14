@@ -838,8 +838,9 @@ def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
         (saved / "changes.diff").write_text(patch["changes"], encoding="utf-8")
         if entry.get("repository"):
             lines.append(f"The code is on {entry['repository']} up to {patch['base'][:12]}; the rest is in {saved}: "
-                         f"clone it, check out {patch['base'][:12]}, then git am {saved / 'commits.mbox'} and "
-                         f"git apply {saved / 'changes.diff'}.")
+                         f"clone it, check out {patch['base'][:12]}, then git am {saved / 'commits.mbox'}, "
+                         f"git apply {saved / 'changes.diff'} and commit those as the sender's uncommitted changes, "
+                         "so your own diff is only your work.")
             continue
         target = Path.cwd() / name
         target = target if not target.exists() else Path.cwd() / f"{name}-{entry['commit'][:7]}"
@@ -857,7 +858,11 @@ def _rebuild(target: Path, saved: Path, patch: dict) -> None:
     if patch["commits"]:
         git("am", "-q", "--committer-date-is-author-date", str(saved / "commits.mbox"))
     if patch["changes"]:
+        # Their own commit: a recipient's `git diff` is then only their work, and the patch they send back
+        # applies on the sender's side, where these changes already are (b30 Codex TUI gate).
         git("apply", str(saved / "changes.diff"))
+        git("add", "-A")
+        git("commit", "-q", "-m", "The sender's uncommitted changes")
 
 
 def _rules(code_text: str, handoff_id: str) -> str:

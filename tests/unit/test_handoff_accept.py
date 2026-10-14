@@ -1085,3 +1085,20 @@ def test_an_opened_handoff_runs_in_the_recipients_agent_without_full_access_unle
     for agent in ("codex", "claude"):
         opener.turn(agent, "s1", tmp_path, "go", full_access=True)
     assert "danger-full-access" in runs[0] and "bypassPermissions" in runs[1]
+
+
+def test_the_senders_uncommitted_changes_are_their_own_commit_so_the_result_is_only_the_recipients(tmp_path):
+    """b30 Codex TUI gate: the rebuilt repo had the sender's uncommitted change in the working tree, so the
+    recipient's `git diff > result.patch` carried it back and the sender's `git apply` could not apply it."""
+    import subprocess
+    from connectonion.cli.commands import handoff_commands as hc
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    (saved / "commits.mbox").write_text("")
+    (saved / "changes.diff").write_text("diff --git a/slug.py b/slug.py\nnew file mode 100644\n--- /dev/null\n"
+                                        "+++ b/slug.py\n@@ -0,0 +1 @@\n+fold = 'NFKD'\n")
+    target = tmp_path / "slugify"
+    hc._rebuild(target, saved, {"commits": "", "changes": "x"})
+    git = lambda *a: subprocess.run(["git", "-C", str(target), *a], capture_output=True, text=True).stdout
+    assert git("status", "--porcelain") == ""                        # nothing of the sender's left to diff
+    assert "uncommitted changes" in git("log", "-1", "--format=%s") and "fold = 'NFKD'" in (target / "slug.py").read_text()
