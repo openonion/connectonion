@@ -875,7 +875,9 @@ def _rules(code_text: str, handoff_id: str) -> str:
             f"co handoff status {handoff_id} --wait in the background. If they have not answered in about 10 minutes, carry on "
             "with the most conservative reasonable choice and say so in done as \"Assumed: …; tell me if you want …\". "
             f"When it is done: co handoff done {code_text} "
-            "\"what you did, and the branch or PR\" (add --file result.patch for a patch). In what you tell the person here, "
+            "\"what you did, and the branch or PR\" (add --file result.patch for a patch). The sender's own uncommitted "
+            "changes are already a commit here (\"The sender's uncommitted changes\"), so a diff against it holds only your "
+            "own changes, and it applies where the sender is: say that, not that it includes theirs. In what you tell the person here, "
             "name the work folder and the files you changed; do not mention the handoff skill, its file or other internal paths.")
 
 
