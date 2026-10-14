@@ -13,26 +13,20 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.9.1** is the default production channel. co rem's first run now
-investigates every page, deepens people with two years of mail, edits pages in
-place and draws decisions and principles; Person pages lead with contact facts
-and cited mail opens as a message. See [1.9.1 notes](releases/1.9.1.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.1).
+Stable **1.9.2** is the default production channel. Hand a coding session to someone else's
+agent: you see exactly what leaves, with private sentences taken out by your own agent; they paste
+one line, and the result comes back as a patch. Neither side gets more than the handoff. See
+[1.9.2 notes](releases/1.9.2.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.2).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.1'
-```
-
-## Current preview
-
-Release candidate **1.9.2rc1**: handing a session to someone else's agent, checked end to end
-between Claude Code and Codex in both directions. See [1.9.2rc1 notes](releases/1.9.2rc1.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2rc1'
+python -m pip install --upgrade 'connectonion==1.9.2'
 ```
 
 ## Previous previews
+
+Release candidate **1.9.2rc1**: handing a session to someone else's agent, checked end to end
+between Claude Code and Codex in both directions. See [1.9.2rc1 notes](releases/1.9.2rc1.md).
 
 Beta **1.9.2b31**: accepting a handoff gives the other side nothing but messages about that
 handoff; using your agent stays your own decision. See [1.9.2b31 notes](releases/1.9.2b31.md).

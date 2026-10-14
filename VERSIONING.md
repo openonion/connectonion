@@ -400,7 +400,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2rc1
+## Current Version: 1.9.2
+
+Stable 1.9.2 hands a coding session to someone else's agent. `co handoff send` drafts it from the
+session (Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok), has the sender's own
+Codex or Claude Code take out private sentences, masks other people's details, and shows exactly
+what leaves before anything is sent; the recipient pastes one line, their agent accepts, works, asks
+the sender's agent what the session does not say, and sends the result back as a patch. Neither side
+gets more than messages about that handoff (DD-078, trust starts from cost). 1.9.2b31 passed real
+runs in the Codex and Claude Code apps in both directions, and Codex to Codex on 1.9.2b30, each
+ending with the patch applied on the sender's side with no other step from a person. See
+[1.9.2 notes](docs/releases/1.9.2.md).
+
+- 1.9.2 (Hand a session to someone else's agent).
+
+## Previous preview: 1.9.2rc1
 
 1.9.2rc1 is the 1.9.2 release candidate; stable remains 1.9.1. After 1.9.2b31 passed a real
 handoff in both directions between Claude Code and Codex, and Codex to Codex, each ending with the
@@ -441,7 +455,7 @@ contact, and the recipient's agent is told its patch holds only its own changes.
 - 1.9.2b2 (A first run that loses fewer pages; built, not published).
 - 1.9.2b1 (Each pass improves the page, not only grows it).
 
-## Stable release: 1.9.1
+## Previous stable: 1.9.1
 
 Stable 1.9.1 makes co rem's first run investigate rather than skim. It reads
 180 days of mail sixteen pages at a time, fetches two years in the background
