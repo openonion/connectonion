@@ -273,6 +273,9 @@ NEXT = {
     "co asana task": HANDLER,         # the task's stories (F13DBREAD-10)
     "co asana stories": HANDLER,
     "co obsidian vaults": HANDLER,
+    "co obsidian notes": HANDLER,
+    "co obsidian read": HANDLER,
+    "co obsidian search": HANDLER,
     # Every co rem command already ends by naming one next command, chosen from what
     # it found: `list` points at the first page, `search` at the first hit, a failed
     # `show` back at the category. A static line here would contradict that.

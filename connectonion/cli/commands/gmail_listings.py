@@ -36,7 +36,7 @@ def save_listing(directory: Path, account: str, family: str, ids: list[str], *, 
     """Persist IDs only; never cache message bodies, subjects, recipients or tokens."""
     allowed = {('gmail', 'messages'), ('gmail', 'drafts'), ('gdrive', 'files'),
                ('outlook', 'messages'), ('onenote', 'sections'), ('onenote', 'pages'),
-               ('asana', 'projects'), ('asana', 'tasks')}
+               ('asana', 'projects'), ('asana', 'tasks'), ('obsidian', 'notes')}
     if (provider, family) not in allowed or len(ids) > 500 or any(
         not isinstance(item, str) or not item or len(item) > 256 for item in ids
     ):

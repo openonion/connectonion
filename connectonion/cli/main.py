@@ -2519,10 +2519,10 @@ from .commands.asana_commands import asana_app
 app.add_typer(asana_app, name="asana")
 
 
-# Obsidian (F13DBREAD-2): registered vaults only; discovery never imports notes.
+# Obsidian (F13DBREAD-2/-3/-7): registered vaults and explicitly selected notes, read-only.
 obsidian_app = _typer_app(
-    help="Discover registered Obsidian vaults without importing notes. Read-only.",
-    epilog="Example:  co obsidian vaults  |  co obsidian vaults --json",
+    help="Discover registered vaults, then list, read or search explicitly selected note folders. Read-only.",
+    epilog='Example:  co obsidian vaults  |  co obsidian notes --vault "<path>" --folder "."',
     invoke_without_command=True,
 )
 app.add_typer(obsidian_app, name="obsidian")
@@ -2540,6 +2540,46 @@ def _obsidian_vaults(json_output: bool = typer.Option(False, "--json", help="Pri
     """List registered vault names, paths, availability and open status. Read-only."""
     from .commands.obsidian_commands import handle_obsidian_vaults
     handle_obsidian_vaults(json_output=json_output)
+
+
+@obsidian_app.command("notes", epilog='Example:  co obsidian notes --vault "<path>" --folder "Course" -n 20')
+def _obsidian_notes(
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many notes, most recently modified first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print full note records as JSON; no row numbers are saved"),
+):
+    """List Markdown notes in the chosen folders, with titles, paths and modification times. Read-only."""
+    from .commands.obsidian_commands import handle_obsidian_notes
+    handle_obsidian_notes(vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("read", epilog='Example:  co obsidian read 1 --vault "<path>" --folder "Course"')
+def _obsidian_read(
+    ref: str = typer.Argument(..., help="Note path, exact filename title, or row number from notes/search"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID from notes/search to pin its rows (15 minutes)"),
+    json_output: bool = typer.Option(False, "--json", help="Print the full note record as JSON; otherwise print original Markdown"),
+):
+    """Read one selected note as original Markdown, or JSON with its properties and links. Read-only."""
+    from .commands.obsidian_commands import handle_obsidian_read
+    handle_obsidian_read(ref, vault=vault, folders=folders, listing=listing, json_output=json_output)
+
+
+@obsidian_app.command("search", epilog='Example:  co obsidian search "logic lecture" --vault "<path>" --folder "Course"')
+def _obsidian_search(
+    query: str = typer.Argument(..., help="All terms must match; quote phrases inside the query for an exact phrase"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many matches, title matches first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print search hits as JSON; no row numbers are saved"),
+):
+    """Search selected notes across title, body, tags, properties and links. Read-only."""
+    from .commands.obsidian_commands import handle_obsidian_search
+    handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
