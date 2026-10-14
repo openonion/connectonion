@@ -41,6 +41,12 @@ The CLI automatically:
 3. Generates complete project structure
 4. Authenticates for managed keys (free credits)
 
+## Experimental integrations and feedback
+
+[23 experimental connectors](experimental-integrations.md) add native Google Docs, Sheets, Slides and Forms editing, Microsoft files/workbooks/tasks, and API-backed notes, project-management, CRM and design reads. The preview install instructions state their current availability and account requirements.
+
+[Feedback](feedback.md): `co feedback report` prepares a report link; the maintainer-only `co feedback listen` collects messages from our Agent mailbox.
+
 ## All Commands
 
 This page walks through the commands in prose. The CLI itself is the register,
