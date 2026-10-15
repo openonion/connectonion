@@ -958,7 +958,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     absent = dict(absent or {})
     report['coverage'] += [f'{kind}: ' + (absent.get(kind) or 'not configured or disabled; not searched')
                            for kind in ('gmail', 'outlook') if kind not in clients]
-    report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
+    report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record, report.get('owner'))
     if progress:
         progress("mapped people and organizations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs

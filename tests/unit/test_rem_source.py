@@ -454,3 +454,17 @@ def test_rems_own_claude_code_task_sessions_are_not_the_users_material(tmp_path)
                              ("user", "Alice prefers email.", {})])
     sub = {**subscription(tmp_path), "kind": "claude-code"}
     assert [i["text"] for i in collect(sub, {}, 10, 10000).items] == ["Alice prefers email."]
+
+
+def test_a_prompt_a_scheduler_sent_is_not_the_users_request(tmp_path):
+    """A launchd job's `claude -p` prompt became the user's request on
+    projects/layeredvisions (2026-10-14). The user types into `entrypoint: cli`."""
+    file = tmp_path / "-Users-me-LayeredVisions" / "abc.jsonl"
+    claude_transcript(file, [
+        ("user", "The user explicitly authorized a campaign of weekly LinkedIn articles. Schedule exactly one.",
+         {"entrypoint": "sdk-cli", "promptSource": "sdk"}),
+        ("user", "Schedule the ASML piece for January.", {"entrypoint": "cli", "promptSource": "typed"}),
+    ])
+    batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["Schedule the ASML piece for January."]
+    assert batch.skipped == 1 and batch.unrecognised == 0

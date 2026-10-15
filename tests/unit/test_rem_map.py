@@ -1147,3 +1147,17 @@ def test_knowing_nothing_of_the_owner_a_write_only_correspondent_still_gets_a_pa
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills], days=90)
     assert {address for row in result['people'] for address in row.get('addresses', [])} == {'ken@y.example'}
+
+
+def test_the_owners_own_domain_is_never_a_counterparty_organisation(tmp_path, monkeypatch):
+    """orgs/openonion-ai (2026-10-10): the owner's colleagues write from the owner's own domain."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': 'Zi Ming', 'address': 'ziming@openonion.ai', 'mails': 6, 'sent': 3, 'received': 3},
+              {'name': 'Bot', 'address': 'agent@mail.openonion.ai', 'mails': 4, 'sent': 2, 'received': 2},
+              {'name': 'Ann Lee', 'address': 'ann@partner.com.au', 'mails': 4, 'sent': 2, 'received': 2}]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, {'me@openonion.ai'}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert [row['domain'] for row in result['orgs']] == ['partner.com.au']
