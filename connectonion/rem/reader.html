@@ -2170,7 +2170,7 @@ function row(r, opts) {
   const open = threads(r).items[0];
   if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
+  if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
   return li;
 }
@@ -2326,6 +2326,7 @@ function morningThread({ r, t }) {
       [el("b", { text: t.due ? dueLabel(t) : age(t.since) }), el("span", { text: label })])]);
 }
 function quietThreads(entries, count, home = false) {
+  if (!count) return null;
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: "Gone quiet (" + count + ")" }),
@@ -2353,18 +2354,24 @@ function taskView(kind) {
     else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No verified claim change in this pass" }),
       "The pass may have refreshed pages; that alone is not a new memory."]));
     if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
-      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true })))]));
+      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
     return;
   }
   main.appendChild(el("h1", { text: "Open threads" }));
   const entries = threadEntries(), counts = threadCounts();
-  main.appendChild(el("p", { class: "lede", text: counts.mine + " waiting on you, " + counts.theirs + " on someone else, " + counts.other + " other open context. Newest and due first." }));
-  if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
-    "No supported open loop is in this snapshot."]));
+  if (!entries.length) {
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
+      "No supported open loop is in this snapshot."]));
+    return;
+  }
+  const summary = [[counts.mine, "waiting on you"], [counts.theirs, "on someone else"], [counts.other, "other open context"]]
+    .filter(([count]) => count).map(([count, text]) => count + " " + text).join(", ");
+  if (summary) main.appendChild(el("p", { class: "lede", text: summary + ". Newest and due first." }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
+    if (!count) continue;
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      items.length ? el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true))) : el("p", { class: "quiet-line", text: "Nothing here." })]));
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);
@@ -2403,6 +2410,13 @@ function connectionReview() {
       ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
       el("a", { href: "#reviews=1", text: "Review the evidence →" })])]);
 }
+function waitingMore(counts) {
+  if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: "Nothing is open between you and anyone right now." });
+  const others = counts.theirs + (counts.theirs === 1 ? " is" : " are") + " waiting on someone else";
+  return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: counts.mine
+    ? "See all " + counts.mine + " waiting on you" : counts.theirs + " waiting on someone else →" }),
+    counts.mine && counts.theirs ? " and " + others : null]);
+}
 function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
@@ -2416,10 +2430,9 @@ function overview() {
     // The heading counts what the sidebar and co rem status count; the rows are its top few.
     el("h1", { text: counts.mine === 0 ? "Nothing is waiting on you" : counts.mine === 1 ? "One thing is waiting on you" : counts.mine + " things are waiting on you" }),
     firstMap,
-    el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }),
-    el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)),
-    el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: "See all " + counts.mine + " waiting on you" }),
-      " and " + counts.theirs + " are waiting on someone else"]), morningBrief()]);
+    counts.mine ? el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }) : null,
+    counts.mine ? el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)) : null,
+    waitingMore(counts), morningBrief()]);
   const side = el("aside", { class: "morning-side" });
   const recall = recallPrompt();
   if (recall) side.appendChild(recall);

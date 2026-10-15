@@ -915,6 +915,72 @@ def test_changes_and_open_threads_are_actionable_destinations(reader):
     assert page.locator(".task-band a[href*='people']").count() >= 1
 
 
+@pytest.mark.parametrize("mine,theirs", [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)])
+def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, theirs):
+    page, _ = reader
+    page.evaluate(r"""({mine, theirs}) => {
+      for (const r of REM.records)
+        r.text = r.text.replace(/(^## Open threads[^\n]*\n)[\s\S]*?(?=^## |^Investigation:|(?![\s\S]))/mi, '$1Unknown\n\n');
+      const items = [
+        ...Array(mine).fill('- You owe Mara a reply [1].'),
+        ...Array(theirs).fill('- Mara owes you a reply [1].')
+      ];
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + (items.join('\n') || 'Unknown'));
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", {"mine": mine, "theirs": theirs}, isolated_context=False)
+    primary = page.locator('.morning-primary')
+    assert 'See all 0' not in primary.inner_text()
+    assert ' 0 ' not in primary.inner_text()
+    assert page.locator('.waiting-intro').count() == bool(mine)
+    assert page.locator('.waiting-ledger').count() == bool(mine)
+    assert page.locator('.waiting-ledger li').count() == mine
+    if not mine:
+        assert primary.locator('h1').inner_text() == 'Nothing is waiting on you'
+    if mine or theirs:
+        text = f'See all {mine} waiting on you' if mine else f'{theirs} waiting on someone else →'
+        if mine and theirs:
+            text += f' and {theirs} {"is" if theirs == 1 else "are"} waiting on someone else'
+        assert primary.locator('.waiting-more').inner_text() == text
+    else:
+        assert primary.locator('.waiting-more').count() == 0
+        assert primary.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
+    assert 'Gone quiet (0)' not in page.locator('body').inner_text()
+    if mine or theirs:
+        primary.locator('.waiting-more a').click()
+    else:
+        page.evaluate("location.hash = 'view=open'", isolated_context=False)
+    page.get_by_role('heading', name='Open threads', exact=True).wait_for()
+    assert 'Nothing here.' not in page.locator('#main').inner_text()
+    assert '0 waiting' not in page.locator('#main').inner_text()
+    assert page.locator('.task-band').count() == bool(mine) + bool(theirs)
+    if mine or theirs:
+        parts = [f'{count} {label}' for count, label in [(mine, 'waiting on you'), (theirs, 'on someone else')] if count]
+        assert page.locator('#main .lede').inner_text() == ', '.join(parts) + '. Newest and due first.'
+    else:
+        assert page.locator('#main .lede').count() == 0
+        assert page.locator('#main .empty .lead').inner_text() == 'Nothing open'
+    assert 'Gone quiet (0)' not in page.locator('body').inner_text()
+    assert page.evaluate('quietThreads([{t: {quiet: true}}], 0) === null', isolated_context=False)
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_changes_hide_zero_skill_usage(reader, count):
+    page, _ = reader
+    page.evaluate(r"""count => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text = r.text.replace(/Invoked[^\n]*|No invocation found[^\n]*/, count
+        ? 'Invoked once in the last 180 days; last on 2026-10-01.'
+        : 'No invocation found in the last 180 days.');
+      REM.logs.push({started_at: REM.as_of, changed: [r.path]});
+      KNOWN.clear(); FACTS.clear(); location.hash = 'view=changes'; render();
+    }""", count, isolated_context=False)
+    skill = page.locator('.changed-pages li', has=page.get_by_role('link', name='weekly-brief', exact=True))
+    assert skill.count() == 1
+    assert skill.locator('.usage').count() == bool(count)
+    assert '0 skill-name matches' not in page.locator('#main').inner_text()
+
+
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_every_view_fits_a_phone(reader, theme):
     page, uri = reader
