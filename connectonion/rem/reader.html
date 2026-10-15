@@ -642,6 +642,8 @@
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
   .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
   .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
+  /* Standalone source controls need a full touch target. */
+  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--ink-2); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--mark); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -2253,9 +2255,18 @@ function morningBrief() {
     brief.appendChild(el("p", { class: "quiet-line", text: "Nothing about your people or projects changed last night." +
       (n ? " " + n + (n === 1 ? " page was" : " pages were") + " reworded; nothing new." : "") }));
   }
-  if (pass?.failed?.length) brief.appendChild(el("p", { class: "quiet-line" }, [
-    pass.failed.length + (pass.failed.length === 1 ? " run needs attention. " : " runs need attention. "), el("a", { href: "#view=activity", text: "Review failed runs →" })]));
+  if (pass?.failed?.length) brief.append(failureSummary(pass), el("div", { class: "first-map-actions" }, [
+    el("a", { href: "#view=activity", text: "Review failed runs →" })]));
   return brief;
+}
+function failureSummary(pass) {
+  // Name the recovery step without exposing private runner output.
+  const errors = pass.failed.map(run => String(run.error || "")).join("\n"), reasons = [];
+  if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
+  if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
+  if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
+  if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
+  return el("p", { class: "quiet-line", text: pass.failed.length + " investigation" + (pass.failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") });
 }
 // Quotes stay verbatim; a summary never acquires someone's quotation marks.
 function morningWords(text, r) {
@@ -2392,8 +2403,10 @@ function overview() {
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
   const entries = threadEntries(), counts = threadCounts(), waiting = morningEntries(entries), shown = waiting.length;
   main.appendChild(morningNight());
+  const firstMap = firstMapBrief();
   const primary = el("div", { class: "morning-primary" }, [
     el("h1", { text: shown === 0 ? "Nothing is waiting on you" : shown === 1 ? "One thing is waiting on you" : shown + " things are waiting on you" }),
+    firstMap,
     el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }),
     el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)),
     el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: "See all " + counts.mine + " waiting on you" }),
@@ -2404,8 +2417,6 @@ function overview() {
   const quiet = quietThreads(entries, counts.quiet, true);
   if (quiet) side.appendChild(quiet);
   main.appendChild(el("div", { class: "morning-layout" }, [primary, side]));
-  const firstMap = firstMapBrief();
-  if (firstMap) main.appendChild(firstMap);
   const review = connectionReview();
   if (review) main.appendChild(review);
 

@@ -104,7 +104,11 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             page.get_by_role("heading", name="Quiet Person").wait_for()
             text = page.locator("#main").inner_text()
             assert "Unknown" not in text
-            assert "Mapped" in text
+            status = page.locator('.missing.primary .lead')
+            assert status.inner_text() == 'Only mapped so far'
+            assert status.is_visible()
+            assert status.evaluate('e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().bottom <= innerHeight')
+            assert page.locator('details.deep-note').get_attribute('open') is None
             assert "Not investigated yet: Insight, Who they are" in text   # #2068
             assert "co rem --root '" in text and "investigate 'people/quiet.md'" in text
 

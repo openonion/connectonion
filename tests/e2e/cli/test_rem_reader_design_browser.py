@@ -169,11 +169,14 @@ def reader(tmp_path, monkeypatch):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    memories = page.locator(".memory-card")
-    assert memories.count() >= 3
-    assert "Mara Ostrowski" in memories.all_inner_texts()[0]
-    assert "pilot" in " ".join(memories.all_inner_texts()).lower()
-    assert page.locator(".memory-connection a").count() >= 2
+    assert page.locator('.morning-primary h1').inner_text() == '3 things are waiting on you'
+    assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Inès Halvorsen', 'Fernhill Labs']
+    assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
+    changes = page.locator('.overnight .claim-card')
+    assert changes.count() == 1
+    assert 'Head of Partnerships' in changes.inner_text()
+    assert changes.get_by_role('link', name='Open the page and source →').get_attribute('href').endswith('h=src-2')
+    assert set(page.locator('.week a').all_inner_texts()) >= {'Mara Ostrowski', 'Harbour', 'Fernhill Labs'}
     recall = page.locator(".recall")
     assert recall.count() == 1
     assert not recall.locator(".recall-answer").is_visible()
@@ -184,11 +187,13 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-controls") == "recall-answer"
     assert page.locator(".night-details").count() == 1
     page.locator(".night-details summary").click()
-    night = page.locator(".night")
+    night = page.locator(".night-details .night")
     assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
-    assert night.locator(".hypno .dot.woke").count() == 1  # the night that stopped early
+    assert night.locator(".hypno .dot.changed").count() == 1
+    assert night.locator('.hypno .dot.dawn').count() == 1
     assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs", "Avery Lin"}  # runs, and stamps of the night
-    # Yours first, then what others owe you.
+    # The full ledger keeps both directions, yours first.
+    page.locator('.waiting-more a').click()
     directions = [d.upper() for d in page.locator("ul.threads .dir").all_inner_texts()]
     assert directions[0] == "YOU OWE" and "THEY OWE" in directions
     assert directions == sorted(directions, key=["YOU OWE", "THEY OWE", "OPEN"].index)
@@ -344,7 +349,8 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri())
-    assert page.get_by_role("heading", name="Your source map").is_visible()
+    assert page.locator('.morning-primary h1').is_visible()
+    assert page.locator('.first-map').is_visible()
     assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
     assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
     assert page.locator(".first-map-actions a").inner_text() == f"Browse {visible_people} people →"
@@ -371,7 +377,14 @@ def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
     assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
-    assert "title and company in signature" in value("Role").locator(".cite").get_attribute("title")
+    role_source = value('Role').locator('.cite')
+    assert role_source.inner_text() == 'Outlook, 22 Aug'
+    assert role_source.get_attribute('aria-label') == 'Source: Outlook, 22 Aug, original not in this snapshot'
+    assert 'title and company in signature' in page.locator('#src-2').inner_text()
+    role_source.click()
+    assert "The original isn't in this snapshot." in page.locator('#evidence-panel').inner_text()
+    page.get_by_role('button', name='Close source context').click()
+    assert role_source.evaluate('e => e === document.activeElement')
     assert value("Email").locator(".qual").all_inner_texts() == ["work", "personal"]
     assert [b.upper() for b in page.locator(".person-insight dt").all_inner_texts()] == ["NOW", "AT STAKE", "CHANGED", "PATTERN"]
     assert page.locator(".person-insight .cite.run").count() == 1  # [4][5][6] share one labelled chip
@@ -432,7 +445,8 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert page.evaluate("dayLabel({day: '2026-08-10', end: '2026-08-11'})", isolated_context=False).count("–") == 1
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
-    home_threads = page.locator("ul.threads").first.inner_text()
+    page.locator('.waiting-more a').click()
+    home_threads = page.locator('.task-band .threads').first.inner_text()
     assert "you have owed them" in home_threads and "the user" not in home_threads.lower()
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     page.locator("details.deep-note > summary").click()
@@ -704,7 +718,7 @@ def test_private_mode_hides_raw_sources_and_conversations_already_open(reader):
     assert original.is_visible() and 'I will send the usage export' in original.inner_text()
 
 
-def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phone(reader):
+def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -719,13 +733,12 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
     }""", isolated_context=False)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
-        assert '3 session inputs were supplied' in page.locator('.scope-note').inner_text()
-        assert '5 inputs are archived' in page.locator('.scope-note').inner_text()
+        assert page.locator('.scope-note').count() == 0
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
-        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 2
+        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 1
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
         row = page.locator('tr', has=page.get_by_role('link', name='Harbour'))
@@ -740,7 +753,7 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
         page.evaluate('togglePrivate()', isolated_context=False)
 
 
-def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
+def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -766,11 +779,11 @@ def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
-        assert '5 inputs are archived for this workspace' in page.locator('.scope-note').inner_text()
+        assert page.locator('.scope-note').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
+def test_written_project_purpose_and_source_fit_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=projects%2Fharbour.md')
@@ -785,11 +798,9 @@ def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     purpose = page.locator('.project-purpose-preview')
-    scope = page.locator('.scope-note')
     assert 'property lead workflow' in purpose.inner_text()
     assert purpose.bounding_box()['y'] < 812
-    assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
-    assert '114 session inputs' in scope.inner_text()
+    assert page.locator('.scope-note').count() == 0
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, 2 Aug')
     assert purpose_source.get_attribute('data-tip') is None
@@ -855,8 +866,10 @@ def test_written_pages_show_the_complete_source_action_on_phone(reader):
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
     page, _ = reader
     page.evaluate("() => { const r = byPath('people/mara-ostrowski.md'); r.text = r.text.replace('## Open threads\\n', '## Open threads\\n- Completion evidence not recorded.\\n'); KNOWN.clear(); render(); }", isolated_context=False)
-    others = page.locator('.band', has=page.locator('h3 span:text-is("Waiting on others")'))
-    plain = page.locator('.band', has=page.locator('h3 span:text-is("Other open context")'))
+    page.locator('.waiting-more a').click()
+    others = page.locator('.task-band', has=page.get_by_role('heading', name='Waiting on others'))
+    plain = page.locator('.task-band', has=page.get_by_role('heading', name='Other open context'))
+    assert others.locator('.thread.theirs').count() > 0
     assert others.locator('.thread.plain').count() == 0
     assert 'Completion evidence not recorded' in plain.inner_text()
 
@@ -883,7 +896,7 @@ def test_every_view_fits_a_phone(reader, theme):
         page.wait_for_timeout(120)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
-        assert (background == "rgb(13, 16, 26)") == (theme == "dark"), (view, background)
+        assert (background == "rgb(14, 17, 32)") == (theme == "dark"), (view, background)
 
 
 def test_source_and_conversation_show_input_limits_and_hide_them_with_private_content(reader):
@@ -1036,7 +1049,7 @@ def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone
       const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
       r.last_activity = '2026-10-02';
       r.text = r.text.replace(/Last contact:[^\\n]+/g, 'Last contact: 2026-10-02 [1]');
-      KNOWN.delete(r.path); render();
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
     }""", isolated_context=False)
     assert 'Last contact 2 Oct' in other.locator('.contact-line').inner_text()
     assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1, 2026'
@@ -1059,7 +1072,9 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.activity-day').all_inner_texts() == ['2026-09-04', '2026-09-03', '2026-09-02', '2026-09-01']
+    assert page.locator('.activity-day').all_inner_texts() == ['4 Sep', '3 Sep', '2 Sep', '1 Sep']
+    assert page.locator('.activity-text').count() == 4
+    assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.activity-text').all_inner_texts())
     assert page.locator('.activity-list').evaluate('e => e.scrollHeight <= e.clientHeight')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1446,6 +1461,8 @@ def test_connected_context_hides_private_bases_including_expanded_connections(re
         basis: n === 0 || n === 6 ? 'Confidential background' : 'Public pilot context'}));
       render();
     }""", isolated_context=False)
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    page.locator('details.deep-note > summary').click()
     page.locator('.more-relations > summary').first.click()
     bases = page.locator('.relation-basis').filter(has_text='Confidential background')
     assert bases.count() == 2
@@ -1476,13 +1493,13 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
     page.goto(path.as_uri())
-    brief = page.locator('.morning')
-    assert 'The last pass needs attention' in brief.inner_text()
+    brief = page.locator('.overnight')
     assert '2 investigations failed' in brief.inner_text()
     assert 'Model access was refused' in brief.inner_text()
     assert 'A request timed out' in brief.inner_text()
     assert 'private payload' not in brief.inner_text()
     assert 'No memory pages were written' in brief.inner_text()
+    assert page.locator('.night-details .hypno .dot.woke').count() == 2
     link = brief.get_by_role('link', name='Review failed runs →')
     assert link.bounding_box()['height'] >= 44
     link.focus()
@@ -1507,9 +1524,11 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     path = tmp_path / 'partial.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.goto(path.as_uri())
-    brief = page.locator('.morning')
+    brief = page.locator('.overnight')
     assert '1 investigation failed' in brief.inner_text()
-    assert brief.locator('.memory-card').count() > 0
+    assert 'reworded; nothing new.' in brief.inner_text()
+    assert page.locator('.week').get_by_role('link', name='Mara Ostrowski', exact=True).is_visible()
+    assert page.locator('.waiting-ledger > li').count() > 0
     assert 'No memory pages were written' not in brief.inner_text()
 
 
@@ -1799,8 +1818,8 @@ def test_morning_rows_quote_only_original_words_and_format_overdue_dates(reader)
         morningWords('You owe Weiwei Lei "ok" and a draft [5].', r),
         dueLabel({due: '2026-09-10'}), direction('You said you would send what Weiwei owes the bank')];
     }""", isolated_context=False)
-    assert values[0] == {'words': 'a draft', 'context': 'send questions afterward. [5]'}
-    assert values[1]['words'] == 'a draft' and 'due: 2026-10-22' in values[1]['context']
+    assert values[0] == {'words': 'A draft', 'context': 'send questions afterward. [5]'}
+    assert values[1]['words'] == 'A draft' and 'due: 2026-10-22' in values[1]['context']
     assert values[2]['words'] == '“Send the draft and questions.”' and '[5]' in values[2]['context']
     assert not values[3]['words'].startswith('“')
     assert values[4] == 'overdue · 10 Sep'
