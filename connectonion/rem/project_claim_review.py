@@ -122,6 +122,8 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         "sentence copied exactly from the candidate, without its citation markers), issue, evidence and "
         "required_correction. No markdown fences.\n\n"
     )
+    from .runner import today_note
+    instruction += today_note(notebook.root).strip() + "\n\n"
     prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
     result = run(workspace, prompt, config, "claim-audit")
     report = json.loads(result["result"])

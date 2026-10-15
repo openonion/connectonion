@@ -553,7 +553,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     directory = Path(tempfile.mkdtemp(prefix="projects-", dir=workdir))
     candidate = directory / "candidate.md"
     original = notebook.read(record)
-    text = prompt(directory, items, candidate, len(original))
+    from .runner import today_note
+    text = prompt(directory, items, candidate, len(original)) + today_note(root)
     if progress:
         progress("writing page")
     started, result = time.monotonic(), {}

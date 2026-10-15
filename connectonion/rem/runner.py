@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 from contextlib import ExitStack, contextmanager, nullcontext
+from datetime import datetime
 from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
@@ -469,6 +470,16 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
             "with grep for what you need. " + evidence_read)
 
 
+def today_note(root: Path) -> str:
+    """The date a turn writes on. Without it, Ody's page kept a 13 October event
+    as an open thread on the 15th: nothing told the writer the day had passed."""
+    from .config import read_config
+    from .service import notebook_zone
+    zone = notebook_zone(read_config(root, validated=False))
+    return (f"\n\nToday is {datetime.now(zone).date().isoformat()} ({zone}). An event or deadline before "
+            "today has happened or passed: it is history, never an open thread. ")
+
+
 def _verify_no_change(directory: Path, items: list[dict], usage) -> None:
     """Do not checkpoint an unprocessed batch just because the agent exited normally."""
     receipt = read_json(directory / "completion.json", {})
@@ -922,7 +933,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     items = [*items, *(i for i in additions if i["source"] not in existing_sources)]
     if additions and len(json.dumps(items, ensure_ascii=False)) > config["limits"]["input_chars_per_batch"]:
         raise RunFailed("Evidence and reflection context exceeds input budget; narrow the task before retrying")
-    prompt = task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
+    prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
+              + today_note(notebook.root))
     # The model must read and write local task files. Codex has a sandboxed
     # shell; forbidding all shell commands made Luna refuse the whole batch.
     if stage in ("init", "investigate"):
