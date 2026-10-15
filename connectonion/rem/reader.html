@@ -715,6 +715,9 @@
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .project-sessions { grid-column: 1 / -1; }
+  .project-sessions li { margin: 7px 0; overflow-wrap: anywhere; }
   .focus-section { min-width: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 18px/1.3 var(--display); }
   .focus-section .threads { margin: 0; padding: 0; }
@@ -1171,7 +1174,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "AI notes", logs: "Maps"
+  agenda: "Agenda", sessions: "AI sessions", notes: "AI notes", logs: "Maps"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -1183,7 +1186,8 @@ const CATEGORY_ASK = {
   decisions: "what we chose and why",
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
-  agenda: "promises, waiting on others, dates that matter"
+  agenda: "promises, waiting on others, dates that matter",
+  sessions: "what you worked on with your coding agents"
 };
 // notes/ and logs/ are what co rem wrote about its own work: read under Activity, not counted as memory.
 const ACTIVITY = new Set(["notes", "logs"]);
@@ -1552,7 +1556,8 @@ const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
   const stamp = (STAMP.exec(r.text) || [""])[0];
-  const body = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(STAMP, "").replace(COMMENT, "");
+  const body = (r.category === "sessions" ? r.text : splitTrailers(r.text).body.replace(COMMENT, ""))
+    .replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
   const title = r.title.trim().toLowerCase();
   const repeatsTitle = line => (/^\s*[-*]\s*[^:\n]{1,40}:\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
   const kept = [], missing = [];
@@ -1561,7 +1566,7 @@ function known(r) {
     const head = /^## ([^\n]*)\n?/.exec(part);
     // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
     if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
-    const text = part.slice(head[0].length).split("\n").filter(line => {
+    const text = r.category === "sessions" ? part.slice(head[0].length) : part.slice(head[0].length).split("\n").filter(line => {
       // Keep a specific missing outcome readable, without promoting it to a task.
       const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
         && !UNFILLED_LINE.test(line.replace(/^\s*[-*]\s*/, ""));
@@ -1577,14 +1582,16 @@ function known(r) {
   // Written or not is the census's answer (census.py), the one co rem status
   // counts with: a mapped skill's description or a project's paths read here
   // as findings, and "174 with findings" meant three written pages (#2008).
-  const status = r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
+  const status = r.category === "sessions" ? "Imported" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
   const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
   const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
-  const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
+  const summary = r.category === "sessions" ? [parseFacts(r).get("Agent")?.[0]?.value, r.session_time,
+    plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
+    : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
@@ -1769,6 +1776,7 @@ function sourceList(r) {
   for (const item of listItems(rawSection(r, "Sources"))) {
     const m = /^\[(W?\d{1,3})\]\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
+    else if (r.category === "sessions" && /^(codex|claude-code):[^\s:]+:\d+$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
   return out;
 }
@@ -2165,7 +2173,7 @@ function nightBand() {
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
-    view: params.get("view"), reviews: params.has("reviews") };
+    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews") };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -2714,10 +2722,12 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
-  const items = c === "all" ? listedRecords() : inCategory(c);
-  const counts = (REM.counts || {})[c];
+  const project = c === "sessions" ? byPath(route().project) : null;
+  const items = (c === "all" ? listedRecords() : inCategory(c)).filter(r => !project || r.session_project === project.path);
+  const counts = project ? null : (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
+  if (project) main.appendChild(el("p", {}, ["Project: ", el("a", { href: href(project), text: project.title }), " · ", el("a", { href: "#c=sessions", text: "All AI sessions" })]));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
@@ -2738,6 +2748,8 @@ function category(c) {
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
+      : c === "sessions" ? el("div", { class: "empty" }, [el("span", { class: "lead", text: project ? "No sessions for this project yet" : "No AI sessions yet" }),
+        "Import conversations you typed in with ", el("code", { text: remCommand("import sessions") }), ". Init and sync also import approved sources."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
@@ -2745,8 +2757,29 @@ function category(c) {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
-  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  if (c === "sessions") {
+    const days = new Map();
+    for (const r of items.sort(sessionOrder)) {
+      const day = r.session_date || "Undated";
+      if (!days.has(day)) days.set(day, []);
+      days.get(day).push(r);
+    }
+    for (const [day, records] of days) main.append(el("h2", { text: fmtDate(day) }), el("ul", { class: "hits" }, records.map(r => row(r))));
+  }
+  else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+function sessionOrder(a, b) {
+  return ((b.session_date || "") + (b.session_time || "")).localeCompare((a.session_date || "") + (a.session_time || "")) || b.path.localeCompare(a.path);
+}
+
+function projectSessions(r) {
+  const sessions = inCategory("sessions").filter(s => s.session_project === r.path).sort(sessionOrder);
+  if (!sessions.length) return null;
+  return el("section", { class: "focus-section project-sessions" }, [el("h2", { text: "Sessions" }),
+    el("ul", {}, sessions.slice(0, 10).map(s => el("li", {}, [el("a", { href: href(s), text: s.title }), " · " + fmtDate(s.session_date)]))),
+    sessions.length > 10 ? el("a", { href: "#c=sessions&project=" + encodeURIComponent(r.path), text: "All " + sessions.length + " sessions" }) : null]);
 }
 
 // ---------- a page ----------
@@ -2765,6 +2798,21 @@ function ordered(r, sections) {
 }
 function sectionBody(r, s) {
   const name = s.title.toLowerCase();
+  // Session quotes are the owner's words, including Markdown and citation-looking text.
+  if (r.category === "sessions" && ["what you typed", "final reply"].includes(name)) {
+    const out = el("div", { class: "block" });
+    let quoted = [];
+    const flush = () => {
+      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
+      quoted = [];
+    };
+    for (const line of s.text.split("\n")) {
+      if (line.startsWith("> ")) quoted.push(line.slice(2));
+      else if (line.startsWith("### ")) { flush(); out.appendChild(el("h3", { text: line.slice(4) })); }
+    }
+    flush();
+    return out;
+  }
   // Insight (#2068): each line starts Now / Changed / At stake / Pattern; the label becomes a badge.
   if (name === "insight") {
     const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern):\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
@@ -2972,7 +3020,8 @@ function relationDisclosure(links, label, className = "") {
     el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(relationCard))]) : null;
 }
 function connectedContext(r) {
-  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
+  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
+    && !(r.category === "projects" && byPath(link.path).category === "sessions"));
   if (!related.length) return null;
   const explicit = link => link.kind === "linked" || link.kind === "linked from";
   const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
@@ -3087,6 +3136,7 @@ function personFocus(r) {
 }
 function recordFocus(r) {
   if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
+  if (r.category === "sessions") return el("div");
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
@@ -3189,6 +3239,10 @@ function recordFocus(r) {
 }
 function recordContext(r) {
   const out = el("div", { class: "record-focus deep-context " + r.category });
+  if (r.category === "projects") {
+    const sessions = projectSessions(r);
+    if (sessions) out.appendChild(sessions);
+  }
   // Enrich (#2315): the documents this page cites, each one click from its file.
   const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
     .filter(([, c]) => c?.source === "attachment" && c.file);

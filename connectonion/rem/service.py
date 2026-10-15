@@ -846,6 +846,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         return record
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
+    from .sessions import import_sessions
+    sessions = import_sessions(root, consented_only=True)
     with maintenance_lock(root), _terminate_as_interrupt():
         config = validate(read_config(root))
         abandon_stale_runs(root)
@@ -858,6 +860,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
                               with_person=with_person, include_local=not source, say=say)
+        record = {**record, "sessions": sessions}
         archive = (_resume_archive(root, say) if isinstance(record, dict)
                    and not record.get("failed_source") else None)
         record = {**record, "mail_archive": archive} if archive else record

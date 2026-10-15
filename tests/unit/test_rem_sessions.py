@@ -1,0 +1,285 @@
+"""Synthetic owner conversations; imports never read the operator's transcripts."""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+
+import pytest
+from typer.testing import CliRunner
+
+from connectonion.rem import service
+from connectonion.rem.config import prepare, set_config
+from connectonion.rem.files import Notebook, read_json, state_path
+from connectonion.rem.sessions import import_sessions
+
+NOW = datetime(2026, 10, 16, tzinfo=timezone.utc)
+STAMP = "2026-10-15T22:12:00Z"
+
+
+@pytest.fixture
+def notebook(tmp_path, monkeypatch):
+    root, transcripts = tmp_path / "notebook", tmp_path / "transcripts"
+    prepare(root)
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
+    transcripts.mkdir()
+    subscriptions = {kind: {"kind": kind, "root": str(transcripts / kind), "enabled": True, "consented": True}
+                     for kind in ("codex", "claude-code")}
+    monkeypatch.setattr(service, "subscriptions", lambda root: subscriptions)
+    monkeypatch.setattr(service, "mail_available", lambda kind: False)
+    return root, transcripts, subscriptions
+
+
+def codex(text="Build a simple session reader\n# Keep this typed heading", *, role="user", stamp=STAMP):
+    return {"type": "response_item", "timestamp": stamp,
+            "payload": {"type": "message", "role": role,
+                        "content": [{"type": "input_text" if role == "user" else "output_text", "text": text}]}}
+
+
+def claude(text="Keep the reader simple", *, role="user", **fields):
+    content = text if role == "user" else [{"type": "text", "text": text}]
+    return {"type": role, "timestamp": STAMP, "sessionId": "claude-session", "cwd": "/work/demo",
+            "entrypoint": "cli", "message": {"role": role, "content": content}, **fields}
+
+
+def transcript(notebook, *, kind="codex", session="3456-abcdef12", cwd="/work/demo", rows=None, **meta):
+    _, directory, _ = notebook
+    path = directory / kind / ("rollout-" + session + ".jsonl" if kind == "codex" else session + ".jsonl")
+    path.parent.mkdir(exist_ok=True)
+    if rows is None:
+        rows = [codex(), codex("The session reader is ready.", role="assistant")]
+    if kind == "codex":
+        rows = [{"type": "session_meta", "payload": {
+            "id": session, "cwd": cwd, "source": "cli", "originator": "codex_cli_rs", **meta}}, *rows]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    return path
+
+
+def test_rem_session_codex_page_and_openable_sources(notebook):
+    root, _, _ = notebook
+    path = transcript(notebook)
+    report = import_sessions(root, now=NOW)
+    assert report["imported"] == 1 and report["updated"] == 0 and report["skipped"] == {}
+    book = Notebook(root)
+    record, = book.list("sessions")
+    assert record == "sessions/2026-10-16-build-a-simple-session-reader-abcdef12.md"
+    page = book.read(record)
+    assert page.startswith("# Build a simple session reader\n")
+    assert "- Agent: Codex" in page and "- Turns: 1" in page
+    assert "- Project: /work/demo" in page and "- Folder: /work/demo" in page
+    assert "### 09:12\n> Build a simple session reader\n> # Keep this typed heading" in page
+    assert "## Final reply\n> The session reader is ready." in page
+    offset = len(path.read_bytes().splitlines(keepends=True)[0])
+    source = f"codex:3456-abcdef12:{offset}"
+    assert "## Sources\n- " + source in page
+    from connectonion.rem.reader import snapshot, TEMPLATE
+    data = snapshot(root, local=True)
+    assert "sessions" in data["categories"] and "AI sessions" in TEMPLATE.read_text()
+    assert data["source_context"][source]["excerpt"].startswith("Build a simple session reader")
+    assert data["counts"]["sessions"] == {"mapped": 1, "written": 1}
+
+
+@pytest.mark.parametrize("meta,reason", [
+    ({"source": "exec"}, "exec_or_subagent"),
+    ({"source": {"subagent": {"spawn": {}}}}, "exec_or_subagent"),
+    ({"originator": "codex_exec"}, "exec_or_subagent"),
+    ({"originator": "co_rem"}, "rem_task"),
+    ({"cwd": "/notes/.state/tasks/run"}, "rem_task"),
+])
+def test_rem_session_automation_stays_out(notebook, meta, reason):
+    transcript(notebook, **meta)
+    result = import_sessions(notebook[0], now=NOW)
+    assert result["skipped"] == {reason: 1}
+    assert not Notebook(notebook[0]).list("sessions")
+
+
+@pytest.mark.parametrize("fields,reason", [
+    ({}, ""), ({"entrypoint": "sdk-cli"}, "program_prompt"),
+    ({"promptSource": "system"}, "program_prompt"),
+    ({"isSidechain": True}, "sidechain"), ({"isMeta": True}, "no_typed_message"),
+    ({"cwd": "/notes/.state/tasks/run"}, "rem_task"),
+])
+def test_rem_session_claude_typed_and_program_prompts(notebook, fields, reason):
+    transcript(notebook, kind="claude-code", rows=[claude(**fields), claude("Done", role="assistant")])
+    report = import_sessions(notebook[0], now=NOW)
+    assert report["skipped"] == ({reason: 1} if reason else {})
+    if not reason:
+        book = Notebook(notebook[0])
+        page = book.read(book.list("sessions")[0])
+        assert "- Agent: Claude Code" in page and "- Turns: 1" in page
+        assert "> Keep the reader simple" in page and "> Done" in page
+        assert "- claude-code:claude-session:0" in page
+
+
+def test_rem_session_idempotent_append_and_changed_title_keep_the_record(notebook):
+    root, _, _ = notebook
+    path = transcript(notebook)
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    record, = Notebook(root).list("sessions")
+    again = import_sessions(root, now=NOW)
+    assert again["imported"] == 0 and again["unchanged"] == 1
+    with path.open("a") as stream:
+        stream.write(json.dumps(codex("Use day headings", stamp="2026-10-16T13:12:00Z")) + "\n")
+    updated = import_sessions(root, now=NOW)
+    assert updated["updated"] == 1 and updated["imported"] == 0
+    assert Notebook(root).list("sessions") == [record]
+    assert "- Turns: 2" in Notebook(root).read(record)
+    assert "### 2026-10-17 00:12" in Notebook(root).read(record)
+    # A relocated copy is the same session, even if its opening title differs.
+    transcript(notebook, session="3456-abcdef12", rows=[codex("A revised title")])
+    import_sessions(root, now=NOW)
+    assert Notebook(root).list("sessions") == [record]
+    assert Notebook(root).read(record).startswith("# A revised title")
+    progress = read_json(state_path(root, "sessions.json"), {})
+    assert progress["sessions"]["codex:3456-abcdef12"] == record
+
+
+def test_rem_session_project_link_uses_deepest_path(notebook):
+    root, _, _ = notebook
+    book = Notebook(root)
+    book.stub_project("projects/work.md", "Work", paths=["/work"])
+    book.stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
+    transcript(notebook, cwd="/work/demo/feature")
+    import_sessions(root, now=NOW)
+    record, = book.list("sessions")
+    assert "- Project: [Demo](../projects/demo.md)" in book.read(record)
+    from connectonion.rem.reader import snapshot
+    row = next(r for r in snapshot(root)["records"] if r["path"] == record)
+    assert row["session_project"] == "projects/demo.md"
+
+
+def test_rem_session_redaction_verbatim_labels_and_final_text_only(notebook):
+    key = "sk-" + "a" * 30
+    reply = codex("[sensitive] " + key + "\n" + "a" * 4000, role="assistant")
+    transcript(notebook, rows=[codex("[personal] Keep " + key), reply,
+                               {"type": "response_item", "payload": {"type": "function_call", "arguments": "ignored"}}])
+    import_sessions(notebook[0], now=NOW)
+    book = Notebook(notebook[0])
+    page = book.read(book.list("sessions")[0])
+    assert key not in page and page.count("[secret-shaped text removed by co rem]") == 3
+    assert "[personal] Keep" in page and "[sensitive]" in page
+    assert "[truncated by co rem:" in page and "ignored" not in page
+    from connectonion.rem.reader import snapshot
+    source = next(iter(read_json(state_path(notebook[0], "sessions.json"), {})["sessions"]))
+    local = snapshot(notebook[0], local=True)
+    assert any(c["excerpt"].startswith("[personal]") for key, c in local["source_context"].items() if key.startswith(source))
+    assert not snapshot(notebook[0])["source_context"]
+
+
+def test_rem_session_claude_final_reply_ignores_sidechains_tools_and_thinking(notebook):
+    reply = claude("Visible answer", role="assistant")
+    reply["message"]["content"] += [{"type": "thinking", "thinking": "Private reasoning"},
+                                      {"type": "tool_use", "input": {"text": "Not an answer"}}]
+    transcript(notebook, kind="claude-code", rows=[claude(), reply,
+        claude("Sidechain answer", role="assistant", isSidechain=True)])
+    import_sessions(notebook[0], now=NOW)
+    book = Notebook(notebook[0])
+    page = book.read(book.list("sessions")[0])
+    assert "> Visible answer" in page
+    assert all(text not in page for text in ("Private reasoning", "Not an answer", "Sidechain answer"))
+
+
+def test_rem_session_window_unreadable_injected_and_notebook_filters(notebook):
+    root, _, _ = notebook
+    old = transcript(notebook, session="old-file")
+    os.utime(old, (NOW.timestamp() - 200 * 86400,) * 2)
+    transcript(notebook, session="old-message", rows=[codex(stamp="2025-01-01T00:00:00Z")])
+    transcript(notebook, session="harness", rows=[codex("# AGENTS.md instructions\nInjected")])
+    transcript(notebook, session="self", cwd=str(root / "notes"))
+    bad = transcript(notebook, session="bad")
+    bad.write_text("not json\n")
+    assert import_sessions(root, now=NOW)["skipped"] == {
+        "outside_window": 1, "no_typed_message": 2, "notebook": 1, "unreadable": 1}
+    assert import_sessions(root, now=NOW)["unchanged"] == 4
+
+
+def test_rem_session_expanded_window_reconsiders_skipped_files(notebook):
+    transcript(notebook, rows=[codex(stamp="2026-09-01T00:00:00Z")])
+    assert import_sessions(notebook[0], days=30, now=NOW)["imported"] == 0
+    assert import_sessions(notebook[0], days=180, now=NOW)["imported"] == 1
+
+
+def test_rem_session_census_uses_date_fact_not_dates_in_quoted_input(notebook):
+    transcript(notebook, rows=[codex("Review last: 2030-01-01 and last on 2029-01-01")])
+    import_sessions(notebook[0], now=NOW)
+    from connectonion.rem.census import counts, pages
+    record, = Notebook(notebook[0]).list("sessions")
+    assert pages(notebook[0])[record]["last"] == "2026-10-16"
+    assert counts(notebook[0])["sessions"] == {"mapped": 1, "written": 1}
+
+
+def test_rem_session_consent_disabled_and_symlinks(notebook):
+    root, directory, subscriptions = notebook
+    path = transcript(notebook)
+    subscriptions["codex"]["consented"] = False
+    assert import_sessions(root, now=NOW, consented_only=True)["imported"] == 0
+    subscriptions["codex"]["enabled"] = False
+    assert import_sessions(root, now=NOW)["imported"] == 0
+    subscriptions["codex"]["enabled"] = True
+    (directory / "codex" / "rollout-link.jsonl").symlink_to(path)
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    assert len(Notebook(root).list("sessions")) == 1
+
+
+def test_rem_session_long_input_keeps_its_head_and_has_no_reply_section(notebook):
+    # A pasted log is not typed words; the page keeps the head, as the source reader does.
+    text = "保持简单\n" + "Full typed words " * 400
+    transcript(notebook, rows=[codex(text)])
+    import_sessions(notebook[0], now=NOW)
+    book = Notebook(notebook[0])
+    record, = book.list("sessions")
+    assert "-session-abcdef12.md" in record
+    page = book.read(record)
+    assert "> " + text[:3000].replace("\n", "\n> ") in page
+    assert "[truncated by co rem:" in page
+    assert "## Final reply" not in page
+
+
+def test_rem_session_title_uses_first_nonempty_line(notebook):
+    transcript(notebook, rows=[codex("\n  Build   the reader  \nKeep the body verbatim")])
+    import_sessions(notebook[0], now=NOW)
+    book = Notebook(notebook[0])
+    page = book.read(book.list("sessions")[0])
+    assert page.startswith("# Build the reader\n")
+    assert "> \n>   Build   the reader  \n> Keep the body verbatim" in page
+
+
+def test_rem_session_reader_keeps_literal_quotes_and_labels():
+    from connectonion.rem.reader import TEMPLATE
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node runs the reader's JavaScript")
+    template = TEMPLATE.read_text()
+    known = re.search(r"function known\(r\) \{.*?(?=\nfunction mappedContact)", template, re.S)[0]
+    section = re.search(r"function sectionBody\(r, s\) \{.*?(?=\n// The labels)", template, re.S)[0]
+    quote = "# Keep literal headings\n<!-- keep literal comments -->\nidentity unverified\nthe user has [1]\n[personal] Keep labels"
+    page = "# Title\n\n## What you typed\n### 09:12\n" + "\n".join("> " + line for line in quote.split("\n")) + "\n"
+    script = "\n".join([
+        "const KNOWN = new Map(), STAMP = /^Investigation:[^\\n]*$/m;",
+        re.search(r"const UNFILLED_LEAD = .*", template)[0],
+        "const MECHANICAL = new Set(['facts']), plainLine = x => String(x);",
+        "const parseFacts = () => new Map(), skillUsage = () => null;",
+        "const el = (tag, attrs, children=[]) => ({tag, ...attrs, children, appendChild(n) { this.children.push(n); }});",
+        "const r = " + json.dumps({"category": "sessions", "path": "sessions/a.md", "title": "Title", "text": page}) + ";",
+        known, section,
+        "console.log(JSON.stringify(sectionBody(r, known(r).kept[0])));",
+    ])
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    rendered = json.loads(result.stdout)
+    assert [child["tag"] for child in rendered["children"]] == ["h3", "blockquote"]
+    assert rendered["children"][1]["text"] == quote
+    assert rendered["children"][1]["class"] == "session-quote private"
+
+
+def test_rem_import_sessions_cli_json(notebook):
+    from connectonion.cli.main import app
+    root, _, _ = notebook
+    transcript(notebook)
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", "30", "--json"])
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.stdout)
+    assert output["ok"] is True and output["data"]["imported"] == 1
+    assert "list sessions" in str(output["next"])

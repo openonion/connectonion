@@ -170,6 +170,12 @@ def snapshot(root: Path, local: bool = False) -> dict:
             record["private_project"] = private(record["path"], record["text"])
             from .project_material import page_state
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
+        if record["category"] == "sessions":
+            project = re.search(r"^- Project: \[[^\n]*\]\(\.\./([^\n]+)\)$", record["text"], re.M)
+            day = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", record["text"], re.M)
+            clock = re.search(r"^### (\d{2}:\d{2})$", record["text"], re.M)
+            record.update(session_project=project[1] if project else "", session_date=day[1] if day else "",
+                          session_time=clock[1] if clock else "")
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":

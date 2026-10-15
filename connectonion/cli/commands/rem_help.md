@@ -37,7 +37,7 @@ Init offers nightly upkeep after the first run, once you approve its sources and
 Use --yes to approve the shown summary noninteractively, or --no-start to leave upkeep off.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage still work until 1.9.0 and print their new name.
@@ -551,6 +551,7 @@ Everyday use needs none of them.
 Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
+  import        Write one page per Codex / Claude Code session you typed in. No model.
   stub          Create one empty page by hand, with every section marked Unknown.
 Manage pages
   merge         Fold one page into another; archive the old page and keep its name as an alias.
@@ -567,6 +568,38 @@ Experimental: project pages from your own messages (#1943)
   projects      Write project pages from what you typed to Codex and Claude Code.
 
 Back:     co rem --help
+```
+
+## co rem import
+
+```
+Import source material as notebook pages with a deterministic script. No model.
+Init and sync already import your approved coding sessions automatically.
+
+Usage:    co rem import sessions [--days N]
+Example:  co rem import sessions
+Subcommand: co rem import sessions --help
+Back:     co rem advanced --help
+```
+
+## co rem import sessions
+
+```
+Write one page per Codex or Claude Code conversation you typed in. No model.
+Includes your typed messages and the final agent reply, with secret-shaped text removed.
+Automation, subagents and REM's own sessions stay out. Repeating the import updates
+changed sessions in place and skips unchanged files.
+
+Usage:    co rem import sessions [--days N] [--json]
+Example:  co rem import sessions --days 30 --json
+          --days   read sessions active in the last N days (default 180)
+          --json   print one {"ok", "data", "next"} result
+Effects:  Reads enabled local coding sources and writes sessions/ pages and private
+          progress. This explicit command authorizes the import; automatic runs
+          read only sources you have approved.
+Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
+Next:     co rem list sessions
+Back:     co rem import --help
 ```
 
 ## co rem scan

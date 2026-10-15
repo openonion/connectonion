@@ -25,7 +25,7 @@ from posixpath import normpath
 
 from .files import Notebook, read_json, state_path
 
-CATEGORIES = ("people", "projects", "orgs", "skills")
+CATEGORIES = ("people", "projects", "orgs", "skills", "sessions")
 DAY = r"(\d{4}-\d{2}-\d{2})"
 # Dates that say when something happened, as each kind of page writes them.
 ACTIVITY = re.compile(
@@ -82,8 +82,10 @@ def pages(root: Path) -> dict:
         duplicate = category == "skills" and title.casefold() in titles
         if category == "skills":
             titles.add(title.casefold())
+        session_day = re.search(rf"^- Date:\s*{DAY}$", text, re.M) if category == "sessions" else None
         found[record] = {
-            "category": category, "written": written(text), "last": last_activity(text),
+            "category": category, "written": category == "sessions" or written(text),
+            "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
             "service": bool(person) and record != owner and not written(text)
             and service_page(title, person["emails"], rows.get(record), automated)}

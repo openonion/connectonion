@@ -297,7 +297,7 @@ def stored(root: Path, record: str) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def retain_cited_sessions(root: Path, items: list[dict], cited: set[str]) -> None:
+def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, replace: bool = False) -> None:
     """Keep only cited inputs from an explicit investigation's live session scan."""
     for item in items:
         source, body = item.get("source"), item.get("text")
@@ -309,14 +309,14 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str]) -> Non
         text = SECRET_SHAPES.sub(REDACTED, body)
         path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
         previous = read_json(path, {})
-        if previous and (previous.get("source") != source or previous.get("text") != text):
+        if previous and not replace and (previous.get("source") != source or previous.get("text") != text):
             raise RemError("Retained session citation has conflicting content")
-        if not previous:
+        if not previous or replace:
             write_json(path, {"source": source, "text": text, "timestamp": item.get("timestamp") or "",
                               "input_scope": item.get("input_scope") or ""})
 
 
-def retained_session_context(root: Path, source: str) -> dict | None:
+def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
     """A cited original unavailable in the mapped archive, from the accepted run."""
     from .reader_model import PRIVATE
     if not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source):
@@ -325,7 +325,7 @@ def retained_session_context(root: Path, source: str) -> dict | None:
     saved = read_json(path, {})
     body = saved.get("text")
     if (saved.get("source") != source or not isinstance(body, str)
-            or SECRET_SHAPES.search(body) or PRIVATE.search(body)):
+            or SECRET_SHAPES.search(body) or (PRIVATE.search(body) and not private)):
         return None
     excerpt = body.strip()[:4_096]
     return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),

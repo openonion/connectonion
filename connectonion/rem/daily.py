@@ -156,6 +156,10 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
             f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
     if maintenance is None:
         return None
+    from .sessions import import_sessions, summary
+    if "sessions" not in maintenance:
+        maintenance["sessions"] = import_sessions(root, consented_only=True)
+    say(summary(maintenance["sessions"]))
     if maintenance['outcome'] not in ('completed', 'no_change'):
         return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
                                                 'investigation': None}, scheduled)

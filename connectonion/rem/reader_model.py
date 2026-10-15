@@ -112,7 +112,11 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
 
 
 def _source_ids(records: list[dict]) -> set[str]:
-    return {source for row in records for _, source in SOURCE.findall(row["text"])}
+    numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
+    sessions = {source for row in records if row.get("category") == "sessions"
+                for source in re.findall(r"^- ((?:codex|claude-code):[^\s:]+:\d+)$",
+                                         row["text"].partition("\n## Sources\n")[2], re.M)}
+    return numbered | sessions
 
 
 def _cited_row(db, source: str):
@@ -165,7 +169,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
-                           or repository_context(root, source, private) or retained_session_context(root, source)
+                           or repository_context(root, source, private) or retained_session_context(root, source, private)
                            or github_context(root, source) or attachment_context(root, source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
