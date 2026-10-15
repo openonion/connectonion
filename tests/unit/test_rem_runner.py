@@ -561,6 +561,38 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
     assert "Leads the data team." in notebook.read("people/mia.md")
 
 
+def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):
+    """2026-10-16: first-run backfill made the audit's zero-wait lock lose paid-for pages."""
+    from connectonion.rem import page_review, project_claim_review
+    monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 5)
+    monkeypatch.setattr(project_claim_review, "review", lambda *args, **kwargs:
+                        ({"verdict": "pass"}, {"input_tokens": 0}))
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(original.replace("## Who they are\n- Unknown — not investigated yet",
+                                          "## Who they are\n- Leads the data team. [1]")
+                         .replace("- (none yet)", "- [1] gmail:m:1")
+                         .replace("- Unknown — not investigated yet", "- Unknown"))
+    threads, check_quotes = [], page_review.misquoted
+
+    def before_audit(*args):
+        errors = check_quotes(*args)
+        threads.append(_hold_lock(tmp_path, 1.0))
+        return errors
+
+    monkeypatch.setattr(page_review, "misquoted", before_audit)
+    audit_usage = runner._promote_candidate(notebook, "people/mia.md", candidate, original,
+                                           [{"source": "gmail:m:1"}], tmp_path, {"input_tokens": 123},
+                                           claim_config=default_config())
+    threads[0].join()
+    assert "Leads the data team." in notebook.read("people/mia.md")
+    assert audit_usage == {"input_tokens": 0}
+    assert json.loads((tmp_path / "review.json").read_text())["factual_quality"] == "bounded citation audit passed"
+
+
 def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
     """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
     unresolved [7] was dropped, the half it supported was left uncited, and the
@@ -582,7 +614,8 @@ def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failin
     assert "- Role: Data lead [1]\n" in page and "tax customer" not in page
 
 
-def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch):
+@pytest.mark.parametrize("audited", [False, True])
+def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch, audited):
     from connectonion.rem import runner
     from connectonion.rem.runner import RunFailed
     monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 0.5)
@@ -593,10 +626,14 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
     candidate = tmp_path / "candidate.md"
     candidate.write_text(original)
     thread = _hold_lock(tmp_path, 2.0)
+    usage = {"input_tokens": 123}
     with pytest.raises(RunFailed) as error:
-        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, None)
+        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, usage,
+                                  claim_config=default_config() if audited else None)
     thread.join()
     assert str(candidate) in str(error.value) and candidate.is_file()
+    assert f"; the finished page is kept at {candidate}" in str(error.value)
+    assert error.value.usage == usage
 
 
 def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alone(tmp_path):

@@ -22,7 +22,7 @@ from httpx import RequestError
 from ..provider_credentials import ProviderCredentialError
 
 from .config import prepare, read_config, validate
-from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
 from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
@@ -119,7 +119,7 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
     mailbox the user unsubscribed stays unsubscribed.
     """
     changed = []
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         sources = subscriptions(root)
         for kind in kinds:
             source = sources.get(kind)
@@ -134,7 +134,7 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
 
 def approve_sources(root: Path) -> None:
     """Internal consent handoff for tests/future start; never called by inspection."""
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
         sources = subscriptions(root)
@@ -602,7 +602,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
     the schedule but does not ask again and does not repeat the initial batch.
     """
     root = root.resolve()
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
     first = not state_path(root, "consent.json").is_file()

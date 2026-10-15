@@ -23,7 +23,7 @@ import os
 import re
 from pathlib import Path
 
-from .files import Notebook, maintenance_lock
+from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock
 from .page_review import prose
 
 COPIES = ("<!-- rem-installed-copies -->", "<!-- /rem-installed-copies -->")
@@ -276,7 +276,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
     for row in inventory["skills"]:
         by_name.setdefault(row["name"].casefold(), []).append(row)
     created, preserved, merged, archived, only_transient = [], [], [], [], []
-    with nullcontext() if lock_held else maintenance_lock(notebook.root):
+    with nullcontext() if lock_held else maintenance_lock(notebook.root, wait=WRITE_WAIT_SECONDS):
         prepare(notebook.root)
         if subscriptions is None:
             from .service import subscriptions as saved

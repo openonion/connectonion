@@ -1447,7 +1447,7 @@ def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -
     """Nothing new to read, but a fact the material holds is missing from the page:
     put it in its field with its source, no model needed (#2068)."""
     from . import facts
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         page = notebook.read(record)
         kept, restored = facts.keep_extracted(record, facts.upgrade(record, page), rows)
         if restored:
