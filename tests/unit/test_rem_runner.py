@@ -1096,3 +1096,19 @@ def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():
     assert _lead("# Ody Zhou\n\n\n## Facts\n- Email: x\n") == ""
     assert _lead("# Ody Zhou\n\nOdy is a co-founder [1]. Last contact: 2026-10-15.\n\n## Facts\n") \
         .startswith("Ody is a co-founder")
+
+
+def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
+    """Tamara and Nina (2026-10-15): an audit finding about a missing citation
+    took the lead's first sentence, and Nina's page opened on an HR ticket."""
+    from connectonion.rem.runner import _keep_identity
+    facts = ("## Facts\n- Company: [UNSW Founders](../orgs/unsw.md) [4]\n- Role: Events Coordinator [4]\n\n"
+             "## Insight\n- Unknown\n")
+    before = "# Tamara Berryman\n\nTamara is the user's main MCIC contact [1]. The user owes her a card [5].\n\n" + facts
+    after = "# Tamara Berryman\n\nThe user owes her a card [5].\n\n" + facts
+    kept = _keep_identity("people/tamara.md", before, after)
+    assert kept.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator at "
+                           "[UNSW Founders](../orgs/unsw.md) [4]. The user owes her a card [5].\n\n## Facts")
+    assert _keep_identity("people/tamara.md", before, before) == before
+    emptied = _keep_identity("people/tamara.md", before, "# Tamara Berryman\n\n\n" + facts)
+    assert emptied.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator") and "\n\n## Facts" in emptied

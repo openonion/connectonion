@@ -257,6 +257,18 @@ def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[
     return text, touched
 
 
+def identity_sentence(record: str, text: str) -> str:
+    """Who a person is, from their own cited Role and Company: `Tamara is Events Coordinator at UNSW Founders [4].`"""
+    found = parse(text, record)
+    role, company = (found.get("Role") or [None])[0], (found.get("Company") or [None])[0]
+    if kind(record) != "people" or not role or not role["citations"]:
+        return ""
+    name = text.partition("\n")[0].lstrip("# ").strip()
+    at = f" at {company['value']}" if company and company["citations"] else ""
+    cites = sorted({*role["citations"], *(company["citations"] if at else [])}, key=lambda n: int(n.lstrip("W")))
+    return f"{name} is {role['value']}{at} " + "".join(f"[{n}]" for n in cites) + "."
+
+
 def drop_foreign_labels(record: str, text: str, original: str = "") -> tuple[str, list[str]]:
     """A Facts line whose label the page shape does not have goes; one the page already had stays.
 

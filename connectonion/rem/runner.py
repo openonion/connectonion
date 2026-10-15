@@ -669,6 +669,23 @@ def _lead(text: str) -> str:
     return body.strip()
 
 
+def _keep_identity(record: str, before: str, after: str) -> str:
+    """A lead whose first sentence the last resort dropped opens with who they are, from Facts.
+
+    Tamara's and Nina's after-pages (2026-10-15) lost "who this is to the user"
+    to an audit finding that a citation was missing beside it; the lead then
+    opened on an HR ticket. Role and Company are cited fields on the same page.
+    """
+    from . import facts
+    lead, first = _lead(after), re.split(r"(?<=[.!?。])\s+", _lead(before), maxsplit=1)[0]
+    identity = facts.identity_sentence(record, after)
+    if not identity or not first or lead.startswith(first):
+        return after
+    title, _, rest = after.partition("\n")
+    body = rest.lstrip("\n")
+    return f"{title}\n\n{identity}" + (" " if lead else "\n\n") + body
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
@@ -745,8 +762,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
                    read_json(directory / "claim-review.json", {}).get("findings") or []]
+        before_drop = text
         text, unlocated = drop_claims(record, text, [*refuted, *(
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
+        text = _keep_identity(record, before_drop, text)
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
