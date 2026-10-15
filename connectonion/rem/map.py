@@ -971,11 +971,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
                            for kind in ('gmail', 'outlook') if kind not in clients]
     report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record, report.get('owner'))
     if progress:
-        progress("mapped people and organizations", len(report['people']) + len(report['orgs']))
+        progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
-    report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
+    report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
-                              'organization identity unverified; existing organization pages preserved')
+                              'organisation identity unverified; existing organisation pages preserved')
     save()
     if progress:
         progress("scanning local projects")

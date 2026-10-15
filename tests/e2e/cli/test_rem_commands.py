@@ -851,11 +851,11 @@ def test_unfinished_tip_names_an_existing_page_and_preserves_root(tmp_path):
     assert command == ['co', 'rem', '--root', str(root), 'investigate', 'projects/atlas.md']
 
 
-def test_default_lists_are_plain_paths_json_remains_machine_readable(tmp_path):
+def test_default_lists_are_titles_and_paths_json_remains_machine_readable(tmp_path):
     prepare(tmp_path)
     Notebook(tmp_path).write('notes/sample.md', '# Sample')
     human = invoke(tmp_path, 'list', 'notes')
-    assert '\nnotes/sample.md\n' in human.output
+    assert human.output.splitlines()[0] == 'Sample  notes/sample.md'   # a title to read, the path beside it
     machine = invoke(tmp_path, '--json', 'list', 'notes')
     assert json.loads(machine.stdout)['data'] == ['notes/sample.md']
 
