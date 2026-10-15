@@ -184,7 +184,7 @@ def test_numbered_source_list_is_normalized_without_changing_claims():
             '1. `codex:synthetic:1` — user correction\n'
             '   Continued description.\n\nInvestigation: mapped today\n')
     normalized = normalize_numbered_sources(text)
-    assert '- [1] `codex:synthetic:1` — user correction' in normalized
+    assert '- [1] codex:synthetic:1 — user correction' in normalized       # backticks are not part of the id
     assert '   Continued description.' in normalized
     assert normalized.count('The date is open. [1]') == 1
     assert normalize_numbered_sources(normalized) == normalized
@@ -264,9 +264,9 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
     if invalid:
-        with pytest.raises(RunFailed, match='exactly one page title'):
-            run_stage(nb, items, default_config(), stage='investigate')
-        assert nb.read('projects/atlas.md') == old
+        # A second title is the turn repeating itself: code keeps the first, the page is not refused.
+        run_stage(nb, items, default_config(), stage='investigate')
+        assert '# Second title' not in nb.read('projects/atlas.md') and 'One' in nb.read('projects/atlas.md')
     else:
         result = run_stage(nb, items, default_config(), stage='investigate')
         assert result['changed'] == ['projects/atlas.md']
@@ -693,33 +693,30 @@ def test_company_comes_only_from_the_address_they_write_from_now_and_never_a_stu
     assert company_from_domain(notebook, 'people/mia.md', original, rows) == (original, {})
 
 
-def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
+def test_an_investigated_page_that_still_says_not_investigated_yet_says_unknown(tmp_path):
     """#2008: project pages came back after 0.6-0.9M tokens with five and six
-    sections still saying "Unknown — not investigated yet"."""
+    sections still saying "Unknown — not investigated yet", and were refused.
+    Code writes the bare Unknown the material shows instead."""
     from connectonion.rem import runner
-    from connectonion.rem.page_review import placeholder_errors
-    from connectonion.rem.runner import RunFailed
+    from connectonion.rem.page_review import clear_placeholders
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = nb.read('projects/atlas.md')
     written = (old.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [1]')
                .replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme'))
-    errors = placeholder_errors(written)
-    assert len(errors) == 1 and 'Where it stands' in errors[0] and 'What it is' not in errors[0]
-    assert 'bare "Unknown"' in errors[0]
-    finished = written.replace('- Unknown — not investigated yet', '- Unknown')
-    assert placeholder_errors(finished) == []
+    cleared = clear_placeholders(written)
+    assert 'not investigated yet' not in cleared.partition('Investigation:')[0]
+    assert '## Where it stands\n- Unknown\n' in cleared and 'A local demo. [1]' in cleared
+    assert clear_placeholders('# P\n\n## Facts\n- Phone: Unknown — not investigated yet\n') == (
+        '# P\n\n## Facts\n- Phone: Unknown\n')                       # a field keeps its label
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
              {'source': 'fixture:readme', 'text': 'A local demo.'}]
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
-    with pytest.raises(RunFailed, match='not investigated yet'):
-        runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
-    assert nb.read('projects/atlas.md') == old
-    candidate.write_text(finished)
     runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
-    assert 'A local demo. [1]' in nb.read('projects/atlas.md')
+    page = nb.read('projects/atlas.md')
+    assert 'A local demo. [1]' in page and 'not investigated yet' not in page.partition('Investigation:')[0]
 
 
 def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
@@ -777,12 +774,14 @@ def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = _grown(nb.read('projects/atlas.md'), 13_421)
-    grown = _grown(old, 25_255)
+    grown = _grown(old, 31_000)
     assert PAGE_LIMIT == 20_000
     errors = size_errors(grown, old)
-    assert errors and '25,' in errors[0] and '20,000' in errors[0] and 'History' in errors[0]
+    assert errors and '31,' in errors[0] and '20,000' in errors[0] and 'History' in errors[0]
     assert any('20,000' in error for error in validate('projects/atlas.md', grown, old, []))
     assert size_errors(_grown(old, 18_000), old) == []               # growth under the limit: fine
+    # 25,255, the real case, is kept: History folds in code and the next pass is asked to come down.
+    assert size_errors(_grown(old, 25_255), old) == []
     oversized = _grown(old, 26_000)
     assert size_errors(_grown(old, 22_000), oversized) == []         # an oversized page may come down in steps
 

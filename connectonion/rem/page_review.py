@@ -260,10 +260,11 @@ def renumber_sources(text: str) -> str:
     return ''.join(parts) + swap(text[last:])
 
 
-RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
-                             "investigation:project-repositories"),
+# Every `investigation:` item is the run's own context, never the subject's
+# evidence; cited, it refused pages it could simply leave out.
+RUN_SOURCES = {"projects/": ("investigation:",),
                # The same refusal on a skill page (title-refine, 2026-10-08).
-               "skills/": ("skill-runs:", "investigation:page")}
+               "skills/": ("skill-runs:", "investigation:")}
 MAPPED_LINE = re.compile(r'^- (Sessions|First seen|Last seen): [0-9-]+$', re.M)
 
 
@@ -316,7 +317,7 @@ def normalize_numbered_sources(text: str) -> str:
     """
     head, marker, tail = text.partition('\n## Sources\n')
     if not marker:
-        return text
+        return number_inline_sources(text)
     # "[1, 2]" is two citations; read as neither, both were reported unused
     # and the page was refused. A link's [text](url) is left alone.
     head = re.sub(r'\[(\d+(?:[ \t]*,[ \t]*\d+)+)\](?!\()',
@@ -324,7 +325,56 @@ def normalize_numbered_sources(text: str) -> str:
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
     sources = re.sub(r'(?m)^([ \t]*)(\d+)\.[ \t]+', r'\1- [\2] ', sources)
-    return head + marker + sources + rest
+    # `- [3] \`git:…\`` is the same id: 7 real git citations were dropped for the backticks (v192b3).
+    sources = re.sub(r'(?m)^([ \t]*- (?:\[W?\d+\][ \t]*:?[ \t]*)?)`([^`\n]+)`', r'\1\2', sources)
+    return number_inline_sources(head + marker + sources + rest)
+
+
+# A source id written where a citation number belongs: `[outlook:3a09…]`, or
+# (`project-source:…`; `codex:…`). A link's target is never one.
+INLINE_ID = r'(?!https?:|mailto:|file:///)[a-z][\w-]*:[^\s\[\]()`;,]+'
+INLINE_CITATION = re.compile(rf'\[`?({INLINE_ID})`?\](?!\()'
+                             rf'|(?<!\])\(\s*((?:`?{INLINE_ID}`?\s*[;,]\s*)*`?{INLINE_ID}`?)\s*\)')
+UNNUMBERED_SOURCE = re.compile(rf'(?m)^([ \t]*)- (?=({INLINE_ID}))')
+
+
+def number_inline_sources(text: str) -> str:
+    """Turn source ids cited inline into numbered citations, defined once under Sources.
+
+    Before this, every fact citing `[outlook:3a09…]` was uncited and went: one
+    person investigation lost seven true fields, and a 4.56M-token project page
+    whose every claim read (`project-source:…`) was refused for "no numbered
+    evidence references" (v193q1, 2026-10-15).
+    """
+    head, marker, tail = text.partition('\n## Sources\n')
+    after = re.search(r'^(?:## |Investigation:)', tail, re.M)
+    sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
+    numbers = [int(n) for n in re.findall(r'\[(\d+)\]', text)]
+    counter = iter(range(max(numbers, default=0) + 1, 10 ** 6))
+    sources = UNNUMBERED_SOURCE.sub(lambda m: f'{m[1]}- [{next(counter)}] ', sources)
+    from .reader_model import SOURCE
+    number = {source: key for key, source in SOURCE.findall(sources)}
+    added = []
+
+    def cite(match):
+        ids = re.split(r'\s*[;,]\s*', (match[1] or match[2]).replace('`', '').strip())
+        for source in ids:
+            if source not in number:
+                number[source] = str(next(counter))
+                added.append(f'- [{number[source]}] {source}\n')
+        return ''.join(f'[{number[source]}]' for source in ids)
+
+    lines = [line if not visible.strip() else INLINE_CITATION.sub(cite, line)
+             for line, visible in zip(head.split('\n'), prose(head).split('\n'))]
+    head = '\n'.join(lines)
+    if not added:
+        return head + marker + sources + rest
+    sources = (sources.rstrip('\n') + '\n' if sources.strip() else '') + ''.join(added)
+    if not marker:
+        status = re.search(r'(?m)^Investigation:', head)
+        at = status.start() if status else len(head)
+        return head[:at].rstrip('\n') + '\n\n## Sources\n' + sources + ('\n' + head[at:] if status else '')
+    return head + marker + sources + ('\n' + rest if rest else '')
 
 
 IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
@@ -556,6 +606,79 @@ def _pinned_file(value: str) -> bool:
         hashlib.sha256(Path(match[1]).read_bytes()).hexdigest() == match[2]
 
 
+def archived(root: Path, source: str) -> bool:
+    """rem itself holds this message: in rem.db, or as mail kept under .state/mail.
+
+    Only the turn's own items used to count. Ody's 2.04M-token investigation
+    was refused for [27][28], real mail in .state/mail that supported the
+    claim; 18 mail citations went the same way over nine pages (v192b3).
+    """
+    import sqlite3
+    from contextlib import closing
+    from .files import state_path
+    from .reader_model import _cited_row
+    file = state_path(root, 'rem.db')
+    if file.is_file() and not file.is_symlink():
+        with closing(sqlite3.connect(file.as_uri() + '?mode=ro', uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            if _cited_row(db, source) is not None:
+                return True
+    mail = re.fullmatch(r'(gmail|outlook):([0-9a-f]{12})', source)
+    return bool(mail) and any(next(state_path(root, f'mail/{folder}/{mail[1]}').glob(mail[2] + '*.json'), None)
+                              for folder in ('messages', 'observed'))
+
+
+def _archived_sources(root: Path | None, definitions) -> set[str]:
+    if root is None:
+        return set()
+    ids = {re.split(r'\s+[—–]\s+', value.strip(), 1)[0] for _, value in definitions}
+    return {source for source in ids if archived(root, source)}
+
+
+def _mail_digest(root: Path, source: str) -> str:
+    """A raw provider id (a Graph `AQMk…` id) as the digest id the archive files it under."""
+    import hashlib
+    match = re.fullmatch(r'(gmail|outlook):(\S+)', source)
+    if not match or re.fullmatch(r'[0-9a-f]{12}', match[2]):
+        return source
+    digest = f'{match[1]}:{hashlib.sha256(match[2].encode()).hexdigest()[:12]}'
+    return digest if archived(root, digest) else source
+
+
+SHORT_PIN = re.compile(r'file:(/[^\s@#]+?)(?:@sha256:|#sha256[:=]|@)([0-9a-f]{7,64})')
+
+
+def _repin(record: str, source: str) -> str:
+    """`file:/x@905fb89` pinned to the SHA-256 the file has now, when that is the content named.
+
+    41 such citations were dropped in v192b3: a short hash, a commit, or a
+    truncated SHA-256, each naming the file as it still is.
+    """
+    import hashlib
+    import subprocess
+    match = SHORT_PIN.fullmatch(source)
+    path = Path(match[1]) if match else None
+    if path is None or path.is_symlink() or not path.is_file():
+        return source
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if not digest.startswith(match[2]):
+        committed = subprocess.run(['git', '-C', str(path.parent), 'show', f'{match[2]}:./{path.name}'],
+                                   capture_output=True)
+        if committed.returncode or committed.stdout != raw:
+            return source
+    return f'file:{path}@{digest}' if record.startswith('projects/') else f'file:{path}#sha256:{digest}'
+
+
+def resolve_sources(root: Path, record: str, text: str) -> str:
+    """Write each Sources id in the form that resolves: mail by its digest, a file by its full hash."""
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not marker:
+        return text
+    entry = re.compile(r'(?m)^([ \t]*- \[W?\d+\][ \t]*:?[ \t]*)(\S+)')
+    return head + marker + entry.sub(lambda m: m[1] + _repin(record, _mail_digest(root, m[2])), tail)
+
+
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
     if PRIVATE_STORE.search(value):
         return False
@@ -600,22 +723,36 @@ def _material(value: str, *, known, record, original, old_sources, items) -> boo
 PLACEHOLDER = 'Unknown — not investigated yet'
 
 
-def placeholder_errors(candidate: str) -> list[str]:
-    """A page an investigation returns may not keep the map's placeholder (#2008).
+def clear_placeholders(text: str) -> str:
+    """After its investigation a page no longer says it was not investigated (#2008).
 
     Project pages came back after 0.6-0.9M tokens with five and six sections
-    still reading "Unknown — not investigated yet": the page said it had not
-    been investigated right after it was. A section becomes what the material
-    shows, or a bare `Unknown` when it shows nothing. Only for a page's own
-    investigation: an upkeep pass that touched one line of a page is not asked
-    to finish the rest.
+    still reading "Unknown — not investigated yet", and were refused for it.
+    The material showed nothing there, so the section says a bare `Unknown`;
+    a line that also says something keeps it. Only for a page's own
+    investigation: an upkeep pass that touched one line is not asked to finish the rest.
     """
-    content = prose(candidate).partition('\n## Sources\n')[0]
-    parts = re.split(r'(?m)^## (.+)$', content)
-    left = [parts[i].strip() for i in range(1, len(parts), 2)
-            if i + 1 < len(parts) and PLACEHOLDER in parts[i + 1]]
-    return ([f'Sections still say "{PLACEHOLDER}" after the investigation: {", ".join(left)}; '
-             'write what the material shows, or a bare "Unknown"'] if left else [])
+    head, marker, tail = text.partition('\n## Sources\n')
+    parts = re.split(r'(?m)^(## .+)$', head)
+    for index in range(2, len(parts), 2):
+        if PLACEHOLDER not in parts[index]:
+            continue
+        lines = [line.replace(PLACEHOLDER, 'Unknown') for line in parts[index].split('\n')
+                 if line.strip().lstrip('- ') != PLACEHOLDER]
+        parts[index] = '\n'.join(lines) if any(line.strip() for line in lines) else '\n- Unknown\n\n'
+    return ''.join(parts) + marker + tail
+
+
+def single_title(text: str) -> str:
+    """Keep the first `# ` title; a second one is the turn repeating it, not a reason to refuse."""
+    seen, kept = False, []
+    for line, visible in zip(text.split('\n'), prose(text).split('\n')):
+        if re.match(r'# \S', visible):
+            if seen:
+                continue
+            seen = True
+        kept.append(line)
+    return '\n'.join(kept)
 
 
 # The skills ask for about 15k characters; past this a candidate that grew the
@@ -700,8 +837,37 @@ def history_note(page: str) -> str:
             + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
 
 
+DATED = re.compile(r'^- \**(\d{4})(?:-\d{2}){0,2}\**[ \t]*[:—–-][ \t]*(.*)$')
+
+
+def fold_history(text: str) -> str:
+    """Fold the oldest years of a History past its limit into one line a year, in code.
+
+    The skill asks the turn to do this; when it does not, the page was refused
+    whole for a seventeenth line. The newest year is never folded: what is
+    current stays one line per thread, and `history_errors` still has the last word.
+    """
+    span = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    if not span:
+        return text
+    lines = span[1].split('\n')
+    excess = len(_history(text)) - HISTORY_LIMIT
+    for year in sorted({m[1] for line in lines if (m := DATED.match(line))})[:-1]:
+        dated = [line for line in lines if (m := DATED.match(line)) and m[1] == year]
+        if excess <= 0:
+            break
+        if len(dated) < 2:
+            continue
+        folded = f'- {year}: ' + '; '.join(DATED.match(line)[2].rstrip(' .') for line in dated) + '.'
+        at = lines.index(dated[0])
+        lines = [line for line in lines if line not in dated]
+        lines.insert(at, folded)
+        excess -= len(dated) - 1
+    return text[:span.start(1)] + '\n'.join(lines) + text[span.end(1):]
+
+
 def history_errors(candidate: str, original: str) -> list[str]:
-    """A History past 8 lines may not grow; one already past may come down in steps."""
+    """A History past 16 lines may not grow; one already past may come down in steps."""
     lines, before = len(_history(candidate)), len(_history(original))
     if lines <= HISTORY_LIMIT or lines <= before:
         return []
@@ -709,9 +875,15 @@ def history_errors(candidate: str, original: str) -> list[str]:
             'with how it ended: fold the oldest into one line per year, and drop sends, reminders and newsletters']
 
 
+# Over the limit by less than this, the page is kept: code folds its History and
+# the next pass is asked to come down. Refused at 20,493 characters, a page cost
+# 643k tokens and then 933k more on the same mail (#2026).
+PAGE_REFUSED = PAGE_LIMIT * 3 // 2
+
+
 def size_errors(candidate: str, original: str) -> list[str]:
-    """A page over the limit may not grow; one already over may come down in steps."""
-    if len(candidate) <= PAGE_LIMIT or len(candidate) <= len(original):
+    """A page far over the limit may not grow; one already over may come down in steps."""
+    if len(candidate) <= PAGE_REFUSED or len(candidate) <= len(original):
         return []
     return [f'Page is {len(candidate):,} characters (was {len(original):,}), over the {PAGE_LIMIT:,} limit; '
             'keep it near 15,000: fold the oldest History into dated one-line summaries with their '
@@ -731,7 +903,7 @@ def size_note(page_chars: int) -> str:
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
-             owner: bool = False) -> list[str]:
+             owner: bool = False, root: Path | None = None) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
@@ -753,7 +925,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
-    known = _known_sources(items)
+    known = _known_sources(items) | _archived_sources(root, definitions)
     if record.startswith('projects/'):
         from .project_pages import live_source_snapshot
         carried = original.partition('\n## Sources\n')[2]
@@ -850,7 +1022,7 @@ def unresolved_findings(text: str, citations: list[str]) -> list[str]:
 
 
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],
-                    pages=frozenset()) -> tuple[str, dict]:
+                    pages=frozenset(), root: Path | None = None) -> tuple[str, dict]:
     """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
 
     A project page was refused after 199 seconds and 16k output tokens for one
@@ -869,7 +1041,7 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
     defined = Counter(key for key, _ in definitions)
     old_sources = original.partition('\n## Sources\n')[2]
-    known = _known_sources(items)
+    known = _known_sources(items) | _archived_sources(root, definitions)
     bad = {key for key, value in definitions if defined[key] == 1 and not _identifiable(
         value, known=known, record=record, original=original, old_sources=old_sources, items=items, pages=pages)}
     bad |= {key for key in CITATION.findall(prose(head)) if not defined[key]}

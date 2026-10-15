@@ -708,8 +708,12 @@ def test_full_file_retention_does_not_expand_packet_bound_or_ignore_private_tail
          'text': 'a' * 12000 + '\nA private plan [personal]'},
     ])
     with maintenance_lock(tmp_path):
-        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 0
-    assert not list((tmp_path / '.state/project-sources').glob('*.json'))
+        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 1
+    # The labelled file is kept locally, and shown only to the owner's own reader.
+    private = items[1]['source']
+    assert project_pages.repository_context(tmp_path, private) is None
+    assert 'A private plan' in project_pages.repository_context(tmp_path, private, private=True)['excerpt']
+    assert project_pages.repository_context(tmp_path, items[0]['source']) is None    # over the packet bound
 
 
 def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):

@@ -92,8 +92,12 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
-def snapshot(root: Path) -> dict:
-    """Everything the page shows, read once; no model, no writes into the notebook."""
+def snapshot(root: Path, local: bool = False) -> dict:
+    """Everything the page shows, read once; no model, no writes into the notebook.
+
+    `local`: this machine's own reader (the file snapshot, the loopback live
+    reader). Labelled excerpts are added only then; the O Chat view never has them.
+    """
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
@@ -141,7 +145,7 @@ def snapshot(root: Path) -> dict:
     links = relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
-    contexts = cited_context(root, records)
+    contexts = cited_context(root, records, private=local)
     from .project_material import stored
     for record in records:
         if record["category"] != "projects":
@@ -158,7 +162,8 @@ def snapshot(root: Path) -> dict:
     return {"language": read_config(root, validated=False).get("language") or "en","as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
-            "source_context": contexts, "conversations": cited_conversations(root, contexts),
+            "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
+            "shared": not local,
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}
@@ -171,9 +176,10 @@ def owner_record(root: Path) -> str:
     return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
-def render(root: Path, *, live: bool = False) -> str:
-    """`live`: served by the Host (rem_http.py), so the page may ask it to translate."""
-    data = json.dumps({**snapshot(root), "live": live}, ensure_ascii=False, default=str)
+def render(root: Path, *, live: bool = False, local: bool = False) -> str:
+    """`live`: served by the Host (rem_http.py), so the page may ask it to translate.
+    `local`: read on this machine by its owner (see `snapshot`)."""
+    data = json.dumps({**snapshot(root, local), "live": live}, ensure_ascii=False, default=str)
     # Inside a script block only "</script" and the U+2028/9 terminators can break
     # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
     data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
@@ -190,7 +196,7 @@ def reader_path(root: Path) -> Path:
 
 
 def write_reader(root: Path) -> Path:
-    page = render(root)
+    page = render(root, local=True)
     path = reader_path(root)
     # The public name is predictable. Write a private random file, then replace
     # the directory entry atomically so a planted link can never be truncated.

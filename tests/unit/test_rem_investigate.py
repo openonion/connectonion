@@ -1371,7 +1371,7 @@ def test_a_refused_investigation_is_not_retried_on_the_same_material(tmp_path, m
         inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
                         runner=lambda *a, **kw: pytest.fail('no model call for material already refused'))
     assert 'waits for newer material' in str(caught.value) and '20,000 limit' in str(caught.value)
-    assert 'co rem investigate people/vern.md --retry-refused' in str(caught.value)
+    assert 'run `co rem investigate people/vern.md`' in str(caught.value)
 
 
 def test_an_explicit_retry_can_use_material_that_was_refused(tmp_path, monkeypatch):

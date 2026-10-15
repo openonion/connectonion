@@ -578,7 +578,7 @@ PROMOTE_WAIT_SECONDS = 1800
 # A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
 # busiest project (LayeredVisions) and 1.9.2b3 browser.
 CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ",
-                 "Missing or duplicate citation:")
+                 "Cited file needs ", "Missing or duplicate citation:")
 
 
 # A misquote or a claim the audit refuted goes with its line at the end, like a
@@ -662,11 +662,11 @@ def _owner_phones(notebook, record) -> list[str]:
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
-    from .page_review import (add_missing_sections, compact_page, drop_owner_addresses, drop_tool_text,
-                              drop_uncited_sources, drop_unresolved, company_from_domain, drop_others_phones,
-                              link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
-                              renumber_sources, restore_runner_fields, unresolved_findings, validate,
-                              verify_contacts)
+    from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
+                              drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
+                              drop_others_phones, fold_history, link_company, normalize_numbered_sources,
+                              repair_run_citations, resolve_sources, restore_runner_fields, single_title,
+                              unresolved_findings, validate, verify_contacts)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -674,6 +674,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
     text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
+    # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
+    text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
@@ -683,14 +685,14 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, tool_lines = drop_tool_text(record, text, original)
     # Minor unresolved claims can be omitted, but losing a lead or finding
     # needs a repair turn instead of quietly promoting an impoverished page.
-    cited_text = repair_run_citations(record, normalize_numbered_sources(text), original)
+    cited_text = repair_run_citations(record, text, original)
     if investigation and record.startswith("projects/") and not last_resort:
         # A dropped citation can strand an uncited diagram or command in the
         # same section. Let validation ask the agent to repair the whole page;
         # after its repairs, the last resort drops only those lines.
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
-        text, dropped = drop_unresolved(record, cited_text, original, items)
+        text, dropped = drop_unresolved(record, cited_text, original, items, root=notebook.root)
         # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
         text, more = facts.drop_uncited(record, text, original)
         uncited = [*uncited, *more]
@@ -725,9 +727,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Lost citations can themselves cause empty-section or no-source errors.
     # Repair them first; the next promotion still runs the complete validator.
     from .page_review import drop_claims, merge_duplicate_sections, misquoted
-    text = merge_duplicate_sections(record, text, owner=record == owner.get("record"))
+    text = fold_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record"))))
     if investigation:
-        text = add_missing_sections(record, text, owner=record == owner.get("record"))
+        text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
     refuted, unlocated = [], []
     if last_resort:
         # What review and audit refuted goes with its line; the rest of the page is kept.
@@ -736,16 +738,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, unlocated = drop_claims(record, text, [*refuted, *(
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
         text = drop_uncited_sources(text)
-    errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"))
+    errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
+                                         root=notebook.root)
     # A refuted claim no line holds any more is already gone: a repair turn
     # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
     # on the v193q1 trial (2026-10-15); it is recorded instead.
     errors += misquoted(notebook.root, record, text, items)
-    # Only a page's own investigation must finish its sections. Applied to a
-    # one-page maintenance turn, it refused every page not investigated yet:
-    # 290k tokens and no page changed in one a5 sync (#2014).
-    if investigation:
-        errors += placeholder_errors(text)
     audit_usage = {}
     audit_status = "not automatically assessed"
     if last_resort and (directory / "claim-review.json").is_file():
@@ -819,25 +817,34 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
-                              renumber_sources, restore_runner_fields, shrinkage, validate, verify_contacts)
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, headings, normalize_numbered_sources,
+                              resolve_sources, restore_runner_fields, shrinkage, single_title, validate,
+                              verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
-    accepted, refusals = [], []
+    accepted, refusals, repairs = [], [], {}
     for record in changed:
         if record not in after:
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
         from . import facts
-        text, _ = drop_unresolved(record, normalize_numbered_sources(facts.upgrade(record,
-            restore_runner_fields(record, after[record], before.get(record, '')))), before.get(record, ''), items,
-            pages=set(before))
+        text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
+            restore_runner_fields(record, after[record], before.get(record, '')))))
+        text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
+                                        root=notebook.root)
+        unverified = []
         if record.startswith("people/") and record != owner:
-            text = verify_contacts(notebook.root, record, text, items, before.get(record, ''))[0]
-        text = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))[0]
+            text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
+        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
+        text = fold_history(single_title(text))
+        # What code removed is recorded, as an investigation's is; discarded,
+        # a maintained page lost lines and its review.json never said which.
+        repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
+                           "contacts_unverified": unverified, "facts_uncited_dropped": uncited}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
+        errors = (validate(record, text, before.get(record, ''), items, pages=set(before), root=notebook.root)
+                  if headings(record) else [])
         shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         errors += [shrunk] if shrunk else []
         if errors:
@@ -855,6 +862,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             raise RunFailed('Maintenance rejected: Notebook changed during maintenance; preserve current pages and retry',
                             usage)
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
+                   'repairs': {record: found for record, found in repairs.items() if any(found.values())},
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
             _write_page(notebook, record, text, items)
@@ -865,7 +873,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # questions, rejection reasons and the Skill text it was given. The rest is a
 # private copy of the owner's mail and pages.
 TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
-              "review-candidates.json", "instructions.md")
+              "review-candidates.json", "instructions.md", "refused")
 
 
 def scrub_task(directory: Path) -> None:
@@ -880,8 +888,11 @@ def scrub_task(directory: Path) -> None:
     import shutil
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
-            if path.is_file() and not path.is_symlink():
-                path.chmod(0o600)
+            # refused/ holds the pages a maintenance pass wrote and review
+            # refused; deleted with the material, the refusal had nothing to show.
+            for kept in [path, *(path.rglob("*") if path.is_dir() and not path.is_symlink() else ())]:
+                if kept.is_file() and not kept.is_symlink():
+                    kept.chmod(0o600)
             continue
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path, ignore_errors=True)
@@ -962,18 +973,50 @@ def _stage_on_copies(notebook: Notebook, items: list[dict], config: dict, kind: 
                 scrub_task(directory)
 
 
+TAIL_NOTE = ("Items with role thread-tail are later messages in the same threads as this material, from the "
+             "archive: what happened after it. An ask one of them answers is settled, not open; cite them like "
+             "any source. ")
+
+
+def thread_tails(root: Path, items: list[dict]) -> list[dict]:
+    """What came after the batch in its threads, as today_note says what day it is.
+
+    Maintenance saw only its batch: 10 of 35 bad claims in a real audit were
+    stale, an open thread a later reply had already closed.
+    """
+    from .reader_model import later_in_threads
+    return later_in_threads(root, [item["source"] for item in items if isinstance(item.get("source"), str)])
+
+
+def _with_additions(items: list[dict], additions: list[dict], budget: int) -> list[dict]:
+    """The context (reflections, reviews, thread tails) that fits beside the evidence, in order.
+
+    Context, not the task: when the reflections and reviews did not all fit,
+    the whole turn failed and the evidence it was for went unread.
+    """
+    seen = {item.get("source") for item in items}
+    used = len(json.dumps(items, ensure_ascii=False))
+    kept = []
+    for addition in additions:
+        size = len(json.dumps(addition, ensure_ascii=False)) + 2
+        if addition["source"] in seen or used + size > budget:
+            continue
+        kept.append(addition)
+        used += size
+    return [*items, *kept]
+
+
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
-    additions = [*reflections(notebook.root, subject), *reviews(notebook.root, subject)]
-    existing_sources = {i.get("source") for i in items}
-    items = [*items, *(i for i in additions if i["source"] not in existing_sources)]
-    if additions and len(json.dumps(items, ensure_ascii=False)) > config["limits"]["input_chars_per_batch"]:
-        raise RunFailed("Evidence and reflection context exceeds input budget; narrow the task before retrying")
+    tails = thread_tails(notebook.root, items) if stage == "maintain" else []
+    items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
+                            config["limits"]["input_chars_per_batch"])
     prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
-              + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root)))
+              + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root))
+              + (TAIL_NOTE if any(item.get("role") == "thread-tail" for item in items) else ""))
     # The model must read and write local task files. Codex has a sandboxed
     # shell; forbidding all shell commands made Luna refuse the whole batch.
     if stage in ("init", "investigate"):

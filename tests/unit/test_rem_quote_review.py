@@ -113,7 +113,8 @@ def test_review_gives_the_writer_turns_to_fix_a_misquote_then_keeps_the_sound_li
 def test_review_refuses_what_it_cannot_settle(tmp_path, monkeypatch):
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
-    candidate.write_text(written.replace('# Ody', '# Ody\n\n# Second title'))
+    # A second title is code's to drop now; a page with none is still refused.
+    candidate.write_text(written.replace('# Ody\n', '', 1))
     monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
     with pytest.raises(runner.RunFailed, match='exactly one page title'):
         runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},

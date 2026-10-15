@@ -75,8 +75,7 @@ def _nothing_new(record: str, subject: str, coverage: list[str], last) -> Nothin
 def _refused_again(record: str, subject: str, refusal: dict) -> NothingNew:
     return NothingNew(f"Nothing new since this material was refused on {refusal['at'][:10]} for {subject} "
                       f"({refusal.get('why', '')}). No model was called; {record} is unchanged and waits for "
-                      f"newer material. To try these sources again, run "
-                      f"`co rem investigate {record} --retry-refused`.")
+                      f"newer material. To try these sources again, run `co rem investigate {record}`.")
 
 
 def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
