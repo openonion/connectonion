@@ -573,11 +573,11 @@ def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, 
 
 @pytest.mark.parametrize("speaker, role, recipients, subject", [
     ("noreply@agentmail.cc", "other", ["me@x.example"], "Digest"),
-    ("adi@agentmail.cc", "other", ["me@x.example"], "Important Notice"),
-    ("adi@agentmail.cc", "other", [f"p{n}@agentmail.cc" for n in range(40)], "Hello all"),
+    ("person@agentmail.cc", "other", ["me@x.example"], "Important Notice"),
+    ("person@agentmail.cc", "other", [f"p{n}@agentmail.cc" for n in range(40)], "Hello all"),
     ("adi@notagentmail.cc", "other", ["me@x.example"], "Hello"),
-    ("adi@agentmail.cc.evil.example", "other", ["me@x.example"], "Hello"),
-    ("someone@else.example", "other", ["adi@agentmail.cc"], "Hello"),
+    ("person@agentmail.cc.evil.example", "other", ["me@x.example"], "Hello"),
+    ("someone@else.example", "other", ["person@agentmail.cc"], "Hello"),
     ("me@x.example", "user", ["someone@else.example"], "Hello"),
     ("me@x.example", "user", [], "Hello"),
 ])

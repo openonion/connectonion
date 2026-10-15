@@ -2405,7 +2405,8 @@ function overview() {
   main.appendChild(morningNight());
   const firstMap = firstMapBrief();
   const primary = el("div", { class: "morning-primary" }, [
-    el("h1", { text: shown === 0 ? "Nothing is waiting on you" : shown === 1 ? "One thing is waiting on you" : shown + " things are waiting on you" }),
+    // The heading counts what the sidebar and co rem status count; the rows are its top few.
+    el("h1", { text: counts.mine === 0 ? "Nothing is waiting on you" : counts.mine === 1 ? "One thing is waiting on you" : counts.mine + " things are waiting on you" }),
     firstMap,
     el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }),
     el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)),

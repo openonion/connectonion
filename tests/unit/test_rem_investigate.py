@@ -635,7 +635,7 @@ def test_org_domains_supply_last_contact_facts_to_investigation(tmp_path, latest
         'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
         'range_start': (now - timedelta(days=30)).isoformat(), 'range_end': now.isoformat()})
     for sender in ('org', 'owner'):
-        address = 'ada@prodigitalfund.com'
+        address = 'person@prodigitalfund.com'
         retain_message(root, 'gmail', {
             'id': sender, 'from': address if sender == 'org' else 'me@example.org',
             'to': ['me@example.org' if sender == 'org' else address], 'subject': 'Pilot discussion',
