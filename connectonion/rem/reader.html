@@ -780,7 +780,7 @@
   .ledger-row p { margin: 0 0 5px; font: 16px/1.5 var(--text); }
   .ledger-meta { display: block; color: var(--ink-2); font: 12px/1.4 var(--ui); }
   .ledger-row.quiet .ledger-meta { color: var(--ink-3); }
-  .overdue, .waiting-age.overdue b { color: var(--wait); }
+  .overdue, .thread .when.overdue, .waiting-age.overdue b { color: var(--wait); }
   .ledger-more > summary { cursor: pointer; padding: 10px 0; min-height: 44px; color: var(--ink-2); font: 13px/1.5 var(--ui); }
   .person-insight dl { margin: 0; }
   .person-insight dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; padding: 9px 0; }
@@ -870,7 +870,7 @@
   .evidence-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(5, 9, 25, .5); }
   .evidence-panel { position: fixed; z-index: 20; inset: auto 0 0; max-height: 75vh; overflow: auto; overscroll-behavior: contain; padding: 12px 18px 24px; border: 1px solid var(--line); border-radius: 18px 18px 0 0; background: var(--sheet); color: var(--ink); box-shadow: 0 8px 32px rgba(0,0,0,.16); overflow-wrap: anywhere; }
   .evidence-handle { width: 38px; height: 4px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
-  .evidence-panel .evidence-top { top: -1px; box-shadow: 0 -12px 0 var(--sheet), 0 8px 0 var(--sheet); font: 500 12px/1.4 var(--ui); }
+  .evidence-panel .evidence-top { position: sticky; top: 0; z-index: 2; background: var(--sheet); border-bottom: 1px solid var(--line); box-shadow: 0 -26px 0 var(--sheet); font: 500 12px/1.4 var(--ui); }
   .evidence-panel .evidence-close { flex: none; }
   .evidence-claim { padding: 14px; margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; font: 16px/1.55 var(--text); }
   .evidence-claim small { display: block; margin-bottom: 6px; color: var(--ink-3); font: 12px var(--ui); }
@@ -2177,7 +2177,7 @@ function threadRow(r, t, withPage) {
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
-    el("span", { class: "when" + (threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + fmtDate(t.since) : "") + (t.due ? " · due " + fmtDate(t.due) : ""), text: threadAge(t) })]);
+    el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : ""), text: threadAge(t) })]);
 }
 
 function sectionHead(title, note) {
@@ -2338,9 +2338,8 @@ function taskView(kind) {
     return;
   }
   main.appendChild(el("h1", { text: "Open threads" }));
-  main.appendChild(el("p", { class: "lede", text: "What needs your answer, and what you are waiting to hear back." }));
   const entries = threadEntries(), counts = threadCounts();
-  main.appendChild(el("p", { class: "quiet-line", text: counts.open + " open threads · newest and due first" }));
+  main.appendChild(el("p", { class: "lede", text: counts.mine + " waiting on you, " + counts.theirs + " on someone else, " + counts.other + " other open context. Newest and due first." }));
   if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
     "No supported open loop is in this snapshot."]));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
@@ -2770,8 +2769,7 @@ function age(day) {
 }
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
-  if (t.due) return "due " + (t.due === calendarDay(REM.as_of) ? "today" : shortDate(t.due));
-  return t.since ? (daysSince(t.since) === 0 ? "opened today" : "open for " + age(t.since)) : "";
+  return t.due ? dueLabel(t) : age(t.since);
 }
 function threadPreview(text) {
   const summary = plainLine(text).replace(/\s*[—–-]\s.*$/, "");
@@ -3614,10 +3612,14 @@ function evidenceLine(trigger) {
 function scrollEvidenceSpan(panel) {
   const mark = panel.querySelector(".evidence-original mark.span");
   if (!mark || !mark.getClientRects().length) return;
-  const bounds = mark.getBoundingClientRect();
-  // Scroll only the panel, keeping the page behind it in place.
-  panel.scrollTo({ top: panel.scrollTop + bounds.top - panel.getBoundingClientRect().top - panel.clientTop
-      - (panel.clientHeight - bounds.height) / 2,
+  const bounds = mark.getBoundingClientRect(), claim = panel.querySelector(".evidence-claim");
+  const origin = panel.getBoundingClientRect().top + panel.clientTop - panel.scrollTop;
+  const markTop = bounds.top - origin, claimTop = claim.getBoundingClientRect().top - origin;
+  const headerHeight = panel.querySelector(".evidence-top").offsetHeight;
+  // Keep the claim below the header unless the source would stay off-screen.
+  const preferred = Math.min(markTop - claimTop - claim.offsetHeight - 16, claimTop - headerHeight - 16);
+  const reveal = Math.min(markTop - headerHeight - 16, bounds.bottom - origin - panel.clientHeight + 16);
+  panel.scrollTo({ top: Math.max(0, preferred, reveal),
     behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 }
 let evidenceTrigger = null;
