@@ -103,7 +103,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 2026-10-14). A test now holds this at each release's own version, so it cannot be forgotten again.
 # 1.9.3b2: accept writes the sender's conversation as a thread of its own (#2513).
 # 1.9.3b3: Codex lists that thread in /resume, and done repeats the line that names it.
-MIN_VERSION = "1.9.3b3"
+# 1.9.3b4: the pasted line, the prompt and the mail say what arrives is the context of a session, not a task (#2523).
+MIN_VERSION = "1.9.3b4"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
@@ -121,7 +122,7 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
     here" and nothing happened, 2026-10-13), and a triple-click selects a whole paragraph in any
     mail client. Nothing else (#2459): it is the first message of the recipient's thread, and
     `accept` fetches the handoff and says what to do next."""
-    return (f"{sender} handed you \"{title}\" (handoff {handoff_id}). If co --version prints nothing or a version "
+    return (f"{sender} handed you the context of \"{title}\" (handoff {handoff_id}). If co --version prints nothing or a version "
             f"{older_than(MIN_VERSION)}, install co first, which keeps to its own environment (right after a release it can wait a few minutes "
             f"for PyPI, so let it finish): "
             f"on macOS or Linux run "
@@ -133,9 +134,9 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
 
 
 PASTE = {   # one line a person pastes; the page it names holds the prompt above (Aaron, 2026-10-13)
-    "en": "{sender} handed you \"{title}\" with ConnectOnion. Read {url} and do what it says, here in this folder, "
+    "en": "{sender} handed you the context of \"{title}\" with ConnectOnion. Read {url} and do what it says, here in this folder, "
           "without waiting for me. If you cannot open it, ask me to allow network access.",
-    "zh": "{sender} 用 ConnectOnion 把「{title}」交给了你。读 {url} 并照着做，就在这个文件夹里，不用等我。"
+    "zh": "{sender} 用 ConnectOnion 把「{title}」的上下文交给了你。读 {url} 并照着做，就在这个文件夹里，不用等我。"
           "如果打不开，请让我允许联网。",
 }
 

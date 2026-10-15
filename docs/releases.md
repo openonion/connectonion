@@ -25,15 +25,18 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Beta **1.9.3b3**: the thread a handoff adds in Codex now shows in `/resume` and the app's
-sidebar in a Codex that had been used before, and the receiving agent names it when it
-reports. See [1.9.3b3 notes](releases/1.9.3b3.md).
+Beta **1.9.3b4**: the line a recipient pastes, the mail and the help now say a handoff passes on
+the context of a session, not a task. See [1.9.3b4 notes](releases/1.9.3b4.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3b3'
+python -m pip install --upgrade 'connectonion==1.9.3b4'
 ```
 
 ## Previous previews
+
+Beta **1.9.3b3**: the thread a handoff adds in Codex now shows in `/resume` and the app's
+sidebar in a Codex that had been used before, and the receiving agent names it when it
+reports. See [1.9.3b3 notes](releases/1.9.3b3.md).
 
 Release candidate **1.9.2rc1**: handing a session to someone else's agent, checked end to end
 between Claude Code and Codex in both directions. See [1.9.2rc1 notes](releases/1.9.2rc1.md).

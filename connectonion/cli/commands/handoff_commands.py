@@ -1,5 +1,5 @@
 """
-Purpose: `co handoff` — hand a task discussed in one coding-agent session to another person's coding agent
+Purpose: `co handoff` — hand the context of one coding-agent session to another person's coding agent
 LLM-Note:
   Dependencies: imports from [typer, handoff.{sessions,bundle,transport,opener}, cli.style, command_tips.print_tip] | registered in cli/main.py via make_handoff_app(_typer_app)
   Data flow: send → resolve recipient → read the current coding-agent session: Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
@@ -1152,7 +1152,7 @@ READ_FROM = (*AGENTS, *other_agents.AGENTS)   # the agents a handoff is drafted 
 
 def make_handoff_app(factory) -> typer.Typer:
     app = factory(
-        help="Experimental: hand a task you discussed with your coding agent to another person's agent, "
+        help="Experimental: hand the context of what you discussed with your coding agent to another person's agent, "
              "so their Codex or Claude Code continues without you rewriting the background. "
              "Sends by agent mail; nothing runs on their side until they open it.",
         epilog='Example:  co handoff send ody "the login task"  |  co handoff inbox',
@@ -1175,7 +1175,7 @@ def make_handoff_app(factory) -> typer.Typer:
         mentions: str = typer.Option("", "--mentions", help="List every place this name appears in the draft, and send nothing"),
         lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
-        """Hand a task to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
+        """Hand this session's context to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
         Gemini CLI, opencode, droid, Cursor or Grok) and previews it. Sends only with --yes; writes a local draft.
 
         Drafting reads the whole session (or --from-file): every message you wrote goes
