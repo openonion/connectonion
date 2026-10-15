@@ -99,6 +99,24 @@ def test_an_old_page_is_upgraded_without_losing_a_word():
     assert facts.upgrade("people/mia.md", new) == new
 
 
+@pytest.mark.parametrize("record, label, value", [
+    ("people/edwin-tang.md", "Company", "Unknown; email domain: student.unsw.edu.au [8]"),
+    ("people/vern-chan.md", "First contact", "Unknown."),
+    ("orgs/agentmail-cc.md", "Last contact", "Unknown — supplied messages do not establish the last contact"),
+    ("projects/p.md", "Status", "Unknown (not investigated yet)"),
+    ("people/mia.md", "Company", "UNSW [1]"),
+    ("people/mia.md", "Company", "Unknown"),
+])
+def test_upgrade_normalizes_unknown_facts_only(record, label, value):
+    placeholder = "## Who they are\n- Unknown — not investigated yet\n"
+    page = f"# Subject\n\n## Facts\n- {label}: {value}\n\n" + placeholder
+    upgraded = facts.upgrade(record, page)
+    expected = "Unknown" if value.startswith("Unknown") else value
+    assert f"- {label}: {expected}\n" in upgraded
+    assert placeholder in upgraded
+    assert facts.upgrade(record, upgraded) == upgraded
+
+
 def test_normalize_puts_facts_and_insight_where_the_reader_expects_them():
     old = PERSON.replace("## Facts", "## Contact") + "\n## Who they are\n- Leads data [1]\n\n## Sources\n- [1] x\n"
     page = normalize("people/mia.md", old)

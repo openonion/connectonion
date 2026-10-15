@@ -145,8 +145,8 @@ def _block(record: str, raw_lines: list[str]) -> str:
 
 
 def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
-    """Bring a page to the Facts shape without dropping a word: rename a legacy
-    `## Contact`, add a missing Facts section or label as `Unknown`, and give a
+    """Bring a page to the Facts shape: rename a legacy `## Contact`, normalize
+    missing values to `Unknown`, add a missing Facts section or label, and give a
     person or project page its Insight section. A page already in shape is returned as is."""
     labels = fields(record)
     if not labels:
@@ -167,6 +167,9 @@ def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
             if re.search(plain, body):
                 body = re.sub(rf"(?m)^- {re.escape(label)}:[ \t]*Unknown[ \t]*\n?", "", body)
                 body = re.sub(plain, rf"- {label}: \1", body)
+        # 2026-10-16 trial: `Company: Unknown; email domain: student.unsw.edu.au [8]`
+        # is missing data; everything after Unknown is commentary, even after a semicolon.
+        body = re.sub(r"(?mi)^(- [^:\n]{1,40}:[ \t]*)Unknown\b[^\n]*$", r"\1Unknown", body)
         present = set(re.findall(r"(?m)^- ([^:\n]{1,40}):", body))
         if body != original or not set(labels) <= present:
             block = _block(record, body.strip("\n").splitlines())
