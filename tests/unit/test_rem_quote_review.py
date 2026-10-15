@@ -143,3 +143,13 @@ def test_a_source_listed_twice_becomes_one_dated_by_its_original():
     settled = settle_sources(text, {'gmail:a': '2026-01-05', 'gmail:b': '2026-03-03'})
     assert settled == ('# X\n\nA [1]. B [1]. `rows[2]`\n\n## Sources\n- [1] gmail:a — 2026-01-05\n'
                        '- [3] gmail:b — 2026-03-03\n- [4] gmail:c — 2026-04-04\n')
+
+
+def test_an_audit_claim_is_found_without_its_citation_and_only_its_sentence_goes():
+    """Hamish (2026-10-15 trial): the audit copied the claim without its [7], so no
+    line matched and the whole page was refused; the line's other sentence was true."""
+    text = ('# H\n\n## History\n- 2026-01-12: Hamish replied that the team would miss him [2]. '
+            'Nina later sent a drinks location update [7].\n\n## Sources\n- [2] gmail:a — 2026-01-12\n')
+    kept, unlocated = drop_claims('people/h.md', text, ['Nina later sent a drinks location update.'])
+    assert unlocated == [] and 'drinks' not in kept
+    assert '- 2026-01-12: Hamish replied that the team would miss him [2].' in kept

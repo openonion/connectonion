@@ -1177,21 +1177,33 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
     return errors
 
 
-def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
-    """Remove each line holding a refuted claim; return the claims no line holds.
+def _claim_key(text: str) -> str:
+    """A claim as the audit copies it: no citation markers, no closing punctuation."""
+    return _plain(CITATION.sub('', text)).rstrip(',.;:!?，。；：！？')
 
-    A contact field keeps its label and says Unknown, as an untraceable citation leaves it.
+
+def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
+    """Remove each sentence holding a refuted claim; return the claims no line holds.
+
+    Only the sentence goes when its line says more: Hamish's History line also
+    held his own reply, which was true. A contact field keeps its label and
+    says Unknown, as an untraceable citation leaves it.
     """
-    wanted = {claim: _plain(claim) for claim in claims if _plain(claim)}
+    wanted = {claim: _claim_key(claim) for claim in claims if _claim_key(claim)}
     head, marker, tail = text.partition('\n## Sources\n')
     kept, found = [], set()
     for line in head.split('\n'):
-        hits = [claim for claim, plain in wanted.items() if plain in _plain(line)]
+        hits = [claim for claim, key in wanted.items() if key in _claim_key(line)]
         found.update(hits)
         if not hits:
             kept.append(line)
         elif CONTACT_LINE.match(line):
             kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
+        else:
+            sentences = re.split(r'(?<=[.!?。])\s+', line)
+            rest = [s for s in sentences if not any(wanted[c] in _claim_key(s) for c in hits)]
+            if rest and len(rest) < len(sentences) and re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', rest[0]):
+                kept.append(' '.join(rest))
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
 
 
