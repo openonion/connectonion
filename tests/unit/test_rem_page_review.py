@@ -8,7 +8,7 @@ from connectonion.rem.runner import MAX_REPAIRS
 
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
-from connectonion.rem.page_review import normalize, normalize_numbered_sources, validate
+from connectonion.rem.page_review import normalize, normalize_numbered_sources, repair_project_overview, validate
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
@@ -355,7 +355,7 @@ def test_prior_page_citation_is_identifiable_only_as_supplied_context():
     assert not prior_context_reference('Existing page `projects/atlas.md`', 'projects/atlas.md', [])
 
 
-@pytest.mark.parametrize('overview, rejected', [
+@pytest.mark.parametrize('overview, replaced', [
     ('Run the tool to count words. [1]', True),
     ('```text\ndraft -> count.py -> stdout\n```\nObserved local flow. [1]', False),
     ('```text\n```\nEmpty illustration. [1]', True),
@@ -365,14 +365,27 @@ def test_prior_page_citation_is_identifiable_only_as_supplied_context():
     ('```text\n[Markdown file]\n      │\n      ▼\n[Word counts]\n```\nObserved flow. [1]', False),
     ('```text\nmemo → transcript → note\n```\nObserved flow. [1]', False),
 ])
-def test_populated_project_overview_requires_closed_flow(tmp_path, overview, rejected):
+def test_populated_project_overview_is_repaired_without_closed_flow(tmp_path, overview, replaced):
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = nb.read('projects/atlas.md')
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\n' + overview)
     page = page.replace('- (none yet)', '- [1] fixture:readme')
+    repaired, changed = repair_project_overview('projects/atlas.md', page)
+    assert changed == replaced
+    expected = page.replace('## Overview\n' + overview, '## Overview\n- Unknown') if replaced else page
+    assert repaired == expected
+    assert repair_project_overview('projects/atlas.md', repaired) == (repaired, False)
     errors = validate('projects/atlas.md', page, old, [{'source': 'fixture:readme'}])
-    assert any('Overview' in error for error in errors) == rejected
+    assert not any('Overview' in error for error in errors)
+
+
+@pytest.mark.parametrize('record, page', [
+    ('projects/atlas.md', '# Atlas\n\n## What it is\nA local demo.\n'),
+    ('people/atlas.md', '# Atlas\n\n## Overview\nA local demo.\n'),
+])
+def test_overview_repair_leaves_other_pages_unchanged(record, page):
+    assert repair_project_overview(record, page) == (page, False)
 
 
 def test_local_files_require_distinct_numbered_sources(tmp_path):
@@ -390,22 +403,56 @@ def test_local_files_require_distinct_numbered_sources(tmp_path):
     assert validate('projects/atlas.md', split, old, []) == []
 
 
-def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypatch):
+@pytest.mark.parametrize('overview', ['Run a local word counter. [1]', '```text\ndraft -> count.py -> stdout\n'])
+def test_flow_repair_promotes_page_and_records_replacement(tmp_path, monkeypatch, overview):
+    from connectonion.rem import project_claim_review
+
+    monkeypatch.setattr(project_claim_review, 'review', lambda *_, **__: (
+        {'verdict': 'pass', 'findings': []}, {}))
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = nb.read('projects/atlas.md')
-    page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
-    page = page.replace('- (none yet)', '- [1] fixture:readme')
+    page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\n' + overview)
+    page = page.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [2]')
+    page = page.replace('- (none yet)', '- [1] fixture:flow\n- [2] fixture:readme')
     def execute(directory, prompt, config, stage):
         Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
-    with pytest.raises(RunFailed, match='Project Overview'):
-        run_stage(nb, [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
-                       {'source': 'fixture:readme', 'text': 'Local counter'}], default_config(), stage='investigate')
-    assert nb.read('projects/atlas.md') == old
+    result = run_stage(nb, [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
+                           {'source': 'fixture:flow', 'text': 'Local counter'},
+                           {'source': 'fixture:readme', 'text': 'A local demo.'}], default_config(), stage='investigate')
+    assert result['changed'] == ['projects/atlas.md']
+    # Unknown, the optional Overview is then compacted away like any other.
+    assert 'word counter' not in nb.read('projects/atlas.md') and 'count.py' not in nb.read('projects/atlas.md')
+    assert 'A local demo. [1]' in nb.read('projects/atlas.md')
+    assert 'fixture:flow' not in nb.read('projects/atlas.md')
+    review = json.loads(next((tmp_path / '.state/tasks').glob('*/review.json')).read_text())
+    assert review['accepted'] and review['overview_replaced']
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12 * (1 + MAX_REPAIRS)
+    assert result['status'] == 'candidate_accepted' and result['usage']['input_tokens'] == 12
+
+
+def test_maintenance_repairs_overview_before_dropping_unused_sources(tmp_path):
+    from connectonion.rem.runner import _promote_maintenance
+
+    nb, working = Notebook(tmp_path / 'rem'), Notebook(tmp_path / 'work')
+    record = 'projects/atlas.md'
+    nb.stub_project(record, 'Atlas')
+    old = nb.read(record)
+    page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
+    page = page.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [2]')
+    working.write(record, page.replace('- (none yet)', '- [1] fixture:flow\n- [2] fixture:readme'))
+    directory = tmp_path / 'task'
+    directory.mkdir()
+    items = [{'source': 'fixture:flow', 'text': 'Local counter'},
+             {'source': 'fixture:readme', 'text': 'A local demo.'}]
+    assert _promote_maintenance(nb, working, {record: old}, items, directory, None, False) == []
+    assert '## Overview\n- Unknown' in nb.read(record)
+    assert 'A local demo. [1]' in nb.read(record)
+    assert 'fixture:flow' not in nb.read(record)
+    review = json.loads((directory / 'review.json').read_text())
+    assert review['accepted'] == [record] and review['repairs'][record]['overview_replaced']
 
 
 def test_investigation_cannot_drop_scripted_project_metadata(tmp_path):

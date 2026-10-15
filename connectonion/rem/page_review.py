@@ -157,24 +157,30 @@ def prior_context_reference(value: str, record: str, items: list[dict], original
     return bool(original.strip() and label and (record in value or re.search(r'\bpage\b', value, re.I)))
 
 
-def _project_overview_errors(candidate: str) -> list[str]:
-    """Require the template's flow shape, without inventing a flow when unknown."""
-    visible = prose(candidate)
+def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
+    """Keep pages refused for a missing flow without inventing one."""
+    if not record.startswith('projects/'):
+        return text, False
+    visible = prose(text)
     heading = re.search(r'^## Overview[ \t]*$', visible, re.M)
     if not heading:
-        return []  # The canonical-section check reports this separately.
+        return text, False
     following = re.search(r'^## ', visible[heading.end():], re.M)
-    end = heading.end() + following.start() if following else len(candidate)
-    section = candidate[heading.end():end].strip()
+    end = heading.end() + following.start() if following else len(text)
+    section = text[heading.end():end].strip()
     if re.fullmatch(r'(?:- )?(?:Unknown|未知|尚未确认)[^\n]*', section):
-        return []
+        return text, False
     blocks = re.finditer(r'(?m)^[ \t]*(`{3,}|~{3,})(?:text|ascii)?[ \t]*\n'
                          r'([\s\S]*?)\n[ \t]*\1[ \t]*(?:\n|$)', section)
     # ASCII or box-drawing: a real candidate drew its flow with │ and ▼ and the
     # whole page was refused for it.
     if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$|[│┃▼↓→⟶➜─]', block[2], re.M) for block in blocks):
-        return []
-    return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
+        return text, False
+    # An unclosed fence must not swallow the sections after Overview.
+    if not following:
+        following = re.search(r'^## ', text[heading.end():], re.M)
+    end = heading.end() + following.start() if following else len(text)
+    return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
 SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
@@ -1006,7 +1012,6 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 else:
                     errors.append(f'Cited file needs a hash or exact Git commit in a mapped repository: {source}')
     if record.startswith('projects/'):
-        errors += _project_overview_errors(candidate)
         if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
