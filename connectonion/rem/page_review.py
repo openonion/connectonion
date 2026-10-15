@@ -1247,7 +1247,7 @@ def _employer_domain(address: str) -> str:
 
     Not a mailbox provider, a relay, a ConnectOnion agent's mail, or a student
     address: `student.`/`ad.` subdomains and an ID for a local part
-    (z5479567@unsw.edu.au) prove enrolment, and the skill says that is Unknown.
+    (z1234567@unsw.edu.au) prove enrolment, and the skill says that is Unknown.
     """
     from .map import AGENT_ADDRESS, RELAY
     from .scan import personal_mailbox

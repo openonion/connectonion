@@ -101,17 +101,17 @@ def test_the_table_reads_as_words_fits_the_terminal_and_never_shows_a_relay(monk
     from connectonion.cli.commands.rem_table import draw
     monkeypatch.setenv("COLUMNS", "100")
     rows = [_row("Ody Zhou", company="[OpenOnion](../orgs/openonion.md)", role="Co-founder",
-                 emails=["usr-s2godxkmiphg02a@user.luma-mail.com", "zhouody@gmail.com"]),
+                 emails=["usr-fixture0000000@user.luma-mail.com", "ody.zhou@example.com"]),
             _row("Sohum Mogale", company="[University of New South Wales](../orgs/unsw.md)",
                  role="Project owner, Group P115 of COMP3900 at UNSW", emails=["s.mogale@student.unsw.edu.au"],
-                 phone="0435402580 [sensitive]"),
+                 phone="0491570159 [sensitive]"),
             _row("Luma Guest", emails=["usr-abc@user.luma-mail.com"])]
     lines = Text.from_markup(draw(rows)).plain.splitlines()
     assert all(len(line) <= 100 for line in lines), lines
     assert "Status" not in lines[0] and "written" not in "\n".join(lines)   # the same on every row
     ody = next(line for line in lines if line.startswith("Ody Zhou"))
     assert "OpenOnion" in ody and "](" not in ody and "[" not in ody
-    assert "zhouody@" in ody and "luma-mail" not in "\n".join(lines)
+    assert "ody.zhou@" in ody and "luma-mail" not in "\n".join(lines)
 
 
 def test_the_table_keeps_status_when_rows_differ(monkeypatch):

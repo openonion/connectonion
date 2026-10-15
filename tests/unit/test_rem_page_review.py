@@ -673,7 +673,7 @@ def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_
 
 @pytest.mark.parametrize('newest', [
     'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Ziming, C1)
-    'z5479567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
+    'z1234567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
     'mia.chen@student.unsw.edu.au',  # seven students got UNSW as employer (C3)
     'usr-abc@user.luma-mail.com',    # a relay's domain is the platform's
     '0x3c3ae74550@mail.openonion.ai',  # an agent's mail domain is ConnectOnion's (C4)
