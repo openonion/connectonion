@@ -169,7 +169,10 @@ def reader(tmp_path, monkeypatch):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    assert page.locator('.morning-primary h1').inner_text() == '3 things are waiting on you'
+    # One count everywhere: the heading says what "See all" and the sidebar say; the rows are the top three.
+    total = page.locator('.waiting-more a').inner_text().split()[2]
+    assert page.locator('.morning-primary h1').inner_text() == f'{total} things are waiting on you'
+    assert page.locator('.waiting-ledger > li').count() == 3
     assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Inès Halvorsen', 'Fernhill Labs']
     assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .claim-card')
