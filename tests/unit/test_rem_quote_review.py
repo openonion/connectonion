@@ -165,11 +165,11 @@ def _audit_fails_with(monkeypatch, claim):
 
 def test_a_claim_on_a_linked_name_is_found_and_a_claim_already_gone_does_not_refuse(tmp_path, monkeypatch):
     """v193q1 (2026-10-15): 10 of 28 pages were refused because the audit's claim named
-    'Sasha Whittle' while the page, linked by code, said '[Sasha Whittle](...)', or
+    'Sasha Ward' while the page, linked by code, said '[Sasha Ward](...)', or
     because a repair had already rewritten the refuted sentence."""
-    kept, unlocated = drop_claims('people/x.md', '# X\n\n## Insight\n- Now: [Sasha Whittle](../people/s.md) '
+    kept, unlocated = drop_claims('people/x.md', '# X\n\n## Insight\n- Now: [Sasha Ward](../people/s.md) '
                                   'approved it [1].\n\n## Sources\n- [1] gmail:a — 2026-10-01\n',
-                                  ['Sasha Whittle approved it.'])
+                                  ['Sasha Ward approved it.'])
     assert 'approved' not in kept and unlocated == []
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'

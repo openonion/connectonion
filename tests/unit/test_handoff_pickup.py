@@ -677,10 +677,10 @@ def test_co_rem_names_and_handoff_links_are_masked_too(tmp_path, monkeypatch):
     people = tmp_path / ".co" / "rem" / "people"
     people.mkdir(parents=True)
     (people / "谢-红瑛-e381998ef8.md").write_text("# 谢 红瑛\n\nbody")
-    (people / "sasha-whittle-1.md").write_text("# Sasha Whittle\n")
+    (people / "sasha-whittle-1.md").write_text("# Sasha Ward\n")
     (people / "ody-zhou-c6.md").write_text("# Ody Zhou\n")
     monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
-    text = ("谢 红瑛 sent materials; User asked Sasha Whittle for credits, and Sasha said yes; Ody Zhou will test; "
+    text = ("谢 红瑛 sent materials; User asked Sasha Ward for credits, and Sasha said yes; Ody Zhou will test; "
             "see https://o.openonion.ai/h/eaBga94HJudPRKYNztwRY8AnMEV8WVJT/codex")
     out = bundles.mask(text, names=bundles.rem_names(keep_names=["Ody Zhou"]))
     assert "谢 红瑛" not in out and "Sasha" not in out and "Ody Zhou" in out

@@ -36,7 +36,7 @@ INVITE = re.compile(r"^(invitation|updated invitation|invitation updated|accepte
                     r"Dial by your location|dial[ -]?in|scheduled Zoom meeting|"
                     r"iPhone one[ -]tap|\bzoom\.us/j/|Australian Toll number", re.I | re.M)
 MAIL_SOURCES = ("gmail:", "outlook:", "email:")
-# "call Larry 0405…", "contact Paul Prammer … Ph 0466…": a number someone else is
+# "call Larry 0405…", "contact a facilities manager … Ph 0466…": a number someone else is
 # named beside is that person's (contacts audit P1/P2, #2348).
 OTHER_PERSON = re.compile(r"(?i:\b(?:call|ring|contact|text|reach|phone|ask for|speak to|talk to))\s+"
                           r"(?!(?i:me|us|our|the|a|an)\b)([A-Z][\w'’-]+)")

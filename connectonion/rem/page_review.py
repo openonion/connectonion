@@ -1247,7 +1247,7 @@ def _employer_domain(address: str) -> str:
 
     Not a mailbox provider, a relay, a ConnectOnion agent's mail, or a student
     address: `student.`/`ad.` subdomains and an ID for a local part
-    (z5479567@unsw.edu.au) prove enrolment, and the skill says that is Unknown.
+    (z1234567@unsw.edu.au) prove enrolment, and the skill says that is Unknown.
     """
     from .map import AGENT_ADDRESS, RELAY
     from .scan import personal_mailbox
@@ -1352,8 +1352,8 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
 def _claim_key(text: str) -> str:
     """A claim as the audit copies it: no citation markers, no links, no closing punctuation.
 
-    Code links names after the audit reads the page: "[Sasha Whittle](../people/…)"
-    on the page was "Sasha Whittle" in the finding (v193q1, 2026-10-15)."""
+    Code links names after the audit reads the page: "[Sasha Ward](../people/…)"
+    on the page was "Sasha Ward" in the finding (v193q1, 2026-10-15)."""
     text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', CITATION.sub('', text))
     return _plain(text).rstrip(',.;:!?，。；：！？')
 
