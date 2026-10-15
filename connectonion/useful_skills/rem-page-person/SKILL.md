@@ -80,9 +80,9 @@ Rules:
   its date: `“<exact words>” (YYYY-MM-DD) [n]`, never restated in other words.
   Keep each local link with its relationship, citations and privacy markers;
   separate different events onto separate lines.
-- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
+- **`History` is at most 16 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
-  Past 8, fold the oldest into one line per year.
+  Past 16, fold the oldest into one line per year.
 - **Open threads quote the ask**, one line each: `- YYYY-MM-DD — <who> asked
   <whom>: “<exact words>” [n] — <status, as of date, evidence>`. Reports,
   optional offers, prerequisites and past events create none; a missing
@@ -102,5 +102,5 @@ Rules:
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels. Preserve the runner's
+Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
 `Investigation:` line unchanged.

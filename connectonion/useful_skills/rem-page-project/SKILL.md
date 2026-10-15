@@ -6,7 +6,7 @@ description: A project page with a short visual overview and evidence-backed det
 # A project's page
 
 Read the page and material. Write once, check once, fix once, stop.
-Do not search examples, logs or the repo for a format.
+Search the repo for evidence, not for a format: this Skill is the format.
 
 Explain purpose and flow first, for a new teammate.
 After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
