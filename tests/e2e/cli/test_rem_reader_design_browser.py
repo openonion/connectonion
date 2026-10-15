@@ -49,7 +49,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             assert "Name this page to request a write." in statement
             assert "clamped" not in page.locator(".focus-statement").get_attribute("class")
             assert "/work/journal" not in statement
-            assert "NEEDS YOUR EXPLICIT REQUEST" in page.locator(".focus-kicker").inner_text()
+            assert "Needs your explicit request" in page.locator(".focus-kicker").inner_text()
             assert "Automatic investigation skips this private project." in page.locator(".missing").inner_text()
             assert "investigate 'projects/journal.md'" in page.locator(".missing .cmd").inner_text()
             assert page.get_by_role("button", name="Copy the command").is_visible()
@@ -84,7 +84,7 @@ def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_pat
             statement = page.locator(".focus-statement").inner_text()
             assert "/work/browser" not in statement
             assert statement == "Not written yet: 13 sessions, last on 2026-08-02."
-            assert "WHERE THE WORK STANDS" not in page.locator(".focus-kicker").inner_text()
+            assert "Where the work stands" not in page.locator(".focus-kicker").inner_text()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
         browser.close()
@@ -742,7 +742,7 @@ def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
     }""", isolated_context=False)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
-        assert page.locator('.focus-kicker').first.inner_text() == 'WHAT THIS PROJECT DOES'
+        assert page.locator('.focus-kicker').first.inner_text() == 'What this project does'
         assert 'reads a local daily log' in page.locator('.focus-statement').inner_text()
         assert 'recent commit' not in page.locator('.focus-statement').inner_text()
         assert '7-day session sample did not confirm current project work' in page.locator('.focus-limit').inner_text()
@@ -1165,7 +1165,7 @@ def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
       render();
     }""", isolated_context=False)
     assert page.locator('.focus-statement').inner_text() == 'A saved draft still needs a queue readback.'
-    assert page.locator('.focus-head .focus-kicker').inner_text() == 'USEFUL FINDING'
+    assert page.locator('.focus-head .focus-kicker').inner_text() == 'Useful finding'
     assert not page.locator('.focus-more').is_visible()
     finding_source = page.locator('.skill-finding-cites a.cite').first
     assert finding_source.get_attribute('href').endswith('h=src-1')
@@ -1201,14 +1201,14 @@ def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(rea
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=skills%2Fcatalog%2Ftalk-outline.md')
-    assert 'SKILL-NAME MATCHES\n0' in page.locator('.focus-facts').inner_text()
-    assert 'LAST ACTIVE' not in page.locator('.focus-facts').inner_text()
-    assert 'LAST NAME MATCH' not in page.locator('.focus-facts').inner_text()
+    assert 'Skill-name matches\n0' in page.locator('.focus-facts').inner_text()
+    assert 'Last active' not in page.locator('.focus-facts').inner_text()
+    assert 'Last name match' not in page.locator('.focus-facts').inner_text()
     assert 'last activity' not in page.locator('.eyebrow').inner_text()
     assert 'last name match' not in page.locator('.eyebrow').inner_text()
     assert 'file updated' in page.locator('.eyebrow').inner_text()
     page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
-    assert 'LAST NAME MATCH' in page.locator('.focus-facts').inner_text()
+    assert 'Last name match' in page.locator('.focus-facts').inner_text()
     assert 'last name match' in page.locator('.eyebrow').inner_text()
     assert page.evaluate('known(byPath("skills/catalog/weekly-brief.md")).last === skillUsage(byPath("skills/catalog/weekly-brief.md")).last', isolated_context=False)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -1226,7 +1226,7 @@ def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
           KNOWN.delete(r.path);
           render();
         }""", isolated_context=False)
-        assert 'SKILL-NAME MATCHES\n3' in page.locator('.focus-facts').inner_text()
+        assert 'Skill-name matches\n3' in page.locator('.focus-facts').inner_text()
         assert '3 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
         assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
         usage = page.locator('.panel').filter(has_text='Matched by skill name in coding sessions and co ai runs')
@@ -1335,11 +1335,11 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
     assert 'Last mapped session' not in page.locator('.leadrow').inner_text()
-    assert 'LAST MAPPED SESSION' in page.locator('.focus-facts').inner_text()
+    assert 'Last mapped session' in page.locator('.focus-facts').inner_text()
     assert 'last mapped session' in page.locator('.eyebrow').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()
     page.goto(uri + '#c=projects')
-    assert 'LAST MAPPED SESSION' in page.locator('.sheet thead').inner_text()
+    assert 'Last mapped session' in page.locator('.sheet thead').inner_text()
 
 
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
