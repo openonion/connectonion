@@ -177,12 +177,24 @@ def test_the_job_runs_the_installation_that_installed_it_not_the_first_co_on_pat
     assert plist["EnvironmentVariables"]["PATH"].startswith("/work/venv/bin:")
 
 
-def test_the_job_s_pythonpath_is_absolute(tmp_path, monkeypatch):
+def test_the_job_s_pythonpath_is_the_checkout_running_now_not_the_shell_s(tmp_path, monkeypatch):
     """The owner's job carried PYTHONPATH=".", which the model's co ai resolved
-    against .state/tasks: an older installed connectonion, "Skill 'rem-investigate' not found"."""
+    against .state/tasks: an older installed connectonion (#1974). The live job
+    later carried an old session's scratch folder (2026-10-15): with a
+    connectonion/__init__.py there it would have shadowed the installed package."""
+    import connectonion
     scheduler, _ = make(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PYTHONPATH", ".")
+    monkeypatch.setenv("PYTHONPATH", f".{os.pathsep}{tmp_path / 'scratchpad'}")
     plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
-    parts = plist["EnvironmentVariables"]["PYTHONPATH"].split(os.pathsep)
-    assert str(tmp_path.resolve()) in parts and all(Path(part).is_absolute() for part in parts)
+    checkout = str(Path(connectonion.__file__).resolve().parent.parent)
+    assert plist["EnvironmentVariables"]["PYTHONPATH"] == checkout
+
+
+def test_an_installed_package_s_job_has_no_pythonpath(tmp_path, monkeypatch):
+    import connectonion
+    scheduler, _ = make(tmp_path, monkeypatch)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "scratchpad"))
+    monkeypatch.setattr(connectonion, "__file__", "/venv/lib/python3.12/site-packages/connectonion/__init__.py")
+    plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
+    assert "PYTHONPATH" not in plist["EnvironmentVariables"]
