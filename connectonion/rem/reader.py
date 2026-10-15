@@ -137,6 +137,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
+    from .sessions import mentions, reader_fields
     notebook = Notebook(root)
     records = []
     for record in notebook.list():
@@ -171,11 +172,13 @@ def snapshot(root: Path, local: bool = False) -> dict:
             from .project_material import page_state
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
         if record["category"] == "sessions":
-            project = re.search(r"^- Project: \[[^\n]*\]\(\.\./([^\n]+)\)$", record["text"], re.M)
-            day = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", record["text"], re.M)
-            clock = re.search(r"^### (\d{2}:\d{2})$", record["text"], re.M)
-            record.update(session_project=project[1] if project else "", session_date=day[1] if day else "",
-                          session_time=clock[1] if clock else "")
+            record.update(reader_fields(record["text"]))
+    owner = owner_record(root)
+    people = [record for record in records if record["category"] == "people" and record["path"] != owner]
+    mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])
+    for record in people:
+        if record["path"] in mentioned:
+            record["session_mentions"] = mentioned[record["path"]]
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":
@@ -220,7 +223,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in run_logs(root)[:20]],
             "reviews": listing(root), "counts": counts(root, found),
-            "owner": owner_record(root)}
+            "owner": owner}
 
 
 def owner_record(root: Path) -> str:

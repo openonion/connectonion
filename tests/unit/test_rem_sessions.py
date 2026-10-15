@@ -12,8 +12,8 @@ from typer.testing import CliRunner
 
 from connectonion.rem import service
 from connectonion.rem.config import prepare, set_config
-from connectonion.rem.files import Notebook, read_json, state_path
-from connectonion.rem.sessions import import_sessions
+from connectonion.rem.files import Notebook, read_json, state_path, write_json
+from connectonion.rem.sessions import import_sessions, mentions, reader_fields
 
 NOW = datetime(2026, 10, 16, tzinfo=timezone.utc)
 STAMP = "2026-10-15T22:12:00Z"
@@ -149,6 +149,133 @@ def test_rem_session_project_link_uses_deepest_path(notebook):
     from connectonion.rem.reader import snapshot
     row = next(r for r in snapshot(root)["records"] if r["path"] == record)
     assert row["session_project"] == "projects/demo.md"
+
+
+@pytest.mark.parametrize("cwd,expected", [("/work", "Demo"), ("/work/other", "Other")])
+def test_rem_session_codex_project_from_tool_calls(notebook, cwd, expected):
+    root, _, _ = notebook
+    book = Notebook(root)
+    book.stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
+    book.stub_project("projects/other.md", "Other", paths=["/work/other"])
+    calls = [
+        {"type": "function_call", "arguments": json.dumps({"cmd": "cd demo && pwd", "workdir": "/work"})},
+        {"type": "function_call", "arguments": json.dumps({"command": "cat /work/other/file.py"})},
+        {"type": "custom_tool_call", "input": "*** Begin Patch\n*** Update File: /work/demo/app.py\n*** End Patch"},
+        {"type": "custom_tool_call", "input": "cat /work/demo/README.md"},
+    ]
+    transcript(notebook, cwd=cwd, rows=[codex(), *({"type": "response_item", "payload": c} for c in calls)])
+    import_sessions(root, now=NOW)
+    page = book.read(book.list("sessions")[0])
+    assert f"- Project: [{expected}](../projects/{expected.lower()}.md)" in page
+    assert f"- Folder: {cwd}" in page
+    from connectonion.rem.sessions import _read_session
+    path, = (notebook[1] / "codex").iterdir()
+    session, _ = _read_session(path, "codex", datetime(2026, 1, 1, tzinfo=timezone.utc))
+    assert session["touched"]["/work/demo"] == 1
+
+
+def test_rem_session_claude_project_from_tool_inputs(notebook):
+    root, _, _ = notebook
+    book = Notebook(root)
+    book.stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
+    book.stub_project("projects/other.md", "Other", paths=["/work/other"])
+    call = claude(role="assistant", cwd="/work")
+    call["message"]["content"] = [{"type": "tool_use", "input": {"file_path": path}}
+                                   for path in ("/work/demo/a.py", "/work/demo/b.py", "/work/other/a.py")]
+    sidechain = claude(role="assistant", cwd="/work", isSidechain=True)
+    sidechain["message"]["content"] = [{"type": "tool_use", "input": {"file_path": "/work/other/a.py"}}] * 5
+    transcript(notebook, kind="claude-code", rows=[claude(cwd="/work"), call, sidechain])
+    import_sessions(root, now=NOW)
+    page = book.read(book.list("sessions")[0])
+    assert "- Project: [Demo](../projects/demo.md)" in page
+    assert "- Folder: /work" in page
+
+
+def test_rem_session_project_ties_unmapped_and_bounded_calls(notebook):
+    from collections import Counter
+    from connectonion.rem.sessions import _project, _touched
+    session = {"cwd": "/work", "touched": Counter({"/work/other/a.py": 2, "/work/demo/a.py": 2})}
+    assert _project(session, {"/work/other": "projects/z.md", "/work/demo": "projects/a.md"}) == "projects/a.md"
+    assert _project(session, {}) is None
+    paths = _touched("cd demo && cat /work/demo/a.py /work/demo/a.py "
+                     "&& cd ~ && cd - && cd $HOME " + " " * 20_000 + "/work/other/a.py", "/work")
+    assert paths == Counter({"/work/demo/a.py": 2, "/work/demo": 1})
+    assert _touched(json.dumps({"cmd": "cd demo && pwd", "workdir": "/elsewhere"}), "/work") == Counter({
+        "/elsewhere": 1, "/elsewhere/demo": 1})
+    transcript(notebook, cwd="/work", rows=[codex(), {"type": "response_item", "payload": {
+        "type": "function_call", "arguments": json.dumps({"cmd": "cat /unmapped/file.py"})}}])
+    import_sessions(notebook[0], now=NOW)
+    book = Notebook(notebook[0])
+    assert "- Project: /work\n- Folder: /work" in book.read(book.list("sessions")[0])
+
+
+def test_rem_session_format_change_renders_existing_pages(notebook):
+    root, _, _ = notebook
+    transcript(notebook)
+    import_sessions(root, now=NOW)
+    progress = read_json(state_path(root, "sessions.json"), {})
+    progress["settings"].pop("format", None)
+    write_json(state_path(root, "sessions.json"), progress)
+    assert import_sessions(root, now=NOW)["updated"] == 1
+    assert import_sessions(root, now=NOW)["unchanged"] == 1
+
+
+def test_rem_session_reader_fields(notebook):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex("Ask  Ody\n  about the reader"), codex("Second message"),
+                               codex("Ready.\n  Open the reader.", role="assistant")])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    record, = book.list("sessions")
+    fields = reader_fields(book.read(record))
+    assert fields == {"session_project": "", "session_date": "2026-10-16", "session_time": "09:12",
+                      "session_agent": "Codex", "session_turns": 2, "session_folder": "/work/demo",
+                      "session_first": "Ask Ody about the reader", "session_reply": "Ready. Open the reader."}
+    from connectonion.rem.reader import snapshot
+    row = next(r for r in snapshot(root)["records"] if r["path"] == record)
+    assert all(row[key] == value for key, value in fields.items())
+    no_reply = reader_fields("## What you typed\n### 09:12\n> " + "x" * 400 + "\n## Sources\n")
+    assert no_reply["session_first"] == "x" * 300 and no_reply["session_reply"] == ""
+    assert reader_fields("## Final reply\n> " + "x" * 400)["session_reply"] == "x" * 300
+
+
+def test_rem_session_mentions_typed_names_aliases_and_newest_first():
+    people = [{"path": "people/ody.md", "title": "周小明", "text": "- Also known as: Ody Zhou [1]; Ody [W2], Unknown"},
+              {"path": "people/will.md", "title": "Will", "text": ""},
+              {"path": "people/short.md", "title": "Al", "text": ""},
+              {"path": "people/held.md", "title": "Ody", "text": "", "needs_review": True}]
+    def session(path, typed, reply="", day="2026-10-16", clock="09:12"):
+        return {"path": path, "session_date": day, "session_time": clock,
+                "text": "## Facts\n- Folder: /Ody\n## What you typed\n### 09:12\n> " + typed
+                        + "\n## Final reply\n> " + reply + "\n## Sources\n"}
+    sessions = [session("sessions/old.md", "ask Ody", day="2026-10-15"),
+                session("sessions/new.md", "请找周小明来看看"),
+                session("sessions/alias.md", "ask ODY ZHOU", clock="10:00"),
+                session("sessions/tie.md", "ask Ody", clock="10:00"),
+                session("sessions/will.md", "ask Will and Al"),
+                session("sessions/no.md", "the melody will play", "Ody Zhou and 周小明 and Will"),
+                session("sessions/boundary.md", "xOdy Zhou2")]
+    assert mentions(people, sessions) == {
+        "people/ody.md": ["sessions/alias.md", "sessions/tie.md", "sessions/new.md", "sessions/old.md"],
+        "people/will.md": ["sessions/will.md"]}
+
+
+def test_rem_session_snapshot_mentions_skip_owner_and_review(notebook, monkeypatch):
+    root, _, _ = notebook
+    book = Notebook(root)
+    for person in ("owner", "held", "ody"):
+        book.write(f"people/{person}.md", "# Ody\n\n## Facts\n- Also known as: Ody Zhou [1]\n")
+    write_json(state_path(root, "map.json"), {"owner": {"record": "people/owner.md"}})
+    from connectonion.rem import map as rem_map
+    monkeypatch.setattr(rem_map, "needs_review", lambda root: {"people/held.md"})
+    transcript(notebook, rows=[codex("ask Ody")])
+    import_sessions(root, now=NOW)
+    from connectonion.rem.reader import snapshot
+    data = snapshot(root)
+    people = {r["path"]: r for r in data["records"] if r["category"] == "people"}
+    assert people["people/ody.md"]["session_mentions"] == book.list("sessions")
+    assert "session_mentions" not in people["people/owner.md"]
+    assert "session_mentions" not in people["people/held.md"]
 
 
 def test_rem_session_redaction_verbatim_labels_and_final_text_only(notebook):

@@ -17,6 +17,45 @@ from .project_material import REDACTED, page_folders, page_for, retain_cited_ses
 AGENTS = {"codex": "Codex", "claude-code": "Claude Code"}
 
 
+def _tool_calls(row: dict, kind: str) -> list[str]:
+    if kind == "codex":
+        payload = row.get("payload") or {}
+        if row.get("type") != "response_item":
+            return []
+        text = {"function_call": payload.get("arguments"),
+                "custom_tool_call": payload.get("input")}.get(payload.get("type"))
+        return [text] if isinstance(text, str) else []
+    if row.get("type") != "assistant" or row.get("isSidechain"):
+        return []
+    return [json.dumps(block["input"]) for block in (row.get("message") or {}).get("content", [])
+            if isinstance(block, dict) and block.get("type") == "tool_use" and "input" in block]
+
+
+def _touched(text: str, cwd: str) -> Counter:
+    # Tool bodies can contain whole files; project evidence only needs their head.
+    text = text[:20_000]
+    workdir = re.search(r'"workdir"\s*:\s*"([^"\n]+)"', text)
+    here = Path(workdir[1] if workdir else cwd)
+    paths = Counter(re.findall(r"(?<![\w./:~$-])/(?:[a-zA-Z0-9._@+-]+/)*[a-zA-Z0-9._@+-]+", text))
+    for target in re.findall(r"\bcd\s+([^\s;&|)'\"]+)", text):
+        if not target.startswith(("~", "-", "$", "/")) and here.is_absolute():
+            paths[str((here / target).resolve())] += 1
+    return paths
+
+
+def _project(session: dict, folders: dict) -> str | None:
+    cwd = session["cwd"]
+    project = page_for(cwd, folders) if cwd else None
+    if project:
+        return project
+    counts = Counter()
+    for path, count in session["touched"].items():
+        project = page_for(path, folders)
+        if project:
+            counts[project] += count
+    return min(counts, key=lambda page: (-counts[page], page), default=None)
+
+
 def _redact(text: str) -> str:
     return SECRET_SHAPES.sub(REDACTED, text)
 
@@ -67,13 +106,14 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
         if meta.get("subagent"):
             return {}, "exec_or_subagent"
         session = {"id": meta.get("id") or path.stem, "cwd": meta.get("cwd") or "",
-                   "kind": kind, "messages": [], "reply": ""}
+                   "kind": kind, "messages": [], "reply": "", "touched": Counter()}
         reasons = set()
         offset = 0
         transcript.seek(0)  # Claude's first row can itself be the first typed message.
         for line in transcript:
             at, offset = offset, offset + len(line)
-            if not line.endswith(b"\n") or b'"message"' not in line:
+            if not line.endswith(b"\n") or not any(token in line for token in
+                    (b'"message"', b'"function_call"', b'"custom_tool_call"')):
                 continue
             try:
                 row = json.loads(line)
@@ -82,6 +122,8 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
                 continue  # Clients can leave a torn row while appending.
             if not isinstance(row, dict):
                 continue
+            for text in _tool_calls(row, kind):
+                session["touched"].update(_touched(text, session["cwd"]))
             reasons.add(_row_reason(row, kind))
             reply = _reply(row, kind)
             if reply:
@@ -120,7 +162,7 @@ def _page(session: dict, notebook: Notebook, folders: dict, zone) -> tuple[str, 
     messages = session["messages"]
     day = source.timestamp(messages[0]["timestamp"]).astimezone(zone).date().isoformat()
     cwd = session["cwd"]
-    project = page_for(cwd, folders) if cwd else None
+    project = _project(session, folders)
     title = notebook.read(project).splitlines()[0].removeprefix("# ") if project else ""
     linked = f"[{title}](../{project})" if project else cwd
     lines = [f"# {_title(session)}", "", "## Facts", f"- Date: {day}",
@@ -136,6 +178,65 @@ def _page(session: dict, notebook: Notebook, folders: dict, zone) -> tuple[str, 
         lines += ["## Final reply", _quote(clipped), ""]
     lines += ["## Sources", *(f"- {message['source']}" for message in messages), ""]
     return day, _redact("\n".join(lines))
+
+
+def _section(text: str, heading: str) -> str:
+    match = re.search(rf"^## {heading}\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return match[1] if match else ""
+
+
+def _excerpt(text: str) -> str:
+    return " ".join(re.sub(r"^> ?", "", text, flags=re.M).split())[:300]
+
+
+def reader_fields(text: str) -> dict:
+    facts = dict(re.findall(r"^- ([A-Za-z]+): (.*)$", _section(text, "Facts"), re.M))
+    project = re.fullmatch(r"\[[^\n]*\]\(\.\./([^\n]+)\)", facts.get("Project", ""))
+    typed = _section(text, "What you typed")
+    clock = re.search(r"^### (\d{2}:\d{2})$", typed, re.M)
+    first = re.sub(r"^### [^\n]*\n", "", typed, count=1, flags=re.M)
+    first = re.split(r"^### ", first, maxsplit=1, flags=re.M)[0]
+    return {"session_project": project[1] if project else "", "session_date": facts.get("Date", ""),
+            "session_time": clock[1] if clock else "", "session_agent": facts.get("Agent", ""),
+            "session_turns": int(facts.get("Turns", "0")), "session_folder": facts.get("Folder", ""),
+            "session_first": _excerpt(first), "session_reply": _excerpt(_section(text, "Final reply"))}
+
+
+def _names(person: dict) -> list[str]:
+    aliases = re.findall(r"^- Also known as: (.*)$", person["text"], re.M)
+    names = [person["title"], *(name for alias in aliases for name in re.split(r"[,;]", alias))]
+    names = [re.sub(r"\[(?:[A-Za-z]*\d+)\]", "", name).strip() for name in names]
+    return [name for name in names if name and name.casefold() != "unknown"]
+
+
+def _name_pattern(name: str) -> str:
+    if re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]", name):
+        return re.escape(name) if len(name) >= 2 else ""
+    if len(name) < 3:
+        return ""
+    pattern = re.escape(name)
+    if len(name.split()) >= 2:
+        pattern = f"(?i:{pattern})"
+    elif len(re.findall(r"[^\W\d_]", name)) < 3:
+        return ""
+    # Latin edges only: "让Ody看看" names Ody, "melody" does not.
+    return rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
+
+
+def mentions(people: list[dict], sessions: list[dict]) -> dict[str, list[str]]:
+    ordered = sorted(sessions, key=lambda row: row["path"])
+    ordered.sort(key=lambda row: (row.get("session_date", ""), row.get("session_time", "")), reverse=True)
+    typed = [(row["path"], _section(row["text"], "What you typed")) for row in ordered]
+    found = {}
+    for person in people:
+        if person.get("needs_review"):
+            continue
+        patterns = [_name_pattern(name) for name in _names(person)]
+        pattern = "|".join(filter(None, patterns))
+        matches = [path for path, text in typed if pattern and re.search(pattern, text)]
+        if matches:
+            found[person["path"]] = matches
+    return found
 
 
 def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
@@ -184,7 +285,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     skipped = Counter()
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
-        settings = {"days": days, "timezone": str(zone)}
+        settings = {"days": days, "timezone": str(zone), "format": 2}
         if progress.get("settings") != settings:
             progress["files"] = {}
         progress["settings"] = settings
