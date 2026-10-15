@@ -808,7 +808,7 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None,
         return result
 
 
-SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it accepts.
+SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it accepts.
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800

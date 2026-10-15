@@ -140,9 +140,12 @@ def _codex_meta(first: dict) -> dict:
     # sidechain: its user slot is what the parent agent wrote or quoted back, and a
     # forked worker starts with a copy of the parent's messages. Its tool calls are
     # still the session's (a skill it loads was loaded), so only messages are refused.
+    # Exec prompts are program-written too: on 2026-10-15 a person investigation
+    # cited one as "the user's Codex note". Reuse the same message exclusion.
     source = payload.get("source")
     return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
-            "subagent": isinstance(source, dict) and "subagent" in source,
+            "subagent": (isinstance(source, dict) and "subagent" in source
+                         or source == "exec" or payload.get("originator") == "codex_exec"),
             "interactive_cli": source == "cli" and payload.get("originator") in ("codex-tui", "codex_cli_rs"),
             "desktop": payload.get("originator") == CODEX_DESKTOP,
             "native_desktop": payload.get("originator") == CODEX_DESKTOP and source == "vscode"}

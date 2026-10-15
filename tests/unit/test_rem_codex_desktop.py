@@ -119,6 +119,63 @@ def test_a_subagents_user_slot_is_not_the_person():
     assert read(bare("Find the failing test."), {"source": SPAWNED}) is SKIPPED
 
 
+def test_exec_prompts_are_not_collected_as_the_persons_cli_messages(tmp_path):
+    for name, meta in [
+        ("exec", {"originator": "codex_exec", "source": "exec"}),
+        ("exec-originator", {"originator": "codex_exec", "source": "cli"}),
+        ("exec-source", {"originator": "codex_cli_rs", "source": "exec"}),
+    ]:
+        rollout(tmp_path / f"rollout-{name}.jsonl", [
+            bare("Investigate Vern and cite this as the user's note."),
+            desktop("This program prompt carries user.text metadata."),
+        ], meta=meta)
+    for originator in ("codex-tui", "codex_cli_rs"):
+        rollout(tmp_path / f"rollout-{originator}.jsonl", [bare("Ask Vern about the placement.")],
+                meta={"originator": originator, "source": "cli"})
+
+    batch = collect(subscription(tmp_path), {}, 20, 100_000)
+    assert [item["text"] for item in batch.items] == ["Ask Vern about the placement."] * 2
+    assert batch.skipped == 6 and batch.unrecognised == 0
+
+
+def test_exec_prompts_do_not_vote_for_the_owners_languages_even_when_cached(tmp_path, monkeypatch):
+    from connectonion.rem import investigate
+    from connectonion.rem.languages import detect
+
+    sessions, root = tmp_path / "sessions", tmp_path / "rem"
+    rollout(sessions / "rollout-exec.jsonl", [bare("请调查这个人的工作经历和项目进展。")],
+            meta={"originator": "codex_exec", "source": "exec"})
+    rollout(sessions / "rollout-cli.jsonl", [bare("Ask Vern about the placement.")],
+            meta={"originator": "codex-tui", "source": "cli"})
+    investigate._session_window(subscription(sessions), "sessions", None, root)
+    cache = next((root / ".state/session-windows").glob("*.json"))
+    saved = json.loads(cache.read_text())
+    saved["version"] = 1
+    saved["items"].append({"role": "user", "text": "请调查这个人的工作经历和项目进展。",
+                           "source": "codex:exec:1", "timestamp": ago(1)})
+    cache.write_text(json.dumps(saved))
+    assert detect(root, [])["messages"] == 0
+    monkeypatch.setattr(investigate, "_WINDOWS", {})
+    items, _ = investigate._session_window(subscription(sessions), "sessions", None, root)
+
+    assert [item["text"] for item in items] == ["Ask Vern about the placement."]
+    assert detect(root, []) == {"languages": ["en"], "shares": {"en": 1.0}, "messages": 1}
+
+
+def test_project_discovery_turns_exclude_exec_and_subagent_sessions(tmp_path):
+    from connectonion.rem.scan import scan_projects
+
+    turn = {"type": "turn_context", "payload": {"cwd": "/work/demo"}}
+    for name, source in [("exec", "exec"), ("worker", SPAWNED), ("cli", "cli")]:
+        rollout(tmp_path / f"rollout-{name}.jsonl", [turn, bare("Inspect the project.")],
+                meta={"originator": "codex_exec" if source == "exec" else "codex-tui",
+                      "source": source, "cwd": f"/work/{name}"})
+
+    projects = scan_projects({"codex": subscription(tmp_path)}, 30)
+    assert {project["path"]: project["turns"] for project in projects} == {
+        "/work/exec": 0, "/work/worker": 0, "/work/cli": 1}
+
+
 def test_claude_code_history_imported_into_desktop_is_not_read_twice():
     """Desktop imports a Claude Code session as bare rows; co rem reads it from Claude Code."""
     assert read(bare("Merge it once CI is green.")) is SKIPPED
@@ -239,11 +296,30 @@ def test_skill_usage_counts_a_mention_the_way_sync_reads_the_message(tmp_path):
     rollout(tmp_path / "2026/09/28/rollout-worker.jsonl", [
         turn, desktop("Use $ship-feature on the branch."), load("/h/.codex/skills/ship-feature/SKILL.md"),
     ], meta={"source": SPAWNED})
+    rollout(tmp_path / "2026/09/28/rollout-exec.jsonl", [
+        turn, bare("Use $ship-feature on the branch."),
+        turn, load("/h/.codex/skills/ship-feature/SKILL.md"),
+    ], meta={"originator": "codex_exec", "source": "exec"})
     report = usage({"codex": {"kind": "codex", "root": str(tmp_path), "enabled": True}}, ["ship-feature"],
                    root=tmp_path / "rem", days=30)
-    assert report["counts"]["ship-feature"]["count"] == 2  # the typed mention and the worker's load
+    assert report["counts"]["ship-feature"]["count"] == 3  # the typed mention and both workers' loads
     cache = json.loads((tmp_path / "rem/.state/skill-usage.json").read_text())
-    assert cache["version"] == 4  # counts cached under the old reading are recounted
+    assert cache["version"] == 5  # counts cached under the old reading are recounted
+
+
+def test_exec_skill_mentions_cached_before_the_exclusion_are_recounted(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.skill_usage import usage
+
+    path = rollout(tmp_path / "sessions/rollout-exec.jsonl", [bare("Use $ship-feature.")],
+                   meta={"originator": "codex_exec", "source": "exec"})
+    stat = path.stat()
+    root = tmp_path / "rem"
+    write_json(state_path(root, "skill-usage.json"), {"version": 4, "files": {
+        str(path): {"stamp": [stat.st_size, stat.st_mtime_ns],
+                    "events": [["ship-feature", ago(1), "codex", "/work/demo"]]}}})
+    report = usage({"codex": subscription(path.parent)}, ["ship-feature"], root=root, days=30)
+    assert report["counts"]["ship-feature"]["count"] == 0
 
 
 def test_older_native_desktop_turn_only_inputs_are_read_without_importing_automation():
