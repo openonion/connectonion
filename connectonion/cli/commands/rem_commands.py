@@ -1717,8 +1717,10 @@ def make_rem_app(factory):
                 tier["note"] += (f"; to check it, set the same model again: "
                                  + _next(ctx, ["config", "set", "model", str(config.get("model"))])
                                  + " (one or two model calls)")
+            from ...rem.languages import owner_languages
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
-                     "config": config, "tier": tier, "routes": routing(root)}, ["status"])
+                     "config": config, "tier": tier, "routes": routing(root),
+                     "your languages": owner_languages(root)}, ["status"])
         if ctx.invoked_subcommand is None:
             _handle(ctx, operation, ["doctor"])
 

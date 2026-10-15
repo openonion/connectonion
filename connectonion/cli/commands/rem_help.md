@@ -439,6 +439,9 @@ Keys:     model                          gpt-6-luna (default); a new one is chec
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
                                          headings, labels and quotes stay as they are
+          languages                      zh,en: the languages you read, first in the reader's
+                                         "Read in" menu; unset, the ones detected from your own
+                                         sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
           limits.runner_calls_per_day    6
