@@ -414,6 +414,8 @@ def test_accept_inside_codex_writes_the_senders_conversation_as_a_thread_in_the_
     named = json.loads((tmp_path / "codex" / "session_index.jsonl").read_text())
     assert named["id"] == thread and named["thread_name"] in said
     assert f"codex resume {thread}" in said and "/resume" in said
+    # the last rule, where the agent reads what to tell the person (the middle of the output was skipped)
+    assert said.rstrip().split("End what you tell them with this line, word for word: ")[1].startswith(named["thread_name"])
 
 
 def test_accept_inside_claude_code_writes_a_session_that_claude_resume_opens(world, tmp_path, monkeypatch):

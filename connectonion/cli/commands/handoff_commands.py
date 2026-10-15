@@ -813,23 +813,21 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
             print(f"The sender's whole session: {folder / 'session.md'} (search it before asking them anything)")
     if brief or picked:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
-    if picked and opener.inside():
-        _print_thread(picked["bundle"], opener.inside())
-    out.print(_rules(code_text, code["id"]), markup=False)
+    thread = _thread_line(picked["bundle"], opener.inside()) if picked and opener.inside() else ""
+    out.print(_rules(code_text, code["id"], thread), markup=False)
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
 
 
-def _print_thread(bundle: dict, agent: str) -> None:
-    """The sender's conversation as a thread of its own (#2513). Last, and the one place a write may fail:
-    Codex's workspace-write sandbox keeps ~/.codex read-only even under --add-dir (Parrot, 2026-10-15),
-    which cost the whole accept its rules after the sender had been told."""
+def _thread_line(bundle: dict, agent: str) -> str:
+    """The sender's conversation as a thread of its own (#2513), and the line that tells the person.
+    Last, and the one place a write may fail: Codex's workspace-write sandbox keeps ~/.codex read-only
+    even under --add-dir (Parrot, 2026-10-15), which cost the accept its rules after the sender was told."""
     try:
-        line = opener.replay_here(bundle, Path.cwd(), agent)
+        return opener.replay_here(bundle, Path.cwd(), agent)
     except OSError as e:
-        line = (f"{opener.thread_name(bundle)} could not be added to {opener.CLIENTS[agent]}'s conversations from "
+        return (f"{opener.thread_name(bundle)} could not be added to {opener.CLIENTS[agent]}'s conversations from "
                 f"inside the sandbox ({e.strerror}). Ask to run co handoff thread {bundle['id']} outside it, or run "
                 "it yourself in a terminal in this folder.")
-    print(f"Tell the person here, in these words: {line}")
 
 
 def handle_thread(handoff_id: str, agent: Optional[str]) -> None:
@@ -888,7 +886,7 @@ def _rebuild(target: Path, saved: Path, patch: dict) -> None:
         git("commit", "-q", "-m", "The sender's uncommitted changes")
 
 
-def _rules(code_text: str, handoff_id: str) -> str:
+def _rules(code_text: str, handoff_id: str, thread: str = "") -> str:
     """What the recipient's agent does next: printed by accept, so it improves with each release
     instead of being frozen into a mail (#2459)."""
     return ("Do the work now, here in this folder, without asking the person here. Ask them only before something "
@@ -901,7 +899,9 @@ def _rules(code_text: str, handoff_id: str) -> str:
             "\"what you did, and the branch or PR\" (add --file result.patch for a patch). The sender's own uncommitted "
             "changes are already a commit here (\"The sender's uncommitted changes\"), so a diff against it holds only your "
             "own changes, and it applies where the sender is: say that, not that it includes theirs. In what you tell the person here, "
-            "name the work folder and the files you changed; do not mention the handoff skill, its file or other internal paths.")
+            "name the work folder and the files you changed; do not mention the handoff skill, its file or other internal paths."
+            # In the middle of accept's output, Codex left this line out of its report (Parrot, 2026-10-15).
+            + (f" End what you tell them with this line, word for word: {thread}" if thread else ""))
 
 
 def handle_ask(code_text: str, question: str) -> None:
