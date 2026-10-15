@@ -776,3 +776,17 @@ def test_a_page_written_today_waits_for_tomorrow_unless_much_is_new(world):
           [("user", f"more {n}", 0) for n in range(UPDATE_MESSAGES)])
     extract(world.root, world.subs)
     assert "projects/tide.md" in [r["record"] for r in queue(world.root, since=since, now=NOW)]
+
+
+def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch):
+    """short-term-rental-agent (2026-10-15): a Windows-1252 file in the repository
+    ("\x93", a curly quote) raised UnicodeDecodeError and lost the page twice."""
+    import hashlib
+    from connectonion.rem.project_pages import live_file_snapshot
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    note = repo / "pitch.txt"
+    note.write_bytes(b"Fee: \x938% of net\x94 revenue\n")
+    monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
+    snapshot = live_file_snapshot("", f"file:{note}@{hashlib.sha256(note.read_bytes()).hexdigest()}")
+    assert "8% of net" in snapshot["text"]

@@ -279,7 +279,9 @@ def live_file_snapshot(page: str, source: str) -> dict | None:
     raw = path.read_bytes()
     if len(raw) > FILE_SNAPSHOT_CHARS or hashlib.sha256(raw).hexdigest() != match[2] or b"\0" in raw:
         return None
-    text = raw.decode("utf-8")
+    # A Windows-encoded file in a real repository ("\x93", a curly quote) crashed
+    # the short-term-rental-agent page twice (2026-10-15); the hash pins the bytes.
+    text = raw.decode("utf-8", errors="replace")
     if SECRET_SHAPES.search(text) or PRIVATE.search(text):
         return None
     return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -302,7 +304,7 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
                              capture_output=True)
     if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
         return None
-    text = content.stdout.decode("utf-8")
+    text = content.stdout.decode("utf-8", errors="replace")
     if SECRET_SHAPES.search(text) or PRIVATE.search(text):
         return None
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
