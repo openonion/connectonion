@@ -36,6 +36,20 @@ def test_render_does_not_export_uncited_session_window_text(tmp_path):
     assert "private uncited session marker" not in render(tmp_path)
 
 
+def test_snapshot_shows_dead_running_run_as_interrupted(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.reader import snapshot
+    from connectonion.rem.service import run_logs, running_marker
+
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, "runs/run_dead.json"), {
+        "started_at": "2026-10-16T00:00:00+00:00", "outcome": "running", **running_marker()})
+    monkeypatch.setattr("connectonion.rem.service._alive", lambda pid: False)
+
+    assert snapshot(tmp_path)["logs"][0]["outcome"] == "interrupted"
+    assert run_logs(tmp_path)[0]["outcome"] == "running"
+
+
 def test_reader_lists_unreviewed_mail_contacts_without_making_empty_pages(tmp_path):
     from connectonion.rem.files import state_path, write_json
     prepare(tmp_path)

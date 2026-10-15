@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import CATEGORIES, MAP_DAYS, Notebook, RemError
-from .service import run_logs, status, subscriptions
+from .service import run_logs, seen_outcome, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
@@ -171,7 +171,8 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
+            "logs": [{**log, "outcome": seen_outcome(log)} for log in run_logs(root)[:20]],
+            "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}
 
 
