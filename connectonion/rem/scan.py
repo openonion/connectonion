@@ -474,7 +474,8 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
                                                 "files": []})
     for name, sub in subscriptions.items():
         kind = sub.get("kind")
-        if sub.get("enabled") is False or kind not in KINDS or not Path(sub.get("root", "")).is_dir():
+        if (sub.get("enabled") is False or not sub.get("consented")
+                or kind not in KINDS or not Path(sub.get("root", "")).is_dir()):
             continue
         files = source_files(sub)
         for number, path in enumerate(files, 1):

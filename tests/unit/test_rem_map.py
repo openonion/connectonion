@@ -1,3 +1,5 @@
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map
@@ -44,9 +46,29 @@ def test_project_scan_honors_disabled_and_project_scopes(tmp_path):
     for i, cwd in enumerate(('/allowed', '/outside')):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({'type': 'session_meta', 'payload': {
             'id': str(i), 'cwd': cwd, 'originator': 'codex_cli_rs'}}) + '\n')
-    sub = {'kind': 'codex', 'root': str(sessions), 'enabled': True, 'project': '/allowed'}
+    sub = {'kind': 'codex', 'root': str(sessions), 'enabled': True, 'consented': True, 'project': '/allowed'}
     assert [r['path'] for r in scan_projects({'local': sub}, 1)] == ['/allowed']
     assert scan_projects({'local': {**sub, 'enabled': False}}, 1) == []
+
+
+@pytest.mark.parametrize('kind', ['codex', 'claude-code'])
+@pytest.mark.parametrize('approval', [{}, {'consented': False}])
+def test_project_scan_does_not_walk_unconsented_sources(tmp_path, monkeypatch, kind, approval):
+    from connectonion.rem.scan import scan_projects
+    walked = []
+    monkeypatch.setattr('connectonion.rem.scan.source_files', lambda sub: walked.append(sub) or [])
+    source = {'kind': kind, 'root': str(tmp_path), 'enabled': True, **approval}
+    assert scan_projects({'local': source}, 1) == []
+    assert walked == []
+
+
+def test_map_reports_unconsented_sessions_as_not_scanned(tmp_path):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    source = {'kind': 'codex', 'root': str(tmp_path), 'enabled': True, 'consented': False}
+    result = build_map(tmp_path, {'codex': source}, {}, skill_directories=[skills])
+    assert f'codex: {tmp_path} — waiting for approval; not scanned' in result['coverage']
 
 
 def test_unavailable_mail_does_not_stop_other_maps(tmp_path):
@@ -143,7 +165,7 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
     for i, cwd in enumerate(paths):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
-    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions), 'consented': True}}, 1)
     assert {r['path'] for r in rows} == set(paths[-3:])
 
 
@@ -163,7 +185,7 @@ def test_project_scan_does_not_turn_rem_runs_into_a_project(tmp_path, monkeypatc
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': str(cwd)}}) + '\n')
     monkeypatch.setattr('connectonion.rem.scan.project_exclusion', lambda path: '')
 
-    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1, rem_root=root)
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions), 'consented': True}}, 1, rem_root=root)
     assert [row['path'] for row in rows] == [str(project)]
 
 
@@ -327,7 +349,7 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
         def list_between(self, start, end, limit):
             return []
 
-    subscriptions = {'codex': {'kind': 'codex', 'root': str(missing), 'enabled': True},
+    subscriptions = {'codex': {'kind': 'codex', 'root': str(missing), 'enabled': True, 'consented': True},
                      'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
     result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
     coverage = '\n'.join(result['coverage'])

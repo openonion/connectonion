@@ -133,7 +133,7 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
 
 
 def approve_sources(root: Path) -> None:
-    """Internal consent handoff for tests/future start; never called by inspection."""
+    """Record approved sources and the source/schedule summary; never called by inspection."""
     with maintenance_lock(root):
         prepare(root)
         validate(read_config(root))
@@ -594,17 +594,8 @@ def consent_summary(root: Path) -> dict:
                           "asleep runs once on wake); co rem stop removes it"}
 
 
-def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True) -> dict:
-    """Prepare what is missing, confirm access once, install the clock, run the first batch.
-
-    `confirm` receives the summary and returns True to proceed. Declining leaves
-    every source body unread and installs nothing. A repeated start re-applies
-    the schedule but does not ask again and does not repeat the initial batch.
-    """
-    root = root.resolve()
-    with maintenance_lock(root):
-        prepare(root)
-        validate(read_config(root))
+def ensure_consent(root: Path, *, confirm) -> bool:
+    """The same source and schedule approval before init's map and start's batch."""
     first = not state_path(root, "consent.json").is_file()
     # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
     # has not been agreed to. Asking only the first time meant it could never be
@@ -622,9 +613,26 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
                              or agreed.get("summary") != summary_fingerprint(root))
     if first or waiting or changed:
         if not confirm(consent_summary(root)):
-            return {"started": False, "consented": False, "first_batch": None}
+            return False
         subscribe_read_mail(root, offered)
         approve_sources(root)
+    return True
+
+
+def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True) -> dict:
+    """Prepare what is missing, confirm access once, install the clock, run the first batch.
+
+    `confirm` receives the summary and returns True to proceed. Declining leaves
+    every source body unread and installs nothing. A repeated start re-applies
+    the schedule but does not ask again and does not repeat the initial batch.
+    """
+    root = root.resolve()
+    with maintenance_lock(root):
+        prepare(root)
+        validate(read_config(root))
+    first = not state_path(root, "consent.json").is_file()
+    if not ensure_consent(root, confirm=confirm):
+        return {"started": False, "consented": False, "first_batch": None}
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
     # notebook lock, with the one the user is watching likely to lose.
