@@ -12,8 +12,9 @@ from typer.testing import CliRunner
 
 from connectonion.rem import service
 from connectonion.rem.config import prepare, set_config
-from connectonion.rem.files import Notebook, read_json, state_path, write_json
-from connectonion.rem.sessions import import_sessions, mentions, reader_fields
+from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from connectonion.rem.sessions import (import_sessions, mentions, read_summary, reader_fields,
+                                      rewrite_session, summary_path)
 
 NOW = datetime(2026, 10, 16, tzinfo=timezone.utc)
 STAMP = "2026-10-15T22:12:00Z"
@@ -220,6 +221,142 @@ def test_rem_session_format_change_renders_existing_pages(notebook):
     assert import_sessions(root, now=NOW)["unchanged"] == 1
 
 
+def tool_call(name, value, *, custom=False):
+    shape, field = ("custom_tool_call", "input") if custom else ("function_call", "arguments")
+    return {"type": "response_item", "payload": {"type": shape, "name": name,
+            field: value if custom else json.dumps(value)}}
+
+
+def tool_output(text, *, custom=False):
+    return {"type": "response_item", "payload": {
+        "type": "custom_tool_call_output" if custom else "function_call_output", "output": text}}
+
+
+def test_rem_session_codex_artifacts(notebook):
+    root, _, _ = notebook
+    secret = "sk-" + "a" * 30
+    pr = "https://github.com/openonion/connectonion/pull/123"
+    transcript(notebook, rows=[codex(),
+        tool_call("apply_patch", "*** Begin Patch\n*** Update File: app.py\n*** End Patch", custom=True),
+        tool_call("functions.apply_patch", {"patch": "*** Add File: reader.py", "workdir": "/work/feature"}),
+        tool_call("exec_command", {"cmd": "cd /work/demo && git switch -c feat/x\ngit commit -m 'Add the reader'"}),
+        tool_output(json.dumps({"output": "[feat/x 1a2b3c4] Add the reader\n 1 file changed"})),
+        tool_output("[feat/x 1a2b3c4] Add the reader", custom=True),
+        tool_call("exec_command", {"cmd": f"git push origin feat/x --token={secret}"}),
+        tool_call("exec_command", {"cmd": f"gh pr create --body '{secret}'"}),
+        tool_output(pr + "\n" + pr, custom=True),
+        tool_call("exec_command", {"cmd": "gh pr view https://github.com/other/repo/pull/9"}),
+        codex("Done.", role="assistant")])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    page = book.read(book.list("sessions")[0])
+    artifacts = page.split("## Artifacts\n")[1].split("## What you typed")[0]
+    assert artifacts.count(pr) == 1 and "https://github.com/other/repo/pull/9" in artifacts  # command only
+    assert "- Pull requests: " + pr + "\n" in artifacts
+    assert artifacts.count("- Commits: `1a2b3c4` Add the reader (feat/x)") == 1
+    assert "- Branches: feat/x\n" in artifacts
+    assert "- Files changed (2): /work/demo/app.py, /work/feature/reader.py" in artifacts
+    assert "- Commands: 4 run; notable: `git commit -m 'Add the reader'`; `git push origin feat/x" in artifacts
+    assert "`gh pr create --body '[secret-shaped text removed by co rem]'`" in artifacts
+    assert secret not in page
+    assert reader_fields(page)["session_artifacts"] == {"prs": 1, "commits": 1, "files": 2}
+
+
+def test_rem_session_claude_artifacts_do_not_become_typed_messages(notebook):
+    root, _, _ = notebook
+    call = claude(role="assistant")
+    call["message"]["content"] = [
+        {"type": "tool_use", "name": "Edit", "input": {"file_path": "app.py", "old_string": "old"}},
+        {"type": "tool_use", "name": "Bash", "input": {"command": "cd /work/demo && git push origin feat/x"}}]
+    result = claude()
+    result["message"]["content"] = [{"type": "tool_result", "content": [
+        {"type": "text", "text": "To github.com:openonion/connectonion.git\nfeat/x -> feat/x"}]}]
+    sidechain = claude(role="assistant", isSidechain=True)
+    sidechain["message"]["content"] = [{"type": "tool_use", "name": "Write", "input": {"file_path": "ignored.py"}}]
+    transcript(notebook, kind="claude-code", rows=[claude(), call, result, sidechain, claude("Done", role="assistant")])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    page = book.read(book.list("sessions")[0])
+    assert "- Turns: 1" in page
+    assert "- Files changed (1): /work/demo/app.py" in page
+    assert "- Commands: 1 run; notable: `git push origin feat/x`" in page
+    assert "ignored.py" not in page and "feat/x -> feat/x" not in page
+    assert "### 09:12\n> Keep the reader simple" in page
+
+
+def test_rem_session_artifact_caps_root_commits_and_json_outputs(notebook):
+    root, _, _ = notebook
+    pr = "https://github.com/openonion/connectonion/pull/1"
+    commands = "git checkout -b feat/a\ngit branch feat/b\ngit branch -D ignored\n" \
+               "git worktree add /work/tree -b feat/c\ngit commit -m 'fix; git push fictional'\n" \
+               + "\n".join(f"gh pr view {n}" for n in range(15))
+    patch = "\n".join(f"*** Update File: file{n}.py" for n in range(35))
+    transcript(notebook, rows=[codex(), tool_call("exec_command", {"cmd": commands}),
+        tool_call("apply_patch", patch, custom=True), tool_call("apply_patch", patch, custom=True),
+        tool_output(json.dumps({"url": pr})),
+        tool_output("\n".join(f"[feat/a {'%07x' % n}] Commit {n}" for n in range(22))),
+        tool_output("[main (root-commit) abcdef0] Initial commit"),
+        tool_output(" " * 20_000 + "https://github.com/ignored/repo/pull/2"),
+        tool_call("apply_patch", " " * 20_000 + "\n*** Update File: ignored.py", custom=True)])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    page = book.read(book.list("sessions")[0])
+    assert "- Pull requests: " + pr in page and "ignored/repo" not in page
+    assert "- Branches: feat/a, feat/b, feat/c, main" in page and "Branches: ignored" not in page
+    assert "- Files changed (35):" in page and "/work/demo/file29.py" in page
+    assert "/work/demo/file30.py" not in page and "ignored.py" not in page
+    assert "- … and 3 more commits" in page and page.count("- Commits:") == 20
+    assert "`git commit -m 'fix; git push fictional'`" in page and "`git push fictional'`" not in page
+    notable = page.split("; notable: ")[1].split("\n", 1)[0]
+    assert notable.count("`gh pr view") == 11
+    assert reader_fields(page)["session_artifacts"] == {"prs": 1, "commits": 23, "files": 35}
+
+
+def test_rem_session_summary_and_rewrite_keep_raw_attachment(notebook):
+    root, _, _ = notebook
+    book = Notebook(root)
+    book.write("people/ody.md", "# Ody\n\n## Facts\n")
+    book.stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
+    transcript(notebook, rows=[codex("Older turn outside window", stamp="2025-01-01T00:00:00Z"),
+        codex("Keep the reader simple\nDo not change the raw attachment."),
+        codex("Ask Ody for feedback", stamp="2026-10-15T22:13:00Z"), codex("Ready.", role="assistant")])
+    import_sessions(root, now=NOW)
+    record, = book.list("sessions")
+    raw = book.read(record).split("## What you typed")[1]
+    key = "codex:3456-abcdef12"
+    assert read_summary(root, key) == {}
+    saved = {"key": key, "turns": 2, "title": "A structured session reader", "summary": "Added a session reader. Raw messages remain attached.",
+             "tags": ["reader", "rem"], "outcome": "partial", "decisions": [
+                 {"time": "09:12", "quote": "Keep the reader simple"},
+                 {"time": "09:12", "quote": "Make the reader uncomplicated"},
+                 {"time": "09:13", "quote": "Do not change the raw attachment."}],
+             "followups": ["Ask Ody about Demo; avoid the melody and Demonstration."],
+             "summarised_at": STAMP, "model": "future-model"}
+    write_json(summary_path(root, key), saved)
+    assert read_summary(root, key) == saved
+    assert rewrite_session(root, key) == record
+    page = book.read(record)
+    assert page.startswith("# A structured session reader\n\n## Summary\n" + saved["summary"])
+    assert "- Outcome: partial\n- Tags: reader, rem\n- Started with: Keep the reader simple" in page
+    assert "## Decisions\n- “Keep the reader simple” (09:12)" in page
+    assert "Make the reader uncomplicated" not in page and "” (09:13)" not in page
+    assert "## Follow-ups\n- Ask [Ody](../people/ody.md) about [Demo](../projects/demo.md); avoid the melody and Demonstration." in page
+    assert page.split("## What you typed")[1] == raw
+    fields = reader_fields(page)
+    assert fields["session_title"] == saved["title"] and fields["session_summary"] == saved["summary"]
+    assert fields["session_tags"] == saved["tags"] and fields["session_outcome"] == "partial"
+    assert fields["session_started_with"] == "Keep the reader simple"
+    assert fields["session_turns"] == 2 and "Older turn outside window" not in page
+    saved["turns"] = 1
+    write_json(summary_path(root, key), saved)
+    with maintenance_lock(root):
+        rewrite_session(root, key, lock_held=True)
+    assert book.read(record).count("## Summary") == 1
+    assert book.read(record).split("## What you typed")[1] == raw
+    with pytest.raises(RemError, match="not been imported"):
+        rewrite_session(root, "codex:missing")
+
+
 def test_rem_session_reader_fields(notebook):
     root, _, _ = notebook
     transcript(notebook, rows=[codex("Ask  Ody\n  about the reader"), codex("Second message"),
@@ -230,7 +367,10 @@ def test_rem_session_reader_fields(notebook):
     fields = reader_fields(book.read(record))
     assert fields == {"session_project": "", "session_date": "2026-10-16", "session_time": "09:12",
                       "session_agent": "Codex", "session_turns": 2, "session_folder": "/work/demo",
-                      "session_first": "Ask Ody about the reader", "session_reply": "Ready. Open the reader."}
+                      "session_first": "Ask Ody about the reader", "session_reply": "Ready. Open the reader.",
+                      "session_title": "Ask Ody", "session_started_with": "Ask Ody", "session_summary": "",
+                      "session_tags": [], "session_outcome": "",
+                      "session_artifacts": {"prs": 0, "commits": 0, "files": 0}}
     from connectonion.rem.reader import snapshot
     row = next(r for r in snapshot(root)["records"] if r["path"] == record)
     assert all(row[key] == value for key, value in fields.items())
