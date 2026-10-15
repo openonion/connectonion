@@ -70,6 +70,19 @@ def test_drop_claims_removes_the_line_and_reports_claims_it_cannot_find():
     assert unlocated == ['not on the page']
 
 
+@pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
+@pytest.mark.parametrize('claim', ['{field}: vern.chan@unsw.edu.au', 'vern.chan@unsw.edu.au'])
+def test_drop_claims_keeps_uncited_fields_but_drops_a_refuted_phone(field, claim):
+    """Vern Chan's map address was lost to the citation audit (2026-10-16 trial)."""
+    text = ('# Vern Chan\n\n## Facts\n'
+            f'- {field}: vern.chan@unsw.edu.au\n- Phone: 0400 000 000 [1]\n\n'
+            '## Sources\n- [1] gmail:a — 2026-10-16\n')
+    kept, unlocated = drop_claims('people/vern-chan.md', text,
+                                  [claim.format(field=field), 'Phone: 0400 000 000'])
+    assert kept == text.replace('- Phone: 0400 000 000 [1]', '- Phone: Unknown')
+    assert unlocated == []
+
+
 def test_a_glued_heading_and_a_repeated_section_are_merged_not_refused():
     text = ('# Hamish\n\nLead [1].\n\n## Facts\n- Email: h@example.com\n\n## Who they are\n'
             'He leads the program [1]. ## Our relationship\n- Colleagues [1]\n\n'

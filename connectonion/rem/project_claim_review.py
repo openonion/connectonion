@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from .files import read_json
+from .page_review import uncited_field
 from .reader_model import SOURCE, cited_context, later_in_threads
 
 
@@ -73,8 +74,12 @@ PEOPLE = (
     "confirmed, offered or promised fails unless their own message says so; a cc'd person is not a party. "
     "An open thread fails when a later message (later_messages: what came after the cited mail in its thread) "
     "resolves it or when its event date has passed; "
-    "a past ask is not a current debt unless the page dates it. A quote in “…” must match the original "
-    "word for word in its original language. A contact detail (phone, email, company, role) fails unless "
+    "a past ask is not a current debt unless the page dates it. "
+    # Vern Chan's email and a quote's final period failed the audit (2026-10-16 trial).
+    "Email, Handles and Also known as are filled and checked by code; do not judge them. "
+    "A quote's punctuation, spacing and quote-mark style are checked by code; "
+    "judge only whether the words are the original's, in its original language. "
+    "A contact detail (phone, company, role) fails unless "
     "the original shows it belongs to this person, not to someone named beside it. A claim that something "
     "is unknown, unconfirmed or not established fails when a supplied original establishes it. "
     # kupjb5r8 and z3qdttxi failed a correct First/Last contact because the
@@ -149,6 +154,12 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         report = {"verdict": "insufficient", "findings": [], "reason": "Audit returned an invalid decision"}
     else:
         report["verdict"] = verdict
+        # The audit must not buy repairs or erase Vern Chan's map address (2026-10-16 trial).
+        findings = [f for f in report["findings"] if not uncited_field(f.get("claim", ""))]
+        if findings != report["findings"]:
+            report["findings"] = findings
+            if verdict == "fail" and not findings:
+                report["verdict"] = "pass"
     report["sources_supplied"] = len(material["sources"])
     report["missing_citations"] = missing
     report["scope"] = "Cited originals only; not all Project inputs or live deployment"

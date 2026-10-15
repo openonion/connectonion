@@ -110,6 +110,73 @@ def test_runner_status_is_excluded_from_prose_audit(tmp_path, monkeypatch):
     assert 'do not audit it as a prose claim' in seen['prompt']
 
 
+def test_people_audit_leaves_identity_fields_and_quote_style_to_code(tmp_path):
+    seen = []
+    candidate = '# Vern Chan\n\nVern wrote “Thank you.” [1]\n\n## Sources\n- [1] gmail:a\n'
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+                                record='people/vern-chan.md',
+                                items=[{'source': 'gmail:a', 'text': 'Thank you'}])
+    assert 'Email, Handles and Also known as are filled and checked by code; do not judge them' in seen[0]
+    assert "A quote's punctuation, spacing and quote-mark style are checked by code" in seen[0]
+    assert "judge only whether the words are the original's" in seen[0]
+
+
+@pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
+def test_only_uncited_field_audit_findings_accept_the_page_unchanged(tmp_path, monkeypatch, field):
+    """Vern Chan's own address must not buy repair turns or become Unknown (2026-10-16)."""
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'people/vern-chan.md'
+    notebook.stub_person(record, 'Vern Chan', ['vern.chan@unsw.edu.au'], email='vern.chan@unsw.edu.au')
+    before = notebook.read(record)
+    candidate = (before.replace('- Unknown — not investigated yet', '- Unknown')
+                 .replace('## Who they are\n- Unknown', '## Who they are\nVern sent a greeting. [1]')
+                 .replace('- Also known as: Unknown', '- Also known as: Vern')
+                 .replace('- (none yet)', '- [1] gmail:a — 2026-10-16'))
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+    items = [{'source': 'gmail:a', 'from': 'Vern Chan <vern.chan@unsw.edu.au>',
+              'text': 'Hello', 'timestamp': '2026-10-16T00:00:00Z'}]
+    # Settle the runner's normal formatting first so the comparison covers the whole page.
+    runner._promote_candidate(notebook, record, path, before, items, tmp_path, None)
+    before = notebook.read(record)
+    path.write_text(before)
+    value = next(line[2:] for line in before.splitlines() if line.startswith(f'- {field}:'))
+    finding = {'claim': value, 'issue': 'No adjacent citation', 'evidence': '',
+               'required_correction': 'Remove'}
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
+        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})})
+
+    def no_repair(*_args):
+        raise AssertionError('An UNCITED-field finding must not trigger a repair turn')
+
+    runner.promote_with_repairs(notebook, record, path, before, items, tmp_path, {},
+                                workdir=tmp_path, config={}, stage='investigate', run=no_repair)
+    assert notebook.read(record) == before
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['verdict'] == 'pass' and report['findings'] == []
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted'] is True
+
+
+def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
+    candidate = ('# Vern Chan\n\n## Facts\n- Email: vern.chan@unsw.edu.au\n'
+                 '- Phone: 0400 000 000 [1]\n\n## Sources\n- [1] gmail:a\n')
+    findings = [{'claim': claim, 'issue': 'Wrong', 'evidence': '', 'required_correction': 'Remove'}
+                for claim in ['- Email: vern.chan@unsw.edu.au', 'Phone: 0400 000 000']]
+
+    def audited(*_args):
+        return {'result': json.dumps({'verdict': 'FAIL', 'findings': findings})}
+
+    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+                                                record='people/vern-chan.md',
+                                                items=[{'source': 'gmail:a', 'text': 'Hello'}])
+    assert report['verdict'] == 'fail' and report['findings'] == [findings[1]]
+
+
 def test_audit_sees_session_folder_without_promoting_it_to_subfolder_purpose(tmp_path, monkeypatch):
     record, source = 'projects/work.md', 'codex:session:5121301'
     folder = tmp_path / 'work'
