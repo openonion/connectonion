@@ -111,7 +111,8 @@ def draft(exchanges: list[dict], what: str, model: str = None, sender: str = "",
     return top
 
 
-# The mail asks "Could you pick up “{title}”?"; a title that is itself an order repeats the verb (b26 review).
+# The subject names the title ("Handing you the context of “{title}”"); a title that is itself an order
+# reads as one more verb in front of it (b26 review), so its leading verb goes.
 ORDER = re.compile(r"^\s*(?:(?:pick up|continue(?: with)?|take over|hand off|finish)\b[\s:：-]*|(?:接着做|继续做|继续|接手)[\s:：-]*)",
                    re.I)
 
@@ -375,20 +376,20 @@ CLIENT_NAMES = {"claude": "Claude Code", "codex": "Codex"}
 
 WORDS = {   # the mail in the language the sender wrote in, in their own voice (Aaron, 2026-10-13:
            # "不是以我作为第一人称写的 有点好像是 AI 写的 这个不够亲切友好 不够能够取得别人的信任")
-    "en": {"subject": "Could you pick up “{title}”?",
-           "lead": "Hi, I've been working on “{title}” with {client}, and I'd love your help taking it from here.",
+    "en": {"subject": "Handing you the context of “{title}”",
+           "lead": "Hi, I've been working on “{title}” with {client}. Here's the whole context, in case you can take it from here.",
            "talked": "Where we got to: {point}.",
-           "view": "See what I'm passing you",
+           "view": "See the context I'm passing you",
            "how": "Or carry on straight away: open a new conversation in Codex or Claude Code and paste the line "
                   "below. My session continues there, with the code. Nothing runs until you paste it.",
            "select": "Triple-click the line to select it, then copy it (Cmd+C on a Mac, Ctrl+C elsewhere).",
            "sign": "Thanks,\n{name}",
            "footer": "Sent with ConnectOnion (open source).", "guide": "What's this?",
            "space": " ", "colon": " "},
-    "zh": {"subject": "能帮我接着做「{title}」吗？",
-           "lead": "你好，我最近在用 {client} 做「{title}」，想请你帮忙接着做下去。",
+    "zh": {"subject": "把「{title}」的上下文交给你",
+           "lead": "你好，我最近在用 {client} 做「{title}」。这是完整的上下文，想请你帮忙接着做下去。",
            "talked": "我们目前讨论到：{point}。",
-           "view": "看看我交给你的内容",
+           "view": "看看我交给你的上下文",
            "how": "如果想直接接着做：在 Codex 或 Claude Code 里新开一个对话，粘贴下面这一行，我的会话和代码会在那里接着进行。"
                   "粘贴之前，什么都不会运行。",
            "select": "在这一行上连点三下即可选中，然后复制（Mac 按 Cmd+C，其他电脑按 Ctrl+C）。",
