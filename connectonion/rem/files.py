@@ -19,6 +19,7 @@ from .facts import FIELDS
 # Person-page labels the roster reads back. Contact lines are skipped when
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
 CITATION = re.compile(r"\s*\[W?\d+\]")
 

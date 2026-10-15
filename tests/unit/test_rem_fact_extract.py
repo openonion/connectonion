@@ -458,6 +458,58 @@ def test_last_contact_is_human_mail_between_them_not_a_broadcast_or_notice():
     assert found(rows, "Last contact")[0]["source"] == "gmail:h1"
 
 
+@pytest.mark.parametrize("handle", ["agentmail.cc", "@agentmail.cc"])
+@pytest.mark.parametrize("domain", ["agentmail.cc", "team.agentmail.cc"])
+def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, handle, domain):
+    """2026-10-16 first-run trial: orgs cited two-way mail but Last contact stayed Unknown."""
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.project_claim_review import packet
+
+    adi = f"Adi <adi@{domain}>"
+    sent = {**mail("gmail:sent", "2026-08-22T01:00:00Z", "Can we talk?", speaker="Me <me@x.example>", role="user"),
+            "participants": {"from": "me@x.example", "to": [adi], "cc": []}}
+    reply = {**mail("gmail:reply", "2026-09-03T01:00:00Z", "Regards,\nAdi\nM: 0400 555 019\n", speaker=adi),
+             "participants": {"from": adi, "to": ["me@x.example"], "cc": []}}
+    broadcast = {**sent, "source": "gmail:broadcast", "timestamp": "2026-10-06T01:00:00Z",
+                 "participants": {"to": [f"p{n}@{domain}" for n in range(40)], "cc": []}}
+    items = [sent, reply, broadcast]
+    rows = extract(items, [handle])
+    assert found(extract([sent], [handle]), "Last contact")[0]["source"] == "gmail:sent"
+    assert not found(extract([broadcast], [handle]), "Last contact")
+    unaddressed = mail("gmail:unaddressed", "2026-10-07T01:00:00Z", "Hello", speaker="Me <me@x.example>", role="user")
+    assert not found(extract([unaddressed], [handle]), "Last contact")
+    assert rows == [{"field": "Last contact", "value": "2026-09-03", "qualifier": "",
+                     "source": "gmail:reply", "date": "2026-09-03"}]
+
+    notebook = Notebook(tmp_path)
+    record = "orgs/agentmail.md"
+    notebook.stub_org(record, "AgentMail", ["agentmail.cc"])
+    page, restored = facts.keep_extracted(record, notebook.read(record), rows)
+    assert "- Last contact: 2026-09-03 [1]" in page
+    assert "- [1] gmail:reply — 2026-09-03" in page
+    assert "- First contact: Unknown" in page
+    assert restored == rows
+    audit, missing = packet(notebook, page, items=[facts_item(rows), *items])
+    assert not missing
+    assert audit["runner_facts"] == [{"field": "Last contact", "value": "2026-09-03", "source": "gmail:reply"}]
+
+
+@pytest.mark.parametrize("speaker, role, recipients, subject", [
+    ("noreply@agentmail.cc", "other", ["me@x.example"], "Digest"),
+    ("adi@agentmail.cc", "other", ["me@x.example"], "Important Notice"),
+    ("adi@agentmail.cc", "other", [f"p{n}@agentmail.cc" for n in range(40)], "Hello all"),
+    ("adi@notagentmail.cc", "other", ["me@x.example"], "Hello"),
+    ("adi@agentmail.cc.evil.example", "other", ["me@x.example"], "Hello"),
+    ("someone@else.example", "other", ["adi@agentmail.cc"], "Hello"),
+    ("me@x.example", "user", ["someone@else.example"], "Hello"),
+    ("me@x.example", "user", [], "Hello"),
+])
+def test_org_domain_last_contact_rejects_notices_broadcasts_and_unrelated_mail(speaker, role, recipients, subject):
+    item = {**mail("gmail:excluded", "2026-10-07T01:00:00Z", "Hello", speaker=speaker, role=role, subject=subject),
+            "participants": {"to": recipients, "cc": []}}
+    assert not found(extract([item], ["@agentmail.cc"]), "Last contact")
+
+
 # ------------------------------------------- promotion keeps a contact detail only when the mail shows it
 
 def contact_page(email, phone, sources):
