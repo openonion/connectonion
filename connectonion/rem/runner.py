@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
-from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 
 
 class RunFailed(RemError):
@@ -263,6 +263,8 @@ AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Run every co rem model turn from its stable task workspace."""
+    # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
+    prompt = prompt.replace("\0", "")
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup.
@@ -581,6 +583,18 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
 PROMOTE_WAIT_SECONDS = 1800
 
 
+@contextmanager
+def _promotion_lock(root, candidate, usage, lock_held):
+    """A finished page waits; a timeout names the kept candidate and its paid usage."""
+    with ExitStack() as held:
+        if not lock_held:
+            try:
+                held.enter_context(maintenance_lock(root, wait=PROMOTE_WAIT_SECONDS))
+            except RemError as error:
+                raise RunFailed(f"{error}; the finished page is kept at {candidate}", usage) from error
+        yield
+
+
 # A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
 # busiest project (LayeredVisions) and 1.9.2b3 browser.
 CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ",
@@ -795,7 +809,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
         from .project_claim_review import retain_cited_originals, review as review_claims
-        with nullcontext() if lock_held else maintenance_lock(notebook.root):
+        # First-run backfill holds the lock per saved message (2026-10-16 trial).
+        with _promotion_lock(notebook.root, candidate, usage, lock_held):
             retain_cited_originals(notebook, text, items)
         report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
                                             record=record, items=items)
@@ -812,12 +827,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
     # because the scheduled sync had just started (#1885).
-    with ExitStack() as held:
-        if not lock_held:
-            try:
-                held.enter_context(maintenance_lock(notebook.root, wait=PROMOTE_WAIT_SECONDS))
-            except RemError as error:
-                raise RunFailed(f"{error}; the finished page is kept at {candidate}", total_usage) from error
+    with _promotion_lock(notebook.root, candidate, total_usage, lock_held):
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
@@ -896,7 +906,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         else:
             accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
-    with nullcontext() if lock_held else maintenance_lock(notebook.root):
+    with nullcontext() if lock_held else maintenance_lock(notebook.root, wait=WRITE_WAIT_SECONDS):
         if {r: notebook.read(r) for r in notebook.list()} != before:
             write_json(directory / 'review.json', {'accepted': False, 'errors': ['Notebook changed during maintenance'],
                        'factual_quality': 'not automatically assessed'})
