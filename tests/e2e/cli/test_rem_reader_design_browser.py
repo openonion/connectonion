@@ -672,6 +672,32 @@ def test_project_hero_leads_with_current_finding_before_historical_pattern(reade
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
 
 
+def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Now: A release was requested in July. [1]\\n'
+        + '- At stake: Keep the release evidence current. [2]\\n'
+        + '\\n## Where it stands\\n- 2026-10-14 — An older release was prepared. [1]\\n'
+        + '- 2026-10-16 – origin/main has a commit titled “1.9.3b5 release”. [2]\\n'
+        + '- 2026-10-15 - The release checks passed. [3]';
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 1000})
+        assert page.locator('.focus-statement').inner_text() == 'Origin/main has a commit titled “1.9.3b5 release”.'
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = r.text.split('## Where it stands')[0] + '## Where it stands\\n- Unknown';
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 1000})
+        assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
+
+
 def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')

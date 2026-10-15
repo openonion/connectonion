@@ -2185,6 +2185,14 @@ function threadRow(r, t, withPage) {
 function sectionHead(title, note) {
   return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
 }
+function newestStanding(r) {
+  if (r.category !== "projects" || r.path === REM.owner) return "";
+  const lines = (section(r, "where it stands")?.text || "").split("\n")
+    .map(line => /^\s*-\s+(\d{4}-\d{2}-\d{2})\s*[—–-]\s+(.+)/.exec(line))
+    .filter(line => line && !/^Unknown\b/i.test(line[2].trim()));
+  lines.sort((a, b) => b[1].localeCompare(a[1]));
+  return lines[0]?.[2] || "";
+}
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
@@ -2194,7 +2202,7 @@ function memoryStatement(r) {
   const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
-  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
+  const statement = plainLine(newestStanding(r) || (line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary));
   return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
 }
 function memoryConnection(records) {
@@ -2994,7 +3002,7 @@ function recordFocus(r) {
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
   const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
   const projectDescription = plainLine(projectPurposeLine);
-  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
+  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" && !newestStanding(r) &&
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
   const finding = plainLine(findingLine);
