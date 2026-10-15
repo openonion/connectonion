@@ -319,7 +319,7 @@ def test_project_mentions_ignores_generic_names_and_addresses(project_documents,
 
 
 @pytest.mark.parametrize('handle,text', [('任昱', '**任昱**：那个表其实就是收款记录。'),
-                                         ('naturewill.ai', 'Delivery for NATUREWILL.AI')])
+                                         ('clientco.example', 'Delivery for CLIENTCO.EXAMPLE')])
 def test_project_mentions_reads_two_character_names_and_domains(project_documents, handle, text):
     book, folder = project_documents
     (folder / 'README.txt').write_text(text)
