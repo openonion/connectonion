@@ -904,7 +904,8 @@ def make_rem_app(factory):
         from ...rem.files import Notebook, state_path
         from ...rem.map import build_map, owner_summary
         from ...rem import runner as rem_runner
-        from ...rem.service import mail_available, mail_client, subscribe_read_mail, subscriptions
+        from ...rem.service import ensure_consent, mail_available, mail_client, subscribe_read_mail, subscriptions
+        from ...rem.source import KINDS
         from .rem_output import StageProgress
         all_history = all_history or investigate_all
         # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
@@ -920,11 +921,11 @@ def make_rem_app(factory):
             window = [] if days == MAP_DAYS else ["--days", str(days)]
             init_window = [*window, *(["--all-history"] if all_history else [])]
             map_days = 36500 if all_history else days
-            sources = subscriptions(root)
             from ...rem.files import RemError
             selected = set(mail)
             if selected - {"gmail", "outlook"}:
                 raise RemError("--mail must be gmail or outlook")
+            sources = subscriptions(root)
             available = {kind for kind in ("gmail", "outlook") if mail_available(kind)}
             if not mail:
                 # A mailbox the user explicitly unsubscribed stays out, the same
@@ -933,6 +934,10 @@ def make_rem_app(factory):
                                 if not sources.get(kind, {}).get("unsubscribed"))
                 selected.update(sub["kind"] for sub in sources.values()
                                 if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
+            subscribe_read_mail(root, selected)
+            run_state["consented"] = ensure_consent(
+                root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes))
+            sources = subscriptions(root)
             clients, errors = {}, []
             for kind in sorted(selected):
                 try:
@@ -968,6 +973,11 @@ def make_rem_app(factory):
             unread = {row.get("source") for row in result.get("errors") or []}
             subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
+            waiting = [name for name, source in sources.items()
+                       if source.get("kind") in KINDS and source.get("enabled") and not source.get("consented")]
+            if waiting:
+                tips.append("Skipped " + ", ".join(waiting) + ": waiting for approval; not scanned. Approve with "
+                            + _next(ctx, ["init", *init_window, "--yes"]) + ".")
             unsaved = (result.get("mail_archive") or {}).get("failed")
             if unsaved:
                 # A cache miss, not a mailbox problem: a real first run lost every
@@ -1157,12 +1167,15 @@ def make_rem_app(factory):
                               *(["--retry-refused"] if failed_page["outcome"] == "refused" else [])]
                              if failed_page else ["init"])
             if estimate_only:
-                background = {"started": False, "reason": "Estimate only; no consent or schedule installed."}
+                background = {"started": False, "reason": "Estimate only; no schedule installed."}
             elif not start_background:
                 background = {"started": False, "reason": "Background upkeep left off by --no-start."}
             elif failed or (write_mine is not False and
                             (incomplete or (result.get("runner") or {}).get("problem"))):
                 background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
+            elif not run_state["consented"]:
+                background = {"started": False, "reason": "Background upkeep needs approval. Run "
+                              + _next(ctx, ["start", "--yes"]) + " after reviewing its summary."}
             else:
                 from ...rem import schedule as rem_schedule
                 from ...rem.files import RemError

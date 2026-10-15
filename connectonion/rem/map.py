@@ -313,7 +313,7 @@ def _people_groups(rows: list[dict]) -> list[list[dict]]:
 
 
 def _session_state(subscription: dict, projects: list) -> str:
-    """Disabled, missing, and scanned-but-empty are three different next steps.
+    """Disabled, unapproved, missing, and scanned-but-empty need different next steps.
 
     "unavailable or disabled" told the user to check the wrong thing half the
     time: a path that does not exist wants the client installed or a --root, a
@@ -327,6 +327,8 @@ def _session_state(subscription: dict, projects: list) -> str:
     """
     if not subscription.get('enabled', True):
         return 'disabled; not scanned'
+    if not subscription.get('consented'):
+        return 'waiting for approval; not scanned'
     if not Path(subscription.get('root', '')).is_dir():
         return 'no session directory at this path; nothing to scan'
     return 'scanned' if projects else 'scanned; no sessions in this window'

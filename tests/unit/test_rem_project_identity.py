@@ -74,7 +74,7 @@ def test_scan_counts_turns_only_for_a_lone_session_outside_a_repository(tmp_path
     typed = [{"type": "user", "cwd": str(chat), "sessionId": "s", "timestamp": f"2026-09-2{i}T00:00:00Z",
               "message": {"content": f"message {i}"}} for i in range(2)]
     (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in typed))
-    rows = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    rows = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [(r["path"], r["sessions"], r["turns"]) for r in rows] == [(str(chat), 1, 2)]
 
 
@@ -89,7 +89,7 @@ def test_scan_discovers_claude_projects_after_a_metadata_preamble(tmp_path, monk
             {"type": "user", "cwd": str(project), "sessionId": "s",
              "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}]
     (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [(p["path"], p["sessions"], p["turns"]) for p in projects] == [(str(project), 1, 1)]
 
 
@@ -97,7 +97,7 @@ def test_scan_skips_a_claude_session_without_a_working_directory(tmp_path):
     sessions = tmp_path / "claude" / "encoded-project"
     sessions.mkdir(parents=True)
     (sessions / "s.jsonl").write_text('{"type": "queue-operation"}\n{"type": "mode"}\n', encoding="utf-8")
-    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500) == []
 
 
 @pytest.mark.parametrize("preamble_count, expected", [(255, 1), (256, 0)])
@@ -111,7 +111,7 @@ def test_claude_project_discovery_stops_after_a_bounded_preamble(tmp_path, monke
                "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}
     (sessions / "s.jsonl").write_text('{"type": "mode"}\n' * preamble_count + json.dumps(message) + "\n",
                                      encoding="utf-8")
-    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [p["path"] for p in projects] == [str(project)] * expected
 
 
@@ -121,7 +121,7 @@ def test_claude_project_discovery_stops_after_its_byte_budget(tmp_path):
     preamble = {"type": "queue-operation", "content": "x" * 1_000_000}
     message = {"type": "user", "cwd": str(tmp_path / "project"), "sessionId": "s"}
     (sessions / "s.jsonl").write_text(json.dumps(preamble) + "\n" + json.dumps(message) + "\n", encoding="utf-8")
-    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500) == []
 
 
 def test_worktrees_fold_into_their_repository_and_are_counted(tmp_path):
