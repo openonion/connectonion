@@ -266,6 +266,10 @@ def _logged(root, record, phase, call, quiet=False):
         if isinstance(error, RemError):
             error._rem_retry_page = True
             raise
+        # Where it broke, for co rem logs: a UnicodeDecodeError on a real project
+        # page (2026-10-15) said only its type, and nothing could find the file.
+        import traceback
+        run["traceback"] = "".join(traceback.format_exception(error))[-4000:]
         failure = RemError(f"Investigation could not finish ({type(error).__name__}); "
                             "check co rem logs and retry this page")
         failure._rem_retry_page = True
