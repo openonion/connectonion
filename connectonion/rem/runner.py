@@ -752,7 +752,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
+        from .config import read_config
+        from .page_review import settle_sources, source_dates
+        from .service import notebook_zone
+        dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
+        notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
     return audit_usage
 
 
@@ -799,7 +803,11 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
-            notebook.write(record, renumber_sources(facts.names_not_addresses(record, text)))
+            from .config import read_config
+        from .page_review import settle_sources, source_dates
+        from .service import notebook_zone
+        dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
+        notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
     return refusals
 
 

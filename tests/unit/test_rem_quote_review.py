@@ -134,3 +134,12 @@ def test_an_audit_finding_goes_with_its_line_after_the_repairs(tmp_path, monkeyp
                                 workdir=tmp_path, config={}, stage='investigate')
     saved = notebook.read('people/ody.md')
     assert 'introduce Sam' not in saved and '“send the deck by Friday”' in saved
+
+
+def test_a_source_listed_twice_becomes_one_dated_by_its_original():
+    from connectonion.rem.page_review import settle_sources
+    text = ('# X\n\nA [1]. B [2]. `rows[2]`\n\n## Sources\n- [1] gmail:a — 2026-01-01\n'
+            '- [2] gmail:a — 2026-02-02\n- [3] gmail:b — a date the writer typed\n- [4] gmail:c — 2026-04-04\n')
+    settled = settle_sources(text, {'gmail:a': '2026-01-05', 'gmail:b': '2026-03-03'})
+    assert settled == ('# X\n\nA [1]. B [1]. `rows[2]`\n\n## Sources\n- [1] gmail:a — 2026-01-05\n'
+                       '- [3] gmail:b — 2026-03-03\n- [4] gmail:c — 2026-04-04\n')

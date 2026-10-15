@@ -1049,3 +1049,49 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
         elif CONTACT_LINE.match(line):
             kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
+
+
+SOURCE_LINE = re.compile(r'^([ \t]*- \[(\d+)\][ \t]+)([a-z][\w-]*:[^\s]+)(.*)$', re.M)
+
+
+def source_dates(root: Path, text: str, items: list[dict], zone) -> dict[str, str]:
+    """Each cited original's own date, in the notebook's timezone."""
+    from .reader_model import cited_context
+    from .source import timestamp
+    stamps = {i['source']: i.get('timestamp') for i in items if i.get('source') and i.get('timestamp')}
+    stamps.update({source: context['time'] for source, context in cited_context(root, [{'text': text}]).items()
+                   if context.get('time')})
+    return {source: timestamp(stamp).astimezone(zone).date().isoformat() for source, stamp in stamps.items()
+            if re.fullmatch(r'\d{4}-\d{2}-\d{2}T[^\s]*(?:Z|[+-]\d{2}:?\d{2})', str(stamp))}
+
+
+def settle_sources(text: str, dates: dict[str, str]) -> str:
+    """One number per source, dated by its original rather than by the writer.
+
+    The audit found the same mail listed twice with two dates, and dates the
+    model typed that matched no message; the date is code's to know.
+    """
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not marker:
+        return text
+    first, merge = {}, {}
+    for _, number, source, _ in SOURCE_LINE.findall(tail):
+        if source in first:
+            merge[number] = first[source]
+        else:
+            first[source] = number
+
+    def line(match):
+        if match[2] in merge:
+            return '\0'
+        if match[3] in dates:
+            return f'{match[1]}{match[3]} — {dates[match[3]]}'
+        return match[0]
+
+    tail = SOURCE_LINE.sub(line, tail).replace('\0\n', '').replace('\0', '')
+    swap = lambda part: re.sub(r'\[(\d+)\](?!\()', lambda m: f'[{merge.get(m[1], m[1])}]', part)  # noqa: E731
+    parts, last = [], 0
+    for code in CODE.finditer(head):
+        parts += [swap(head[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(head[last:]) + marker + tail
