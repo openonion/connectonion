@@ -150,6 +150,9 @@ class Message:
     # arrived and here it is" -- and, when there is an error, why.
     media: Optional[dict] = None
 
+    # Structured source routing data; absent on existing chat messages.
+    event: Optional[dict] = None
+
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
             "id": self.id,
@@ -163,6 +166,8 @@ class Message:
             "mentioned": self.mentioned,
             "at": self.at,
         }
+        if self.event is not None:
+            record["event"] = self.event
         if self.media is not None:
             record["media"] = self.media
         if raw and self.raw is not None:
@@ -193,6 +198,7 @@ class Message:
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
             sender_name=str(record.get("sender_name") or ""),
             media=record.get("media") if isinstance(record.get("media"), dict) else None,
+            event=record.get("event") if isinstance(record.get("event"), dict) else None,
         )
 
 

@@ -381,3 +381,17 @@ It does not recover a conversation this inbox has never seen. Recovery reconcile
 only chats already in `received.jsonl`, and in a group it admits only messages
 that mention the bot — unrelated discussion during a gap is dropped on purpose,
 not lost.
+
+## GitHub (upcoming preview)
+
+`co github watch OWNER/REPO` saves an explicit repository allowlist and reuses
+the owner's `gh auth login`. `co github listen` collects issue/PR activity,
+comments and reviews into the same durable inbox. `co github watches` lists
+configuration/checkpoints. `co github receive`, `done`, `ls`, `chats` and `log`
+use the usual local queue conventions.
+
+GitHub's consumer runs locally: `co github consume --no-reply ./dispatch-task`.
+It never posts stdout or reactions to GitHub. Other inbox consumers can also
+use `--no-reply`; their default remains a reply. See `docs/cli/github.md` for
+polling cost, first-run baseline, explicit backfill and recovery limits. REM
+reading these records is a follow-up.

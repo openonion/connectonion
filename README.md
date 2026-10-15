@@ -52,11 +52,13 @@ work, keep it on your machine, and carry it into the next task.
 <a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/remote.svg?v=3" width="80" height="80" alt="Remote browser" title="Remote browser · co remote-browser"></a>
 <a href="docs/cli/gdrive.md"><img src="https://www.connectonion.com/logos/gdrive.svg?v=3" width="80" height="80" alt="Google Drive" title="Google Drive · co gdrive"></a>
 <a href="docs/cli/youtube.md"><img src="https://www.connectonion.com/logos/youtube.svg?v=3" width="80" height="80" alt="YouTube" title="YouTube · co youtube"></a>
+<a href="docs/cli/tiktok.md"><img src="https://www.connectonion.com/logos/tiktok.svg?v=3" width="80" height="80" alt="TikTok plans" title="TikTok plans · co tiktok"></a>
 <a href="docs/cli/synology.md"><img src="https://www.connectonion.com/logos/syno.svg?v=3" width="80" height="80" alt="Synology NAS" title="Synology NAS · co syno"></a>
 <a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/search.svg?v=3" width="80" height="80" alt="Web search" title="Web search · co search"></a>
 <a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/fetch.svg?v=3" width="80" height="80" alt="Web fetch" title="Web fetch · co fetch"></a></p>
 
 <p><b>Issues &amp; feedback</b><br>
+<a href="docs/cli/github.md"><img src="https://www.connectonion.com/logos/github.svg?v=3" width="80" height="80" alt="GitHub" title="GitHub · co github (next preview)"></a>
 <a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=3" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
 <a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a></p>
 

@@ -486,3 +486,21 @@ the matching docs-site channel, then publishes only from the reviewed exact tag.
 - **Discord**: https://discord.gg/4xfD9k8AUF
 - **GitHub**: https://github.com/openonion/connectonion
 - **PyPI**: https://pypi.org/project/connectonion/
+
+## CLI audits: discovery across all three surfaces
+
+For every CLI audit, check each command's corresponding entry, command name, icon,
+documentation link and release status in all three places:
+
+- GitHub README logo wall: `README.md`.
+- Docs website logo wall: sibling `docs-site/components/CommandLogoWall.tsx`.
+- Landing page logo wall: sibling `landpages/connect-onion-landingpage/src/components/cli/facts.ts`
+  and its icon/card mapping in `wall-data.ts`.
+
+Compare the full service inventory on each CLI audit, not only the command
+being edited. Add missing entries and verify links and desktop/mobile layout.
+Commands covered by an existing feature entry need no duplicate logo; record
+that mapping in the audit.
+Link companion PRs when a surface is a separate repository, and label features
+that have not shipped as upcoming preview work. Record the three-surface result
+in the PR; command help checks alone do not complete a CLI audit.

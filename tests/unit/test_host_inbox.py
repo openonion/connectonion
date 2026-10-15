@@ -245,3 +245,17 @@ class TestTheHostWatchesTheListener:
             assert wait(lambda: provider.sent), "the Host stopped answering after restarting its listener"
         finally:
             asyncio.run(shutdown())
+
+
+def test_read_only_source_passes_full_record_and_never_posts_a_reply(tmp_path, rig, monkeypatch):
+    import json
+    box, provider, turns = rig
+    provider.read_only = True
+    box.deliver(Message(id='github-event', chat='acme/app#1', sender='alice',
+                        text='Fix login', at='2026-10-02T10:00:00Z',
+                        event={'repo': 'acme/app', 'number': 1}))
+    startup, shutdown = lifespan(tmp_path, provider, monkeypatch)
+    run_until(startup, shutdown, until=lambda: box.completed.exists())
+    assert json.loads(turns[0]['prompt'])['event'] == {'repo': 'acme/app', 'number': 1}
+    assert provider.sent == []
+    assert 'github-event' in box.completed.read_text()
