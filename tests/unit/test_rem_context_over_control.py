@@ -233,3 +233,21 @@ def test_manual_run_record_keeps_page_evidence_and_inspection_report(tmp_path):
     assert record["report"] == "Inspected /work/reader/README.md"
     from connectonion.rem.reader import snapshot
     assert snapshot(root)["logs"][0]["report"] == record["report"]
+
+
+def test_an_unexpected_failure_keeps_its_traceback_in_the_run_record(tmp_path):
+    """A UnicodeDecodeError on a real project page (2026-10-15) said only its type."""
+    from connectonion.cli.commands.rem_commands import _logged
+    from connectonion.rem.files import RemError
+
+    root = tmp_path / "rem"
+    prepare(root)
+
+    def broken(update):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    with pytest.raises(RemError, match="could not finish"):
+        _logged(root, "projects/reader.md", "investigate", broken, quiet=True)
+    record = json.loads(next((root / ".state/runs").glob("run_*.json")).read_text())
+    assert record["outcome"] == "failed"
+    assert "in broken" in record["traceback"] and "UnicodeDecodeError" in record["traceback"]

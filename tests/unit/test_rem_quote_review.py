@@ -155,6 +155,13 @@ def test_an_audit_claim_is_found_without_its_citation_and_only_its_sentence_goes
     assert '- 2026-01-12: Hamish replied that the team would miss him [2].' in kept
 
 
+def _audit_fails_with(monkeypatch, claim):
+    finding = {'claim': claim, 'issue': 'x', 'evidence': 'x', 'required_correction': 'remove'}
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
+        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]}), 'usage': {}})
+    monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
+
+
 def test_a_claim_on_a_linked_name_is_found_and_a_claim_already_gone_does_not_refuse(tmp_path, monkeypatch):
     """v193q1 (2026-10-15): 10 of 28 pages were refused because the audit's claim named
     'Sasha Whittle' while the page, linked by code, said '[Sasha Whittle](...)', or
@@ -166,13 +173,73 @@ def test_a_claim_on_a_linked_name_is_found_and_a_claim_already_gone_does_not_ref
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
-    finding = {'claim': 'A sentence a repair already rewrote.', 'issue': 'x', 'evidence': 'x',
-               'required_correction': 'x'}
-    monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
-        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]}), 'usage': {}})
-    monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
+    _audit_fails_with(monkeypatch, 'A sentence a repair already rewrote.')
     runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')
     assert '“send the deck by Friday”' in notebook.read('people/ody.md')
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['factual_quality'] == 'bounded citation audit failed; 0 refuted claims removed, 1 already gone'
+
+
+def test_a_page_kept_after_its_audit_failed_says_how_many_claims_went(tmp_path, monkeypatch):
+    """b827e4cc: the review record said only "failed" for a page that was saved."""
+    notebook, old, written, items = _person(tmp_path)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
+    _audit_fails_with(monkeypatch, 'Ody offered: “Happy to introduce Sam”')
+    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+                                workdir=tmp_path, config={}, stage='investigate')
+    assert '“send the deck by Friday”' in notebook.read('people/ody.md')
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted'] is True
+    assert review['factual_quality'] == 'bounded citation audit failed; 1 refuted claims removed'
+
+
+def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch):
+    """"insufficient" means the audit read too little; nobody showed a claim wrong."""
+    notebook, old, written, items = _person(tmp_path)
+    written = written.replace('- 2026-10-02 — Ody offered: “I can intro you to Sam” [1] — open',
+                              '- 2026-10-02 — Ody offered to introduce Sam [1] — open')
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written)
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
+        'result': json.dumps({'verdict': 'INSUFFICIENT', 'findings': []}), 'usage': {}})
+    monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('nothing to repair'))
+    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+                                workdir=tmp_path, config={}, stage='investigate')
+    assert 'introduce Sam' in notebook.read('people/ody.md')
+    assert json.loads((tmp_path / 'review.json').read_text())['factual_quality'] == \
+        'bounded citation audit insufficient'
+
+
+def test_a_page_someone_else_changed_meanwhile_gets_no_repair_turn(tmp_path, monkeypatch):
+    notebook, old, written, items = _person(tmp_path)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written)
+    notebook.write('people/ody.md', old + '\nEdited by the user.\n')
+    monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('a repair would overwrite their edit'))
+    with pytest.raises(runner.RunFailed, match='Page changed during'):
+        runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+                                    workdir=tmp_path, config={}, stage='investigate')
+    assert 'Edited by the user.' in notebook.read('people/ody.md')
+
+
+def test_a_person_audit_reads_the_turns_own_mail_and_knows_the_people_rules_and_the_date(tmp_path):
+    """A mail the turn was handed but the archive does not hold is still an original;
+    who said what, passed events and contact ownership are where person pages went wrong."""
+    from connectonion.rem import project_claim_review
+    notebook, old, written, items = _person(tmp_path)
+    sent = []
+
+    def audit(_workspace, prompt, *_args):
+        sent.append(prompt)
+        return {'result': json.dumps({'verdict': 'PASS', 'findings': []}), 'usage': {}}
+
+    report, _ = project_claim_review.review(notebook, written, {}, tmp_path, audit, record='people/ody.md',
+                                            items=items)
+    assert report['verdict'] == 'pass' and report['sources_supplied'] == 1
+    assert 'Could you send the deck by Friday?' in sent[0]
+    assert 'a cc\'d person is not a party' in sent[0] and 'Today is ' in sent[0]
+    project = page('- Built the reader [1]', '- [1] gmail:abc — 2026-10-01\n')
+    project_claim_review.review(notebook, project, {}, tmp_path, audit, record='projects/atlas.md', items=items)
+    assert 'a cc\'d person is not a party' not in sent[1] and 'Today is ' in sent[1]

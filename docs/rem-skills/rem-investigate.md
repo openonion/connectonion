@@ -583,3 +583,22 @@ branch remains pending today.
 These trials establish narrow failures and fixes, not semantic reliability
 across all project pages. [The independent review](../design-evidence/rem-source-review-2026-10-03/REVIEW.md)
 records the actual rendered states and remaining checks.
+
+## Quote or summarise (decision 076)
+
+The section names what is quoted (a request, offer or promise; a price, number,
+date or condition; a decision, correction or instruction; how someone asks to
+be reached; who someone says they are) and what may be summarised (Facts
+fields, routine sequence, what code or files show). In the claims audit of a
+1.9.2b3 sample, 45% of sampled claims misled where the page retold instead of
+quoting. The instruction budget was raised from 15,000 to 16,500 characters to pay for it;
+the duplicated Open-threads and attribution rules it replaces were folded in.
+
+- **The speaker is the cited message's `From`.** In a thread, "X approved"
+  went to the wrong person, and a cc'd person became a party.
+- **An old open item keeps its date**, and an event whose date has passed is
+  not open: Ody's page kept 13 and 14 October events open on the 15th. Every
+  turn is now told today's date.
+- **Search before `Unknown`.** Tamara's page called co-working access "not
+  established" while the mail granting it was in the page's own material. The
+  audit now fails an "unknown" claim a supplied original settles.
