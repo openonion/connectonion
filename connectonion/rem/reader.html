@@ -3585,6 +3585,22 @@ function supportingSpan(claim, excerpt) {
 function markedSpan(text, range) {
   return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
 }
+function evidenceSentence(trigger, line) {
+  const content = line.querySelector(".focus-statement") || line;
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  if (content.contains(trigger)) {
+    range.setEndBefore(trigger);
+    const chips = [...content.querySelectorAll("a.cite")], previous = chips[chips.indexOf(trigger) - 1];
+    if (previous) range.setStartAfter(previous);
+  }
+  const copy = range.cloneContents();
+  copy.querySelectorAll(".privacy-tag, .dir, .age, .when").forEach(node => node.remove());
+  const text = copy.textContent.trim();
+  // A closing full stop belongs to this sentence, not the previous one.
+  const beforeEnd = text.replace(/[.;]["”’')\]]*$/, "");
+  return text.slice(Math.max(beforeEnd.lastIndexOf("."), beforeEnd.lastIndexOf(";")) + 1).trim();
+}
 function evidenceLine(trigger) {
   const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
   const copy = (line.querySelector(".focus-statement") || line).cloneNode(true);
@@ -3592,7 +3608,17 @@ function evidenceLine(trigger) {
   const path = new URLSearchParams(trigger.hash.slice(1)).get("r");
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
-  return { text: copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  const sentence = evidenceSentence(trigger, line);
+  return { text: sentence.length >= 20 ? sentence : copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+}
+function scrollEvidenceSpan(panel) {
+  const mark = panel.querySelector(".evidence-original mark.span");
+  if (!mark || !mark.getClientRects().length) return;
+  const bounds = mark.getBoundingClientRect();
+  // Scroll only the panel, keeping the page behind it in place.
+  panel.scrollTo({ top: panel.scrollTop + bounds.top - panel.getBoundingClientRect().top - panel.clientTop
+      - (panel.clientHeight - bounds.height) / 2,
+    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 }
 let evidenceTrigger = null;
 function evidenceLayout() {
@@ -3661,6 +3687,7 @@ function openEvidence(r, number, trigger) {
   evidenceLayout();
   panel.scrollTop = 0;
   close.focus({ preventScroll: true });
+  scrollEvidenceSpan(panel);
   return true;
 }
 document.addEventListener("keydown", event => {
