@@ -22,6 +22,10 @@ REFUSED = "refused-investigations.json"
 # A refused page is retried at most this often: the same material refused
 # again costs a turn, and new material reaches the page through its own path.
 RETRY_HOURS = 20
+# A page refused this many times on the same material waits for new material:
+# a deterministic refusal (a page over the size limit) would otherwise cost a
+# turn every day for ever.
+MAX_RETRIES = 3
 
 
 def refused_pages(root: Path) -> dict:
@@ -50,8 +54,10 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
     ledger = refused_pages(root)
     entry = ledger.get(record) or {}
     held = {item.get("source"): item for item in [*(entry.get("material") or []), *(material or [])]}
+    new = set(sources) - set(entry.get("sources", []))
     ledger[record] = {"sources": sorted({*entry.get("sources", []), *sources}),
                       "at": datetime.now(timezone.utc).isoformat(), "why": why[:300], "stage": stage,
+                      "retries": 0 if new else entry.get("retries", 0),
                       **({"material": list(held.values())} if held else {})}
     write_json(state_path(root, REFUSED), ledger)
 
@@ -80,7 +86,8 @@ def due_for_retry(root: Path, *, now: datetime | None = None) -> dict:
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=RETRY_HOURS)).isoformat()
     entries = refused_pages(root).items()
     return dict(sorted(((record, entry) for record, entry in entries
-                        if max(entry.get("at", ""), entry.get("retried_at", "")) < cutoff),
+                        if max(entry.get("at", ""), entry.get("retried_at", "")) < cutoff
+                        and entry.get("retries", 0) < MAX_RETRIES),
                        key=lambda pair: pair[1].get("at", "")))
 
 
@@ -89,4 +96,5 @@ def mark_retried(root: Path, record: str) -> None:
     ledger = refused_pages(root)
     if record in ledger:
         ledger[record]["retried_at"] = datetime.now(timezone.utc).isoformat()
+        ledger[record]["retries"] = ledger[record].get("retries", 0) + 1
         write_json(state_path(root, REFUSED), ledger)

@@ -154,3 +154,17 @@ def test_a_page_refused_again_on_retry_stays_in_the_ledger(tmp_path, monkeypatch
                      config=default_config())
     assert refused_for(root, "people/b.md")["material"] == material
     assert due_for_retry(root) == {}   # refused again just now: tomorrow, not on the next run
+
+
+def test_a_page_refused_again_on_the_same_material_stops_being_retried(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import refusals
+    later = datetime.now(timezone.utc) + timedelta(days=30)
+    refusals.remember_refusal(tmp_path, 'people/a.md', ['gmail:1'], 'too long', stage='investigate')
+    for _ in range(refusals.MAX_RETRIES):
+        assert 'people/a.md' in refusals.due_for_retry(tmp_path, now=later)
+        refusals.mark_retried(tmp_path, 'people/a.md')
+        refusals.remember_refusal(tmp_path, 'people/a.md', ['gmail:1'], 'too long', stage='investigate')
+    assert 'people/a.md' not in refusals.due_for_retry(tmp_path, now=later)
+    refusals.remember_refusal(tmp_path, 'people/a.md', ['gmail:2'], 'too long', stage='investigate')
+    assert 'people/a.md' in refusals.due_for_retry(tmp_path, now=later)
