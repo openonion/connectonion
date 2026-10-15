@@ -129,6 +129,8 @@ jobs:
   # for Proactor Windows or Darwin close/shutdown behavior.
   remote-browser-egress:
     runs-on: ${{ matrix.os }}
+    # Allow 20 minutes for dependency installation and five focused test files across all OSes.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

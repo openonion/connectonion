@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 TESTS = (ROOT / ".github/workflows/tests.yml").read_text()
@@ -24,6 +26,11 @@ def test_ci_audits_the_exact_dependency_lock():
     assert "uv export --quiet --frozen --no-dev --no-emit-project" in TESTS
     assert "python -m pip_audit" in TESTS
     assert "--disable-pip --strict --progress-spinner off" in TESTS
+
+
+def test_remote_browser_egress_has_a_job_timeout():
+    workflow = yaml.safe_load(TESTS)
+    assert workflow["jobs"]["remote-browser-egress"].get("timeout-minutes") == 20
 
 
 def test_every_pull_request_runs_the_test_workflow():
