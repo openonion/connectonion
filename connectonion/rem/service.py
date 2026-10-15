@@ -523,7 +523,7 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     spent = quota.points_spent(logs, meter)
     limits = config["limits"]
     if "unknown" in meter:
-        week = f"unknown ({meter['unknown']}); the daily call cap is the only bound"
+        week = "unknown: pages still run, bounded only by the daily call cap. Next: co rem doctor"
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
