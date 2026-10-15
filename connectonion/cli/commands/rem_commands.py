@@ -954,8 +954,11 @@ def make_rem_app(factory):
                                    capture_sources=True, progress=progress)
                 run_state["result"] = result
                 if not estimate_only:
-                    from ...rem.sessions import import_sessions
+                    from ...rem.sessions import import_sessions, summarise_line, summarise_sessions
                     result["sessions"] = import_sessions(root, days=days, consented_only=True)
+                    if not rem_runner.ready(config)[0]:
+                        result["sessions_summary"] = summarise_sessions(root, limit=40, say=progress)
+                        progress(summarise_line(result["sessions_summary"]))
                 if archive_mail and not estimate_only and result.get("source_inventory"):
                     from ...rem.files import read_json, write_json
                     from ...rem.mail_archive import archive_init

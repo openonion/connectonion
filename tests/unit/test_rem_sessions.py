@@ -14,7 +14,7 @@ from connectonion.rem import service
 from connectonion.rem.config import prepare, set_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from connectonion.rem.sessions import (import_sessions, mentions, read_summary, reader_fields,
-                                      rewrite_session, summary_path)
+                                      rewrite_session, summarise_line, summarise_sessions, summary_path)
 
 NOW = datetime(2026, 10, 16, tzinfo=timezone.utc)
 STAMP = "2026-10-15T22:12:00Z"
@@ -221,15 +221,15 @@ def test_rem_session_format_change_renders_existing_pages(notebook):
     assert import_sessions(root, now=NOW)["unchanged"] == 1
 
 
-def tool_call(name, value, *, custom=False):
+def tool_call(name, value, *, custom=False, call=None):
     shape, field = ("custom_tool_call", "input") if custom else ("function_call", "arguments")
-    return {"type": "response_item", "payload": {"type": shape, "name": name,
+    return {"type": "response_item", "payload": {"type": shape, "name": name, "call_id": call,
             field: value if custom else json.dumps(value)}}
 
 
-def tool_output(text, *, custom=False):
+def tool_output(text, *, custom=False, call=None):
     return {"type": "response_item", "payload": {
-        "type": "custom_tool_call_output" if custom else "function_call_output", "output": text}}
+        "type": "custom_tool_call_output" if custom else "function_call_output", "output": text, "call_id": call}}
 
 
 def test_rem_session_codex_artifacts(notebook):
@@ -243,8 +243,10 @@ def test_rem_session_codex_artifacts(notebook):
         tool_output(json.dumps({"output": "[feat/x 1a2b3c4] Add the reader\n 1 file changed"})),
         tool_output("[feat/x 1a2b3c4] Add the reader", custom=True),
         tool_call("exec_command", {"cmd": f"git push origin feat/x --token={secret}"}),
-        tool_call("exec_command", {"cmd": f"gh pr create --body '{secret}'"}),
-        tool_output(pr + "\n" + pr, custom=True),
+        tool_call("exec_command", {"cmd": "gh pr list"}, call="list"),
+        tool_output("https://github.com/openonion/connectonion/pull/7", call="list"),
+        tool_call("exec_command", {"cmd": f"gh pr create --body '{secret}'"}, call="create"),
+        tool_output(pr + "\n" + pr, custom=True, call="create"),
         tool_call("exec_command", {"cmd": "gh pr view https://github.com/other/repo/pull/9"}),
         codex("Done.", role="assistant")])
     import_sessions(root, now=NOW)
@@ -252,11 +254,12 @@ def test_rem_session_codex_artifacts(notebook):
     page = book.read(book.list("sessions")[0])
     artifacts = page.split("## Artifacts\n")[1].split("## What you typed")[0]
     assert artifacts.count(pr) == 1 and "https://github.com/other/repo/pull/9" in artifacts  # command only
+    assert "pull/7" not in artifacts  # listed, not this session's
     assert "- Pull requests: " + pr + "\n" in artifacts
     assert artifacts.count("- Commits: `1a2b3c4` Add the reader (feat/x)") == 1
     assert "- Branches: feat/x\n" in artifacts
     assert "- Files changed (2): /work/demo/app.py, /work/feature/reader.py" in artifacts
-    assert "- Commands: 4 run; notable: `git commit -m 'Add the reader'`; `git push origin feat/x" in artifacts
+    assert "- Commands: 5 run; notable: `git commit -m 'Add the reader'`; `git push origin feat/x" in artifacts
     assert "`gh pr create --body '[secret-shaped text removed by co rem]'`" in artifacts
     assert secret not in page
     assert reader_fields(page)["session_artifacts"] == {"prs": 1, "commits": 1, "files": 2}
@@ -293,10 +296,11 @@ def test_rem_session_artifact_caps_root_commits_and_json_outputs(notebook):
     patch = "\n".join(f"*** Update File: file{n}.py" for n in range(35))
     transcript(notebook, rows=[codex(), tool_call("exec_command", {"cmd": commands}),
         tool_call("apply_patch", patch, custom=True), tool_call("apply_patch", patch, custom=True),
-        tool_output(json.dumps({"url": pr})),
+        tool_call("exec_command", {"cmd": "gh pr create --fill"}, call="pr"),
+        tool_output(json.dumps({"url": pr}), call="pr"),
         tool_output("\n".join(f"[feat/a {'%07x' % n}] Commit {n}" for n in range(22))),
         tool_output("[main (root-commit) abcdef0] Initial commit"),
-        tool_output(" " * 20_000 + "https://github.com/ignored/repo/pull/2"),
+        tool_output(" " * 20_000 + "https://github.com/ignored/repo/pull/2", call="pr"),
         tool_call("apply_patch", " " * 20_000 + "\n*** Update File: ignored.py", custom=True)])
     import_sessions(root, now=NOW)
     book = Notebook(root)
@@ -551,3 +555,252 @@ def test_rem_import_sessions_cli_json(notebook):
     output = json.loads(result.stdout)
     assert output["ok"] is True and output["data"]["imported"] == 1
     assert "list sessions" in str(output["next"])
+
+
+@pytest.fixture
+def summary_ready(monkeypatch):
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
+
+
+def summary_answer(*ids):
+    return {"result": json.dumps({"sessions": [dict(
+        id=id, title="Build the session reader", summary="Added the reader. The requested work is done.",
+        tags=["REM", "Reader UI!", "rem"], outcome="done", decisions=[], followups=[])
+        for id in ids]}), "usage": {"input_tokens": 100, "output_tokens": 20, "cost": 0.01}}
+
+
+def test_rem_session_summarise_batches_persist_and_account(notebook, summary_ready):
+    root, _, _ = notebook
+    transcript(notebook)
+    transcript(notebook, session="second", rows=[codex("Use day headings", stamp="2026-10-16T01:00:00Z")])
+    import_sessions(root, now=NOW)
+    workspaces, lines = [], []
+
+    def run(workspace, prompt, config, stage):
+        assert stage == "abstract" and workspace.parent == state_path(root, "tasks")
+        assert workspace.is_dir() and not list(workspace.iterdir())
+        with maintenance_lock(root):
+            pass  # Model calls must leave the notebook available for other writers.
+        assert "Use day headings" in prompt if not workspaces else "Build a simple session reader" in prompt
+        workspaces.append(workspace)
+        return summary_answer("s1")
+
+    report = summarise_sessions(root, batch=1, run=run, say=lines.append)
+    assert {k: report[k] for k in ("summarised", "failed", "batches", "dropped_quotes")} == {
+        "summarised": 2, "failed": 0, "batches": 2, "dropped_quotes": 0}
+    assert report["usage"] == {"input_tokens": 200, "output_tokens": 40, "cost": 0.02}
+    assert len(report["batch_seconds"]) == 2 and report["seconds"] >= 0
+    assert len(lines) == 2 and lines[1].startswith("Summarised 1 sessions (batch 2 of 2,")
+    assert all(not path.exists() for path in workspaces)
+    progress = read_json(state_path(root, "sessions.json"), {})
+    for key, record in progress["sessions"].items():
+        saved = read_summary(root, key)
+        assert saved["turns"] == 1 and saved["summarised_at"] and saved["model"]
+        page = Notebook(root).read(record)
+        assert "## Summary\nAdded the reader." in page
+        assert "- Tags: rem, reader-ui" in page and "- Outcome: done" in page
+    assert read_json(state_path(root, "session-tags.json"), {}) == {"rem": 2, "reader-ui": 2}
+    record, = service.run_logs(root)
+    assert record["phase"] == "sessions-summary" and record["outcome"] == "completed"
+    assert record["usage"] == report["usage"] and record["items"] == 2
+    assert set(record["changed"]) == set(progress["sessions"].values())
+    assert record["runner_attempts"] == 0 and service.status(root)["runner_attempts_today"] == 0
+    assert summarise_line(report) == "Summarised 2 of 2 sessions in 2 batches; 0 left for next time; 0 quotes dropped"
+    assert summarise_sessions(root, run=lambda *a: pytest.fail("already summarised"))["batches"] == 0
+
+
+def test_rem_session_summarise_decisions_validate_one_message_and_time(notebook, summary_ready):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex("Keep the reader simple"),
+        codex("Use day headings", stamp="2026-10-15T22:13:00Z")])
+    import_sessions(root, now=NOW)
+    answer = summary_answer("s1")
+    data = json.loads(answer["result"])
+    data["sessions"][0]["decisions"] = [
+        {"time": "09:12", "quote": "Make the reader uncomplicated"},
+        {"time": "09:12", "quote": "Keep the reader simple"},
+        {"time": "09:12", "quote": "Use day headings"}]
+    answer["result"] = "```json\n" + json.dumps(data) + "\n```"
+    report = summarise_sessions(root, run=lambda *a: answer)
+    assert report["dropped_quotes"] == 2 and report["summarised"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["decisions"] == [
+        {"time": "09:12", "quote": "Keep the reader simple"}]
+
+
+def test_rem_session_summarise_drops_empty_decision_spans(notebook, summary_ready):
+    root, _, _ = notebook
+    transcript(notebook)
+    import_sessions(root, now=NOW)
+    answer = summary_answer("s1")
+    data = json.loads(answer["result"])
+    data["sessions"][0]["decisions"] = [{"time": "09:12", "quote": quote}
+                                       for quote in ("…", "...", "!!!", "__", "[...](source)")]
+    answer["result"] = json.dumps(data)
+    report = summarise_sessions(root, run=lambda *a: answer)
+    assert report["summarised"] == 1 and report["dropped_quotes"] == 5
+    assert read_summary(root, "codex:3456-abcdef12")["decisions"] == []
+
+
+@pytest.mark.parametrize("reply", ["Here is your summary.", '{"sessions": []}',
+    '{"sessions": [{"id": "s1", "title": ""}]}'])
+def test_rem_session_summarise_failed_reply_retries(notebook, summary_ready, reply):
+    root, _, _ = notebook
+    transcript(notebook)
+    import_sessions(root, now=NOW)
+    report = summarise_sessions(root, run=lambda *a: {"result": reply, "usage": {"input_tokens": 12}})
+    assert report["failed"] == 1 and report["summarised"] == 0 and report["batches"] == 1
+    assert not summary_path(root, "codex:3456-abcdef12").exists()
+    assert not state_path(root, "session-tags.json").exists()
+    record, = service.run_logs(root)
+    assert record["outcome"] == "failed" and record["usage"] == {"input_tokens": 12}
+    assert summarise_sessions(root, run=lambda *a: summary_answer("s1"))["summarised"] == 1
+
+
+def test_rem_session_summarise_failed_batch_does_not_stop_next(notebook, summary_ready):
+    from connectonion.rem.runner import RunFailed
+    root, _, _ = notebook
+    for number in range(3):
+        transcript(notebook, session=str(number))
+    import_sessions(root, now=NOW)
+    calls = []
+
+    def run(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            raise RunFailed("Provider unavailable", {"input_tokens": 7})
+        return summary_answer("s1")
+
+    report = summarise_sessions(root, limit=2, batch=1, run=run)
+    assert report["summarised"] == report["failed"] == 1 and report["batches"] == 2
+    assert report["usage"]["input_tokens"] == 107
+    record, = service.run_logs(root)
+    assert record["outcome"] == "partial" and record["items"] == 2 and len(record["changed"]) == 1
+
+
+def test_rem_session_summarise_turns_grow_and_tags_count_sessions(notebook, summary_ready):
+    root, _, _ = notebook
+    path = transcript(notebook)
+    import_sessions(root, now=NOW)
+    summarise_sessions(root, run=lambda *a: summary_answer("s1"))
+    with path.open("a") as stream:
+        stream.write(json.dumps(codex("Use day headings")) + "\n")
+    import_sessions(root, now=NOW)
+    assert summarise_sessions(root, run=lambda *a: summary_answer("s1"))["summarised"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["turns"] == 2
+    assert read_json(state_path(root, "session-tags.json"), {}) == {"rem": 1, "reader-ui": 1}
+
+
+def test_rem_session_summarise_not_ready(notebook, monkeypatch):
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
+    report = summarise_sessions(notebook[0], run=lambda *a: pytest.fail("not ready"))
+    assert report["summarised"] == report["batches"] == 0
+    assert report["reason"] == "Codex is not signed in" and report["fix"] == "codex login"
+    assert "Codex is not signed in" in summarise_line(report)
+    assert service.run_logs(notebook[0]) == []
+
+
+def test_rem_import_sessions_summarise_cli_json(notebook, monkeypatch):
+    from connectonion.cli.main import app
+    root, _, _ = notebook
+    transcript(notebook)
+    calls = []
+    report = {"summarised": 1, "failed": 0, "batches": 1, "dropped_quotes": 0}
+    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions",
+                        lambda root, **kw: calls.append((root, kw)) or report)
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--summarise", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["summary"] == report
+    assert calls == [(root, {"limit": 40})]
+
+
+def test_rem_import_sessions_summarise_cli_text_and_limit(notebook, monkeypatch):
+    from connectonion.cli.main import app
+    root, _, _ = notebook
+    transcript(notebook)
+    report = {"summarised": 2, "failed": 1, "batches": 1, "dropped_quotes": 3}
+    calls = []
+    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions",
+                        lambda root, **kw: calls.append(kw) or report)
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--summarise", "--limit", "7"])
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("AI sessions: 1 imported")
+    assert lines[1] == "Summarised 2 of 3 sessions in 1 batches; 1 left for next time; 3 quotes dropped"
+    assert calls == [{"limit": 7}]
+
+
+def test_rem_session_summarise_prompt_bounds_and_batch_ids(notebook, summary_ready):
+    root, _, _ = notebook
+    Notebook(root).stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
+    rows = [codex("First message " + "a" * 900)] + [codex("middle " + "b" * 900) for _ in range(20)]
+    rows += [codex("Last message " + "z" * 900), codex("Final answer " + "r" * 2000, role="assistant"),
+             tool_call("apply_patch", "*** Update File: file.py", custom=True),
+             tool_output("[main abcdef0] Build the reader"), tool_call("exec_command", {"cmd": "git push"})]
+    transcript(notebook, rows=rows)
+    transcript(notebook, session="second")
+    import_sessions(root, now=NOW)
+    write_json(state_path(root, "session-tags.json"), {f"tag-{i}": i + 1 for i in range(100)})
+
+    def run(workspace, prompt, config, stage):
+        instruction, payload = prompt.split("\nSessions:\n")
+        vocabulary = instruction.split("Existing tags: ")[1].split(", ")
+        assert len(vocabulary) == 80 and vocabulary[0] == "tag-99" and vocabulary[-1] == "tag-20"
+        data = json.loads(payload)
+        assert [item["id"] for item in data] == ["s1", "s2"]
+        item = next(item for item in data if item["typed"].startswith("09:12 First message"))
+        assert item["project"] == "Demo" and item["agent"] == "Codex" and item["date"] == "2026-10-16"
+        assert len(item["typed"]) == 6000 and "Last message" in item["typed"]
+        assert "a" * 800 not in item["typed"] and "z" * 800 not in item["typed"]
+        assert len(item["final_reply"]) == 1500
+        assert any("abcdef0" in line for line in item["artifacts"])
+        assert any("git push" in line for line in item["artifacts"])
+        assert all("Files changed" not in line for line in item["artifacts"])
+        answer = summary_answer("s2", "s1")  # Output ordering is the model's choice.
+        value = json.loads(answer["result"])
+        value["sessions"][0].update(outcome="invented", tags=["REM!", " rem ", "reader UI", "a", "b", "c", "d", "e"],
+                                    followups=["Ask Ody", 42, "Finish Demo", "Ship reader", "Ignored"])
+        answer["result"] = json.dumps(value)
+        return answer
+
+    assert summarise_sessions(root, run=run)["summarised"] == 2
+    saved = read_summary(root, "codex:second")
+    assert saved["outcome"] == "unknown" and saved["tags"] == ["rem", "reader-ui", "a", "b", "c", "d"]
+    assert saved["followups"] == ["Ask Ody", "Finish Demo", "Ship reader"]
+
+
+def test_rem_session_summarise_multilingual_batch_fits_native_argv():
+    from connectonion.rem import runner
+    from connectonion.rem.sessions import _summary_prompt
+    row = {"project": "示例项目", "agent": "Codex", "date": "2026-10-16", "reply": "结果" * 750,
+           "messages": [{"time": "09:12", "text": "开头" + "甲" * 798},
+                        *[{"time": "09:13", "text": "乙" * 800} for _ in range(10)],
+                        {"time": "09:14", "text": "结尾" + "丙" * 798}],
+           "artifacts": ["- Commits: `abcdef0` 完成读者界面 (main)", "- Commands: 3 run; notable: `git push`"]}
+    prompt = _summary_prompt([row] * 8, {})
+    assert len(prompt.encode("utf-8")) <= runner.INLINE_LIMIT
+    data = json.loads(prompt.split("\nSessions:\n")[1])
+    assert len(data) == 8 and [item["id"] for item in data] == [f"s{i}" for i in range(1, 9)]
+    assert all("09:12 开头" in item["typed"] and "09:14 结尾" in item["typed"] for item in data)
+    assert all(item["artifacts"] == row["artifacts"] and item["final_reply"] == row["reply"] for item in data)
+
+
+@pytest.mark.parametrize("reply_ok", [True, False])
+def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, summary_ready, monkeypatch, reply_ok):
+    from connectonion.rem import daily
+    root, _, _ = notebook
+    transcript(notebook)
+    imported = import_sessions(root, now=NOW)
+    set_config(root, ["limits.runner_calls_per_day", "1"])
+    Notebook(root).stub_person("people/ody.md", "Ody", ["ody@example.org"])
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "people/ody.md"}])
+    monkeypatch.setattr(daily, "_clients", lambda sources: {})
+    monkeypatch.setattr(daily.quota, "read", lambda *a: {"unknown": "no meter"})
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a: summary_answer("s1") if reply_ok else {
+        "result": "prose", "usage": {"input_tokens": 3}})
+    investigated, lines = [], []
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "no_change", "sessions": imported},
+        investigate_one=lambda *a, **kw: investigated.append(a[1]) or {"changed": [a[1]]}, say=lines.append)
+    assert result["maintenance"]["sessions_summary"]["summarised"] == int(reply_ok)
+    assert result["outcome"] == "completed" and investigated == ["people/ody.md"]
+    assert service.status(root)["runner_attempts_today"] == 1
+    assert any(line.startswith("Summarised") and "left for next time" in line for line in lines)

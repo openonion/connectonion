@@ -156,14 +156,18 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
             f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
     if maintenance is None:
         return None
-    from .sessions import import_sessions, summary
+    from .runner import ready
+    from .sessions import import_sessions, summarise_line, summarise_sessions, summary
     if "sessions" not in maintenance:
         maintenance["sessions"] = import_sessions(root, consented_only=True)
     say(summary(maintenance["sessions"]))
+    config = read_config(root)
+    if not ready(config)[0]:
+        maintenance["sessions_summary"] = summarise_sessions(root, limit=40, say=say)
+        say(summarise_line(maintenance["sessions_summary"]))
     if maintenance['outcome'] not in ('completed', 'no_change'):
         return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
                                                 'investigation': None}, scheduled)
-    config = read_config(root)
     with maintenance_lock(root):
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh

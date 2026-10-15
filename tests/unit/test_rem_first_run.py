@@ -363,13 +363,32 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     root, init, _ = first_run
     result = init()
     assert result.exit_code == 0, result.output
-    tail = result.output.rstrip().splitlines()[-5:]
+    tail = result.output.rstrip().splitlines()[-6:]
     assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
-    assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
-    assert tail[3].startswith("Background upkeep: Background upkeep needs approval.")
-    assert f"co rem --root {root} start --yes" in tail[3]
-    assert tail[4] == f"Next: co rem --root {root} open"
+    assert tail[2].startswith("AI sessions: 0 imported, 0 updated, 0 unchanged;")
+    assert tail[3].startswith("Your page: ") and tail[3].endswith(".md")
+    assert tail[4].startswith("Background upkeep: Background upkeep needs approval.")
+    assert f"co rem --root {root} start --yes" in tail[4]
+    assert tail[5] == f"Next: co rem --root {root} open"
+
+
+@pytest.mark.parametrize("ready", [True, False])
+def test_rem_session_init_summarises_only_when_runner_ready(first_run, monkeypatch, ready):
+    root, init, _ = first_run
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", "") if ready else ("not installed", "install"))
+    calls = []
+    report = {"summarised": 1, "failed": 0, "batches": 1, "dropped_quotes": 0}
+    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions",
+                        lambda root, **kw: calls.append((root, kw)) or report)
+    result = init("--no-investigate", "--no-start", "--json")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert "sessions" in data
+    assert ("sessions_summary" in data) is ready
+    assert len(calls) == int(ready)
+    if ready:
+        assert data["sessions_summary"] == report and calls[0][1]["limit"] == 40
 
 
 def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins_them(tmp_path):
