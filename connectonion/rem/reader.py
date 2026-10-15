@@ -281,8 +281,8 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
     if failure:
-        return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot",
-                             live_startup_failed=True)
+        # The page the owner asked for still opens: a fallback, not a failure.
+        return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")
     if launch:
         webbrowser.open(url)
     return {"page": url.split("?")[0], "link": url, "launched": launch,

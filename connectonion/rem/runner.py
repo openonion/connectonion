@@ -255,6 +255,9 @@ def harness_flags(config: dict, stage: str) -> list[str]:
 # The Codex/Claude thread of every turn a run_stage makes. Without it the 1.9.2b3
 # audit matched about 102 of 331 runs to their threads, by timestamps alone.
 _THREADS = contextvars.ContextVar("rem_turn_threads", default=None)
+# The tier check fills a fixture page to see what a model can do; auditing its
+# made-up claims would cost a model call and measure nothing (tier.attempt).
+AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
@@ -754,7 +757,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
-    if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED):
+    if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
         from .project_claim_review import retain_cited_originals, review as review_claims
         with nullcontext() if lock_held else maintenance_lock(notebook.root):
             retain_cited_originals(notebook, text, items)

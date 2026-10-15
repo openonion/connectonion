@@ -243,18 +243,19 @@ def _plain(text):
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
-def test_default_open_is_a_snapshot_that_exists_and_renders_the_pages(tmp_path, monkeypatch):
-    """#1828: the default opened chat.openonion.ai/<address>/wiki, a route O Chat
-    does not serve, for a Host nobody had started. The default is the snapshot,
-    which loads offline, and it asks no Host anything."""
+def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages(tmp_path, monkeypatch):
+    """A bare `co rem open` serves the live reader from this computer's co ai
+    (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
+    says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
+    assert "co ai exited during startup" in output
     link = re.search(r"^Link: (file://\S+)$", output, re.M).group(1)
     snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
     assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
-    assert "co rem open --live" in output
     assert opened == [] and asked == []
     # Rendered on every run, so the page opened is never older than the notebook.
     Notebook(tmp_path / ".co/rem").write("people/bob.md", "# Bob\nJoined yesterday.")
@@ -263,16 +264,15 @@ def test_default_open_is_a_snapshot_that_exists_and_renders_the_pages(tmp_path, 
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
-    """Opening locally is the default (owner's decision on #1828): even with the
-    Host online and O Chat serving the route, a bare `co rem open` opens the
-    snapshot, which loads offline too."""
-    from connectonion.rem import reader
-    assert reader.LIVE_IS_DEFAULT is False, "the owner chose local by default (#1828)"
+    """The default is the reader served on this computer, never O Chat's route,
+    even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
+                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
-    assert "chat.openonion.ai" not in data["link"] and data["link"].startswith("file://")
+    assert "chat.openonion.ai" not in data["link"] and data["link"].startswith("http://127.0.0.1:")
     assert opened == [data["link"]]
 
 

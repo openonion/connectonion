@@ -122,11 +122,15 @@ def attempt(config: dict, tier: str) -> list[str]:
         atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
         write_json(state_path(root, RECORD), {"tier": tier, "runner": config["runner"], "model": config["model"]})
         Notebook(root).stub_person(PAGE, SUBJECT, [ADDRESS], email=ADDRESS)
+        from .runner import AUDIT
+        unaudited = AUDIT.set(False)
         try:
             investigate(root, PAGE, SUBJECT, [ADDRESS], days=30, clients={"gmail": FixtureMail()},
                         subscriptions={})
         except RemError as error:
             return [f"investigation failed: {error}"]
+        finally:
+            AUDIT.reset(unaudited)
         return grade(Notebook(root).read(PAGE))
 
 
