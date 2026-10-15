@@ -23,7 +23,8 @@ pytestmark = pytest.mark.skipif(
 
 VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fmara-ostrowski.md",
          "#r=people%2Fquinn-alder.md", "#r=projects%2Fharbour.md", "#r=orgs%2Ffernhill-labs.md",
-         "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#q=mara", "#r=people%2Favery-lin.md", "#c=opportunities", "#reviews=1"]
+         "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#q=mara", "#r=people%2Favery-lin.md", "#c=opportunities", "#reviews=1",
+         "#view=activity"]
 
 
 def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_path, monkeypatch):
@@ -1458,12 +1459,13 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     assert 'A request timed out' in brief.inner_text()
     assert 'private payload' not in brief.inner_text()
     assert 'No memory pages were written' in brief.inner_text()
-    button = brief.get_by_role('button', name='Review failed runs →')
-    assert button.bounding_box()['height'] >= 44
-    button.focus()
-    button.press('Enter')
-    assert page.locator('details.maint').evaluate('(node) => node.open')
-    assert page.locator('details.maint .runs tr.failed-run').first.evaluate('(node) => node === document.activeElement')
+    link = brief.get_by_role('link', name='Review failed runs →')
+    assert link.bounding_box()['height'] >= 44
+    link.focus()
+    link.press('Enter')
+    page.get_by_role('heading', name='Activity', exact=True).wait_for()
+    assert page.locator('.activity-runs li.failed-run').count() == 2
+    assert 'private payload' not in page.locator('.activity-runs').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -1537,3 +1539,61 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
     assert 'skill-record:1831aa83d8a0…' in note
     assert page.locator('.block-sources .id').first.get_attribute('title') == 'skill-record:' + digest
     assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1
+
+
+def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, tmp_path, monkeypatch):
+    """Owner, 2026-10-15: "Run logs" and "AI notes" read as the same thing twice."""
+    from connectonion.rem import reader as rem_reader
+    from connectonion.rem.files import Notebook
+
+    page, _ = reader
+    notebook = Notebook(tmp_path / 'rem')
+    notebook.write('notes/reflection.md', '# A reflection\n\nWhat the last pass taught.\n')
+    notebook.write('logs/people-map.md', '# People map\n\nWho writes to whom.\n')
+    notebook.write('logs/skill-runs-0123456789ab.md', '# weekly-brief runs\n\nRun coverage.\n')
+    path = tmp_path / 'activity.html'
+    path.write_text(rem_reader.render(tmp_path / 'rem'))
+    page.goto(path.as_uri())
+    nav = page.locator('#nav a').all_inner_texts()
+    assert not any('Run logs' in item or 'AI notes' in item for item in nav)
+    labels = [item.split('\n')[0] for item in nav]
+    assert labels[-1] == 'Activity' and labels.index('All records') < labels.index('Activity')
+    listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
+    assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
+    assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
+    assert 'Maps' not in page.locator('.category-cards').inner_text()
+    page.goto(path.as_uri() + '#q=coverage')
+    assert 'weekly-brief runs' not in page.locator('#main').inner_text()
+    page.goto(path.as_uri() + '#r=logs%2Fskill-runs-0123456789ab.md')
+    assert page.get_by_role('heading', name='weekly-brief runs').is_visible()
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_activity_lists_each_run_with_pages_changed_and_refused(reader, tmp_path, monkeypatch, width):
+    from connectonion.rem import reader as rem_reader
+    from connectonion.rem.files import Notebook
+
+    page, _ = reader
+    Notebook(tmp_path / 'rem').write('logs/people-map.md', '# People map\n\nWho writes to whom.\n')
+    data = rem_reader.snapshot(tmp_path / 'rem')
+    data['logs'] = [{'started_at': data['as_of'], 'outcome': 'completed', 'phase': 'daily-update', 'items': 40,
+                     'usage': {'input_tokens': 1200, 'output_tokens': 300}, 'changed': ['people/mara-ostrowski.md'],
+                     'refusals': [{'record': 'projects/harbour.md',
+                                   'errors': ['Candidate rejected, kept at /private/c.md: Changed page has no numbered evidence references']}]}]
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _: data)
+    path = tmp_path / 'runs.html'
+    path.write_text(rem_reader.render(tmp_path / 'rem'))
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(path.as_uri() + '#view=activity')
+    run = page.locator('.activity-runs > li')
+    assert run.count() == 1
+    text = run.inner_text()
+    assert 'daily-update' in text and '40 read' in text and '1,200 in / 300 out tokens' in text
+    assert run.get_by_role('link', name='Mara Ostrowski').is_visible()
+    assert run.get_by_role('link', name='Harbour').is_visible()
+    assert 'Changed page has no numbered evidence references' in text and '/private/c.md' not in text
+    maps = page.locator('details.activity-shelf')
+    assert maps.inner_text().startswith('Maps · 1') and not maps.evaluate('(node) => node.open')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.goto(path.as_uri())
+    assert page.locator('details.maint a[href="#view=activity"]').count() == 1
