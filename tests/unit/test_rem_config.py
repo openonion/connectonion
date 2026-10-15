@@ -68,3 +68,25 @@ def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeyp
     prepare(tmp_path / "rem")
     assert (read_config(tmp_path / "rem")["runner"], read_config(tmp_path / "rem")["model"]) == \
         ("claude-code", "claude-sonnet-5-5")
+
+
+def test_the_notebook_language_is_a_setting_the_page_turns_are_told(tmp_path):
+    from connectonion.rem.config import prepare, read_config, set_config
+    from connectonion.rem.files import RemError
+    from connectonion.rem.runner import language_note
+    prepare(tmp_path)
+    assert read_config(tmp_path)["language"] == "en"
+    assert set_config(tmp_path, ["language", "zh"])["language"] == "zh"
+    note = language_note(tmp_path)
+    assert "`zh`" in note and "headings, Facts labels" in note and "original language" in note
+    import pytest
+    with pytest.raises(RemError, match="language tag"):
+        set_config(tmp_path, ["language", "Chinese please"])
+
+
+def test_a_config_saved_before_the_language_setting_reads_as_english(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config
+    tmp_path.joinpath("config.yaml").write_text(
+        yaml.safe_dump({k: v for k, v in default_config().items() if k != "language"}))
+    assert read_config(tmp_path)["language"] == "en"

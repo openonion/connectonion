@@ -42,7 +42,9 @@ def default_config() -> dict:
     # tokens on the user's Claude plan. Codex wrote 312 of 312 pages on the same
     # mailbox. A machine without a working Codex gets Claude Code (first_runner).
     # Saved configs keep their runner.
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna",
+    # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
+    # Headings, Facts labels and markers stay English: code reads them.
+    return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "language": "en",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -79,12 +81,17 @@ def default_config() -> dict:
                        "investigation_rounds": 8}}
 
 
+LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+
+
 def validate(config: dict) -> dict:
     defaults = default_config()
     if not isinstance(config, dict) or set(config) != set(defaults) or config["version"] != 1:
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    if not isinstance(config["language"], str) or not LANGUAGE.fullmatch(config["language"]):
+        raise RemError("language must be a language tag such as en, zh, zh-TW or ja")
     schedule, limits = config["schedule"], config["limits"]
     if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone"}:
         raise RemError("Schedule requires times and timezone")
@@ -144,6 +151,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    config.setdefault("language", "en")
     _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.
@@ -203,10 +211,10 @@ def set_config(root: Path, pairs: list[str]) -> dict:
                 target = config.get(parts[0])
                 if not isinstance(target, dict):
                     raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
-            elif len(parts) != 1 or key not in ("model", "runner"):
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            elif len(parts) != 1 or key not in ("model", "runner", "language"):
+                raise RemError(f"{key}: " "not a setting; the keys are model, runner, language, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
             if parts[-1] not in target:
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+                raise RemError(f"{key}: " "not a setting; the keys are model, runner, language, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
             if key == "schedule.times":
                 value = sorted(raw.split(","))
             elif parts[0] == "limits":

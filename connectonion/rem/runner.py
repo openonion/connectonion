@@ -470,6 +470,21 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
             "with grep for what you need. " + evidence_read)
 
 
+def language_note(root: Path) -> str:
+    """The language a page's prose is written in; what code reads stays as it is."""
+    from .config import read_config
+    language = read_config(root, validated=False).get("language") or "en"
+    return f"\n\nWrite the page's prose in the language tagged `{language}`." + language_rules()
+
+
+def language_rules() -> str:
+    """What stays as it is in any language: what code reads, names and quotes.
+    Shared by page writing and by translation (`translate.py`)."""
+    return (" Keep exactly as given: headings, Facts labels, source ids, `Unknown`, `None as of`, "
+            "`Nothing open as of` and the `Now:`/`Changed:`/`At stake:`/`Pattern:` prefixes. Names stay "
+            "as written; a quote stays in its original language. ")
+
+
 def today_note(root: Path) -> str:
     """The date a turn writes on. Without it, Ody's page kept a 13 October event
     as an open thread on the 15th: nothing told the writer the day had passed."""
@@ -958,7 +973,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if additions and len(json.dumps(items, ensure_ascii=False)) > config["limits"]["input_chars_per_batch"]:
         raise RunFailed("Evidence and reflection context exceeds input budget; narrow the task before retrying")
     prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
-              + today_note(notebook.root))
+              + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root)))
     # The model must read and write local task files. Codex has a sandboxed
     # shell; forbidding all shell commands made Luna refuse the whole batch.
     if stage in ("init", "investigate"):

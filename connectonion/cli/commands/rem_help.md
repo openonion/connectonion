@@ -17,6 +17,7 @@ Read
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
+  translate     Read a page in another language (cached; the page itself never changes).
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
@@ -228,21 +229,43 @@ Back:     co rem --help
 ```
 Open the notebook in your web browser to read it. Read-only: pages do not change.
 
-Usage:    co rem open [--live] [--no-launch]
+Usage:    co rem open [--local | --live] [--no-launch]
 Example:  co rem open
-          Renders a fresh snapshot of the notebook to a temporary file and opens
-          it. Works offline; run it again to see newer pages.
+          Opens the live reader on this computer, served by your co ai Host:
+          always current, and its language menu can translate a page. Starts
+          co ai in the background when none is running. Without a co ai
+          identity, or when co ai cannot start, it opens the snapshot instead
+          and says why.
+          co rem open --local
+          Renders a snapshot of the notebook to a temporary file and opens it.
+          Works offline and starts nothing; run it again to see newer pages.
           co rem open --live
-          Opens the live view in O Chat, read from your co ai Host. Checks the
-          Host first; if offline, starts co ai automatically in the background.
-          Waits for readiness; startup failure names the log and opens a clearly
-          labelled snapshot. Only for the default notebook.
-          --no-launch prints the page without opening a browser.
-Effects:  Reads pages and changes none. The snapshot is written outside the
-          notebook, to a temporary file. --live may start an owner-authorized
-          co ai Host; its log is in the selected .co/rem-live-host.log.
+          Opens the live view in O Chat, for reading from another device.
+          --no-launch prints the link without opening a browser.
+Effects:  Reads pages and changes none. The live reader may start an
+          owner-authorized co ai Host; its log is in the selected
+          .co/rem-live-host.log and its link carries the secret in
+          .co/rem-reader-token. Only the default notebook has a live reader.
           Channel listeners stay off; no extra chat tab is opened.
 Next:     co rem show PAGE   (to read one page in the terminal)
+Back:     co rem --help
+```
+
+## co rem translate
+
+```
+Translate one page with co ai, on the notebook's runner, and print it.
+
+Usage:    co rem translate PAGE --to LANGUAGE
+Example:  co rem translate people/alice-chen.md --to zh
+          co rem translate "Alice Chen" --to ja
+Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
+          the page it was made from. The page itself never changes. Asked
+          again, a current translation is printed with no model call; once the
+          page changes, the translation is made again. Headings, Facts labels,
+          source ids and names stay as they are; quotes keep their language.
+          The live reader (co rem open) offers the same in its language menu.
+Next:     co rem open
 Back:     co rem --help
 ```
 
@@ -414,6 +437,8 @@ Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
 Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
+          language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
+                                         headings, labels and quotes stay as they are
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
           limits.runner_calls_per_day    6
