@@ -920,6 +920,7 @@ def mail_search(clients: dict, known: set | None = None):
 
 GITHUB_QUERY = re.compile(r"^github:([\w.-]+/[\w.-]+)(?:#(\d+)|\s+(.+))$")
 GITHUB_FIELDS = "number,title,author,createdAt,state,url"
+GITHUB_SOURCE = re.compile(r"github:[\w.-]+/[\w.-]+#\d+")
 
 
 def github_search(query: str) -> list[dict]:
@@ -949,6 +950,34 @@ def github_search(query: str) -> list[dict]:
                      f"{(row.get('author') or {}).get('login', '')}\nCreated: {row.get('createdAt', '')}\n"
                      f"Title: {row.get('title', '')}\n\n{row.get('body') or ''}"[:6000]}
             for row in (rows if isinstance(rows, list) else [rows])]
+
+
+def retain_cited_github(root: Path, items: list[dict], cited: set[str]) -> None:
+    """Jiexuan's first-run issue citations had no retained original to open (2026-10-16)."""
+    for item in items:
+        source, body = item.get("source"), item.get("text")
+        if (source not in cited or item.get("role") != "github"
+                or not isinstance(source, str)
+                or not GITHUB_SOURCE.fullmatch(source)
+                or not isinstance(body, str)):
+            continue
+        path = state_path(root, "github-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+        write_json(path, {"source": source, "text": body, "timestamp": item.get("timestamp") or ""})
+
+
+def github_context(root: Path, source: str) -> dict | None:
+    """Read the latest retained issue fetched for a cited page."""
+    if not GITHUB_SOURCE.fullmatch(source):
+        return None
+    path = state_path(root, "github-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+    saved = read_json(path, {})
+    body = saved.get("text")
+    if saved.get("source") != source or not isinstance(body, str):
+        return None
+    excerpt = body.strip()[:6000]
+    return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
+            "time": saved.get("timestamp") or "", "sender": "", "thread": "",
+            "source": "github", "input_scope": ""}
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):

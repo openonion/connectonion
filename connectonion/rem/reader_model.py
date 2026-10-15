@@ -160,12 +160,13 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             row = _cited_row(db, source) if db is not None else None
             if row is None:
                 from .attachments import attachment_context
+                from .investigate import github_context
                 from .project_material import retained_session_context
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source)
-                           or attachment_context(root, source))
+                           or github_context(root, source) or attachment_context(root, source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}

@@ -855,8 +855,11 @@ def _write_page(notebook, record, text, items):
     """Save an accepted page with its sources numbered once and dated by their originals."""
     from . import facts
     from .config import read_config
+    from .investigate import retain_cited_github
     from .page_review import collapse_repeated_markers, renumber_sources, settle_sources, source_dates
+    from .reader_model import _source_ids
     from .service import notebook_zone
+    retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
     notebook.write(record, collapse_repeated_markers(
         renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates))))

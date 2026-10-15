@@ -20,6 +20,7 @@ SCHEMA = {
 
 def retain_cited_originals(notebook, candidate: str, items: list[dict]) -> None:
     """Make newly gathered Project originals readable before the claim audit."""
+    from .investigate import retain_cited_github
     from .project_material import retain_cited_sessions
     from .project_pages import retain_repository_context
     from .reader_model import _source_ids
@@ -30,6 +31,7 @@ def retain_cited_originals(notebook, candidate: str, items: list[dict]) -> None:
     cited = _source_ids([{"text": candidate}])
     retain_repository_context(notebook.root, originals, cited)
     retain_cited_sessions(notebook.root, originals, cited)
+    retain_cited_github(notebook.root, originals, cited)
 
 
 def packet(notebook, candidate: str, record: str | None = None, items=()) -> tuple[dict, list[str]]:
