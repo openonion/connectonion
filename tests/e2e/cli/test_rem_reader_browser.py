@@ -38,11 +38,13 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 375, 'height': 812})
         page.goto(path.as_uri() + '#r=people%2Fmentor.md')
-        assert page.locator('.focus-source').evaluate('e => e.getBoundingClientRect().height >= 44')
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        page.locator('details.deep-note > summary').click()
+        assert page.locator('.block-sources .source-open').evaluate('e => e.getBoundingClientRect().height >= 44')
         assert page.locator('.block-sources .id').inner_text() == source
         cite = page.locator('a.cite[href$="h=src-15"]').first
         cite.click()
-        dialog = page.locator('#evidence-dialog')
+        dialog = page.locator('#evidence-panel')
         assert 'Example Client Ltd' in dialog.locator('blockquote').inner_text()
         assert 'Original capture time' in dialog.inner_text()
         assert 'signature appearances are not verified' in dialog.inner_text()
@@ -106,13 +108,14 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.get_by_role("heading", name="What co rem carried forward").wait_for()
+            page.locator(".morning-primary h1").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
             assert page.locator(".next-exchanges").count() == 0
             page.goto(page_path.as_uri() + "#view=open")
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
+            page.locator('details.deep-note > summary').click()
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
@@ -148,7 +151,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.get_by_role("heading", name="What co rem carried forward").wait_for()
+        frame.locator(".morning-primary h1").wait_for()
         assert frame.get_by_role("link", name="Example").first.is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
@@ -235,6 +238,9 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
 def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page, _, _ = reader_page
     private = page.locator(".note .private")
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    assert private.count() == 1 and not private.is_visible()
+    page.locator('details.deep-note > summary').click()
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
     page.get_by_role("button", name="Hide labelled passages").click()
@@ -247,10 +253,16 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
     page.set_viewport_size({"width": width, "height": height})
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('pre').last.is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     # Wide diagrams/tables scroll locally; inline tokens and sources wrap.
     assert page.locator("pre").last.evaluate("e => e.scrollWidth > e.clientWidth")
+    assert page.locator('pre').last.evaluate("e => getComputedStyle(e).overflowX === 'auto'")
+    page.locator('pre').last.evaluate('e => e.scrollLeft = 100')
+    assert page.locator('pre').last.evaluate('e => e.scrollLeft > 0')
     assert page.locator(".table-scroll").evaluate("e => e.scrollWidth >= e.clientWidth")
     for selector in ["pre", ".table-scroll", ".chip"]:
         for node in page.locator(selector).all():
@@ -259,7 +271,7 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
     page.locator(".brand").click()
-    page.get_by_role("heading", name="What co rem carried forward").wait_for()
+    page.locator(".morning-primary h1").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")
@@ -299,10 +311,18 @@ def test_reader_heading_links_and_search_state(reader_page):
     from patchright.sync_api import expect
 
     page, _, _ = reader_page
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    page.locator('details.deep-note > summary').click()
     page.get_by_role("link", name="Jump within").click()
     page.wait_for_function("location.hash.includes('h=next-steps') && scrollY > 0")
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert page.locator("#next-steps").evaluate("e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().top < innerHeight")
     assert page.locator("#next-steps-1").count() == 1
+    # A saved heading URL must reveal the section on a fresh, closed note too.
+    page.reload()
+    page.locator('#next-steps').wait_for(state='visible')
+    assert page.locator('details.deep-note').get_attribute('open') is not None
+    assert page.locator('#next-steps').evaluate('e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().top < innerHeight')
     page.get_by_role("link", name="Jump across").click()
     page.wait_for_function("location.hash.includes('h=trade-offs') && document.getElementById('trade-offs') && scrollY > 0")
     assert page.locator("#trade-offs").evaluate("e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().top < innerHeight")
@@ -319,6 +339,8 @@ def test_reader_nested_fences_keep_literal_metadata(reader_page):
     page, _, _ = reader_page
     page.goto(page.url.split("#")[0] + "#r=projects%2Fnested.md")
     page.get_by_role("heading", name="Nested example", exact=True).wait_for()
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    page.locator('details.deep-note > summary').click()
     assert page.locator("pre").text_content() == "Sources: nested literal\n\n\nRelated: nested literal"
     assert "nested literal" not in page.locator(".aside").inner_text()
     assert "codex:actual" in page.locator(".aside").inner_text()

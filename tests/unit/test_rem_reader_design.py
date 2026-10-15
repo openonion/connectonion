@@ -23,7 +23,7 @@ def _blocks(css: str) -> dict:
 
 def test_both_themes_define_every_colour_token():
     blocks = _blocks(TEMPLATE.read_text(encoding="utf-8"))
-    faces = {"--display", "--text", "--ui", "--mono"}
+    faces = {"--display", "--text", "--ui", "--code", "--mono"}
     colours = blocks["light"] - faces
     assert len(colours) >= 20
     assert blocks["dark-auto"] == colours

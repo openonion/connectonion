@@ -400,3 +400,21 @@ def test_mail_citation_rejects_mismatched_snapshot_identity(tmp_path, saved_prov
     refresh(tmp_path)
     source = 'outlook:' + hashlib.sha256(b'native').hexdigest()[:12]
     assert cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}]) == {}
+
+
+def test_claim_rewordings_set_aside_source_qualifications_and_added_words():
+    from connectonion.rem.claim_changes import _same
+    unchanged = [
+        ("ConnectOnion Python project", "ConnectOnion Python project (README and manifest)"),
+        ("2026-10-14", "2026-10-14 (user input and release commit)"),
+        ("Stable 1.9.2 in the supplied README and manifest", "Stable 1.9.2 (README and manifest)"),
+        ("Stable 1.9.2 per the manifest", "Stable 1.9.2"),
+        ("Stable 1.9.2 according to README", "Stable 1.9.2"),
+        ("ConnectOnion project", "The ConnectOnion Python project"),
+        ("Partnerships Lead", "partnerships-lead"),
+    ]
+    for old, new in unchanged:
+        assert _same(old, new), (old, new)
+    for old, new in [("Stable 1.9.1", "Stable 1.9.2"), ("waiting on Weiwei", "waiting on you"),
+                     ("Python project", "project Python"), ("waiting waiting", "waiting")]:
+        assert not _same(old, new), (old, new)

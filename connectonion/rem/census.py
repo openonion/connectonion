@@ -19,6 +19,7 @@ which pages to leave out. `co rem status` and the reader now both ask here:
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from pathlib import Path
 
 from .files import Notebook, read_json, state_path
@@ -109,7 +110,8 @@ def counts(root: Path, found: dict | None = None) -> dict:
 # decides a thread's direction; a page names the owner as "the user", "you"
 # or by first name.
 CALM = re.compile(r"^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?"
-                  r"\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)", re.I)
+                  r"\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b"
+                  r"|no work is (?:confirmed )?pending\b)", re.I)
 NOT_A_THREAD = re.compile(r"^(?:unknown\b|no (?:confirmed|known) pending work\b)", re.I)
 # What known() drops from a section before anything reads it: unknown answers and mapping's placeholders.
 UNKNOWN_LINE = re.compile(r"^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$", re.I)
@@ -138,7 +140,17 @@ def _directions(first_name: str) -> tuple:
 
 
 def direction(text: str, first_name: str = "") -> str:
-    """"mine" when the owner must act, "theirs" when someone else must, "plain" when the thread does not say."""
+    """Who must act: the owner, their counterpart, a third party, or unspecified."""
+    # Keep structured prefixes in step with reader.html direction() (UI audit #4).
+    me = r"(?:the user|user|you" + (f"|{re.escape(first_name)}" if first_name else "") + ")"
+    prefix = re.sub(r"^\s*(?:[-*+]\s+)?", "", text).replace("**", "")
+    owner = re.match(rf"^{me}\s+(owes?|asked)\b", prefix, re.I)
+    if owner:
+        return "theirs" if owner[1].lower() == "asked" else "mine"
+    debt = re.match(r"^([^:;!?]+?)\s+owes?\s+(.+)", prefix, re.I)
+    if debt and re.match(r"^[A-Z]", debt[1]) and 1 <= len(debt[1].split()) <= 6 \
+            and not re.search(r",|\b(?:said|would|that|what)\b", debt[1], re.I):
+        return "theirs" if re.match(rf"^{me}\b", debt[2], re.I) else "third"
     mine, theirs = (pattern.search(text) for pattern in _directions(first_name))
     if not (mine or theirs):
         return "plain"
@@ -153,7 +165,7 @@ def _kept(line: str) -> bool:
 
 
 def threads(page: str) -> list[str]:
-    """A page's open threads, one item a list entry; the first line saying nothing is open is not one."""
+    """A page's open threads, one item per list entry, without calm lines."""
     section = re.split(r"^## ", page.partition("\n## Open threads\n")[2], flags=re.M)[0]
     lines = [line for line in re.sub(r"<!--.*?-->", "", section, flags=re.S).splitlines()
              if not line.startswith("Investigation:") and _kept(line)]
@@ -165,13 +177,24 @@ def threads(page: str) -> list[str]:
             items[-1] += " " + line.strip()
         elif line.strip():
             items.append(line.strip())
-    calm = next((item for item in items if CALM.match(item.replace("*", "").strip())), "")
-    return [item for item in items if item != calm and not NOT_A_THREAD.match(item)]
+    return [item for item in items if not CALM.match(item.replace("*", "").strip())
+            and not NOT_A_THREAD.match(item)]
 
 
-def open_threads(root: Path, found: dict | None = None) -> dict:
-    """{"open": n, "mine": n}: open threads on the listed people, organisation and project pages, as
-    the reader's home counts them, and how many of them wait on the owner."""
+def _quiet(text: str, today: date) -> bool:
+    # Dates and the 60-day boundary mirror reader.html threads().
+    days = re.findall(DAY, text)
+    due = re.search(rf"\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*{DAY}", text, re.I)
+    due = due[1] if due else ""
+    since = re.search(rf"\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*{DAY}", text, re.I)
+    moved = re.search(rf"\blast moved(?:\s+on)?\s*:?\s*{DAY}", text, re.I)
+    since = moved[1] if moved else since[1] if since else next((day for day in days if day != due and day <= today.isoformat()), "")
+    return bool(since and (today - date.fromisoformat(since)).days > 60
+                and (not due or due <= today.isoformat()))
+
+
+def open_threads(root: Path, found: dict | None = None, *, as_of: date | None = None) -> dict:
+    """Active directions and quiet threads on listed people, orgs and projects."""
     found = pages(root) if found is None else found
     notebook = Notebook(root)
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
@@ -180,4 +203,18 @@ def open_threads(root: Path, found: dict | None = None) -> dict:
     first = (title.split() or [""])[0]
     items = [item for record, entry in found.items() if listed(entry) and entry["category"] in THREAD_KINDS
              for item in threads(notebook.read(record))]
-    return {"open": len(items), "mine": sum(direction(item, first) == "mine" for item in items)}
+    from .config import read_config
+    from .service import notebook_zone
+    today = as_of or datetime.now(notebook_zone(read_config(root))).date()
+    # Keep the census identical to reader.html threadCounts(), including quiet context.
+    result = dict.fromkeys(("mine", "theirs", "other", "quiet", "open"), 0)
+    for item in items:
+        who = direction(item, first)
+        if who == "third":
+            continue
+        if _quiet(item, today):
+            result["quiet"] += 1
+        else:
+            result["other" if who == "plain" else who] += 1
+            result["open"] += 1
+    return result
