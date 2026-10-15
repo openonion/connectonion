@@ -1559,7 +1559,7 @@ app.add_typer(email_app, name="email")
 from .commands.handoff_commands import make_handoff_app
 
 app.add_typer(make_handoff_app(_typer_app), name="handoff",
-              short_help="Experimental: hand a task from your Codex/Claude Code session to another person's agent.")
+              short_help="Experimental: hand the context of your Codex/Claude Code session to another person's agent.")
 
 
 @email_app.callback(invoke_without_command=True)

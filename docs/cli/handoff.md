@@ -1,7 +1,7 @@
 # co handoff (experimental)
 
-Hand a task you discussed with your coding agent to another person's coding
-agent. A handoff is one message: every message you wrote in the session, word for
+Hand the context of what you discussed with your coding agent to another
+person's coding agent. A handoff is one message: every message you wrote in the session, word for
 word, the AI's replies quoted, and where the code is. Their Codex (or Claude
 Code) continues from it, and asks you for anything that is missing.
 
@@ -32,8 +32,8 @@ some work: <title>", with no co terms in it. The body has one or two sentences:
 who has been working on what with which AI, and the first thing they talked
 through. Then come two ways in, the web page first:
 
-1. **See what Aaron handed you**: a button to `https://o.openonion.ai/h/<id>`.
-   The page shows who passed what, what was discussed, decided and still open,
+1. **See the context Aaron is passing you**: a button to `https://o.openonion.ai/h/<id>`.
+   The page shows whose context it is, what was discussed, decided and still open,
    the diagram and the conversation, in a browser, with nothing to install. Its
    own copy button does step 2.
 2. **One line to paste** into a new Codex or Claude Code conversation. A
@@ -61,7 +61,7 @@ note that a handoff is done, go to that mailbox from itself.
 The line, as a 1.9.2b24 sender writes it:
 
 ```text
-Aaron Xie handed you "Add Kelvin conversion to tempconv.py" with ConnectOnion. Read https://o.openonion.ai/h/Hk3…/codex and do what it says, here in this folder, without waiting for me. If you cannot open it, ask me to allow network access.
+Aaron Xie handed you the context of "Add Kelvin conversion to tempconv.py" with ConnectOnion. Read https://o.openonion.ai/h/Hk3…/codex and do what it says, here in this folder, without waiting for me. If you cannot open it, ask me to allow network access.
 ```
 
 What the page at `/codex` holds is the whole prompt co wrote: install co if it is
@@ -75,7 +75,7 @@ work from it, and `open` on a saved mail reads the prompt from the page.
 The prompt on that page, with the code shortened and the version as a 1.9.2b22 sender wrote it:
 
 ```text
-Aaron Xie handed you "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Aaron Xie was working on and what you did.
+Aaron Xie handed you the context of "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Aaron Xie was working on and what you did.
 ```
 
 That block becomes the first message of the recipient's thread, so it carries
@@ -107,11 +107,14 @@ machine being online:
   agent's summary; the sender's turns are in a second one, named
   `Handoff from <sender>: <title>`, each side labelled, ending in the report
   (Discussed, Concluded, Still open, the diagram) and "You can keep asking me
-  here." Accept prints how to open it, and the agent passes that on. In Codex it
-  is in the conversation list (`/resume`, or the app's sidebar) and opens with
-  `codex resume <id>`; in Claude Code it is in `claude --resume`'s list and opens
-  with `claude --resume <id>`. In any other agent there is no thread format to
-  write, and the conversation stays in `session.md`.
+  here." Accept prints how to open it, and `done` prints it again, last, so the
+  agent passes it on. In Codex it is in the conversation list (`/resume`, or the
+  app's sidebar), because accept has Codex read it once by id (Codex lists threads
+  from its own database, which takes in new files only once); when `codex` is not
+  on the PATH it opens with `codex resume <id>` only. In Claude Code it is in
+  `claude --resume`'s list and opens with `claude --resume <id>`. In any other
+  agent there is no thread format to write, and the conversation stays in
+  `session.md`.
 
 The rules accept prints: do the work in this folder without asking the person,
 ask them only before something that cannot be undone or leaves the machine,

@@ -1,0 +1,2 @@
+version: v1.9.3b4
+no_visual_change: "No co page or terminal layout changed; the pasted line, the prompt, the mail and help texts are reworded. The handoff page's new layout ships with o.openonion.ai (oo-frontend#34), not with this package."
