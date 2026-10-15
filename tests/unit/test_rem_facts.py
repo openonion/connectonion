@@ -187,3 +187,20 @@ def test_also_known_as_keeps_names_not_addresses():
     only = page.replace("Ody; 周泽凯 [2]; ", "")
     assert "- Also known as: Unknown\n" in names_not_addresses("people/ody.md", only)
     assert names_not_addresses("orgs/x.md", page) == page
+
+
+def test_a_facts_label_the_shape_does_not_have_goes_unless_the_page_had_it():
+    """Richard Lai, 2026-10-15: "- First recorded contact" beside "- First contact: Unknown"."""
+    from connectonion.rem import facts
+    page = ("# R\n\nLead.\n\n## Facts\n- First contact: Unknown\n- First recorded contact: 2026-09-22 [3]\n"
+            "- Legacy note: kept [1]\n\n## Insight\n- Unknown\n")
+    text, dropped = facts.drop_foreign_labels("people/r.md", page, "# R\n\n## Facts\n- Legacy note: kept [1]\n")
+    assert dropped == ["First recorded contact"]
+    assert "First recorded contact" not in text and "- Legacy note: kept [1]" in text and "## Insight" in text
+
+
+def test_supplied_mail_boilerplate_is_a_hedge_the_editing_round_removes():
+    from connectonion.rem.page_review import hedged_lines
+    page = ("# R\n\nLead.\n\n## Open threads\n- Richard owes the user: issues [1] — no completion is established "
+            "in the supplied mail.\n- The card pickup is unconfirmed [2].\n\n## Uncertainties\n- Unknown\n")
+    assert [section for section, _ in hedged_lines(page)] == ["Open threads", "Open threads"]

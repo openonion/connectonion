@@ -680,6 +680,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
+    text, foreign = facts.drop_foreign_labels(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     if record.startswith("people/") and record != owner.get("record"):
@@ -785,7 +786,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
-                   "facts_uncited_dropped": uncited,
+                   "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),

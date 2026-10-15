@@ -2128,3 +2128,29 @@ def test_a_deepen_with_nothing_before_the_window_is_nothing_new_not_a_failure(tm
         inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                         extractor=lambda *a: pytest.fail("no digest pass"), rounds=3, read_before="2026-04-12",
                         runner=lambda *a, **kw: pytest.fail("no model turn"))
+
+
+def test_a_thread_is_read_whole_in_one_round_and_the_live_threads_come_last():
+    """2026-10-15: cut by date, a request sat in one round and its reply in the
+    next, and Tamara's and Richard's pages said "no reply is established"."""
+    from connectonion.rem.investigate import evidence_rounds
+    ask = {"role": "other", "source": "outlook:a1", "thread": "mail:outlook:t1", "timestamp": "2026-07-01T00:00:00Z",
+           "text": "Could you send the deck?"}
+    other = {"role": "other", "source": "outlook:b1", "thread": "mail:outlook:t2", "timestamp": "2026-08-01T00:00:00Z",
+             "text": "Lunch?"}
+    reply = {"role": "user", "source": "outlook:a2", "thread": "mail:outlook:t1", "timestamp": "2026-09-01T00:00:00Z",
+             "text": "Sent."}
+    order = [item["source"] for part in evidence_rounds([other, reply, ask], 100_000) for item in part]
+    assert order == ["outlook:b1", "outlook:a1", "outlook:a2"]
+
+
+def test_a_long_attachment_travels_as_its_head_and_its_file():
+    """Ody's first round (2026-10-15) was one generated 14k-character report."""
+    from connectonion.rem.investigate import ATTACHMENT_EXCERPT, evidence_rounds
+    report = {"role": "attachment", "source": "gmail:m1:report.pdf", "file": "/a/report.pdf",
+              "timestamp": "2026-09-22T00:00:00Z", "text": "x" * (ATTACHMENT_EXCERPT * 3)}
+    mail = {"role": "other", "source": "gmail:m1", "thread": "mail:gmail:t", "timestamp": "2026-09-22T00:00:00Z",
+            "text": "see attached"}
+    [part] = evidence_rounds([report, mail], 100_000)
+    shown = next(item for item in part if item["source"] == "gmail:m1:report.pdf")["text"]
+    assert len(shown) < ATTACHMENT_EXCERPT + 200 and "/a/report.pdf" in shown

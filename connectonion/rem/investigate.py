@@ -1001,8 +1001,49 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+ATTACHMENT_EXCERPT = 8000
+
+
+def _excerpt(item: dict) -> dict:
+    """A long attachment travels as its head and the file that holds the rest.
+
+    Ody's first round (2026-10-15) was one 14k-character generated report and
+    one message: agent-written PDFs and CSVs filled whole rounds while the
+    mail that set the relationship's terms stayed in files nobody opened.
+    """
+    text = item.get("text")
+    if item.get("role") != "attachment" or not isinstance(text, str) or len(text) <= ATTACHMENT_EXCERPT:
+        return item
+    rest = f"{len(text) - ATTACHMENT_EXCERPT:,} more characters"
+    where = f" in {item['file']}" if item.get("file") else ""
+    return {**item, "text": f"{text[:ATTACHMENT_EXCERPT]}\n[Excerpt: {rest}{where}.]"}
+
+
+def _thread_of(item: dict, threads: dict) -> str:
+    """The provider thread a message or its attachment belongs to; else the item alone."""
+    source = str(item.get("source") or "")
+    parent = ":".join(source.split(":")[:2])
+    return item.get("thread") or threads.get(parent) or source or str(id(item))
+
+
+def by_thread(items: list[dict]) -> list[dict]:
+    """Each thread whole and in order, threads ordered by their latest message.
+
+    Cut by date, a request sat in one round and its reply in the next, and
+    the page said "no reply is established" (Tamara, Richard 2026-10-15). A
+    thread read whole shows how it ended; the last round holds what is live.
+    """
+    threads = {i["source"]: i["thread"] for i in items if i.get("source") and i.get("thread")}
+    groups = {}
+    for item in items:
+        groups.setdefault(_thread_of(item, threads), []).append(item)
+    stamp = lambda i: str(i.get("timestamp") or "")
+    ordered = sorted((sorted(group, key=stamp) for group in groups.values()), key=lambda g: stamp(g[-1]))
+    return [item for group in ordered for item in group]
+
+
 def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
-    """Oldest first, each round small enough to travel in the prompt, every item whole or split.
+    """Thread by thread, the most recently active last, each round small enough for the prompt.
 
     Laid out in files, the model read 3.6-8.7% of a large page's evidence
     (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
@@ -1010,7 +1051,7 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
     from .runner import readable_material
     measure = lambda parts: len(readable_material(parts).encode("utf-8"))
     rounds, current, size = [], [], 0
-    for item in sorted(items, key=lambda i: str(i.get("timestamp") or "")):
+    for item in by_thread([_excerpt(item) for item in items]):
         for part in _split_item(item, room_bytes, measure):
             weight = measure([part])
             if current and size + weight > room_bytes:
@@ -1039,19 +1080,24 @@ def known_addresses(root: Path) -> set:
 
 
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
-              "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
-              "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
-              "The page should get better, not only longer. Then follow the leads it raises.")
+              "in full, each thread together, the most recently active last. Read all of it. Improve the page "
+              "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
+              "corrects; delete what it supersedes, repeats or settles. The page should get better, not only "
+              "longer. Then follow the leads it raises.")
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
-                  "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
-                  "superseded statements and doubts that do not change what the user does next; merge what "
-                  "is said twice. Insight says what matters now; History has one line per thread -- date, what "
-                  "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
-                  "most five, each one that would change the next step. For a thread whose outcome is not "
-                  "established, request a mail search for the reply before writing so. Keep each cited fact you "
-                  "keep with its citation; add no claim without a citation on the page or from a search. "
-                  "This round supplies no evidence on purpose: its work is editing, so NO CHANGE is only right "
-                  "when the page already reads as one account with every doubt under Uncertainties.")
+                  "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
+                  "user sees first. The lead's three sentences say who they are to the user, what is live (who "
+                  "owes whom, the ask quoted, its date and any due date) and the user's next step. Open threads "
+                  "keeps only what is still owed, each line starting with who owes whom, the user's debts first; "
+                  "a thread that was answered, delivered, past its event date or quiet for 60 days moves to "
+                  "History. History has one line per thread -- date, what it was about, how it ended. Insight "
+                  "says what no other section does. Then delete: repetition across sections, superseded "
+                  "statements, and every 'not established', 'unconfirmed' or 'in the supplied mail' clause -- "
+                  "state the dated fact instead, or move a doubt that changes the next step to Uncertainties "
+                  "(at most five). For a thread whose outcome you have not seen, request a mail search for the "
+                  "reply before writing so. Keep each cited fact you keep with its citation; add no claim without "
+                  "a citation on the page or from a search. This round supplies no evidence on purpose: its work "
+                  "is editing, so NO CHANGE is only right when the page already reads this way.")
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "

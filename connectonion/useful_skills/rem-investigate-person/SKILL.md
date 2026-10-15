@@ -37,16 +37,15 @@ description: Read a person’s identity, relationship and obligations from gathe
 - Check asks/promises across topics before `Nothing open`; unrelated replies
   close none. Questions promise no deadline. Invites, confirmed logistics,
   arrival, empty forwards or samples do not prove completion.
-- Thread context can resolve a group ask after recipients drop. Match the team
-  and ask; one thread can mix both. Preserve requester, decision maker and debtor;
-  context is not this person's statement, contact date or assigned work.
+- In a group thread, keep who asked, who decides and who owes; a later reply
+  from the group can close an ask made to this person.
 - Reread `Comparison scope` originals by exact `Provider thread`; they are not new contact.
 
 ## What to produce
 
 Follow `rem-page-person` exactly, the lead above `Facts` included:
-`co rem list people --aliases` reads its headings and `Contact` labels. **`Open threads` is mandatory**: who owes what,
-since when.
+`co rem list people --aliases` reads its headings and labels. **`Open threads`
+is mandatory**: who owes what, since when.
 
 **Insight, three shapes** (never copy these facts):
 - `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`
