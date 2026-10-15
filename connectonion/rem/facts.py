@@ -145,8 +145,8 @@ def _block(record: str, raw_lines: list[str]) -> str:
 
 
 def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
-    """Bring a page to the Facts shape without dropping a word: rename a legacy
-    `## Contact`, add a missing Facts section or label as `Unknown`, and give a
+    """Bring a page to the Facts shape: rename a legacy `## Contact`, normalize
+    missing values to `Unknown`, add a missing Facts section or label, and give a
     person or project page its Insight section. A page already in shape is returned as is."""
     labels = fields(record)
     if not labels:
@@ -167,6 +167,9 @@ def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
             if re.search(plain, body):
                 body = re.sub(rf"(?m)^- {re.escape(label)}:[ \t]*Unknown[ \t]*\n?", "", body)
                 body = re.sub(plain, rf"- {label}: \1", body)
+        # 2026-10-16 trial: `Company: Unknown; email domain: student.unsw.edu.au [8]`
+        # is missing data; everything after Unknown is commentary, even after a semicolon.
+        body = re.sub(r"(?mi)^(- [^:\n]{1,40}:[ \t]*)Unknown\b[^\n]*$", r"\1Unknown", body)
         present = set(re.findall(r"(?m)^- ([^:\n]{1,40}):", body))
         if body != original or not set(labels) <= present:
             block = _block(record, body.strip("\n").splitlines())
@@ -255,6 +258,39 @@ def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[
         text = text[:line.start()] + f"- {label}: {'; '.join(kept) or 'Unknown'}" + text[line.end():]
         touched.append(label)
     return text, touched
+
+
+def identity_sentence(record: str, text: str) -> str:
+    """Who a person is, from their own cited Role and Company: `Tamara is Events Coordinator at UNSW Founders [4].`"""
+    found = parse(text, record)
+    role, company = (found.get("Role") or [None])[0], (found.get("Company") or [None])[0]
+    if kind(record) != "people" or not role or not role["citations"]:
+        return ""
+    name = text.partition("\n")[0].lstrip("# ").strip()
+    at = f" at {company['value']}" if company and company["citations"] else ""
+    cites = sorted({*role["citations"], *(company["citations"] if at else [])}, key=lambda n: int(n.lstrip("W")))
+    return f"{name} is {role['value']}{at} " + "".join(f"[{n}]" for n in cites) + "."
+
+
+def drop_foreign_labels(record: str, text: str, original: str = "") -> tuple[str, list[str]]:
+    """A Facts line whose label the page shape does not have goes; one the page already had stays.
+
+    Richard Lai (2026-10-15) gained "- First recorded contact: 2026-09-22 [3]"
+    beside "- First contact: Unknown". The roster reads only the shape's labels,
+    so the line was a second answer nobody would see in the right place.
+    """
+    span, labels = _bounds(text, "Facts"), fields(record)
+    if not span or not labels:
+        return text, []
+    kept = set(_lines(original)) if original else set()
+    body, dropped = [], []
+    for line in text[span[0]:span[1]].splitlines(keepends=True):
+        label = re.match(r"^- ([^:\n]{1,40}):", line)
+        if label and label[1] not in labels and label[1] not in kept and label[1] != LEGACY:
+            dropped.append(label[1])
+            continue
+        body.append(line)
+    return text[:span[0]] + "".join(body) + text[span[1]:], dropped
 
 
 def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[dict]]:

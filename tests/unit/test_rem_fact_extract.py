@@ -229,7 +229,9 @@ class Signed:
         return "Hi, see you Thursday.\n\nRegards,\nVern Chan\nGlobal Program Manager\nM: +61 412 000 111\n"
 
 
-def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path, monkeypatch):
+@pytest.mark.parametrize("merged_send", [False, True])
+def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path, monkeypatch, merged_send):
+    import json
     from connectonion.rem import investigate as inv
     from connectonion.rem import runner
     from connectonion.rem.config import prepare, set_config
@@ -241,9 +243,18 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
     original = notebook.read("people/vern.md")
     seen = {}
-    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: [
+    mail_rows = [
         {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
-         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}])
+         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}]
+    if merged_send:
+        # Only Vern's copy is gathered; the other recipients exist only in archive metadata.
+        merged = [{"type": "mail", "source": "outlook", "id": f"m{n}", "from": "me@x.y",
+                   "to": ["vern.chan@unsw.edu.au" if n == 0 else f"student{n}@school.example"],
+                   "subject": "Try handoff", "date": "2026-10-15T01:00:00Z"} for n in range(5)]
+        (root / ".state" / "source-inventory.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in merged))
+        mail_rows.append(merged[0])
+    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: mail_rows)
 
     def write(nb, items, config, stage):
         seen["facts"] = next(i for i in items if i["role"] == "facts")
@@ -456,6 +467,124 @@ def test_last_contact_is_human_mail_between_them_not_a_broadcast_or_notice():
          "participants": {"from": "Alex <a@r.example>", "to": ["someone@else.example"], "cc": []}},
     ], [*HANDLES, "noreply@harbour.example"])
     assert found(rows, "Last contact")[0]["source"] == "gmail:h1"
+
+
+def test_mail_merge_send_keeps_the_earlier_personal_last_contact():
+    personal = mail("gmail:personal", "2026-10-01T01:00:00Z", "Thursday works.")
+    merged = {**mail("gmail:merged", "2026-10-15T01:00:00Z", "Try the new handoff.",
+                     speaker="Alex <alex@rivera.example>", role="user", subject=" Fw: RE: Try  HANDOFF "),
+              "participants": {"to": [HANDLES[0]], "cc": []}}
+    rows = extract([personal, merged], HANDLES, merged_subjects={"try handoff"})
+    assert found(rows, "Last contact")[0]["source"] == "gmail:personal"
+    assert not found(extract([merged], HANDLES, merged_subjects={"try handoff"}), "Last contact")
+
+
+def test_mail_merge_reply_from_the_person_still_counts_as_last_contact():
+    reply = mail("gmail:reply", "2026-10-16T01:00:00Z", SIGNED, subject="Re: Try handoff")
+    rows = extract([reply], HANDLES, merged_subjects={"try handoff"})
+    assert found(rows, "Last contact")[0]["source"] == "gmail:reply"
+    assert found(rows, "Phone")
+
+
+@pytest.mark.parametrize("count, spacing_hours, same_recipient, sender, expected", [
+    (5, 1, False, "alex@rivera.example", {"try handoff"}),
+    (2, 1, False, "alex@rivera.example", set()),
+    (5, 1, True, "alex@rivera.example", set()),
+    (5, 24, False, "alex@rivera.example", set()),
+    (5, 18, False, "alex@rivera.example", {"try handoff"}),
+    (5, 1, False, "someone@else.example", set()),
+])
+def test_mail_merge_subjects_use_distinct_recipients_within_three_days(
+        count, spacing_hours, same_recipient, sender, expected):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.fact_extract import mail_merge_subjects
+
+    start = datetime(2026, 10, 12, 23, tzinfo=timezone.utc)
+    subjects = ["Try handoff", " RE: Try  HANDOFF ", "Fwd: Re: try handoff", "Fw: try\thandoff", "try handoff"]
+    rows = [{"from": sender, "to": [f"Student <p{0 if same_recipient else n}@school.example>"], "cc": [],
+             "subject": subjects[n], "date": (start + timedelta(hours=n * spacing_hours)).isoformat()}
+            for n in range(count)]
+    assert mail_merge_subjects(list(reversed(rows)), {"alex@rivera.example"}) == expected
+
+
+@pytest.mark.parametrize("to_count", [1, 3])
+def test_mail_merge_subjects_exclude_team_replies_with_six_distinct_recipients(to_count):
+    from connectonion.rem.fact_extract import mail_merge_subjects
+
+    rows = []
+    for reply in range(2):
+        team = [f"p{reply * 3 + n}@school.example" for n in range(3)]
+        rows.append({"from": "alex@rivera.example", "to": team[:to_count], "cc": team[to_count:],
+                     "subject": "Re: about weekly meetings", "date": f"2026-10-1{2 + reply}T01:00:00Z"})
+    assert mail_merge_subjects(rows, {"alex@rivera.example"}) == set()
+
+
+@pytest.mark.parametrize("copy_self, copy_recipient, expected", [
+    (False, False, {"try handoff"}),
+    (True, False, {"try handoff"}),
+    (False, True, set()),
+])
+def test_mail_merge_subjects_require_one_to_and_no_cc_after_removing_own_addresses(
+        copy_self, copy_recipient, expected):
+    from connectonion.rem.fact_extract import mail_merge_subjects
+
+    own = "Alex <ALEX@rivera.example>"
+    rows = [{"from": own, "to": [f"p{n}@school.example", *([own] if copy_self else [])],
+             "cc": ([own] if copy_self else []) + ([f"p{n}@school.example"] if copy_recipient else []),
+             "subject": "Try handoff", "date": "2026-10-12T01:00:00Z"} for n in range(5)]
+    assert mail_merge_subjects(rows, {"alex@rivera.example"}) == expected
+
+
+@pytest.mark.parametrize("handle", ["agentmail.cc", "@agentmail.cc"])
+@pytest.mark.parametrize("domain", ["agentmail.cc", "team.agentmail.cc"])
+def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, handle, domain):
+    """2026-10-16 first-run trial: orgs cited two-way mail but Last contact stayed Unknown."""
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.project_claim_review import packet
+
+    adi = f"Adi <adi@{domain}>"
+    sent = {**mail("gmail:sent", "2026-08-22T01:00:00Z", "Can we talk?", speaker="Me <me@x.example>", role="user"),
+            "participants": {"from": "me@x.example", "to": [adi], "cc": []}}
+    reply = {**mail("gmail:reply", "2026-09-03T01:00:00Z", "Regards,\nAdi\nM: 0400 555 019\n", speaker=adi),
+             "participants": {"from": adi, "to": ["me@x.example"], "cc": []}}
+    broadcast = {**sent, "source": "gmail:broadcast", "timestamp": "2026-10-06T01:00:00Z",
+                 "participants": {"to": [f"p{n}@{domain}" for n in range(40)], "cc": []}}
+    items = [sent, reply, broadcast]
+    rows = extract(items, [handle])
+    assert found(extract([sent], [handle]), "Last contact")[0]["source"] == "gmail:sent"
+    assert not found(extract([broadcast], [handle]), "Last contact")
+    unaddressed = mail("gmail:unaddressed", "2026-10-07T01:00:00Z", "Hello", speaker="Me <me@x.example>", role="user")
+    assert not found(extract([unaddressed], [handle]), "Last contact")
+    assert rows == [{"field": "Last contact", "value": "2026-09-03", "qualifier": "",
+                     "source": "gmail:reply", "date": "2026-09-03"}]
+
+    notebook = Notebook(tmp_path)
+    record = "orgs/agentmail.md"
+    notebook.stub_org(record, "AgentMail", ["agentmail.cc"])
+    page, restored = facts.keep_extracted(record, notebook.read(record), rows)
+    assert "- Last contact: 2026-09-03 [1]" in page
+    assert "- [1] gmail:reply — 2026-09-03" in page
+    assert "- First contact: Unknown" in page
+    assert restored == rows
+    audit, missing = packet(notebook, page, items=[facts_item(rows), *items])
+    assert not missing
+    assert audit["runner_facts"] == [{"field": "Last contact", "value": "2026-09-03", "source": "gmail:reply"}]
+
+
+@pytest.mark.parametrize("speaker, role, recipients, subject", [
+    ("noreply@agentmail.cc", "other", ["me@x.example"], "Digest"),
+    ("person@agentmail.cc", "other", ["me@x.example"], "Important Notice"),
+    ("person@agentmail.cc", "other", [f"p{n}@agentmail.cc" for n in range(40)], "Hello all"),
+    ("adi@notagentmail.cc", "other", ["me@x.example"], "Hello"),
+    ("person@agentmail.cc.evil.example", "other", ["me@x.example"], "Hello"),
+    ("someone@else.example", "other", ["person@agentmail.cc"], "Hello"),
+    ("me@x.example", "user", ["someone@else.example"], "Hello"),
+    ("me@x.example", "user", [], "Hello"),
+])
+def test_org_domain_last_contact_rejects_notices_broadcasts_and_unrelated_mail(speaker, role, recipients, subject):
+    item = {**mail("gmail:excluded", "2026-10-07T01:00:00Z", "Hello", speaker=speaker, role=role, subject=subject),
+            "participants": {"to": recipients, "cc": []}}
+    assert not found(extract([item], ["@agentmail.cc"]), "Last contact")
 
 
 # ------------------------------------------- promotion keeps a contact detail only when the mail shows it

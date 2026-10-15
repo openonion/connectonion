@@ -65,10 +65,15 @@ def sent_mail(root: Path, addresses: list[str]) -> list[str]:
 
 
 def typed(root: Path) -> list[str]:
+    from .investigate import SESSION_WINDOW_VERSION
+
     directory = state_path(root, "session-windows")
     seen = {}
     for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
-        for item in read_json(path, {}).get("items", []):
+        window = read_json(path, {})
+        if window.get("version") != SESSION_WINDOW_VERSION:
+            continue
+        for item in window.get("items", []):
             if item.get("role") == "user" and isinstance(item.get("text"), str):
                 seen[item.get("source") or item["text"]] = item["text"]
     return list(seen.values())

@@ -10,8 +10,6 @@ Output: that page, edited. Kind-specific rules follow.
 
 ## Investigate like a reporter
 
-Work like an investigative journalist, not a summariser.
-
 - **Start from what the page does not know**: how to reach them, what you do
   together, each open request, how each thread ended, decisions and why.
 - **Follow every lead.** A name, company, amount, attachment or request you read
@@ -32,7 +30,7 @@ settled; longer is not better.
 
 **Aim for about 15k characters.** Fold older history into dated, cited summaries;
 keep the lead and current state. Growth beyond 20,000 characters is refused.
-`History`: one dated line per thread, how it ended; at most sixteen.
+`History`, on a page whose shape has one: one dated line per thread, how it ended; at most sixteen.
 
 ## Quote or summarise
 
@@ -50,9 +48,10 @@ refuses a quote it cannot find there.
 - Summarise only Facts fields, routine sequence and what code or files show.
 - Inference is labelled and rests on quotes; one incident is not a pattern.
 - An old open item keeps its date ("on 2026-08-02 he said he would send the
-  deck", never "owes the deck"); an event whose date has passed is not open.
-- "Not established" or `Unknown` only after `rg` over every supplied source:
-  a granted access sat in the material while the page called it unknown.
+  deck"); an event whose date has passed is not open.
+- Before writing that something has no reply or outcome, `rg` every supplied
+  source for it: a granted access sat in the material while the page called
+  it unknown.
 
 ## Filling the page
 
@@ -63,8 +62,8 @@ refuses a quote it cannot find there.
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
 - Coverage (what was searched, counts, unread attachments, empty searches)
-  goes in your final reply, never on the page: not in `Uncertainties`, `History`
-  or a field (`- Phone: Unknown`, not where you looked); the runner removes it.
+  goes in your final reply, never on the page (`- Phone: Unknown`, not where
+  you looked).
 - **Never cite an `Unknown`**; write it bare.
 - **Label private life; never drop it.** End such a sentence, before its claim
   number, with `[personal]` (family, home, trips, hobbies, private plans) or
@@ -74,21 +73,18 @@ refuses a quote it cannot find there.
 ## Evidence format
 
 Cite `[1]`, `[2]`; under `Sources` define each number once, `- [n] <source id> —
-<date>`, nothing more. Only a source id that resolves is kept: one
-from the material or the mail archive (the `###` heading of an evidence entry: `outlook:…`,
-`gmail:…`, `codex:…:81499`). Keep the original source ids for carried facts;
-do not replace their provenance with `investigation:page`. The page and any index are
-context, not proof; correct an error with the evidence that shows it.
-Use `investigation:page` only for untraceable carried context. Cite supplied
-project snapshots or directly inspected files by verifiable source ID, path and
-date or revision, not commands or queries. The material's start
-date does not prove first contact.
+<date>`, nothing more. Only a source id that resolves is kept: one from
+the material or the mail archive (the `###` heading of an evidence entry: `outlook:…`,
+`gmail:…`, `codex:…:81499`) or a URL you read. Carried facts keep their
+original ids; `investigation:page` only for untraceable carried context. The
+page and any index are context, not proof. Cite project snapshots or inspected
+files by source ID, path and date or revision, not commands or queries.
 
 ## Candidate and finish
 
 Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
 or write other pages: the runner reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
-footer unchanged. Requests prove intent, not completion. Before replying: the
+footer unchanged. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says
 `not investigated yet` (exclude the footer); every private sentence, including
 the user's own trips, ends with its label. Reply with a lead ledger

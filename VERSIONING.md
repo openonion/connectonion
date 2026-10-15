@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3b5
+## Current Version: 1.9.3rc1
+
+1.9.3rc1 is the 1.9.3 release candidate; stable remains 1.9.2. This candidate's `co rem` was given a
+real first run: a fresh notebook over 180 days of mail and coding sessions. It found pages lost
+after their paid turns to the notebook lock, which is fixed; on the fixed code 66 pages were
+accepted, none refused, none lost. Person pages lead in three sentences and list what each side
+owes; project pages are read from the repository's current line; the reader opens on what is
+waiting on you and shows each citation's original beside its line. Includes #2373 (the
+maintenance lock on Windows). See [1.9.3rc1 notes](docs/releases/1.9.3rc1.md).
+
+- 1.9.3rc1 (REM you can show).
+
+## Previous preview: 1.9.3b5
 
 1.9.3b5 is a 1.9.3 beta; stable remains 1.9.2. `co rem`'s first run on a real notebook: quotes are
 checked against their sources, every person, organisation and project page is audited, contact

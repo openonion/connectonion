@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -18,6 +19,7 @@ from .facts import FIELDS
 # Person-page labels the roster reads back. Contact lines are skipped when
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
 CITATION = re.compile(r"\s*\[W?\d+\]")
 
@@ -178,19 +180,43 @@ def maintenance_lock(root: Path, wait: float = 0):
         _THREADS.release()
 
 
+def _try_lock(fd: int) -> None:
+    """Take the cross-process lock, raising BlockingIOError while it is held.
+
+    POSIX uses ``fcntl.flock``, Windows ``msvcrt.locking``. msvcrt reports a
+    busy lock as a plain ``OSError`` (EACCES/EDEADLK) rather than
+    ``BlockingIOError``, so translate those for the retry loop below.
+    """
+    if os.name == "nt":
+        import msvcrt
+        # msvcrt.locking needs at least one byte to lock, and the lock file is
+        # otherwise never written to. seek(0) keeps lock and unlock on the same
+        # byte (same shape as network/host/schedule.py).
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as error:
+            if error.errno in (errno.EACCES, errno.EDEADLK):
+                raise BlockingIOError(*error.args) from error
+            raise
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 @contextmanager
 def _file_lock(root: Path, wait: float):
     """The lock other processes see: a scheduled tick, a second terminal."""
-    import fcntl
-
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
     deadline = time.monotonic() + wait
     try:
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _try_lock(fd)
                 break
             except BlockingIOError as error:
                 if time.monotonic() >= deadline:
@@ -352,10 +378,12 @@ class Notebook:
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
+    # The first screen answers what, why, where it stands and what is next;
+    # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
     PROJECT_SECTIONS = (
-        "What it is", "Overview", "Try it", "Where it stands", "Latest issues",
-        "People and ownership", "Getting started", "Why it exists", "Key decisions",
-        "How it is built", "Architecture map", "Paths", "Open threads", "Uncertainties",
+        "What it is", "Why it exists", "Where it stands", "Open threads", "Latest issues",
+        "Key decisions", "Overview", "Try it", "People and ownership", "Getting started",
+        "How it is built", "Architecture map", "Paths", "Uncertainties",
     )
 
     def stub_project(self, record: str, name: str, paths=(), **known) -> bool:

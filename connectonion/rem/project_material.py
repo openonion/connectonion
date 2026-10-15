@@ -360,7 +360,9 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
     A folder with messages and no page gets the map's page if its newest message
     is within `recent_days`; older ones stay listed as `unmapped`. Init passes
     `create_pages=False` after showing its map so unmatched folders remain
-    candidates instead of silently changing the project count. `lock_held`
+    candidates instead of silently changing the project count. The map itself
+    extracts the full window with page creation first: the owner's client repo
+    was missing because its sessions began in a workspace container. `lock_held`
     says the caller already holds the maintenance lock the new pages need.
     """
     now = now or datetime.now(timezone.utc)
@@ -372,9 +374,9 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         since = (timestamp(previous) - OVERLAP) if previous and not full else now - timedelta(days=days)
     folders = page_folders(notebook)
     messages, counts = session_messages(subscriptions, since=since, rem_root=root, folders=folders)
-    created = (_new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
-               if create_pages else [])
-    if created:
+    filed_rows, created = (_new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+                           if create_pages else ([], []))
+    if create_pages:
         folders = page_folders(notebook)
     by_page = {}
     for message in messages:
@@ -393,7 +395,8 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         from .store import refresh_safely
         indexed = refresh_safely(root)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
-            "pages": pages, "created": created, "workspace": workspace, "unmapped": index["unmapped"],
+            "pages": pages, "created": created, "filed_rows": filed_rows,
+            "workspace": workspace, "unmapped": index["unmapped"],
             "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
             "unfamiliar_skipped": counts["unfamiliar"], "store": indexed}
 
@@ -414,16 +417,18 @@ def _unmapped(messages: list[dict], folders: dict) -> list[dict]:
             for row in sorted(rows.values(), key=lambda r: r["last"], reverse=True)]
 
 
-def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bool) -> list[str]:
-    """The map's page for each folder active since `cutoff` that has none; returns the records made.
+def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bool) -> tuple[list[dict], list[str]]:
+    """File folders active since `cutoff`; return their rows and the records newly made.
 
     Made by the map's own code (`map.project_groups`, `map.file_project`), so a
     page is the stub, the record name and the worktree-joins-its-repository
-    grouping `co rem init` would have given it.
+    grouping `co rem init` would have given it. Return the counts and paths too:
+    the map needs to list pages found only through attributed workspace messages
+    before it archives pages it thinks are no longer used.
     """
     recent = [row for row in unmapped if timestamp(row["last"]) >= cutoff]
     if not recent:
-        return []
+        return [], []
     from .map import file_project, project_groups
     from .scan import _repo_identity
     rows = []
@@ -432,14 +437,15 @@ def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bo
         rows.append({"path": row["path"], "sessions": row["sessions"], "turns": row["messages"],
                      "first": row["first"][:10],
                      "last": row["last"][:10], "repo": repo.get("toplevel", ""), "origin": repo.get("origin", "")})
-    created = []
+    filed, created = [], []
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook = Notebook(root)
         for identity, group in project_groups(rows).items():
             record, made = file_project(notebook, identity, group, refresh=False)
+            filed.append({**group, "record": record})
             if made:
                 created.append(record)
-    return created
+    return filed, created
 
 
 def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetime) -> dict:

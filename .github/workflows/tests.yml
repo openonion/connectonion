@@ -129,6 +129,8 @@ jobs:
   # for Proactor Windows or Darwin close/shutdown behavior.
   remote-browser-egress:
     runs-on: ${{ matrix.os }}
+    # Allow 20 minutes for dependency installation and five focused test files across all OSes.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -188,7 +190,7 @@ jobs:
 
       - name: Run browser transport + daemon tests (native Windows named pipes)
         run: |
-          pytest tests/unit/test_transport.py tests/e2e/cli/test_browser_daemon.py -v --tb=short
+          pytest tests/unit/test_transport.py tests/e2e/cli/test_browser_daemon.py tests/unit/test_rem_file_lock.py -v --tb=short
 
   # Simulate a REAL Windows user end-to-end: install from the wheel (exactly what
   # PyPI ships — not an editable checkout), discover the CLI from the shell,

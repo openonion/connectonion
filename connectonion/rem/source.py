@@ -112,6 +112,31 @@ def timestamp(value: str) -> datetime:
         raise RemError("Source contains an invalid timestamp") from error
 
 
+LOCAL_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T[^\s]*(?:Z|[+-]\d{2}:?\d{2})")
+
+
+def local_time(stamp, zone) -> str:
+    # A Sydney reply's prose said 27 August but Sources said 28 August (2026-10-16).
+    if LOCAL_TIMESTAMP.fullmatch(str(stamp)):
+        return timestamp(str(stamp)).astimezone(zone).strftime("%Y-%m-%d %H:%M ") + str(zone)
+    return ""
+
+
+def with_local_times(items, zone) -> list[dict]:
+    result = []
+    for item in items:
+        local = local_time(item.get("timestamp"), zone)
+        copied = {}
+        for key, value in item.items():
+            if key == "local_time" and local:
+                continue
+            copied[key] = value
+            if key == "timestamp" and local:
+                copied["local_time"] = local
+        result.append(copied)
+    return result
+
+
 def rem_task(cwd) -> bool:
     """A session run in a notebook's .state/tasks: REM's own work, never the user's words."""
     parts = PurePosixPath(str(cwd or "")).parts
@@ -140,9 +165,12 @@ def _codex_meta(first: dict) -> dict:
     # sidechain: its user slot is what the parent agent wrote or quoted back, and a
     # forked worker starts with a copy of the parent's messages. Its tool calls are
     # still the session's (a skill it loads was loaded), so only messages are refused.
+    # Exec prompts are program-written too: on 2026-10-15 a person investigation
+    # cited one as "the user's Codex note". Reuse the same message exclusion.
     source = payload.get("source")
     return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
-            "subagent": isinstance(source, dict) and "subagent" in source,
+            "subagent": (isinstance(source, dict) and "subagent" in source
+                         or source == "exec" or payload.get("originator") == "codex_exec"),
             "interactive_cli": source == "cli" and payload.get("originator") in ("codex-tui", "codex_cli_rs"),
             "desktop": payload.get("originator") == CODEX_DESKTOP,
             "native_desktop": payload.get("originator") == CODEX_DESKTOP and source == "vscode"}

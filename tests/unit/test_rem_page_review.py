@@ -535,6 +535,65 @@ def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
     assert "- Sessions: 2\n" in restore_runner_fields("projects/atlas.md", nested.replace("Sessions: 2", "Sessions: 3"),
                                                        original)
 
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_restores_contact_date_over_unknown(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    candidate = original.replace(f"- {label}: 2026-10-14 [4]", f"- {label}: Unknown")
+
+    assert restore_runner_fields(record, candidate, original) == original
+
+
+def test_restore_runner_fields_maps_contact_citation_to_candidate_number():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+                 "- [2] outlook:abc — candidate description\n- [4] outlook:other\n")
+
+    expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [2]")
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+
+
+def test_restore_runner_fields_appends_missing_contact_source_at_next_number():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+                 "- [1] outlook:one\n- [4] outlook:other\n\nInvestigation: mapped\n")
+
+    expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [5]")
+    expected = expected.replace("\n\nInvestigation:", "\n- [5] outlook:abc — 2026-10-14\n\nInvestigation:")
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+
+
+def test_restore_runner_fields_skips_contact_line_with_an_unresolved_citation():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
+    candidate = "# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
+
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == candidate
+
+
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_keeps_candidate_contact_date(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    candidate = original.replace("2026-10-14 [4]", "2026-10-15 [4]")
+
+    assert restore_runner_fields(record, candidate, original) == candidate
+
+
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_original_unknown_changes_nothing(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: Unknown\n"
+    candidate = original.replace("# Ying Tan", "# Updated page")
+
+    assert restore_runner_fields(record, candidate, original) == candidate
+
+
 def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     """A real one-page maintenance turn cited `investigation:page` and re-cited the
     page's own codex ids in new words; both were refused and the update was lost."""
@@ -954,13 +1013,14 @@ def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
 
 def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
     """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
+    from datetime import timezone
     from connectonion.rem.runner import _searched_turn
     (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
     first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
 
     def never(*args):
         raise AssertionError("no search should run")
-    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
+    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first, timezone.utc)
     assert out["result"] == "edited" and "not valid JSON" in out["report"]
 
 
@@ -999,6 +1059,35 @@ def test_sources_already_in_order_are_unchanged():
     from connectonion.rem.page_review import renumber_sources
     text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
     assert renumber_sources(text) == text
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('[15][16][15][16]', '[15][16]'),
+    ('[21][21]', '[21]'),
+    ('[8][8]', '[8]'),
+    ('[3] [3]', '[3]'),
+    ('[1][2]', '[1][2]'),
+    ('[2] [1][2] [3]', '[2][1][3]'),
+    ('[3]  [3]', '[3]  [3]'),
+    ('[3]\n[3]', '[3]\n[3]'),
+    ('`rows[5][5]` [5][5]', '`rows[5][5]` [5]'),
+    ('```python\nrows[5][5]\n```\n[5][5]', '```python\nrows[5][5]\n```\n[5]'),
+    ('[3](http://x)[3]', '[3](http://x)[3]'),
+    ('[3][3](http://x)', '[3][3](http://x)'),
+    ('[W1][W1]', '[W1][W1]'),
+    ('## Sources\n- [3] gmail:abc — original\n', '## Sources\n- [3] gmail:abc — original\n'),
+])
+def test_repeated_citation_markers_collapse_only_within_prose_runs(text, expected):
+    from connectonion.rem.page_review import collapse_repeated_markers
+    assert collapse_repeated_markers(text) == expected
+
+
+def test_merged_sources_leave_one_citation_after_renumbering():
+    from connectonion.rem.page_review import collapse_repeated_markers, renumber_sources, settle_sources
+    text = ('# Dora\n\nA fact [1][2]\n\n## Sources\n'
+            '- [1] gmail:abc — original\n- [2] gmail:abc — repeated\n')
+    assert collapse_repeated_markers(renumber_sources(settle_sources(text, {}))) == (
+        '# Dora\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
 
 
 def test_a_required_section_the_turn_left_out_is_added_as_unknown():
@@ -1052,3 +1141,13 @@ def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
              {'source': 'gmail:b', 'timestamp': 'yesterday'}]
     dates = source_dates(Path('/nonexistent-notebook'), '# X\n', items, ZoneInfo('Australia/Sydney'))
     assert dates == {'gmail:a': '2026-10-15'}
+
+
+def test_a_source_id_cited_inline_becomes_a_numbered_citation():
+    """Nina's, Tamara's and Weiwei's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
+    from connectonion.rem.page_review import normalize_numbered_sources
+    page = ("# N\n\nAsked [outlook:ac8a0c940197]; replied [1] [outlook:2af4c0ad8970].\n\n## Sources\n"
+            "- [1] outlook:2af4c0ad8970 — 2026-09-24\n\nInvestigation: x\n")
+    out = normalize_numbered_sources(page)
+    assert "Asked [2]; replied [1] [1]." in out
+    assert "- [2] outlook:ac8a0c940197" in out and out.rstrip().endswith("Investigation: x")

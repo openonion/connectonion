@@ -56,6 +56,8 @@ class Mail:
 def first_run(tmp_path, monkeypatch):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
     monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: Mail())
     calls = []
@@ -198,6 +200,75 @@ def test_mine_accepts_several_addresses_in_one_run(first_run):
 
 
 # -------------------------------------------------------- subscriptions
+
+
+@pytest.mark.parametrize('json_out', [False, True])
+def test_non_tty_init_names_skipped_sessions_and_approval_command(first_run, monkeypatch, json_out):
+    from pathlib import Path
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    for folder in ('.codex/sessions', '.claude/projects'):
+        (Path.home() / folder).mkdir(parents=True)
+    walked = []
+    monkeypatch.setattr('connectonion.rem.scan.source_files', lambda sub: walked.append(sub) or [])
+    result = init('--no-investigate', '--no-start', *(['--json'] if json_out else []))
+    assert result.exit_code == 0, result.output
+    text = Text.from_ansi(result.output).plain
+    assert 'waiting for approval; not scanned' in text
+    assert 'codex' in text and 'claude-code' in text
+    assert f'co rem --root {root} init --yes' in text
+    assert walked == []
+    assert not (root / '.state/consent.json').exists()
+    assert not subscriptions(root)['codex']['consented']
+
+
+def test_init_yes_records_existing_consent_before_mapping(first_run, monkeypatch):
+    from connectonion.rem.files import read_json, state_path
+    from connectonion.rem.map import build_map
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    mapped = []
+
+    def checked_map(root, sources, clients, **kwargs):
+        assert read_json(state_path(root, 'consent.json'), {})['summary']
+        assert sources['codex']['consented'] and sources['claude-code']['consented']
+        assert subscriptions(root)['codex']['consented']
+        mapped.append(True)
+        return build_map(root, sources, clients, **kwargs)
+
+    monkeypatch.setattr('connectonion.rem.map.build_map', checked_map)
+    result = init('--yes', '--no-investigate', '--no-start')
+    assert result.exit_code == 0, result.output
+    assert mapped == [True]
+
+
+def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem.service import subscribe_read_mail, summary_fingerprint
+    root, init, _ = first_run
+    summaries, prompts, installed = [], [], []
+    start_consent = rem_commands._start_consent
+
+    def consent(ctx, summary, **kwargs):
+        monkeypatch.setattr(sys.stdin, 'isatty', lambda: True)
+        summaries.append(summary)
+        return start_consent(ctx, summary, **kwargs)
+
+    monkeypatch.setattr(rem_commands, '_start_consent', consent)
+    monkeypatch.setattr('typer.confirm', lambda *args, **kwargs: prompts.append(args) or True)
+    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda: SimpleNamespace(
+        install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
+    result = init('--no-investigate')
+    assert result.exit_code == 0, result.output
+    assert len(prompts) == 1
+    assert len(summaries) == 1
+    assert summaries[0]['sources']['gmail']['state'].startswith('will be read')
+    assert installed == [root]
+    fingerprint = summary_fingerprint(root)
+    assert subscribe_read_mail(root, ['gmail']) == []
+    assert summary_fingerprint(root) == fingerprint
 
 
 def test_mailboxes_init_read_are_subscribed_for_start(first_run):
@@ -438,7 +509,7 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
 def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
     from connectonion.rem.config import prepare
-    from connectonion.rem.files import Notebook
+    from connectonion.rem.map import build_map
     from connectonion.rem.project_material import extract, stored
     from connectonion.cli.commands.rem_commands import _first_project_rows
     root = tmp_path / 'rem'
@@ -452,8 +523,11 @@ def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monke
                                                      {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     extract(root, {}, create_pages=False)
-    record = 'projects/older.md'
-    Notebook(root).stub_project(record, 'Older', [folder], sessions=1)
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [
+        {'path': folder, 'repo': '', 'origin': '', 'sessions': 3,
+         'first': when.date().isoformat(), 'last': when.date().isoformat()}])
+    report = build_map(root, {}, {}, skill_directories=[])
+    record = report['projects'][0]['record']
     rows = _first_project_rows(root, None)
     assert [row['record'] for row in rows] == [record]
     assert stored(root, record) == [message]
@@ -491,7 +565,8 @@ def projects(first_run, monkeypatch):
              "recent": recent, "new_messages": 4, "chars": 2000, "left_out": 0}
             for name, recent in (("alpha", True), ("beta", True), ("old", False))]
     written = []
-    monkeypatch.setattr("connectonion.rem.project_material.extract", lambda root, subs, **kw: {})
+    monkeypatch.setattr("connectonion.rem.project_material.extract",
+                        lambda root, subs, **kw: {"created": [], "filed_rows": [], "pages": []})
     monkeypatch.setattr("connectonion.rem.project_pages.queue",
                         lambda root, **kw: [row for row in rows if row["record"] not in written])
 

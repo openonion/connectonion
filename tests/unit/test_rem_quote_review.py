@@ -70,6 +70,19 @@ def test_drop_claims_removes_the_line_and_reports_claims_it_cannot_find():
     assert unlocated == ['not on the page']
 
 
+@pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
+@pytest.mark.parametrize('claim', ['{field}: vern.chan@unsw.edu.au', 'vern.chan@unsw.edu.au'])
+def test_drop_claims_keeps_uncited_fields_but_drops_a_refuted_phone(field, claim):
+    """Vern Chan's map address was lost to the citation audit (2026-10-16 trial)."""
+    text = ('# Vern Chan\n\n## Facts\n'
+            f'- {field}: vern.chan@unsw.edu.au\n- Phone: 0400 000 000 [1]\n\n'
+            '## Sources\n- [1] gmail:a — 2026-10-16\n')
+    kept, unlocated = drop_claims('people/vern-chan.md', text,
+                                  [claim.format(field=field), 'Phone: 0400 000 000'])
+    assert kept == text.replace('- Phone: 0400 000 000 [1]', '- Phone: Unknown')
+    assert unlocated == []
+
+
 def test_a_glued_heading_and_a_repeated_section_are_merged_not_refused():
     text = ('# Hamish\n\nLead [1].\n\n## Facts\n- Email: h@example.com\n\n## Who they are\n'
             'He leads the program [1]. ## Our relationship\n- Colleagues [1]\n\n'
@@ -79,6 +92,27 @@ def test_a_glued_heading_and_a_repeated_section_are_merged_not_refused():
     assert 'program [1].\n\n## Our relationship\n- Colleagues [1]' in merged
     assert merged.count('## Uncertainties') == 1 and '- Whether he stays [1]' in merged
     assert not [e for e in validate('people/hamish.md', merged, '', []) if 'occur once' in e or 'Duplicate' in e]
+
+
+@pytest.mark.parametrize('decisions', ['', '## Key decisions\n- Chose local storage [1]\n\n'])
+def test_project_history_is_folded_into_key_decisions(decisions):
+    from connectonion.rem.page_review import compact_page
+    text = ('# Atlas\n\n' + decisions + '## History\n- 2026-10-01: “Keep it local” [1]\n\n'
+            '## Sources\n- [1] codex:s:1 — 2026-10-01\n\nInvestigation: written 2026-10-15\n')
+    compact = compact_page('projects/atlas.md', text)
+    assert '## History' not in compact and compact.count('## Key decisions') == 1
+    assert '- 2026-10-01: “Keep it local” [1]' in compact.split('## Key decisions\n')[1].split('## Sources')[0]
+    assert compact.endswith(text.split('## Sources')[1])
+    assert not decisions or '- Chose local storage [1]' in compact
+    assert compact_page('projects/atlas.md', compact) == compact
+    assert compact_page('people/atlas.md', text) == text
+    assert compact_page('orgs/atlas.md', text) == text
+
+
+def test_a_fenced_history_example_is_not_a_project_section():
+    from connectonion.rem.page_review import compact_page
+    text = '# Atlas\n\n## What it is\n```markdown\n## History\n- Example\n```\n\n## Sources\n- [1] codex:s:1\n'
+    assert compact_page('projects/atlas.md', text) == text
 
 
 def _person(tmp_path):
@@ -244,3 +278,33 @@ def test_a_person_audit_reads_the_turns_own_mail_and_knows_the_people_rules_and_
     project = page('- Built the reader [1]', '- [1] gmail:abc — 2026-10-01\n')
     project_claim_review.review(notebook, project, {}, tmp_path, audit, record='projects/atlas.md', items=items)
     assert 'a cc\'d person is not a party' not in sent[1] and 'Today is ' in sent[1]
+
+
+def test_a_refuted_arrow_drops_its_diagram_and_keeps_the_page():
+    """STR (2026-10-15): the audit refuted a collector -> Postgres arrow copied
+    across two diagram lines; no single line held it and the page was refused."""
+    text = ('# X\n\n## Overview\nThe flow, as the README tells it [1].\n\n```text\nMelbourne rental collectors\n'
+            '  -> Cloud Postgres property_prod\n```\n\n## Paths\n- /a\n\n## Sources\n- [1] codex:a:1 — 2026-10-01\n')
+    kept, unlocated = drop_claims('projects/x.md', text, ['Melbourne rental collectors\n  -> Cloud Postgres property_prod'])
+    assert unlocated == [] and 'collectors' not in kept and 'The flow, as the README tells it [1].' in kept
+
+
+def test_a_refuted_unknown_drops_nothing_and_a_sentence_leaves_no_bare_citations():
+    """oo-api (2026-10-15): an audited "Unknown" matched every Unknown line, and a
+    dropped last sentence left a line of bare citation markers."""
+    text = ('# X\n\n## Insight\n- At stake: the owner wanted every model. The gateway is curated. [5][6]\n\n'
+            '## Open threads\nUnknown\n\n## Sources\n- [5] codex:a:1 — 2026-10-01\n- [6] codex:a:2 — 2026-10-01\n')
+    kept, unlocated = drop_claims('projects/x.md', text, ['Unknown', 'The gateway is curated'])
+    assert unlocated == [] and 'Unknown' in kept and '\n[5][6]' not in kept and 'The gateway' not in kept
+
+
+def test_a_source_cited_in_place_is_numbered_so_its_quote_is_checked(tmp_path):
+    """v193q1 STR (2026-10-15): a quote cited as [codex:…] skipped the quote check."""
+    from connectonion.rem.page_review import normalize_numbered_sources
+    text = ('# X\n\n## Key decisions\n- 2026-08-10 — “start now” [codex:s:9] and [1]\n\n'
+            '## Sources\n- [1] codex:s:1 — 2026-08-10\n\nInvestigation: mapped\n')
+    fixed = normalize_numbered_sources(text)
+    assert '“start now” [2] and [1]' in fixed and '- [2] codex:s:9' in fixed and fixed.endswith('Investigation: mapped\n')
+    items = [{'source': 'codex:s:9', 'text': 'please begin', 'role': 'user'},
+             {'source': 'codex:s:1', 'text': 'x', 'role': 'user'}]
+    assert misquoted(tmp_path, 'projects/x.md', fixed, items)

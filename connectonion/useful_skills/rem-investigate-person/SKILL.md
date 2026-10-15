@@ -9,9 +9,8 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;
   `Email`/`Handles` take only addresses the subject writes from.
-- Every handle you were given goes in `Also known as:`, unless they said it is not their name;
-  add the ones you discover (signature, second address, other script). Company
-  names go in their own field.
+- Put given and discovered handles (signature, second address, other script) in
+  `Also known as:`, unless denied as their name; company names go in their field.
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.
 - **A role in a list the user writes about someone else is that person's, not
@@ -21,15 +20,15 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 ## Reading the mail
 
-- **The `investigation:facts` item first**: put each extracted value in its
-  cited `Facts` field. Read `Signature`, `Calendar` and mail signatures for role,
-  company, office, location and time zone. Date signature changes; keep both
-  phones with qualifiers.
+- Cite project documents naming the subject as the owner's record; contact details
+  found only there are not the person's own.
+- Read `investigation:facts` first; put each value in its cited `Facts` field.
+  Read `Signature`, `Calendar` and signatures for role, company, office, location
+  and time zone. Date signature changes; qualify both phones.
 - `Phone` means the person's contact number, never a meeting dial-in, passcode
   or attendee's number. Calendar text is context, not their contact details.
-- A domain identifies an organisation, not employment. Student affiliation
-  is not an employer; unstated employer → `Company: Unknown`. Link a matching
-  organisation in the relationship text, citing the mail.
+- A domain or student affiliation proves no employment; unstated employer →
+  `Company: Unknown`. Link a matching organisation in the relationship, citing mail.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
@@ -37,16 +36,15 @@ description: Read a person’s identity, relationship and obligations from gathe
 - Check asks/promises across topics before `Nothing open`; unrelated replies
   close none. Questions promise no deadline. Invites, confirmed logistics,
   arrival, empty forwards or samples do not prove completion.
-- Thread context can resolve a group ask after recipients drop. Match the team
-  and ask; one thread can mix both. Preserve requester, decision maker and debtor;
-  context is not this person's statement, contact date or assigned work.
+- In a group thread, keep who asked, who decides and who owes; a later reply
+  from the group can close an ask made to this person.
 - Reread `Comparison scope` originals by exact `Provider thread`; they are not new contact.
 
 ## What to produce
 
 Follow `rem-page-person` exactly, the lead above `Facts` included:
-`co rem list people --aliases` reads its headings and `Contact` labels. **`Open threads` is mandatory**: who owes what,
-since when.
+`co rem list people --aliases` reads its headings and labels. **`Open threads`
+is mandatory**: who owes what, since when.
 
 **Insight, three shapes** (never copy these facts):
 - `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`

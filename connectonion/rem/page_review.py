@@ -97,6 +97,15 @@ def compact_page(record: str, text: str) -> str:
     The map keeps its full scaffold until a write. A written page carries only
     supported detail plus the core needed to resume and audit it (#2122).
     """
+    # connectonion gained a History outside the project shape (2026-10-15); keep its lines as decisions.
+    history = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
+    if record.startswith('projects/') and history:
+        body = text[history.start(1):history.end(1)].strip()
+        text = text[:history.start()] + text[history.end():]
+        decisions = re.search(r'(?ms)^## Key decisions[ \t]*\n.*?(?=^## |^Investigation:|\Z)', prose(text))
+        at = decisions.end() if decisions else history.start()
+        heading = '' if decisions else '## Key decisions\n'
+        text = text[:at].rstrip('\r\n') + '\n\n' + heading + body + '\n\n' + text[at:]
     visible = prose(text)
     matches = list(SECTION_HEADING_RE.finditer(visible))
     if not matches:
@@ -177,6 +186,38 @@ def _carried_over(value: str, old_sources: str) -> bool:
     return bool(ids) and all(source in old_sources for source in ids)
 
 
+def _restore_citations(line: str, candidate: str, original: str) -> tuple[str, str]:
+    """Carry a restored line's source ids into the candidate's numbering."""
+    section = r'(?ms)^## Sources\n(.*?)(?=^## |^Investigation:|\Z)'
+    entry = r'^[ \t]*- \[(W?\d+)\][ \t]+([a-z][\w-]*:\S+)([^\n]*)$'
+    before, after = re.search(section, original), re.search(section, candidate)
+    old = {number: (source, suffix) for number, source, suffix in
+           re.findall(entry, before[1] if before else '', re.M)}
+    citations = re.findall(r'\[(W?\d+)\]', line)
+    if any(number not in old for number in citations):
+        return '', candidate
+    rows = re.findall(entry, after[1] if after else '', re.M)
+    numbers = {source: number for number, source, _ in rows}
+    next_number = max((int(number) for number, _, _ in rows if number.isdigit()), default=0) + 1
+    mapping, added = {}, []
+    for number in citations:
+        source, suffix = old[number]
+        if source not in numbers:
+            numbers[source] = str(next_number)
+            added.append(f'- [{next_number}] {source}{suffix}')
+            next_number += 1
+        mapping[number] = numbers[source]
+    if added:
+        if after:
+            at = after.start(1) + len(after[1].rstrip('\n'))
+            candidate = candidate[:at] + '\n' + '\n'.join(added) + (candidate[at:] or '\n')
+        else:
+            status = re.search(r'^Investigation:', candidate, re.M)
+            at = status.start() if status else len(candidate)
+            candidate = candidate[:at].rstrip('\n') + '\n\n## Sources\n' + '\n'.join(added) + '\n\n' + candidate[at:]
+    return re.sub(r'\[(W?\d+)\]', lambda m: f'[{mapping[m[1]]}]', line), candidate
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
@@ -187,6 +228,20 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """
     if not original:
         return candidate
+    if record.startswith(('people/', 'orgs/')):
+        # 2026-10-16 trial: a later round erased Ying Tan's extracted Last contact.
+        section = r'(?ms)^## Facts\n(.*?)(?=^## |\Z)'
+        before, after = re.search(section, original), re.search(section, candidate)
+        if before and after:
+            body = after[1]
+            for label in ('First contact', 'Last contact'):
+                kept = re.search(r'^- ' + label + r': \d{4}-\d{2}-\d{2}(?:[ \t]*\[W?\d+\])+$', before[1], re.M)
+                unknown = r'^- ' + label + r': Unknown$'
+                if kept and re.search(unknown, body, re.M):
+                    line, candidate = _restore_citations(kept[0], candidate, original)
+                    if line:
+                        body = re.sub(unknown, lambda _: line, body, count=1, flags=re.M)
+            candidate = re.sub(section, lambda _: '## Facts\n' + body, candidate, count=1)
     if record.startswith('skills/catalog/'):
         mapped = re.search(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)', original)
         if mapped:
@@ -253,6 +308,18 @@ def renumber_sources(text: str) -> str:
         return text
     swap = lambda prose: re.sub(r'\[(\d+)\](?!\()',  # noqa: E731
                                 lambda m: f'[{order.get(int(m[1]), m[1])}]', prose)
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [swap(text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(text[last:])
+
+
+def collapse_repeated_markers(text: str) -> str:
+    """Keep each numeric citation once per run, leaving code and links alone."""
+    # Dora and Jiexuan's pages repeated citations after sources merged (2026-10-16).
+    swap = lambda prose: re.sub(r'\[\d+\](?!\()(?: ?\[\d+\](?!\())*',  # noqa: E731
+                                lambda m: ''.join(dict.fromkeys(re.findall(r'\[\d+\]', m[0]))), prose)
     parts, last = [], 0
     for code in CODE.finditer(text):
         parts += [swap(text[last:code.start()]), code[0]]
@@ -798,7 +865,9 @@ HISTORY_LIMIT = 16
 # one place for these, Uncertainties, and a ceiling of five there.
 HEDGE = re.compile(r"not (?:established|confirmed|documented|verified|recorded|stated)|unknown whether"
                    r"|is unknown|remains? (?:unknown|unconfirmed|unresolved)"
-                   r"|no (?:outcome|reply) (?:is )?(?:documented|found|recorded)|does not say|cannot be verified", re.I)
+                   r"|no (?:outcome|reply) (?:is )?(?:documented|found|recorded)|does not say|cannot be verified"
+                   # Richard Lai, 2026-10-15: "no reply or completion is established in the supplied mail", 8 times.
+                   r"|\bunconfirmed\b|is established in|do(?:es)? not establish|in the supplied (?:mail|material|messages|record)", re.I)
 
 
 def hedged_lines(text: str) -> list[tuple[str, str]]:
@@ -1358,29 +1427,56 @@ def _claim_key(text: str) -> str:
     return _plain(text).rstrip(',.;:!?，。；：！？')
 
 
+def uncited_field(line: str) -> bool:
+    """Identity field lines belong to the map and contact checks, not the prose audit."""
+    # Vern Chan's own email became Unknown for lacking a citation (2026-10-16 trial).
+    return any(line.strip().removeprefix('- ').startswith(label + ':') for label in facts.UNCITED)
+
+
 def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
     """Remove each sentence holding a refuted claim; return the claims no line holds.
 
     Only the sentence goes when its line says more: Hamish's History line also
-    held his own reply, which was true. A contact field keeps its label and
-    says Unknown, as an untraceable citation leaves it.
+    held his own reply, which was true. An UNCITED identity field stays;
+    another contact field keeps its label and says Unknown.
     """
-    wanted = {claim: _claim_key(claim) for claim in claims if _claim_key(claim)}
+    # "Unknown" refuted is a gap to fill, not a line to drop: as a substring it
+    # matched every Unknown on oo-api's page (2026-10-15).
+    wanted = {claim: _claim_key(claim) for claim in claims
+              if _claim_key(claim) and not re.fullmatch(r'(?:[^:]{1,40}:)?unknown', _claim_key(claim))}
     head, marker, tail = text.partition('\n## Sources\n')
-    kept, found = [], set()
+    head, found = _drop_diagrams(head, wanted)
+    kept = []
     for line in head.split('\n'):
         hits = [claim for claim, key in wanted.items() if key in _claim_key(line)]
         found.update(hits)
-        if not hits:
+        if not hits or uncited_field(line):
             kept.append(line)
         elif CONTACT_LINE.match(line):
             kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
         else:
             sentences = re.split(r'(?<=[.!?。])\s+', line)
             rest = [s for s in sentences if not any(wanted[c] in _claim_key(s) for c in hits)]
-            if rest and len(rest) < len(sentences) and re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', rest[0]):
+            if rest and len(rest) < len(sentences) and _claim_key(re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', ' '.join(rest))):
                 kept.append(' '.join(rest))
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
+
+
+FENCE = re.compile(r'^```[^\n]*\n.*?^```[ \t]*$\n?', re.M | re.S)
+
+
+def _drop_diagrams(head: str, wanted: dict[str, str]) -> tuple[str, set[str]]:
+    """A refuted arrow drops its whole diagram: the audit refuted STR's collector -> Postgres
+    flow, copied across two lines no single line held, and the page was refused (2026-10-15)."""
+    found = set()
+
+    def refuted(match):
+        block = ' '.join(_claim_key(line) for line in match[0].splitlines())
+        hits = {claim for claim, key in wanted.items()
+                if ' '.join(_claim_key(line) for line in claim.splitlines()) in block}
+        found.update(hits)
+        return '' if hits else match[0]
+    return FENCE.sub(refuted, head), found
 
 
 SOURCE_LINE = re.compile(r'^([ \t]*- \[(\d+)\][ \t]+)([a-z][\w-]*:[^\s]+)(.*)$', re.M)
@@ -1442,6 +1538,11 @@ SHRINK_FLOOR = 1000
 
 def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
+
+
+def enumeration_only(text: str) -> bool:
+    """Only the map's source metadata, with no carried prose quotes."""
+    return _listed_sources(text) == {'Enumeration'} and not QUOTE.search(prose(text))
 
 
 def shrinkage(before: str, after: str) -> str:

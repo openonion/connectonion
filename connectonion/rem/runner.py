@@ -15,7 +15,8 @@ from datetime import datetime
 from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
-from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .source import with_local_times
 
 
 class RunFailed(RemError):
@@ -263,6 +264,8 @@ AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Run every co rem model turn from its stable task workspace."""
+    # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
+    prompt = prompt.replace("\0", "")
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup.
@@ -498,7 +501,8 @@ def today_note(root: Path) -> str:
     from .service import notebook_zone
     zone = notebook_zone(read_config(root, validated=False))
     return (f"\n\nToday is {datetime.now(zone).date().isoformat()} ({zone}). An event or deadline before "
-            "today has happened or passed: it is history, never an open thread. ")
+            "today has happened or passed: it is history, never an open thread. "
+            "Dates on the page are local dates: use each item's local_time, not its UTC timestamp. ")
 
 
 def _verify_no_change(directory: Path, items: list[dict], usage) -> None:
@@ -540,7 +544,7 @@ def _followup_prompt(prompt: str, instruction: str) -> str:
     return prompt + "\n\n## Follow-up\n" + instruction
 
 
-def _searched_turn(workdir, prompt, config, stage, directory, search, items, first):
+def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone):
     """Run the mail searches the model asked for, read-only, and give it one more turn with the results.
 
     The model has no network: its sandbox is the defence against mail that
@@ -561,11 +565,13 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     known = {item.get("source") for item in items}
     answers = search(queries)
     failed = [item for item in answers if item.get("role") == "search-failure"]
-    found = [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known]
+    found = with_local_times(
+        [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known], zone)
     items.extend(found)
     results = directory / "search-results.md"
     results.write_text("\n\n".join(
-        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
+        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}"
+         + (f" ({item['local_time']})" if item.get("local_time") else "") + f"\nSubject: {item['subject']}\n"
          f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
         + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
     again = run_task(workdir, _followup_prompt(
@@ -579,6 +585,18 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
 
 # Longer than a scheduled sync batch holds the notebook (five one-page turns).
 PROMOTE_WAIT_SECONDS = 1800
+
+
+@contextmanager
+def _promotion_lock(root, candidate, usage, lock_held):
+    """A finished page waits; a timeout names the kept candidate and its paid usage."""
+    with ExitStack() as held:
+        if not lock_held:
+            try:
+                held.enter_context(maintenance_lock(root, wait=PROMOTE_WAIT_SECONDS))
+            except RemError as error:
+                raise RunFailed(f"{error}; the finished page is kept at {candidate}", usage) from error
+        yield
 
 
 # A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
@@ -641,6 +659,11 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             refused = rejected
             result["usage"] = rejected.usage or result.get("usage")
             errors = read_json(directory / "review.json", {}).get("errors") or []
+            # Keep earlier findings when a repair passes: quotes refuted in this turn may go (2026-10-15).
+            audit = read_json(directory / "claim-review.json", {})
+            if audit.get("verdict") == "fail":
+                result["refuted_claims"] = sorted({*result.get("refuted_claims", []),
+                                                   *(f["claim"] for f in audit["findings"])})
             # A page someone else changed meanwhile is theirs; a repair would overwrite it.
             if not errors or attempt == repairs or any(e.startswith("Page changed during") for e in errors):
                 break
@@ -666,6 +689,29 @@ def _owner_phones(notebook, record) -> list[str]:
             if "unknown" not in part.casefold() and part.strip()]
 
 
+def _lead(text: str) -> str:
+    """The prose between a page's title and its first section."""
+    body = re.split(r"(?m)^## ", text.partition("\n")[2], maxsplit=1)[0]
+    return body.strip()
+
+
+def _keep_identity(record: str, before: str, after: str) -> str:
+    """A lead whose first sentence the last resort dropped opens with who they are, from Facts.
+
+    Tamara's and Nina's after-pages (2026-10-15) lost "who this is to the user"
+    to an audit finding that a citation was missing beside it; the lead then
+    opened on an HR ticket. Role and Company are cited fields on the same page.
+    """
+    from . import facts
+    lead, first = _lead(after), re.split(r"(?<=[.!?。])\s+", _lead(before), maxsplit=1)[0]
+    identity = facts.identity_sentence(record, after)
+    if not identity or not first or lead.startswith(first):
+        return after
+    title, _, rest = after.partition("\n")
+    body = rest.lstrip("\n")
+    return f"{title}\n\n{identity}" + (" " if lead else "\n\n") + body
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
@@ -683,6 +729,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
+    text, foreign = facts.drop_foreign_labels(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     if record.startswith("people/") and record != owner.get("record"):
@@ -741,11 +788,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
                    read_json(directory / "claim-review.json", {}).get("findings") or []]
+        before_drop = text
         text, unlocated = drop_claims(record, text, [*refuted, *(
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
+        text = _keep_identity(record, before_drop, text)
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
+    if last_resort and record.startswith("people/") and not _lead(text):
+        # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
+        # claim in each of its sentences. The page before this turn had one.
+        errors.append("Audit removed the whole lead; the page before this turn is kept")
     # A refuted claim no line holds any more is already gone: a repair turn
     # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
     # on the v193q1 trial (2026-10-15); it is recorded instead.
@@ -760,7 +813,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
         from .project_claim_review import retain_cited_originals, review as review_claims
-        with nullcontext() if lock_held else maintenance_lock(notebook.root):
+        # First-run backfill holds the lock per saved message (2026-10-16 trial).
+        with _promotion_lock(notebook.root, candidate, usage, lock_held):
             retain_cited_originals(notebook, text, items)
         report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
                                             record=record, items=items)
@@ -777,18 +831,13 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
     # because the scheduled sync had just started (#1885).
-    with ExitStack() as held:
-        if not lock_held:
-            try:
-                held.enter_context(maintenance_lock(notebook.root, wait=PROMOTE_WAIT_SECONDS))
-            except RemError as error:
-                raise RunFailed(f"{error}; the finished page is kept at {candidate}", total_usage) from error
+    with _promotion_lock(notebook.root, candidate, total_usage, lock_held):
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
-                   "facts_uncited_dropped": uncited,
+                   "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
@@ -806,10 +855,14 @@ def _write_page(notebook, record, text, items):
     """Save an accepted page with its sources numbered once and dated by their originals."""
     from . import facts
     from .config import read_config
-    from .page_review import renumber_sources, settle_sources, source_dates
+    from .investigate import retain_cited_github
+    from .page_review import collapse_repeated_markers, renumber_sources, settle_sources, source_dates
+    from .reader_model import _source_ids
     from .service import notebook_zone
+    retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+    notebook.write(record, collapse_repeated_markers(
+        renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates))))
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -861,7 +914,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         else:
             accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
-    with nullcontext() if lock_held else maintenance_lock(notebook.root):
+    with nullcontext() if lock_held else maintenance_lock(notebook.root, wait=WRITE_WAIT_SECONDS):
         if {r: notebook.read(r) for r in notebook.list()} != before:
             write_json(directory / 'review.json', {'accepted': False, 'errors': ['Notebook changed during maintenance'],
                        'factual_quality': 'not automatically assessed'})
@@ -1013,13 +1066,16 @@ def _with_additions(items: list[dict], additions: list[dict], budget: int) -> li
 
 
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
+    from .config import read_config
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
+    from .service import notebook_zone
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     tails = thread_tails(notebook.root, items) if stage == "maintain" else []
     items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
                             config["limits"]["input_chars_per_batch"])
+    items = with_local_times(items, notebook_zone(read_config(notebook.root, validated=False)))
     prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
               + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root))
               + (TAIL_NOTE if any(item.get("role") == "thread-tail" for item in items) else ""))
@@ -1103,11 +1159,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
                    "nearby checkouts outside those Paths cannot be retained as evidence. "
-                   "Every concrete purpose, architecture, command, URL, status and next-action clause needs "
-                   "an original source that actually supports it; use bare Unknown if that source is unavailable. "
-                   "Audit carried text too, because the prior page is not an original source. "
-                   "Remove claims without original support; put search limits in the final run reply, not the page. "
-                   "In Open threads, list only supported unresolved exchanges; if none is confirmed, "
+                   "A carried line keeps its original citation and stays unless this material corrects or "
+                   "supersedes it: earlier rounds read sources this turn does not hold. "
+                   "Open threads holds only what is still open; if nothing is, "
                    "write bare Unknown, not a no-pending-work summary as an open item.")
     if stage == "maintain" and items:
         sources = sorted({item["source"] for item in items if isinstance(item.get("source"), str) and item["source"]})
@@ -1143,11 +1197,16 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if candidate and search and not quick_first_pass:
+        # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
                    f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
-                   "plain words, or from:, to:, participants: an address. You get one more turn with what they "
-                   "find. The coverage item says what was already searched; do not repeat those addresses.")
+                   "plain words, or from:, to:, participants: an address. For GitHub work, "
+                   "`github:<owner/repo>#<number>` or `github:<owner/repo> created:>=<promise-date>`; "
+                   "repository and date only, optionally one title word, never person/team names. "
+                   "Match returned `Author:` logins to the person (a login like jdoe2001 for Jane Doe); state the match. "
+                   "You get one more turn with what they find; cite their ids. The coverage item says what was "
+                   "already searched; do not repeat those addresses.")
     started = time.monotonic()
     result = {}
     inquiry_usage = {}
@@ -1171,7 +1230,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                           or untouched and "NO CHANGE" not in str(result.get("result") or "")):
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
         if candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
-            result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result)
+            result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result,
+                                    notebook_zone(read_config(notebook.root, validated=False)))
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")
@@ -1213,6 +1273,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "instructions_chars": metrics["instructions_chars"],
                "report": str(result.get("result") or ""),
                "review_candidates": read_json(directory / "review-candidates.json", [])}
+    outcome["refuted_claims"] = result.get("refuted_claims", [])
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).
         outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]

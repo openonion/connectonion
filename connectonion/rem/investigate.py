@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -19,11 +20,11 @@ from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
-from .source import KINDS, collect, timestamp
+from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
 # Shared by every page in flight, one pool per mailbox: Gmail takes many
@@ -34,7 +35,6 @@ MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threadin
 
 def _fetch_slot(kind: str):
     return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
-DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 DOMAIN_RESULTS = 10_000
 
 
@@ -300,6 +300,96 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
     return items
 
 
+def _project_documents(root: Path):
+    """Bound the client-note search to documents in mapped folders, not code or secrets.
+
+    A client's people appeared in the owner's project notes, while their Feishu
+    chat was unreadable to rem (2026-10-16). This follows the inventory's limits,
+    with at most 400 documents examined per folder.
+    """
+    resolved = root.resolve()
+    if (not root.is_dir() or root.is_symlink() or resolved == Path.home()
+            or resolved in Path.home().parents or len(resolved.parts) < 3):
+        return
+    excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
+    seen = 0
+    for current, dirs, files in os.walk(root, followlinks=False):
+        depth = len(Path(current).relative_to(root).parts)
+        dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
+                         and not (Path(current) / d).is_symlink()) if depth < 4 else []
+        for name in sorted(files):
+            if name.startswith(".") or Path(name).suffix.lower() not in (".md", ".txt"):
+                continue
+            seen += 1
+            if seen > 400:
+                return
+            if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
+                continue
+            path = Path(current) / name
+            if not path.is_symlink():
+                yield path
+
+
+def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
+    """Keep the lines around a client's name, rather than sending their whole project file."""
+    text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", text)
+    lines = text.splitlines()
+    hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
+    selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
+    parts, previous = [], -1
+    for n in selected:
+        if previous >= 0 and n > previous + 1:
+            parts.append("...")
+        parts.append(lines[n])
+        previous = n
+    excerpt = "\n".join(parts)
+    first = pattern.search(excerpt)
+    start = max(0, first.start() - chars // 2) if first and first.end() > chars else 0
+    return sum(count for _, count in hits), excerpt[start:start + chars]
+
+
+def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int = 12,
+                     chars: int = 2400) -> tuple[list[dict], str]:
+    """Read the owner's record of a subject whose messages rem cannot see.
+
+    A client lead's page found nothing in mail or typed sessions, although the
+    owner's delivery notes named them (2026-10-16). Notes are the owner's record,
+    never the subject's own messages or proof of their contact details.
+    """
+    names = [name for handle in handles if (name := handle.strip()) and not is_address(name)
+             and len(name) >= (2 if re.search(r"[\u3400-\u9fff]", name) else 4)]
+    if not names:
+        return [], "project documents: none name the subject (no identifying name supplied)"
+    pattern = re.compile("|".join(re.escape(name) for name in dict.fromkeys(names)), re.I)
+    roots = {Path(path).expanduser().resolve() for record in notebook.list("projects")
+             for path in project_paths(collapse_worktree_paths(notebook.read(record)))
+             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()}
+    found, seen = [], set()
+    for root in sorted(roots):
+        for path in _project_documents(root):
+            if path in seen:
+                continue
+            seen.add(path)
+            count, text = _mention_excerpt(path.read_text(encoding="utf-8", errors="replace"), pattern, chars)
+            if count:
+                found.append((count, path, text))
+    items = []
+    for _, path, text in sorted(found, key=lambda row: (-row[0], str(row[1])))[:max_files]:
+        items.append({"role": "project-file", "source": "file:" + str(path), "file": str(path),
+                      "snapshot_kind": "local-file", "captured_at": datetime.now(timezone.utc).isoformat(),
+                      "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                      "timestamp_scope": "File modification time, not the date anything in it happened.",
+                      "input_scope": "Excerpts of the owner's own project document around mentions of the subject; "
+                                     "written by the owner, not by the subject; a quote here is the owner's record "
+                                     "of what someone said, never their own message.",
+                      "text": text})
+    coverage = (f"project documents: {len(found)} file(s) name the subject in {len(roots)} project folder(s) searched; "
+                f"excerpts read from {len(items)} file(s)")
+    if not found:
+        coverage = f"project documents: {len(roots)} project folder(s) searched; none name the subject"
+    return items, coverage
+
+
 # Where a repository's current line is, in the order it is looked for.
 CURRENT_REFS = ("origin/HEAD", "origin/main", "origin/master", "main", "master")
 # A checkout whose HEAD is this much older than the newest session is not what is being worked on.
@@ -309,7 +399,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -807,7 +897,7 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None,
         return result
 
 
-SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it accepts.
+SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it accepts.
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800
@@ -866,7 +956,7 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
 SEARCH_RESULTS = 20
 
 
-def mail_search(clients: dict, known: set | None = None):
+def mail_search(clients: dict, root: Path, known: set | None = None):
     """Read-only mail searches the model may ask for after its first turn (2026-10-01).
 
     The owner asked that a gap the gathered mail leaves (how two people met, a
@@ -874,11 +964,15 @@ def mail_search(clients: dict, known: set | None = None):
     with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
     the gathered mail's shape and source ids, so they cite like the rest.
     """
+    from .mail_archive import retain_message
     from .scan import AUTOMATED_HINT
 
     def search(queries: list[str]) -> list[dict]:
         found, seen = [], set()
         for query in queries:
+            if query.startswith("github:"):
+                found += github_search(query)
+                continue
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
                 try:
@@ -904,6 +998,9 @@ def mail_search(clients: dict, known: set | None = None):
                         # founders@ mailout passed the no-reply test (2026-10-10).
                         continue
                     body = _patient(client.get_email_body, row["id"])
+                    # 2026-10-16 trial: Ziming Gong's searched citation had no archived body.
+                    body = retain_message(root, kind, row, body,
+                                          fetched_at=datetime.now(timezone.utc).isoformat())["body"]
                     head, _, rest = body.partition("--- Email Body ---")
                     body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
                     own = _address(row["from"]) in mine or "@" not in _address(row["from"])
@@ -912,6 +1009,68 @@ def mail_search(clients: dict, known: set | None = None):
                                   "source": f"{kind}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}"})
         return found
     return search
+
+
+GITHUB_QUERY = re.compile(r"^github:([\w.-]+/[\w.-]+)(?:#(\d+)|\s+(.+))$")
+GITHUB_FIELDS = "number,title,author,createdAt,state,url"
+GITHUB_SOURCE = re.compile(r"github:[\w.-]+/[\w.-]+#\d+")
+
+
+def github_search(query: str) -> list[dict]:
+    """Read-only GitHub lookups a turn asks for, as citable items (2026-10-15).
+
+    Richard Lai opened #2443-#2446 on 2026-10-12, as he had promised. A turn
+    found them with its own `gh` call and cited the issue URLs, and the next
+    repair removed them: the audit reads only supplied originals. Run here,
+    they are supplied: `github:owner/repo#2443`, or `github:owner/repo <search>`.
+    """
+    match = GITHUB_QUERY.match(query.strip())
+    if not match:
+        return [{"role": "search-failure", "source": "", "query": query,
+                 "text": "write github:<owner/repo>#<number> or github:<owner/repo> <search words>"}]
+    repo, number, words = match.groups()
+    argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
+            ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
+             GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
+    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    if run.returncode:
+        return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
+    rows = json.loads(run.stdout or "[]")
+    return [{"role": "github", "source": f"github:{repo}#{row['number']}", "query": query,
+             "speaker": (row.get("author") or {}).get("login", ""), "timestamp": row.get("createdAt", ""),
+             "subject": row.get("title", ""),
+             "text": f"{row.get('url', '')}\nState: {row.get('state', '')}\nAuthor: "
+                     f"{(row.get('author') or {}).get('login', '')}\nCreated: {row.get('createdAt', '')}\n"
+                     f"Title: {row.get('title', '')}\n\n{row.get('body') or ''}"[:6000]}
+            for row in (rows if isinstance(rows, list) else [rows])]
+
+
+def retain_cited_github(root: Path, items: list[dict], cited: set[str]) -> None:
+    """Jiexuan's first-run issue citations had no retained original to open (2026-10-16)."""
+    for item in items:
+        source, body = item.get("source"), item.get("text")
+        if (source not in cited or item.get("role") != "github"
+                or not isinstance(source, str)
+                or not GITHUB_SOURCE.fullmatch(source)
+                or not isinstance(body, str)):
+            continue
+        path = state_path(root, "github-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+        write_json(path, {"source": source, "text": body, "timestamp": item.get("timestamp") or ""})
+
+
+def github_context(root: Path, source: str) -> dict | None:
+    """Read the latest retained issue fetched for a cited page."""
+    if not GITHUB_SOURCE.fullmatch(source):
+        return None
+    path = state_path(root, "github-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+    saved = read_json(path, {})
+    body = saved.get("text")
+    if saved.get("source") != source or not isinstance(body, str):
+        return None
+    excerpt = body.strip()[:6000]
+    return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
+            "time": saved.get("timestamp") or "", "sender": "", "thread": "",
+            "source": "github", "input_scope": ""}
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):
@@ -1001,8 +1160,49 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+ATTACHMENT_EXCERPT = 8000
+
+
+def _excerpt(item: dict) -> dict:
+    """A long attachment travels as its head and the file that holds the rest.
+
+    Ody's first round (2026-10-15) was one 14k-character generated report and
+    one message: agent-written PDFs and CSVs filled whole rounds while the
+    mail that set the relationship's terms stayed in files nobody opened.
+    """
+    text = item.get("text")
+    if item.get("role") != "attachment" or not isinstance(text, str) or len(text) <= ATTACHMENT_EXCERPT:
+        return item
+    rest = f"{len(text) - ATTACHMENT_EXCERPT:,} more characters"
+    where = f" in {item['file']}" if item.get("file") else ""
+    return {**item, "text": f"{text[:ATTACHMENT_EXCERPT]}\n[Excerpt: {rest}{where}.]"}
+
+
+def _thread_of(item: dict, threads: dict) -> str:
+    """The provider thread a message or its attachment belongs to; else the item alone."""
+    source = str(item.get("source") or "")
+    parent = ":".join(source.split(":")[:2])
+    return item.get("thread") or threads.get(parent) or source or str(id(item))
+
+
+def by_thread(items: list[dict]) -> list[dict]:
+    """Each thread whole and in order, threads ordered by their latest message.
+
+    Cut by date, a request sat in one round and its reply in the next, and
+    the page said "no reply is established" (Tamara, Richard 2026-10-15). A
+    thread read whole shows how it ended; the last round holds what is live.
+    """
+    threads = {i["source"]: i["thread"] for i in items if i.get("source") and i.get("thread")}
+    groups = {}
+    for item in items:
+        groups.setdefault(_thread_of(item, threads), []).append(item)
+    stamp = lambda i: str(i.get("timestamp") or "")
+    ordered = sorted((sorted(group, key=stamp) for group in groups.values()), key=lambda g: stamp(g[-1]))
+    return [item for group in ordered for item in group]
+
+
 def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
-    """Oldest first, each round small enough to travel in the prompt, every item whole or split.
+    """Thread by thread, the most recently active last, each round small enough for the prompt.
 
     Laid out in files, the model read 3.6-8.7% of a large page's evidence
     (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
@@ -1010,7 +1210,7 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
     from .runner import readable_material
     measure = lambda parts: len(readable_material(parts).encode("utf-8"))
     rounds, current, size = [], [], 0
-    for item in sorted(items, key=lambda i: str(i.get("timestamp") or "")):
+    for item in by_thread([_excerpt(item) for item in items]):
         for part in _split_item(item, room_bytes, measure):
             weight = measure([part])
             if current and size + weight > room_bytes:
@@ -1039,14 +1239,31 @@ def known_addresses(root: Path) -> set:
 
 
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
-              "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
-              "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
+              "in full, each thread together, the most recently active last. Read all of it. Improve the page "
+              "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
+              "corrects; delete what it supersedes, repeats or settles. Keep what earlier rounds established from "
+              "sources this round does not hold: a decision quoted from an earlier part is still a decision. "
               "The page should get better, not only longer. Then follow the leads it raises.")
+# A person page's editor shapes the lead and who owes whom; a project's keeps its own shape.
+PERSON_SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
+                  "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
+                  "user sees first. The lead's three sentences say who they are to the user, what is live (who "
+                  "owes whom, the ask quoted, its date and any due date) and the user's next step. Open threads "
+                  "keeps only what is still owed, each line starting with who owes whom, the user's debts first; "
+                  "a thread that was answered, delivered, past its event date or quiet for 60 days moves to "
+                  "History. History has one line per thread -- date, what it was about, how it ended. Insight "
+                  "says what no other section does. Then delete: repetition across sections, superseded "
+                  "statements, and every 'not established', 'unconfirmed' or 'in the supplied mail' clause -- "
+                  "state the dated fact instead, or move a doubt that changes the next step to Uncertainties "
+                  "(at most five). For a thread whose outcome you have not seen, request a mail search for the "
+                  "reply before writing so. Keep each cited fact you keep with its citation; add no claim without "
+                  "a citation on the page or from a search. This round supplies no evidence on purpose: its work "
+                  "is editing, so NO CHANGE is only right when the page already reads this way.")
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
                   "superseded statements and doubts that do not change what the user does next; merge what "
-                  "is said twice. Insight says what matters now; History has one line per thread -- date, what "
-                  "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
+                  "is said twice. Insight says what matters now; History, on a page that has it, has one line per thread -- date, what "
+                  "it was about, how it ended (add no heading the page's shape lacks); Open threads keeps only what is still open; Uncertainties keeps at "
                   "most five, each one that would change the next step. For a thread whose outcome is not "
                   "established, request a mail search for the reply before writing so. Keep each cited fact you "
                   "keep with its citation; add no claim without a citation on the page or from a search. "
@@ -1055,11 +1272,11 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
-                "section. Make exactly one edit per listed line: rewrite it as what its citation does establish "
-                "(the ask, the date, who owes what) and drop the clause about what is not known; or move it under "
-                "Uncertainties if the doubt would change the user's next step (five there at most); or delete it. "
-                "Add no claim, no source and no new line about what is not evidenced. Then end. NO CHANGE is not "
-                "an answer to this round.\n\n{lines}")
+                "section. Make exactly one edit per listed line: delete only the clause about what is not known "
+                "and keep the rest of the sentence, its facts and citations (the ask, the date, who owes what); "
+                "or move the doubt under Uncertainties if it would change the user's next step (five there at "
+                "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
+                "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
 
 
 def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
@@ -1085,11 +1302,24 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
              {"role": "round", "source": "investigation:round", "text": note}]
     if stage_progress:
         stage_progress("editing round")
+    page = notebook.read(record)
     try:
         out = runner(notebook, items, config, stage="investigate")
     except RunFailed as error:
         out = {"usage": error.usage, "refused": str(error), "changed": []}
+    if _cut_too_much(page, notebook.read(record)):
+        # Ody Zhou, 2026-10-15: told it could delete a hedged line, the turn took
+        # the lead, the term-sheet paragraph and its Signing entity: 6.6k -> 3.9k.
+        notebook.write(record, page)
+        out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
+               "changed": []}
     return before, hedged_lines(notebook.read(record)), out
+
+
+def _cut_too_much(before: str, after: str) -> bool:
+    """An edit of hedges that emptied the lead or removed over a third of the page."""
+    from .runner import _lead
+    return bool(_lead(before)) and not _lead(after) or len(after) < len(before) * 2 // 3
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
@@ -1098,6 +1328,26 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
     used = (len(instructions("investigate", page_kind=page_kind_of(record), owner=owner).encode("utf-8"))
             + len(readable_material(fixed).encode("utf-8")) + 8000)
     return max(INLINE_LIMIT - used, 20_000)
+
+
+def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> str:
+    """Keep carried evidence: connectonion's sixth round paraphrased all fifteen
+    owner quotes away; oo-api's synthesis gutted eight rounds' work (2026-10-15)."""
+    from .page_review import KEEP_SHARE, QUOTE, drop_claims, enumeration_only, prose, shrinkage
+    # 2026-10-16 trial: orgs/unsw-edu-au's people links put its mapped stub
+    # over the floor; all four rounds lost to replacing enumeration metadata.
+    if enumeration_only(before):
+        return ''
+    if refuted:
+        before, _ = drop_claims(record, before, refuted)
+    after = notebook.read(record)
+    old = set(QUOTE.findall(prose(before)))
+    kept = old & set(QUOTE.findall(prose(after)))
+    reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
+              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
+    if reason:
+        notebook.write(record, before)
+    return reason
 
 
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
@@ -1115,15 +1365,17 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total = len(rounds)
     for number, part in enumerate([*rounds, []], 1):
-        dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
+        dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
+                 for i in part if i.get("local_time") or i.get("timestamp")]
         note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
                                   last=max(dates, default="?"))
-                if part else SYNTHESIS_NOTE.format(total=total))
+                if part else (PERSON_SYNTHESIS_NOTE if record.startswith("people/") else SYNTHESIS_NOTE).format(total=total))
         leads = ("\n\nLeads from earlier rounds:\n" + "\n\n".join(ledgers)[-6000:]) if ledgers else ""
         items = [page_item(notebook.read(record)), *context,
                  {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
         if stage_progress:
             stage_progress(f"investigation round {number} of {total + 1}")
+        before = notebook.read(record)
         try:
             out = runner(notebook, items, config, stage="investigate")
         except RunFailed as error:
@@ -1135,21 +1387,33 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         threads += out.get("threads", [])
+        reason = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
+        if reason:
+            refused.append(f"Round {number} rejected: {reason}")
+            unread += material_sources(part)
+            continue
         changed = sorted({*changed, *out.get("changed", [])})
         if out.get("report"):
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
+    page = notebook.read(record)
     before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
     if edit is not None:
+        reason = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         if edit.get("refused"):
             refused.append(edit["refused"])
         threads += edit.get("threads", [])
-        changed = sorted({*changed, *edit.get("changed", [])})
-        if edit.get("report"):
-            ledgers.append(f"Editing round: {str(edit['report']).strip()}")
+        if reason:
+            from .page_review import hedged_lines
+            refused.append(f"Editing round rejected: {reason}")
+            after = hedged_lines(notebook.read(record))
+        else:
+            changed = sorted({*changed, *edit.get("changed", [])})
+            if edit.get("report"):
+                ledgers.append(f"Editing round: {str(edit['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
             "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
             "hedged_lines": [len(before), len(after)]}
@@ -1310,7 +1574,7 @@ def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -
     """Nothing new to read, but a fact the material holds is missing from the page:
     put it in its field with its source, no model needed (#2068)."""
     from . import facts
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         page = notebook.read(record)
         kept, restored = facts.keep_extracted(record, facts.upgrade(record, page), rows)
         if restored:
@@ -1344,6 +1608,29 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
             and (not sent_only or item.get("role") == "user")]
 
 
+def prefill_project_dates(page: str, line_items: list[dict]) -> str:
+    """STR left dates Unknown despite its supplied first/newest commits (2026-10-15)."""
+    history = next((item for item in line_items if item.get('role') == 'recent-commits'), None)
+    section = re.search(r'(?ms)^## Facts\n(.*?)(?=^## |\Z)', page)
+    if not history or not section:
+        return page
+    number = max((int(n) for n in re.findall(r'\[(\d+)\]', page)), default=0) + 1
+    body = section[1]
+    commit = r'([0-9a-f]+) (\d{4}-\d{2}-\d{2}) (.+)'
+    for field, prefix in (('Started', 'First commit: '), ('Last activity', '')):
+        match = re.search(r'(?m)^' + prefix + commit, history['text'])
+        if match:
+            detail = f'first commit {match[1]}' if field == 'Started' else f'{match[3]} (commit {match[1]})'
+            body = re.sub(rf'(?m)^- {field}: Unknown[ \t]*$',
+                          lambda _: f'- {field}: {match[2]} — {detail} [{number}]', body)
+    if body == section[1]:
+        return page
+    page = page[:section.start(1)] + body + page[section.end(1):]
+    head, marker, sources = page.partition('\n## Sources\n')
+    sources = re.sub(r'(?m)^- \(none yet\)\n?', '', sources)
+    return head + marker + f'- [{number}] {history["source"]} — {history["timestamp"][:10]}\n' + sources
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -1372,6 +1659,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    if not sent_only and record.startswith(("people/", "orgs/")):
+        mentions, documents_coverage = project_mentions(notebook, [subject, *search_handles])
+        items.extend(mentions)
+        coverage.append(documents_coverage)
     if own_domains and not quick:
         if stage_progress:
             stage_progress("reading the organisation's website")
@@ -1391,11 +1682,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # before, the window is not the whole history. Even a first full window's
     # earliest retained mail cannot establish when this relationship began.
     from . import facts
-    from .fact_extract import extract, facts_item
+    from .fact_extract import extract, facts_item, mail_merge_subjects
+    from .mail_archive import mail_metadata
     config = read_config(root)
+    manifest = read_json(state_path(root, "mail/archive.json"), {})
+    own_addresses = set(manifest.get("owner_addresses", [])) | {
+        _address(item.get("speaker") or "") for item in items if item.get("role") == "user"}
+    merged_subjects = mail_merge_subjects(mail_metadata(root), own_addresses)
+    # An org's own domains may appear only in its Domains section, not its handles.
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
-                               owner=sent_only, timezone=config["schedule"]["timezone"])
+        row for row in extract([item for item in items if not item.get("relationship_scope")], [*handles, *own_domains],
+                               owner=sent_only, timezone=config["schedule"]["timezone"], merged_subjects=merged_subjects)
         if not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
@@ -1444,6 +1741,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     gathered_items = len(items)
     leads = []
     project_roots = []
+    line = None
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
         # stale copy it would otherwise quote as current (#1955).
@@ -1451,14 +1749,19 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
         project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
-        leads = project_file_inventory(corrected)
+        from .project_pages import current_line
+        # A Git project is read at its current line, handed to every round; only
+        # a plain folder is read file by file. Sixty whole files of oo-api's
+        # working tree took five rounds before one of the owner's messages (2026-10-15).
+        line = current_line(corrected)
+        leads = [] if line else project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
         newest = _newest_session(root, record, corrected)
-        for path in project_roots:
+        for path in ([] if line else project_roots):
             state = checkout_state(path, newest)
             if state:
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
@@ -1490,14 +1793,24 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
         room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
-    repository_items = []
+    repository_items, line_items = [], []
     if record.startswith("projects/"):
-        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        from .project_pages import FILE_SNAPSHOT_CHARS, current_line_packet, repository_snapshots, retain_repository_context
+        if line:
+            line_items = repository_snapshots(current_line_packet(
+                *line, datetime.now(timezone.utc).isoformat(), newest))
+            corrected = prefill_project_dates(notebook.read(record), line_items)
+            if corrected != notebook.read(record):
+                # NO CHANGE or a failed turn still leaves these cited dates on the page (2026-10-15).
+                with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+                    retain_repository_context(root, line_items,
+                                              {i['source'] for i in line_items if i['role'] == 'recent-commits'})
+                    notebook.write(record, corrected)
         states = [item for item in items if item.get("role") == "checkout-state"]
         items = [item for item in items if item.get("role") != "checkout-state"]
         files = project_file_texts(leads) if summary else project_file_texts(
             leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
-        repository_items = repository_snapshots(states + files)
+        repository_items = line_items + repository_snapshots(states + files)
         if last and not gathered_items:
             supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
             previous = supplied.get("provided_sources")
@@ -1505,12 +1818,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 item["source"] in cited for item in repository_items)
             if same:
                 raise _nothing_new(record, subject, coverage, last)
-        items += repository_items
+        items += repository_items[len(line_items):]
     gathered_sources.update(item["source"] for item in repository_items)
     if not retry_refused and refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
         raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")
+    from .service import notebook_zone
+    items = with_local_times(items, notebook_zone(read_config(root, validated=False)))
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
     synthesis_calls = 3 if routing(root) else 1
@@ -1571,6 +1886,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
+    elif not record.startswith("projects/"):
+        # One turn reads it all; thread by thread, each reply sits under its ask.
+        items = by_thread(items)
     from .page_review import normalize
     if original_material:
         write_json(original_material, original_items)
@@ -1582,11 +1900,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 "timestamp": now, "source": "investigation:page"}
 
     prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
-           "paths": project_roots, "timestamp": now,
-           "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
-                   ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
-                   "cite verifiable source IDs and revisions."}]
-         if project_roots else []) + (
+           "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
+         if project_roots else []) + line_items + (
         [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
            "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
            "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
@@ -1624,7 +1939,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = partial(run_stage, search=mail_search(clients, known_addresses(root))) if clients else run_stage
+        runner = partial(run_stage, search=mail_search(clients, root, known_addresses(root))) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
     try:
@@ -1711,6 +2026,18 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
                       "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def _repositories_note(roots: list[str], line) -> str:
+    note = "Live local repository paths for direct inspection: " + ", ".join(roots) + ". "
+    if not line:
+        return note + ("Use git log, git show, README.md, pyproject.toml and package.json where present; "
+                       "cite verifiable source IDs and revisions.")
+    folder, ref, revision = line
+    return note + (f"The project's current line is {ref} at {revision}; the working tree may be an older branch. "
+                   f"Read files there with `git -C {folder} show {revision}:<file>` and cite "
+                   f"`git:{folder}:{revision}:<file>`. Find how a request ended with `git -C {folder} log "
+                   f"--all --grep` and the branch names in the supplied history.")
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],

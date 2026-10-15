@@ -1,6 +1,67 @@
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map
+
+
+def test_map_files_projects_found_only_in_attributed_messages(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.project_material import stored
+    root = tmp_path / 'rem'
+    prepare(root)
+    code = tmp_path / 'code/acmewidget'
+    (code / '.git').mkdir(parents=True)
+    when = datetime.now(timezone.utc) - timedelta(days=30)
+    message = {'source': 'codex:workspace:100', 'tool': 'codex', 'timestamp': when.isoformat(),
+               'cwd': str(code), 'typed_in': str(code.parent), 'text': 'Reconcile the client invoices.'}
+    calls = []
+
+    def messages(subscriptions, *, since, **kwargs):
+        calls.append(since)
+        return [message], {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}
+
+    monkeypatch.setattr('connectonion.rem.project_material.session_messages', messages)
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [])
+    report = build_map(root, {}, {}, days=90, skill_directories=[])
+    project, = report['projects']
+    record = project['record']
+    assert project == {'name': 'acmewidget', 'paths': [str(code)], 'sessions': 1, 'worktrees': 0,
+                       'first': when.date().isoformat(), 'last': when.date().isoformat(), 'record': record}
+    assert record in report['created'] and record not in report['archived']
+    assert Notebook(root).list('projects') == [record]
+    assert stored(root, record) == [message]
+    assert any('workspace folder or after a cd; made pages' in line for line in report['coverage'])
+    second = build_map(root, {}, {}, days=90, skill_directories=[])
+    assert [row['record'] for row in second['projects']] == [record]
+    assert record not in second['archived'] and Notebook(root).path(record).is_file()
+    assert len(calls) == 2 and calls[1] < when  # a map always rereads its full window
+
+
+def test_map_keeps_an_existing_document_page_reused_by_attribution(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.project_material import stored
+    root = tmp_path / 'rem'
+    prepare(root)
+    nb = Notebook(root)
+    documents = tmp_path / 'Documents/Acmewidget'
+    documents.mkdir(parents=True)
+    record = 'projects/documents.md'
+    nb.stub_project(record, 'Acmewidget', [str(documents)])
+    code = tmp_path / 'code/acmewidget'
+    (code / '.git').mkdir(parents=True)
+    message = {'source': 'codex:workspace:100', 'tool': 'codex',
+               'timestamp': (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+               'cwd': str(code), 'typed_in': str(code.parent), 'text': 'Reconcile the client invoices.'}
+    monkeypatch.setattr('connectonion.rem.project_material.session_messages',
+                        lambda *a, **kw: ([message], {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [])
+    report = build_map(root, {}, {}, days=90, skill_directories=[])
+    assert [row['record'] for row in report['projects']] == [record]
+    assert report['created'] == [] and record not in report['archived']
+    assert nb.list('projects') == [record]
+    assert str(code) in nb.read(record) and str(documents) in nb.read(record)
+    assert stored(root, record) == [message]
 
 
 def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, monkeypatch):
@@ -44,9 +105,29 @@ def test_project_scan_honors_disabled_and_project_scopes(tmp_path):
     for i, cwd in enumerate(('/allowed', '/outside')):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({'type': 'session_meta', 'payload': {
             'id': str(i), 'cwd': cwd, 'originator': 'codex_cli_rs'}}) + '\n')
-    sub = {'kind': 'codex', 'root': str(sessions), 'enabled': True, 'project': '/allowed'}
+    sub = {'kind': 'codex', 'root': str(sessions), 'enabled': True, 'consented': True, 'project': '/allowed'}
     assert [r['path'] for r in scan_projects({'local': sub}, 1)] == ['/allowed']
     assert scan_projects({'local': {**sub, 'enabled': False}}, 1) == []
+
+
+@pytest.mark.parametrize('kind', ['codex', 'claude-code'])
+@pytest.mark.parametrize('approval', [{}, {'consented': False}])
+def test_project_scan_does_not_walk_unconsented_sources(tmp_path, monkeypatch, kind, approval):
+    from connectonion.rem.scan import scan_projects
+    walked = []
+    monkeypatch.setattr('connectonion.rem.scan.source_files', lambda sub: walked.append(sub) or [])
+    source = {'kind': kind, 'root': str(tmp_path), 'enabled': True, **approval}
+    assert scan_projects({'local': source}, 1) == []
+    assert walked == []
+
+
+def test_map_reports_unconsented_sessions_as_not_scanned(tmp_path):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    source = {'kind': 'codex', 'root': str(tmp_path), 'enabled': True, 'consented': False}
+    result = build_map(tmp_path, {'codex': source}, {}, skill_directories=[skills])
+    assert f'codex: {tmp_path} — waiting for approval; not scanned' in result['coverage']
 
 
 def test_unavailable_mail_does_not_stop_other_maps(tmp_path):
@@ -143,7 +224,7 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
     for i, cwd in enumerate(paths):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
-    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions), 'consented': True}}, 1)
     assert {r['path'] for r in rows} == set(paths[-3:])
 
 
@@ -163,7 +244,7 @@ def test_project_scan_does_not_turn_rem_runs_into_a_project(tmp_path, monkeypatc
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': str(cwd)}}) + '\n')
     monkeypatch.setattr('connectonion.rem.scan.project_exclusion', lambda path: '')
 
-    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1, rem_root=root)
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions), 'consented': True}}, 1, rem_root=root)
     assert [row['path'] for row in rows] == [str(project)]
 
 
@@ -327,7 +408,7 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
         def list_between(self, start, end, limit):
             return []
 
-    subscriptions = {'codex': {'kind': 'codex', 'root': str(missing), 'enabled': True},
+    subscriptions = {'codex': {'kind': 'codex', 'root': str(missing), 'enabled': True, 'consented': True},
                      'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
     result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
     coverage = '\n'.join(result['coverage'])

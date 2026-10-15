@@ -19,7 +19,7 @@ from contextlib import nullcontext
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
 
 LOG = "tidy.json"
 WEB_LINE = re.compile(r"^\s*- web: not searched\b.*$")
@@ -33,7 +33,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
     root = Path(root)
     if not (root / ".state").is_dir():
         return {}
-    with nullcontext() if lock_held else maintenance_lock(root):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook, actions = Notebook(root), []
         state = read_json(state_path(root, "map.json"), {})
         actions += _services(notebook, state)

@@ -74,7 +74,7 @@ def test_scan_counts_turns_only_for_a_lone_session_outside_a_repository(tmp_path
     typed = [{"type": "user", "cwd": str(chat), "sessionId": "s", "timestamp": f"2026-09-2{i}T00:00:00Z",
               "message": {"content": f"message {i}"}} for i in range(2)]
     (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in typed))
-    rows = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    rows = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [(r["path"], r["sessions"], r["turns"]) for r in rows] == [(str(chat), 1, 2)]
 
 
@@ -89,7 +89,7 @@ def test_scan_discovers_claude_projects_after_a_metadata_preamble(tmp_path, monk
             {"type": "user", "cwd": str(project), "sessionId": "s",
              "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}]
     (sessions / "s.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [(p["path"], p["sessions"], p["turns"]) for p in projects] == [(str(project), 1, 1)]
 
 
@@ -97,7 +97,7 @@ def test_scan_skips_a_claude_session_without_a_working_directory(tmp_path):
     sessions = tmp_path / "claude" / "encoded-project"
     sessions.mkdir(parents=True)
     (sessions / "s.jsonl").write_text('{"type": "queue-operation"}\n{"type": "mode"}\n', encoding="utf-8")
-    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500) == []
 
 
 @pytest.mark.parametrize("preamble_count, expected", [(255, 1), (256, 0)])
@@ -111,7 +111,7 @@ def test_claude_project_discovery_stops_after_a_bounded_preamble(tmp_path, monke
                "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "work on this project"}}
     (sessions / "s.jsonl").write_text('{"type": "mode"}\n' * preamble_count + json.dumps(message) + "\n",
                                      encoding="utf-8")
-    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500)
+    projects = scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500)
     assert [p["path"] for p in projects] == [str(project)] * expected
 
 
@@ -121,7 +121,7 @@ def test_claude_project_discovery_stops_after_its_byte_budget(tmp_path):
     preamble = {"type": "queue-operation", "content": "x" * 1_000_000}
     message = {"type": "user", "cwd": str(tmp_path / "project"), "sessionId": "s"}
     (sessions / "s.jsonl").write_text(json.dumps(preamble) + "\n" + json.dumps(message) + "\n", encoding="utf-8")
-    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude")}}, 36500) == []
+    assert scan_projects({"claude-code": {"kind": "claude-code", "root": str(tmp_path / "claude"), "consented": True}}, 36500) == []
 
 
 def test_worktrees_fold_into_their_repository_and_are_counted(tmp_path):
@@ -194,6 +194,7 @@ def test_a_page_naming_another_live_repository_is_not_merged_away(tmp_path):
 
 
 def test_the_map_leaves_junk_folders_out_and_archives_their_mapped_pages(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
     root = tmp_path / "rem"
     prepare(root)
     nb = Notebook(root)
@@ -202,6 +203,10 @@ def test_the_map_leaves_junk_folders_out_and_archives_their_mapped_pages(tmp_pat
     code = repo(tmp_path / "code")
     monkeypatch.setattr("connectonion.rem.map.scan_projects", lambda *a, **k: [
         row(chat, sessions=1, turns=1), row(code, repo_path=code)])
+    message = {"source": "codex:task:100", "tool": "codex", "timestamp": datetime.now(timezone.utc).isoformat(),
+               "cwd": chat, "text": "Install the plugin."}
+    monkeypatch.setattr("connectonion.rem.project_material.session_messages",
+                        lambda *a, **kw: ([message], {"files": 1, "harness": 0, "unfamiliar": 0, "excluded": {}}))
     skills = tmp_path / "installed"
     skills.mkdir()
     report = build_map(root, {}, {}, skill_directories=[skills])
@@ -222,3 +227,95 @@ def test_a_short_dated_scratch_folder_stays_with_the_rest_of_its_project(tmp_pat
                              row(base / "2026-08-23/acme-project", sessions=1, turns=1)], dropped)
     assert len(groups) == 1 and dropped == []
     assert next(iter(groups.values()))["sessions"] == 15
+
+
+def test_client_documents_join_the_repository_and_its_worktree(tmp_path):
+    code = repo(tmp_path / "code/acmewidget")
+    tree = linked_worktree(tmp_path / "code/acmewidget-invoices", code)
+    documents = tmp_path / "Documents/Acmewidget"
+    documents.mkdir(parents=True)
+    documents_row = {**row(documents, sessions=30), "first": "2026-08-01", "last": "2026-09-30"}
+    groups = project_groups([documents_row, row(code, repo_path=code), row(tree, repo_path=code)])
+    assert list(groups) == [str(code)]
+    assert groups[str(code)] == {"name": "acmewidget", "paths": [str(code), str(documents)],
+                                 "worktrees": 1, "sessions": 36, "first": "2026-08-01", "last": "2026-09-30"}
+
+
+@pytest.mark.parametrize("name, copies", [("acmewidget", 2), ("abc", 1)])
+def test_documents_need_one_repository_and_a_name_of_at_least_four_characters(tmp_path, name, copies):
+    documents = tmp_path / "Documents" / name.title()
+    documents.mkdir(parents=True)
+    codes = [repo(tmp_path / str(number) / name) for number in range(copies)]
+    groups = project_groups([row(documents), *(row(code, repo_path=code) for code in codes)])
+    assert len(groups) == copies + 1
+    assert groups[str(documents)]["paths"] == [str(documents)]
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    for identity, group in groups.items():
+        file_project(notebook, identity, group)
+    assert len(notebook.list("projects")) == copies + 1
+
+
+def test_a_same_named_folder_inside_another_repository_is_not_plain(tmp_path):
+    code = repo(tmp_path / "code/acmewidget")
+    parent = repo(tmp_path / "other")
+    folder = parent / "Acmewidget"
+    folder.mkdir()
+    assert len(project_groups([row(folder), row(code, repo_path=code)])) == 2
+
+
+@pytest.mark.parametrize("repository_row", [True, False])
+@pytest.mark.parametrize("written", ["documents", "code"])
+def test_client_document_and_code_pages_merge_and_keep_the_most_written(tmp_path, repository_row, written):
+    root = tmp_path / "rem"
+    prepare(root)
+    nb = Notebook(root)
+    code = repo(tmp_path / "code/acmewidget")
+    documents = tmp_path / "Documents/Acmewidget"
+    documents.mkdir(parents=True)
+    nb.stub_project("projects/documents.md", "Acmewidget", [str(documents)])
+    nb.stub_project("projects/code.md", "acmewidget", [str(code)])
+    kept = f"projects/{written}.md"
+    nb.write(kept, nb.read(kept).replace("## What it is\n", "## What it is\n- Client invoicing and contracts. [1]\n"))
+    path = code if repository_row else documents
+    group = {"name": path.name, "paths": [str(path)], "sessions": 30,
+             "first": "2026-09-01", "last": "2026-09-30"}
+    record, created = file_project(nb, str(path), group)
+    assert (record, created) == (kept, False)
+    assert nb.list("projects") == [kept]
+    from connectonion.rem.investigate import project_paths
+    assert set(project_paths(nb.read(kept))) == {str(code), str(documents)}
+    old = "projects/code.md" if written == "documents" else "projects/documents.md"
+    assert aliases(root)[old]["into"] == kept
+    assert (root / ".state/archived" / old).is_file()
+
+
+def test_a_document_page_gets_the_missing_repository_path_without_a_second_page(tmp_path):
+    root = tmp_path / "rem"
+    prepare(root)
+    nb = Notebook(root)
+    code = repo(tmp_path / "code/acmewidget")
+    documents = tmp_path / "Documents/Acmewidget"
+    documents.mkdir(parents=True)
+    nb.stub_project("projects/documents.md", "Acmewidget", [str(documents)])
+    record, created = file_project(nb, str(code), {"name": code.name, "paths": [str(code)], "sessions": 3,
+                                                 "first": "2026-09-01", "last": "2026-09-20"})
+    assert (record, created) == ("projects/documents.md", False)
+    assert nb.list("projects") == [record]
+    assert str(code) in nb.read(record) and str(documents) in nb.read(record)
+
+
+def test_existing_same_named_repositories_do_not_claim_a_plain_folder(tmp_path):
+    root = tmp_path / "rem"
+    prepare(root)
+    nb = Notebook(root)
+    for number in range(2):
+        code = repo(tmp_path / str(number) / "acmewidget")
+        nb.stub_project(f"projects/code-{number}.md", "acmewidget", [str(code)])
+    documents = tmp_path / "Documents/Acmewidget"
+    documents.mkdir(parents=True)
+    record, created = file_project(nb, str(documents), {"name": documents.name, "paths": [str(documents)],
+                                                      "sessions": 30, "first": "2026-09-01", "last": "2026-09-30"})
+    assert created and len(nb.list("projects")) == 3
+    assert str(documents) in nb.read(record)

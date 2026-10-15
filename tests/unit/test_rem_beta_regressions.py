@@ -31,9 +31,13 @@ def test_setup_commands_keep_custom_root(tmp_path):
     with patch('connectonion.rem.map.build_map',return_value={}), patch('connectonion.rem.service.mail_available', return_value=False):
         result=CliRunner().invoke(app,['rem','--root',str(root),'--json','init'])
     import shlex
-    text=json.loads(result.stdout)['data']['tips'][0]
+    tips=json.loads(result.stdout)['data']['tips']
+    text=next(tip for tip in tips if 'then run ' in tip)
     command=text.split('then run ',1)[1].removesuffix('.')
     assert shlex.split(command)==['co','rem','--root',str(root),'init']
+    # The approval tip (#2443) names the same root, quoted.
+    approve=next(tip for tip in tips if 'Approve with ' in tip).split('Approve with ',1)[1].removesuffix('.')
+    assert shlex.split(approve)==['co','rem','--root',str(root),'init','--yes']
 
 
 def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):

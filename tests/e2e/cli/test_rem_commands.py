@@ -404,8 +404,9 @@ def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
         result = invoke(root, "--json", "init", *args)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["data"]["background"]["started"] is False
+    # --yes approves the sources the map scans (#2443: nothing is scanned before
+    # consent); neither run installs the schedule.
     assert _CliScheduler.installed == []
-    assert not (root / ".state" / "consent.json").exists()
 
 
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):

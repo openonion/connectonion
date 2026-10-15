@@ -34,7 +34,8 @@ from .source import KINDS, source_files
 
 CACHE = "skill-usage.json"
 # 3: Recount messages whose optional Codex id was omitted; older caches missed them.
-VERSION = 4
+# 5: Recount without exec prompts; their tool loads remain evidence.
+VERSION = 5
 EVER = datetime(1970, 1, 1, tzinfo=timezone.utc)
 COMMAND = re.compile(r"<command-name>/([^<\s]+)</command-name>")
 MENTION = re.compile(r"(?<![\w$])\$([A-Za-z][\w.:-]*)")

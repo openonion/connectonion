@@ -49,4 +49,17 @@ def material_changes(before: dict[str, str], after: dict[str, str], changed: lis
 
 
 def _same(a: str, b: str) -> bool:
-    return re.sub(r"[^\w]+", "", a.casefold()) == re.sub(r"[^\w]+", "", b.casefold())
+    # Source qualifications and added wording are rewordings, not morning news (UI audit #2).
+    old, new = (_words(value) for value in (a, b))
+    if old == new:
+        return True
+    remaining = iter(new)
+    return bool(old) and all(any(word == added for added in remaining) for word in old)
+
+
+def _words(value: str) -> list[str]:
+    value = value.casefold().strip()
+    # One leading run of spaces, so spaces between groups match one way only (CodeQL py/redos).
+    value = re.sub(r"\s*(?:\([^()]*\)[\s.,;]*)+$", "", value)
+    value = re.sub(r"\s+\b(?:in the supplied|per the|according to)\b.*$", "", value)
+    return re.findall(r"\w+", value)

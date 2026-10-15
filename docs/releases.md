@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc1**: `co rem` you can show. The reader opens on what is waiting on
+you, a person page opens on what is between you, and every citation names who, where and when and
+opens the original beside the line. On a real 180-day first run, 66 pages were accepted with none
+refused or lost to the notebook lock. See [1.9.3rc1 notes](releases/1.9.3rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc1'
+```
+
+## Previous previews
+
 Beta **1.9.3b5**: `co rem` pages you can trust on the first run. Quotes and contact facts are
 checked against their sources, review repairs a page instead of refusing it, and `co rem open`
 serves a live reader that can show a page in your language. See
 [1.9.3b5 notes](releases/1.9.3b5.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3b5'
-```
-
-## Previous previews
 
 Beta **1.9.3b4**: the line a recipient pastes, the mail and the help now say a handoff passes on
 the context of a session, not a task. See [1.9.3b4 notes](releases/1.9.3b4.md).

@@ -68,6 +68,14 @@ def delegate(monkeypatch):
     return calls
 
 
+def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
+    result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
+    argv = delegate[0][0]
+    assert all("\0" not in argument for argument in argv)
+    assert argv[-1] == "Continue investigating."
+    assert result["outcome"] == "natural"
+
+
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
     """`venv/bin/co rem ...` from a non-activated venv, with an older co earlier
     on PATH, sent every model turn to that older `co ai` (seen on 1.8.8b7)."""
@@ -94,15 +102,15 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'Inspect mapped repository paths' in prompts[0]
+    assert 'Start from the current line' in prompts[0]
     assert 'git log' in prompts[0] and 'git show' in prompts[0]
-    assert 'A branch, commit date or' in prompts[0] and 'belongs elsewhere' in prompts[0]
+    assert 'alone is not an insight. None' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
-    assert 'Every concrete purpose, architecture, command, URL' in prompts[0]
+    assert 'earlier rounds read sources this turn does not hold' in prompts[0]
     assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 
@@ -561,6 +569,38 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
     assert "Leads the data team." in notebook.read("people/mia.md")
 
 
+def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):
+    """2026-10-16: first-run backfill made the audit's zero-wait lock lose paid-for pages."""
+    from connectonion.rem import page_review, project_claim_review
+    monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 5)
+    monkeypatch.setattr(project_claim_review, "review", lambda *args, **kwargs:
+                        ({"verdict": "pass"}, {"input_tokens": 0}))
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(original.replace("## Who they are\n- Unknown — not investigated yet",
+                                          "## Who they are\n- Leads the data team. [1]")
+                         .replace("- (none yet)", "- [1] gmail:m:1")
+                         .replace("- Unknown — not investigated yet", "- Unknown"))
+    threads, check_quotes = [], page_review.misquoted
+
+    def before_audit(*args):
+        errors = check_quotes(*args)
+        threads.append(_hold_lock(tmp_path, 1.0))
+        return errors
+
+    monkeypatch.setattr(page_review, "misquoted", before_audit)
+    audit_usage = runner._promote_candidate(notebook, "people/mia.md", candidate, original,
+                                           [{"source": "gmail:m:1"}], tmp_path, {"input_tokens": 123},
+                                           claim_config=default_config())
+    threads[0].join()
+    assert "Leads the data team." in notebook.read("people/mia.md")
+    assert audit_usage == {"input_tokens": 0}
+    assert json.loads((tmp_path / "review.json").read_text())["factual_quality"] == "bounded citation audit passed"
+
+
 def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
     """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
     unresolved [7] was dropped, the half it supported was left uncited, and the
@@ -582,7 +622,8 @@ def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failin
     assert "- Role: Data lead [1]\n" in page and "tax customer" not in page
 
 
-def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch):
+@pytest.mark.parametrize("audited", [False, True])
+def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch, audited):
     from connectonion.rem import runner
     from connectonion.rem.runner import RunFailed
     monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 0.5)
@@ -593,10 +634,14 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
     candidate = tmp_path / "candidate.md"
     candidate.write_text(original)
     thread = _hold_lock(tmp_path, 2.0)
+    usage = {"input_tokens": 123}
     with pytest.raises(RunFailed) as error:
-        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, None)
+        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, usage,
+                                  claim_config=default_config() if audited else None)
     thread.join()
     assert str(candidate) in str(error.value) and candidate.is_file()
+    assert f"; the finished page is kept at {candidate}" in str(error.value)
+    assert error.value.usage == usage
 
 
 def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alone(tmp_path):
@@ -907,8 +952,10 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
             write_json(directory / 'review.json', {'accepted': False,
                 'errors': ['Cited-claim audit did not pass; see claim-review.json']})
             write_json(directory / 'claim-review.json', {'verdict': 'fail',
-                'findings': [{'issue': 'A different adjacent claim needs correction'}]})
+                'findings': [{'claim': f'False claim {len(promotions)}',
+                              'issue': 'A different adjacent claim needs correction'}]})
             raise RunFailed('Claim audit failed', {'input_tokens': usage['input_tokens'] + 2})
+        write_json(directory / 'claim-review.json', {'verdict': 'pass', 'findings': []})
         book.write(record, candidate.read_text())
 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
@@ -920,6 +967,7 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
     assert all('exact Sessions, First seen, and Last seen lines' in prompt for prompt in prompts[1:])
     assert promotions == [10, 22, 34]
     assert result['usage'] == {'input_tokens': 34}
+    assert result['refuted_claims'] == ['False claim 1', 'False claim 2']
     assert 'Candidate 3' in notebook.read(record)
 
 
@@ -969,11 +1017,13 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
     and the results come back as cited material for one more turn."""
     import json as jsonlib
     import re as regex
+    from connectonion.rem.config import set_config
+    set_config(notebook.root, ['schedule.timezone', 'Australia/Sydney'])
     record = 'people/first.md'
     notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
     prompts, asked, promoted = [], [], []
     found = [{'role': 'other', 'speaker': 'Second <second@example.org>', 'text': 'First runs the lab.',
-              'timestamp': '2025-08-06', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
+              'timestamp': '2026-08-27T21:30:00Z', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
 
     def search(queries):
         asked.append(queries)
@@ -985,10 +1035,14 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
         candidate.write_text('# First\n')
         if len(prompts) == 1:
             (candidate.parent / 'search-requests.json').write_text(jsonlib.dumps(['First lab', 'from:x@y.z']))
+        else:
+            assert 'Date: 2026-08-27T21:30:00Z (2026-08-28 07:30 Australia/Sydney)' in (
+                candidate.parent / 'search-results.md').read_text()
         return {'usage': {'input_tokens': 10}, 'result': 'done'}
 
     def promote(book, record, candidate, original, items, directory, usage, **options):
         promoted.append([item['source'] for item in items])
+        assert items[-1]['local_time'] == '2026-08-28 07:30 Australia/Sydney'
 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
     monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
@@ -998,6 +1052,7 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
     assert len(prompts) == 2 and 'search-results.md' in prompts[1] and 'search-requests.json' in prompts[0]
     assert all(prompt.endswith('</co_rem_task>') for prompt in prompts)
     assert 'outlook:abc123abc123' in promoted[0]
+    assert 'local_time' not in found[0]
 
 
 def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monkeypatch):
@@ -1064,6 +1119,27 @@ def test_a_run_names_the_codex_threads_that_ran_it(notebook, monkeypatch):
     assert run_stage(notebook, [], default_config())["threads"] == ["01a12370-thread"]
 
 
+def test_material_carries_local_times_without_changing_the_sources(notebook, delegate):
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.config import set_config
+    from connectonion.rem.source import local_time, with_local_times
+    zone = ZoneInfo("Australia/Sydney")
+    stamp = "2026-08-27T21:30:00Z"
+    items = [{"source": "outlook:reply", "timestamp": stamp, "text": "Reply sent."},
+             {"source": "undated", "text": "No date."},
+             {"source": "non-iso", "timestamp": "yesterday", "text": "No exact time."},
+             {"source": "date-only", "timestamp": "2026-08-27", "text": "No exact time."}]
+    shown = with_local_times(items, zone)
+    assert local_time(stamp, zone) == "2026-08-28 07:30 Australia/Sydney"
+    assert list(shown[0]) == ["source", "timestamp", "local_time", "text"]
+    assert shown[1:] == items[1:] and all(copy is not item for copy, item in zip(shown, items))
+    assert all("local_time" not in item for item in items)
+    assert "timestamp: " + stamp + "\nlocal_time: 2026-08-28 07:30 Australia/Sydney" in runner.readable_material(shown)
+    set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
+    run_stage(notebook, items, default_config())
+    assert delegate[0][1]["material"] == shown
+
+
 def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
     """Ody's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
@@ -1074,6 +1150,7 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
     today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
     assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
     handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
@@ -1101,3 +1178,28 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     assert not refusals
     assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
     assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved
+
+
+def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():
+    """Ody Zhou (2026-10-15) was kept with no lead: the audit refuted a claim in
+    each sentence. `_lead` is what the last resort checks before keeping a page."""
+    from connectonion.rem.runner import _lead
+    assert _lead("# Ody Zhou\n\n\n## Facts\n- Email: x\n") == ""
+    assert _lead("# Ody Zhou\n\nOdy is a co-founder [1]. Last contact: 2026-10-15.\n\n## Facts\n") \
+        .startswith("Ody is a co-founder")
+
+
+def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
+    """Tamara and Nina (2026-10-15): an audit finding about a missing citation
+    took the lead's first sentence, and Nina's page opened on an HR ticket."""
+    from connectonion.rem.runner import _keep_identity
+    facts = ("## Facts\n- Company: [UNSW Founders](../orgs/unsw.md) [4]\n- Role: Events Coordinator [4]\n\n"
+             "## Insight\n- Unknown\n")
+    before = "# Tamara Berryman\n\nTamara is the user's main MCIC contact [1]. The user owes her a card [5].\n\n" + facts
+    after = "# Tamara Berryman\n\nThe user owes her a card [5].\n\n" + facts
+    kept = _keep_identity("people/tamara.md", before, after)
+    assert kept.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator at "
+                           "[UNSW Founders](../orgs/unsw.md) [4]. The user owes her a card [5].\n\n## Facts")
+    assert _keep_identity("people/tamara.md", before, before) == before
+    emptied = _keep_identity("people/tamara.md", before, "# Tamara Berryman\n\n\n" + facts)
+    assert emptied.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator") and "\n\n## Facts" in emptied

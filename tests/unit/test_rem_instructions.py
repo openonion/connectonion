@@ -273,3 +273,11 @@ def test_every_pass_may_delete_not_only_add():
     assert "at most five" in SYNTHESIS_NOTE
     assert "add, change and delete" in instructions("investigate", page_kind="person")
     assert "Keep every thread" not in SYNTHESIS_NOTE
+
+
+def test_shared_history_rule_only_applies_to_shapes_with_history():
+    """connectonion's project page gained a History outside its shape (2026-10-15)."""
+    for kind in ('person', 'org', 'project'):
+        text = instructions('investigate', page_kind=kind)
+        assert '`History`, on a page whose shape has one:' in text
+        assert len(text) <= INSTRUCTION_BUDGET

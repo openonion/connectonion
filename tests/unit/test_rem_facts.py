@@ -99,6 +99,24 @@ def test_an_old_page_is_upgraded_without_losing_a_word():
     assert facts.upgrade("people/mia.md", new) == new
 
 
+@pytest.mark.parametrize("record, label, value", [
+    ("people/edwin-tang.md", "Company", "Unknown; email domain: student.unsw.edu.au [8]"),
+    ("people/vern-chan.md", "First contact", "Unknown."),
+    ("orgs/agentmail-cc.md", "Last contact", "Unknown — supplied messages do not establish the last contact"),
+    ("projects/p.md", "Status", "Unknown (not investigated yet)"),
+    ("people/mia.md", "Company", "UNSW [1]"),
+    ("people/mia.md", "Company", "Unknown"),
+])
+def test_upgrade_normalizes_unknown_facts_only(record, label, value):
+    placeholder = "## Who they are\n- Unknown — not investigated yet\n"
+    page = f"# Subject\n\n## Facts\n- {label}: {value}\n\n" + placeholder
+    upgraded = facts.upgrade(record, page)
+    expected = "Unknown" if value.startswith("Unknown") else value
+    assert f"- {label}: {expected}\n" in upgraded
+    assert placeholder in upgraded
+    assert facts.upgrade(record, upgraded) == upgraded
+
+
 def test_normalize_puts_facts_and_insight_where_the_reader_expects_them():
     old = PERSON.replace("## Facts", "## Contact") + "\n## Who they are\n- Leads data [1]\n\n## Sources\n- [1] x\n"
     page = normalize("people/mia.md", old)
@@ -187,3 +205,20 @@ def test_also_known_as_keeps_names_not_addresses():
     only = page.replace("Ody; 周泽凯 [2]; ", "")
     assert "- Also known as: Unknown\n" in names_not_addresses("people/ody.md", only)
     assert names_not_addresses("orgs/x.md", page) == page
+
+
+def test_a_facts_label_the_shape_does_not_have_goes_unless_the_page_had_it():
+    """Richard Lai, 2026-10-15: "- First recorded contact" beside "- First contact: Unknown"."""
+    from connectonion.rem import facts
+    page = ("# R\n\nLead.\n\n## Facts\n- First contact: Unknown\n- First recorded contact: 2026-09-22 [3]\n"
+            "- Legacy note: kept [1]\n\n## Insight\n- Unknown\n")
+    text, dropped = facts.drop_foreign_labels("people/r.md", page, "# R\n\n## Facts\n- Legacy note: kept [1]\n")
+    assert dropped == ["First recorded contact"]
+    assert "First recorded contact" not in text and "- Legacy note: kept [1]" in text and "## Insight" in text
+
+
+def test_supplied_mail_boilerplate_is_a_hedge_the_editing_round_removes():
+    from connectonion.rem.page_review import hedged_lines
+    page = ("# R\n\nLead.\n\n## Open threads\n- Richard owes the user: issues [1] — no completion is established "
+            "in the supplied mail.\n- The card pickup is unconfirmed [2].\n\n## Uncertainties\n- Unknown\n")
+    assert [section for section, _ in hedged_lines(page)] == ["Open threads", "Open threads"]

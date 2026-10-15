@@ -14,10 +14,13 @@ Facts label (see facts.FIELDS) or one of the context kinds above.
 """
 
 import re
+from collections import Counter, deque
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from .files import EMAIL, RemError, is_address
+from .files import DOMAIN_HANDLE, EMAIL, RemError, is_address
 from .map import MACHINE, RELAY
+from .mail import _address, _addresses, is_own
 from .source import timestamp
 
 WEBMAIL = ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "yahoo.com", "icloud.com",
@@ -46,6 +49,43 @@ NOTICE = re.compile(r"\bnotice\b|\[host copy\]|\bnew message in\b|you(?:['’]ve
 # Recipients past which a mail is a broadcast, not contact: Tamara's kitchen
 # etiquette note to about 30 startups became her Last contact (claims audit T2).
 BROADCAST = 5
+
+
+def _normalized_subject(subject: str) -> str:
+    return " ".join(re.sub(r"^(?:\s*(?:re|fwd|fw)\s*:)+", "", subject, flags=re.I).casefold().split())
+
+
+def mail_merge_subjects(rows: list[dict], own_addresses: set[str]) -> set[str]:
+    """Subjects sent individually by the user to BROADCAST distinct people within three days.
+
+    Only sends with one To address and no Cc after removing the user's own addresses count.
+    """
+    # 2026-10-16 trial: "Try handoff" sent individually to ~20 students became
+    # Aurelien Renard's and Jerryl Seow's Last contact. One person's items hide the merge.
+    # Team replies are group mail, never merge sends, even when their recipient union grows.
+    own = {address.casefold() for address in own_addresses}
+    groups = {}
+    for row in rows:
+        subject = _normalized_subject(row.get("subject") or "")
+        if not subject or not row.get("date") or not row.get("from") or not is_own(_address(row["from"]), own):
+            continue
+        recipients = set(_addresses(row.get("to"))) - own
+        if len(recipients) != 1 or set(_addresses(row.get("cc"))) - own:
+            continue
+        groups.setdefault(subject, []).append((timestamp(row["date"]), recipients))
+    merged = set()
+    for subject, sends in groups.items():
+        window, counts = deque(), Counter()
+        for when, recipients in sorted(sends, key=lambda send: send[0]):
+            while window and when - window[0][0] > timedelta(days=3):
+                counts.subtract(window.popleft()[1])
+                counts = +counts
+            window.append((when, recipients))
+            counts.update(recipients)
+            if len(counts) >= BROADCAST:
+                merged.add(subject)
+                break
+    return merged
 
 
 def _date(item: dict, zone: ZoneInfo) -> str:
@@ -145,15 +185,21 @@ def notice(item: dict) -> bool:
     return bool(any(RELAY.search(a) or MACHINE.search(a) for a in senders) or NOTICE.search(item.get("subject") or ""))
 
 
-def _contact(item: dict, addresses: set, names: list[str]) -> bool:
+def _contact(item: dict, addresses: set, names: list[str], domains=(), merged_subjects=()) -> bool:
     """Human mail between the user and the subject: they wrote it, or the user wrote to them."""
     people = item.get("participants") or {}
     recipients = [*(people.get("to") or []), *(people.get("cc") or [])]
     if notice(item) or len(recipients) > BROADCAST:
         return False
+    if item["role"] == "user" and _normalized_subject(item.get("subject") or "") in merged_subjects:
+        return False
+    side = [item.get("speaker") or ""] if item["role"] == "other" else recipients
+    suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
+    if suffixes and any(a.casefold().endswith(suffixes) for value in side for a in EMAIL.findall(str(value))):
+        return True
     if item["role"] == "other":
         return _subject(item, addresses, names)
-    return not people or bool(addresses & {a.casefold() for r in recipients for a in EMAIL.findall(str(r))})
+    return (not people and not domains) or bool(addresses & {a.casefold() for r in recipients for a in EMAIL.findall(str(r))})
 
 
 def gave_number(item: dict, value: str, addresses: set, names: list[str]) -> bool:
@@ -184,14 +230,19 @@ def gave_number(item: dict, value: str, addresses: set, names: list[str]) -> boo
     return False
 
 
-def extract(items: list[dict], handles: list[str], *, owner: bool = False, timezone: str = "UTC") -> list[dict]:
+def extract(items: list[dict], handles: list[str], *, owner: bool = False, timezone: str = "UTC",
+            merged_subjects: set[str] | frozenset[str] = frozenset()) -> list[dict]:
     """Facts the material states outright about the subject, newest signature first.
 
     `owner` is the user's own page: the user's own messages are the subject's,
     and a first or last contact with oneself means nothing.
+    `merged_subjects` comes from archive metadata and excludes only outgoing contact dates.
     """
     addresses = {h.strip().casefold() for h in handles if is_address(h)}
-    words = [h.strip() for h in handles if not is_address(h) and len(h.strip()) >= 3]
+    # 2026-10-16 first-run trial: org domain handles need contact dates, not person facts.
+    domains = {match[1] for h in handles if (match := DOMAIN_HANDLE.fullmatch(h.strip().casefold()))}
+    words = [h.strip() for h in handles if not is_address(h) and len(h.strip()) >= 3
+             and not DOMAIN_HANDLE.fullmatch(h.strip().casefold())]
     names = sorted({w.casefold() for w in words} | {w.split()[0].casefold() for w in words if len(w.split()[0]) >= 3})
     zone = ZoneInfo(timezone)
     mail = sorted((i for i in items if str(i.get("source", "")).startswith(MAIL_SOURCES)
@@ -235,9 +286,10 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 if at >= 0:   # a flattened invite is one long line: the window around the name
                     add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
     if not owner:
-        for row in _others_phones(mail, addresses, names, zone):
-            add(row)
-        contact = [item for item in mail if _contact(item, addresses, names)]
+        if addresses or names:
+            for row in _others_phones(mail, addresses, names, zone):
+                add(row)
+        contact = [item for item in mail if _contact(item, addresses, names, domains, merged_subjects)]
         if contact:
             add(_row("Last contact", _date(contact[-1], zone), contact[-1], zone))
     return rows

@@ -286,7 +286,7 @@ def test_the_person_skill_and_the_code_keep_the_same_history_limit():
     from connectonion.rem.page_review import HISTORY_LIMIT
     from connectonion.skills_catalog import useful_skills_dir
     text = (useful_skills_dir() / "rem-page-person/SKILL.md").read_text()
-    assert f"at most {HISTORY_LIMIT} milestones" in text and "at most 8" not in text
+    assert HISTORY_LIMIT == 16 and "one line per thread, at most sixteen" in text and "at most 8" not in text
     project = (useful_skills_dir() / "rem-page-project/SKILL.md").read_text()
     assert "Do not search" not in project and "Search the repo for evidence" in project
     maintain = (useful_skills_dir() / "rem-maintain/SKILL.md").read_text()

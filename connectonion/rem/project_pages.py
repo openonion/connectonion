@@ -370,38 +370,11 @@ def _readme(page: str, stamp: str) -> list[dict]:
 
 def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests: str = "") -> list[dict]:
     """A small local packet that can verify more than the owner's requests."""
-    from .investigate import (CURRENT_REFS, _git, checkout_state, collapse_worktree_paths,
-                              project_file_inventory, project_file_texts, project_paths)
-    for folder in project_paths(collapse_worktree_paths(page))[:2]:
-        if not (Path(folder) / ".git").exists():
-            continue
-        ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
-                                                         name + "^{commit}")), "HEAD")
-        revision = _git(folder, "rev-parse", ref + "^{commit}")
-        items = []
-        for name in ("README.md", "README.rst", "README.txt", "README"):
-            content = _git(folder, "show", f"{revision}:{name}")
-            if content:
-                items.append({"role": "readme", "source": f"git:{folder}:{revision}:{name}",
-                              "timestamp": stamp, "text": _excerpt(content, README_CHARS)})
-                break
-        for name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift"):
-            content = _git(folder, "show", f"{revision}:{name}")
-            if content:
-                items.append({"role": "project-file", "source": f"git:{folder}:{revision}:{name}",
-                              "timestamp": stamp, "text": _excerpt(content, 1_500)})
-            if len(items) >= 3:
-                break
-        state = checkout_state(folder, newest_session)
-        if state:
-            state += "\nWorking tree status (not the fixed revision):\n" + (_git(folder, "status", "--short") or "clean")
-            items.append({"role": "checkout-state", "source": f"git:{folder}:checkout-state",
-                          "timestamp": stamp, "text": _excerpt(state, 1_000)})
-        commits = _git(folder, "log", "-5", "--date=short", "--format=%h %ad %s", revision)
-        if commits:
-            items.append({"role": "recent-commits", "source": f"git:{folder}:{revision}:recent-commits",
-                          "timestamp": stamp, "text": "Local commits, not proof of tests or deployment:\n"
-                          + _excerpt(commits, 1_500)})
+    from .investigate import project_file_inventory, project_file_texts
+    found = current_line(page)
+    if found:
+        folder, ref, revision = found
+        items = current_line_packet(folder, ref, revision, stamp, newest_session)
         if re.search(r"\b(?:CI|CICD|SEO)\b|CI/CD|workflow|GitHub Actions", requests, re.I):
             budget = REPOSITORY_EVIDENCE_CHARS - sum(len(item["text"]) for item in items)
             items += _workflow_evidence(folder, revision, stamp, requests, budget)
@@ -416,6 +389,108 @@ def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests
                       if path not in files and not Path(path).name.lower().startswith("readme")]
     items += project_file_texts(implementation, max_files=IMPLEMENTATION_FILES, chars_per_file=FILE_SNAPSHOT_CHARS)
     return items
+
+
+def current_line(page: str) -> tuple[str, str, str] | None:
+    """(repository, ref, full revision) of the first mapped Git checkout's current line, or None."""
+    from .investigate import CURRENT_REFS, _git, collapse_worktree_paths, project_paths
+    for folder in project_paths(collapse_worktree_paths(page))[:2]:
+        if not (Path(folder) / ".git").exists():
+            continue
+        ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
+                                                         name + "^{commit}")), "HEAD")
+        return folder, ref, _git(folder, "rev-parse", ref + "^{commit}")
+    return None
+
+
+def current_line_packet(folder: str, ref: str, revision: str, stamp: str, newest_session: str) -> list[dict]:
+    """README, manifests, checkout state and history at the project's current line, not its working tree.
+
+    oo-api's main checkout sat on an August branch while origin/main gained 48
+    commits; read from the working tree, its page described August (2026-10-15).
+    """
+    from .investigate import _git, checkout_state
+    # Dated by the revision, not by when it was read: a README cited "2026-10-15"
+    # said nothing about when the project was described that way.
+    committed = _git(folder, "show", "-s", "--format=%cI", revision) or stamp
+    items = []
+    for name in ("README.md", "README.rst", "README.txt", "README"):
+        content = _git(folder, "show", f"{revision}:{name}")
+        if content:
+            items.append({"role": "readme", "source": f"git:{folder}:{revision}:{name}",
+                          "timestamp": committed, "text": _excerpt(content, README_CHARS)})
+            break
+    for name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift"):
+        content = _git(folder, "show", f"{revision}:{name}")
+        if content:
+            items.append({"role": "project-file", "source": f"git:{folder}:{revision}:{name}",
+                          "timestamp": committed, "text": _excerpt(content, 1_500)})
+        if len(items) >= 3:
+            break
+    state = checkout_state(folder, newest_session)
+    remote = re.sub(r"//[^/@]+@", "//", _git(folder, "remote", "get-url", "origin"))
+    if state and remote:
+        state += f" Remote origin: {remote}."
+    if state:
+        state += "\nWorking tree status (not the fixed revision):\n" + (_git(folder, "status", "--short") or "clean")
+        items.append({"role": "checkout-state", "source": f"git:{folder}:checkout-state",
+                      "timestamp": stamp, "text": _excerpt(state, 1_000)})
+    history = _history(folder, ref, revision)
+    if history:
+        items.append({"role": "recent-commits", "source": f"git:{folder}:{revision}:recent-commits",
+                      "timestamp": committed, "text": history})
+    return items
+
+
+# The current line's commits a page is checked against: what was finished, and when.
+HISTORY_COMMITS = 80
+HISTORY_CHARS = 4_000
+# A branch beside the current line committed this recently is work in flight:
+# oo-api's unmerged email-worker fix was six weeks old (2026-10-15).
+BRANCH_DAYS = 60
+
+
+def _history(folder: str, ref: str, revision: str) -> str:
+    """The current line's commits, newest first, then branches still open beside it."""
+    from .investigate import _git
+    commits = _git(folder, "log", f"-{HISTORY_COMMITS}", "--date=short", "--format=%h %ad %s", revision)
+    if not commits:
+        return ""
+    roots = _git(folder, "rev-list", "--max-parents=0", revision).split()
+    first = _git(folder, "show", "-s", "--date=short", "--format=%h %ad %s", roots[-1]) if roots else ""
+    text = (f"Commits on {ref} ({revision[:12]}), newest first. A commit shows what was committed, "
+            "not that tests passed or it was deployed:\n" + _excerpt(commits, HISTORY_CHARS)
+            + (f"\n\nFirst commit: {_excerpt(first, 200)}" if first else ""))
+    branches = _open_branches(folder, revision)
+    if branches:
+        text += (f"\n\nBranches with commits not on {ref}, committed in the last {BRANCH_DAYS} days "
+                 "(work in flight, abandoned, or merged under another message; check before calling it open):\n" + "\n".join(branches))
+    return text
+
+
+def _open_branches(folder: str, revision: str) -> list[str]:
+    """Branches whose tip is not on the current line, newest first; a squash-merged tip is on it."""
+    from .investigate import _git
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=BRANCH_DAYS)).date().isoformat()
+    landed = {_subject(line) for line in _git(folder, "log", "-400", "--format=%s", revision).splitlines()}
+    rows = _git(folder, "for-each-ref", "--sort=-committerdate", f"--no-merged={revision}",
+                "--format=%(committerdate:short) %(refname:short) %(objectname:short) %(subject)",
+                "refs/heads", "refs/remotes").splitlines()
+    seen, kept = set(), []
+    for row in rows:
+        parts = row.split(" ", 3)
+        if len(parts) < 4 or parts[0] < cutoff or parts[1].endswith("/HEAD") or _subject(parts[3]) in landed:
+            continue
+        short = parts[1].removeprefix("origin/")
+        if short not in seen:
+            seen.add(short)
+            kept.append(_excerpt(row, 160))
+    return kept[:12]
+
+
+def _subject(line: str) -> str:
+    """A commit subject without the `(#123)` a squash merge appends."""
+    return re.sub(r"\s*\(#\d+\)\s*$", "", line).strip().casefold()
 
 
 def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests: str = "") -> list[dict]:
@@ -439,7 +514,7 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
         if size > FILE_SNAPSHOT_CHARS:
             continue
         content = subprocess.run(["git", "-C", folder, "show", f"{revision}:{name}"],
-                                 capture_output=True, text=True, check=True, timeout=10).stdout
+                                 capture_output=True, text=True, errors="replace", check=True, timeout=10).stdout
         if content:
             items.append(_implementation_item(folder, revision, name, content, stamp))
     listing = (f"Tracked tree at {revision}; {len(tree)} entries. Contents supplied for {len(items)} of "
