@@ -16,6 +16,7 @@ from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .source import with_local_times
 
 
 class RunFailed(RemError):
@@ -500,7 +501,8 @@ def today_note(root: Path) -> str:
     from .service import notebook_zone
     zone = notebook_zone(read_config(root, validated=False))
     return (f"\n\nToday is {datetime.now(zone).date().isoformat()} ({zone}). An event or deadline before "
-            "today has happened or passed: it is history, never an open thread. ")
+            "today has happened or passed: it is history, never an open thread. "
+            "Dates on the page are local dates: use each item's local_time, not its UTC timestamp. ")
 
 
 def _verify_no_change(directory: Path, items: list[dict], usage) -> None:
@@ -542,7 +544,7 @@ def _followup_prompt(prompt: str, instruction: str) -> str:
     return prompt + "\n\n## Follow-up\n" + instruction
 
 
-def _searched_turn(workdir, prompt, config, stage, directory, search, items, first):
+def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone):
     """Run the mail searches the model asked for, read-only, and give it one more turn with the results.
 
     The model has no network: its sandbox is the defence against mail that
@@ -563,11 +565,13 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     known = {item.get("source") for item in items}
     answers = search(queries)
     failed = [item for item in answers if item.get("role") == "search-failure"]
-    found = [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known]
+    found = with_local_times(
+        [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known], zone)
     items.extend(found)
     results = directory / "search-results.md"
     results.write_text("\n\n".join(
-        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
+        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}"
+         + (f" ({item['local_time']})" if item.get("local_time") else "") + f"\nSubject: {item['subject']}\n"
          f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
         + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
     again = run_task(workdir, _followup_prompt(
@@ -1058,13 +1062,16 @@ def _with_additions(items: list[dict], additions: list[dict], budget: int) -> li
 
 
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
+    from .config import read_config
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
+    from .service import notebook_zone
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     tails = thread_tails(notebook.root, items) if stage == "maintain" else []
     items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
                             config["limits"]["input_chars_per_batch"])
+    items = with_local_times(items, notebook_zone(read_config(notebook.root, validated=False)))
     prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
               + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root))
               + (TAIL_NOTE if any(item.get("role") == "thread-tail" for item in items) else ""))
@@ -1219,7 +1226,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                           or untouched and "NO CHANGE" not in str(result.get("result") or "")):
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
         if candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
-            result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result)
+            result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result,
+                                    notebook_zone(read_config(notebook.root, validated=False)))
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")

@@ -24,7 +24,7 @@ from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_add
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
-from .source import KINDS, collect, timestamp
+from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
 # Shared by every page in flight, one pool per mailbox: Gmail takes many
@@ -1243,7 +1243,8 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total = len(rounds)
     for number, part in enumerate([*rounds, []], 1):
-        dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
+        dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
+                 for i in part if i.get("local_time") or i.get("timestamp")]
         note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
                                   last=max(dates, default="?"))
                 if part else (PERSON_SYNTHESIS_NOTE if record.startswith("people/") else SYNTHESIS_NOTE).format(total=total))
@@ -1691,6 +1692,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")
+    from .service import notebook_zone
+    items = with_local_times(items, notebook_zone(read_config(root, validated=False)))
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
     synthesis_calls = 3 if routing(root) else 1

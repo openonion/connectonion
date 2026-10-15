@@ -112,6 +112,31 @@ def timestamp(value: str) -> datetime:
         raise RemError("Source contains an invalid timestamp") from error
 
 
+LOCAL_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T[^\s]*(?:Z|[+-]\d{2}:?\d{2})")
+
+
+def local_time(stamp, zone) -> str:
+    # A Sydney reply's prose said 27 August but Sources said 28 August (2026-10-16).
+    if LOCAL_TIMESTAMP.fullmatch(str(stamp)):
+        return timestamp(str(stamp)).astimezone(zone).strftime("%Y-%m-%d %H:%M ") + str(zone)
+    return ""
+
+
+def with_local_times(items, zone) -> list[dict]:
+    result = []
+    for item in items:
+        local = local_time(item.get("timestamp"), zone)
+        copied = {}
+        for key, value in item.items():
+            if key == "local_time" and local:
+                continue
+            copied[key] = value
+            if key == "timestamp" and local:
+                copied["local_time"] = local
+        result.append(copied)
+    return result
+
+
 def rem_task(cwd) -> bool:
     """A session run in a notebook's .state/tasks: REM's own work, never the user's words."""
     parts = PurePosixPath(str(cwd or "")).parts

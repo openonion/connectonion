@@ -435,11 +435,13 @@ def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(
     searches; no digest call is made. Since #2314 that is the one-round setting."""
     root = _notebook(tmp_path, "codex")
     set_config(root, ["limits.investigation_rounds", "1"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
     config = read_config(root)
     original = inv.Notebook(root).read("people/vern.md")
     items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
               "speaker": "vern@x.y", "subject": f"Contract {i}",
               "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    items[0]["timestamp"] = "2026-08-27T21:30:00Z"
     items[7]["text"] += " The capstone runs 3 March to 30 May."
     assert len(json.dumps(items)) > config["limits"]["input_chars_per_batch"]
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
@@ -455,6 +457,8 @@ def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(
         assert "has NOT been summarised" in evidence["text"] and str(folder) in evidence["text"]
         # Every item is on disk under its citable id, and a search finds the needle.
         text = "\n".join(p.read_text() for p in folder.rglob("*.md") if p.name != "index.md")
+        assert "### outlook:0 · 2026-08-27T21:30:00Z · local 2026-08-28 07:30 Australia/Sydney" in text
+        assert "- 2026-08-28 · outlook:2026-08" in index.read_text()
         assert all(f"### {i['source']} ·" in text for i in items)
         hit = [p for p in folder.rglob("*.md") if "capstone runs 3 March" in p.read_text()]
         assert len(hit) == 1 and "### outlook:7 ·" in hit[0].read_text()
@@ -1350,6 +1354,7 @@ def test_new_reply_keeps_exact_cited_request_outside_update_window(tmp_path):
 
 def test_attachment_citation_does_not_mean_carrier_mail_was_read(tmp_path, monkeypatch):
     root = _notebook(tmp_path, 'codex')
+    set_config(root, ['schedule.timezone', 'UTC'])
     _investigated(root, 'people/vern.md', 1)
     notebook = inv.Notebook(root)
     notebook.write('people/vern.md', notebook.read('people/vern.md').replace(
@@ -1360,7 +1365,7 @@ def test_attachment_citation_does_not_mean_carrier_mail_was_read(tmp_path, monke
     received = []
     inv.investigate(root, 'people/vern.md', 'Vern', ['vern'], days=3, clients={}, subscriptions={},
                     runner=lambda notebook, items, config, stage: received.extend(items) or {'changed': []})
-    assert carrier in received
+    assert {**carrier, 'local_time': '2026-09-30 09:00 UTC'} in received
 
 
 @pytest.mark.parametrize('fresh', [[], [{'source': 'outlook:new', 'role': 'attachment', 'thread': 'mail:outlook:t'}],
@@ -1913,15 +1918,21 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
     the page the last one left, and a refused round costs only that round."""
     from connectonion.rem.runner import RunFailed
     root = _notebook(tmp_path, "codex")
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
     items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
               "speaker": "vern@x.y", "subject": f"Contract {i}",
               "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    items[0]["timestamp"] = "2026-08-27T21:30:00Z"
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
     turns = []
 
     def write(notebook, material, config, **kw):
         note = next(i for i in material if i["role"] == "round")["text"]
         sources = [i["source"] for i in material if i.get("source", "").startswith("outlook:")]
+        if "outlook:0" in sources:
+            assert "dated 2026-08-28 to " in note
+            assert next(i for i in material if i.get("source") == "outlook:0")["local_time"] == (
+                "2026-08-28 07:30 Australia/Sydney")
         turns.append((note, sources, material[0]["text"]))
         assert not any(i["role"] == "evidence-index" for i in material)
         if len(turns) == 2:

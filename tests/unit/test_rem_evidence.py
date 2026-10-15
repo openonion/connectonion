@@ -40,6 +40,18 @@ def test_an_odd_source_id_cannot_escape_the_evidence_directory(tmp_path):
     assert all((tmp_path / "ev") in p.parents for p in written) and out["files"] == 1
 
 
+def test_entry_and_index_use_the_notebooks_local_date(tmp_path):
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.source import with_local_times
+    items = with_local_times([item("outlook:reply", "2026-08-27T21:30:00Z", "Reply sent.", speaker="Vern")],
+                             ZoneInfo("Australia/Sydney"))
+    out = write_evidence(tmp_path / "ev", items)
+    entry = next(p for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
+    assert "### outlook:reply · 2026-08-27T21:30:00Z · local 2026-08-28 07:30 Australia/Sydney · Vern" in entry.read_text()
+    assert "- 2026-08-28 · outlook:2026-08" in out["index"].read_text()
+    assert entry.name.startswith("2026-08-27_")
+
+
 def test_indexed_mail_preserves_actual_cc_when_rendered_body_omits_it(tmp_path):
     participants = {"from": "Lead <lead@school.example>", "to": ["me@example.org"],
                     "cc": ["Member <member@school.example>"]}
