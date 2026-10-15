@@ -12,6 +12,7 @@ PUBLISHED_EXCEPTIONS = {
     "gemini-3.6-flash",
     "gemini-3.7-flash",
     "gemini-3.8-flash",
+    "gemini-4-argon",
 }
 
 
@@ -48,6 +49,15 @@ class TestTheProviderPublishedException:
     def test_gemini_3_8_flash_is_ten_percent_of_promotional_input(self):
         row = MODEL_PRICING["gemini-3.8-flash"]
         assert row == {"input": 0.75, "output": 3.75, "cached": 0.075}
+
+    def test_gemini_4_argon_cached_is_five_percent_of_input(self):
+        """Google publishes Argon's implicit-cache rate at $0.10/M against
+        $2.00/M input — a 95% discount, not the 75% every other Gemini row
+        follows. Pricing page, checked 2026-10-15. Explicit caching is not
+        supported for this model; only implicit caching is."""
+        row = MODEL_PRICING["gemini-4-argon"]
+        assert row == {"input": 2.00, "output": 10.00, "cached": 0.10}
+        assert row["cached"] == pytest.approx(row["input"] * 0.05)
 
 
 class TestTheConfirmedRatesStay:

@@ -123,6 +123,13 @@ MODEL_PRICING = {
     # FREE_MANAGED_MODELS/PAID_MANAGED_MODELS: the CLI does not offer it, the
     # backend routes it. cached is the stated 25%, not a measurement.
     "gemini-3-flash-preview": {"input": 0.50, "output": 3.00, "cached": 0.125},
+    # Gemini 4's only model, and a Pro-tier price. Standard paid tier, per
+    # million tokens, from Google's pricing page checked 2026-10-15: input
+    # $2.00, output $10.00, cached input $0.10. It doubles to $4.00 / $20.00 /
+    # $0.20 on 2026-12-01 — sooner than the Flash rows above. The server is what
+    # actually bills; this table only estimates, and oo-api carries both windows
+    # (openonion/oo-api#269). Update this row on 2026-12-01.
+    "gemini-4-argon": {"input": 2.00, "output": 10.00, "cached": 0.10},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00, "cached": 0.3125},
@@ -150,6 +157,11 @@ MODEL_CONTEXT_LIMITS = {
     "claude-3-7-sonnet": 200000,
 
     # Gemini
+    # inputTokenLimit from Google's own model metadata, read 2026-10-15.
+    # Without this row it would take the 128,000 default and auto-compaction
+    # would fire about eight times too early, the way gemini-3-flash-preview
+    # did below.
+    "gemini-4-argon": 1_048_576,
     "gemini-3.8-flash": 1_048_576,
     "gemini-3.7-flash": 1000000,
     "gemini-3.6-flash": 1000000,
