@@ -1427,6 +1427,10 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
 
     # Google Gemini models
+    # Gemini 4's only model, verified answering on a real key 2026-10-15 with
+    # tool calls, structured output and reasoning_effort. Pro-tier price, so
+    # DEFAULT_MODEL stays on 3.8 Flash.
+    "gemini-4-argon": "google",
     "gemini-3.8-flash": "google",
     "gemini-3.7-flash": "google",
     "gemini-3.6-flash": "google",
