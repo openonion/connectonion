@@ -1,7 +1,10 @@
 """The HTML reader is disposable presentation over the notebook, never a second store."""
 
+import json
 import os
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -10,6 +13,39 @@ from connectonion.rem.files import Notebook
 from connectonion.rem.reader import contact_candidates, open_reader, reader_path, render, write_reader
 
 HOSTILE = "# Alice\n\nSaid: <script>alert(1)</script> and </script><img src=x onerror=alert(2)>\n"
+
+
+@pytest.mark.parametrize("protocol", ["file:", "about:"])
+def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol):
+    root = tmp_path / "owner's notebook"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice\n")
+    page = render(root)
+    data = json.loads(re.search(r"const REM = (.*);", page).group(1))
+    record = next(r for r in data["records"] if r["path"] == "people/alice.md")
+    # Execute the generated handlers with only the clipboard and footer DOM stubbed.
+    command = re.search(r"function remCommand\(args\).*", page).group(0)
+    copy = re.search(r"pathBtn.onclick = .*", page).group(0)
+    footer = next(line for line in page.splitlines() if "re-renders" in line)
+    script = "\n".join([
+        "const REM = " + json.dumps(data) + "; const r = " + json.dumps(record) + ";",
+        "const location = {protocol: " + json.dumps(protocol) + "};",
+        "const result = {}, pathBtn = {};",
+        "const copyToClipboard = path => result.path = path;",
+        "const el = (tag, attrs) => attrs.text;",
+        "const foot = {appendChild: text => result.footer = text};",
+        command, copy, footer, "pathBtn.onclick(); console.log(JSON.stringify(result));",
+    ])
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is not installed; it runs the reader's JavaScript")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
+    assert json.loads(result.stdout) == {
+        "path": str(root / record["path"]),
+        "footer": "Reload for latest" if protocol == "about:" else f"co rem --root {quoted_root} open re-renders",
+    }
 
 
 def test_render_embeds_records_and_neutralizes_markup(tmp_path):

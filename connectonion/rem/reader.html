@@ -1925,7 +1925,7 @@ function renderRail(active) {
     : s.next_run ? "Next pass " + fmtTime(s.next_run)
     : (scheduleState(s) || "No pass scheduled");
   foot.appendChild(el("div", { text: plainLine(schedule) }));
-  foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
+  foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : remCommand("open") + " re-renders" }));
   document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of) + " · " + schedule)
     .replace(/`([^`]+)`/g, (_, command) => command.replaceAll(" ", "\u00a0"));
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
@@ -3009,7 +3009,7 @@ function record(path, heading) {
 
   const foot = el("div", { class: "page-foot" });
   const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Copy the file path" });
-  pathBtn.onclick = () => copyToClipboard(r.path, pathBtn, "Path copied");
+  pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, "Path copied");
   const copyMd = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, "Markdown copied");
   foot.append(pathBtn, copyMd);
