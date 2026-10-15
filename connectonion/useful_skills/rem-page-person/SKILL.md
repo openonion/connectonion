@@ -86,11 +86,12 @@ Rules:
   `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`; older threads
   fold into one line a year; a thread that
   stopped says `no reply after <date>`. Not a send or a newsletter.
-- **`Open threads` lists only what someone still owes**, one line each, the
-  user's debts first, then by due date:
+- **`Open threads` lists only what the user and this person still owe each
+  other** (another person's thread goes on their page), the user's debts
+  first, then by due date:
   `- The user owes <Name>: <what> — “<exact ask>” (YYYY-MM-DD) [n] — due <date>`
   or `- <Name> owes the user: …` (once they agreed; unanswered, it is `- The
-  user asked <Name>: …`), `- <A> owes <B>: …`, ending `— open as of
+  user asked <Name>: …`), ending `— open as of
   <date>` when no due date was set. A later reply, a delivered item or a passed
   event date closes a thread: it moves to `History`. An ask with no movement
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its

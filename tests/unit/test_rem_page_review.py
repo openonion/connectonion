@@ -1052,3 +1052,13 @@ def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
              {'source': 'gmail:b', 'timestamp': 'yesterday'}]
     dates = source_dates(Path('/nonexistent-notebook'), '# X\n', items, ZoneInfo('Australia/Sydney'))
     assert dates == {'gmail:a': '2026-10-15'}
+
+
+def test_a_source_id_cited_inline_becomes_a_numbered_citation():
+    """Nina's, Tamara's and Weiwei's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
+    from connectonion.rem.page_review import normalize_numbered_sources
+    page = ("# N\n\nAsked [outlook:ac8a0c940197]; replied [1] [outlook:2af4c0ad8970].\n\n## Sources\n"
+            "- [1] outlook:2af4c0ad8970 — 2026-09-24\n\nInvestigation: x\n")
+    out = normalize_numbered_sources(page)
+    assert "Asked [2]; replied [1] [1]." in out
+    assert "- [2] outlook:ac8a0c940197" in out and out.rstrip().endswith("Investigation: x")
