@@ -1,0 +1,30 @@
+version: v1.9.3b5
+images:
+- file: before-activity-desktop.png
+  alt: The co rem reader in 1.9.3b4 on a desktop, Run logs open
+  caption: "AI notes and Run logs sit in the sidebar as memory categories; Run logs lists skill reports, and the runs themselves are at the bottom of Today."
+  scenario: Invented reader-test notebook (tests/fixtures/rem_reader_notebook.py, owner Avery Lin) plus two invented skill run reports, one AI note and one refused page in the last run; rendered by 1.9.3b4's reader.render, view c=logs
+  viewport: 1400x900, light
+  commit: 2391aea2
+  source_run: "Headless Chrome (patchright) capture of a file:// render from a detached origin/main checkout; 2026-10-15"
+- file: after-activity-desktop.png
+  alt: The co rem reader in 1.9.3b5 on a desktop, Activity view
+  caption: "One Activity entry after Explore memory: each run's time, kind, outcome, items read, tokens, the pages it changed and the page it refused with the reason."
+  scenario: The same invented notebook rendered by this release's reader as co rem open serves it (live, local), view=activity
+  viewport: 1400x900, light
+  commit: 54b18b3d
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3b5; 2026-10-15"
+- file: before-person-phone.png
+  alt: A person page in the 1.9.3b4 reader on a phone
+  caption: "Mara Ostrowski's page (invented) in 1.9.3b4: the page can only be read in the language it was written in."
+  scenario: Invented reader-test notebook, person page people/mara-ostrowski.md, rendered by 1.9.3b4
+  viewport: 390x844 at 2x, light
+  commit: 2391aea2
+  source_run: "Headless Chrome (patchright) capture of a file:// render from a detached origin/main checkout; 2026-10-15"
+- file: after-read-in-phone.png
+  alt: The same person page in the 1.9.3b5 live reader on a phone, with the Read in menu open
+  caption: "Read in, under the title: As written, then the owner's languages (中文 here, owner languages en and zh), then Other. Each entry not yet cached says translate with co ai. The menu is drawn expanded for the capture."
+  scenario: Same invented page rendered as the live reader (live, local) with owner languages en,zh; the select is given a size so its options show in a headless screenshot
+  viewport: 390x844 at 2x, light
+  commit: 54b18b3d
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3b5; 2026-10-15"

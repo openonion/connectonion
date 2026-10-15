@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3b4
+## Current Version: 1.9.3b5
+
+1.9.3b5 is a 1.9.3 beta; stable remains 1.9.2. `co rem`'s first run on a real notebook: quotes are
+checked against their sources, every person, organisation and project page is audited, contact
+facts are the person's own or Unknown, and review repairs a page and removes only refuted
+sentences instead of refusing it. Refusals go to one ledger and are retried with a cap. The reader
+has one Activity view, `co rem open` serves a live reader that translates a page with co ai, and
+pages can be written in the owner's language. Includes #2347 (Claude Code projects after session
+preambles). See [1.9.3b5 notes](docs/releases/1.9.3b5.md).
+
+- 1.9.3b5 (REM pages you can trust on the first run).
+
+## Previous preview: 1.9.3b4
 
 1.9.3b4 is a 1.9.3 beta; stable remains 1.9.2. The pasted line, the prompt, the mail and the help texts
 said a handoff handed someone a task; they now say it hands them the context of a session (#2523). See
