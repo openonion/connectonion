@@ -74,3 +74,12 @@ def test_the_fixture_notebook_snapshot_carries_what_the_views_draw(tmp_path, mon
     mara = next(r for r in data["records"] if r["path"] == "people/mara-ostrowski.md")
     assert mara["mail"]["mails"] == 59 and mara["written"]
     assert any("people/mara-ostrowski.md" in run.get("changed", []) for run in data["logs"])
+
+
+def test_the_template_has_activity_and_no_run_logs_category():
+    """notes/ and logs/ are read under one Activity view; the browser checks live in
+    tests/e2e/cli/test_rem_reader_design_browser.py (CO_REM_BROWSER_TEST=1)."""
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert "Run logs" not in page
+    assert 'const ACTIVITY = new Set(["notes", "logs"])' in page
+    assert 'view === "activity"' in page and 'href: "#view=activity"' in page
