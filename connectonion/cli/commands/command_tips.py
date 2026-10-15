@@ -231,6 +231,7 @@ NEXT = {
     "co handoff inbox": HANDLER,
     "co handoff show": HANDLER,
     "co handoff open": HANDLER,
+    "co handoff thread": HANDLER,      # ends with how to open the thread it wrote
     "co handoff follow": "co handoff status <id>",
     "co handoff accept": HANDLER,
     "co handoff ask": HANDLER,

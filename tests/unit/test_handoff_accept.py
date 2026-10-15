@@ -75,6 +75,8 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(transport, "sent_status", lambda to, subject: {"status": "sent"})
     monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
+    for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_HOME", "CLAUDE_CONFIG_DIR"):
+        monkeypatch.delenv(name, raising=False)   # accept writes a thread for the agent it runs inside
     monkeypatch.chdir(tmp_path)
     return {"mails": mails, "inbox": inbox, "be": be, "drops": drops}
 

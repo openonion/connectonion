@@ -1,0 +1,2 @@
+version: v1.9.3b2
+no_visual_change: "No co page or layout changed. The new thread is drawn by Codex and Claude Code themselves; checked in both terminals (codex resume, claude --resume)."

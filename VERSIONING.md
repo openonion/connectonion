@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3b1
+## Current Version: 1.9.3b2
+
+1.9.3b2 is a 1.9.3 beta; stable remains 1.9.2. A pasted handoff left the sender's conversation out of
+every thread: the recipient's Codex held the paste, tool calls and its own summary (#2513). Accept,
+run inside Codex or Claude Code, now writes the sender's conversation as a thread of its own, ending
+in the report, and says how to open it; `co handoff thread` adds it when a sandbox kept accept out.
+See [1.9.3b2 notes](docs/releases/1.9.3b2.md).
+
+- 1.9.3b2 (The sender's conversation, as a thread of its own).
+
+## Previous preview: 1.9.3b1
 
 1.9.3b1 is a 1.9.3 beta; stable remains 1.9.2. The line a handoff's recipient pastes installed
 1.9.2b27, because the install floor was not raised for b29 to 1.9.2, so recipients ran without the
