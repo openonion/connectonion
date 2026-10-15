@@ -289,7 +289,7 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     result = init()
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-5:]
-    assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
+    assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
     assert tail[3].startswith("Background upkeep: Background upkeep needs approval.")

@@ -101,3 +101,83 @@ def counts(root: Path, found: dict | None = None) -> dict:
             result[entry["category"]]["mapped"] += 1
             result[entry["category"]]["written"] += entry["written"]
     return result
+
+
+# Open threads, read the way the reader reads them (reader.html owing(),
+# isCalm() and threads()), so `co rem status` says the number the reader's
+# home shows as "waiting on you". The earliest phrase that says who must act
+# decides a thread's direction; a page names the owner as "the user", "you"
+# or by first name.
+CALM = re.compile(r"^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?"
+                  r"\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)", re.I)
+NOT_A_THREAD = re.compile(r"^(?:unknown\b|no (?:confirmed|known) pending work\b)", re.I)
+# What known() drops from a section before anything reads it: unknown answers and mapping's placeholders.
+UNKNOWN_LINE = re.compile(r"^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$", re.I)
+EXPLAINED = re.compile(r"^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S", re.I)
+UNFILLED_LINE = re.compile(r"^Unknown\s*—\s*(?:not investigated yet|not verified)[.;]?\s*(?:\[W?\d+\]\s*)*$", re.I)
+PLACEHOLDER = re.compile(r"identity unverified|classification unassessed|^\s*[-*]\s*\(none yet\)\s*$", re.I)
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+THREAD_KINDS = ("people", "orgs", "projects")
+
+
+def _directions(first_name: str) -> tuple:
+    me = "(?:the user|user|you" + (f"|{re.escape(first_name)}" if first_name else "") + ")"
+    chasing = (rf"\b{me}\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|"
+               rf"is waiting (?:on|for)|was waiting (?:on|for))\s+(?!{me}\b)")
+    mine = re.compile(
+        rf"\b{me}(?:['’]s)?\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered to|agreed|needs? to|must|"
+        rf"should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|"
+        rf"hasn't|haven't)\b|^\s*{me}\s*:|\b(?:asks?|asked|requests?|requested|wants|invited)\s+{me}\s+to\b|"
+        rf"\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\s+(?:{me}(?:['’]s)?|your)\b|"
+        rf"\brequested (?:confirmation|approval|a reply|an answer)\b|\byou owe\b", re.I)
+    theirs = re.compile(
+        chasing + r"|\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b"
+        r"|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b"
+        r"|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b")
+    return mine, theirs
+
+
+def direction(text: str, first_name: str = "") -> str:
+    """"mine" when the owner must act, "theirs" when someone else must, "plain" when the thread does not say."""
+    mine, theirs = (pattern.search(text) for pattern in _directions(first_name))
+    if not (mine or theirs):
+        return "plain"
+    if mine and theirs:
+        return "mine" if mine.start() <= theirs.start() else "theirs"
+    return "mine" if mine else "theirs"
+
+
+def _kept(line: str) -> bool:
+    explained = EXPLAINED.match(line) and not UNFILLED_LINE.match(re.sub(r"^\s*[-*]\s*", "", line))
+    return (not UNKNOWN_LINE.match(line) or bool(explained)) and not PLACEHOLDER.search(line)
+
+
+def threads(page: str) -> list[str]:
+    """A page's open threads, one item a list entry; the first line saying nothing is open is not one."""
+    section = re.split(r"^## ", page.partition("\n## Open threads\n")[2], flags=re.M)[0]
+    lines = [line for line in re.sub(r"<!--.*?-->", "", section, flags=re.S).splitlines()
+             if not line.startswith("Investigation:") and _kept(line)]
+    items = []
+    for line in lines:
+        if LIST_ITEM.match(line) and not re.match(r"^\s{2,}", line):
+            items.append(LIST_ITEM.sub("", line, count=1))
+        elif line.strip() and items:
+            items[-1] += " " + line.strip()
+        elif line.strip():
+            items.append(line.strip())
+    calm = next((item for item in items if CALM.match(item.replace("*", "").strip())), "")
+    return [item for item in items if item != calm and not NOT_A_THREAD.match(item)]
+
+
+def open_threads(root: Path, found: dict | None = None) -> dict:
+    """{"open": n, "mine": n}: open threads on the listed people, organisation and project pages, as
+    the reader's home counts them, and how many of them wait on the owner."""
+    found = pages(root) if found is None else found
+    notebook = Notebook(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    title = next((line[2:] for line in notebook.read(owner).splitlines() if line.startswith("# ")), "") \
+        if owner and notebook.path(owner).is_file() else ""
+    first = (title.split() or [""])[0]
+    items = [item for record, entry in found.items() if listed(entry) and entry["category"] in THREAD_KINDS
+             for item in threads(notebook.read(record))]
+    return {"open": len(items), "mine": sum(direction(item, first) == "mine" for item in items)}

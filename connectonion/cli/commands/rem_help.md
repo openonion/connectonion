@@ -48,7 +48,7 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build the notebook and investigate the full mapped cohort. One command.
 
-First the map is made without a model: a page for each person you write to, each organization,
+First the map is made without a model: a page for each person you write to, each organisation,
 each coding project and each installed Skill, plus your own page, titled with your
 name and filled with who you write to most and where you work. init prints that
 page when the map is done. It lists 180 days of mail headers, the preview line your
@@ -60,7 +60,7 @@ Then it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days (co rem investigate me): a quick
 first pass in about 4 minutes, then the whole page alongside the rest. It also
 investigates all eligible mapped people, recent first (up to two years of
-their mail), projects (recent first), all pending mapped organizations,
+their mail), projects (recent first), all pending mapped organisations,
 and installed skills from their source instructions and retained run evidence,
 16 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.
@@ -103,7 +103,7 @@ Options:  --investigate     Explicitly request the default investigation.
           --yes           Explicitly approve the shown background source access and schedule.
           --first-people N    Cap eligible people (default all selected; 0 for none).
           --first-projects N  Cap queued projects (default all selected; 0 for none).
-          --first-orgs N     Cap pending mapped organizations (default all; 0 for none).
+          --first-orgs N     Cap pending mapped organisations (default all; 0 for none).
           --first-skills N   Cap installed skill investigations (default all mapped; 0 for none).
 Output:   Your page's facts and where it is; one progress line per stage on stderr
           (every step in .state/init-progress.log); pages under ~/.co/rem (or
@@ -118,7 +118,7 @@ Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           background upkeep is installed only after its source and schedule
           summary is approved. Noninteractive init without --yes leaves it off.
           The map costs nothing; the subsequent investigation uses the configured
-          model for the selected people, projects and organizations.
+          model for the selected people, projects and organisations.
 Takes:    About 10 minutes to map 90 days of two mailboxes (the default 180, about twice that); saving bodies takes
           longer; investigation time depends on the selected pages and runner.
           An interrupted run resumes where it stopped.
@@ -137,7 +137,8 @@ only if every citation points at a message, file or URL the run supplied. A
 refused page is kept, with the reason, so the model's work is never lost.
 
 Usage:
-  co rem investigate                          List what is left to investigate, by category. No model.
+  co rem investigate                          Per category: written of mapped, pages due a refresh
+                                               (new mail, Unknowns left) and the next three. No model.
   co rem investigate PAGE                     Investigate one page.
   co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
   co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
@@ -328,12 +329,14 @@ Read-only.
 
 Usage:    co rem status [--verbose]
 Example:  co rem status
-Output:   One line each: the state and next run; the notebook (people, projects,
-          organizations and skills, written of mapped, and what to write next);
-          today's runs, pages changed and tokens; each mailbox with the command
-          that fixes it; the last run.
-Options:  --verbose   Also every internal field: schedule times, worker, token
-                      counters and their coverage, the full last run record.
+Output:   One line each: the state and next run; open threads waiting on you;
+          today's runs, pages changed and tokens; the notebook (people, projects,
+          organisations and skills, written of mapped, and what to write next);
+          each mailbox with the command that fixes it; the week's budget; the
+          last run that finished, and one running now.
+Options:  --verbose   Also what an investigation point is, and every internal
+                      field: schedule times, worker, token counters and their
+                      coverage, the full last run record.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```

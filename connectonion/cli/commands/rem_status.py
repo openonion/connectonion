@@ -16,7 +16,7 @@ from .. import style
 from . import rem_look
 from .rem_look import highlight
 
-CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organizations"), ("skills", "Skills"))
+CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisations"), ("skills", "Skills"))
 
 
 def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
@@ -26,33 +26,79 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     A notebook consolidates overnight, so after the title it says what happened
     today before what it holds (1.9.0a9); every value starts at one column.
     """
+    from ...rem.census import pages
     from ...rem.migrate import program
-    counts = notebook(root)
-    lines = [*_header(value, program()), "", *_today(root, value), "", *_notebook(root, value, counts, spell), "",
+    found = pages(Path(root))
+    counts = notebook(root, found)
+    lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
+             *_notebook(root, value, counts, spell), "",
              *_mailboxes(root), *_archive(value, spell), ""]
-    budget = value.get("investigation_quota")
-    if budget:
-        # "0 of 10 points" beside 3.0M tokens today read as a contradiction
-        # (#2008): points are percent of the Codex week, moved only by
-        # investigations; maintenance is bounded by the daily call cap instead.
-        # Codex reports whole percents: a run under one is counted from its
-        # tokens, and "0.6 points" with no unit read as made up (#1990).
-        from ...rem.quota import TOKENS_PER_POINT
-        lines.append(rem_look.section("Budget", f"{_number(budget['spent_points'])} of "
-                                      f"{_number(budget['budget_points'])} investigation points this week  "
-                                      + rem_look.meter(budget["spent_points"], budget["budget_points"])))
-        for part in f"Codex week {value.get('codex_week') or 'unknown'}".split("; "):
-            lines.append(rem_look.follow(highlight(part), glyph=""))
-        lines.append(rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
-                                     glyph=""))
-        lines.append(rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {TOKENS_PER_POINT:,} "
-                                                 "tokens a point"), glyph=""))
-        lines.append("")
-    lines.append(rem_look.section("Last run", _last_run(value.get("last_run"), _zone(root))))
+    lines += [*_budget(value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
+
+
+def _waiting(root, found: dict) -> list[str]:
+    """What needs the owner, first: the open threads waiting on them, counted as the reader's home counts them."""
+    from ...rem.census import open_threads
+    found = open_threads(Path(root), found)
+    if not found["open"]:
+        return []
+    return [rem_look.section("Waiting on you", f"{_number(found['mine'])} of {_plural(found['open'], 'open thread')}"),
+            ""]
+
+
+def _budget(value: dict, verbose: bool) -> list[str]:
+    """The week's investigation points and the Codex week, two lines; what a point is only with --verbose.
+
+    "0 of 10 points" beside 3.0M tokens today read as a contradiction (#2008):
+    points are percent of the Codex week, moved only by investigations. Codex
+    reports whole percents, so a run under one is counted from its tokens
+    (#1990). Five lines of it buried the last run (UI audit, 2026-10-15).
+    """
+    budget = value.get("investigation_quota")
+    if not budget:
+        return []
+    from ...rem.quota import TOKENS_PER_POINT
+    # "0% used on pro; resets Thu 22 Oct 17:24" is one line; a longer note goes under --verbose.
+    parts = f"Codex week {value.get('codex_week') or 'unknown'}".split("; ")
+    week = [" · ".join(parts)] if len(" · ".join(parts)) <= 80 - rem_look.COLUMN else parts
+    lines = [rem_look.section("Budget", f"{_number(budget['spent_points'])} of {_number(budget['budget_points'])} "
+                              "investigation points this week  "
+                              + rem_look.meter(budget["spent_points"], budget["budget_points"])),
+             rem_look.follow(highlight(week[0]), glyph="")]
+    if verbose:
+        lines += [*(rem_look.follow(highlight(part), glyph="") for part in week[1:]),
+                  rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
+                                  glyph=""),
+                  rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {TOKENS_PER_POINT:,} "
+                                              "tokens a point"), glyph="")]
+    return [*lines, ""]
+
+
+def _last_runs(root) -> list[str]:
+    """The last run that finished and how it ended; a run going now on one line under it.
+
+    "Last run sync · running · 0 pages changed" read as a sync that changed
+    nothing, while the one before it had finished and changed a page.
+    """
+    from ...rem.service import run_logs, seen_outcome
+    zone, logs = _zone(root), run_logs(root)
+    done = next((run for run in logs if seen_outcome(run) != "running"), None)
+    lines = [rem_look.section("Last run", _last_run(done and {**done, "outcome": seen_outcome(done)}, zone))]
+    running = [run for run in logs if seen_outcome(run) == "running"]
+    if running:
+        lines.append(rem_look.follow(style.muted(_running(running[0], zone)), glyph=""))
+    return lines
+
+
+def _running(run: dict, zone) -> str:
+    from datetime import datetime
+    what = " ".join(filter(None, [run.get("phase") or "sync", run.get("record")]))
+    started = datetime.fromisoformat(run["started_at"]).astimezone(zone).strftime("%H:%M")
+    return f"{what} running since {started}"
 
 
 def status_next(value: dict) -> list:
@@ -74,10 +120,10 @@ def status_next(value: dict) -> list:
     return ["logs"] if str(value.get("state", "")).startswith("Running") else ["start"]
 
 
-def notebook(root) -> dict:
+def notebook(root, found: dict | None = None) -> dict:
     """Pages per category, mapped and written, counted the way the reader counts them (`rem.census`)."""
     from ...rem.census import counts
-    return counts(Path(root))
+    return counts(Path(root), found)
 
 
 def _zone(root):
@@ -107,12 +153,24 @@ def next_to_write(root, counts: dict) -> tuple:
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
-        left = counts[category]["mapped"] - counts[category]["written"]
-        if category == "projects":
-            left -= _private_unwritten(root)
+        left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
+
+
+def queued_unwritten(root, category: str) -> int:
+    """Unwritten pages `co rem investigate CATEGORY` would write: its own queue's, so never one it leaves out.
+
+    The census's mapped minus written said "1 organisations page not written
+    → co rem investigate orgs" for the owner's own company, which that command
+    never investigates and so did nothing; a private project is the same (#2079).
+    """
+    from ...rem.census import written
+    from ...rem.files import Notebook
+    from ...rem.queue import order
+    book = Notebook(root)
+    return sum(not written(book.read(row["path"])) for row in order(Path(root), category))
 
 
 def _number(value) -> str:

@@ -255,7 +255,7 @@ def _init_text(value: dict, failed: bool) -> str:
                    if isinstance(skills, dict) else skill_count)
     skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
     counts = [('People', len(value.get('people') or []), ''),
-              ('Organizations', len(value.get('orgs') or []), ''),
+              ('Organisations', len(value.get('orgs') or []), ''),
               ('Projects', len(value.get('projects') or []), ''),
               ('Skills', skill_names, f" names · {skill_count:,} installed copies"),
               ('New pages', len(value.get('created') or []) + skills_created, '')]
@@ -340,7 +340,7 @@ def guide(next_command) -> str:
     paragraphs = [
         "co rem — map first, investigate next",
         "First run: " + next_command(["init"]) +
-        ". A script (no model) creates People, Organizations, Projects and Skills from templates and "
+        ". A script (no model) creates People, Organisations, Projects and Skills from templates and "
         "source metadata and prints your own page; then, in a terminal, it writes your own page with one "
         "model turn, after saying what it will spend (--no-investigate skips that). It starts no background "
         "work. Then read it with " + next_command(["open"]) + " and keep it current with " +

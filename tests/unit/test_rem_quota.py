@@ -164,12 +164,14 @@ def test_status_says_what_a_point_is(tmp_path, monkeypatch):
     for name in ("_notebook", "_today", "_mailboxes", "_archive"):
         monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
     monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem"])
-    monkeypatch.setattr(rem_status, "notebook", lambda root: {})
+    monkeypatch.setattr(rem_status, "notebook", lambda *a: {})
     monkeypatch.setattr(rem_status, "_last_run", lambda *a: "none")
     monkeypatch.setattr(rem_status, "_zone", lambda root: None)
     value = {"investigation_quota": {"spent_points": 0.6, "budget_points": 10}, "codex_week": "29% used on pro"}
     from rich.text import Text
-    text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments))).plain
+    # What a point is goes with --verbose: the budget is two lines (UI audit, 2026-10-15).
+    text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
+                                                 verbose=True)).plain
     assert "0.6 of 10 investigation points" in text
     assert "1% of your Codex week" in text and "1,000,000 tokens" in text
 
