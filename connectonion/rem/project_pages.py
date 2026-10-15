@@ -463,8 +463,11 @@ def _history(folder: str, ref: str, revision: str) -> str:
     commits = _git(folder, "log", f"-{HISTORY_COMMITS}", "--date=short", "--format=%h %ad %s", revision)
     if not commits:
         return ""
+    roots = _git(folder, "rev-list", "--max-parents=0", revision).split()
+    first = _git(folder, "show", "-s", "--date=short", "--format=%h %ad %s", roots[-1]) if roots else ""
     text = (f"Commits on {ref} ({revision[:12]}), newest first. A commit shows what was committed, "
-            "not that tests passed or it was deployed:\n" + _excerpt(commits, HISTORY_CHARS))
+            "not that tests passed or it was deployed:\n" + _excerpt(commits, HISTORY_CHARS)
+            + (f"\n\nFirst commit: {_excerpt(first, 200)}" if first else ""))
     branches = _open_branches(folder, revision)
     if branches:
         text += (f"\n\nBranches with commits not on {ref}, committed in the last {BRANCH_DAYS} days "

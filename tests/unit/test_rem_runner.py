@@ -96,7 +96,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     assert 'Start from the current line' in prompts[0]
     assert 'git log' in prompts[0] and 'git show' in prompts[0]
-    assert 'a branch, commit date or README topic is not an' in prompts[0]
+    assert 'alone is not an insight. None' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]

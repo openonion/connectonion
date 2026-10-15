@@ -57,7 +57,7 @@ Keep this order for those shown:
 
 **Facts**: one line a field, labels exact, all present, missing exactly
 `Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
-`Started`, `Last activity`. Several values `; ` between, each
+`Started`, `Last activity`, and no other label. Several values `; ` between, each
 `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
 - `Status`: a phrase the evidence earns: `active — commits weekly on
   origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`.
@@ -72,8 +72,8 @@ Keep this order for those shown:
 decision. Compare the owner's words with the repository first: a requirement
 the code contradicts or has not caught up with (the owner says 8% of net, the
 PDF says gross), a reversed choice, a requirement that moved. What the code
-does belongs in `What it is`; a branch, commit date or README topic is not an
-insight. None: `- Unknown`.
+does belongs in `What it is`; a branch, commit date, README topic or a quote
+alone is not an insight. None: `- Unknown`.
 
 **What it is**: one or two sentences: the product, who it serves, what it
 does, from the README or the owner's description of the whole project, never
@@ -96,7 +96,7 @@ Before listing an ask, look for its outcome in later messages, commit
 subjects and branch names. One closed by a commit or a later message moves to
 `Where it stands` or `Key decisions` with that evidence. An ask more than 30
 days old with no outcome found is history, not an open thread: leave it out.
-Nothing open: bare `Unknown`, never a "no pending work" line.
+Nothing open: bare `Unknown`, never a line about what the material does not show.
 
 **Latest issues**: bugs, regressions, blockers, newest first: date, symptom,
 status with its evidence. Check the history for a fix before calling one
