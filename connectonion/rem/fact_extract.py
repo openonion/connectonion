@@ -16,7 +16,7 @@ Facts label (see facts.FIELDS) or one of the context kinds above.
 import re
 from zoneinfo import ZoneInfo
 
-from .files import EMAIL, RemError, is_address
+from .files import DOMAIN_HANDLE, EMAIL, RemError, is_address
 from .map import MACHINE, RELAY
 from .source import timestamp
 
@@ -145,15 +145,19 @@ def notice(item: dict) -> bool:
     return bool(any(RELAY.search(a) or MACHINE.search(a) for a in senders) or NOTICE.search(item.get("subject") or ""))
 
 
-def _contact(item: dict, addresses: set, names: list[str]) -> bool:
+def _contact(item: dict, addresses: set, names: list[str], domains=()) -> bool:
     """Human mail between the user and the subject: they wrote it, or the user wrote to them."""
     people = item.get("participants") or {}
     recipients = [*(people.get("to") or []), *(people.get("cc") or [])]
     if notice(item) or len(recipients) > BROADCAST:
         return False
+    side = [item.get("speaker") or ""] if item["role"] == "other" else recipients
+    suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
+    if suffixes and any(a.casefold().endswith(suffixes) for value in side for a in EMAIL.findall(str(value))):
+        return True
     if item["role"] == "other":
         return _subject(item, addresses, names)
-    return not people or bool(addresses & {a.casefold() for r in recipients for a in EMAIL.findall(str(r))})
+    return (not people and not domains) or bool(addresses & {a.casefold() for r in recipients for a in EMAIL.findall(str(r))})
 
 
 def gave_number(item: dict, value: str, addresses: set, names: list[str]) -> bool:
@@ -191,7 +195,10 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
     and a first or last contact with oneself means nothing.
     """
     addresses = {h.strip().casefold() for h in handles if is_address(h)}
-    words = [h.strip() for h in handles if not is_address(h) and len(h.strip()) >= 3]
+    # 2026-10-16 first-run trial: org domain handles need contact dates, not person facts.
+    domains = {match[1] for h in handles if (match := DOMAIN_HANDLE.fullmatch(h.strip().casefold()))}
+    words = [h.strip() for h in handles if not is_address(h) and len(h.strip()) >= 3
+             and not DOMAIN_HANDLE.fullmatch(h.strip().casefold())]
     names = sorted({w.casefold() for w in words} | {w.split()[0].casefold() for w in words if len(w.split()[0]) >= 3})
     zone = ZoneInfo(timezone)
     mail = sorted((i for i in items if str(i.get("source", "")).startswith(MAIL_SOURCES)
@@ -235,9 +242,10 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 if at >= 0:   # a flattened invite is one long line: the window around the name
                     add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
     if not owner:
-        for row in _others_phones(mail, addresses, names, zone):
-            add(row)
-        contact = [item for item in mail if _contact(item, addresses, names)]
+        if addresses or names:
+            for row in _others_phones(mail, addresses, names, zone):
+                add(row)
+        contact = [item for item in mail if _contact(item, addresses, names, domains)]
         if contact:
             add(_row("Last contact", _date(contact[-1], zone), contact[-1], zone))
     return rows
