@@ -114,6 +114,19 @@ def test_the_table_reads_as_words_fits_the_terminal_and_never_shows_a_relay(monk
     assert "ody.zhou@" in ody and "luma-mail" not in "\n".join(lines)
 
 
+def test_the_table_hides_private_text_cells(monkeypatch):
+    from connectonion.cli.commands.rem_table import draw
+    monkeypatch.setenv("COLUMNS", "100")
+    for field in ("name", "company", "role", "phone"):
+        for label in ("sensitive", "SENSITIVE", "personal", "PeRsOnAl"):
+            row = _row("Ody Zhou")
+            row[field] = f"0491570156 [{label}] [5]"
+            lines = Text.from_markup(draw([row])).plain.splitlines()
+            assert "(private)" in lines[1].split()
+            assert "0491570156" not in "\n".join(lines)
+            assert label.lower() not in "\n".join(lines).lower()
+
+
 def test_the_table_keeps_status_when_rows_differ(monkeypatch):
     from connectonion.cli.commands.rem_table import draw
     monkeypatch.setenv("COLUMNS", "200")

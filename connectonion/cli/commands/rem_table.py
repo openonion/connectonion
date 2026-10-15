@@ -27,6 +27,7 @@ NUMBERS = ("mails", "open_threads")
 SHRINKS = ("name", "company", "role", "email", "phone")   # the text columns that give way to the terminal
 NARROWEST = 8
 LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+PRIVATE = re.compile(r"\[(?:sensitive|personal)\]", re.IGNORECASE)
 
 
 def _fit(text: str, width: int) -> str:
@@ -45,6 +46,7 @@ def _email(emails: list) -> str:
 
 def _cells(row: dict) -> dict:
     words = {key: LINK.sub(r"\1", str(row.get(key) or "")) for key in ("name", "company", "role", "phone")}
+    words = {key: "(private)" if PRIVATE.search(value) else value for key, value in words.items()}
     return {**row, **words, "email": _email(row.get("emails") or []),
             "status": "written" if row.get("written") else "mapped",
             **{key: str(row.get(key) or 0) for key in NUMBERS}}
