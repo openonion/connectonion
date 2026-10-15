@@ -52,7 +52,7 @@ Rules:
   (1) Who they are to the user: role, organisation, the work or deal between
   them and its stakes (amount, term). (2) What is live: the most consequential
   open item, who owes whom, the ask as a short exact quote with its date and
-  any due date; with nothing open, how the last thread ended. (3) The user's next step (reply, decide, chase, wait until a
+  any due date; else how the last thread ended. (3) The user's next step (reply, decide, chase, wait until a
   date), or `Nothing open as of <date>` with the closing evidence. Never open
   on a gap or a doubt.
 - **One voice**: the owner is `the user` in every sentence, never their name,
