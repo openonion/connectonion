@@ -403,8 +403,10 @@
   .note :is(h2,h3,h4,h5,h6), .note [id^="src-"] { scroll-margin-top: 24px; }
 
   /* citations name the original before the reader opens it */
-  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; min-width: 24px; min-height: 24px; border: 1px solid var(--blue-line); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: 500 12.5px/16px var(--ui); color: var(--ink-2); background: var(--line-2); border-color: var(--line); border-radius: 999px; }
-  .cite.missing { border-style: dashed; }
+  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--blue-line); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: 500 12.5px/16px var(--ui); color: var(--ink-2); background: var(--line-2); border-color: var(--line); border-radius: 999px; }
+  /* Grow the tap target without opening a gap in the prose. */
+  .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
+  .cite.missing { border-style: dashed; color: var(--ink-3); }
   .cite:hover, .cite:focus-visible { background: var(--mark); color: var(--ink); border-color: var(--lamp-line); }
 
   /* open threads on a page: the visual centre */
@@ -452,10 +454,10 @@
   .code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
 
   /* guidance, not error: what is not known yet and the command that fills it */
-  .missing, .empty { max-width: 66ch; margin-top: 32px; padding: 16px 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 14px; line-height: 1.6; position: relative; }
+  .missing:not(.cite), .empty { max-width: 66ch; margin-top: 32px; padding: 16px 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 14px; line-height: 1.6; position: relative; }
   .empty { margin-top: 10px; }
   .missing .lead, .empty .lead { display: block; font: 600 10.5px var(--ui); letter-spacing: 0; text-transform: none; color: var(--blue); margin-bottom: 4px; }
-  .missing:not(.primary) { padding: 8px 0; background: transparent; font-size: 13px; }
+  .missing:not(.primary):not(.cite) { padding: 8px 0; background: transparent; font-size: 13px; }
   .missing:not(.primary) .names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
   .missing:not(.primary) .cmd { margin-top: 6px; }
   .missing.primary { margin: 0 0 24px; border-top: 1px solid var(--line); background: transparent; padding: 16px 0; }
@@ -640,9 +642,7 @@
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
   .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
   .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
-  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--ink-2); }
-  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { color: var(--ink-2); background: var(--line-2); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--mark); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .lead-meta .k { color: var(--ink-3); }
@@ -687,7 +687,6 @@
 
   /* The memory surface: answer, connections, and activity before the full note. */
   .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .scope-note { grid-column: 1 / -1; margin: 0; color: var(--ink-2); font: 13px/1.5 var(--ui); border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 1px solid var(--line); }
 
   .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: 400 13px/1.4 var(--ui); color: var(--ink-3); }
@@ -756,7 +755,7 @@
   .activity-list li { display: grid; grid-template-columns: 105px 105px minmax(0, 1fr); gap: 12px; padding: 11px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
   .activity-list li[hidden] { display: none; }
   .activity-day { font: 11px var(--ui); color: var(--ink-3); }
-  .activity-type { font: 500 12px var(--ui); color: var(--ink-2); }
+  .activity-type { font: 400 12px var(--ui); color: var(--ink-3); }
   .activity-text { font: 14px/1.5 var(--text); }
   .deep-note { max-width: 1120px; border-top: 1px solid var(--line); margin-top: 18px; }
   .deep-head { display: flex; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
@@ -1043,7 +1042,7 @@
   .night .stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 24px; margin-top: 12px; color: var(--night-dim); font: 13px/1.5 var(--ui); }
   .night .stages b { display: block; color: var(--night-ink); font-weight: 600; font-size: 14px; }
   .night .stages a { color: inherit; text-decoration: underline; text-decoration-color: var(--night-dim); }
-  button, select, .cite, .copy { min-height: 24px; }
+  button, select, .copy { min-height: 24px; }
   .toc a, .hits a, .waiting-more a { display: inline-block; min-height: 24px; }
   @media (max-width: 820px) {
     .brand svg { width: 30px; height: 18px; }
@@ -1058,6 +1057,9 @@
     .focus-statement { font-size: 20px; }
     .focus-facts { padding: 16px 0; }
     .contact-directory tbody > tr:not(.directory-action) { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; margin: 0; }
+  }
+  @media (max-width: 719px) {
+    .night-strip .stages .k, .night-strip .changes { display: none; }
   }
   @media (max-width: 600px) {
     /* Leave room for the complete source action, even with a long purpose. */
@@ -1090,7 +1092,7 @@
       <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
     <div class="search">
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-      <input id="q" type="search" placeholder="Search the notebook" autocomplete="off" aria-label="Search the notebook">
+      <input id="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search the notebook">
       <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
       <span class="kbd" aria-hidden="true">/</span>
     </div>
@@ -1277,11 +1279,16 @@ function sourceChannel(kind) {
 }
 function sourceSender(context) {
   const from = context.participants?.from;
-  const who = mailbox((Array.isArray(from) ? from[0] : from) || context.sender || "");
+  const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
+  const page = byPath(sender);
+  if (page) return page.path === REM.owner ? "you" : page.title.split(/\s+/)[0];
+  if (/\/|\.md/i.test(sender)) return "";
+  const who = mailbox(sender);
   if (!who.address) return "";
   const person = personByAddress(who.address), owner = byPath(REM.owner);
   if (owner && (person === owner || owner.index?.emails?.some(address => address.toLowerCase() === who.address))) return "you";
-  return (person?.title || who.name).split(/\s+/)[0];
+  const name = person?.title || who.name;
+  return /\/|\.md/i.test(name) ? "" : name.split(/\s+/)[0];
 }
 function chipLabel(r, n) {
   const text = citationSource(r, n), id = sourceId(text);
@@ -2260,7 +2267,7 @@ function morningWords(text, r) {
   const summary = plainLine(threadWords(text, r)).replace(/^you owe\s+\S+\s*/i, "");
   const clause = summary.split(/;|(?<=[.!?])\s/)[0];
   const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
-  return { words, context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
+  return { words: words.charAt(0).toUpperCase() + words.slice(1), context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
 function morningEntries(entries) {
@@ -3039,18 +3046,6 @@ function recordFocus(r) {
     }
   }
   out.appendChild(focusHead);
-  const coverage = r.category === "projects" ? r.project_coverage : null;
-  const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
-    ? el("p", { class: "scope-note", text: coverage.scope === "queued"
-      ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
-        " queued inputs were supplied. Older queued inputs were left out."
-      : coverage.inputs_read === 0
-      ? "No session inputs were supplied in this " + (coverage.days ? coverage.days + "-day " : "") +
-        "investigation; " + coverage.inputs_available + " inputs are archived for this workspace. " +
-        "Current project activity is unknown."
-      : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
-        (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
-        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
     el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
@@ -3065,7 +3060,6 @@ function recordFocus(r) {
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
-  if (coverageNote) out.appendChild(coverageNote);
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
@@ -3163,7 +3157,7 @@ function activityPanel(r, recent = false) {
   const sorted = items.slice().sort((a, b) => b.day.localeCompare(a.day));
   const rows = (recent ? sorted.slice(0, 5) : sorted).map(item => {
     const type = activityType(item.text);
-    const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day }),
+    const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day.length === 7 ? dayLabel(item) : threadDate(item.day) }),
       el("span", { class: "activity-type", text: type }),
       el("span", { class: "activity-text", html: inline(item.text, r.path) })]);
     list.appendChild(row);
