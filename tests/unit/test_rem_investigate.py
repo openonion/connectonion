@@ -1162,6 +1162,53 @@ def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path
     assert 'older than the newest session' in state['text']
 
 
+def test_a_git_project_is_read_at_its_current_line_in_every_round_not_from_its_working_tree(tmp_path, monkeypatch):
+    """oo-api (2026-10-15): the main checkout sat on an August branch, sixty of its
+    working-tree files filled five rounds before any of the owner's messages, and
+    the page described August while origin/main had 48 newer commits."""
+    import os
+    import subprocess
+    from datetime import datetime, timedelta, timezone
+    root = _notebook(tmp_path, 'codex')
+    repo = _repo(tmp_path)
+    (repo / 'notes.py').write_text('working tree only\n')
+    recent = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    env = {**os.environ, 'GIT_AUTHOR_DATE': recent, 'GIT_COMMITTER_DATE': recent, 'GIT_AUTHOR_NAME': 't',
+           'GIT_AUTHOR_EMAIL': 't@x.y', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@x.y',
+           'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}
+    for args in (['checkout', '-q', '-b', 'fix/webhook-secret', 'main'], ['commit', '-q', '--allow-empty', '-m', 'Sign the webhook'],
+                 ['checkout', '-q', 'feat/1.8-paid-browser-release']):
+        subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True, env=env)
+    inv.Notebook(root).stub_project('projects/co.md', 'connectonion', [str(repo)], last_seen='2026-09-29')
+    said = {'role': 'user', 'source': 'codex:s:1', 'timestamp': '2026-09-29T00:00:00+00:00', 'text': 'ship it'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([said], ['codex: 1 session in window']))
+    received = []
+    inv.investigate(root, 'projects/co.md', 'connectonion', [str(repo)], days=150, clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    history = next(item for item in received if item['role'] == 'recent-commits')['text']
+    assert 'Commits on origin/main' in history and 'September' in history and 'August' in history
+    assert 'fix/webhook-secret' in history and 'Sign the webhook' in history
+    assert 'feat/1.8-paid-browser-release' not in history   # merged: not in flight
+    assert 'version = "1.9.0a3"' in next(item for item in received if item['role'] == 'project-file')['text']
+    assert not any(item['role'] in ('project-file', 'project-inventory') and 'notes.py' in json.dumps(item)
+                   for item in received)
+    note = next(item for item in received if item['role'] == 'project-repositories')['text']
+    assert 'current line is origin/main' in note and 'git:' + str(repo) in note
+
+
+def test_a_cited_file_in_another_encoding_is_not_retained_and_ends_nothing(tmp_path):
+    """A cp1252 file the model cited ended a short-term-rental investigation (2026-10-15)."""
+    import hashlib
+    from connectonion.rem.project_pages import live_file_snapshot
+    folder = tmp_path / 'work'
+    folder.mkdir()
+    raw = 'a \u201cquoted\u201d note'.encode('cp1252')
+    (folder / 'note.txt').write_bytes(raw)
+    page = f'# W\n\n## Paths\n- {folder}\n'
+    assert live_file_snapshot(page, f'file:{folder / "note.txt"}@{hashlib.sha256(raw).hexdigest()}') is None
+
+
 # ------------------------------------------------ #1984: an empty since-window calls no model
 
 

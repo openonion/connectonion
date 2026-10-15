@@ -309,7 +309,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -1444,6 +1444,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     gathered_items = len(items)
     leads = []
     project_roots = []
+    line = None
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
         # stale copy it would otherwise quote as current (#1955).
@@ -1451,14 +1452,19 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
         project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
-        leads = project_file_inventory(corrected)
+        from .project_pages import current_line
+        # A Git project is read at its current line, handed to every round; only
+        # a plain folder is read file by file. Sixty whole files of oo-api's
+        # working tree took five rounds before one of the owner's messages (2026-10-15).
+        line = current_line(corrected)
+        leads = [] if line else project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
         newest = _newest_session(root, record, corrected)
-        for path in project_roots:
+        for path in ([] if line else project_roots):
             state = checkout_state(path, newest)
             if state:
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
@@ -1490,14 +1496,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
         room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
-    repository_items = []
+    repository_items, line_items = [], []
     if record.startswith("projects/"):
-        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        from .project_pages import FILE_SNAPSHOT_CHARS, current_line_packet, repository_snapshots
+        if line:
+            line_items = repository_snapshots(current_line_packet(
+                *line, datetime.now(timezone.utc).isoformat(), newest))
         states = [item for item in items if item.get("role") == "checkout-state"]
         items = [item for item in items if item.get("role") != "checkout-state"]
         files = project_file_texts(leads) if summary else project_file_texts(
             leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
-        repository_items = repository_snapshots(states + files)
+        repository_items = line_items + repository_snapshots(states + files)
         if last and not gathered_items:
             supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
             previous = supplied.get("provided_sources")
@@ -1505,7 +1514,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 item["source"] in cited for item in repository_items)
             if same:
                 raise _nothing_new(record, subject, coverage, last)
-        items += repository_items
+        items += repository_items[len(line_items):]
     gathered_sources.update(item["source"] for item in repository_items)
     if not retry_refused and refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
         raise _refused_again(record, subject, refusal)
@@ -1582,11 +1591,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 "timestamp": now, "source": "investigation:page"}
 
     prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
-           "paths": project_roots, "timestamp": now,
-           "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
-                   ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
-                   "cite verifiable source IDs and revisions."}]
-         if project_roots else []) + (
+           "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
+         if project_roots else []) + line_items + (
         [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
            "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
            "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
@@ -1711,6 +1717,18 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
                       "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def _repositories_note(roots: list[str], line) -> str:
+    note = "Live local repository paths for direct inspection: " + ", ".join(roots) + ". "
+    if not line:
+        return note + ("Use git log, git show, README.md, pyproject.toml and package.json where present; "
+                       "cite verifiable source IDs and revisions.")
+    folder, ref, revision = line
+    return note + (f"The project's current line is {ref} at {revision}; the working tree may be an older branch. "
+                   f"Read files there with `git -C {folder} show {revision}:<file>` and cite "
+                   f"`git:{folder}:{revision}:<file>`. Find how a request ended with `git -C {folder} log "
+                   f"--all --grep` and the branch names in the supplied history.")
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],

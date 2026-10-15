@@ -1100,11 +1100,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
                    "nearby checkouts outside those Paths cannot be retained as evidence. "
-                   "Every concrete purpose, architecture, command, URL, status and next-action clause needs "
-                   "an original source that actually supports it; use bare Unknown if that source is unavailable. "
-                   "Audit carried text too, because the prior page is not an original source. "
-                   "Remove claims without original support; put search limits in the final run reply, not the page. "
-                   "In Open threads, list only supported unresolved exchanges; if none is confirmed, "
+                   "Audit carried text too: the prior page is not an original source. "
+                   "Open threads holds only what is still open; if nothing is, "
                    "write bare Unknown, not a no-pending-work summary as an open item.")
     if stage == "maintain" and items:
         sources = sorted({item["source"] for item in items if isinstance(item.get("source"), str) and item["source"]})
