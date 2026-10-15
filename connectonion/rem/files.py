@@ -210,7 +210,7 @@ def _file_lock(root: Path, wait: float):
     """The lock other processes see: a scheduled tick, a second terminal."""
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
     deadline = time.monotonic() + wait
     try:
         while True:
