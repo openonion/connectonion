@@ -535,6 +535,65 @@ def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
     assert "- Sessions: 2\n" in restore_runner_fields("projects/atlas.md", nested.replace("Sessions: 2", "Sessions: 3"),
                                                        original)
 
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_restores_contact_date_over_unknown(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    candidate = original.replace(f"- {label}: 2026-10-14 [4]", f"- {label}: Unknown")
+
+    assert restore_runner_fields(record, candidate, original) == original
+
+
+def test_restore_runner_fields_maps_contact_citation_to_candidate_number():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+                 "- [2] outlook:abc — candidate description\n- [4] outlook:other\n")
+
+    expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [2]")
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+
+
+def test_restore_runner_fields_appends_missing_contact_source_at_next_number():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+                 "- [1] outlook:one\n- [4] outlook:other\n\nInvestigation: mapped\n")
+
+    expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [5]")
+    expected = expected.replace("\n\nInvestigation:", "\n- [5] outlook:abc — 2026-10-14\n\nInvestigation:")
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+
+
+def test_restore_runner_fields_skips_contact_line_with_an_unresolved_citation():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
+    candidate = "# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
+
+    assert restore_runner_fields("people/ying-tan.md", candidate, original) == candidate
+
+
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_keeps_candidate_contact_date(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    candidate = original.replace("2026-10-14 [4]", "2026-10-15 [4]")
+
+    assert restore_runner_fields(record, candidate, original) == candidate
+
+
+@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_restore_runner_fields_original_unknown_changes_nothing(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# Ying Tan\n\n## Facts\n- {label}: Unknown\n"
+    candidate = original.replace("# Ying Tan", "# Updated page")
+
+    assert restore_runner_fields(record, candidate, original) == candidate
+
+
 def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     """A real one-page maintenance turn cited `investigation:page` and re-cited the
     page's own codex ids in new words; both were refused and the update was lost."""
