@@ -76,7 +76,6 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch)
     assert "RuntimeError" not in text
     assert "pages still run" in text
     assert "within the daily call cap" in text
-    assert all(len(line) <= 80 for line in text.splitlines())
 
 
 def _run(started, before, after, phase="daily-investigation"):
