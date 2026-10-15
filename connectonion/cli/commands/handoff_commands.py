@@ -814,6 +814,8 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     if brief or picked:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
     thread = _thread_line(picked["bundle"], opener.inside()) if picked and opener.inside() else ""
+    if thread:
+        (folder / "thread.txt").write_text(thread + "\n", encoding="utf-8")
     out.print(_rules(code_text, code["id"], thread), markup=False)
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
 
@@ -834,8 +836,9 @@ def handle_thread(handoff_id: str, agent: Optional[str]) -> None:
     saved = _home() / "accepted" / handoff_id / "bundle.json"
     if not saved.exists():
         _fail(f"Handoff {handoff_id} was not accepted on this machine with its conversation.", "co handoff inbox")
-    out.print(opener.replay_here(json.loads(saved.read_text(encoding="utf-8")), Path.cwd(),
-                                 agent or opener.inside() or "codex"), markup=False)
+    thread = opener.replay_here(json.loads(saved.read_text(encoding="utf-8")), Path.cwd(), agent or opener.inside() or "codex")
+    (saved.parent / "thread.txt").write_text(thread + "\n", encoding="utf-8")
+    out.print(thread, markup=False)
 
 
 def _safe_name(name: str, fallback: str) -> str:
@@ -930,6 +933,11 @@ def handle_done(code_text: str, text: str, file: Optional[Path]) -> None:
         _fail(f"Not delivered: {result.get('error')}", f'co handoff done {code_text} "<what you did>"')
     (_home() / "accepted" / code["id"] / "done.json").write_text(json.dumps({"text": text}) + "\n", encoding="utf-8")
     out.print(style.ok(f"Told {code['mailbox']} that {code['id']} is done") + (f", with {file.name}." if file else "."))
+    # Said again here, the last command before the report: Bob's Codex left accept's copy out (1.9.3b2 review).
+    thread = _home() / "accepted" / code["id"] / "thread.txt"
+    if thread.exists():
+        out.print("End what you tell the person here with this line, word for word: "
+                  + thread.read_text(encoding="utf-8").strip(), markup=False)
     _next(f"co handoff status {code['id']}")
 
 

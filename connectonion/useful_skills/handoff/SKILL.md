@@ -230,6 +230,9 @@ prompt into this session is their decision to take it on; nothing else counts.
    `co handoff done <code> "<what you did, and the branch or PR>"`, adding
    `--file result.patch` when the result is a patch or a file. Not `co email`:
    only `done` reaches the sender's `co handoff status`.
+5. **Tell your person what you did, and end with the line `done` printed**:
+   inside Codex or Claude Code, accept also made the sender's conversation a
+   thread of its own, and that line says how to open it.
 
 A later handoff from someone who is already a contact also comes as a mail with
 the same block, and sits in `co handoff inbox`.
