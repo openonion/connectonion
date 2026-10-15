@@ -143,3 +143,14 @@ The one-line form for other headings also had an Agenda example:
 
 For someone else's article: Bad: `## Knowledge — Antifragile agents: systems
 that gain from disorder... — newsletter, 2026-08-14`. Good: nothing.
+
+## Carry the words, not only the gist (decision 076)
+
+Pages quote the words a reader may act on (an ask, a term, a decision, how to
+be reached), and the runner refuses a `“…”` it cannot find in the cited source.
+A page can only quote what extraction kept: the maintain pass never reads the
+raw messages, so a paraphrase here cannot be turned back into the speaker's
+sentence later. Hence `Quote: “…”` beside every such bullet, in the original
+language; the note around it stays English. On the 1.9.2b3 notebook a fee was
+quoted as “8% of gross revenue” where the owner wrote "8% of net booking
+revenue", and Chinese instructions were put into English inside quotation marks.

@@ -133,8 +133,13 @@ Back:     co rem --help
 co rem investigate — fill pages from everything about their subject, using a model.
 
 A page is filled only from what it was given. The new page replaces the old one
-only if every citation points at a message, file or URL the run supplied. A
-refused page is kept, with the reason, so the model's work is never lost.
+only if every citation points at a message, file or URL the run supplied, every
+“quote” is word for word in the source it cites, and, on people, organisation and
+project pages, a second model's audit of the cited claims passes. What review
+names goes back to the writer, twice at most; then only the sentences it still
+refutes are removed and the rest is kept. A phone or email stays only if the mail
+shows it is the person's own; otherwise it says Unknown. A refused page is kept,
+with the reason, so the model's work is never lost.
 
 Usage:
   co rem investigate                          List what is left to investigate, by category. No model.
@@ -361,6 +366,14 @@ Example:  co rem sync --dry-run
 Effects:  Reads message bodies, calls the model, updates pages. A run the daily
           cap refuses is kept in co rem logs. Ctrl-C keeps finished batches and
           says what finished; the interrupted one reads again next time.
+          Sources take turns: each run starts after the one read last. A page
+          refused in an update keeps the material it was refused on, and a later
+          run retries it once a day, three times at most on the same material.
+          A rewrite that keeps less than 60% of a page or its sources is refused.
+          A project page with folders is written only from your messages in
+          them, at most once in 20 hours unless 10 are waiting; a page whose
+          last turn changed nothing rests a day, and one with nothing to write
+          from rests a week.
 Requires: co rem start (it records your approval of the sources).
 Next:     co rem logs
 Back:     co rem --help

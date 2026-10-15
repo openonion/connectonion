@@ -166,3 +166,19 @@ supported activity. Writers must exclude unrelated workspace topics from that
 date. Reader and CLI counts use the same census, without file modification time.
 The reader labels the mapping count `Mapped sessions` to distinguish it from
 the fuller archived input coverage used during investigation.
+
+## Why it exists and Key decisions quote the user (decision 076)
+
+A project's decisions were retold, and the retelling drifted: "the user said it
+was not right" where the session read "他说有一个 websocket 有一个没有搞对". So
+`Why it exists` opens with the user's own words that started the work, and each
+`Key decisions` line is a short label followed by the sentence that made the
+choice, in its original language; a reversal is its own line quoting the
+reversal. `Open threads` quotes the ask and gives its status, looked up first in
+later messages and the git history. The runner checks every quote against its
+cited session line, and the cited-claim audit reads the same originals.
+
+A project page with folders is written only by the project writer from the
+user's messages in those folders. The sync's one-page turn also reached it by
+name and shrank it each time the writer grew it: projects/connectonion went
+14,356 → 4,132 → 9,610 → 3,112 → 2,108 characters on 2026-10-13/14.
