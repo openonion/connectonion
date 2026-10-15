@@ -41,7 +41,7 @@ promise; a price, number, date or condition; a decision, correction or
 instruction; how someone asks to be reached; who someone says they are.
 Write `“<exact words>” (YYYY-MM-DD) [n]`: one or two whole sentences copied
 character for character from the cited message, in its original language
-(an English gloss may follow), keeping the condition or hedge that carries
+(a gloss in the page's language may follow), keeping the condition or hedge that carries
 the weight. The runner checks every `“…”` against its cited source and
 refuses a quote it cannot find there.
 

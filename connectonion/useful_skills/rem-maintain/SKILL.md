@@ -88,9 +88,10 @@ Related: [Aurora](../projects/aurora.md)
 Sources: codex:session-1:0 (2026-09-02), codex:session-1:347 (2026-09-07)
 ```
 
-Write every page in English, whatever language the messages are in: never an
-English heading over a Chinese body. A short quote may stay in its original
-language. Never translate names, product names or quoted terms.
+Write every page's prose in the notebook's language (the task names it),
+whatever language the messages are in. Headings and labels stay as the page
+has them. A quote stays in its original language. Never translate names,
+product names or quoted terms.
 
 ## Where meaning belongs
 
