@@ -115,13 +115,18 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
         assert "## Improve, do not append" in text
 
 
+# 15k until 1.9.3: the quote rule (decision 076) paid for itself in accuracy --
+# 45% of sampled claims misled where the page retold instead of quoting.
+INSTRUCTION_BUDGET = 16_500
+
+
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
 @pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
 def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
     """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
     investigation and 22.9k for maintenance; rationale now lives in
     docs/rem-skills/, and a rule that makes a turn heavier has to pay for it."""
-    assert len(instructions(stage, page_kind=kind)) <= 15_000
+    assert len(instructions(stage, page_kind=kind)) <= INSTRUCTION_BUDGET
 
 
 def test_rationale_docs_name_their_skill_and_no_skill_points_a_turn_at_them():
@@ -180,7 +185,7 @@ def test_maintaining_extract_notes_stays_within_15k_whatever_the_source(tmp_path
              {"role": "extract", "source": f"{source}:s +3", "text": "## Projects\n- **X** — note"}]
     task_prompt(tmp_path, items, "maintain", source)
     given = (tmp_path / "instructions.md").read_text(encoding="utf-8")
-    assert len(given) <= 15_000
+    assert len(given) <= INSTRUCTION_BUDGET
     assert f"rem-source-{source}" not in given and len(given) == len(instructions("maintain", page_kind=kind))
 
 
@@ -202,7 +207,7 @@ def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_
     person = instructions("investigate", page_kind="person")
     assert "# Your own page" in owner and "# Your own page" not in person
     assert "# Your own page" not in instructions("maintain") and "# Your own page" not in instructions("init")
-    assert len(owner) <= 15_000
+    assert len(owner) <= INSTRUCTION_BUDGET
     for text in (owner, person):   # the role rule is for every person, the owner included
         assert "A role in a list the user writes about someone else is that person's" in text
     for rule in ("what they are working on now", "coding", "Open threads", "not history",
@@ -232,7 +237,7 @@ def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projec
     """#2027: the owner page said "Claude Code owes the user a message-volume check" and
     "Codex owes the user a status", and its Last contact was a Claude Code session."""
     owner = instructions("investigate", page_kind="person", owner=True)
-    assert len(owner) <= 15_000
+    assert len(owner) <= INSTRUCTION_BUDGET
     for rule in ("Coding agents are the user's tools, not people",
                  "never a counterparty in `Open threads`",
                  "never `Last contact`",
@@ -255,7 +260,7 @@ def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():
     assert "booking's displayed time zone belongs to the event display" in person
     assert "unless the source explicitly labels" in person
     assert "`Now` sentence names the source-backed reason for closure" in person
-    assert len(person) <= 15_000
+    assert len(person) <= INSTRUCTION_BUDGET
 
 
 def test_every_pass_may_delete_not_only_add():
