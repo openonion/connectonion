@@ -5,6 +5,8 @@ description: The steps for investigating an organisation's page, composed after 
 
 # Investigating an organisation
 
+- Project documents that name the subject are the owner's record: cite them as
+  such; a contact detail only from them is not the person's own.
 - The material includes mail on this page's domains and, when another domain
   page shares a canonical contact candidate, their dated primary correspondence.
   A shared page or display name is a lead, not identity proof. Verify the person

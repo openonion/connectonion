@@ -490,11 +490,9 @@ def _first_project_rows(root, cap) -> list[dict]:
     from ...rem.project_pages import queue
     from ...rem.queue import order
     from ...rem.service import subscriptions
-    # The map summary was already shown. Keep missed session folders as
-    # candidates instead of creating project pages during init.
-    # A wider map can add older folders after the extraction cursor advanced.
-    # Rebind the retained window to all mapped pages; message ids deduplicate it.
-    extract(root, subscriptions(root), create_pages=False, full=True)
+    # The map just extracted its full window and filed attributed folders.
+    # Read only new messages; the project count already shown stays fixed.
+    extract(root, subscriptions(root), create_pages=False)
     rows = queue(root)
     selected = {row['record'] for row in rows}
     notebook = Notebook(root)
