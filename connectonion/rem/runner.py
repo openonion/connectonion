@@ -1100,7 +1100,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
                    "nearby checkouts outside those Paths cannot be retained as evidence. "
-                   "Audit carried text too: the prior page is not an original source. "
+                   "A carried line keeps its original citation and stays unless this material corrects or "
+                   "supersedes it: earlier rounds read sources this turn does not hold. "
                    "Open threads holds only what is still open; if nothing is, "
                    "write bare Unknown, not a no-pending-work summary as an open item.")
     if stage == "maintain" and items:

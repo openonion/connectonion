@@ -102,7 +102,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
-    assert 'the prior page is not an original source' in prompts[0]
+    assert 'earlier rounds read sources this turn does not hold' in prompts[0]
     assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 

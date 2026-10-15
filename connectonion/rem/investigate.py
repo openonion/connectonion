@@ -1041,6 +1041,8 @@ def known_addresses(root: Path) -> set:
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
               "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
               "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
+              "Keep what earlier rounds established from sources this round does not hold: a decision quoted "
+              "from an earlier part is still a decision. "
               "The page should get better, not only longer. Then follow the leads it raises.")
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
