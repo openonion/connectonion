@@ -25,12 +25,12 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Beta **1.9.3b1**: the person you hand a session to installs the release you sent it from,
-not 1.9.2b27, so 1.9.2's permission defaults reach them too. See
-[1.9.3b1 notes](releases/1.9.3b1.md).
+Beta **1.9.3b2**: when the person you hand a session to pastes the line in Codex or Claude
+Code, your conversation arrives as a thread of its own in their list, ending in where it
+stands. See [1.9.3b2 notes](releases/1.9.3b2.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3b1'
+python -m pip install --upgrade 'connectonion==1.9.3b2'
 ```
 
 ## Previous previews
