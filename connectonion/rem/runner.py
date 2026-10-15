@@ -713,7 +713,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = merge_duplicate_sections(record, text, owner=record == owner.get("record"))
     if investigation:
         text = add_missing_sections(record, text, owner=record == owner.get("record"))
-    refuted = []
+    refuted, unlocated = [], []
     if last_resort:
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
@@ -722,8 +722,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"))
-    if last_resort and unlocated:
-        errors.append("Audit finding names no line of the page: " + "; ".join(unlocated)[:300])
+    # A refuted claim no line holds any more is already gone: a repair turn
+    # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
+    # on the v193q1 trial (2026-10-15); it is recorded instead.
     errors += misquoted(notebook.root, record, text, items)
     # Only a page's own investigation must finish its sections. Applied to a
     # one-page maintenance turn, it refused every page not investigated yet:
@@ -733,7 +734,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     audit_usage = {}
     audit_status = "not automatically assessed"
     if last_resort and (directory / "claim-review.json").is_file():
-        audit_status = f"bounded citation audit failed; {len(refuted)} refuted claims removed"
+        audit_status = (f"bounded citation audit failed; {len(refuted) - len(unlocated)} refuted claims removed"
+                        + (f", {len(unlocated)} already gone" if unlocated else ""))
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)

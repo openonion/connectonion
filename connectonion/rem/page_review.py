@@ -1178,8 +1178,12 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
 
 
 def _claim_key(text: str) -> str:
-    """A claim as the audit copies it: no citation markers, no closing punctuation."""
-    return _plain(CITATION.sub('', text)).rstrip(',.;:!?，。；：！？')
+    """A claim as the audit copies it: no citation markers, no links, no closing punctuation.
+
+    Code links names after the audit reads the page: "[Sasha Whittle](../people/…)"
+    on the page was "Sasha Whittle" in the finding (v193q1, 2026-10-15)."""
+    text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', CITATION.sub('', text))
+    return _plain(text).rstrip(',.;:!?，。；：！？')
 
 
 def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:

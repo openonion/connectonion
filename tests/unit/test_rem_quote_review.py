@@ -153,3 +153,26 @@ def test_an_audit_claim_is_found_without_its_citation_and_only_its_sentence_goes
     kept, unlocated = drop_claims('people/h.md', text, ['Nina later sent a drinks location update.'])
     assert unlocated == [] and 'drinks' not in kept
     assert '- 2026-01-12: Hamish replied that the team would miss him [2].' in kept
+
+
+def test_a_claim_on_a_linked_name_is_found_and_a_claim_already_gone_does_not_refuse(tmp_path, monkeypatch):
+    """v193q1 (2026-10-15): 10 of 28 pages were refused because the audit's claim named
+    'Sasha Whittle' while the page, linked by code, said '[Sasha Whittle](...)', or
+    because a repair had already rewritten the refuted sentence."""
+    kept, unlocated = drop_claims('people/x.md', '# X\n\n## Insight\n- Now: [Sasha Whittle](../people/s.md) '
+                                  'approved it [1].\n\n## Sources\n- [1] gmail:a — 2026-10-01\n',
+                                  ['Sasha Whittle approved it.'])
+    assert 'approved' not in kept and unlocated == []
+    notebook, old, written, items = _person(tmp_path)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
+    finding = {'claim': 'A sentence a repair already rewrote.', 'issue': 'x', 'evidence': 'x',
+               'required_correction': 'x'}
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
+        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]}), 'usage': {}})
+    monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
+    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+                                workdir=tmp_path, config={}, stage='investigate')
+    assert '“send the deck by Friday”' in notebook.read('people/ody.md')
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['factual_quality'] == 'bounded citation audit failed; 0 refuted claims removed, 1 already gone'
