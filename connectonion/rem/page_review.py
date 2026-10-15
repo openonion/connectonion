@@ -1367,7 +1367,8 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
     """
     wanted = {claim: _claim_key(claim) for claim in claims if _claim_key(claim)}
     head, marker, tail = text.partition('\n## Sources\n')
-    kept, found = [], set()
+    head, found = _drop_diagrams(head, wanted)
+    kept = []
     for line in head.split('\n'):
         hits = [claim for claim, key in wanted.items() if key in _claim_key(line)]
         found.update(hits)
@@ -1381,6 +1382,23 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
             if rest and len(rest) < len(sentences) and re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', rest[0]):
                 kept.append(' '.join(rest))
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
+
+
+FENCE = re.compile(r'^```[^\n]*\n.*?^```[ \t]*$\n?', re.M | re.S)
+
+
+def _drop_diagrams(head: str, wanted: dict[str, str]) -> tuple[str, set[str]]:
+    """A refuted arrow drops its whole diagram: the audit refuted STR's collector -> Postgres
+    flow, copied across two lines no single line held, and the page was refused (2026-10-15)."""
+    found = set()
+
+    def refuted(match):
+        block = ' '.join(_claim_key(line) for line in match[0].splitlines())
+        hits = {claim for claim, key in wanted.items()
+                if ' '.join(_claim_key(line) for line in claim.splitlines()) in block}
+        found.update(hits)
+        return '' if hits else match[0]
+    return FENCE.sub(refuted, head), found
 
 
 SOURCE_LINE = re.compile(r'^([ \t]*- \[(\d+)\][ \t]+)([a-z][\w-]*:[^\s]+)(.*)$', re.M)

@@ -244,3 +244,12 @@ def test_a_person_audit_reads_the_turns_own_mail_and_knows_the_people_rules_and_
     project = page('- Built the reader [1]', '- [1] gmail:abc — 2026-10-01\n')
     project_claim_review.review(notebook, project, {}, tmp_path, audit, record='projects/atlas.md', items=items)
     assert 'a cc\'d person is not a party' not in sent[1] and 'Today is ' in sent[1]
+
+
+def test_a_refuted_arrow_drops_its_diagram_and_keeps_the_page():
+    """STR (2026-10-15): the audit refuted a collector -> Postgres arrow copied
+    across two diagram lines; no single line held it and the page was refused."""
+    text = ('# X\n\n## Overview\nThe flow, as the README tells it [1].\n\n```text\nMelbourne rental collectors\n'
+            '  -> Cloud Postgres property_prod\n```\n\n## Paths\n- /a\n\n## Sources\n- [1] codex:a:1 — 2026-10-01\n')
+    kept, unlocated = drop_claims('projects/x.md', text, ['Melbourne rental collectors\n  -> Cloud Postgres property_prod'])
+    assert unlocated == [] and 'collectors' not in kept and 'The flow, as the README tells it [1].' in kept
