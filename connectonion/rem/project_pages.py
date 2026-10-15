@@ -446,8 +446,9 @@ def current_line_packet(folder: str, ref: str, revision: str, stamp: str, newest
 # The current line's commits a page is checked against: what was finished, and when.
 HISTORY_COMMITS = 80
 HISTORY_CHARS = 4_000
-# A branch beside the current line committed this recently is work in flight.
-BRANCH_DAYS = 30
+# A branch beside the current line committed this recently is work in flight:
+# oo-api's unmerged email-worker fix was six weeks old (2026-10-15).
+BRANCH_DAYS = 60
 
 
 def _history(folder: str, ref: str, revision: str) -> str:
@@ -461,24 +462,33 @@ def _history(folder: str, ref: str, revision: str) -> str:
     branches = _open_branches(folder, revision)
     if branches:
         text += (f"\n\nBranches with commits not on {ref}, committed in the last {BRANCH_DAYS} days "
-                 "(work in flight, unmerged):\n" + "\n".join(branches))
+                 "(work in flight, abandoned, or merged under another message; check before calling it open):\n" + "\n".join(branches))
     return text
 
 
 def _open_branches(folder: str, revision: str) -> list[str]:
+    """Branches whose tip is not on the current line, newest first; a squash-merged tip is on it."""
     from .investigate import _git
     cutoff = (datetime.now(timezone.utc) - timedelta(days=BRANCH_DAYS)).date().isoformat()
+    landed = {_subject(line) for line in _git(folder, "log", "-400", "--format=%s", revision).splitlines()}
     rows = _git(folder, "for-each-ref", "--sort=-committerdate", f"--no-merged={revision}",
                 "--format=%(committerdate:short) %(refname:short) %(objectname:short) %(subject)",
                 "refs/heads", "refs/remotes").splitlines()
     seen, kept = set(), []
     for row in rows:
-        name = row.split(" ", 2)[1] if row.count(" ") >= 2 else ""
-        short = name.removeprefix("origin/")
-        if row[:10] >= cutoff and short not in seen and not name.endswith("/HEAD"):
+        parts = row.split(" ", 3)
+        if len(parts) < 4 or parts[0] < cutoff or parts[1].endswith("/HEAD") or _subject(parts[3]) in landed:
+            continue
+        short = parts[1].removeprefix("origin/")
+        if short not in seen:
             seen.add(short)
             kept.append(_excerpt(row, 160))
     return kept[:12]
+
+
+def _subject(line: str) -> str:
+    """A commit subject without the `(#123)` a squash merge appends."""
+    return re.sub(r"\s*\(#\d+\)\s*$", "", line).strip().casefold()
 
 
 def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests: str = "") -> list[dict]:
