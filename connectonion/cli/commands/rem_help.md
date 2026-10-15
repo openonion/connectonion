@@ -37,8 +37,8 @@ Init offers nightly upkeep after the first run, once you approve its sources and
 Use --yes to approve the shown summary noninteractively, or --no-start to leave upkeep off.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, reflect, reflections,
-              propose, review, abstract, capture, projects)
+Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, translate, reflect,
+              reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage still work until 1.9.0 and print their new name.
 ```

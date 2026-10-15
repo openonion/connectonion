@@ -166,7 +166,8 @@ def test_bare_open_falls_back_to_the_snapshot_and_says_why(tmp_path, monkeypatch
     prepare(tmp_path)
     monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, "co ai exited during startup"))
     result = reader.local_or_snapshot(tmp_path, "owner", launch=False)
-    assert result["link"].startswith("file://") and result["live_startup_failed"] is True
+    # The snapshot the owner asked to see still opens: a fallback, not a failure.
+    assert result["link"].startswith("file://") and "live_startup_failed" not in result
     assert "co ai exited during startup" in result["live"]
     unowned = reader.local_or_snapshot(tmp_path, None, launch=False)
     assert unowned["link"].startswith("file://") and "default notebook" in unowned["live"]
