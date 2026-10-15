@@ -9,10 +9,10 @@ images:
   source_run: "Headless Chrome (patchright) capture of a file:// render from a detached v1.9.3b5 checkout; 2026-10-16"
 - file: after-home-desktop.png
   alt: The co rem reader home in 1.9.3rc1 on a desktop, led by the things waiting on you
-  caption: "1.9.3rc1: last night's runs in one band, then the things waiting on you, newest and due first, each with a chip naming who, where and when."
+  caption: "1.9.3rc1: last night's runs in one band, then '4 things are waiting on you', the same count as the sidebar, with the top three rows, newest and due first, each with a chip naming who, where and when."
   scenario: The same invented notebook and frozen time rendered by this release's reader, home view
   viewport: 1400x900, light
-  commit: 6aef80ce
+  commit: b18d8807
   source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc1; 2026-10-16"
 - file: before-person-phone.png
   alt: A person page in the 1.9.3b5 reader on a phone
@@ -26,12 +26,12 @@ images:
   caption: "1.9.3rc1: the lead with its citation chips, one contact line, then Between you, split into what you owe Mara and what Mara owes you. The full page sits in a closed disclosure; the page is 2,036px tall."
   scenario: Same invented page and frozen time rendered by this release's reader
   viewport: 390x844 at 2x, light
-  commit: 6aef80ce
+  commit: b18d8807
   source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc1; 2026-10-16"
 - file: after-source-sheet-phone.png
   alt: A citation's original opened in a bottom sheet on a phone
   caption: "Tapping the first chip opens its source in a bottom sheet: the line it supports, then the invented mail it came from, with sender, time and provider."
   scenario: Same invented page; the chip for source 4 (an invented Outlook mail held in the fixture's archive) tapped
   viewport: 390x844 at 2x, light
-  commit: 6aef80ce
+  commit: b18d8807
   source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc1; 2026-10-16"
