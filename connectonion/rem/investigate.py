@@ -1559,7 +1559,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             corrected = prefill_project_dates(notebook.read(record), line_items)
             if corrected != notebook.read(record):
                 # NO CHANGE or a failed turn still leaves these cited dates on the page (2026-10-15).
-                with maintenance_lock(root):
+                with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
                     retain_repository_context(root, line_items,
                                               {i['source'] for i in line_items if i['role'] == 'recent-commits'})
                     notebook.write(record, corrected)
