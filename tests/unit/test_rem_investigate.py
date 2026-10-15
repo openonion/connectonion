@@ -2163,3 +2163,21 @@ def test_a_deepen_with_nothing_before_the_window_is_nothing_new_not_a_failure(tm
         inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                         extractor=lambda *a: pytest.fail("no digest pass"), rounds=3, read_before="2026-04-12",
                         runner=lambda *a, **kw: pytest.fail("no model turn"))
+
+
+def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
+    """oo-api (2026-10-15): eight rounds built 9,562 characters; the synthesis
+    round, with no new material, cut it to 3,792."""
+    root = _notebook(tmp_path, 'codex')
+    notebook = inv.Notebook(root)
+    notebook.stub_project('projects/co.md', 'co', ['/w/co'])
+    full = notebook.read('projects/co.md').replace('- Unknown — not investigated yet', '- A long verified line [1].' * 40)
+
+    def runner(notebook, items, config, stage):
+        round_note = next(i['text'] for i in items if i['role'] == 'round')
+        notebook.write('projects/co.md', full if round_note.startswith('Round') else '# co\n\n## Facts\n')
+        return {'changed': ['projects/co.md'], 'usage': {}}
+    page = lambda text: {'role': 'page', 'record': 'projects/co.md', 'source': 'investigation:page', 'text': text}
+    inv.run_rounds(runner, notebook, 'projects/co.md', page, [], [[{'source': 'codex:s:1', 'text': 'x',
+                   'timestamp': '2026-10-01T00:00:00+00:00'}]], {})
+    assert notebook.read('projects/co.md') == full

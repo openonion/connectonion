@@ -1100,6 +1100,14 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
     return max(INLINE_LIMIT - used, 20_000)
 
 
+def _keep_unless_shrunk(notebook: Notebook, record: str, before: str) -> None:
+    """An edit with no new material may tighten a page, not gut it: oo-api's final
+    round took 9,562 characters to 3,792 after eight rounds of reading (2026-10-15)."""
+    from .page_review import shrinkage
+    if shrinkage(before, notebook.read(record)):
+        notebook.write(record, before)
+
+
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
                config: dict, stage_progress=None) -> dict:
     """One turn per part, each on the page the last one left, then a synthesis turn.
@@ -1124,8 +1132,11 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
                  {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
         if stage_progress:
             stage_progress(f"investigation round {number} of {total + 1}")
+        before = notebook.read(record)
         try:
             out = runner(notebook, items, config, stage="investigate")
+            if not part:
+                _keep_unless_shrunk(notebook, record, before)
         except RunFailed as error:
             refused.append(str(error))
             unread += material_sources(part)
@@ -1140,7 +1151,9 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
+    page = notebook.read(record)
     before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
+    _keep_unless_shrunk(notebook, record, page)
     if edit is not None:
         for key, value in (edit.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
