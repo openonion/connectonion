@@ -1369,12 +1369,18 @@ def _claim_key(text: str) -> str:
     return _plain(text).rstrip(',.;:!?，。；：！？')
 
 
+def uncited_field(line: str) -> bool:
+    """Identity field lines belong to the map and contact checks, not the prose audit."""
+    # Vern Chan's own email became Unknown for lacking a citation (2026-10-16 trial).
+    return any(line.strip().removeprefix('- ').startswith(label + ':') for label in facts.UNCITED)
+
+
 def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
     """Remove each sentence holding a refuted claim; return the claims no line holds.
 
     Only the sentence goes when its line says more: Hamish's History line also
-    held his own reply, which was true. A contact field keeps its label and
-    says Unknown, as an untraceable citation leaves it.
+    held his own reply, which was true. An UNCITED identity field stays;
+    another contact field keeps its label and says Unknown.
     """
     # "Unknown" refuted is a gap to fill, not a line to drop: as a substring it
     # matched every Unknown on oo-api's page (2026-10-15).
@@ -1386,7 +1392,7 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
     for line in head.split('\n'):
         hits = [claim for claim, key in wanted.items() if key in _claim_key(line)]
         found.update(hits)
-        if not hits:
+        if not hits or uncited_field(line):
             kept.append(line)
         elif CONTACT_LINE.match(line):
             kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
