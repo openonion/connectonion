@@ -48,7 +48,7 @@
     --night-2: #9fa9d6;
     --night-line: #2c3663;
     --night-lamp: #f2b65e;
-    --mark: #fce7b8;
+    --mark: #fde7b0;
     --mark-ink: #3e2a00;
     --shadow: 0 1px 2px rgba(23, 27, 43, 0.06), 0 6px 24px -12px rgba(23, 27, 43, 0.18);
     --display: Optima, "Optima Nova", Candara, "Segoe UI Variable Display", "Gill Sans", "Noto Sans", sans-serif;
@@ -61,7 +61,7 @@
       --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
       --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
       --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
-      --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
+      --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #5a4310; --mark-ink: #ffe7b0;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
     }
   }
@@ -69,7 +69,7 @@
     --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
     --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
     --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
-    --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
+    --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #5a4310; --mark-ink: #ffe7b0;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
   }
   * { box-sizing: border-box; }
@@ -369,13 +369,10 @@
   .table-scroll th, .table-scroll td { min-width: 120px; }
   .note :is(h2,h3,h4,h5,h6), .note [id^="src-"] { scroll-margin-top: 24px; }
 
-  /* citations: a small chip that names its source on hover or focus */
-  .cite { display: inline-block; position: relative; vertical-align: super; font: 600 9.5px/1 var(--mono); color: var(--blue); background: var(--blue-soft); border-radius: 3px; padding: 2px 3px 1px; margin: 0 1px; text-decoration: none !important; }
+  /* citations name the original before the reader opens it */
+  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; min-width: 24px; min-height: 24px; font: 500 11px/16px var(--ui); color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue-line); border-radius: 4px; padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; }
+  .cite.missing { border-style: dashed; }
   .cite:hover, .cite:focus-visible { background: var(--blue); color: var(--sheet); }
-  .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: pre-line; text-align: left; box-shadow: var(--shadow); }
-  @media (max-width: 600px) {
-    .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { position: fixed; left: 16px; right: 16px; bottom: 16px; transform: none; width: auto; max-width: none; overflow-wrap: anywhere; white-space: pre-wrap; }
-  }
 
   /* open threads on a page: the visual centre */
   .block-threads { margin: 0 0 8px; }
@@ -398,11 +395,11 @@
 
   /* sources: a compact footnote list */
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
-  .block-sources li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
+  .block-sources li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
   .block-sources li:target, .block-sources li.flash { background: var(--blue-soft); }
   .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
   .block-sources .n { font: 600 11px/1.9 var(--mono); color: var(--blue); }
-  .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; vertical-align: baseline; font: 600 11px var(--mono); }
+  .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; justify-self: start; vertical-align: baseline; font: 500 11px var(--ui); }
   .block-sources .id { font: 11.5px var(--mono); color: var(--ink); }
 
   /* where it stands: a status block */
@@ -642,7 +639,7 @@
   .factlist .copy { position: absolute; right: 0; top: 5px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; cursor: pointer; opacity: 0; }
   .factlist dd:hover .copy, .factlist .copy:focus-visible { opacity: 1; }
   .factlist dd:has(.copy) .val { padding-right: 44px; }
-  .cite.run { padding: 2px 5px 1px; }
+  .cite.run { padding: 3px 6px; }
 
   /* ---- the fact card: what you came for, at a glance (#2068) ---- */
   .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 18px 0 26px; max-width: 980px; box-shadow: var(--shadow); }
@@ -794,6 +791,33 @@
   .msg-row .msg-avatar { width: 22px; height: 22px; font-size: 9px; }
   .msg-label { width: 30px; font: 11px var(--mono); color: var(--ink-3); }
   .msg-body blockquote { margin: 12px 0 0; border-left: 0; border-radius: 10px; }
+  /* the original sits beside the page, or above it in a phone sheet */
+  .evidence-layer[hidden] { display: none; }
+  .evidence-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(5, 9, 25, .5); }
+  .evidence-panel { position: fixed; z-index: 20; inset: auto 0 0; max-height: 75vh; overflow: auto; overscroll-behavior: contain; padding: 12px 18px 24px; border: 1px solid var(--line); border-radius: 18px 18px 0 0; background: var(--sheet); color: var(--ink); box-shadow: 0 8px 32px rgba(0,0,0,.16); overflow-wrap: anywhere; }
+  .evidence-handle { width: 38px; height: 4px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
+  .evidence-panel .evidence-top { top: -1px; box-shadow: 0 -12px 0 var(--sheet), 0 8px 0 var(--sheet); font: 500 12px/1.4 var(--ui); }
+  .evidence-panel .evidence-close { flex: none; }
+  .evidence-claim { padding: 14px; margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; font: 16px/1.55 var(--text); }
+  .evidence-claim small { display: block; margin-bottom: 6px; color: var(--ink-3); font: 12px var(--ui); }
+  mark.span { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
+  .evidence-panel .msg { padding: 0; border: 0; border-radius: 0; background: none; }
+  .evidence-panel .msg-head { flex-wrap: wrap; gap: 4px; }
+  .evidence-panel .msg-from { gap: 4px; }
+  .evidence-panel .msg-address { font: 11px var(--ui); }
+  .evidence-panel .msg-time { white-space: normal; font: 12px/1.5 var(--ui); }
+  .evidence-panel .evidence-original { border: 0; padding-top: 0; }
+  .evidence-panel blockquote { margin: 14px 0; padding: 0; background: none; border: 0; border-radius: 0; font: 16px/1.6 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .evidence-panel .evidence-meta { font: 12px/1.5 var(--ui); }
+  .evidence-source-select { display: block; width: 100%; min-height: 36px; margin-top: 14px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--paper); font: 12px var(--ui); }
+  @media (max-width: 1099px) { body.evidence-open { overflow: hidden; } }
+  @media (min-width: 1100px) {
+    .evidence-backdrop, .evidence-handle { display: none; }
+    .evidence-panel { inset: 16px 16px 16px auto; width: 380px; max-height: none; border-radius: 10px; padding-top: 18px; }
+    body.evidence-open main { max-width: none; padding-right: 424px; }
+    body.evidence-open .page-grid.has-side { grid-template-columns: minmax(0, 1fr); }
+    body.evidence-open .page-grid.has-side > .side { position: static; margin-top: 24px; }
+  }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
 
   @media (min-width: 1180px) {
@@ -1110,15 +1134,41 @@ function moon(status) {
 // ---------- markdown (small, escape-first) ----------
 // The page being rendered: its numbered sources, so a claim's [n] can name its source.
 let CITES = { from: "", sources: {} };
-function citeRun(ns, from) {
-  const tips = ns.map(n => "[" + n + "] " + ((from === CITES.from && CITES.sources[n]) || "source " + n));
-  return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
-    '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
+function citationSource(r, n) {
+  if (!r) return "";
+  return r.path === CITES.from ? CITES.sources[n] || "" : sourceList(r).find(s => s.n === n)?.text || "";
 }
-function citeChip(n, from, showDescription = true, visibleLabel = false) {
-  const tip = showDescription && from === CITES.from ? CITES.sources[n] : "";
-  return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
-    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + (visibleLabel ? "Source " : "") + n + "</a>";
+function sourceChannel(kind) {
+  return ({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
+    || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1));
+}
+function sourceSender(context) {
+  const from = context.participants?.from;
+  const who = mailbox((Array.isArray(from) ? from[0] : from) || context.sender || "");
+  if (!who.address) return "";
+  const person = personByAddress(who.address), owner = byPath(REM.owner);
+  if (owner && (person === owner || owner.index?.emails?.some(address => address.toLowerCase() === who.address))) return "you";
+  return (person?.title || who.name).split(/\s+/)[0];
+}
+function chipLabel(r, n) {
+  const text = citationSource(r, n), id = sourceId(text);
+  const context = (REM.source_context || {})[id];
+  const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
+  const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
+  const date = day && new Date(day + "T00:00:00Z");
+  const label = [context && sourceSender(context), sourceChannel(kind), date && !isNaN(date) ? date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : ""].filter(Boolean);
+  return label.join(", ") || "source " + n;
+}
+function citeRun(ns, from) {
+  return citeChip(ns[0], from, true, false, ns);
+}
+function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n]) {
+  const r = byPath(from), text = citationSource(r, n), context = (REM.source_context || {})[sourceId(text)];
+  const label = chipLabel(r, n), missing = !context;
+  const tip = "Source: " + label + (context?.subject ? ", subject “" + context.subject + "”" : showDescription && text ? ", " + text : "")
+    + (missing ? ", original not in this snapshot" : "") + (ns.length > 1 ? ", " + ns.length + " sources for this line" : "");
+  return '<a class="cite' + (ns.length > 1 ? " run" : "") + (missing ? " missing" : "") + '" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() +
+    '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + esc(label) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -2445,9 +2495,9 @@ function sectionBody(r, s) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
         const id = sourceId(src.text);
         const rest = id ? src.text.replace(id, "").replace(/^\s*[—–-]\s*/, "") : src.text;
-        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("a", { class: "n cite source-open",
-          href: href(r) + "&h=src-" + src.n.toLowerCase(), "aria-label": "Open source " + src.n,
-          text: "[" + src.n + "]" }),
+        const chip = el("span", { html: citeChip(src.n, r.path) }).firstChild;
+        chip.classList.add("n", "source-open");
+        return el("li", { id: "src-" + src.n.toLowerCase() }, [chip,
           el("span", {}, [id ? el("span", { class: "id", text: shortHash(id), title: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
@@ -3176,6 +3226,7 @@ function sourceFind(excerpt, quote) {
   const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": "Find in archived source" });
   const next = el("button", { type: "button", text: "Next match", disabled: "" });
   const status = el("span", { class: "evidence-find-status", role: "status" });
+  const original = quote.innerHTML;
   let matches = [], current = 0, term = "";
   function show() {
     const at = matches[current];
@@ -3190,7 +3241,7 @@ function sourceFind(excerpt, quote) {
     matches = [];
     quote.textContent = excerpt;
     next.disabled = true;
-    if (!term) { status.textContent = ""; return; }
+    if (!term) { quote.innerHTML = original; status.textContent = ""; return; }
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     matches = [...excerpt.matchAll(new RegExp(escaped, "gi"))].map(match => match.index);
     if (!matches.length) { status.textContent = "No match in the archived excerpt"; return; }
@@ -3232,9 +3283,16 @@ function avatar(name) {
 }
 function personChip(text) {
   const who = mailbox(text), page = personByAddress(who.address);
-  const name = page ? page.title : who.name;
+  const name = page && page.path === REM.owner ? "you" : page ? page.title : who.name;
   return el(page ? "a" : "span", { class: "msg-person", title: who.address, ...(page ? { href: href(page) } : {}) },
     [avatar(name), el("span", { text: name })]);
+}
+function messageMeta(context) {
+  const to = context.participants?.to || [];
+  const people = (Array.isArray(to) ? to : [to]).filter(Boolean).map(text => sourceSender({ sender: text }));
+  const date = context.time && new Date(context.time);
+  const sent = date && !isNaN(date) ? date.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: REM.status?.timezone || undefined }) : "Sent date unknown";
+  return [people.length ? "to " + people.join(", ") : "", sent, sourceChannel(context.source)].filter(Boolean).join(", ");
 }
 function mailMessage(context, quote) {
   const headers = context.participants || {};
@@ -3244,61 +3302,132 @@ function mailMessage(context, quote) {
   return el("article", { class: "msg" }, [
     el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
         el("span", { class: "msg-address", text: mailbox(from).address })]),
-      el("time", { class: "msg-time", text: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
+      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
     ...(context.subject ? [el("p", { class: "msg-subject evidence-subject", text: context.subject })] : []),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: label }), ...people.map(personChip)])))] : []),
     context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
       : el("div", { class: "msg-body" }, [quote])]);
 }
-function openEvidence(r, number, trigger) {
-  const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
-  if (!source) return false;
-  const id = sourceId(source.text);
-  const context = (REM.source_context || {})[id];
-  const mail = /^(gmail|outlook)$/.test(context?.source || "");
-  const headers = context?.participants;
-  const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
-  const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
-    : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
-  let dialog = document.getElementById("evidence-dialog");
-  if (!dialog) { dialog = el("dialog", { id: "evidence-dialog", class: "evidence-dialog", "aria-label": "Source context" }); document.body.appendChild(dialog); }
-  dialog.textContent = "";
-  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
-  close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
-    el("h2", { text: "Why this appears on " + r.title }),
-    el("p", { class: "evidence-summary private", text: revision ? origin : source.text }));
-  if (revision) dialog.appendChild(el("details", { class: "evidence-source-id private" }, [
-    el("summary", { text: "Full source ID" }), el("code", { text: id })]));
-  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
-  if (context) {
-    const excerpt = context.excerpt + (context.truncated ? "…" : "");
-    const quote = el("blockquote", { text: excerpt });
-    dialog.append(el("div", { class: "evidence-original private" }, [
-    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
+// Match original words only; offsets keep whitespace and punctuation intact.
+function spanMatch(text, phrase, wholeWords = false) {
+  const pattern = phrase.trim().split(/\s+/).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  const bounded = wholeWords ? "(?<![\\p{L}\\p{N}])" + pattern + "(?![\\p{L}\\p{N}])" : pattern;
+  const match = new RegExp(bounded, "iu").exec(text.slice(0, 60000));
+  return match ? [match.index, match.index + match[0].length] : null;
+}
+function supportingSpan(claim, excerpt) {
+  const quotes = [...claim.matchAll(/“([^”]{6,})”|"([^"\n]{6,})"/g)];
+  for (const quote of quotes) {
+    const phrase = quote[1] || quote[2];
+    if (phrase.trim().replace(/\s+/g, " ").length < 6) continue;
+    const source = spanMatch(excerpt, phrase);
+    if (source) return { claim: [quote.index + 1, quote.index + 1 + phrase.length], source };
+  }
+  if (quotes.length) return null;
+  const words = [...claim.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)].slice(0, 80);
+  for (let length = words.length; length >= 4; length--)
+    for (let start = 0; start + length <= words.length; start++) {
+      const begin = words[start].index, end = words[start + length - 1].index + words[start + length - 1][0].length;
+      const source = spanMatch(excerpt, claim.slice(begin, end), true);
+      if (source)
+        return { claim: [begin, end], source };
+    }
+  return null;
+}
+function markedSpan(text, range) {
+  return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
+}
+function evidenceLine(trigger) {
+  const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
+  const copy = (line.querySelector(".focus-statement") || line).cloneNode(true);
+  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
+  const path = new URLSearchParams(trigger.hash.slice(1)).get("r");
+  const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
+  const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
+  return { text: copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+}
+let evidenceTrigger = null;
+function evidenceLayout() {
+  const panel = document.getElementById("evidence-panel"), narrow = innerWidth < 1100;
+  document.querySelector(".app").inert = !!panel && !panel.parentElement.hidden && narrow;
+  panel?.setAttribute("aria-modal", String(narrow));
+}
+function closeEvidence() {
+  const layer = document.getElementById("evidence-layer");
+  if (!layer || layer.hidden) return;
+  layer.hidden = true;
+  document.body.classList.remove("evidence-open");
+  evidenceLayout();
+  evidenceTrigger?.focus({ preventScroll: true });
+}
+function evidencePanel() {
+  let panel = document.getElementById("evidence-panel");
+  if (panel) return panel;
+  const backdrop = el("div", { class: "evidence-backdrop", "aria-hidden": "true" });
+  backdrop.onclick = closeEvidence;
+  panel = el("aside", { id: "evidence-panel", class: "evidence-panel", role: "dialog", "aria-label": "Source context", tabindex: "-1" });
+  document.body.appendChild(el("div", { id: "evidence-layer", class: "evidence-layer", hidden: "" }, [backdrop, panel]));
+  return panel;
+}
+function evidenceOriginal(context, quote) {
+  const mail = /^(gmail|outlook)$/.test(context.source);
+  const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context.origin || "");
+  const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8) : context.origin?.split("/").at(-1) || "";
+  return el("div", { class: "evidence-original private" }, [
+    ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : [sourceChannel(context.source), context.sender, context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
+    ...(context.excerpt?.length > 2000 ? [sourceFind(quote.textContent, quote)] : []),
+    ...(mail ? [mailMessage(context, quote)] : [quote]),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
-    el("p", { class: "evidence-meta", text: [context.source, mail ? "" : context.sender,
-      context.time && !mail ? fmtTime(context.time) : "",
-      context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
-      context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
-    ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
-    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener",
-      text: "Open " + (context.filename || "the file") + " →" })] : []),
+    ...(revision ? [el("details", { class: "evidence-source-id" }, [el("summary", { text: "Full source ID" }), el("code", { text: context.origin })])] : []),
+    el("p", { class: "evidence-meta", text: [context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
+      context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : "", context.body_format].filter(Boolean).join(" · ") }),
+    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener", text: "Open " + (context.filename || "the file") + " →" })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
-    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
-    ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
-    mail ? mailMessage(context, quote)
-      : context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
-      : quote]));
+    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : [])]);
+}
+function openEvidence(r, number, trigger) {
+  const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
+  const context = (REM.source_context || {})[sourceId(source.text)], line = evidenceLine(trigger);
+  const numbers = line.numbers.length ? line.numbers : [source.n];
+  const excerpt = context?.excerpt || "", span = supportingSpan(line.text, excerpt);
+  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
+  close.onclick = closeEvidence;
+  panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
+    el("div", { class: "evidence-top" }, [el("span", { text: "Source " + (numbers.indexOf(source.n) + 1) + " of " + numbers.length + " for this line" }), close]),
+    el("div", { class: "evidence-claim private" }, [el("small", { text: "On this page" }), el("div", { html: markedSpan(line.text, span?.claim) })]));
+  if (numbers.length > 1) {
+    const select = el("select", { class: "evidence-source-select private", "aria-label": "Source for this line" }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
+    select.value = source.n;
+    select.onchange = () => openEvidence(r, select.value, trigger);
+    panel.insertBefore(select, panel.querySelector(".evidence-claim"));
   }
-  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
-  dialog.addEventListener("close", () => trigger.focus(), { once: true });
-  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
-  close.focus();
+  panel.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
+  if (context) {
+    const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
+    panel.appendChild(evidenceOriginal(context, quote));
+  } else panel.appendChild(el("p", { class: "evidence-unavailable", text: "The original isn't in this snapshot." }));
+  evidenceTrigger = trigger;
+  panel.parentElement.hidden = false;
+  document.body.classList.add("evidence-open");
+  evidenceLayout();
+  panel.scrollTop = 0;
+  close.focus({ preventScroll: true });
   return true;
 }
+document.addEventListener("keydown", event => {
+  const panel = document.getElementById("evidence-panel");
+  if (!panel || panel.parentElement.hidden) return;
+  if (event.key === "Escape") { event.preventDefault(); closeEvidence(); }
+  if (event.key !== "Tab" || innerWidth >= 1100) return;
+  const controls = [...panel.querySelectorAll('a, button, input, select, summary')].filter(node => node.getClientRects().length);
+  const first = controls[0], last = controls.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
+window.addEventListener("hashchange", closeEvidence);
+window.addEventListener("resize", evidenceLayout);
 document.addEventListener("click", e => {
   const citation = e.target.closest("a.cite");
   if (!citation) return;

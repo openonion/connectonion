@@ -42,7 +42,7 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         assert page.locator('.block-sources .id').inner_text() == source
         cite = page.locator('a.cite[href$="h=src-15"]').first
         cite.click()
-        dialog = page.locator('#evidence-dialog')
+        dialog = page.locator('#evidence-panel')
         assert 'Example Client Ltd' in dialog.locator('blockquote').inner_text()
         assert 'Original capture time' in dialog.inner_text()
         assert 'signature appearances are not verified' in dialog.inner_text()
