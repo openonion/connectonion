@@ -1162,6 +1162,58 @@ def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path
     assert 'older than the newest session' in state['text']
 
 
+@pytest.mark.parametrize('failed', [False, True])
+def test_git_project_unknown_dates_are_cited_from_history_before_the_model_turn(tmp_path, monkeypatch, failed):
+    """STR (2026-10-15): Last activity stayed Unknown with both commit dates in its packet."""
+    root, repo = _notebook(tmp_path, 'codex'), _repo(tmp_path)
+    notebook, record = inv.Notebook(root), 'projects/co.md'
+    notebook.stub_project(record, 'connectonion', [str(repo)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions']))
+    received = []
+
+    def runner(book, items, config, stage):
+        received.extend(items)
+        assert book.read(record) in items[0]['text']
+        if failed:
+            raise inv.RemError('Model failed')
+        return {'changed': []}
+
+    if failed:
+        with pytest.raises(inv.RemError, match='Model failed'):
+            inv.investigate(root, record, 'connectonion', [str(repo)], days=150,
+                            clients={}, subscriptions={}, runner=runner)
+    else:
+        inv.investigate(root, record, 'connectonion', [str(repo)], days=150,
+                        clients={}, subscriptions={}, runner=runner)
+    history = next(item for item in received if item['role'] == 'recent-commits')
+    first = inv._git(str(repo), 'log', '--reverse', '--format=%h', 'origin/main').splitlines()[0]
+    latest = inv._git(str(repo), 'log', '-1', '--format=%h', 'origin/main')
+    assert f'- Started: 2026-08-30 — first commit {first} [1]' in received[0]['text']
+    assert f'- Last activity: 2026-09-29 — September (commit {latest}) [1]' in received[0]['text']
+    assert f'## Sources\n- [1] {history["source"]} — 2026-09-29' in received[0]['text']
+    assert '- (none yet)' not in received[0]['text']
+    from connectonion.rem.project_pages import repository_context
+    assert repository_context(root, history['source'])['excerpt'] == history['text']
+
+
+@pytest.mark.parametrize('known', ['Started', 'Last activity'])
+def test_history_prefill_keeps_known_dates_and_uses_a_new_citation(known):
+    history = {'role': 'recent-commits', 'source': 'project-source:history', 'timestamp': '2026-10-01T00:00:00Z',
+               'text': 'Commits on main, newest first:\nabc1234 2026-10-01 Ship it\n\n'
+                       'First commit: def5678 2026-05-28 Begin'}
+    page = ('# Project\n\n## Facts\n- Started: Unknown\n- Last activity: Unknown\n\n'
+            '## Sources\n- [4] codex:s:1 — 2026-10-02\n')
+    page = page.replace(f'- {known}: Unknown', f'- {known}: 2026-10-02 [4]')
+    filled = inv.prefill_project_dates(page, [history])
+    assert f'- {known}: 2026-10-02 [4]' in filled
+    assert '- [5] project-source:history — 2026-10-01' in filled
+    assert '- [4] codex:s:1 — 2026-10-02' in filled
+    assert 'Unknown' not in filled
+    assert inv.prefill_project_dates(filled, [history]) == filled
+    assert inv.prefill_project_dates(page, []) == page
+    assert inv.prefill_project_dates(page, [{**history, 'text': 'No commits supplied'}]) == page
+
+
 def test_a_git_project_is_read_at_its_current_line_in_every_round_not_from_its_working_tree(tmp_path, monkeypatch):
     """oo-api (2026-10-15): the main checkout sat on an August branch, sixty of its
     working-tree files filled five rounds before any of the owner's messages, and
@@ -2181,3 +2233,75 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
     inv.run_rounds(runner, notebook, 'projects/co.md', page, [], [[{'source': 'codex:s:1', 'text': 'x',
                    'timestamp': '2026-10-01T00:00:00+00:00'}]], {})
     assert notebook.read('projects/co.md') == full
+
+
+def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path):
+    """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'projects/co.md'
+    notebook.stub_project(record, 'co', ['/w/co'])
+    full = notebook.read(record).replace('## Key decisions\n',
+        '## Key decisions\n- “Keep this simple”\n- “Read every source”\n- “Quote my words”\n- “Ship the fix”\n')
+    paraphrased = full.replace('“', '').replace('”', '')
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.append(items[0]['text'])
+        if len(seen) <= 2:
+            notebook.write(record, full if len(seen) == 1 else paraphrased)
+        return {'changed': [record], 'usage': {'input_tokens': 5}, 'threads': [str(len(seen))]}
+
+    parts = [[{'source': f'codex:s:{n}', 'text': 'x'}] for n in (1, 2)]
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [], parts, {})
+    assert notebook.read(record) == full and seen[-1] == full
+    assert out['refused_rounds'] == ["Round 2 rejected: Turn kept 0 of the page's 4 quotes; restored the prior page"]
+    assert out['refused_sources'] == ['codex:s:2']
+    assert out['usage'] == {'input_tokens': 15} and out['threads'] == ['1', '2', '3']
+
+
+def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    notebook, record = inv.Notebook(root), 'people/vern.md'
+    full = notebook.read(record).replace('## History\n',
+        '## History\n- “Keep this simple”\n- “Read every source”\n- “Quote my words”\n')
+    notebook.write(record, full)
+    items = [{'source': f'codex:s:{n}', 'text': 'x' * 30_000, 'role': 'user'} for n in range(12)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (items, ['codex: 12 inputs']))
+
+    def runner(notebook, material, config, stage):
+        note = next(i['text'] for i in material if i['role'] == 'round')
+        if note.startswith('Round'):
+            notebook.write(record, full.replace('“', '').replace('”', ''))
+            return {'changed': [record]}
+        return {'changed': []}
+
+    with pytest.raises(inv.RemError, match='rejected: Turn kept 0'):
+        inv.investigate(root, record, 'Vern', ['vern'], days=7, clients={}, subscriptions={}, runner=runner)
+    assert notebook.read(record) == full
+    assert set(inv.refused_for(root, record)['sources']) == {i['source'] for i in items}
+
+
+@pytest.mark.parametrize('quotes,kept,restored', [(2, 0, False), (3, 1, True), (5, 3, False), (5, 2, True)])
+def test_quote_retention_counts_distinct_carried_prose_quotes(tmp_path, quotes, kept, restored):
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'notes/quotes.md'
+    before = '# Quotes\n' + ''.join(f'- “quote {n}”\n' for n in range(quotes)) * 2
+    before += '\n```\n“fenced example”\n```\n'
+    after = '# Quotes\n' + ''.join(f'- “quote {n}”\n' for n in range(kept))
+    after += '- “new quote one”\n- “new quote two”\n'
+    notebook.write(record, after)
+    assert bool(inv._keep_unless_lost(notebook, record, before)) == restored
+    assert notebook.read(record) == (before if restored else after)
+
+
+@pytest.mark.parametrize('paraphrase', [False, True])
+def test_a_restore_never_brings_back_quotes_the_turns_audit_refuted(tmp_path, paraphrase):
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'notes/quotes.md'
+    before = '# Quotes\n' + ''.join(f'- “quote {n}”\n' for n in range(5))
+    sound = before.replace('- “quote 0”\n', '').replace('- “quote 1”\n', '')
+    after = sound.replace('“', '').replace('”', '') if paraphrase else sound
+    notebook.write(record, after)
+    reason = inv._keep_unless_lost(notebook, record, before, ['“quote 0”', '“quote 1”'])
+    assert bool(reason) == paraphrase
+    assert notebook.read(record) == sound

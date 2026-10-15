@@ -1102,12 +1102,20 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
     return max(INLINE_LIMIT - used, 20_000)
 
 
-def _keep_unless_shrunk(notebook: Notebook, record: str, before: str) -> None:
-    """An edit with no new material may tighten a page, not gut it: oo-api's final
-    round took 9,562 characters to 3,792 after eight rounds of reading (2026-10-15)."""
-    from .page_review import shrinkage
-    if shrinkage(before, notebook.read(record)):
+def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> str:
+    """Keep carried evidence: connectonion's sixth round paraphrased all fifteen
+    owner quotes away; oo-api's synthesis gutted eight rounds' work (2026-10-15)."""
+    from .page_review import KEEP_SHARE, QUOTE, drop_claims, prose, shrinkage
+    if refuted:
+        before, _ = drop_claims(record, before, refuted)
+    after = notebook.read(record)
+    old = set(QUOTE.findall(prose(before)))
+    kept = old & set(QUOTE.findall(prose(after)))
+    reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
+              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
+    if reason:
         notebook.write(record, before)
+    return reason
 
 
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
@@ -1137,8 +1145,6 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         before = notebook.read(record)
         try:
             out = runner(notebook, items, config, stage="investigate")
-            if not part:
-                _keep_unless_shrunk(notebook, record, before)
         except RunFailed as error:
             refused.append(str(error))
             unread += material_sources(part)
@@ -1148,6 +1154,11 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         threads += out.get("threads", [])
+        reason = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
+        if reason:
+            refused.append(f"Round {number} rejected: {reason}")
+            unread += material_sources(part)
+            continue
         changed = sorted({*changed, *out.get("changed", [])})
         if out.get("report"):
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
@@ -1155,16 +1166,21 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         raise RunFailed(refused[-1], usage)
     page = notebook.read(record)
     before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
-    _keep_unless_shrunk(notebook, record, page)
     if edit is not None:
+        reason = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         if edit.get("refused"):
             refused.append(edit["refused"])
         threads += edit.get("threads", [])
-        changed = sorted({*changed, *edit.get("changed", [])})
-        if edit.get("report"):
-            ledgers.append(f"Editing round: {str(edit['report']).strip()}")
+        if reason:
+            from .page_review import hedged_lines
+            refused.append(f"Editing round rejected: {reason}")
+            after = hedged_lines(notebook.read(record))
+        else:
+            changed = sorted({*changed, *edit.get("changed", [])})
+            if edit.get("report"):
+                ledgers.append(f"Editing round: {str(edit['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
             "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
             "hedged_lines": [len(before), len(after)]}
@@ -1359,6 +1375,29 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
             and (not sent_only or item.get("role") == "user")]
 
 
+def prefill_project_dates(page: str, line_items: list[dict]) -> str:
+    """STR left dates Unknown despite its supplied first/newest commits (2026-10-15)."""
+    history = next((item for item in line_items if item.get('role') == 'recent-commits'), None)
+    section = re.search(r'(?ms)^## Facts\n(.*?)(?=^## |\Z)', page)
+    if not history or not section:
+        return page
+    number = max((int(n) for n in re.findall(r'\[(\d+)\]', page)), default=0) + 1
+    body = section[1]
+    commit = r'([0-9a-f]+) (\d{4}-\d{2}-\d{2}) (.+)'
+    for field, prefix in (('Started', 'First commit: '), ('Last activity', '')):
+        match = re.search(r'(?m)^' + prefix + commit, history['text'])
+        if match:
+            detail = f'first commit {match[1]}' if field == 'Started' else f'{match[3]} (commit {match[1]})'
+            body = re.sub(rf'(?m)^- {field}: Unknown[ \t]*$',
+                          lambda _: f'- {field}: {match[2]} — {detail} [{number}]', body)
+    if body == section[1]:
+        return page
+    page = page[:section.start(1)] + body + page[section.end(1):]
+    head, marker, sources = page.partition('\n## Sources\n')
+    sources = re.sub(r'(?m)^- \(none yet\)\n?', '', sources)
+    return head + marker + f'- [{number}] {history["source"]} — {history["timestamp"][:10]}\n' + sources
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -1513,10 +1552,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
     repository_items, line_items = [], []
     if record.startswith("projects/"):
-        from .project_pages import FILE_SNAPSHOT_CHARS, current_line_packet, repository_snapshots
+        from .project_pages import FILE_SNAPSHOT_CHARS, current_line_packet, repository_snapshots, retain_repository_context
         if line:
             line_items = repository_snapshots(current_line_packet(
                 *line, datetime.now(timezone.utc).isoformat(), newest))
+            corrected = prefill_project_dates(notebook.read(record), line_items)
+            if corrected != notebook.read(record):
+                # NO CHANGE or a failed turn still leaves these cited dates on the page (2026-10-15).
+                with maintenance_lock(root):
+                    retain_repository_context(root, line_items,
+                                              {i['source'] for i in line_items if i['role'] == 'recent-commits'})
+                    notebook.write(record, corrected)
         states = [item for item in items if item.get("role") == "checkout-state"]
         items = [item for item in items if item.get("role") != "checkout-state"]
         files = project_file_texts(leads) if summary else project_file_texts(

@@ -81,6 +81,27 @@ def test_a_glued_heading_and_a_repeated_section_are_merged_not_refused():
     assert not [e for e in validate('people/hamish.md', merged, '', []) if 'occur once' in e or 'Duplicate' in e]
 
 
+@pytest.mark.parametrize('decisions', ['', '## Key decisions\n- Chose local storage [1]\n\n'])
+def test_project_history_is_folded_into_key_decisions(decisions):
+    from connectonion.rem.page_review import compact_page
+    text = ('# Atlas\n\n' + decisions + '## History\n- 2026-10-01: “Keep it local” [1]\n\n'
+            '## Sources\n- [1] codex:s:1 — 2026-10-01\n\nInvestigation: written 2026-10-15\n')
+    compact = compact_page('projects/atlas.md', text)
+    assert '## History' not in compact and compact.count('## Key decisions') == 1
+    assert '- 2026-10-01: “Keep it local” [1]' in compact.split('## Key decisions\n')[1].split('## Sources')[0]
+    assert compact.endswith(text.split('## Sources')[1])
+    assert not decisions or '- Chose local storage [1]' in compact
+    assert compact_page('projects/atlas.md', compact) == compact
+    assert compact_page('people/atlas.md', text) == text
+    assert compact_page('orgs/atlas.md', text) == text
+
+
+def test_a_fenced_history_example_is_not_a_project_section():
+    from connectonion.rem.page_review import compact_page
+    text = '# Atlas\n\n## What it is\n```markdown\n## History\n- Example\n```\n\n## Sources\n- [1] codex:s:1\n'
+    assert compact_page('projects/atlas.md', text) == text
+
+
 def _person(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)

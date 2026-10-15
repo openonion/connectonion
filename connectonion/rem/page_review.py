@@ -97,6 +97,15 @@ def compact_page(record: str, text: str) -> str:
     The map keeps its full scaffold until a write. A written page carries only
     supported detail plus the core needed to resume and audit it (#2122).
     """
+    # connectonion gained a History outside the project shape (2026-10-15); keep its lines as decisions.
+    history = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
+    if record.startswith('projects/') and history:
+        body = text[history.start(1):history.end(1)].strip()
+        text = text[:history.start()] + text[history.end():]
+        decisions = re.search(r'(?ms)^## Key decisions[ \t]*\n.*?(?=^## |^Investigation:|\Z)', prose(text))
+        at = decisions.end() if decisions else history.start()
+        heading = '' if decisions else '## Key decisions\n'
+        text = text[:at].rstrip('\r\n') + '\n\n' + heading + body + '\n\n' + text[at:]
     visible = prose(text)
     matches = list(SECTION_HEADING_RE.finditer(visible))
     if not matches:

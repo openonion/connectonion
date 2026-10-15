@@ -895,8 +895,10 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
             write_json(directory / 'review.json', {'accepted': False,
                 'errors': ['Cited-claim audit did not pass; see claim-review.json']})
             write_json(directory / 'claim-review.json', {'verdict': 'fail',
-                'findings': [{'issue': 'A different adjacent claim needs correction'}]})
+                'findings': [{'claim': f'False claim {len(promotions)}',
+                              'issue': 'A different adjacent claim needs correction'}]})
             raise RunFailed('Claim audit failed', {'input_tokens': usage['input_tokens'] + 2})
+        write_json(directory / 'claim-review.json', {'verdict': 'pass', 'findings': []})
         book.write(record, candidate.read_text())
 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
@@ -908,6 +910,7 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
     assert all('exact Sessions, First seen, and Last seen lines' in prompt for prompt in prompts[1:])
     assert promotions == [10, 22, 34]
     assert result['usage'] == {'input_tokens': 34}
+    assert result['refuted_claims'] == ['False claim 1', 'False claim 2']
     assert 'Candidate 3' in notebook.read(record)
 
 
