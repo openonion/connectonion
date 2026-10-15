@@ -186,6 +186,38 @@ def _carried_over(value: str, old_sources: str) -> bool:
     return bool(ids) and all(source in old_sources for source in ids)
 
 
+def _restore_citations(line: str, candidate: str, original: str) -> tuple[str, str]:
+    """Carry a restored line's source ids into the candidate's numbering."""
+    section = r'(?ms)^## Sources\n(.*?)(?=^## |^Investigation:|\Z)'
+    entry = r'^[ \t]*- \[(W?\d+)\][ \t]+([a-z][\w-]*:\S+)([^\n]*)$'
+    before, after = re.search(section, original), re.search(section, candidate)
+    old = {number: (source, suffix) for number, source, suffix in
+           re.findall(entry, before[1] if before else '', re.M)}
+    citations = re.findall(r'\[(W?\d+)\]', line)
+    if any(number not in old for number in citations):
+        return '', candidate
+    rows = re.findall(entry, after[1] if after else '', re.M)
+    numbers = {source: number for number, source, _ in rows}
+    next_number = max((int(number) for number, _, _ in rows if number.isdigit()), default=0) + 1
+    mapping, added = {}, []
+    for number in citations:
+        source, suffix = old[number]
+        if source not in numbers:
+            numbers[source] = str(next_number)
+            added.append(f'- [{next_number}] {source}{suffix}')
+            next_number += 1
+        mapping[number] = numbers[source]
+    if added:
+        if after:
+            at = after.start(1) + len(after[1].rstrip('\n'))
+            candidate = candidate[:at] + '\n' + '\n'.join(added) + (candidate[at:] or '\n')
+        else:
+            status = re.search(r'^Investigation:', candidate, re.M)
+            at = status.start() if status else len(candidate)
+            candidate = candidate[:at].rstrip('\n') + '\n\n## Sources\n' + '\n'.join(added) + '\n\n' + candidate[at:]
+    return re.sub(r'\[(W?\d+)\]', lambda m: f'[{mapping[m[1]]}]', line), candidate
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
@@ -196,6 +228,20 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """
     if not original:
         return candidate
+    if record.startswith(('people/', 'orgs/')):
+        # 2026-10-16 trial: a later round erased Ying Tan's extracted Last contact.
+        section = r'(?ms)^## Facts\n(.*?)(?=^## |\Z)'
+        before, after = re.search(section, original), re.search(section, candidate)
+        if before and after:
+            body = after[1]
+            for label in ('First contact', 'Last contact'):
+                kept = re.search(r'^- ' + label + r': \d{4}-\d{2}-\d{2}(?:[ \t]*\[W?\d+\])+$', before[1], re.M)
+                unknown = r'^- ' + label + r': Unknown$'
+                if kept and re.search(unknown, body, re.M):
+                    line, candidate = _restore_citations(kept[0], candidate, original)
+                    if line:
+                        body = re.sub(unknown, lambda _: line, body, count=1, flags=re.M)
+            candidate = re.sub(section, lambda _: '## Facts\n' + body, candidate, count=1)
     if record.startswith('skills/catalog/'):
         mapped = re.search(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)', original)
         if mapped:
