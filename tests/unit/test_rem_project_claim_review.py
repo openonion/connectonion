@@ -20,7 +20,8 @@ def test_missing_cited_original_never_reaches_the_model(tmp_path):
         raise AssertionError('The audit cannot judge an unavailable original')
 
     report, usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run)
-    assert report == {'verdict': 'insufficient', 'findings': [], 'missing_citations': ['1']}
+    assert report == {'verdict': 'insufficient', 'findings': [], 'missing_citations': ['1'],
+                      'reason': 'No cited originals supplied'}
     assert usage == {}
 
 
@@ -76,12 +77,20 @@ def test_audit_keeps_all_cited_originals_when_several_source_files_are_long(tmp_
     assert len(material['sources']) == 4
     assert all('explains the project' in row['context']['excerpt'] for row in material['sources'])
 
-    def should_not_run(*args):
-        raise AssertionError('An over-budget audit cannot ask the model to guess')
+    # Over the bound, every excerpt is shortened evenly and marked truncated --
+    # an "insufficient" verdict left the pages with most to check unaudited.
+    sent = []
 
-    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run)
-    assert report['verdict'] == 'insufficient'
-    assert report['reason'] == 'Cited originals exceed the audit bound'
+    def audited(_workspace, prompt, *_args):
+        sent.append(prompt)
+        return {'result': json.dumps({'verdict': 'PASS', 'findings': []}), 'usage': {}}
+
+    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited)
+    assert report['verdict'] == 'pass'
+    assert len(sent[0].encode('utf-8')) <= project_claim_review.BOUND
+    packet = json.loads(sent[0][sent[0].index('{"candidate"'):])
+    assert all(row['context']['truncated'] and 'explains the project' in row['context']['excerpt']
+               for row in packet['sources'])
 
 
 def test_runner_status_is_excluded_from_prose_audit(tmp_path, monkeypatch):

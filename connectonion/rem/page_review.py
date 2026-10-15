@@ -421,6 +421,19 @@ def _known_sources(items: list[dict]) -> set:
 PRIVATE_STORE = re.compile(r'/\.claude/projects/|/\.codex/(?:sessions|archived_sessions|memories)/')
 
 
+PINNED_FILE = re.compile(r'^file:(/[^\s#]+)#sha256:([0-9a-f]{64})\b')
+
+
+def _pinned_file(value: str) -> bool:
+    """A local file cited with the hash it has now: the job-followup skill page
+    cited its applications log this way and was refused, as only project pages
+    accepted a `file:` id (1.9.2b3)."""
+    import hashlib
+    match = PINNED_FILE.match(value.strip())
+    return bool(match) and Path(match[1]).is_file() and \
+        hashlib.sha256(Path(match[1]).read_bytes()).hexdigest() == match[2]
+
+
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
     if PRIVATE_STORE.search(value):
         return False
@@ -428,6 +441,8 @@ def _identifiable(value: str, *, known, record, original, old_sources, items, pa
         from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
         return value.strip() in old_sources or live_source_snapshot(original, source) is not None
+    if _pinned_file(value):
+        return True
     return bool(any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
                 or prior_context_reference(value, record, items, original)
@@ -772,6 +787,39 @@ def add_missing_sections(record: str, text: str, owner: bool = False) -> str:
     return text
 
 
+def _placeholder(body: str) -> bool:
+    return not body.strip() or bool(re.fullmatch(r'(?:- )?(?:Unknown|None)\b[^\n]*', body.strip()))
+
+
+def merge_duplicate_sections(record: str, text: str, owner: bool = False) -> str:
+    """One section per heading, settled by code instead of refusing the page.
+
+    A heading glued to the end of a paragraph ("... [10]. ## Our relationship")
+    goes back on its own line: hamish-mcfarlane was refused for it on every
+    pass since 1.9.2b3's init. A repeated section keeps the copy with content
+    and appends any second real body to the first, in place.
+    """
+    names = '|'.join(re.escape(h) for h in _canonical_headings(record, owner))
+    if not names:
+        return text
+    text = re.sub(rf'(?m)(\S)[ \t]+(## (?:{names})[ \t]*)$', r'\1\n\n\2', text)
+    parts = re.split(rf'(?m)^(## (?:{names}))[ \t]*$', text)
+    first, merged = {}, [parts[0]]
+    for index in range(1, len(parts), 2):
+        heading, body = parts[index], parts[index + 1]
+        if heading not in first:
+            first[heading] = len(merged)
+            merged += [heading, body]
+            continue
+        at = first[heading] + 1
+        if _placeholder(merged[at]):
+            merged[at] = body
+        elif not _placeholder(body):
+            lines = [line for line in body.strip('\n').split('\n') if line not in merged[at].split('\n')]
+            merged[at] = merged[at].rstrip('\n') + '\n' + '\n'.join(lines) + '\n\n'
+    return ''.join(merged)
+
+
 def _fill_emptied_sections(head: str) -> str:
     """A section whose every line went says Unknown, so the page keeps its shape."""
     parts = re.split(r'(?m)^(## .+)$', head)
@@ -917,3 +965,87 @@ def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> s
                 match = re.search(r'^- Company: (.*)$', text, re.M)
                 return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
     return text
+
+
+# A quotation mark is a promise that these are the speaker's words. Decision
+# 076 asks pages to quote rather than retell; without this check a model can
+# paraphrase inside “…” and the page looks more trustworthy than before.
+QUOTE = re.compile(r'“([^”\n]{4,})”')
+FOLD = str.maketrans({'‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-', ' ': ' ',
+                      '，': ',', '。': '.', '：': ':', '；': ';', '！': '!', '？': '?', '（': '(', '）': ')'})
+
+
+def _plain(text: str) -> str:
+    """Compare words, not layout: mail wraps lines and a page joins them."""
+    text = re.sub(r'(?m)^[ \t]*>+', '', text)   # a reply's quoted lines
+    text = re.sub(r'\*\*|__|\\(?=[^\s\w])', '', text.translate(FOLD))
+    return re.sub(r'\s+', '', text).casefold()
+
+
+def _quoted_in(quote: str, original: str) -> bool:
+    """Each part between ellipses appears, in order, in the original."""
+    # “Best.” and “sounds great,”: punctuation the page put inside the marks,
+    # and a link the page added to a name, are not the speaker's.
+    quote = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', quote).rstrip(' ,.;:!?，。；：！？')
+    at = 0
+    for part in filter(None, (_plain(part) for part in re.split(r'…|\.\.\.', quote))):
+        at = original.find(part, at)
+        if at < 0:
+            return False
+        at += len(part)
+    return True
+
+
+def cited_texts(root: Path, text: str, items: list[dict]) -> dict[str, tuple[str, bool]]:
+    """Source id -> (the original's text, whether that text is complete)."""
+    from .reader_model import SOURCE, cited_context
+    ids = {source for _, source in SOURCE.findall(text.partition('\n## Sources\n')[2])}
+    found = {i['source']: (i['text'], True) for i in items
+             if i.get('source') in ids and isinstance(i.get('text'), str) and i['text'].strip()}
+    for source, context in cited_context(root, [{'text': text}]).items():
+        if source not in found and context.get('excerpt'):
+            # A name is quoted from the From line as often as from the body.
+            header = ' '.join(str(v) for v in (context.get('sender'), context.get('subject'),
+                                               context.get('participants')) if v)
+            found[source] = (header + '\n' + context['excerpt'], not context.get('truncated'))
+    return found
+
+
+def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str]:
+    """Quotes that are not, word for word, in any source their line cites.
+
+    Only a quote whose cited originals are all here and complete is judged;
+    one resting on an unavailable or truncated original is left to the claim audit.
+    """
+    from .reader_model import SOURCE
+    if not record.startswith(('people/', 'projects/', 'orgs/')):
+        return []
+    head, _, sources = prose(text).partition('\n## Sources\n')
+    numbers = dict(SOURCE.findall('\n' + sources))
+    originals = {source: (_plain(body), whole) for source, (body, whole) in cited_texts(root, text, items).items()}
+    errors = []
+    for line in head.splitlines():
+        cited = [numbers[n] for n in CITATION.findall(line) if n in numbers]
+        checkable = cited and all(originals.get(source, ('', False))[1] for source in cited)
+        for quote in QUOTE.findall(line) if checkable else ():
+            if not any(_quoted_in(quote, originals[source][0]) for source in cited):
+                errors.append(f'Quote is not in its cited source: “{quote[:120]}”')
+    return errors
+
+
+def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
+    """Remove each line holding a refuted claim; return the claims no line holds.
+
+    A contact field keeps its label and says Unknown, as an untraceable citation leaves it.
+    """
+    wanted = {claim: _plain(claim) for claim in claims if _plain(claim)}
+    head, marker, tail = text.partition('\n## Sources\n')
+    kept, found = [], set()
+    for line in head.split('\n'):
+        hits = [claim for claim, plain in wanted.items() if plain in _plain(line)]
+        found.update(hits)
+        if not hits:
+            kept.append(line)
+        elif CONTACT_LINE.match(line):
+            kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
+    return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
