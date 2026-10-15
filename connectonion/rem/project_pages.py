@@ -582,6 +582,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         progress("writing page")
     started, result = time.monotonic(), {}
     metrics = {"stage": "projects", "record": record, "harness": config["runner"], "model": config["model"],
+               "speed": config["speed"],
                "input_items": len(items), "prompt_chars": len(text)}
     try:
         result = run(workdir, text, config, "investigate")

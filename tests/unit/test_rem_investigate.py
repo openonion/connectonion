@@ -236,7 +236,7 @@ def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
-    assert argv[3:9] == ["--harness", "codex", "--sandbox", "danger-full-access",
+    assert argv[3:11] == ["--harness", "codex", "--sandbox", "danger-full-access", "--speed", "fast",
                          "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
@@ -282,7 +282,7 @@ def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp
 # attended and scheduled investigation runs.
 PINNED = {
     "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "danger-full-access",
-              "--model", "gpt-5.6-luna", "--timeout", "1200"],
+              "--speed", "fast", "--model", "gpt-5.6-luna", "--timeout", "1200"],
     "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "bypassPermissions",
                     "--model", "sonnet", "--timeout", "1200"],
 }

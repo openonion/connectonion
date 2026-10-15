@@ -55,6 +55,10 @@ def test_every_command_and_subcommand_has_a_page():
             assert f"co rem {group} {sub}" in names, (group, sub)
 
 
+def test_config_help_describes_speed_default_and_override():
+    assert "speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed" in pages()["co rem config"]
+
+
 def test_every_command_is_on_the_root_page_the_advanced_page_or_is_an_old_name():
     """Nothing is hidden (`co commands` lists all of it, #1643); the root page
     simply lists fourteen, and the rest are one page away or say what replaced them."""

@@ -910,7 +910,8 @@ def _collection_failure(root: Path, config: dict, name: str, started: datetime, 
     finished = now()
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "finished_at": finished.isoformat(), "seconds": round((finished - started).total_seconds(), 2),
-              "model": config["model"], "phase": "sync", "stage": "gathering sources",
+              "harness": config["runner"], "model": config["model"], "speed": config["speed"],
+              "phase": "sync", "stage": "gathering sources",
               "sources": [name], "failed_source": name, "items": 0, "runner_attempts": 0,
               "outcome": "failed", "usage": None, "changed": [], "progress_advanced": False,
               "error": str(error) if isinstance(error, (RemError, ProviderCredentialError)) else
@@ -1007,7 +1008,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     if seen:
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
-              "model": config["model"], "sources": list(selected), "items": len(items),
+              "harness": config["runner"], "model": config["model"], "speed": config["speed"],
+              "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a

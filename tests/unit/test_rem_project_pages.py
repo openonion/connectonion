@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from connectonion.rem import project_material, project_pages
-from connectonion.rem.config import prepare
+from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook, RemError
 from connectonion.rem.project_material import extract, mark_written, page_state, stored
 from connectonion.rem.project_pages import PROMPT_CHARS, queue, write_page, write_pages
@@ -349,10 +349,12 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     extract(world.root, world.subs)
     source = stored(world.root, "projects/tide.md")[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source))
-    out = write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     page = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
+    metrics = json.loads(next((world.root / ".state/tasks").glob("projects-*/result.json")).read_text())
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "fast")
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
     assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
         "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
@@ -376,7 +378,7 @@ def test_a_refused_page_leaves_its_messages_pending(world):
     before = world.notebook.read("projects/tide.md")
     run = _fake_runner(lambda prompt: _page_citing("codex:made-up:1"))
     with pytest.raises(RemError, match="rejected"):
-        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     assert world.notebook.read("projects/tide.md") == before
     assert page_state(world.root, "projects/tide.md")["written_through"] == ""
     # In the one refusal ledger too, which nothing else wrote for the project writer (2026-10-15 audit).
@@ -536,11 +538,11 @@ def test_only_an_accepted_project_keeps_its_cited_repository_packet(world, monke
     source = project_pages.repository_snapshots([item])[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source if accepted else "codex:made-up:1"))
     if accepted:
-        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
         assert project_pages.repository_context(world.root, source)["excerpt"] == item["text"]
     else:
         with pytest.raises(RemError, match="rejected"):
-            write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+            write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
         assert not list((world.root / ".state/project-sources").glob("*.json"))
 
 
@@ -695,7 +697,7 @@ def test_a_project_turn_that_writes_no_candidate_gets_one_more_turn(world):
             return {"outcome": "natural", "result": "cannot write there", "usage": {"input_tokens": 100}}
         return writes(workdir, prompt, config, stage)
 
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     assert len(calls) == 2 and "writable" in calls[1]
     assert "A swell warning tool for surfers. [1]" in world.notebook.read("projects/tide.md")
 
@@ -725,7 +727,7 @@ def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
     page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
                                         "A swell warning tool for surfers. [1]\n\nIt pages the lifeguards. [2]")
     page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved
@@ -741,7 +743,7 @@ def test_a_written_page_citing_a_number_it_never_listed_keeps_the_rest(world):
     source = stored(world.root, "projects/tide.md")[0]["source"]
     page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
                                         "A swell warning tool for surfers. [1][2]")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved and "[2]" not in saved
@@ -756,7 +758,7 @@ def test_a_written_finding_resting_on_one_untraceable_citation_does_not_cost_the
     source = stored(world.root, "projects/tide.md")[0]["source"]
     page = _page_citing(source).replace("## Open threads\n- Unknown", "## Open threads\n- Lifeguards want an SMS alert. [2]")
     page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved

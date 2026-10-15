@@ -52,6 +52,17 @@ def validate_sandbox(harness: str, sandbox: str) -> str | None:
     return None
 
 
+def validate_speed(harness: str, speed: str | None) -> str | None:
+    """An explicit speed selects a Codex service tier only."""
+    if speed is None:
+        return None
+    if harness != "codex":
+        return "--speed applies only to --harness codex. Drop --speed."
+    if speed not in ("fast", "standard"):
+        return f"Unknown speed {speed!r}. Use fast or standard."
+    return None
+
+
 def validate_permission(harness: str, mode: str) -> str | None:
     """Claude's headless permission choice must be explicit at the caller."""
     from ...useful_tools.claude_code import PERMISSION_MODES
@@ -126,7 +137,7 @@ def expand_skill(prompt: str) -> str:
 
 
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
-        sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default") -> dict:
+        sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard") -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
 
     Each delegate answers in its own JSON shape and with its own idea of what
@@ -143,7 +154,7 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
         # tool fails closed on an unexpected approval callback rather than
         # hanging on a prompt nobody will answer.
         raw = codex(prompt=text, cwd=cwd, sandbox=sandbox, model=model,
-                    timeout=timeout, approval="auto")
+                    timeout=timeout, approval="auto", speed=speed)
     else:
         from ...useful_tools.claude_code import _run_claude_code
         raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout,

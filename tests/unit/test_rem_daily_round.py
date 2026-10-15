@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from connectonion.rem import daily
-from connectonion.rem.config import prepare
+from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook
 from connectonion.rem.investigate import NothingFound
 from connectonion.rem.refusals import refused_pages, remember_refusal
@@ -61,6 +61,8 @@ def test_a_skill_page_goes_to_the_skill_investigator_not_the_mail_search(root, m
     result = daily.run_daily(root, maintain=no_change)
     assert calls[0][:2] == ("skill", "skills/catalog/job-followup.md")
     assert result["run"]["pages"][0]["outcome"] == "accepted"
+    assert result["run"]["speed"] == "fast"
+    assert result["run"]["harness"] == read_config(root)["runner"]
 
 
 def test_pages_with_nothing_to_write_from_take_no_slot_and_rest_a_week(root, monkeypatch):
