@@ -1054,3 +1054,42 @@ def test_a_run_names_the_codex_threads_that_ran_it(notebook, monkeypatch):
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda argv, **kw: SimpleNamespace(
         returncode=0, stdout='{"outcome": "natural", "session_id": "01a12370-thread"}', stderr=""))
     assert run_stage(notebook, [], default_config())["threads"] == ["01a12370-thread"]
+
+
+def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
+    """Ody's page kept 13 and 14 October events as open threads on the 15th:
+    no turn was told the date."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.config import set_config
+    set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
+    today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
+    note = runner.today_note(notebook.root)
+    assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
+    argv, options = delegate[0]
+    handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
+                                if path.is_file())
+    assert f"Today is {today}" in handed
+
+
+def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):
+    """Ody's Luma relay became his Email (contacts audit E2); a one-page sync turn is
+    held to the same contact rule as an investigation."""
+    from connectonion.rem.runner import _promote_maintenance
+    root, work = tmp_path / "rem", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    notebook.stub_person("people/ody.md", "Ody Zhou", ["zhouody@gmail.com"], email="zhouody@gmail.com")
+    before = notebook.read("people/ody.md")
+    after = before.replace("- Email: zhouody@gmail.com",
+                           "- Email: zhouody@gmail.com; usr-abc@user.luma-mail.com; larry@estate.example")
+    working.write("people/ody.md", after)
+    directory = tmp_path / "task"
+    directory.mkdir()
+    refusals = _promote_maintenance(notebook, working, {"people/ody.md": before}, [], directory, None, False)
+    saved = notebook.read("people/ody.md")
+    assert not refusals
+    assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
+    assert "zhouody@gmail.com" in saved and "luma-mail" not in saved and "larry@" not in saved

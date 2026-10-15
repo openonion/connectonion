@@ -1175,3 +1175,17 @@ def test_the_owners_own_domain_is_never_a_counterparty_organisation(tmp_path, mo
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert [row['domain'] for row in result['orgs']] == ['partner.com.au']
+
+
+def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():
+    """Contacts audit E1-E3: Luma's per-user addresses, calendar-invite@lu.ma and
+    Airbnb's message relay write under a person's name; replying reaches the platform."""
+    from connectonion.rem.map import RELAY, _people_groups
+    for relay in ('usr-abc@user.luma-mail.com', 'calendar-invite@lu.ma', 'express@airbnb.com'):
+        assert RELAY.search(relay)
+    assert not RELAY.search('host@airbnb.com') and not RELAY.search('ody@lu.ma.example.com')
+    rows = [{'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 5},
+            {'name': 'Ody Zhou', 'address': 'calendar-invite@lu.ma', 'mails': 2},
+            {'name': 'Ody Zhou', 'address': 'express@airbnb.com', 'mails': 1}]
+    assert [[row['address'] for row in group] for group in _people_groups(rows)] == [
+        ['zhouody@gmail.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]

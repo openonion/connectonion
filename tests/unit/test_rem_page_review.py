@@ -1029,3 +1029,27 @@ def test_a_carried_over_project_source_is_recognised_when_reworded():
     old_sources = f"- [3] {real} — README.md, captured 2026-10-01\n"
     assert _carried_over(f"{real} — the project README", old_sources)
     assert not _carried_over("project-source:" + "b2" * 32 + " — invented", old_sources)
+
+
+def test_a_file_cited_with_its_current_hash_is_a_source_on_any_page(tmp_path):
+    """job-followup's skill page cited its applications log this way and was refused
+    (1.9.2b3): only project pages accepted a `file:` id."""
+    import hashlib
+    from connectonion.rem.page_review import _pinned_file
+    log = tmp_path / 'applications.md'
+    log.write_text('2026-10-01 applied to Acme\n')
+    digest = hashlib.sha256(log.read_bytes()).hexdigest()
+    assert _pinned_file(f'file:{log}#sha256:{digest} — applications log')
+    log.write_text('2026-10-02 rewritten\n')
+    assert not _pinned_file(f'file:{log}#sha256:{digest}')              # the file changed since
+    assert not _pinned_file(f'file:{tmp_path / "gone.md"}#sha256:{digest}')
+    assert not _pinned_file(f'file:{log}')                                # no hash, nothing pinned
+
+
+def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.page_review import source_dates
+    items = [{'source': 'gmail:a', 'timestamp': '2026-10-14T20:30:00Z'},
+             {'source': 'gmail:b', 'timestamp': 'yesterday'}]
+    dates = source_dates(Path('/nonexistent-notebook'), '# X\n', items, ZoneInfo('Australia/Sydney'))
+    assert dates == {'gmail:a': '2026-10-15'}
