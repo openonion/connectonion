@@ -91,8 +91,9 @@ Rules:
 - **Say things once.** Doubt goes in `Uncertainties`; empty sections stay
   `Unknown`.
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
-  arrive filled; keep them. Material about somebody else with the same name is
+  arrive filled; keep them, except relays. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
+- Say their name or "they"; "he"/"she" only where their own words show it.
 - **`Uncertainties`**: at most five unknowns that change the user's next step;
   never where you searched.
 - **Sources**: `- [n] <source id> — <date>`; claims stay in sentences. Never an
