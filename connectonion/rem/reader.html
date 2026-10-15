@@ -2731,7 +2731,7 @@ function category(c) {
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
-    items.length || other ? el("span", { class: "mono", text: (counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
+    items.length || other ? el("span", { class: "mono", text: (c === "sessions" ? items.length + " sessions" : counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
       + (other ? " · " + other + " other contacts" : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {

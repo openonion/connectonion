@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from . import config, service, source
 from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
+from .scan import project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
 
 AGENTS = {"codex": "Codex", "claude-code": "Claude Code"}
@@ -150,6 +151,10 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
     cwd = session.get("cwd") or ""
     if not why and cwd and Path(cwd).resolve().is_relative_to(notebook.root):
         why = "notebook"
+    # Probes and harness replays run in /tmp: 151 of 458 sessions on a real machine
+    # (2026-10-16) were "Reply with exactly: pong" and the like, never the owner's work.
+    if not why and cwd and project_exclusion(Path(cwd)) == "temporary execution directory":
+        why = "temporary_directory"
     if why:
         progress["files"][str(path)] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
                                          "record": "", "session": ""}

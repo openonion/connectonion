@@ -87,6 +87,7 @@ def test_rem_session_codex_page_and_openable_sources(notebook):
     ({"originator": "codex_exec"}, "exec_or_subagent"),
     ({"originator": "co_rem"}, "rem_task"),
     ({"cwd": "/notes/.state/tasks/run"}, "rem_task"),
+    ({"cwd": "/private/tmp/codex-probe"}, "temporary_directory"),
 ])
 def test_rem_session_automation_stays_out(notebook, meta, reason):
     transcript(notebook, **meta)
