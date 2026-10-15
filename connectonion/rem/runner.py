@@ -713,6 +713,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = merge_duplicate_sections(record, text, owner=record == owner.get("record"))
     if investigation:
         text = add_missing_sections(record, text, owner=record == owner.get("record"))
+    refuted = []
     if last_resort:
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
@@ -731,6 +732,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         errors += placeholder_errors(text)
     audit_usage = {}
     audit_status = "not automatically assessed"
+    if last_resort and (directory / "claim-review.json").is_file():
+        audit_status = f"bounded citation audit failed; {len(refuted)} refuted claims removed"
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
