@@ -107,11 +107,14 @@ machine being online:
   agent's summary; the sender's turns are in a second one, named
   `Handoff from <sender>: <title>`, each side labelled, ending in the report
   (Discussed, Concluded, Still open, the diagram) and "You can keep asking me
-  here." Accept prints how to open it, and the agent passes that on. In Codex it
-  is in the conversation list (`/resume`, or the app's sidebar) and opens with
-  `codex resume <id>`; in Claude Code it is in `claude --resume`'s list and opens
-  with `claude --resume <id>`. In any other agent there is no thread format to
-  write, and the conversation stays in `session.md`.
+  here." Accept prints how to open it, and `done` prints it again, last, so the
+  agent passes it on. In Codex it is in the conversation list (`/resume`, or the
+  app's sidebar), because accept has Codex read it once by id (Codex lists threads
+  from its own database, which takes in new files only once); when `codex` is not
+  on the PATH it opens with `codex resume <id>` only. In Claude Code it is in
+  `claude --resume`'s list and opens with `claude --resume <id>`. In any other
+  agent there is no thread format to write, and the conversation stays in
+  `session.md`.
 
 The rules accept prints: do the work in this folder without asking the person,
 ask them only before something that cannot be undone or leaves the machine,

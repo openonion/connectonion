@@ -102,7 +102,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # sender's folder name cannot leave it); a 1.9.2 sender pinning b27 installed none of that (Parrot,
 # 2026-10-14). A test now holds this at each release's own version, so it cannot be forgotten again.
 # 1.9.3b2: accept writes the sender's conversation as a thread of its own (#2513).
-MIN_VERSION = "1.9.3b2"
+# 1.9.3b3: Codex lists that thread in /resume, and done repeats the line that names it.
+MIN_VERSION = "1.9.3b3"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 

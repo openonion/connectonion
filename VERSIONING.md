@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3b2
+## Current Version: 1.9.3b3
+
+1.9.3b3 is a 1.9.3 beta; stable remains 1.9.2. In a Codex home that had run Codex before, the thread
+1.9.3b2 wrote was missing from `/resume` and the app's sidebar: Codex 0.162.1 lists threads from its
+state database, which takes in new rollouts only once. Accept now has Codex read the thread by id, which
+lists it, and `co handoff done` repeats the line that names it, because a Codex receiver left accept's
+copy out of its report. See [1.9.3b3 notes](docs/releases/1.9.3b3.md).
+
+- 1.9.3b3 (The handoff's thread, listed in Codex).
+
+## Previous preview: 1.9.3b2
 
 1.9.3b2 is a 1.9.3 beta; stable remains 1.9.2. A pasted handoff left the sender's conversation out of
 every thread: the recipient's Codex held the paste, tool calls and its own summary (#2513). Accept,

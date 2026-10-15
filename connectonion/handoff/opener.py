@@ -6,7 +6,7 @@ $CODEX_HOME/sessions, one turn per exchange. Each turn needs its events
 response items: with the items alone the model sees the history but the app, and the phone
 that remote-controls it, show nothing. There is no public API to inject history, so this is
 Codex's internal format; when `codex exec resume` refuses the file, open falls back to one
-seeded turn. The thread is named in session_index.jsonl, which the app reads.
+seeded turn. The thread is named in session_index.jsonl, and listed once Codex has read it (register).
 
 Two real turns follow. The first accepts the handoff and writes a short report a person can
 read on a phone. The second, in the background, does the work and tells the sender when it
@@ -246,15 +246,34 @@ def _now() -> tuple[datetime, str]:
 def write_replay(bundle: dict, cwd: Path, closing: bool = False) -> str:
     """Write the replayed thread and its name into Codex's home; returns the thread id."""
     now, at = _now()
-    thread = _uuid7()
-    folder = codex_home() / "sessions" / now.strftime("%Y/%m/%d")
+    thread, local = _uuid7(), now.astimezone()   # Codex names its own rollouts by local time
+    folder = codex_home() / "sessions" / local.strftime("%Y/%m/%d")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"rollout-{now.strftime('%Y-%m-%dT%H-%M-%S')}-{thread}.jsonl"
+    path = folder / f"rollout-{local.strftime('%Y-%m-%dT%H-%M-%S')}-{thread}.jsonl"
     rows = replay_lines(bundle, thread, cwd, at, _model(), closing)
     path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
     with open(codex_home() / "session_index.jsonl", "a", encoding="utf-8") as index:
         index.write(json.dumps({"id": thread, "thread_name": thread_name(bundle), "updated_at": at}) + "\n")
     return thread
+
+
+def register(thread: str) -> bool:
+    """Have Codex read the thread by id, so /resume and the app's sidebar list it. Codex 0.162.1 lists them from
+    state_5.sqlite, which takes in rollouts only in a one-time backfill: in a home that had run Codex the
+    thread was missing from both (1.9.3b2 review, 2026-10-15), and listed after thread/read. False when there
+    is no codex here to ask, as in the Codex app's own shell."""
+    if not shutil.which("codex"):
+        return False
+    server = subprocess.Popen(["codex", "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True)
+    for asked in ({"id": 0, "method": "initialize", "params": {"clientInfo": {"name": "connectonion", "version": "1"}}},
+                  {"method": "initialized"}, {"id": 1, "method": "thread/read", "params": {"threadId": thread}}):
+        server.stdin.write(json.dumps({"jsonrpc": "2.0", **asked}) + "\n")
+    server.stdin.flush()   # it stops at the end of its input before answering, so close only after the answer
+    answer = next((a for a in map(json.loads, server.stdout) if a.get("id") == 1), {})
+    server.stdin.close()
+    server.wait()
+    return "result" in answer
 
 
 def _model() -> str:
@@ -378,8 +397,10 @@ def replay_here(bundle: dict, cwd: Path, agent: str) -> str:
     name, where = thread_name(bundle), shlex.quote(str(cwd))
     if agent == "codex":
         thread = write_replay(bundle, cwd, closing=True)
-        return (f'{name}: the sender\'s whole conversation is now a Codex conversation of its own. Open it from the '
-                f'conversation list (/resume here, or the sidebar in the Codex app), or: cd {where} && codex resume {thread}')
+        listed = (" Open it from the conversation list (/resume here, or the sidebar in the Codex app), or:"
+                  if register(thread) else " Open it with:")
+        return (f"{name}: the sender's whole conversation is now a Codex conversation of its own.{listed} "
+                f"cd {where} && codex resume {thread}")
     session = write_claude_replay(bundle, cwd, closing=True)
     return (f"{name}: the sender's whole conversation is now a Claude Code session of its own. "
             f"Open it with: cd {where} && claude --resume {session}")
