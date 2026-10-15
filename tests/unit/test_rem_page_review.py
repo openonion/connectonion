@@ -1001,6 +1001,35 @@ def test_sources_already_in_order_are_unchanged():
     assert renumber_sources(text) == text
 
 
+@pytest.mark.parametrize('text, expected', [
+    ('[15][16][15][16]', '[15][16]'),
+    ('[21][21]', '[21]'),
+    ('[8][8]', '[8]'),
+    ('[3] [3]', '[3]'),
+    ('[1][2]', '[1][2]'),
+    ('[2] [1][2] [3]', '[2][1][3]'),
+    ('[3]  [3]', '[3]  [3]'),
+    ('[3]\n[3]', '[3]\n[3]'),
+    ('`rows[5][5]` [5][5]', '`rows[5][5]` [5]'),
+    ('```python\nrows[5][5]\n```\n[5][5]', '```python\nrows[5][5]\n```\n[5]'),
+    ('[3](http://x)[3]', '[3](http://x)[3]'),
+    ('[3][3](http://x)', '[3][3](http://x)'),
+    ('[W1][W1]', '[W1][W1]'),
+    ('## Sources\n- [3] gmail:abc — original\n', '## Sources\n- [3] gmail:abc — original\n'),
+])
+def test_repeated_citation_markers_collapse_only_within_prose_runs(text, expected):
+    from connectonion.rem.page_review import collapse_repeated_markers
+    assert collapse_repeated_markers(text) == expected
+
+
+def test_merged_sources_leave_one_citation_after_renumbering():
+    from connectonion.rem.page_review import collapse_repeated_markers, renumber_sources, settle_sources
+    text = ('# Dora\n\nA fact [1][2]\n\n## Sources\n'
+            '- [1] gmail:abc — original\n- [2] gmail:abc — repeated\n')
+    assert collapse_repeated_markers(renumber_sources(settle_sources(text, {}))) == (
+        '# Dora\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
+
+
 def test_a_required_section_the_turn_left_out_is_added_as_unknown():
     # 1.9.2b3 trial: a project page without "Open threads" and a skill page
     # without "Limitations" were refused whole, reported as "must occur once".

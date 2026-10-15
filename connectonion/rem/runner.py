@@ -855,10 +855,11 @@ def _write_page(notebook, record, text, items):
     """Save an accepted page with its sources numbered once and dated by their originals."""
     from . import facts
     from .config import read_config
-    from .page_review import renumber_sources, settle_sources, source_dates
+    from .page_review import collapse_repeated_markers, renumber_sources, settle_sources, source_dates
     from .service import notebook_zone
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+    notebook.write(record, collapse_repeated_markers(
+        renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates))))
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
