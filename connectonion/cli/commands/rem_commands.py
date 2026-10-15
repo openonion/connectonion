@@ -833,6 +833,29 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     return typer.confirm("Read these sources with this model and schedule?", default=False)
 
 
+def _map_session_consent(ctx, waiting, *, yes: bool) -> bool:
+    """Ask before `build_map` reads local Codex / Claude Code session folders (#2443)."""
+    import sys
+
+    lines = ["co rem will read local coding session folders to map projects:"]
+    for name, source in waiting:
+        root = source.get("root") or "(no path)"
+        lines.append(f"  - {name}: {root}  (turn off: co rem sources remove {name})")
+    message = "\n".join(lines)
+    if ctx.obj["json"]:
+        return yes
+    if yes:
+        rem_look.say(rem_look.result(message), err=True, plain=message)
+        return True
+    if not sys.stdin.isatty():
+        rem_look.say(rem_look.result(message), err=True, plain=message)
+        rem_look.line("A noninteractive run cannot consent silently. Re-run with --yes after reading "
+                      "which session folders will be scanned, or use a terminal.", err=True)
+        return False
+    rem_look.say(rem_look.result(message), plain=message)
+    return typer.confirm("Read these session folders for the map?", default=False)
+
+
 def _people_table(ctx, root, category, *, company, open_only, sort):
     """`co rem list people --table`: rows from the index (#2067), most recent contact first."""
     from ...rem.files import RemError
@@ -951,6 +974,21 @@ def make_rem_app(factory):
                 except Exception as error:
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
+            # Local coding session folders are enabled by default but not consented
+            # (#2443). Ask before build_map walks them; declining leaves the map
+            # without session projects and does not write consent.json (start still
+            # shows the schedule summary).
+            from ...rem.service import (approve_coding_session_sources,
+                                        waiting_coding_session_sources)
+            waiting_sessions = waiting_coding_session_sources(root)
+            if waiting_sessions:
+                if _map_session_consent(ctx, waiting_sessions, yes=yes):
+                    approve_coding_session_sources(root, [name for name, _ in waiting_sessions])
+                    sources = subscriptions(root)
+                elif not ctx.obj["json"]:
+                    rem_look.line("Local coding sessions were not scanned. Approve later with "
+                                  + _next(ctx, ["start", "--yes"]) + ", or re-run init with --yes.",
+                                  err=True)
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
             try:
