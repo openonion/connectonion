@@ -1370,12 +1370,26 @@ def make_rem_app(factory):
             # (#1637); a custom --root is never assumed to belong to it.
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
-            # The snapshot is the default (#1828); the live view is asked for.
-            wanted = not local and (live or reader.LIVE_IS_DEFAULT)
-            result = reader.live_or_snapshot(root, identity and identity["address"],
-                                             live=wanted, launch=launch)
+            owner = identity and identity["address"]
+            if local:
+                result = reader.open_snapshot(root, launch=launch)
+            elif live:
+                result = reader.live_or_snapshot(root, owner, live=True, launch=launch)
+            else:
+                result = reader.local_or_snapshot(root, owner, launch=launch)
             return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
         _handle(ctx, operation, ["doctor"])
+
+    @rem.command("translate", cls=V("co rem translate"))
+    def translate_page(ctx: typer.Context, page: str = typer.Argument(...),
+                       to: str = typer.Option(..., "--to", help="Language tag: zh, zh-TW, ja, en ...")):
+        from ...rem.files import Notebook
+        from ...rem.translate import translate
+
+        def operation(root):
+            record = _resolve_page(Notebook(root), page)
+            return translate(root, record, to), ["show", record]
+        _handle(ctx, operation, ["list"])
 
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
@@ -2022,7 +2036,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate open list show search start stop status sync sources config logs doctor "
+    order = ("init investigate open list show search translate start stop status sync sources config logs doctor "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

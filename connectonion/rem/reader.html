@@ -912,6 +912,9 @@
     .hypno .trace { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.4s ease-out 120ms forwards; }
     @keyframes draw { to { stroke-dashoffset: 0; } }
   }
+  /* Languages: read a page in another language (languageBar below). */
+  .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font: 13px var(--ui); color: var(--ink-2); }
+  .lang-bar select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13px var(--ui); }
 </style>
 </head>
 <body>
@@ -2888,6 +2891,8 @@ function record(path, heading) {
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
   head.appendChild(leadRow(r));
+  const languages = languageBar(r);
+  if (languages) head.appendChild(languages);
   main.appendChild(head);
   main.appendChild(recordFocus(r));
 
@@ -3312,6 +3317,51 @@ document.addEventListener("keydown", e => {
     e.preventDefault(); qInput.focus();
   }
 });
+// ---- Languages ---------------------------------------------------------------
+// A page read in another language. Translations are made by co ai on the Host
+// (rem/translate.py) and cached beside the notebook; the page as written stays
+// the record. A snapshot offers only the translations it carries; the live
+// reader (served by rem_http.py) can ask the Host for any of READ_LANGUAGES.
+const READ_LANGUAGES = ["en", "zh", "zh-TW", "ja", "ko", "es", "fr", "de"];
+function languageName(tag) { return new Intl.DisplayNames([navigator.language || "en"], { type: "language" }).of(tag) || tag; }
+function languageBar(r) {
+  const cached = Object.keys(r.translations || {});
+  if (!REM.live && !cached.length) return null;
+  const tags = REM.live ? [...new Set([REM.language, ...READ_LANGUAGES, ...cached])] : cached;
+  const select = el("select", { "aria-label": "Read this page in" }, [el("option", { value: "", text: "As written" }),
+    ...tags.map(tag => el("option", { value: tag, text: languageName(tag) + (cached.includes(tag) ? "" : " · translate with co ai") }))]);
+  select.value = r.shown || "";
+  const status = el("span", { class: "lang-status", role: "status" });
+  select.onchange = () => readIn(r, select.value, status, select);
+  return el("div", { class: "lang-bar" }, [el("span", { text: "Read in" }), select, status]);
+}
+async function readIn(r, tag, status, select) {
+  if (!tag || r.translations?.[tag]) return showLanguage(r, tag);
+  select.disabled = true;
+  status.textContent = "Translating with co ai… this takes a minute or two.";
+  let answer = await askHost({ page: r.path, language: tag });
+  while (answer.state === "running") {
+    await new Promise(done => setTimeout(done, 2000));
+    answer = await askHost({ page: r.path, language: tag });
+  }
+  select.disabled = false;
+  if (answer.state === "failed") { status.textContent = "Not translated: " + answer.error; return; }
+  (r.translations ||= {})[tag] = answer.text;
+  showLanguage(r, tag);
+}
+function askHost(body) {
+  return fetch("/rem/translate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+    .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run co rem open again" } : response.json())
+    .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run co rem open again" }));
+}
+function showLanguage(r, tag) {
+  r.original ??= r.text;
+  r.text = tag ? r.translations[tag] : r.original;
+  r.shown = tag;
+  KNOWN.delete(r.path);
+  render();
+}
+
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 render();

@@ -384,6 +384,11 @@ async def _route_http(
             )
             return
 
+    if path == "/rem" or path.startswith("/rem/"):
+        from .rem_http import handle_rem_http
+        await handle_rem_http(scope, receive, send, route_handlers)
+        return
+
     if path.startswith("/admin") or path.startswith("/superadmin"):
         await handle_admin_routes(
             method, path, scope, receive, route_handlers,

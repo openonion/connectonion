@@ -474,10 +474,15 @@ def language_note(root: Path) -> str:
     """The language a page's prose is written in; what code reads stays as it is."""
     from .config import read_config
     language = read_config(root, validated=False).get("language") or "en"
-    return (f"\n\nWrite the page's prose in the language tagged `{language}`. Keep exactly as given: "
-            "headings, Facts labels, source ids, `Unknown`, `None as of`, `Nothing open as of` and the "
-            "`Now:`/`Changed:`/`At stake:`/`Pattern:` prefixes. Names stay as written; a quote stays in "
-            "its original language. ")
+    return f"\n\nWrite the page's prose in the language tagged `{language}`." + language_rules()
+
+
+def language_rules() -> str:
+    """What stays as it is in any language: what code reads, names and quotes.
+    Shared by page writing and by translation (`translate.py`)."""
+    return (" Keep exactly as given: headings, Facts labels, source ids, `Unknown`, `None as of`, "
+            "`Nothing open as of` and the `Now:`/`Changed:`/`At stake:`/`Pattern:` prefixes. Names stay "
+            "as written; a quote stays in its original language. ")
 
 
 def today_note(root: Path) -> str:

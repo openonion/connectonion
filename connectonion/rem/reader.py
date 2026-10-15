@@ -150,8 +150,12 @@ def snapshot(root: Path) -> dict:
             context = contexts.get(message["source"])
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
+    from .config import read_config
+    from .translate import cached_languages
+    for record in records:
+        record["translations"] = cached_languages(root, record["path"])
     candidates, contact_coverage = contact_candidates(root)
-    return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    return {"language": read_config(root, validated=False).get("language") or "en","as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts),
@@ -167,8 +171,9 @@ def owner_record(root: Path) -> str:
     return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
-def render(root: Path) -> str:
-    data = json.dumps(snapshot(root), ensure_ascii=False, default=str)
+def render(root: Path, *, live: bool = False) -> str:
+    """`live`: served by the Host (rem_http.py), so the page may ask it to translate."""
+    data = json.dumps({**snapshot(root), "live": live}, ensure_ascii=False, default=str)
     # Inside a script block only "</script" and the U+2028/9 terminators can break
     # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
     data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
@@ -222,11 +227,10 @@ LIVE_REM_URL = "https://chat.openonion.ai/{address}/rem"
 # The /rem route is paired with O Chat; old /wiki links redirect there.
 LIVE_REM_SERVED = True
 
-# Is the live view what a bare `co rem open` opens? No, by the owner's decision
-# (2026-09-27, #1828): opening locally is the default and works offline; the
-# live view through the Host is a feature asked for with --live.
-LIVE_IS_DEFAULT = False
-
+# A bare `co rem open` opens the live reader on this computer, served by the
+# co ai Host and able to translate (owner, 2026-10-15; before, #1828 made the
+# snapshot the default). The snapshot is the fallback, or asked for with --local;
+# the O Chat view, for another device, with --live.
 LIVE_HINT = "co rem open --live   (the live view in O Chat; starts co ai automatically)"
 
 
@@ -263,6 +267,26 @@ def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
     path = open_reader(root, launch=launch)
     return {"page": str(path), "link": path.as_uri(), "launched": launch,
             "note": "a snapshot of the notebook as it is now; co rem open again shows later changes", **notes}
+
+
+def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
+    """What a bare `co rem open` shows: the reader served by this computer's co ai
+    Host (started when none runs), or the snapshot, saying why."""
+    if not address:
+        return open_snapshot(root, launch=launch, live=(
+            "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
+    from .live_host import ensure_local
+    try:
+        url, failure = ensure_local(address)
+    except (OSError, RemError) as error:
+        url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
+    if failure:
+        return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot",
+                             live_startup_failed=True)
+    if launch:
+        webbrowser.open(url)
+    return {"page": url.split("?")[0], "link": url, "launched": launch,
+            "note": "the live reader, served by co ai on this computer; it can translate a page"}
 
 
 def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
