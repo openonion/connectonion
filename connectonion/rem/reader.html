@@ -42,6 +42,8 @@
     --blue-line: #c3caee;
     --lamp: #9a5800;
     --waiting: #9c5800;
+    --wait: #9c5800;
+    --dawn: #4450c4;
     --lamp-soft: #fbf0de;
     --lamp-line: #ebcb94;
     --night: #18203f;
@@ -61,7 +63,7 @@
     :root:not([data-theme="light"]) {
       --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
       --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
-      --waiting: #e3a54a; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+      --waiting: #e3a54a; --wait: #e3a54a; --dawn: #9aa3ff; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
       --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #5a4310; --mark-ink: #ffe7b0;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
     }
@@ -69,7 +71,7 @@
   :root[data-theme="dark"] {
     --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
     --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
-    --waiting: #e3a54a; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+    --waiting: #e3a54a; --wait: #e3a54a; --dawn: #9aa3ff; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
     --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #5a4310; --mark-ink: #ffe7b0;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
   }
@@ -774,6 +776,47 @@
   .deep-head h2 { margin: 0; font: 600 17px var(--ui); color: var(--ink); }
   .deep-hint { font: 11px var(--mono); color: var(--ink-3); }
   .deep-note .page-grid { padding-top: 22px; }
+  /* A person's first screen is a ledger; the full note waits below it. */
+  .person-head { max-width: 1120px; margin-bottom: 24px; }
+  .person-head h1 { margin-bottom: 12px; }
+  .person-lead { max-width: 72ch; margin: 0 0 12px; font: 18px/1.5 var(--text); }
+  .contact-line.leadrow { margin: 0; color: var(--ink-2); }
+  .contact-line .lead-meta { display: block; font: 13px/1.5 var(--ui); overflow-wrap: anywhere; }
+  .person-focus { max-width: 1120px; }
+  .person-focus h2 { margin: 24px 0 12px; font: 600 22px/1.25 var(--display); }
+  .between-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+  .ledger-column { min-width: 0; border-top: 2px solid var(--ink); }
+  .ledger-column.mine { border-color: var(--wait); }
+  .ledger-column h3 { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; font: 600 16px/1.4 var(--ui); }
+  .ledger-count { color: var(--ink-3); font-weight: 400; }
+  .ledger-rows { list-style: none; padding: 0; margin: 0; }
+  .ledger-row { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .ledger-row p { margin: 0 0 5px; font: 16px/1.5 var(--text); }
+  .ledger-meta { display: block; color: var(--ink-2); font: 12px/1.4 var(--ui); }
+  .ledger-row.quiet .ledger-meta { color: var(--ink-3); }
+  .overdue, .waiting-age.overdue b { color: var(--wait); }
+  .ledger-more > summary { cursor: pointer; padding: 10px 0; min-height: 44px; color: var(--ink-2); font: 13px/1.5 var(--ui); }
+  .person-insight dl { margin: 0; }
+  .person-insight dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; padding: 9px 0; }
+  .person-insight dt { color: var(--ink); font: 600 13px/1.5 var(--ui); }
+  .person-insight dt.at-stake { color: var(--wait); }
+  .person-insight dt.changed { color: var(--dawn); }
+  .person-insight dd { margin: 0; font: 15px/1.5 var(--text); overflow-wrap: anywhere; }
+  .person-focus .recent-activity { padding: 0; border: 0; background: transparent; margin-top: 24px; }
+  .recent-activity .activity-list { max-height: none; overflow: visible; }
+  .recent-activity .activity-head h2 { margin-top: 0; }
+  details.deep-note > summary { cursor: pointer; min-height: 56px; padding: 18px 0; }
+  details.deep-note > summary h2 { display: inline; }
+  details.deep-note > summary::after { content: "+"; margin-left: auto; color: var(--ink-3); }
+  details.deep-note[open] > summary::after { content: "−"; }
+  .deep-context { margin-top: 24px; }
+  @media (max-width: 719px) {
+    .between-ledger { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+    .person-head { margin-bottom: 18px; }
+    .person-lead { font-size: 16px; }
+    .person-insight dl > div { grid-template-columns: 65px minmax(0, 1fr); gap: 10px; }
+    details.deep-note > summary .deep-hint { display: block; margin-top: 4px; }
+  }
   .claim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 20px 0; }
   .claim-grid.standalone { max-width: 980px; }
   .claim-card { padding: 16px 18px; border-radius: 10px; border: 1px solid var(--blue-line); background: var(--sheet); color: var(--ink); }
@@ -1538,7 +1581,8 @@ function direction(text) {
   const own = new RegExp("^" + me + "\\s+(owes?|asked)\\b", "i").exec(prefix);
   if (own) return own[1].toLowerCase() === "asked" ? "theirs" : "mine";
   const debt = /^([^:;!?]+?)\s+owes?\s+(.+)/i.exec(prefix);
-  if (debt) return new RegExp("^" + me + "\\b", "i").test(debt[2]) ? "theirs" : "third";
+  if (debt && /^[A-Z]/.test(debt[1]) && debt[1].split(/\s+/).length <= 6 && !/,|\b(?:said|would|that|what)\b/i.test(debt[1]))
+    return new RegExp("^" + me + "\\b", "i").test(debt[2]) ? "theirs" : "third";
   const { mine, theirs } = owing();
   const a = text.search(mine), b = text.search(theirs);
   return a < 0 && b < 0 ? "plain" : a < 0 ? "theirs" : b < 0 ? "mine" : a <= b ? "mine" : "theirs";
@@ -2162,22 +2206,57 @@ function morningBrief() {
       (n ? " " + n + (n === 1 ? " page was" : " pages were") + " reworded; nothing new." : "") }));
   }
   if (pass?.failed?.length) brief.appendChild(el("p", { class: "quiet-line" }, [
-    pass.failed.length + " runs need attention. ", el("a", { href: "#view=activity", text: "Review failed runs →" })]));
+    pass.failed.length + (pass.failed.length === 1 ? " run needs attention. " : " runs need attention. "), el("a", { href: "#view=activity", text: "Review failed runs →" })]));
   return brief;
 }
+// Quotes stay verbatim; a summary never acquires someone's quotation marks.
+function morningWords(text, r) {
+  const quote = /“([^”\n]{6,})”|"([^"\n]{6,})"/.exec(text);
+  if (quote) return { words: "“" + (quote[1] || quote[2]).replace(/\s*\[W?\d{1,3}\]/g, "") + "”",
+    context: [text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim(),
+      (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
+  const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
+  const summary = plainLine(threadWords(text, r)).replace(/^you owe\s+\S+\s*/i, "");
+  const clause = summary.split(/;|(?<=[.!?])\s/)[0];
+  const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
+  return { words, context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
+}
+// A copied obligation belongs on its named counterpart's page, once per morning.
+function morningEntries(entries) {
+  const people = inCategory("people"), pages = new Set(), obligations = new Set(), chosen = [];
+  for (const entry of entries) {
+    const { r, t } = entry;
+    if (t.dir !== "mine" || t.quiet || pages.has(r.path)) continue;
+    const prefix = /^you owe\s+(.+)/i.exec(plainLine(t.text));
+    const names = person => [person.title.trim(), person.title.trim().split(/\s+/)[0]];
+    const addressed = person => names(person).some(n => prefix?.[1].toLowerCase().startsWith(n.toLowerCase() + " ") || prefix?.[1].toLowerCase().startsWith(n.toLowerCase() + ":"));
+    const counterpart = prefix && people.find(addressed);
+    if (r.category === "people" && counterpart && !addressed(r)) continue;
+    const obligation = (counterpart?.path || r.path) + ":" + morningWords(t.text, r).words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    if (obligations.has(obligation)) continue;
+    chosen.push(entry); pages.add(r.path); obligations.add(obligation);
+    if (chosen.length === 3) break;
+  }
+  return chosen;
+}
+function threadDate(day) {
+  return new Date(day + "T00:00:00Z").toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).replace("Sept", "Sep");
+}
+function dueLabel(t) {
+  return (t.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(t.due);
+}
 function morningThread({ r, t }) {
-  const quote = /“([^”]+)”|"([^"\n]+)"/.exec(t.text);
-  const words = quote ? quote[1] || quote[2] : t.text.replace(/^(?:the user|user|you) owes? [^:]+:\s*/i, "");
-  const context = quote ? t.text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim() : "";
+  const { words, context } = morningWords(t.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
   const label = /\b(?:promised|agreed|offered to)\b/i.test(t.text) ? "you promised" : /\?|\bquestion\b/i.test(t.text) ? "a question" : "a request";
   const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("");
   return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
     el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
-    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: "“" + (quote ? words : plainLine(words)) + "”" }),
-      el("p", { class: "context", html: inline(context || (t.text.match(/\[W?\d{1,3}\]/g) || []).join(" "), r.path) })]),
-    el("div", { class: "waiting-age" }, [el("b", { text: t.due ? "due " + shortDate(t.due) : age(t.since) }), el("span", { text: label })])]);
+    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
+      privateFallback(el("p", { class: "context", html: inline(context, r.path) }))]),
+    el("div", { class: "waiting-age" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : "") },
+      [el("b", { text: t.due ? dueLabel(t) : age(t.since) }), el("span", { text: label })])]);
 }
 function quietThreads(entries, count, home = false) {
   const items = entries.filter(({ t }) => t.quiet);
@@ -2192,7 +2271,7 @@ function morningNight() {
   const pass = lastPass();
   const strip = el("section", { class: "night night-strip", "aria-label": "The last pass" }, [
     el("p", { text: pass ? "Last pass · " + fmtTime(new Date(pass.latest).toISOString()) + " · " + pass.items + " items read · " + pass.changed.length + " pages rewritten" +
-      (pass.failed.length ? " · " + pass.failed.length + " runs need attention" : "") : "No pass yet. Run co rem sync to read what came in." })]);
+      (pass.failed.length ? " · " + pass.failed.length + (pass.failed.length === 1 ? " run needs attention" : " runs need attention") : "") : "No pass yet. Run co rem sync to read what came in." })]);
   strip.insertAdjacentHTML("beforeend", hypnogram(new Date(REM.as_of).getTime()));
   return strip;
 }
@@ -2266,12 +2345,12 @@ function overview() {
   main.textContent = "";
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  const entries = threadEntries(), counts = threadCounts(), shown = Math.min(3, counts.mine);
+  const entries = threadEntries(), counts = threadCounts(), waiting = morningEntries(entries), shown = waiting.length;
   main.appendChild(morningNight());
   const primary = el("div", { class: "morning-primary" }, [
     el("h1", { text: shown === 0 ? "Nothing is waiting on you" : shown === 1 ? "One thing is waiting on you" : shown + " things are waiting on you" }),
-    el("p", { class: "waiting-intro", text: "Newest and due first. Each line is in their words." }),
-    el("ol", { class: "waiting-ledger" }, entries.filter(({ t }) => t.dir === "mine" && !t.quiet).slice(0, 3).map(morningThread)),
+    el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }),
+    el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)),
     el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: "See all " + counts.mine + " waiting on you" }),
       " and " + counts.theirs + " are waiting on someone else"]), morningBrief()]);
   const side = el("aside", { class: "morning-side" });
@@ -2534,8 +2613,9 @@ function sectionBody(r, s) {
         el("span", { class: "badge", text: m[1] }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
     }
   }
-  if (name === "open threads") {
-    const t = threads(r);
+  if (name === "open threads" || name === "more open threads") {
+    const all = threads(r);
+    const t = name === "more open threads" ? { items: all.items.slice(3), calm: "" } : all;
     const box = el("div", { class: "block-threads" });
     if (t.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: "Clear" }), el("span", { html: inline(t.calm, r.path) })]));
     if (t.items.length) box.appendChild(el("ul", { class: "threads" }, t.items.map(item => threadRow(r, item, false))));
@@ -2653,7 +2733,7 @@ function threadPreview(text) {
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
   const k = known(r), t = threads(r), row = el("div", { class: "leadrow" });
-  if (t.items.length) {
+  if (t.items.length && r.category !== "projects") {
     const first = t.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
       el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: threadPreview(first.text) }),
@@ -2665,7 +2745,7 @@ function leadRow(r) {
   const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
   if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead)) {
     const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
-    row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
+    row.appendChild(privateFallback(el("span", { id: "what-it-is", class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
       [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
@@ -2790,7 +2870,63 @@ function mappedProjectLine(r) {
   return "Not written yet" + (sessions ? ": " + sessions + " session" + (sessions === "1" ? "" : "s") +
     (last ? ", last on " + last : "") : "") + ".";
 }
+function personLead(r) {
+  const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^Now:/i.test(t));
+  const text = (known(r).intro || now?.replace(/^Now:\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
+  const sentences = text.match(/.*?[.!?](?:\s*\[W?\d{1,3}\])*(?=\s|$)|.+$/g) || [];
+  return privateFallback(el("p", { class: "person-lead", html: inline(sentences.slice(0, 2).join(" "), r.path) }));
+}
+function contactLine(r) {
+  const f = facts(r);
+  const fields = [f.role, f.company].filter(v => v && !/^Unknown\b/i.test(String(v)));
+  return el("p", { class: "contact-line leadrow" }, [privateFallback(el("span", { class: "lead-meta", html: inline(
+    [f.last ? (mappedContact(r) ? "Last contact in map " : "Last contact ") + threadDate(f.last) : "", ...fields].filter(Boolean).join(" · "), r.path) }))]);
+}
+// Remove a structured label for display; direction still comes from threads().
+function threadWords(text, r) {
+  const names = [r, ...inCategory("people")].filter(Boolean)
+    .flatMap(person => [person.title.trim(), person.title.trim().split(/\s+/)[0]]).sort((a, b) => b.length - a.length);
+  const name = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const words = text.replaceAll("**", "").replace(/^[^:;!?]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
+  return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
+}
+function ledgerRow(r, t) {
+  const text = threadWords(t.text, r);
+  const meta = t.quiet ? [age(t.since), "gone quiet"].filter(Boolean).join(", ") : t.due ? dueLabel(t) : age(t.since);
+  return el("li", { class: "ledger-row" + (t.quiet ? " quiet" : "") }, [
+    privateFallback(el("p", { html: inline(text.charAt(0).toUpperCase() + text.slice(1), r.path) })),
+    el("span", { class: "ledger-meta" + (!t.quiet && t.due && t.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta })]);
+}
+function ledgerColumn(r, items, dir) {
+  const first = r.title.trim().split(/\s+/)[0];
+  return el("section", { class: "ledger-column " + dir }, [
+    el("h3", {}, [el("span", { text: dir === "mine" ? "You owe " + first : first + " owes you" }), el("span", { class: "ledger-count", text: String(items.length) })]),
+    el("ul", { class: "ledger-rows" }, items.slice(0, 3).map(t => ledgerRow(r, t))),
+    items.length > 3 ? el("details", { class: "ledger-more" }, [el("summary", { text: (items.length - 3) + " more" }),
+      el("ul", { class: "ledger-rows" }, items.slice(3).map(t => ledgerRow(r, t)))]) : null]);
+}
+function betweenYou(r) {
+  const t = threads(r), mine = t.items.filter(t => t.dir === "mine"), theirs = t.items.filter(t => t.dir === "theirs");
+  const calmDate = /\d{4}-\d{2}-\d{2}/.exec(t.calm)?.[0];
+  return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: "Between you" }),
+    mine.length || theirs.length ? el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")])
+      : el("p", { class: "quiet-line", text: "Nothing open between you" + (calmDate ? " · " + threadDate(calmDate) : "") })]);
+}
+function personInsight(r) {
+  const items = listItems(section(r, "insight")?.text || "").slice(0, 4);
+  if (!items.length) return null;
+  return el("section", { class: "person-insight", id: "insight" }, [el("h2", { text: "Where it stands" }),
+    el("dl", {}, items.map(item => {
+      const match = /^([^:]+):\s*(.*)$/.exec(item.replace(/^\*\*([^*]+)\*\*/, "$1")), label = match?.[1] || "Now";
+      return el("div", {}, [el("dt", { class: label === "At stake" ? "at-stake" : label === "Changed" ? "changed" : "", text: label }),
+        privateFallback(el("dd", { html: inline(match ? match[2] : item, r.path) }))]);
+    }))]);
+}
+function personFocus(r) {
+  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true)]);
+}
 function recordFocus(r) {
+  if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
@@ -2811,7 +2947,7 @@ function recordFocus(r) {
   const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
-  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : "") }, [el("span", { class: "focus-kicker", text: question })]);
+  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : ""), ...(projectNeedsContext ? { id: "what-it-is" } : {}) }, [el("span", { class: "focus-kicker", text: question })]);
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
@@ -2863,9 +2999,6 @@ function recordFocus(r) {
     }
   }
   out.appendChild(focusHead);
-  const person = r.category === "people" && r.path !== REM.owner;
-  const strip = person && contactStrip(r);
-  if (strip) out.appendChild(strip);
   const coverage = r.category === "projects" ? r.project_coverage : null;
   const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
     ? el("p", { class: "scope-note", text: coverage.scope === "queued"
@@ -2879,13 +3012,13 @@ function recordFocus(r) {
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
         " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
   const open = threads(r).items;
-  if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
+  if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
     el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
       open.slice(0, 3).map(t => threadRow(r, t, false)))]));
   if (r.category === "projects") {
     const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
     const blocks = [];
-    if (purpose && !projectNeedsContext) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
+    if (purpose && !projectNeedsContext && k.status === "Mapped") blocks.push(el("section", { class: "focus-section", id: "what-it-is" }, [el("h2", { text: "What this is" }),
       privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
     if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
       el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
@@ -2900,8 +3033,15 @@ function recordFocus(r) {
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
       : r.category === "skills" ? [["Skill-name matches", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last name match", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
-  if (shown.length && !person) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
+  if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+  out.append(...recordContext(r).childNodes);
+  const activity = activityPanel(r);
+  if (activity) out.appendChild(activity);
+  return out;
+}
+function recordContext(r) {
+  const out = el("div", { class: "record-focus deep-context " + r.category });
   // Enrich (#2315): the documents this page cites, each one click from its file.
   const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
     .filter(([, c]) => c?.source === "attachment" && c.file);
@@ -2933,8 +3073,6 @@ function recordFocus(r) {
       }))]) : null]));
   const related = connectedContext(r);
   if (related) out.appendChild(related);
-  const activity = activityPanel(r);
-  if (activity) out.appendChild(activity);
   return out;
 }
 
@@ -2972,17 +3110,18 @@ function activityType(text) {
   if (/\b(promis|owe|waiting|due)\w*/i.test(text)) return "Commitment";
   return "Conversation";
 }
-function activityPanel(r) {
+function activityPanel(r, recent = false) {
   const history = section(r, "history");
   if (!history) return null;
   const items = historyItems(history.text).filter(item => item.day);
   if (!items.length) return null;
-  const box = el("section", { class: "focus-section activity-view", "aria-label": "Activity" });
-  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: "Activity" }),
-    el("span", { class: "activity-note", text: "From this page's dated history" })]));
+  const box = el("section", { class: "focus-section activity-view" + (recent ? " recent-activity" : ""), "aria-label": recent ? "Recently" : "Activity" });
+  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: recent ? "Recently" : "Activity" }),
+    recent ? el("a", { href: href(r) + "&h=history", text: "All history →" }) : el("span", { class: "activity-note", text: "From this page's dated history" })]));
   const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
   const list = el("ol", { class: "activity-list" });
-  const rows = items.slice().sort((a, b) => b.day.localeCompare(a.day)).map(item => {
+  const sorted = items.slice().sort((a, b) => b.day.localeCompare(a.day));
+  const rows = (recent ? sorted.slice(0, 5) : sorted).map(item => {
     const type = activityType(item.text);
     const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day }),
       el("span", { class: "activity-type", text: type }),
@@ -3001,7 +3140,8 @@ function activityPanel(r) {
     };
     filters.appendChild(button);
   }
-  box.append(filters, list);
+  if (!recent) box.appendChild(filters);
+  box.appendChild(list);
   return box;
 }
 
@@ -3015,17 +3155,19 @@ function record(path, heading) {
   }
   const parts = splitTrailers(r.text);
   const k = known(r);
+  const person = r.category === "people" && r.path !== REM.owner;
+  const disclosed = person || r.category === "projects";
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }), el("span", { class: "sep", text: "/" }),
-    statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
-  const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
+    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
+  const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
-  head.appendChild(leadRow(r));
+  if (person) head.append(personLead(r), contactLine(r)); else head.appendChild(leadRow(r));
   const languages = languageBar(r);
-  if (languages) head.appendChild(languages);
+  if (languages && !person) head.appendChild(languages);
   main.appendChild(head);
   main.appendChild(recordFocus(r));
 
@@ -3040,8 +3182,15 @@ function record(path, heading) {
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
     if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
-    note.appendChild(el("h2", { html: inline(s.title, r.path) }));
-    const body = sectionBody(r, s);
+    if (person && ["open threads", "insight"].includes(s.title.toLowerCase())) continue;
+    if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
+      (main.querySelector(".project-purpose-preview, .purpose-lead") || [...main.querySelectorAll(".project-workspace h2")].some(h => h.textContent === "What this is"))) continue;
+    const extraThreads = r.category === "projects" && s.title.toLowerCase() === "open threads" && threads(r).items.length;
+    if (extraThreads && threads(r).items.length <= 3) continue;
+    // The focus already shows the first three project threads.
+    const rest = extraThreads ? { ...s, title: "More open threads" } : s;
+    note.appendChild(el("h2", { html: inline(rest.title, r.path) }));
+    const body = sectionBody(r, rest);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
   }
@@ -3070,10 +3219,10 @@ function record(path, heading) {
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
-  const deep = el("section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
-    el("div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: "Full memory and sources" }),
-      el("span", { class: "deep-hint", text: "Original note · all fields · citations" })]), grid]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null, person ? languages : null]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
+  const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
+    el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: "Full memory and sources" }),
+      el("span", { class: "deep-hint", text: disclosed ? toc.length + " sections · " + sourceList(r).length + " sources" : "Original note · all fields · citations" })]), grid]);
   main.appendChild(deep);
   const column = grid.firstChild;
 
@@ -3127,6 +3276,10 @@ function record(path, heading) {
 
   if (heading) {
     const target = document.getElementById(heading) || document.getElementById(heading.toLowerCase()) || headings.find(h => h.id === heading.toLowerCase());
+    // Reveal a deep link before asking the browser to scroll to it.
+    for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === "DETAILS") parent.open = true;
+    }
     if (target && target.tagName === "LI") {
       // A citation's source: centred and briefly lit, so the eye finds the line (#2054).
       target.scrollIntoView({ block: "center" });

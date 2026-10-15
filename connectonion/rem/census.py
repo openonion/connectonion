@@ -148,7 +148,8 @@ def direction(text: str, first_name: str = "") -> str:
     if owner:
         return "theirs" if owner[1].lower() == "asked" else "mine"
     debt = re.match(r"^([^:;!?]+?)\s+owes?\s+(.+)", prefix, re.I)
-    if debt:
+    if debt and re.match(r"^[A-Z]", debt[1]) and 1 <= len(debt[1].split()) <= 6 \
+            and not re.search(r",|\b(?:said|would|that|what)\b", debt[1], re.I):
         return "theirs" if re.match(rf"^{me}\b", debt[2], re.I) else "third"
     mine, theirs = (pattern.search(text) for pattern in _directions(first_name))
     if not (mine or theirs):

@@ -134,7 +134,7 @@ def test_structured_thread_direction_wins_over_words_in_the_body():
     assert direction("Yu at Heidi Health owes Ody A$123.38; you asked about it.") == "third"
     assert direction("Yu owes Ody: the user promised to check.") == "third"
     assert direction("Dr. Yu owes Ody the expense reimbursement.") == "third"
-    assert direction("Yu (Heidi Health, Inc.) owes Ody the reimbursement.") == "third"
+    assert direction("Yu (Heidi Health, Inc.) owes Ody the reimbursement.") == "plain"
     assert direction("The user needs to reply to Mara") == "mine"
     assert direction("Aaron asked Adi to arrange a call", "Aaron") == "theirs"
     assert direction("Mara promised the deck") == "theirs"
@@ -185,3 +185,14 @@ def test_a_thread_last_moved_recently_is_not_quiet():
     from connectonion.rem.census import _quiet
     assert not _quiet("The user owes Mara: asked 2026-07-01; last moved on 2026-10-15.", date(2026, 10, 16))
     assert _quiet("The user owes Mara: asked 2026-07-01; last moved: 2026-08-01.", date(2026, 10, 16))
+
+
+def test_direction_only_treats_short_name_phrases_as_debt_prefixes():
+    from connectonion.rem.census import direction
+
+    assert direction("You said you would send what Weiwei owes the bank") != "third"
+    assert direction("Mara said that Weiwei owes the bank; you promised a reply") != "third"
+    assert direction("The detailed discussion about sending what Weiwei owes the bank") != "third"
+    assert direction("weiwei owes the bank") == "plain"
+    assert direction("Yu at Heidi Health owes Ody the reimbursement") == "third"
+    assert direction("Weiwei owes you the draft") == "theirs"
