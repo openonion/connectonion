@@ -1089,10 +1089,10 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     prepare(root)
     prepare(work)
     notebook, working = Notebook(root), Notebook(work)
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["zhouody@gmail.com"], email="zhouody@gmail.com")
+    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody.zhou@example.com"], email="ody.zhou@example.com")
     before = notebook.read("people/ody.md")
-    after = before.replace("- Email: zhouody@gmail.com",
-                           "- Email: zhouody@gmail.com; usr-abc@user.luma-mail.com; larry@estate.example")
+    after = before.replace("- Email: ody.zhou@example.com",
+                           "- Email: ody.zhou@example.com; usr-abc@user.luma-mail.com; larry@estate.example")
     working.write("people/ody.md", after)
     directory = tmp_path / "task"
     directory.mkdir()
@@ -1100,4 +1100,4 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     saved = notebook.read("people/ody.md")
     assert not refusals
     assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
-    assert "zhouody@gmail.com" in saved and "luma-mail" not in saved and "larry@" not in saved
+    assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved

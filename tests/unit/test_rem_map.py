@@ -205,9 +205,9 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     skills = tmp_path / 'installed'
     skills.mkdir()
     people = [
-        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
+        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
+        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 3, 'sent': 1, 'received': 2,
          'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
@@ -230,7 +230,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     pages = {row['record']: row for row in result['people']}
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
-    assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com']
+    assert ody['addresses'] == ['ody@example.com', 'ody.zhou@example.com']
     assert ody['mails'] == 33
     assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
     from connectonion.rem.reader import mail_facts
@@ -238,7 +238,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
     page = Notebook(tmp_path).read(ody['record'])
     assert 'Last contact: 2026-09-29' in page
-    assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
+    assert 'ody.zhou@example.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
     assert 'luma-mail' not in page
@@ -384,9 +384,9 @@ def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch)
         def my_name(self): return 'Aaron x'
 
     people = [
-        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 20, 'received': 10,
+        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 20, 'received': 10,
          'one_way': False, 'first': '2026-07-01', 'last': '2026-09-20', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 4, 'sent': 2, 'received': 2,
+        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 4, 'sent': 2, 'received': 2,
          'one_way': False, 'boxes': ['outlook']},
         {'name': 'Tamara Berryman', 'address': 'tamara@unsw.example', 'mails': 12, 'sent': 5, 'received': 7,
          'one_way': False, 'boxes': ['outlook']},
@@ -1184,8 +1184,8 @@ def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():
     for relay in ('usr-abc@user.luma-mail.com', 'calendar-invite@lu.ma', 'express@airbnb.com'):
         assert RELAY.search(relay)
     assert not RELAY.search('host@airbnb.com') and not RELAY.search('ody@lu.ma.example.com')
-    rows = [{'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 5},
+    rows = [{'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 5},
             {'name': 'Ody Zhou', 'address': 'calendar-invite@lu.ma', 'mails': 2},
             {'name': 'Ody Zhou', 'address': 'express@airbnb.com', 'mails': 1}]
     assert [[row['address'] for row in group] for group in _people_groups(rows)] == [
-        ['zhouody@gmail.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]
+        ['ody.zhou@example.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]

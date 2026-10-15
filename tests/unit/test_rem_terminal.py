@@ -103,7 +103,7 @@ def test_the_table_reads_as_words_fits_the_terminal_and_never_shows_a_relay(monk
     rows = [_row("Ody Zhou", company="[OpenOnion](../orgs/openonion.md)", role="Co-founder",
                  emails=["usr-fixture0000000@user.luma-mail.com", "ody.zhou@example.com"]),
             _row("Sohum Mogale", company="[University of New South Wales](../orgs/unsw.md)",
-                 role="Project owner, Group P115 of COMP3900 at UNSW", emails=["s.mogale@student.unsw.edu.au"],
+                 role="Project owner, Group P115 of COMP3900 at UNSW", emails=["s.lee@student.unsw.edu.au"],
                  phone="0491570159 [sensitive]"),
             _row("Luma Guest", emails=["usr-abc@user.luma-mail.com"])]
     lines = Text.from_markup(draw(rows)).plain.splitlines()
