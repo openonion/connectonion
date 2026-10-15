@@ -160,7 +160,7 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.get_by_role("heading", name="What co rem carried forward").wait_for()
+        page.locator(".morning-primary h1").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
