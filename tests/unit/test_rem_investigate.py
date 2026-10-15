@@ -2024,7 +2024,7 @@ def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path
     assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
 
 
-def test_a_search_the_provider_refuses_is_reported_not_fatal():
+def test_a_search_the_provider_refuses_is_reported_not_fatal(tmp_path):
     """An Ody pass in rounds asked Outlook for a lead; Graph answered HTTP 400
     and the whole investigation failed (2026-10-08)."""
     from connectonion.provider_credentials import ProviderCredentialError
@@ -2042,12 +2042,48 @@ def test_a_search_the_provider_refuses_is_reported_not_fatal():
         def get_email_body(self, message_id):
             return "--- Email Body ---\nThe deck is done."
 
-    found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
+    found = inv.mail_search({"outlook": Outlook()}, tmp_path)(['"Phaedon Stough"', "deck"])
     assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
     assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]
 
 
-def test_automated_senders_are_left_out_of_search_answers():
+@pytest.mark.parametrize("provider", ["gmail", "outlook"])
+def test_mail_search_retains_returned_bodies_only(tmp_path, provider):
+    """2026-10-16 trial: Ziming Gong's searched citation had no archived body."""
+    from connectonion.rem.mail_archive import message_path, observed_message_path
+
+    body = "--- Email Body ---\nCompany: OpenOnion"
+    reads = []
+
+    class Mail:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            return [{"id": "m1", "from": "Ziming Gong <ziming@x.y>", "date": "2026-10-01"},
+                    {"id": "m2", "from": "noreply@eventbrite.com", "date": "2026-10-02"},
+                    {"id": "m3", "from": "unknown@x.y", "date": "2026-10-03"}]
+
+        def get_email_body(self, message_id):
+            reads.append(message_id)
+            return body
+
+    [item] = inv.mail_search({provider: Mail()}, tmp_path, known={"ziming@x.y"})(["OpenOnion"])
+
+    assert item["text"] == body
+    assert reads == ["m1"]
+    saved = observed_message_path(tmp_path, provider, "m1")
+    assert saved.is_file()
+    snapshot = json.loads(saved.read_text())
+    assert snapshot["body"] == body
+    assert snapshot["fetched_at"] and snapshot["retained_at"]
+    assert snapshot["input_scope"] == "Provider read during investigation; not initial-window coverage."
+    for message_id in ("m2", "m3"):
+        assert not message_path(tmp_path, provider, message_id).exists()
+        assert not observed_message_path(tmp_path, provider, message_id).exists()
+
+
+def test_automated_senders_are_left_out_of_search_answers(tmp_path):
     """2026-10-10, 1.9.2b3 trial: the follow-up searches that ran came back as
     "19 unrelated newsletters and digests" (Nina, round 3)."""
     class Outlook:
@@ -2063,12 +2099,12 @@ def test_automated_senders_are_left_out_of_search_answers():
         def get_email_body(self, message_id):
             return "--- Email Body ---\nabout the coaching"
 
-    found = inv.mail_search({"outlook": Outlook()})(["Founders pitch coaching"])
+    found = inv.mail_search({"outlook": Outlook()}, tmp_path)(["Founders pitch coaching"])
 
     assert [item["speaker"] for item in found] == ["Nina <nina@x.y>"]
 
 
-def test_a_search_answer_comes_from_someone_the_notebook_knows():
+def test_a_search_answer_comes_from_someone_the_notebook_knows(tmp_path):
     """The no-reply test let a beehiiv letter and a bulk founders@ mailout
     through (2026-10-10 live run: 4 of 12 results). A lead's answer is a reply
     from a mapped person or the owner; other senders are left out."""
@@ -2085,7 +2121,7 @@ def test_a_search_answer_comes_from_someone_the_notebook_knows():
         def get_email_body(self, message_id):
             return "--- Email Body ---\nabout the coaching"
 
-    found = inv.mail_search({"outlook": Outlook()}, known={"nina@x.y"})(["coaching"])
+    found = inv.mail_search({"outlook": Outlook()}, tmp_path, known={"nina@x.y"})(["coaching"])
 
     assert [item["speaker"] for item in found] == ["Nina <nina@x.y>", "me@x.y"]
 
@@ -2253,7 +2289,7 @@ def test_an_editing_round_that_deletes_the_lead_is_undone():
     assert not _cut_too_much(page, page.replace("; completion is not established", ""))
 
 
-def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
+def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch, tmp_path):
     """Richard Lai's four issues (2026-10-12) were found by the turn's own gh
     call and then removed: the audit reads only supplied originals."""
     import subprocess
@@ -2267,7 +2303,7 @@ def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
         return subprocess.CompletedProcess(argv, 0, json.dumps(rows), "")
 
     monkeypatch.setattr(inv.subprocess, "run", run)
-    [item] = inv.mail_search({})(["github:openonion/connectonion created:>=2026-10-12"])
+    [item] = inv.mail_search({}, tmp_path)(["github:openonion/connectonion created:>=2026-10-12"])
     assert item["source"] == "github:openonion/connectonion#2443" and "student-dev01" in item["text"]
     assert calls[0][:5] == ["gh", "search", "issues", "-R", "openonion/connectonion"]
     assert calls[0][calls[0].index("--limit") + 1] == "30"

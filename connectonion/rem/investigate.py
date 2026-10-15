@@ -866,7 +866,7 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
 SEARCH_RESULTS = 20
 
 
-def mail_search(clients: dict, known: set | None = None):
+def mail_search(clients: dict, root: Path, known: set | None = None):
     """Read-only mail searches the model may ask for after its first turn (2026-10-01).
 
     The owner asked that a gap the gathered mail leaves (how two people met, a
@@ -874,6 +874,7 @@ def mail_search(clients: dict, known: set | None = None):
     with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
     the gathered mail's shape and source ids, so they cite like the rest.
     """
+    from .mail_archive import retain_message
     from .scan import AUTOMATED_HINT
 
     def search(queries: list[str]) -> list[dict]:
@@ -907,6 +908,9 @@ def mail_search(clients: dict, known: set | None = None):
                         # founders@ mailout passed the no-reply test (2026-10-10).
                         continue
                     body = _patient(client.get_email_body, row["id"])
+                    # 2026-10-16 trial: Ziming Gong's searched citation had no archived body.
+                    body = retain_message(root, kind, row, body,
+                                          fetched_at=datetime.now(timezone.utc).isoformat())["body"]
                     head, _, rest = body.partition("--- Email Body ---")
                     body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
                     own = _address(row["from"]) in mine or "@" not in _address(row["from"])
@@ -1808,7 +1812,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = partial(run_stage, search=mail_search(clients, known_addresses(root))) if clients else run_stage
+        runner = partial(run_stage, search=mail_search(clients, root, known_addresses(root))) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
     try:
