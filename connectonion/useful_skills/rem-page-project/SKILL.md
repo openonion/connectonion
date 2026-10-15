@@ -111,8 +111,8 @@ behaviour alone is not a decision; label proposals.
 **Overview** and **Try it**, when the README, docs or code at the current line
 show them: `Overview` is 3–7 narrow ASCII steps in a `text` fence (user start,
 actions, outcome); `Try it` is an entry point, a tiny example and the visible
-result, at most three steps, in the source's order. A plausible diagram is
-not evidence; an unknown flow is omitted.
+result, at most three steps, in the source's order. Every arrow is a step a
+cited source states; a plausible diagram is not evidence.
 
 **People and ownership**: who to ask, by area, and the partners, clients or
 collaborators the messages name on this project, linking person pages. One
