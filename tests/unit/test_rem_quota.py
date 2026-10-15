@@ -68,16 +68,15 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch)
     assert "RuntimeError" not in bits["codex_week"]
     assert "unknown" in bits["codex_week"] or "unavailable" in bits["codex_week"]
     assert "pages still run" in bits["codex_week"]
-    assert "bounded only by the daily call cap" in bits["codex_week"]
-    assert "co rem doctor" in bits["codex_week"]
+    assert "within the daily call cap" in bits["codex_week"]
     assert "RuntimeError" in bits["quota"]["unknown"]
 
     value = {"root": str(root), "state": "Stopped", "configured": True, **bits}
     text = Text.from_markup(rem_status.dashboard(root, value, lambda args: "co rem " + " ".join(args))).plain
     assert "RuntimeError" not in text
     assert "pages still run" in text
-    assert "bounded only by the daily call cap" in text
-    assert "co rem doctor" in text
+    assert "within the daily call cap" in text
+    assert all(len(line) <= 80 for line in text.splitlines())
 
 
 def _run(started, before, after, phase="daily-investigation"):
