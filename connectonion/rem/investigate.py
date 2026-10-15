@@ -20,6 +20,8 @@ from pathlib import Path
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
 from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+# A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
+from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -68,31 +70,6 @@ def _searched(coverage: list[str]) -> str:
 def _nothing_new(record: str, subject: str, coverage: list[str], last) -> NothingNew:
     return NothingNew(f"Nothing new since {last.isoformat()} for {subject} ({_searched(coverage) or 'no source searched'}). "
                       f"No model was called; {record} is unchanged and keeps its status line.")
-
-
-# A refused turn's material, by source id, per page (#2041). Without it the
-# page stayed first in the queue with the same window, and the next run
-# re-read the same mail: 643k tokens refused, then 933k on the same 113k chars.
-REFUSED = "refused-investigations.json"
-
-
-def refused_for(root: Path, record: str) -> dict:
-    return read_json(state_path(root, REFUSED), {}).get(record) or {}
-
-
-def _remember_refusal(root: Path, record: str, sources: list[str], why: str) -> None:
-    path = state_path(root, REFUSED)
-    refused = read_json(path, {})
-    refused[record] = {"sources": sorted(set(sources)), "at": datetime.now(timezone.utc).isoformat(),
-                       "why": why[:300]}
-    write_json(path, refused)
-
-
-def _forget_refusal(root: Path, record: str) -> None:
-    path = state_path(root, REFUSED)
-    refused = read_json(path, {})
-    if refused.pop(record, None) is not None:
-        write_json(path, refused)
 
 
 def _refused_again(record: str, subject: str, refusal: dict) -> NothingNew:
@@ -1130,9 +1107,13 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
 
     A refused round loses that round, not the page: the next part builds on
     the last accepted page. Leads a round names in its reply go to the next.
+    The refused round's material is returned (`refused_sources`) for the
+    ledger: swallowed here, it reached no run record and no retry (Ody Zhou
+    2026-10-10, Dora 2026-10-12).
     """
+    from .refusals import material_sources
     from .runner import RunFailed
-    usage, changed, ledgers, refused, threads = {}, [], [], [], []
+    usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total = len(rounds)
     for number, part in enumerate([*rounds, []], 1):
         dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
@@ -1148,6 +1129,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             out = runner(notebook, items, config, stage="investigate")
         except RunFailed as error:
             refused.append(str(error))
+            unread += material_sources(part)
             for key, value in (error.usage or {}).items():
                 usage[key] = usage.get(key, 0) + value
             continue
@@ -1170,7 +1152,8 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         if edit.get("report"):
             ledgers.append(f"Editing round: {str(edit['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
-            "rounds": total + 1, "refused_rounds": refused, "hedged_lines": [len(before), len(after)]}
+            "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
+            "hedged_lines": [len(before), len(after)]}
 
 
 def searched_sources(coverage: list[str]) -> list[str]:
@@ -1670,10 +1653,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             result = runner(notebook, prompt_items, config, stage="investigate")
     except RemError as error:
         if "rejected" in str(error):
-            _remember_refusal(root, record, list(gathered_sources), str(error))
+            remember_refusal(root, record, list(gathered_sources), str(error), stage="investigate")
         raise
     else:
-        _forget_refusal(root, record)
+        forget_refusal(root, record)
+        if result.get("refused_sources"):
+            # The page was accepted, but a refused round's material was read by no
+            # later round: Ody Zhou's [27],[28] and Dora's citation 22 went nowhere
+            # (2026-10-10, 10-12). It stays in the ledger for the daily retry.
+            remember_refusal(root, record, result["refused_sources"], result["refused_rounds"][0],
+                             stage="investigation round")
     finally:
         # Copies of private mail do not accumulate under .state, run after run;
         # the report keeps which files were read. The routed run's uncompressed

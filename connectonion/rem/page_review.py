@@ -168,7 +168,7 @@ def _project_overview_errors(candidate: str) -> list[str]:
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
-SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review)'
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
                        r'(?:-summary)?:[\w.:+-]+')
 
 
@@ -917,3 +917,31 @@ def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> s
                 match = re.search(r'^- Company: (.*)$', text, re.M)
                 return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
     return text
+
+
+# A one-page maintenance turn rewrites the whole page, and deletes what it
+# cannot re-verify from a batch about something else: projects/connectonion
+# went 14,356 -> 4,132 -> (rewritten) 9,610 -> 3,112 -> 2,108 characters in
+# two days (2026-10-13/14), each time accepted, because nothing it dropped was
+# invalid -- only gone. A turn that keeps less than this share of a page's
+# size or of its cited sources keeps the old page instead.
+KEEP_SHARE = 0.6
+# Below this a page is mostly placeholders and a rewrite is not a loss.
+SHRINK_FLOOR = 1000
+
+
+def _listed_sources(text: str) -> set[str]:
+    return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
+
+
+def shrinkage(before: str, after: str) -> str:
+    """Why a maintenance rewrite lost too much of the page to be promoted, or ''."""
+    if len(before) < SHRINK_FLOOR:
+        return ''
+    if len(after) < len(before) * KEEP_SHARE:
+        return f'Maintenance shrank the page from {len(before):,} to {len(after):,} characters; kept the old page'
+    old = _listed_sources(before)
+    kept = old & _listed_sources(after)
+    if old and len(kept) < len(old) * KEEP_SHARE:
+        return f'Maintenance kept {len(kept)} of the page\'s {len(old)} cited sources; kept the old page'
+    return ''

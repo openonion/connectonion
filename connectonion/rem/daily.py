@@ -35,6 +35,8 @@ UPDATE_PAGES = 5
 # Activity this recent comes first in the unfinished portion.
 RECENT_DAYS = 14
 PHASES = ("daily-investigation", "daily-update")
+# The window a refused page is investigated over again: run_daily's own default.
+RETRY_DAYS = 30
 
 
 def _last(values) -> str:
@@ -180,7 +182,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, investigate_one, person_one,
                 say=lambda text: None):
     """The first run of the day: unfinished pages, most recent activity first."""
-    pages = unfinished_by_recency(root)
+    resting = _found_nothing_lately(root)
+    pages = [page for page in unfinished_by_recency(root) if page['path'] not in resting]
     from .inquiry import routing
     required = 3 if routing(root) else 1
     # Even a run that starts nothing is the day's first: it is recorded, so the
@@ -202,63 +205,60 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     with maintenance_lock(root):
         record, path = _reserve(root, 'daily-investigation', allocation, meter)
     sources = subscriptions(root)
-    notebook = Notebook(root)
     calls, tried, done, usage, changed, failed = allocation, [], [], {}, [], False
-    others = 0
+    others, over_budget = 0, False
     try:
         clients = _clients(sources)
         for page in pages:
             target = page['path']
             if calls < 1 or (done and _stopped(root, config)):
                 break
+            # Each kind of page has its own investigator: skill pages went to the mail
+            # search and came back nothing_found on 2026-10-11, 10-13 and 10-14.
+            # `investigate_one` alone, in tests, takes every page the older way.
+            route = 'older' if investigate_one is not None else _route(root, target)
+            # The older investigation takes what is left of the portion and ends it.
+            # The busiest page is also the one least likely to fit: a refusal
+            # before any model call tries the next, up to three (#1670).
+            if route == 'older' and others >= 3:
+                continue
             say(f"Investigating {target}…")
-            if target.startswith('people/') and investigate_one is None:
-                tried.append(target)
-                try:
-                    result = (person_one or _person)(root, page, clients=clients, subscriptions=sources,
-                                                     max_calls=calls)
-                except RemError as error:
-                    # A refused page keeps its items pending; the portion goes on.
-                    # One stopped before any model call costs the portion nothing (#1984).
-                    calls -= 0 if isinstance(error, NothingFound) and not error.usage else required
-                    _page_done(record, done, usage, say, {'page': target, 'outcome': _outcome(error),
-                                                          'why': str(error)[:300]}, getattr(error, 'usage', None))
+            tried.append(target)
+            try:
+                result = _investigate_unfinished(root, route, page, clients=clients, sources=sources, days=days,
+                                                 calls=calls, config=config, investigate_one=investigate_one,
+                                                 person_one=person_one)
+            except RemError as error:
+                if route == 'older' and 'call budget' in str(error):
+                    over_budget = True
                     continue
-                calls -= required
-            else:
-                # The older investigation: it takes what is left of the portion and ends it.
-                # The busiest page is also the one least likely to fit: a refusal
-                # before any model call tries the next, up to three (#1670).
-                if others >= 3:
-                    continue
+                # Nothing to write from is this page's answer, not the round's failure;
+                # it is not asked again for a week. One stopped before any model call
+                # costs the portion nothing (#1984), and takes no slot.
+                free = isinstance(error, NothingFound) and not error.usage
+                if isinstance(error, NothingFound) and not isinstance(error, NothingNew):
+                    _remember_nothing_found(root, target)
+                if route != 'older':
+                    calls -= 0 if free else required
+                elif not free:
+                    others += 1
+                    # A refused older investigation ends the portion, as an accepted one does.
+                    calls = calls if isinstance(error, NothingFound) else 0
+                _page_done(record, done, usage, say, {'page': target, 'outcome': _outcome(error),
+                                                      'why': str(error)[:300]}, getattr(error, 'usage', None))
+                continue
+            if route == 'older':
                 others += 1
-                tried.append(target)
-                text = notebook.read(target)
-                title = next((line[2:] for line in text.splitlines() if line.startswith('# ')), target)
-                person = next((p for p in notebook.people() if p['path'] == target), {})
-                handles = list(dict.fromkeys([title, *person.get('emails', []), *person.get('aliases', [])]))
-                try:
-                    result = (investigate_one or investigate)(root, target, title, handles, days=days,
-                                  clients=clients, subscriptions=sources, max_calls=calls)
-                except NothingFound as error:
-                    # Nothing to write from is this page's answer, not the round's failure.
-                    _page_done(record, done, usage, say, {'page': target, 'outcome': _outcome(error),
-                                                          'why': str(error)[:300]}, error.usage)
-                    continue
-                except RemError as error:
-                    if 'call budget' not in str(error):
-                        raise
-                    continue
                 calls = 0
-            _page_done(record, done, usage, say,
-                       {'page': target, 'outcome': 'accepted',
-                        'evidence': result.get('evidence', []), 'report': result.get('report', '')},
-                       result.get('usage'))
+            else:
+                calls -= required
+            _page_done(record, done, usage, say, _accepted_row(target, result), result.get('usage'))
             changed += result.get('changed', [])
         accepted = [row['page'] for row in done if row['outcome'] == 'accepted']
         left = len(unfinished_by_recency(root))
         record.update(outcome='completed', usage=usage or None, changed=changed, tried=tried, pages=done,
-                      left=left, **({'record': accepted[-1]} if accepted else {'reason': 'no_page_fits_budget'}))
+                      left=left,
+                      **({'record': accepted[-1]} if accepted else {'reason': _none_written(done, over_budget)}))
     except Exception as error:
         record.update(outcome='failed', error=str(error) if isinstance(error, RemError) else type(error).__name__,
                       usage=getattr(error, 'usage', None) or usage or None, tried=tried, pages=done)
@@ -273,6 +273,76 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     investigation = None if failed or not done else {'pages': done, 'left': record.get('left')}
     return {'outcome': 'partial' if failed else 'completed',
             'maintenance': maintenance, 'investigation': investigation, 'run': record}
+
+
+def _route(root: Path, record: str) -> str:
+    """Which investigator a page goes to: a person's, a skill's, the project writer's, or the older one."""
+    if record.startswith('people/'):
+        return 'person'
+    if record.startswith('skills/catalog/'):
+        return 'skill'
+    from .project_pages import pending
+    if record.startswith('projects/') and pending(root, record)[0]:
+        return 'project'
+    return 'older'
+
+
+def _investigate_unfinished(root, route, page, *, clients, sources, days, calls, config, investigate_one,
+                            person_one, retry_refused=False) -> dict:
+    target = page['path']
+    if route == 'person':
+        return (person_one or _person)(root, {**page, 'retry_refused': retry_refused}, clients=clients,
+                                       subscriptions=sources, max_calls=calls)
+    if route == 'skill':
+        from .skill_runs import investigate_skill_page
+        return investigate_skill_page(root, target, [Path.home() / '.co' / 'evals'])
+    if route == 'project':
+        return _project(root, target, config=config)
+    notebook = Notebook(root)
+    text = notebook.read(target)
+    title = next((line[2:] for line in text.splitlines() if line.startswith('# ')), target)
+    person = next((p for p in notebook.people() if p['path'] == target), {})
+    handles = list(dict.fromkeys([title, *person.get('emails', []), *person.get('aliases', [])]))
+    return (investigate_one or investigate)(root, target, title, handles, days=days, clients=clients,
+                                            subscriptions=sources, max_calls=calls,
+                                            **({'retry_refused': True} if retry_refused else {}))
+
+
+def _accepted_row(page: str, result: dict) -> dict:
+    """An accepted page, with any round of it that was refused: those were dropped from
+    the daily rows, so Dora's refused round (2026-10-12) showed as plainly accepted."""
+    return {'page': page, 'outcome': 'accepted', 'evidence': result.get('evidence', []),
+            'report': result.get('report', ''),
+            **({'refused_rounds': result['refused_rounds']} if result.get('refused_rounds') else {})}
+
+
+def _none_written(done: list[dict], over_budget: bool) -> str:
+    """Why the first run accepted no page. It said `no_page_fits_budget` on 2026-10-13
+    when every page tried had come back nothing_found."""
+    outcomes = {row['outcome'] for row in done}
+    if not done:
+        return 'no_page_fits_budget' if over_budget else 'nothing_unfinished'
+    if outcomes <= {'nothing_found', 'nothing_new'}:
+        return 'nothing_found'
+    return 'refused' if 'refused' in outcomes else 'failed'
+
+
+# A page whose investigation found nothing to write from is not asked again for
+# a week: on 2026-10-13 all three of the day's slots went to job-followup,
+# x-reply and historical-notes, nothing was accepted, and orgs/connectonion-com
+# was never reached.
+NOTHING_FOUND = 'nothing-found.json'
+NOTHING_FOUND_DAYS = 7
+
+
+def _remember_nothing_found(root: Path, record: str) -> None:
+    path = state_path(root, NOTHING_FOUND)
+    write_json(path, {**read_json(path, {}), record: now().isoformat()})
+
+
+def _found_nothing_lately(root: Path) -> set:
+    cutoff = (now() - timedelta(days=NOTHING_FOUND_DAYS)).isoformat()
+    return {record for record, at in read_json(state_path(root, NOTHING_FOUND), {}).items() if at > cutoff}
 
 
 def _page_done(record: dict, done: list, usage: dict, say, row: dict, page_usage, kind: str = 'person') -> None:
@@ -341,6 +411,13 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     rows = [{**row, 'kind': 'person'} for row in people_queue(root, since=since)
             if row['mode'] == 'update' or row['record'] in found['records']]
     rows += [{**row, 'kind': 'project'} for row in project_queue(root, since=since)]
+    # Refused pages are retried once a day: from the material held for them when
+    # a sync's maintenance refused them, otherwise by their own investigator.
+    from .refusals import due_for_retry
+    queued = {row['record'] for row in rows}
+    rows += [{'record': record, 'kind': 'retry', 'mode': 'retry', 'last_activity': entry.get('at', ''),
+              'entry': entry} for record, entry in due_for_retry(root).items()
+             if record not in queued and Notebook(root).path(record).is_file()]
     rows.sort(key=lambda row: row['last_activity'] or '', reverse=True)
     if not rows:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
@@ -363,11 +440,12 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
             try:
                 if row['kind'] == 'person':
                     result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)
+                elif row['kind'] == 'retry':
+                    result = _retry(root, row['record'], row['entry'], clients=clients, sources=sources,
+                                    config=config, person_one=person_one)
                 else:
                     result = (project_one or _project)(root, row['record'], config=config)
-                _page_done(record, done, usage, say,
-                           {'page': row['record'], 'mode': row['mode'], 'outcome': 'accepted',
-                            'evidence': result.get('evidence', []), 'report': result.get('report', '')},
+                _page_done(record, done, usage, say, {**_accepted_row(row['record'], result), 'mode': row['mode']},
                            result.get('usage'), row['kind'])
                 changed += result.get('changed', [])
             except RemError as error:
@@ -391,3 +469,31 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
         write_json(path, record)
     return {'outcome': 'partial' if failed else 'completed', 'maintenance': maintenance,
             'investigation': None if failed else {'pages': done, 'left': record.get('left')}, 'run': record}
+
+
+def _retry(root, record, entry, *, clients, sources, config, person_one=None) -> dict:
+    """One refused page, again. Stamped first, so a retry that crashes waits a day too."""
+    from .refusals import mark_retried
+    mark_retried(root, record)
+    if entry.get('material'):
+        return _maintain_again(root, record, entry, config)
+    page = {'path': record, 'record': record, 'days': RETRY_DAYS}
+    return _investigate_unfinished(root, _route(root, record), page, clients=clients, sources=sources,
+                                   days=RETRY_DAYS, calls=None, config=config, investigate_one=None,
+                                   person_one=person_one, retry_refused=True)
+
+
+def _maintain_again(root, record, entry, config) -> dict:
+    """The one-page maintenance turn a sync refused, from the material held for it."""
+    from .refusals import forget_refusal
+    from .runner import RunFailed
+    from .service import READABLE, _hold_for_refused, _maintain_pages
+    material = entry['material']
+    kind = str(material[0].get('source', '')).split(':', 1)[0]
+    with maintenance_lock(root):
+        result = _maintain_pages(root, material, config, kind if kind in READABLE else '', [record])
+        _hold_for_refused(root, result, material)
+        if result['refused']:
+            raise RunFailed(result['refusals'][0]['errors'][0], result.get('usage'))
+        forget_refusal(root, record)
+    return result

@@ -674,6 +674,27 @@ def _selected_sources(root: Path, selector: str) -> dict:
 PAGES_PER_BATCH = 5
 
 
+def _hold_for_refused(root: Path, result: dict, items: list[dict]) -> None:
+    from .refusals import forget_refusal, material_sources, remember_refusal
+    sources = material_sources(items)
+    for row in result.get("refusals", []):
+        remember_refusal(root, row["record"], sources, "; ".join(row["errors"]), stage="maintain", material=items)
+    for page in result.get("changed", []):
+        forget_refusal(root, page, sources)
+
+
+def _rotated(selected: dict, last: str) -> dict:
+    """The sources in order, starting after the one the last batch read.
+
+    A batch reads one source, the first with anything new, and Codex always
+    had 40 items: in 26 syncs claude-code, gmail and outlook were never read
+    and had no cursor, while Codex worked through a two-month backlog
+    (2026-10-10..15)."""
+    names = list(selected)
+    start = names.index(last) + 1 if last in names else 0
+    return {name: selected[name] for name in names[start:] + names[:start]}
+
+
 def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str],
                     say=None) -> dict:
     """Update each page the material concerns in its own turn, and keep going when one fails.
@@ -682,33 +703,45 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     minutes deciding and rewriting, and timed out with nothing saved -- twice,
     on the same real batch. A page per turn is small enough to finish, and a
     refusal costs that page, not the batch.
+
+    Caller holds the maintenance lock.
     """
+    from .daily import outcome_line
+    from .leads import remember_no_change
+    from .page_review import shrinkage
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
     usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
     say = say or (lambda text: None)
+    material = [item for item in items if item.get("role") != "page"]
     for record in leads:
+        before = notebook.read(record)
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
                        "text": f"The page as it stands, at {record}. Add what the material says about its "
-                               f"subject; keep what is right:\n\n{notebook.read(record)}"}, *items]
+                               f"subject; keep what is right. Cite only source ids that are on this page or in "
+                               f"the material; never make one up:\n\n{before}"}, *material]
         try:
             result = run_stage(notebook, page_items, config, kind=kind, stage="maintain", maintenance_lock_held=True)
+        except RunFailed as error:
+            result = {"usage": error.usage, "refused": str(error)}
+        shrunk = shrinkage(before, notebook.read(record)) if record in result.get("changed", []) else ""
+        if shrunk:
+            notebook.write(record, before)
+            result = {"usage": result.get("usage"), "refused": f"Candidate rejected: {shrunk}"}
+        if result.get("refused"):
+            refusals.append({"record": record, "errors": [result["refused"][:400]]})
+        else:
             changed += result.get("changed", [])
             reviews += result.get("review_candidates", [])
             sizes += [result["instructions_chars"]] if result.get("instructions_chars") else []
             if result.get("page_chars"):
                 growth[record] = result["page_chars"]
-            part = result.get("usage")
-        except RunFailed as error:
-            refusals.append({"record": record, "errors": [str(error)[:400]]})
-            part = getattr(error, "usage", None)
+            remember_no_change(root, record, record not in changed)
         # Each page's outcome as it finishes; it was only in the dump at the end (#2044).
-        from .daily import outcome_line
-        say(outcome_line({"page": record, "outcome": "refused", "why": refusals[-1]["errors"][0]}
-                         if refusals and refusals[-1]["record"] == record else
-                         {"page": record, "outcome": "accepted" if record in changed else "nothing_new"}))
-        for key, value in (part or {}).items():
+        say(outcome_line({"page": record, "outcome": "refused", "why": result["refused"]} if result.get("refused")
+                         else {"page": record, "outcome": "accepted" if record in changed else "nothing_new"}))
+        for key, value in (result.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
     return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
             "refusals": refusals, "report": f"{len(leads)} pages worked one at a time",
@@ -925,7 +958,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         if items:
             counts["local_material"] = len(items)
             updated["rem_local_material"] = sorted(set(processed) | seen)
-    for name, subscription in selected.items():
+    for name, subscription in _rotated(selected, progress.get("rem_last_source", "")).items():
         if items:
             break
         if len(items) >= max_items or remaining <= 0:
@@ -969,6 +1002,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         # next source; nothing is skipped, only separated.
         if items:
             kind = subscription.get("kind", name)
+            updated["rem_last_source"] = name
             break
     if seen:
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
@@ -1004,16 +1038,20 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     # the model updates one at a time. A fake runner in tests keeps the single
     # whole-notebook call. A page that has already read what points at it gets
     # no call at all (#1846).
-    leads, current = [], []
+    leads, current, passed = [], [], []
     if runner is None or runner is run_stage:
-        from .leads import nothing_new, page_leads
+        from .leads import cooling, nothing_new, page_leads, project_writer_pages
         found = page_leads(Notebook(root), items)
-        current = [lead for lead in found if nothing_new(Notebook(root), lead, items)]
-        leads = [lead for lead in found if lead not in current][:PAGES_PER_BATCH]
+        writer, resting = project_writer_pages(Notebook(root), found), cooling(root, found)
+        passed = writer + resting
+        current = [lead for lead in found if lead not in passed and nothing_new(Notebook(root), lead, items)]
+        leads = [lead for lead in found if lead not in current + passed][:PAGES_PER_BATCH]
+        record.update(**({"for_project_writer": writer} if writer else {}), **({"cooling": resting} if resting else {}))
     if current:
         record["up_to_date"] = current
-    if current and not leads:
-        record.update(outcome="completed", report="Every page this material concerns has already read it")
+    if (current or passed) and not leads:
+        record.update(outcome="completed", report="Every page this material concerns has already read it, "
+                                                  "is written by the project writer, or changed nothing a day ago")
         write_json(state_path(root, "progress.json"), updated)
         forget_digest(root)
         write_json(path, record)
@@ -1074,7 +1112,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             from .leads import note_leads
             named, unrouted = note_leads(Notebook(root), items[0].get("text", ""))
             spare = max(0, room - len(leads))
-            extra = [page for page in named if page not in leads and page not in current][:spare]
+            extra = [page for page in named if page not in leads + current + passed
+                     and not project_writer_pages(Notebook(root), [page])][:spare]
             if extra:
                 leads += extra
                 record["runner_attempts"] = record["runner_attempts"] + len(extra)
@@ -1105,8 +1144,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                       report=result.get("report", "") + (
                           f"; notes about {', '.join(record['unrouted_projects'])} matched no project page "
                           "(kept in the extract notes)" if record.get("unrouted_projects") else ""))
-        # A refused page no longer holds back the batch, but the user's own
-        # correction to that page is not marked done: it waits for the next pass.
+        # A refused page no longer holds back the batch, but its material is held
+        # for it, from every source: the cursor moves on, and browser, handoff and
+        # startup never saw theirs again (2026-10-11, 10-14). The daily round
+        # retries the page from the ledger.
+        _hold_for_refused(root, result, items)
+        # The user's own correction to that page is not marked done either: it waits for the next pass.
         refused_pages = {row["record"] for row in result.get("refusals", [])}
         waiting = {item["source"] for item in local if item.get("record") in refused_pages}
         for key in ("rem_local_material", "rem_seen_source_ids"):

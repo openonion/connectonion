@@ -10,9 +10,10 @@ Judgement -- whether "Dora" here is that Dora -- stays with the model.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import Notebook, read_json, state_path
+from .files import Notebook, read_json, state_path, write_json
 from .investigate import project_paths
 
 MAX_LEADS = 15
@@ -66,12 +67,53 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits:
             leads.append((hits, person["path"]))
     for record in notebook.list("projects"):
-        title = next((line[2:].strip() for line in notebook.read(record).splitlines() if line.startswith("# ")), "")
+        page = notebook.read(record)
+        if project_paths(page):
+            # A project with folders is found by the folder a session ran in,
+            # never by its name: "browser" and "connectonion" are words in nearly
+            # every session, and projects/browser got a turn on 12 of 26 syncs,
+            # 9 of them NO CHANGE, 5.36M tokens (2026-10-10..15).
+            continue
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith("# ")), "")
         hits = _named(title, text)
         if hits and all(record != lead for _, lead in leads):
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
     return [record for _, record in leads[:MAX_LEADS]]
+
+
+def project_writer_pages(notebook: Notebook, leads: list[str]) -> list[str]:
+    """Leads that are project pages with folders: the project writer's, not the sync's.
+
+    Two writers rewrote projects/connectonion 16 times in 5 days, and the sync's
+    one-page turn shrank it each time the project writer grew it (2026-10-13/14).
+    Its sessions are filed under the page by folder and written by
+    `project_pages.write_page` in the daily round."""
+    return [lead for lead in leads if lead.startswith("projects/") and project_paths(notebook.read(lead))]
+
+
+# A page whose last one-page turn changed nothing is not given another for a
+# day: projects/browser ended NO CHANGE on 9 of its 12 turns, each re-sending
+# the page and the batch (2026-10-10..15).
+NO_CHANGE = "no-change.json"
+NO_CHANGE_HOURS = 24
+
+
+def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
+    path = state_path(root, NO_CHANGE)
+    seen = read_json(path, {})
+    if unchanged:
+        seen[record] = datetime.now(timezone.utc).isoformat()
+    elif seen.pop(record, None) is None:
+        return
+    write_json(path, seen)
+
+
+def cooling(root: Path, records: list[str], *, now: datetime | None = None) -> list[str]:
+    """The records whose last turn, within NO_CHANGE_HOURS, changed nothing."""
+    cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=NO_CHANGE_HOURS)).isoformat()
+    seen = read_json(state_path(root, NO_CHANGE), {})
+    return [record for record in records if seen.get(record, "") > cutoff]
 
 
 def named_projects(notes: str) -> list[str]:
@@ -122,7 +164,8 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
     roots = project_paths(text) if record.startswith("projects/") else []
     person = next((p for p in notebook.people() if p["path"] == record), {})
     title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
-    names = {person.get("title", title), *person.get("aliases", [])}
+    # A project with folders is pointed at by its folders alone, as page_leads routes it.
+    names = set() if roots else {person.get("title", title), *person.get("aliases", [])}
     pointing = {source for item in items
                 if (item.get("project") and _under(str(item["project"]), roots))
                 or any(_named(name, str(item.get("text", ""))) for name in names)
