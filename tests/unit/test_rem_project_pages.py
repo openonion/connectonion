@@ -286,7 +286,7 @@ def _fake_runner(page_from):
 
     def run(workdir, prompt, config, stage):
         calls.append(prompt)
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        candidate = Path(re.search(r"(?:NEW file|existing page at) (\S+candidate\.md)", prompt)[1])
         candidate.write_text(page_from(prompt))
         return {"outcome": "natural", "result": "read 1 message", "usage": {"input_tokens": 100}}
     run.calls = calls

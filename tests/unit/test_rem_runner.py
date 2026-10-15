@@ -12,6 +12,7 @@ import pytest
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
+from connectonion.rem import runner
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
@@ -915,12 +916,15 @@ def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(n
         result = run_stage(notebook, items, default_config(), stage='investigate')
         assert claim in notebook.read(record) and source in notebook.read(record)
         assert result['usage'] == {'input_tokens': 20}
+        assert len(prompts) == 2
     else:
-        with pytest.raises(RunFailed, match='Finding has unresolved citations') as caught:
+        # Two repairs, then the finding goes with its line; with nothing cited left, the page is refused.
+        with pytest.raises(RunFailed, match='no numbered evidence references') as caught:
             run_stage(notebook, items, default_config(), stage='investigate')
         assert notebook.read(record) == original
-        assert caught.value.usage == {'input_tokens': 20}
-    assert len(prompts) == 2 and 'copy the exact source ids' in prompts[1]
+        assert caught.value.usage == {'input_tokens': 30}
+        assert len(prompts) == 1 + runner.MAX_REPAIRS
+    assert 'copy the exact source ids' in prompts[1]
 
 
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):

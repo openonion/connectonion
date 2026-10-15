@@ -585,23 +585,24 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
     """What the review refused, and where the writer reads the originals to fix it."""
     text = (f"Review refused the page: {'; '.join(errors)}. Read the cited originals in "
             f"{directory / 'material.md'} and its evidence index. Fix each named problem in the "
-            "existing candidate: a quote must be copied character for character from the message its "
+            "existing candidate: for an unresolved citation, copy the exact source ids of the originals "
+            "that support the claim; a quote must be copied character for character from the message its "
             "line cites, in its original language, or the line rewritten without quotation marks; a "
-            "claim states only what its original proves, or goes. Keep supported detail and exact source ids. "
+            "claim states only what its original proves, or goes. Keep supported detail. "
             "Keep at most sixteen dated History lines. Save the same file and stop.")
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
-        text += (f" Read {directory / 'claim-review.json'}: fix every finding and check the cited clauses "
-                 "beside it; the audit is a correction guide, not a source.")
+        text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
+                 "clauses beside it; the audit is a correction guide, not a source.")
     if record.startswith("projects/"):
         text += (" Replace invented `git:` or `file:` citations with supplied source ids, or with pinned ones: "
                  "a `file:` id needs a file under mapped Paths and its current SHA-256, a `git:` id a full "
                  f"commit SHA. Read the original mapped page at {workdir / record}; preserve its Paths and "
-                 "the exact Sessions, First seen and Last seen lines.")
+                 "the exact Sessions, First seen, and Last seen lines.")
     return text
 
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
-                         stage, investigation=True, lock_held=False, run=None):
+                         stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS):
     """Review the page; let its writer fix what review names, twice; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
@@ -609,7 +610,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     pages stayed unwritten after 1.9.2b3's first run.
     """
     run = run or run_task
-    for attempt in range(MAX_REPAIRS + 1):
+    for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config)
@@ -619,10 +620,15 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             refused = rejected
             result["usage"] = rejected.usage or result.get("usage")
             errors = read_json(directory / "review.json", {}).get("errors") or []
-            if not errors or attempt == MAX_REPAIRS:
+            # A page someone else changed meanwhile is theirs; a repair would overwrite it.
+            if not errors or attempt == repairs or any(e.startswith("Page changed during") for e in errors):
                 break
-            repair = run(workdir, f"Edit the existing page at {candidate}. "
-                         + repair_instruction(record, errors, directory, workdir), config, stage)
+            try:
+                repair = run(workdir, f"Edit the existing page at {candidate}. "
+                             + repair_instruction(record, errors, directory, workdir), config, stage)
+            except RunFailed as error:
+                # A repair turn that fails is still paid for.
+                raise RunFailed(str(error), _add_usage(result.get("usage"), error.usage)) from error
             result["usage"] = _add_usage(result.get("usage"), repair.get("usage"))
     if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
@@ -763,12 +769,18 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        from .config import read_config
-        from .page_review import settle_sources, source_dates
-        from .service import notebook_zone
-        dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-        notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+        _write_page(notebook, record, text, items)
     return audit_usage
+
+
+def _write_page(notebook, record, text, items):
+    """Save an accepted page with its sources numbered once and dated by their originals."""
+    from . import facts
+    from .config import read_config
+    from .page_review import renumber_sources, settle_sources, source_dates
+    from .service import notebook_zone
+    dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
+    notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -814,11 +826,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
         for record, text in accepted:
-            from .config import read_config
-        from .page_review import settle_sources, source_dates
-        from .service import notebook_zone
-        dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-        notebook.write(record, renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+            _write_page(notebook, record, text, items)
     return refusals
 
 
@@ -1095,7 +1103,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if candidate and not no_change:
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
-                                 investigation=stage == "investigate", lock_held=maintenance_lock_held)
+                                 investigation=stage == "investigate", lock_held=maintenance_lock_held,
+                                 # A model that only replies, or never wrote the page, will not edit
+                                 # the file a repair names.
+                                 repairs=0 if summary or not candidate.is_file()
+                                 or candidate.read_text(encoding="utf-8") == before[record] else MAX_REPAIRS)
             metrics["render_usage"] = result.get("usage")
         elif stage in ("maintain", "abstract") and not candidate:
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,

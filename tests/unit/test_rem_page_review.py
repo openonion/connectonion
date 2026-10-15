@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from connectonion.rem.runner import MAX_REPAIRS
+
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.page_review import normalize, normalize_numbered_sources, validate
@@ -253,16 +255,16 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     candidate = candidate.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
     candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     if invalid:
-        candidate += '\n## What it is\nDuplicate\n'
+        candidate += '\n## Current status\nOne\n\n# Second title\n'
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
         path.write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
     if invalid:
-        with pytest.raises(RunFailed, match='Duplicate'):
+        with pytest.raises(RunFailed, match='exactly one page title'):
             run_stage(nb, items, default_config(), stage='investigate')
         assert nb.read('projects/atlas.md') == old
     else:
@@ -395,7 +397,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
     page = page.replace('- (none yet)', '- [1] fixture:readme')
     def execute(directory, prompt, config, stage):
-        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(page)
+        Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     with pytest.raises(RunFailed, match='Project Overview'):
@@ -403,7 +405,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
                        {'source': 'fixture:readme', 'text': 'Local counter'}], default_config(), stage='investigate')
     assert nb.read('projects/atlas.md') == old
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12 * (1 + MAX_REPAIRS)
 
 
 def test_investigation_cannot_drop_scripted_project_metadata(tmp_path):
@@ -450,7 +452,8 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
     # was, and the correction to it stays pending for the next pass.
     assert result['outcome'] == 'completed' and result['refused'] == 1
     assert result['refusals'][0]['record'] == 'projects/atlas.md'
-    assert result['usage']['input_tokens'] == 9
+    # The first turn and its repair turns are all paid for.
+    assert result['usage']['input_tokens'] == 9 * (1 + MAX_REPAIRS)
     assert nb.read('projects/atlas.md') == old
     progress = json.loads((tmp_path / '.state/progress.json').read_text()) if (tmp_path / '.state/progress.json').exists() else {}
     assert 'reflection:' + correction['id'] not in progress.get('rem_local_material', [])
@@ -862,7 +865,7 @@ def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(
     seen = []
 
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1])
         seen.append(path.read_text())
         assert 'Do not rewrite the page from scratch' in prompt
         return {'usage': {'input_tokens': 1}, 'result': 'Nothing new. NO CHANGE'}
