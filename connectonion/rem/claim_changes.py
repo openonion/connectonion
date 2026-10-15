@@ -59,6 +59,7 @@ def _same(a: str, b: str) -> bool:
 
 def _words(value: str) -> list[str]:
     value = value.casefold().strip()
-    value = re.sub(r"(?:\s*\([^()]*\)[\s.,;]*)+$", "", value)
+    # One leading run of spaces, so spaces between groups match one way only (CodeQL py/redos).
+    value = re.sub(r"\s*(?:\([^()]*\)[\s.,;]*)+$", "", value)
     value = re.sub(r"\s+\b(?:in the supplied|per the|according to)\b.*$", "", value)
     return re.findall(r"\w+", value)
