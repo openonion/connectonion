@@ -150,7 +150,7 @@ def test_open_threads_are_counted_as_the_reader_counts_them(tmp_path):
     book.write("people/ody.md", page.replace(page[page.index("## Open threads"):page.index("## ", page.index(
         "## Open threads") + 3)], THREADS))
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md", "addresses": []}})
-    assert open_threads(tmp_path) == {"open": 2, "mine": 1}
+    assert open_threads(tmp_path) == {"open": 2, "mine": 1, "theirs": 1, "other": 0, "quiet": 0}
     assert direction("The user needs to reply to Mara") == "mine"
     assert direction("None identified") == "plain"
 
@@ -218,3 +218,10 @@ def test_the_cli_says_organisations_as_the_reader_does(tmp_path):
     for name in ("rem_help.md", "rem_status.py", "rem_output.py", "rem_commands.py"):
         assert "rganization" not in (Path(commands.__file__).parent / name).read_text(), name
     assert "rganization" not in CliRunner().invoke(app, ["rem", "init", "--help"]).output
+
+
+def test_status_still_answers_waiting_on_you_when_only_quiet_threads_remain(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_status import _waiting
+    monkeypatch.setattr("connectonion.rem.census.open_threads", lambda root, found=None: {
+        "mine": 0, "theirs": 0, "other": 0, "quiet": 3, "open": 0})
+    assert "0 of 0 open threads" in Text.from_markup("\n".join(_waiting(tmp_path, {}))).plain

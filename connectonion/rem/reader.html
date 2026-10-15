@@ -8,7 +8,7 @@
 
   Design. co rem is named for REM sleep: overnight it consolidates the day's
   mail and coding sessions into pages. The home returns the changed context
-  first, then asks the owner to recall an older page. Processing details remain
+  after the obligations waiting on the owner, then offers an older page to recall. Processing details remain
   available below the memory; a candidate connection stays a question until
   the owner reviews it. Every page opens on what is still open.
   - Palette: cool, blue-biased neutrals ("pillow" paper, "midnight" ink), one
@@ -41,6 +41,7 @@
     --blue-soft: #e6e9f8;
     --blue-line: #c3caee;
     --lamp: #9a5800;
+    --waiting: #9c5800;
     --lamp-soft: #fbf0de;
     --lamp-line: #ebcb94;
     --night: #18203f;
@@ -60,7 +61,7 @@
     :root:not([data-theme="light"]) {
       --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
       --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
-      --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+      --waiting: #e3a54a; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
       --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
     }
@@ -68,7 +69,7 @@
   :root[data-theme="dark"] {
     --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
     --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
-    --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+    --waiting: #e3a54a; --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
     --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
   }
@@ -184,6 +185,50 @@
   .night code { font: 12px var(--mono); color: #fff; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; }
   .night p { margin: 0; color: var(--night-2); font-size: 14px; }
 
+  /* Waiting comes before rewrites; quieter context stays in the margin (UI audit #1–4). */
+  nav a .n.waiting { color: var(--waiting); }
+  .night-strip { padding: 12px 18px 4px; margin: 0 0 28px; }
+  .night-strip p { font: 13px/1.5 var(--ui); }
+  .night-strip .hypno { height: 54px; margin: 0; }
+  .night-strip .hypno svg { height: 38px; }
+  .night-strip .hypno .day { top: 37px; font-size: 9px; }
+  .morning-layout, .morning-primary, .morning-side { min-width: 0; }
+  .morning-primary h1 { font: 400 32px/1.18 var(--display); margin: 0 0 10px; }
+  .waiting-intro, .quiet-line { color: var(--ink-2); font-size: 14px; }
+  .waiting-ledger { list-style: none; padding: 0; margin: 22px 0 12px; }
+  .waiting-ledger > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 18px 0; border-top: 1px solid var(--line); }
+  .waiting-person { display: flex; align-items: start; gap: 10px; min-width: 0; font-size: 14px; }
+  .waiting-person a { color: var(--ink); font-weight: 600; }
+  .waiting-person .meta { display: block; margin: 3px 0 0; color: var(--ink-3); font-size: 12px; }
+  .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--blue-soft); color: var(--blue); font-size: 12px; }
+  .waiting-ask { grid-column: 1 / -1; min-width: 0; }
+  .waiting-ask .words { font: 19px/1.45 var(--text); margin: 0 0 8px; }
+  .waiting-ask .context { color: var(--ink-2); font: 13px/1.55 var(--ui); margin: 0; }
+  .waiting-age { grid-column: 2; grid-row: 1; text-align: right; font: 12px/1.5 var(--ui); color: var(--ink-3); }
+  .waiting-age b { display: block; color: var(--waiting); font-weight: 600; }
+  .waiting-age span { white-space: nowrap; }
+  .waiting-more { color: var(--ink-2); font-size: 13px; }
+  .overnight .claim-grid { display: block; }
+  .overnight .claim-card { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 14px 0; }
+  .morning-side .recall { display: block; margin-top: 28px; padding: 0; border: 0; background: transparent; }
+  .morning-side .recall .label { font: 600 17px var(--display); color: var(--ink); text-transform: none; letter-spacing: 0; }
+  .morning-side .recall h2 { font: 19px/1.4 var(--text); margin: 14px 0 10px; }
+  .morning-side .recall-toggle { margin-top: 14px; }
+  .gone-quiet { margin-top: 28px; color: var(--ink-2); }
+  .gone-quiet summary { font: 600 17px/1.5 var(--display); cursor: pointer; color: var(--ink); }
+  .quiet-list { list-style: none; padding: 0; font-size: 13px; }
+  .quiet-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .quiet-list p { margin: 4px 0 0; color: var(--ink-2); font: 13px/1.4 var(--text); }
+  .quiet-list span { white-space: nowrap; color: var(--ink-3); }
+  @media (min-width: 1100px) {
+    .morning-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px; }
+    .morning-side .recall { margin-top: 0; }
+  }
+  @media (min-width: 1550px) {
+    .waiting-ledger > li { grid-template-columns: 160px minmax(0, 1fr) auto; }
+    .waiting-ask { grid-column: 2; grid-row: 1; }
+    .waiting-age { grid-column: 3; }
+  }
   /* Morning recall: the foreground is what the notebook retained, not its run log. */
   .morning { position: relative; isolation: isolate; overflow: hidden; margin: 20px 0 0; padding: 32px; border-radius: 16px; background: #111931; color: #f4f5fb; box-shadow: 0 18px 48px -30px rgba(12, 20, 48, .55); }
   .morning::before { content: ""; position: absolute; z-index: -1; width: 500px; height: 500px; right: -185px; top: -340px; border: 1px solid rgba(163, 181, 255, .35); border-radius: 50%; box-shadow: 0 0 0 70px rgba(134, 157, 255, .035), 0 0 0 140px rgba(134, 157, 255, .025); pointer-events: none; }
@@ -1435,11 +1480,20 @@ function owing() {
   return OWING;
 }
 function direction(text) {
+  // Keep structured prefixes in step with census.py direction() (UI audit #4).
+  const owner = REM.owner && byPath(REM.owner);
+  const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
+  const prefix = text.replace(/^\s*(?:[-*+]\s+)?/, "").replaceAll("**", "");
+  const own = new RegExp("^" + me + "\\s+(owes?|asked)\\b", "i").exec(prefix);
+  if (own) return own[1].toLowerCase() === "asked" ? "theirs" : "mine";
+  const debt = /^([^:;!?]+?)\s+owes?\s+(.+)/i.exec(prefix);
+  if (debt) return new RegExp("^" + me + "\\b", "i").test(debt[2]) ? "theirs" : "third";
   const { mine, theirs } = owing();
   const a = text.search(mine), b = text.search(theirs);
   return a < 0 && b < 0 ? "plain" : a < 0 ? "theirs" : b < 0 ? "mine" : a <= b ? "mine" : "theirs";
 }
-const DIRECTION_LABEL = { mine: "You owe", theirs: "They owe", plain: "Open" };
+const DIRECTION_LABEL = { mine: "You owe", theirs: "They owe", plain: "Open", third: "Between others" };
 function listItems(text) {
   const items = [];
   for (const line of String(text).split("\n")) {
@@ -1452,7 +1506,7 @@ function listItems(text) {
 // A line saying nothing is open, in the words pages use for it (1.9.2b1 showed
 // "None identified" and "No explicit open request" as OPEN for 30 days).
 function isCalm(t) {
-  return /^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)/i
+  return /^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b|no work is (?:confirmed )?pending\b)/i
     .test(t.replace(/\*/g, "").trim());
 }
 function threads(r) {
@@ -1461,15 +1515,33 @@ function threads(r) {
   const all = listItems(s.text);
   const calm = all.find(isCalm) || "";
   const today = calendarDay(REM.as_of);
-  const items = all.filter(t => t !== calm && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
+  const items = all.filter(t => !isCalm(t) && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
     const due = /\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1] || "";
     const requested = /\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
-    return { text, dir: direction(text), since: requested || days.find(d => d !== due && (!today || d <= today)) || "", due };
+    const moved = /\blast moved(?:\s+on)?\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
+    const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
+    const quiet = !!since && daysSince(since) > 60 && (!due || due <= today);
+    return { text, dir: direction(text), since, due, quiet };
   });
   return { items, calm };
+}
+// One row set for home, Open threads and the rail; census.py mirrors the count.
+function threadEntries() {
+  return listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
+    .flatMap(r => threads(r).items.filter(t => t.dir !== "third").map(t => ({ r, t })))
+    .sort((a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
+      || (b.t.since || "").localeCompare(a.t.since || ""));
+}
+function threadCounts() {
+  const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
+  for (const { t } of threadEntries()) {
+    if (t.quiet) counts.quiet++;
+    else { counts[t.dir === "plain" ? "other" : t.dir]++; counts.open++; }
+  }
+  return counts;
 }
 function historyItems(text) {
   return listItems(text).map(t => {
@@ -1756,6 +1828,16 @@ function runEnd(run) {
   return Math.max(runTime(run), isNaN(end) ? runTime(run) : end);
 }
 function sourceName(s) { return typeof s === "string" ? s : (s && (s.id || s.kind)) || ""; }
+// Historical run claims need the same rewording rule as claim_changes.py _same().
+function sameClaim(before, after) {
+  const words = value => value.toLocaleLowerCase().trim().replace(/(?:\s*\([^()]*\)[\s.,;]*)+$/, "")
+    .replace(/\s+\b(?:in the supplied|per the|according to)\b.*$/, "").match(/[\p{L}\p{N}_]+/gu) || [];
+  const old = words(before), current = words(after);
+  if (!old.length) return !current.length;
+  let at = 0;
+  for (const word of current) if (word === old[at]) at++;
+  return at === old.length;
+}
 function lastPass() {
   const logs = (REM.logs || []).filter(run => !isNaN(runTime(run)));
   if (!logs.length) return null;
@@ -1774,7 +1856,7 @@ function lastPass() {
   const failed = runs.filter(run => FAILED.test(String(run.outcome || "")));
   const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
   const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
-    .filter(claim => byPath(claim.record) && (claim.sources || []).length);
+    .filter(claim => byPath(claim.record) && (claim.sources || []).length && !sameClaim(claim.before || "", claim.after || ""));
   return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items, claims };
 }
 function weekChanges() {
@@ -1885,9 +1967,9 @@ function renderRail(active) {
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
     el("span", {}, [moon(known(owner).status), " You"]), el("span", { class: "n", text: owner.title })]));
   nav.appendChild(el("div", { class: "label", text: "Your day" }));
-  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Open threads", "#view=open"],
+  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"],
     ["changes", "Memory changes", "#view=changes"]])
-    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title })]));
+    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
   nav.appendChild(el("div", { class: "label", text: "Explore memory" }));
   nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: "All records" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of memoryCategories()) {
@@ -2021,58 +2103,48 @@ function firstMapBrief() {
   return brief;
 }
 function morningBrief() {
-  const pass = lastPass();
-  const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
-  const failed = pass?.failed || [];
-  const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
-  changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
-  const brief = el("section", { class: "morning", "aria-label": "What co rem carried forward" });
-  const top = el("div", { class: "morning-top" }, [
-    el("div", {}, [el("span", { class: "morning-kicker", text: "co rem / latest pass" }),
-      el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
-        ? "The context to carry into today" : "The context from the last pass") : failed.length ? "The last pass needs attention" : "Ready when there is something new" })]),
-    el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
-  brief.appendChild(top);
-  if (failed.length) {
-    // Classify failures without surfacing private runner output in the morning brief.
-    const errors = failed.map(run => String(run.error || "")).join("\n");
-    const reasons = [];
-    if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
-    if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
-    if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
-    brief.appendChild(el("p", { class: "memory-empty", text: failed.length + " investigation" + (failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") }));
-    brief.appendChild(el("div", { class: "first-map-actions" }, [el("a", { href: "#view=activity", text: "Review failed runs →" })]));
+  const pass = lastPass(), claims = pass?.claims || [];
+  const brief = el("section", { class: "overnight", "aria-label": "What changed overnight" }, [sectionHead("What changed overnight")]);
+  if (claims.length) brief.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
+  else {
+    const n = pass?.changed?.length || 0;
+    brief.appendChild(el("p", { class: "quiet-line", text: "Nothing about your people or projects changed last night." +
+      (n ? " " + n + (n === 1 ? " page was" : " pages were") + " reworded; nothing new." : "") }));
   }
-  if ((REM.logs || []).some(run => runTrace(run))) brief.appendChild(el("a", { class: "inspection-link", href: "#view=activity", text: "View recent inspection trail →" }));
-  if (pass?.claims?.length) {
-    const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
-      pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
-    brief.appendChild(found);
-  }
-  if (!changed.length) {
-    brief.appendChild(el("p", { class: "memory-empty", text: pass
-      ? failed.length ? "No memory pages were written in the last pass. Your source map and existing pages remain available below. Review the failed runs before retrying." : "The last pass did not update a page. Your existing context is still in the library below."
-      : "co rem has not completed a pass yet. Once it has, the pages it updates will appear here." }));
-    return brief;
-  }
-  const cards = el("div", { class: "memory-grid" });
-  for (const r of changed.slice(0, 3)) {
-    const purpose = r.category === "projects" ? section(r, "what it is") : null;
-    const purposeLine = purpose ? listItems(purpose.text)[0] || purpose.text : "";
-    const purposePreview = purposeLine.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
-    cards.appendChild(el("article", { class: "memory-card" }, [
-      el("span", { class: "kind", text: singular(r.category) + " · Page rewritten" +
-        (r.category === "projects" && known(r).last ? " · last mapped session " + fmtDate(known(r).last) : "") }),
-      el("h3", {}, [el("a", { href: href(r), text: r.title })]),
-      purposePreview && !/^\s*-?\s*Unknown\b/i.test(purposePreview)
-        ? el("p", { class: "project-purpose" }, [el("strong", { text: "What this is · " }), el("span", { html: inline(purposePreview, r.path) })]) : null,
-      el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
-      el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
-  }
-  brief.appendChild(cards);
-  const connection = memoryConnection(changed);
-  if (connection) brief.appendChild(connection);
+  if (pass?.failed?.length) brief.appendChild(el("p", { class: "quiet-line" }, [
+    pass.failed.length + " runs need attention. ", el("a", { href: "#view=activity", text: "Review failed runs →" })]));
   return brief;
+}
+function morningThread({ r, t }) {
+  const quote = /“([^”]+)”|"([^"\n]+)"/.exec(t.text);
+  const words = quote ? quote[1] || quote[2] : t.text.replace(/^(?:the user|user|you) owes? [^:]+:\s*/i, "");
+  const context = quote ? t.text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim() : "";
+  const role = contactFields(r).find(f => f.label === "Role")?.value;
+  const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
+  const label = /\b(?:promised|agreed|offered to)\b/i.test(t.text) ? "you promised" : /\?|\bquestion\b/i.test(t.text) ? "a question" : "a request";
+  const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("");
+  return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
+    el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
+    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: "“" + (quote ? words : plainLine(words)) + "”" }),
+      el("p", { class: "context", html: inline(context || (t.text.match(/\[W?\d{1,3}\]/g) || []).join(" "), r.path) })]),
+    el("div", { class: "waiting-age" }, [el("b", { text: t.due ? "due " + shortDate(t.due) : age(t.since) }), el("span", { text: label })])]);
+}
+function quietThreads(entries, count, home = false) {
+  const items = entries.filter(({ t }) => t.quiet);
+  if (!items.length) return null;
+  return el("details", { class: "gone-quiet" }, [el("summary", { text: "Gone quiet (" + count + ")" }),
+    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t }) => el("li", {}, [
+      el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) })]), el("span", { text: age(t.since) })])))
+      : el("ul", { class: "threads" }, items.map(({ r, t }) => threadRow(r, t, true))),
+    home ? el("a", { href: "#view=open", text: "See all quiet threads →" }) : null]);
+}
+function morningNight() {
+  const pass = lastPass();
+  const strip = el("section", { class: "night night-strip", "aria-label": "The last pass" }, [
+    el("p", { text: pass ? "Last pass · " + fmtTime(new Date(pass.latest).toISOString()) + " · " + pass.items + " items read · " + pass.changed.length + " pages rewritten" +
+      (pass.failed.length ? " · " + pass.failed.length + " runs need attention" : "") : "No pass yet. Run co rem sync to read what came in." })]);
+  strip.insertAdjacentHTML("beforeend", hypnogram(new Date(REM.as_of).getTime()));
+  return strip;
 }
 function taskView(kind) {
   const main = document.getElementById("main");
@@ -2092,16 +2164,17 @@ function taskView(kind) {
   }
   main.appendChild(el("h1", { text: "Open threads" }));
   main.appendChild(el("p", { class: "lede", text: "What needs your answer, and what you are waiting to hear back." }));
-  const entries = listedRecords().flatMap(r => threads(r).items.map(t => ({ r, t })))
-    .sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir]
-      || (a.t.since || "9999").localeCompare(b.t.since || "9999"));
+  const entries = threadEntries(), counts = threadCounts();
+  main.appendChild(el("p", { class: "quiet-line", text: counts.open + " open threads · newest and due first" }));
   if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
     "No supported open loop is in this snapshot."]));
-  else for (const [title, dir] of [["Waiting on you", "mine"], ["Waiting on others", "theirs"], ["Other open context", "plain"]]) {
-    const items = entries.filter(row => row.t.dir === dir);
-    if (items.length) main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(items.length)),
-      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true)))]));
+  for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
+    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
+    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
+      items.length ? el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true))) : el("p", { class: "quiet-line", text: "Nothing here." })]));
   }
+  const quiet = quietThreads(entries, counts.quiet);
+  if (quiet) main.appendChild(quiet);
 }
 function recallPrompt() {
   const changed = new Set((lastPass()?.changed || []).map(r => r.path));
@@ -2121,7 +2194,7 @@ function recallPrompt() {
     button.setAttribute("aria-expanded", String(!answer.hidden));
     button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
   };
-  card.append(el("span", { class: "label", text: "Remember with co rem" }),
+  card.append(el("span", { class: "label", text: "Worth remembering" }),
     el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
     el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
   return card;
@@ -2141,39 +2214,26 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  const firstMap = firstMapBrief();
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: firstMap ? "Your source map" : "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: firstMap ? "Your sources are mapped. Investigate a person or project to add source-backed findings." :
-    n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
-    "A short return to what changed, what is still open, and what is worth remembering." }));
-  main.appendChild(firstMap || morningBrief());
+  const entries = threadEntries(), counts = threadCounts(), shown = Math.min(3, counts.mine);
+  main.appendChild(morningNight());
+  const primary = el("div", { class: "morning-primary" }, [
+    el("h1", { text: shown === 0 ? "Nothing is waiting on you" : shown === 1 ? "One thing is waiting on you" : shown + " things are waiting on you" }),
+    el("p", { class: "waiting-intro", text: "Newest and due first. Each line is in their words." }),
+    el("ol", { class: "waiting-ledger" }, entries.filter(({ t }) => t.dir === "mine" && !t.quiet).slice(0, 3).map(morningThread)),
+    el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: "See all " + counts.mine + " waiting on you" }),
+      " and " + counts.theirs + " are waiting on someone else"]), morningBrief()]);
+  const side = el("aside", { class: "morning-side" });
   const recall = recallPrompt();
-  if (recall) main.appendChild(recall);
+  if (recall) side.appendChild(recall);
+  const quiet = quietThreads(entries, counts.quiet, true);
+  if (quiet) side.appendChild(quiet);
+  main.appendChild(el("div", { class: "morning-layout" }, [primary, side]));
+  const firstMap = firstMapBrief();
+  if (firstMap) main.appendChild(firstMap);
   const review = connectionReview();
   if (review) main.appendChild(review);
-
-  // What is open, with whom: the reason most people come back.
-  const open = [];
-  for (const r of listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category)))
-    for (const t of threads(r).items) open.push({ r, t });
-  open.sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir] || byActivity(a.r, b.r));
-  if (open.length) {
-    // Keep unassigned context separate from obligations in either direction.
-    const oldest = (x, y) => (x.t.since || "9999").localeCompare(y.t.since || "9999") || byActivity(x.r, y.r);
-    const mine = open.filter(o => o.t.dir === "mine").sort(oldest);
-    const others = open.filter(o => o.t.dir === "theirs").sort(oldest);
-    const plain = open.filter(o => o.t.dir === "plain");
-    main.appendChild(sectionHead("Open threads", open.length + " open · " + mine.length + " waiting on you"));
-    const band = (title, note, rows) => el("section", { class: "band" }, [el("h3", {}, [el("span", { text: title }), el("span", { class: "mono", text: note })]),
-      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 3).map(o => threadRow(o.r, o.t, true)))
-        : el("p", { class: "band-none", text: "Nothing here." }),
-      rows.length > 3 ? el("p", { class: "band-none" }, [el("a", { href: "#view=open", text: "View all " + rows.length + " open threads →" })]) : null]);
-    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others),
-      plain.length ? band("Other open context", String(plain.length), plain) : null]));
-  }
 
   // This week: what the nightly passes rewrote, newest first, each with its one line.
   const week = weekChanges();
@@ -2186,7 +2246,6 @@ function overview() {
   }
 
   const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
-  main.appendChild(processing);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
@@ -2203,6 +2262,7 @@ function overview() {
       el("a", { class: "category-card", href: "#c=" + c }, [el("strong", { text: label(c) }),
         el("span", { text: count + (count === 1 ? " record" : " records") })]))));
   }
+  main.appendChild(processing);
   main.appendChild(maintenance(s));
 }
 

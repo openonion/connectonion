@@ -44,8 +44,6 @@ def _waiting(root, found: dict) -> list[str]:
     """What needs the owner, first: the open threads waiting on them, counted as the reader's home counts them."""
     from ...rem.census import open_threads
     found = open_threads(Path(root), found)
-    if not found["open"]:
-        return []
     return [rem_look.section("Waiting on you", f"{_number(found['mine'])} of {_plural(found['open'], 'open thread')}"),
             ""]
 

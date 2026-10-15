@@ -122,3 +122,66 @@ def test_a_folder_named_copy_joins_the_skill_it_copies(tmp_path):
         (tmp_path / root / folder / "SKILL.md").write_text(text)
     names = sorted({row["name"] for row in scan_skills([tmp_path / "agents", tmp_path / "codex"])["skills"]})
     assert names == ["linkedin-post", "nonfiction-refine", "post"]
+
+
+def test_structured_thread_direction_wins_over_words_in_the_body():
+    from connectonion.rem.census import direction
+    for owner in ("The user", "the user", "THE USER", "you", "You", "Aaron"):
+        assert direction(f"{owner} owes Mara: she promised the deck.", "Aaron") == "mine"
+        assert direction(f"{owner} asked Mara: you promised to review her answer.", "Aaron") == "theirs"
+        assert direction(f"Mara owes {owner}: you promised to review her answer.", "Aaron") == "theirs"
+    assert direction("- The user owes Mara: an answer.") == "mine"
+    assert direction("Yu at Heidi Health owes Ody A$123.38; you asked about it.") == "third"
+    assert direction("Yu owes Ody: the user promised to check.") == "third"
+    assert direction("Dr. Yu owes Ody the expense reimbursement.") == "third"
+    assert direction("Yu (Heidi Health, Inc.) owes Ody the reimbursement.") == "third"
+    assert direction("The user needs to reply to Mara") == "mine"
+    assert direction("Aaron asked Adi to arrange a call", "Aaron") == "theirs"
+    assert direction("Mara promised the deck") == "theirs"
+    assert direction("Scope to decide together") == "plain"
+
+
+def test_calm_thread_lines_do_not_become_open_context():
+    from connectonion.rem.census import threads
+    page = "# Atlas\n\n## Open threads\n" + "\n".join("- " + text for text in (
+        "No work is confirmed pending as of 2026-10-16.", "No confirmed pending work.",
+        "No known pending work.", "**None identified.**", "Nothing outstanding.",
+        "The user owes Mara: an answer."))
+    assert threads(page) == ["The user owes Mara: an answer."]
+
+
+def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
+    from datetime import date
+    from connectonion.rem.census import open_threads
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    records = {
+        "people/me.md": "# Aaron Xie\n",
+        "people/mara.md": "# Mara\n\n## Open threads\n"
+        "- The user owes Mara: reply since 2026-10-15.\n"
+        "- The user asked Mara: answer since 2026-08-17.\n"  # exactly 60 days stays active
+        "- Mara owes the user: deck since 2026-08-16.\n"
+        "- Yu owes Ody: funds since 2026-10-15.\n"
+        "- The user owes Mara: contract since 2026-08-01, due 2026-10-17.\n"
+        "- The user owes Mara: old answer since 2026-08-01, due 2026-10-16.\n"
+        "- No work is confirmed pending.\n",
+        "orgs/fern.md": "# Fern\n\n## Open threads\n- waiting on them for terms.\n",
+        "projects/atlas.md": "# Atlas\n\n## Open threads\n- Scope not settled.\n"
+        "- Old scope since 2026-08-01.\n",
+        "skills/catalog/demo.md": "# Demo\n\n## Open threads\n- You owe a review.\n",
+        "people/held.md": "# Held\n\n## Open threads\n- You owe an answer.\n",
+    }
+    for record, text in records.items():
+        book.write(record, text)
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md"}})
+    found = {record: {"category": record.split('/')[0], "held": record == "people/held.md",
+                      "service": False, "duplicate": False} for record in records}
+    assert open_threads(tmp_path, found, as_of=date(2026, 10, 16)) == {
+        "mine": 2, "theirs": 2, "other": 1, "quiet": 3, "open": 5}
+
+
+def test_a_thread_last_moved_recently_is_not_quiet():
+    from datetime import date
+    from connectonion.rem.census import _quiet
+    assert not _quiet("The user owes Mara: asked 2026-07-01; last moved on 2026-10-15.", date(2026, 10, 16))
+    assert _quiet("The user owes Mara: asked 2026-07-01; last moved: 2026-08-01.", date(2026, 10, 16))
