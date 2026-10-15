@@ -103,7 +103,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 2026-10-14). A test now holds this at each release's own version, so it cannot be forgotten again.
 # 1.9.3b2: accept writes the sender's conversation as a thread of its own (#2513).
 # 1.9.3b3: Codex lists that thread in /resume, and done repeats the line that names it.
-MIN_VERSION = "1.9.3b3"
+# 1.9.3b4: the pasted line, the prompt and the mail say what arrives is the context of a session, not a task (#2523).
+MIN_VERSION = "1.9.3b4"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
