@@ -25,7 +25,7 @@ def _invoke(*args):
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_HOME"):
+    for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_HOME", "CODEX_SANDBOX"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AGENT_EMAIL", SELF)
     folder = tmp_path / "login-app"
