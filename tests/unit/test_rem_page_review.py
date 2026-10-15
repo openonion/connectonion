@@ -1019,3 +1019,13 @@ def test_a_missing_section_is_reported_as_missing_not_as_a_duplicate():
     errors = validate('projects/a.md', page, '', [])
     assert 'Missing section: Open threads' in errors
     assert not any('must occur once: Open threads' in e for e in errors)
+
+
+def test_a_carried_over_project_source_is_recognised_when_reworded():
+    """browser and handoff (2026-10-14): `project-source:` was not a source scheme, so
+    a real id carried over from the page counted only when its whole line matched."""
+    from connectonion.rem.page_review import _carried_over
+    real = "project-source:" + "a1" * 32
+    old_sources = f"- [3] {real} — README.md, captured 2026-10-01\n"
+    assert _carried_over(f"{real} — the project README", old_sources)
+    assert not _carried_over("project-source:" + "b2" * 32 + " — invented", old_sources)

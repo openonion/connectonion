@@ -56,6 +56,20 @@ def label_for(root: Path) -> str:
     return LABEL + "." + hashlib.sha256(str(root).encode()).hexdigest()[:12]
 
 
+def _checkout_path() -> str:
+    """The source checkout running now, or '' for an installed package.
+
+    Not the installing shell's PYTHONPATH: the live job carried a scratch
+    folder from an old session (2026-10-15), harmless only because it had no
+    connectonion/__init__.py -- with one it would have shadowed the installed
+    package every five minutes."""
+    if getattr(sys, "frozen", False):
+        return ""
+    import connectonion
+    checkout = Path(connectonion.__file__).resolve().parent.parent
+    return "" if {"site-packages", "dist-packages"} & set(checkout.parts) else str(checkout)
+
+
 class Launchd:
     """macOS LaunchAgent for the current user; no root, survives logout/login."""
 
@@ -125,8 +139,7 @@ class Launchd:
                 dirs.append(str(Path(binary).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
-        from .runner import child_pythonpath
-        pythonpath = child_pythonpath()
+        pythonpath = _checkout_path()
         if pythonpath:
             # The job must run the same connectonion the user is running now; a
             # development checkout only exists on PYTHONPATH. Absolute: the

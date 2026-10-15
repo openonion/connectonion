@@ -366,7 +366,10 @@ def guide(next_command) -> str:
 
 # Why a daily round started no page, in words (the record keeps the code).
 NO_PAGE = {'nothing_unfinished': 'every page is written', 'nothing_new': 'nothing new since the last run',
-           'no_page_fits_budget': 'no page fit what was left of the day\'s calls'}
+           'no_page_fits_budget': 'no page fit what was left of the day\'s calls',
+           'nothing_found': 'no page tried had anything to write from',
+           'refused': 'every page tried was refused; each is tried again within a day',
+           'failed': 'every page tried failed'}
 
 
 def _tokens(*usages) -> str:

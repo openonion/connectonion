@@ -75,6 +75,8 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         last = page_state(root, record).get("last_activity") or messages[-1]["timestamp"]
         if since and mode == "first" and not timestamp(last) > timestamp(since):
             continue
+        if since and mode == "update" and not _update_due(page_state(root, record), len(messages), now):
+            continue
         # What the call will carry: the messages as the model reads them, and the page.
         from .runner import readable_material
         chars = len(readable_material(_message_items(sent))) + len(Notebook(root).read(record))
@@ -84,6 +86,19 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     # private journal came before LayeredVisions (28 sessions) (#2079).
     return sorted(rows, key=lambda r: (-r["new_messages"], not r["recent"], _negated(r["last_activity"]),
                                        r["record"]))
+
+
+# A page written in the last UPDATE_HOURS waits for the next day unless this
+# many messages are pending: projects/connectonion was rewritten at 06:05,
+# 07:10 and 08:05 on 2026-10-13, for 1-3 messages each time, a full turn each.
+UPDATE_HOURS = 20
+UPDATE_MESSAGES = 10
+
+
+def _update_due(state: dict, pending_messages: int, now: datetime) -> bool:
+    written = state.get("written_at") or ""
+    return (pending_messages >= UPDATE_MESSAGES or not written
+            or timestamp(written) <= now - timedelta(hours=UPDATE_HOURS))
 
 
 # A folder that holds the owner's own life rather than their work. Its
@@ -571,7 +586,9 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                                                 "usage": usage, "duration_seconds": time.monotonic() - started})
         if "rejected" in str(error):
+            from .refusals import material_sources, remember_refusal
             mark_refused(root, record, through, str(error), now=now)
+            remember_refusal(root, record, material_sources(items), str(error), stage="projects")
         raise RunFailed(str(error), usage) from error
     finally:
         # A refused page left its material.json/material.md behind (#2029).
@@ -585,6 +602,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))
         mark_written(root, record, through, now=now, inputs_read=messages,
                      inputs_available=len(pending(root, record)[0]))
+        from .refusals import forget_refusal
+        forget_refusal(root, record)
         from .store import refresh_safely
         refresh_safely(root)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted", "usage": result.get("usage"),

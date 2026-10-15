@@ -31,7 +31,28 @@ def organisation(domain: str) -> str:
     return '.'.join(labels[-keep:])
 
 
-def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) -> tuple[list[dict], list[str]]:
+LEGAL_SUFFIX = re.compile(r'\b(?:pty|ltd|limited|inc|llc|corp|co|gmbh)\b\.?', re.I)
+
+
+def own_domain(domain: str, owner: dict | None, owner_page: str) -> bool:
+    """Is this the owner's own organisation? Never a counterparty.
+
+    The 2026-10-10 notebook made orgs/openonion-ai from the owner's colleagues
+    writing from the owner's own domain, and orgs/connectonion-com from
+    pypi@connectonion.com -- CONNECTONION PTY LTD is the owner's signing entity.
+    Own is a domain the owner writes from, or one named like the Company or
+    Signing entity on the owner's page."""
+    mine = {organisation(d) for d in map(_domain, (owner or {}).get('addresses', [])) if d}
+    names = set()
+    for line in re.findall(r'^- (?:Company|Signing entity): (.+)$', owner_page, re.M):
+        line = re.sub(r'\[(\d+)\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', line))
+        names |= {re.sub(r'[^a-z0-9]', '', LEGAL_SUFFIX.sub('', part).casefold()) for part in re.split(r'[;,/]', line)}
+    org = organisation(domain)
+    return org in mine or org.split('.')[0] in names - {'', 'unknown'}
+
+
+def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
+             owner: dict | None = None) -> tuple[list[dict], list[str]]:
     """One candidate per organisation someone with a page writes from; no model.
 
     A company's sending and login subdomains are the company (#1844): on the
@@ -52,7 +73,9 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) 
             group['domains'].add(domain)
             if person.get('record'):   # a notice sender has no page to link to
                 group['contacts'].add(person['record'])
-    groups = {key: group for key, group in groups.items() if group['contacts']}
+    owner_page = notebook.read(owner['record']) if owner and notebook.path(owner['record']).is_file() else ''
+    groups = {key: group for key, group in groups.items()
+              if group['contacts'] and not own_domain(key, owner, owner_page)}
     rows, created = [], []
     for domain, group in sorted(groups.items()):
         contacts, domains = group['contacts'], sorted(group['domains'] | {domain})

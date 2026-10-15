@@ -59,14 +59,16 @@ def test_a_page_already_written_from_what_points_at_it_has_nothing_new(tmp_path)
 
 def test_the_owner_is_not_a_lead_and_projects_are_found_by_name(tmp_path):
     """Every session is the owner's own, so the owner's name is in all of it; a
-    real batch about One and ConnectOnion was pointed at the owner's other address."""
+    real batch about One and ConnectOnion was pointed at the owner's other address.
+    A project with folders is found by them alone (projects/browser, 2026-10-10..15)."""
     from connectonion.rem.files import state_path, write_json
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     notebook.stub_person("people/me.md", "Aaron Xie", ["Aaron"], email="me@example.org")
     notebook.stub_person("people/me-too.md", "Aaron", [], email="me@other.example")
-    notebook.stub_project("projects/one.md", "One", ["/w/one"])
-    notebook.stub_project("projects/connectonion.md", "ConnectOnion", ["/w/co"])
+    notebook.stub_project("projects/one.md", "One", [])
+    notebook.stub_project("projects/connectonion.md", "ConnectOnion", [])
+    notebook.stub_project("projects/lark.md", "Lark", ["/w/lark"])
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md"},
                                                   "possible_own_addresses": [{"record": "people/me-too.md"}]})
     items = [{"role": "extract", "text": "Aaron wants the One bot in Lark; ConnectOnion needs a release. one more."}]

@@ -1161,3 +1161,17 @@ def test_last_seen_does_not_lag_the_last_activity_an_investigation_read(tmp_path
     nb.write(record, nb.read(record).replace('- Last activity: Unknown', '- Last activity: 2026-10-15 [1]'))
     file_project(nb, 'tide', row)
     assert '- Last seen: 2026-10-15' in nb.read(record)
+
+
+def test_the_owners_own_domain_is_never_a_counterparty_organisation(tmp_path, monkeypatch):
+    """orgs/openonion-ai (2026-10-10): the owner's colleagues write from the owner's own domain."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': 'Zi Ming', 'address': 'ziming@openonion.ai', 'mails': 6, 'sent': 3, 'received': 3},
+              {'name': 'Bot', 'address': 'agent@mail.openonion.ai', 'mails': 4, 'sent': 2, 'received': 2},
+              {'name': 'Ann Lee', 'address': 'ann@partner.com.au', 'mails': 4, 'sent': 2, 'received': 2}]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, {'me@openonion.ai'}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert [row['domain'] for row in result['orgs']] == ['partner.com.au']

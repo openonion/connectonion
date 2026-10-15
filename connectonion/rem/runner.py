@@ -796,10 +796,11 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     stopped on one batch that touched three pages, one of which lacked its
     overview diagram, and retried the same refusal on every scheduled run.
     Nothing is lost by refusing a page on its own: its candidate is kept under
-    refused/, and investigating that page reads every source again.
+    refused/, and the sync holds its material in the refusal ledger for the
+    daily round's retry. A page the turn shrank too far is refused the same way.
     """
     from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
-                              renumber_sources, restore_runner_fields, validate, verify_contacts)
+                              renumber_sources, restore_runner_fields, shrinkage, validate, verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
@@ -817,6 +818,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))[0]
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
+        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
+        errors += [shrunk] if shrunk else []
         if errors:
             refusals.append({"record": record, "errors": errors})
             kept = directory / "refused" / record

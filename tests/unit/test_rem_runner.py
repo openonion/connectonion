@@ -396,6 +396,34 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     assert (directory / "refused" / "people/bad.md").read_text() == bad  # the model's work is kept
 
 
+def test_a_maintenance_batch_that_guts_a_page_keeps_the_old_one(tmp_path):
+    """projects/connectonion went 14,356 -> 4,132 characters in one accepted
+    maintenance turn (2026-10-13): nothing it dropped was invalid, only gone."""
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.runner import _promote_maintenance
+    root, work = tmp_path / "rem", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    notebook.stub_person("people/dora.md", "Dora", [])
+    lines = "\n".join(f"- Dora settled point {n} of the lease, in writing, with the agent. [{n}]" for n in range(1, 13))
+    sources = "\n".join(f"- [{n}] codex:abc:{n} — 2026-09-24" for n in range(1, 13))
+    full = notebook.read("people/dora.md").replace("## Who they are\n- Unknown — not investigated yet",
+                                                   f"## Who they are\n{lines}").replace(
+        "## Sources\n- (none yet)", f"## Sources\n{sources}")
+    notebook.write("people/dora.md", full)
+    gutted = full.replace(lines, lines.split("\n")[0]).replace(sources, sources.split("\n")[0])
+    working.write("people/dora.md", gutted)
+    items = [{"role": "user", "source": f"codex:abc:{n}", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}
+             for n in range(1, 13)]
+    directory = tmp_path / "task"
+    directory.mkdir()
+    refusals = _promote_maintenance(notebook, working, {"people/dora.md": full}, items, directory, None, False)
+    assert notebook.read("people/dora.md") == full
+    assert any("kept the old page" in error for error in refusals[0]["errors"])
+
+
 def test_a_small_maintenance_prompt_carries_its_instructions_and_material(tmp_path):
     """Reading them from files cost ten of nineteen turns on a real pass, each
     re-sending the whole context. Small enough, they travel in the prompt."""

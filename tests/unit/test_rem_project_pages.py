@@ -379,6 +379,9 @@ def test_a_refused_page_leaves_its_messages_pending(world):
         write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
     assert world.notebook.read("projects/tide.md") == before
     assert page_state(world.root, "projects/tide.md")["written_through"] == ""
+    # In the one refusal ledger too, which nothing else wrote for the project writer (2026-10-15 audit).
+    from connectonion.rem.refusals import refused_for
+    assert refused_for(world.root, "projects/tide.md")["stage"] == "projects"
     # #2026: refused for this material, it waits for newer messages instead of
     # being retried with the same ones on every sync (~260k tokens, 0 changes).
     assert "projects/tide.md" not in [r["record"] for r in queue(world.root)]
@@ -754,3 +757,22 @@ def test_a_written_finding_resting_on_one_untraceable_citation_does_not_cost_the
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved
     assert "Lifeguards" not in saved and re.search(r"## Open threads\n+- Unknown", saved)
+
+
+def test_a_page_written_today_waits_for_tomorrow_unless_much_is_new(world):
+    """projects/connectonion was rewritten at 06:05, 07:10 and 08:05 on 2026-10-13,
+    for 1-3 messages each time, a full turn each."""
+    from connectonion.rem.project_pages import UPDATE_MESSAGES
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "first", 0.5)])
+    extract(world.root, world.subs)
+    mark_written(world.root, "projects/tide.md", ago(0.5), now=NOW - timedelta(hours=2))
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "one more", 0)])
+    extract(world.root, world.subs)
+    since = ago(1)
+    assert "projects/tide.md" not in [r["record"] for r in queue(world.root, since=since, now=NOW)]
+    assert "projects/tide.md" in [r["record"] for r in queue(world.root, since=since,
+                                                             now=NOW + timedelta(hours=19))]
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide",
+          [("user", f"more {n}", 0) for n in range(UPDATE_MESSAGES)])
+    extract(world.root, world.subs)
+    assert "projects/tide.md" in [r["record"] for r in queue(world.root, since=since, now=NOW)]

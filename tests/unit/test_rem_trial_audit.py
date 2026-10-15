@@ -106,3 +106,36 @@ def test_a_repository_the_task_names_is_that_turns_material(tmp_path):
     wander = next(f for f in _audit().audit(root, sessions, home, strict_reads=True)["severe"]
                   if f["check"] == "read outside the material")
     assert wander["count"] == 1 and ".claude/projects" in wander["example"]
+
+
+def test_maintenance_refusals_shrinks_churn_and_swallowed_rounds_are_counted(tmp_path):
+    """What the 2026-10-10..15 notebook showed and the audit did not: maintenance
+    refusals in a sync's record, connectonion 14,356 -> 4,132, projects/browser
+    worked 12 times (9 NO CHANGE), and two refusals only in task folders."""
+    root, home, tasks = _notebook(tmp_path)
+    (tasks / "review.json").write_text(json.dumps({"accepted": False, "errors": ["Missing or duplicate citation: 22"]}))
+    for n in range(5):
+        _run(root, f"sync_{n}", phase=None, started_at=f"2026-10-1{n % 3 + 1}T0{n}:00:00+00:00",
+             page_chars={"projects/browser.md": [5004, 5004]}, changed=[])
+    _run(root, "sync_shrink", phase=None, started_at="2026-10-13T17:01:00+00:00",
+         page_chars={"projects/connectonion.md": [14356, 4132]}, changed=["projects/connectonion.md"],
+         refusals=[{"record": "projects/handoff.md", "errors": ["Changed page has no numbered evidence references"]}])
+    _run(root, "daily", phase="daily-update", started_at="2026-10-12T16:23:00+00:00",
+         pages=[{"page": "people/dora.md", "outcome": "accepted", "refused_rounds": ["Missing or duplicate citation: 22"]}])
+    report = _audit().audit(root, home / ".codex" / "sessions", home)
+    severe = {(f["check"], f["example"].split()[0]) for f in report["severe"]}
+    assert ("refusal missing from ledger", "projects/handoff.md") in severe
+    assert ("page shrank", "projects/connectonion.md") in severe
+    assert report["runs"]["refused_rounds"] == ["people/dora.md"]
+    assert report["runs"]["refused_turns"] == {"tasks": 1, "recorded": 2, "swallowed": 0}
+    browser = next(c for c in report["runs"]["churn"] if c["page"] == "projects/browser.md")
+    assert browser["turns"] == 5 and browser["no_change"] == 5
+
+
+def test_a_refusal_followed_only_by_nothing_found_is_still_open(tmp_path):
+    """job-followup was refused at init and came back nothing_found every day after."""
+    root, home, _ = _notebook(tmp_path)
+    _run(root, "run_1", record="skills/catalog/job-followup.md", outcome="refused")
+    _run(root, "daily", phase="daily-investigation", started_at="2026-10-11T01:00:00+00:00",
+         pages=[{"page": "skills/catalog/job-followup.md", "outcome": "nothing_found"}])
+    assert _audit().missing_refusals(root, _audit().load_runs(root)) == ["skills/catalog/job-followup.md"]
