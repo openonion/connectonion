@@ -399,7 +399,7 @@ def _accept_from_session(world, tmp_path) -> str:
     return result.output.replace("\n", "")
 
 
-def test_accept_inside_codex_writes_the_senders_conversation_as_a_thread_in_the_list(world, tmp_path, monkeypatch):
+def test_accept_inside_codex_writes_the_senders_conversation_as_a_thread_in_the_list(world, tmp_path, monkeypatch, fake_codex):
     """Parrot, 2026-10-14: after the paste, Codex held one thread, with the pasted line and its own summary;
     the sender's turns were nowhere, and only `co handoff open` (which the page never names) replayed them."""
     monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
@@ -416,6 +416,82 @@ def test_accept_inside_codex_writes_the_senders_conversation_as_a_thread_in_the_
     assert f"codex resume {thread}" in said and "/resume" in said
     # the last rule, where the agent reads what to tell the person (the middle of the output was skipped)
     assert said.rstrip().split("End what you tell them with this line, word for word: ")[1].startswith(named["thread_name"])
+
+
+def _path_without_codex(extra: Path = None) -> str:
+    import os
+    import shutil
+    dirs = [d for d in os.environ["PATH"].split(os.pathsep) if not shutil.which("codex", path=d)]
+    return os.pathsep.join(([str(extra)] if extra else []) + dirs)
+
+
+@pytest.fixture
+def fake_codex(tmp_path, monkeypatch):
+    """A `codex` that answers its app server's JSON-RPC as codex-cli 0.162.1 does, and keeps what it was asked."""
+    import sys
+    folder, log = tmp_path / "bin", tmp_path / "codex-asked.jsonl"
+    folder.mkdir()
+    (folder / "codex").write_text(
+        f"#!{sys.executable}\nimport json, sys\n"
+        "if sys.argv[1:] == ['--version']:\n    print('codex-cli 0.162.1'); sys.exit()\n"
+        f"log = open({str(log)!r}, 'a')\n"
+        "for line in sys.stdin:\n    log.write(line); log.flush(); asked = json.loads(line)\n"
+        "    if 'id' in asked: print(json.dumps({'id': asked['id'], 'result': {}}), flush=True)\n")
+    (folder / "codex").chmod(0o755)
+    monkeypatch.setenv("PATH", _path_without_codex(folder))
+    return log
+
+
+def test_accept_inside_codex_has_codex_read_the_thread_so_resume_lists_it(world, tmp_path, monkeypatch, fake_codex):
+    """1.9.3b2 review, 2026-10-15: Codex 0.162.1 lists /resume and the app's sidebar from state_5.sqlite, which
+    takes in rollouts only in a one-time backfill, so in a home that had run Codex the thread was not listed.
+    Reading it by id through Codex's app server adds it (measured: listed after thread/read, not before)."""
+    monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    said = _accept_from_session(world, tmp_path)
+    [rollout] = (tmp_path / "codex" / "sessions").glob("*/*/*/rollout-*.jsonl")
+    asked = [json.loads(line) for line in fake_codex.read_text().splitlines()]
+    assert [a["method"] for a in asked] == ["initialize", "initialized", "thread/read"]
+    assert asked[-1]["params"]["threadId"] == rollout.stem[-36:] and "/resume" in said
+
+
+def test_without_codex_to_ask_the_line_names_only_codex_resume(world, tmp_path, monkeypatch):
+    """The Codex app's own shell may not have `codex` on PATH: then nothing lists the thread, so the line must
+    not send the person to a list it is missing from."""
+    monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("PATH", _path_without_codex())
+    said = _accept_from_session(world, tmp_path)
+    [rollout] = (tmp_path / "codex" / "sessions").glob("*/*/*/rollout-*.jsonl")
+    assert f"codex resume {rollout.stem[-36:]}" in said and "/resume" not in said
+
+
+def test_the_rollout_is_named_in_local_time_like_codexs_own(tmp_path, monkeypatch, fake_codex):
+    """Codex names its rollouts by local time (…T19-00-35 in Sydney); co used UTC (…T08-01-35)."""
+    from datetime import datetime
+    from connectonion.handoff import opener
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    opener.write_replay(bundles.seal(_bundle(RECIPIENT["mail"])), tmp_path)
+    [rollout] = (tmp_path / "codex" / "sessions").glob("*/*/*/rollout-*.jsonl")
+    started = datetime.fromisoformat(json.loads(rollout.read_text().splitlines()[0])["timestamp"].replace("Z", "+00:00"))
+    local = started.astimezone()
+    assert rollout.name.startswith(f"rollout-{local.strftime('%Y-%m-%dT%H-%M-%S')}-")
+    assert rollout.parent.relative_to(tmp_path / "codex" / "sessions").as_posix() == local.strftime("%Y/%m/%d")
+
+
+def test_done_ends_with_the_thread_line_again(world, tmp_path, monkeypatch, fake_codex):
+    """1.9.3b2 review: Bob's Codex ended at "Sent Aaron the completed patch" and never named the thread; done
+    is the last thing it runs before it reports."""
+    monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    [rollout] = (tmp_path / "codex" / "sessions").glob("*/*/*/rollout-*.jsonl")
+    said = "".join(_invoke("handoff", "done", code, "Added the cookie.").output.split())
+    told = said.split("Endwhatyoutellthepersonherewiththisline,wordforword:")
+    assert len(told) == 2 and told[1].startswith("Handofffromalice") and f"codexresume{rollout.stem[-36:]}" in told[1]
 
 
 def test_accept_inside_claude_code_writes_a_session_that_claude_resume_opens(world, tmp_path, monkeypatch):
@@ -446,7 +522,7 @@ def test_a_sandbox_that_keeps_codex_home_read_only_costs_the_thread_not_the_acce
     assert "co handoff done" in said                                                 # the rules still came
 
 
-def test_co_handoff_thread_adds_an_accepted_handoff_to_either_agent(world, tmp_path):
+def test_co_handoff_thread_adds_an_accepted_handoff_to_either_agent(world, tmp_path, fake_codex):
     from connectonion.handoff.sessions import claude_slug
     _accept_from_session(world, tmp_path)
     said = _invoke("handoff", "thread", "ho-1a2b3c4d", "--agent", "claude").output.replace("\n", "")

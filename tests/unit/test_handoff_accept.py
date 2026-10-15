@@ -349,7 +349,7 @@ def test_the_mail_reads_like_a_short_note_from_a_person_not_a_report(world):
     body = _send(world)
     mail = world["mails"][-1]
     # In the sender's own voice (Aaron, 2026-10-13: "不是以我作为第一人称写的 有点好像是 AI 写的").
-    assert mail["subject"] == "Could you pick up \u201cStore the login token\u201d?"
+    assert mail["subject"] == "Handing you the context of \u201cStore the login token\u201d"
     assert "[co handoff]" not in mail["subject"] and "handoff" not in mail["subject"].lower()
     lead = "Hi, I've been working on \u201cStore the login token\u201d with Codex"
     assert body.index(lead) < body.index("paste the line") < body.index("Thanks,") < body.index(f"co handoff accept {_code(body)}")
@@ -891,7 +891,7 @@ def test_via_mcp_mails_nothing_and_hands_the_mail_to_the_agents_own_mail_tool(wo
     assert sent.exit_code == 0, sent.output
     assert world["mails"] == [] and "co mailed nothing" in sent.output
     flat = " ".join(sent.output.split())
-    assert f"to: {RECIPIENT['mail']}" in flat and "subject: Could you pick up" in flat
+    assert f"to: {RECIPIENT['mail']}" in flat and "subject: Handing you the context of" in flat
     text = Path(re.search(r"plain-text body: (\S+)", flat).group(1)).read_text()
     assert "https://o.openonion.ai/h/" in text and "/codex" in text
     assert "went from your mail tool" in _invoke("handoff", "status", "ho-1a2b3c4d").output
@@ -901,9 +901,9 @@ def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
     zh = dict(_bundle(RECIPIENT["mail"]), title="保存登录令牌",
               conversation=[{"at": "", "user": "登录令牌用 httpOnly cookie 还是 localStorage？", "ai": "cookie"}])
     mail = bundles.notice(bundles.seal(zh), "PROMPT")
-    assert mail["subject"] == "能帮我接着做「保存登录令牌」吗？"
+    assert mail["subject"] == "把「保存登录令牌」的上下文交给你"
     assert "新开一个对话" in mail["text"] and "连点三下即可选中" in mail["text"]
-    assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"] == "Could you pick up \u201cStore the login token\u201d?"
+    assert bundles.notice(_bundle(RECIPIENT["mail"]), "PROMPT")["subject"] == "Handing you the context of \u201cStore the login token\u201d"
 
 
 def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(world):

@@ -1,5 +1,5 @@
 """
-Purpose: `co handoff` — hand a task discussed in one coding-agent session to another person's coding agent
+Purpose: `co handoff` — hand the context of one coding-agent session to another person's coding agent
 LLM-Note:
   Dependencies: imports from [typer, handoff.{sessions,bundle,transport,opener}, cli.style, command_tips.print_tip] | registered in cli/main.py via make_handoff_app(_typer_app)
   Data flow: send → resolve recipient → read the current coding-agent session: Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok (or --from-file) → one llm_do draft → credential scan → preview (default) or deliver by agent mail (--yes) | inbox/show → fetch agent mail → decode bundle | open → write HANDOFF.md/bundle.json → seed a codex/claude session
@@ -814,6 +814,8 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
     if brief or picked:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
     thread = _thread_line(picked["bundle"], opener.inside()) if picked and opener.inside() else ""
+    if thread:
+        (folder / "thread.txt").write_text(thread + "\n", encoding="utf-8")
     out.print(_rules(code_text, code["id"], thread), markup=False)
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
 
@@ -834,8 +836,9 @@ def handle_thread(handoff_id: str, agent: Optional[str]) -> None:
     saved = _home() / "accepted" / handoff_id / "bundle.json"
     if not saved.exists():
         _fail(f"Handoff {handoff_id} was not accepted on this machine with its conversation.", "co handoff inbox")
-    out.print(opener.replay_here(json.loads(saved.read_text(encoding="utf-8")), Path.cwd(),
-                                 agent or opener.inside() or "codex"), markup=False)
+    thread = opener.replay_here(json.loads(saved.read_text(encoding="utf-8")), Path.cwd(), agent or opener.inside() or "codex")
+    (saved.parent / "thread.txt").write_text(thread + "\n", encoding="utf-8")
+    out.print(thread, markup=False)
 
 
 def _safe_name(name: str, fallback: str) -> str:
@@ -930,6 +933,11 @@ def handle_done(code_text: str, text: str, file: Optional[Path]) -> None:
         _fail(f"Not delivered: {result.get('error')}", f'co handoff done {code_text} "<what you did>"')
     (_home() / "accepted" / code["id"] / "done.json").write_text(json.dumps({"text": text}) + "\n", encoding="utf-8")
     out.print(style.ok(f"Told {code['mailbox']} that {code['id']} is done") + (f", with {file.name}." if file else "."))
+    # Said again here, the last command before the report: Bob's Codex left accept's copy out (1.9.3b2 review).
+    thread = _home() / "accepted" / code["id"] / "thread.txt"
+    if thread.exists():
+        out.print("End what you tell the person here with this line, word for word: "
+                  + thread.read_text(encoding="utf-8").strip(), markup=False)
     _next(f"co handoff status {code['id']}")
 
 
@@ -1144,7 +1152,7 @@ READ_FROM = (*AGENTS, *other_agents.AGENTS)   # the agents a handoff is drafted 
 
 def make_handoff_app(factory) -> typer.Typer:
     app = factory(
-        help="Experimental: hand a task you discussed with your coding agent to another person's agent, "
+        help="Experimental: hand the context of what you discussed with your coding agent to another person's agent, "
              "so their Codex or Claude Code continues without you rewriting the background. "
              "Sends by agent mail; nothing runs on their side until they open it.",
         epilog='Example:  co handoff send ody "the login task"  |  co handoff inbox',
@@ -1167,7 +1175,7 @@ def make_handoff_app(factory) -> typer.Typer:
         mentions: str = typer.Option("", "--mentions", help="List every place this name appears in the draft, and send nothing"),
         lang: str = typer.Option("", "--lang", help="Write the report and the mail in en or zh (default: the language you wrote in); your words stay as you wrote them"),
     ):
-        """Hand a task to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
+        """Hand this session's context to someone: drafts a handoff from this directory's coding-agent session (Codex, Claude Code,
         Gemini CLI, opencode, droid, Cursor or Grok) and previews it. Sends only with --yes; writes a local draft.
 
         Drafting reads the whole session (or --from-file): every message you wrote goes
