@@ -1476,6 +1476,11 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
+def enumeration_only(text: str) -> bool:
+    """Only the map's source metadata, with no carried prose quotes."""
+    return _listed_sources(text) == {'Enumeration'} and not QUOTE.search(prose(text))
+
+
 def shrinkage(before: str, after: str) -> str:
     """Why a maintenance rewrite lost too much of the page to be promoted, or ''."""
     if len(before) < SHRINK_FLOOR:

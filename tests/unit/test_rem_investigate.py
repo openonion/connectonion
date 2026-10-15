@@ -2275,6 +2275,42 @@ def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
     assert bad["role"] == "search-failure"
 
 
+def test_a_first_org_round_replaces_the_maps_only_source(tmp_path):
+    """2026-10-16: UNSW's people links put its mapped stub over the retention floor."""
+    from connectonion.rem.page_review import SHRINK_FLOOR
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'orgs/unsw-edu-au-921856d258.md'
+    notebook.stub_org(record, 'UNSW', ['unsw.edu.au'],
+                      [f'people/correspondent-{n}.md' for n in range(50)])
+    before = notebook.read(record).replace('- (none yet)', '- [1] Enumeration metadata in .state/map.json')
+    notebook.write(record, before)
+    assert len(before) > SHRINK_FLOOR
+    after = (before.replace('Enumeration metadata in .state/map.json', 'outlook:unsw-invitation')
+             .replace('## Who they are\n- Unknown — not investigated yet', '## Who they are\nA university. [1]')
+             .replace('· not investigated yet', '· investigated 2026-10-16 (outlook)'))
+
+    def runner(notebook, items, config, stage):
+        notebook.write(record, after)
+        return {'changed': [record]}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
+                         [[{'source': 'outlook:unsw-invitation', 'text': 'University invitation.'}]], {})
+    assert notebook.read(record) == after
+    assert out['changed'] == [record] and out['refused_rounds'] == []
+
+
+def test_an_investigated_page_that_loses_its_sources_is_restored(tmp_path):
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'orgs/unsw-edu-au-921856d258.md'
+    before = ('# UNSW\n\n## Who they are\n' + 'A verified university finding. [1]\n' * 40
+              + '\n## Sources\n- [1] outlook:unsw-invitation\n\n'
+              + 'Investigation: mapped 2026-10-16 · investigated 2026-10-16 (outlook)\n')
+    notebook.write(record, before.replace('outlook:unsw-invitation', 'outlook:new-mail'))
+    assert inv._keep_unless_lost(notebook, record, before) == (
+        "Maintenance kept 0 of the page's 1 cited sources; kept the old page")
+    assert notebook.read(record) == before
+
+
 def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
     """oo-api (2026-10-15): eight rounds built 9,562 characters; the synthesis
     round, with no new material, cut it to 3,792."""

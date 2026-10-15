@@ -1211,7 +1211,11 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
 def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> str:
     """Keep carried evidence: connectonion's sixth round paraphrased all fifteen
     owner quotes away; oo-api's synthesis gutted eight rounds' work (2026-10-15)."""
-    from .page_review import KEEP_SHARE, QUOTE, drop_claims, prose, shrinkage
+    from .page_review import KEEP_SHARE, QUOTE, drop_claims, enumeration_only, prose, shrinkage
+    # 2026-10-16 trial: orgs/unsw-edu-au's people links put its mapped stub
+    # over the floor; all four rounds lost to replacing enumeration metadata.
+    if enumeration_only(before):
+        return ''
     if refuted:
         before, _ = drop_claims(record, before, refuted)
     after = notebook.read(record)
