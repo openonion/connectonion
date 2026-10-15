@@ -232,6 +232,17 @@ def _claude_meta(first: dict) -> dict:
     return {"id": first.get("sessionId"), "cwd": first.get("cwd", "")}
 
 
+def automated(row: dict) -> bool:
+    """A prompt a program sent through `claude -p` or the SDK, not one the user typed.
+
+    A launchd job's "The user explicitly authorized a campaign of weekly LinkedIn
+    articles. Schedule exactly one article…" became the user's request to
+    schedule it on projects/layeredvisions (2026-10-14). On this machine 1,437
+    of 1,454 sessions opened that way were schedulers, harnesses and REM's own
+    turns; the user types into `entrypoint: cli`."""
+    return str(row.get("entrypoint") or "").startswith("sdk") or row.get("promptSource") in ("sdk", "system")
+
+
 def _claude_message(row: dict, since: datetime, meta: dict | None = None) -> dict | None:
     role = row.get("type")
     if role not in CODING_SPEAKERS:
@@ -245,7 +256,7 @@ def _claude_message(row: dict, since: datetime, meta: dict | None = None) -> dic
     # is: a meta row (a skill body, a caveat, a system reminder), a sidechain row (a
     # prompt the assistant wrote for its own subagent -- "You are one finder angle in
     # a code review…"), and the shape of the content.
-    if row.get("isMeta") or row.get("isSidechain") or rem_task(row.get("cwd")):
+    if row.get("isMeta") or row.get("isSidechain") or rem_task(row.get("cwd")) or automated(row):
         return SKIPPED
     content = message.get("content")
     if isinstance(content, str):

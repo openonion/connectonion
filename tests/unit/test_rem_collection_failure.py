@@ -40,6 +40,8 @@ def test_collection_failure_is_logged_without_advancing_or_running_model(noteboo
     monkeypatch.setattr(service, "collect", collect)
     result = service.run_sync(root, runner=lambda *a, **k: pytest.fail("model must not run"))
     assert result["outcome"] == "failed"
+    config = read_config(root)
+    assert (result["harness"], result["model"], result["speed"]) == (config["runner"], config["model"], "fast")
     assert result["stage"] == "gathering sources"
     assert result["failed_source"] == "codex"
     assert result["runner_attempts"] == 0 and result["changed"] == []

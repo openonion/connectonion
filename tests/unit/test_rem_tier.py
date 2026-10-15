@@ -38,6 +38,8 @@ def model(monkeypatch):
 
     def plain(workspace, prompt, config, stage):   # no tool loop: all it can do is reply
         calls.append(prompt)
+        if "# Ada Fixture" not in prompt:   # a repair names the file; it cannot edit one
+            return _envelope("I cannot edit files.")
         return _envelope("Here is the page:\n\n```markdown\n" + _filled(prompt) + "\n```")
 
     def broken(workspace, prompt, config, stage):   # neither writes nor replies with a page

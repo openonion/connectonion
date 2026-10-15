@@ -75,6 +75,8 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         last = page_state(root, record).get("last_activity") or messages[-1]["timestamp"]
         if since and mode == "first" and not timestamp(last) > timestamp(since):
             continue
+        if since and mode == "update" and not _update_due(page_state(root, record), len(messages), now):
+            continue
         # What the call will carry: the messages as the model reads them, and the page.
         from .runner import readable_material
         chars = len(readable_material(_message_items(sent))) + len(Notebook(root).read(record))
@@ -84,6 +86,19 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     # private journal came before LayeredVisions (28 sessions) (#2079).
     return sorted(rows, key=lambda r: (-r["new_messages"], not r["recent"], _negated(r["last_activity"]),
                                        r["record"]))
+
+
+# A page written in the last UPDATE_HOURS waits for the next day unless this
+# many messages are pending: projects/connectonion was rewritten at 06:05,
+# 07:10 and 08:05 on 2026-10-13, for 1-3 messages each time, a full turn each.
+UPDATE_HOURS = 20
+UPDATE_MESSAGES = 10
+
+
+def _update_due(state: dict, pending_messages: int, now: datetime) -> bool:
+    written = state.get("written_at") or ""
+    return (pending_messages >= UPDATE_MESSAGES or not written
+            or timestamp(written) <= now - timedelta(hours=UPDATE_HOURS))
 
 
 # A folder that holds the owner's own life rather than their work. Its
@@ -179,8 +194,11 @@ def repository_snapshots(items: list[dict]) -> list[dict]:
 
 
 def retain_repository_context(root: Path, items: list[dict], cited: set[str]) -> int:
-    """Keep cited packet bodies under the caller's maintenance lock, after acceptance."""
-    from .reader_model import PRIVATE
+    """Keep cited packet bodies under the caller's maintenance lock, after acceptance.
+
+    A labelled ([personal]/[sensitive]) body is kept too: it stays in .state,
+    and `repository_context` shows it only to the owner's own local reader.
+    """
     count = 0
     for item in items:
         source, origin, text = item.get("source", ""), item.get("origin", ""), item.get("text", "")
@@ -190,7 +208,7 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
                 or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
                 or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
                 or not isinstance(text, str) or not 0 < len(text) <= limit
-                or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+                or SECRET_SHAPES.search(text)
                 or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
             continue
         path = state_path(root, "project-sources/" + source.split(":")[1] + ".json")
@@ -207,8 +225,11 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     return count
 
 
-def repository_context(root: Path, source: str) -> dict | None:
-    """Use the retained packet only; never reread a mutable Git ref or working file."""
+def repository_context(root: Path, source: str, private: bool = False) -> dict | None:
+    """Use the retained packet only; never reread a mutable Git ref or working file.
+
+    `private`: the reader is the owner's own, on this machine, so a labelled body may show.
+    """
     from .reader_model import PRIVATE
     if source.startswith("file:"):
         saved = read_json(state_path(root, "project-sources/live-" + hashlib.sha256(source.encode()).hexdigest() + ".json"), {})
@@ -239,7 +260,7 @@ def repository_context(root: Path, source: str) -> dict | None:
     text, origin = saved.get("text"), saved.get("origin", "")
     limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if _file_snapshot(saved.get("snapshot_kind"), origin) else REPOSITORY_EVIDENCE_CHARS
     if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
-            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or (PRIVATE.search(text) and not private)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
     return {"excerpt": text.strip()[:REPOSITORY_EXCERPT_CHARS],
@@ -264,7 +285,9 @@ def live_file_snapshot(page: str, source: str) -> dict | None:
     raw = path.read_bytes()
     if len(raw) > FILE_SNAPSHOT_CHARS or hashlib.sha256(raw).hexdigest() != match[2] or b"\0" in raw:
         return None
-    text = raw.decode("utf-8")
+    # A Windows-encoded file in a real repository ("\x93", a curly quote) crashed
+    # the short-term-rental-agent page twice (2026-10-15); the hash pins the bytes.
+    text = raw.decode("utf-8", errors="replace")
     if SECRET_SHAPES.search(text) or PRIVATE.search(text):
         return None
     return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -287,7 +310,7 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
                              capture_output=True)
     if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
         return None
-    text = content.stdout.decode("utf-8")
+    text = content.stdout.decode("utf-8", errors="replace")
     if SECRET_SHAPES.search(text) or PRIVATE.search(text):
         return None
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
@@ -543,7 +566,7 @@ def prompt(directory: Path, items: list[dict], candidate: Path, page_chars: int 
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """One call: write the page from its pending messages; save it only if it passes review."""
-    from .runner import RunFailed, _one_more_turn, promote_or_drop, run_task
+    from .runner import RunFailed, _one_more_turn, promote_with_repairs, run_task
     config = config or read_config(root)
     run = run or run_task
     notebook = Notebook(root)
@@ -553,23 +576,28 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     directory = Path(tempfile.mkdtemp(prefix="projects-", dir=workdir))
     candidate = directory / "candidate.md"
     original = notebook.read(record)
-    text = prompt(directory, items, candidate, len(original))
+    from .runner import language_note, today_note
+    text = prompt(directory, items, candidate, len(original)) + today_note(root) + language_note(root)
     if progress:
         progress("writing page")
     started, result = time.monotonic(), {}
     metrics = {"stage": "projects", "record": record, "harness": config["runner"], "model": config["model"],
+               "speed": config["speed"],
                "input_items": len(items), "prompt_chars": len(text)}
     try:
         result = run(workdir, text, config, "investigate")
         if not candidate.is_file():
             result = _one_more_turn(workdir, text, config, "investigate", candidate, result, run)
-        promote_or_drop(notebook, record, candidate, original, items, directory, result.get("usage"))
+        promote_with_repairs(notebook, record, candidate, original, items, directory, result,
+                             workdir=workdir, config=config, stage="investigate", run=run)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                                                 "usage": usage, "duration_seconds": time.monotonic() - started})
         if "rejected" in str(error):
+            from .refusals import material_sources, remember_refusal
             mark_refused(root, record, through, str(error), now=now)
+            remember_refusal(root, record, material_sources(items), str(error), stage="projects")
         raise RunFailed(str(error), usage) from error
     finally:
         # A refused page left its material.json/material.md behind (#2029).
@@ -583,6 +611,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))
         mark_written(root, record, through, now=now, inputs_read=messages,
                      inputs_available=len(pending(root, record)[0]))
+        from .refusals import forget_refusal
+        forget_refusal(root, record)
         from .store import refresh_safely
         refresh_safely(root)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted", "usage": result.get("usage"),

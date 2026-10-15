@@ -92,8 +92,12 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
-def snapshot(root: Path) -> dict:
-    """Everything the page shows, read once; no model, no writes into the notebook."""
+def snapshot(root: Path, local: bool = False) -> dict:
+    """Everything the page shows, read once; no model, no writes into the notebook.
+
+    `local`: this machine's own reader (the file snapshot, the loopback live
+    reader). Labelled excerpts are added only then; the O Chat view never has them.
+    """
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
@@ -141,7 +145,7 @@ def snapshot(root: Path) -> dict:
     links = relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
-    contexts = cited_context(root, records)
+    contexts = cited_context(root, records, private=local)
     from .project_material import stored
     for record in records:
         if record["category"] != "projects":
@@ -150,11 +154,22 @@ def snapshot(root: Path) -> dict:
             context = contexts.get(message["source"])
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
+    from .config import read_config
+    from .translate import cached_languages
+    from .languages import language_of, owner_languages, spoken
+    for record in records:
+        record["translations"] = cached_languages(root, record["path"])
+        # For the "Read in" menu: what the page is written in, and what this person speaks.
+        record["written_in"] = language_of(record["text"])
+        if record["category"] == "people":
+            record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = contact_candidates(root)
-    return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    return {"language": read_config(root, validated=False).get("language") or "en",
+            "your_languages": owner_languages(root)["languages"], "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
-            "source_context": contexts, "conversations": cited_conversations(root, contexts),
+            "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
+            "shared": not local,
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}
@@ -167,8 +182,10 @@ def owner_record(root: Path) -> str:
     return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
-def render(root: Path) -> str:
-    data = json.dumps(snapshot(root), ensure_ascii=False, default=str)
+def render(root: Path, *, live: bool = False, local: bool = False) -> str:
+    """`live`: served by the Host (rem_http.py), so the page may ask it to translate.
+    `local`: read on this machine by its owner (see `snapshot`)."""
+    data = json.dumps({**snapshot(root, local), "live": live}, ensure_ascii=False, default=str)
     # Inside a script block only "</script" and the U+2028/9 terminators can break
     # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
     data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
@@ -185,7 +202,7 @@ def reader_path(root: Path) -> Path:
 
 
 def write_reader(root: Path) -> Path:
-    page = render(root)
+    page = render(root, local=True)
     path = reader_path(root)
     # The public name is predictable. Write a private random file, then replace
     # the directory entry atomically so a planted link can never be truncated.
@@ -222,11 +239,10 @@ LIVE_REM_URL = "https://chat.openonion.ai/{address}/rem"
 # The /rem route is paired with O Chat; old /wiki links redirect there.
 LIVE_REM_SERVED = True
 
-# Is the live view what a bare `co rem open` opens? No, by the owner's decision
-# (2026-09-27, #1828): opening locally is the default and works offline; the
-# live view through the Host is a feature asked for with --live.
-LIVE_IS_DEFAULT = False
-
+# A bare `co rem open` opens the live reader on this computer, served by the
+# co ai Host and able to translate (owner, 2026-10-15; before, #1828 made the
+# snapshot the default). The snapshot is the fallback, or asked for with --local;
+# the O Chat view, for another device, with --live.
 LIVE_HINT = "co rem open --live   (the live view in O Chat; starts co ai automatically)"
 
 
@@ -263,6 +279,26 @@ def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
     path = open_reader(root, launch=launch)
     return {"page": str(path), "link": path.as_uri(), "launched": launch,
             "note": "a snapshot of the notebook as it is now; co rem open again shows later changes", **notes}
+
+
+def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
+    """What a bare `co rem open` shows: the reader served by this computer's co ai
+    Host (started when none runs), or the snapshot, saying why."""
+    if not address:
+        return open_snapshot(root, launch=launch, live=(
+            "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
+    from .live_host import ensure_local
+    try:
+        url, failure = ensure_local(address)
+    except (OSError, RemError) as error:
+        url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
+    if failure:
+        # The page the owner asked for still opens: a fallback, not a failure.
+        return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")
+    if launch:
+        webbrowser.open(url)
+    return {"page": url.split("?")[0], "link": url, "launched": launch,
+            "note": "the live reader, served by co ai on this computer; it can translate a page"}
 
 
 def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:

@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from connectonion.rem import project_material, project_pages
-from connectonion.rem.config import prepare
+from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook, RemError
 from connectonion.rem.project_material import extract, mark_written, page_state, stored
 from connectonion.rem.project_pages import PROMPT_CHARS, queue, write_page, write_pages
@@ -286,7 +286,7 @@ def _fake_runner(page_from):
 
     def run(workdir, prompt, config, stage):
         calls.append(prompt)
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        candidate = Path(re.search(r"(?:NEW file|existing page at) (\S+candidate\.md)", prompt)[1])
         candidate.write_text(page_from(prompt))
         return {"outcome": "natural", "result": "read 1 message", "usage": {"input_tokens": 100}}
     run.calls = calls
@@ -349,10 +349,12 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     extract(world.root, world.subs)
     source = stored(world.root, "projects/tide.md")[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source))
-    out = write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     page = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
+    metrics = json.loads(next((world.root / ".state/tasks").glob("projects-*/result.json")).read_text())
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "fast")
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
     assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
         "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
@@ -376,9 +378,12 @@ def test_a_refused_page_leaves_its_messages_pending(world):
     before = world.notebook.read("projects/tide.md")
     run = _fake_runner(lambda prompt: _page_citing("codex:made-up:1"))
     with pytest.raises(RemError, match="rejected"):
-        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     assert world.notebook.read("projects/tide.md") == before
     assert page_state(world.root, "projects/tide.md")["written_through"] == ""
+    # In the one refusal ledger too, which nothing else wrote for the project writer (2026-10-15 audit).
+    from connectonion.rem.refusals import refused_for
+    assert refused_for(world.root, "projects/tide.md")["stage"] == "projects"
     # #2026: refused for this material, it waits for newer messages instead of
     # being retried with the same ones on every sync (~260k tokens, 0 changes).
     assert "projects/tide.md" not in [r["record"] for r in queue(world.root)]
@@ -533,11 +538,11 @@ def test_only_an_accepted_project_keeps_its_cited_repository_packet(world, monke
     source = project_pages.repository_snapshots([item])[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source if accepted else "codex:made-up:1"))
     if accepted:
-        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
         assert project_pages.repository_context(world.root, source)["excerpt"] == item["text"]
     else:
         with pytest.raises(RemError, match="rejected"):
-            write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+            write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
         assert not list((world.root / ".state/project-sources").glob("*.json"))
 
 
@@ -692,7 +697,7 @@ def test_a_project_turn_that_writes_no_candidate_gets_one_more_turn(world):
             return {"outcome": "natural", "result": "cannot write there", "usage": {"input_tokens": 100}}
         return writes(workdir, prompt, config, stage)
 
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
     assert len(calls) == 2 and "writable" in calls[1]
     assert "A swell warning tool for surfers. [1]" in world.notebook.read("projects/tide.md")
 
@@ -705,8 +710,12 @@ def test_full_file_retention_does_not_expand_packet_bound_or_ignore_private_tail
          'text': 'a' * 12000 + '\nA private plan [personal]'},
     ])
     with maintenance_lock(tmp_path):
-        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 0
-    assert not list((tmp_path / '.state/project-sources').glob('*.json'))
+        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 1
+    # The labelled file is kept locally, and shown only to the owner's own reader.
+    private = items[1]['source']
+    assert project_pages.repository_context(tmp_path, private) is None
+    assert 'A private plan' in project_pages.repository_context(tmp_path, private, private=True)['excerpt']
+    assert project_pages.repository_context(tmp_path, items[0]['source']) is None    # over the packet bound
 
 
 def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
@@ -718,7 +727,7 @@ def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
     page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
                                         "A swell warning tool for surfers. [1]\n\nIt pages the lifeguards. [2]")
     page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved
@@ -734,7 +743,7 @@ def test_a_written_page_citing_a_number_it_never_listed_keeps_the_rest(world):
     source = stored(world.root, "projects/tide.md")[0]["source"]
     page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
                                         "A swell warning tool for surfers. [1][2]")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved and "[2]" not in saved
@@ -749,8 +758,41 @@ def test_a_written_finding_resting_on_one_untraceable_citation_does_not_cost_the
     source = stored(world.root, "projects/tide.md")[0]["source"]
     page = _page_citing(source).replace("## Open threads\n- Unknown", "## Open threads\n- Lifeguards want an SMS alert. [2]")
     page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
-    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+    write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"},
                run=_fake_runner(lambda prompt: page))
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved
     assert "Lifeguards" not in saved and re.search(r"## Open threads\n+- Unknown", saved)
+
+
+def test_a_page_written_today_waits_for_tomorrow_unless_much_is_new(world):
+    """projects/connectonion was rewritten at 06:05, 07:10 and 08:05 on 2026-10-13,
+    for 1-3 messages each time, a full turn each."""
+    from connectonion.rem.project_pages import UPDATE_MESSAGES
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "first", 0.5)])
+    extract(world.root, world.subs)
+    mark_written(world.root, "projects/tide.md", ago(0.5), now=NOW - timedelta(hours=2))
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "one more", 0)])
+    extract(world.root, world.subs)
+    since = ago(1)
+    assert "projects/tide.md" not in [r["record"] for r in queue(world.root, since=since, now=NOW)]
+    assert "projects/tide.md" in [r["record"] for r in queue(world.root, since=since,
+                                                             now=NOW + timedelta(hours=19))]
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide",
+          [("user", f"more {n}", 0) for n in range(UPDATE_MESSAGES)])
+    extract(world.root, world.subs)
+    assert "projects/tide.md" in [r["record"] for r in queue(world.root, since=since, now=NOW)]
+
+
+def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch):
+    """short-term-rental-agent (2026-10-15): a Windows-1252 file in the repository
+    ("\x93", a curly quote) raised UnicodeDecodeError and lost the page twice."""
+    import hashlib
+    from connectonion.rem.project_pages import live_file_snapshot
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    note = repo / "pitch.txt"
+    note.write_bytes(b"Fee: \x938% of net\x94 revenue\n")
+    monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
+    snapshot = live_file_snapshot("", f"file:{note}@{hashlib.sha256(note.read_bytes()).hexdigest()}")
+    assert "8% of net" in snapshot["text"]

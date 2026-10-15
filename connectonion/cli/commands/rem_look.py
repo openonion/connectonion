@@ -155,7 +155,7 @@ def _page_rest(text: str) -> str:
 #   ● written  ○ mapped, not yet written  ✓ fine  ✗ needs a fix
 #   ↻ unfinished, picks up where it stopped  → the command that fixes the line above
 
-COLUMN = 17            # where every value starts: "  Organizations" and two spaces
+COLUMN = 17            # where every value starts: "  Organisations" and two spaces
 WRITTEN, MAPPED, FINE, BROKEN, RESUMES, FIX = "●", "○", "✓", "✗", "↻", "→"
 
 

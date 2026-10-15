@@ -345,3 +345,58 @@ def test_a_written_page_links_the_people_it_names_and_a_mapped_one_is_left(tmp_p
     assert done["linked people named on the page"] == ["people/richard.md"]
     assert "Works with [Jiexuan Deng](../people/jiexuan.md). [1]" in notebook.read("people/richard.md")
     assert tidy(tmp_path) == {}
+
+
+def test_a_citation_of_a_line_the_user_did_not_type_goes_with_what_rests_on_it_alone(tmp_path):
+    """The owner's page cited REM's own model-access probe ("Reply READY only") as
+    the user's open thread, four times; written 2026-10-10, before the source filter."""
+    import json
+    sessions = tmp_path / "codex"
+    probe = sessions / "2026/10/10/rollout-2026-10-10T01-14-22-01a12360-47f8-7513-aff3-eb033d92fb14.jsonl"
+    typed = sessions / "2026/10/10/rollout-2026-10-10T01-00-00-0b000000-0000-7000-8000-000000000001.jsonl"
+    for path, cwd in ((probe, str(tmp_path / "rem/.state/tasks/model-access")), (typed, "/work/x")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        session = path.stem[-36:]
+        path.write_text(json.dumps({"type": "session_meta", "payload": {"id": session, "cwd": cwd,
+                                                                         "originator": "codex_cli_rs"}}) + "\n"
+                        + json.dumps({"timestamp": "2026-10-10T01:00:00Z", "type": "response_item", "payload": {
+                            "type": "message", "role": "user",
+                            "content": [{"type": "input_text", "text": "Reply READY only."}]}}) + "\n")
+    offset = len(probe.read_text().splitlines()[0]) + 1
+    root = tmp_path / "rem"
+    prepare(root)
+    write_json(state_path(root, "subscriptions.json"), {"codex": {"kind": "codex", "root": str(sessions)}})
+    notebook = Notebook(root)
+    notebook.write("people/me.md", "# Me\n\nFounded it [1] and is testing a preview [1][2].\n\n## Facts\n"
+                   "- Last contact: 2026-10-10 [2]\n\n## Open threads\n- Wiki-only test unverified [2].\n\n"
+                   f"## Sources\n- [1] codex:0b000000-0000-7000-8000-000000000001:{offset} — 2026-10-10\n"
+                   f"- [2] codex:01a12360-47f8-7513-aff3-eb033d92fb14:{offset} — 2026-10-10\n")
+    _state(root)
+
+    done = tidy(root)
+
+    page = notebook.read("people/me.md")
+    assert "01a12360" not in page and "Wiki-only" not in page and "[2]" not in page
+    assert "Founded it [1] and is testing a preview [1]." in page and "- Last contact: Unknown" in page
+    assert done["removed a citation the user did not type"] == ["people/me.md"]
+    # Checked once: the next sync's tidy reads no session file.
+    probe.unlink()
+    assert tidy(root) == {}
+
+
+def test_the_owners_own_company_is_not_an_organisation_page(tmp_path):
+    """orgs/openonion-ai and orgs/connectonion-com (2026-10-10): the owner writes
+    from openonion.ai, and CONNECTONION PTY LTD is their signing entity."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/me.md", "Me", ["me@openonion.ai"], email="me@openonion.ai")
+    notebook.write("people/me.md", notebook.read("people/me.md").replace(
+        "## Facts\n", "## Facts\n- Signing entity: CONNECTONION PTY LTD [1]\n", 1))
+    for domain in ("openonion.ai", "connectonion.com", "unsw.edu.au"):
+        notebook.stub_org(f"orgs/{domain}.md", domain, [domain], [])
+    _state(tmp_path, owner={"record": "people/me.md", "addresses": ["me@openonion.ai"]})
+
+    done = tidy(tmp_path)
+
+    assert done["archived organisation"] == ["orgs/connectonion.com.md", "orgs/openonion.ai.md"]
+    assert notebook.list("orgs") == ["orgs/unsw.edu.au.md"]

@@ -272,3 +272,29 @@ connected-context summaries.
 The [contact-freshness review](../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
 records four manual pages, bounded original-source coverage, actual privacy
 failures and remaining automatic-writer and broader page-review gaps.
+
+## Quote the ask, and the term (decision 076)
+
+`Open threads` and the terms in `Our relationship` quote the exact words with
+their date (`“<exact words>” (YYYY-MM-DD) [n]`) instead of restating them. On
+the 1.9.2b3 notebook the errors that misled were retellings: Ody "approved" a
+scope Aaron had approved, a cc'd person became a party, a February check-in
+became a current debt, and a fee changed from net to gross. A quote can be
+checked against its source, and the runner does: a `“…”` not word for word in
+a source its line cites is sent back for repair, then removed. The longer
+Open-threads rule this replaces (debtor, request date, intent versus
+attendance) is now carried by the quote and the status after it.
+
+`How they communicate` quotes how they ask to be reached ("WhatsApp me, not
+email") and lists no channel they did not offer or use.
+
+## A contact fact is the person's own, or Unknown (decision 080)
+
+The rules here match what code now enforces after the turn
+(`page_review.verify_contacts`), so a turn does not write what will be taken
+off. A relay address (Luma, Airbnb's message relay) is the platform's, not the
+person's `Email`, even when the map gave it: Ody's Luma relay joined his page by
+display name and its host copy handed his page another man's mobile. A spelling
+the person rejected leaves `Also known as` (Ody wrote "我中文名字是周泽凯 不是周泽楷",
+and 周泽楷 stayed beside it). Pronouns appear only where their own words show
+them.

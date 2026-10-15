@@ -68,37 +68,32 @@ Rules:
   a pattern over time (reply speed, topics, who chases whom). Never generic
   ("key stakeholder", "valuable relationship"); thin material: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
-- Attribute group replies to their sender using exact From/To/Cc metadata.
-  Greetings do not bind names by recipient order; relay addresses are not
-  `Email`. Date historical plans and handoffs; missing completion
-  evidence does not make them current pending work.
+- **`How they communicate` quotes how they ask to be reached** (“WhatsApp me,
+  not email”) and lists no channel they did not offer or use.
+- Attribute group replies by exact From/To/Cc; relay addresses are not `Email`.
 - **`Company` needs stated employment.** Student or mailbox affiliation proves
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
-  terms, who owes what.
+  terms, who owes what. A term (amount, ratio, date, condition) is quoted with
+  its date: `“<exact words>” (YYYY-MM-DD) [n]`, never restated in other words.
   Keep each local link with its relationship, citations and privacy markers;
   separate different events onto separate lines.
-- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
+- **`History` is at most 16 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
-  Past 8, fold the oldest into one line per year.
-- **Open threads keep exact asks.** Check later replies; separate terms/forms.
-  Reports/optional offers create none. Prerequisites aren't agreed commitments;
-  missing historical outcomes aren't current debts.
-  Accepting an invitation or trial proves intent; attendance/activation need
-  separate evidence.
-  Name debtor, request date and explicit due date; never hardcode its age.
-  Preserve permission to proceed without a reply. Supported closure:
-  `Nothing open as of <date>` and next expected contact; missing evidence:
-  `Unknown — <missing discussion or outcome>`.
-- **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
-  and prior-page metadata.
-- **Label inference.** Empty sections stay `Unknown`; don't infer "no prior
-  history" or "cannot be assessed".
+  Past 16, fold the oldest into one line per year.
+- **Open threads quote the ask**, one line each: `- YYYY-MM-DD — <who> asked
+  <whom>: “<exact words>” [n] — <status, as of date, evidence>`. Reports,
+  optional offers, prerequisites and past events create none; a missing
+  outcome is `Unknown`, not a current debt. Keep an explicit due date and any
+  permission to proceed without a reply. Closure: `Nothing open as of <date>`.
+- **Say things once.** Doubt goes in `Uncertainties`; empty sections stay
+  `Unknown`.
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
-  arrive filled; keep them. Material about somebody else with the same name is
+  arrive filled; keep them, except relays. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
+- Say their name or "they"; "he"/"she" only where their own words show it.
 - **`Uncertainties`**: at most five unknowns that change the user's next step;
   never where you searched.
 - **Sources**: `- [n] <source id> — <date>`; claims stay in sentences. Never an
@@ -107,5 +102,5 @@ Rules:
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels. Preserve the runner's
+Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
 `Investigation:` line unchanged.

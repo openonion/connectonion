@@ -115,7 +115,13 @@ Other headings use one-line bullets:
   codex:s1:108, codex:s1:347
 ```
 
-Write notes in English, whatever language the messages are in: the pages they
-feed are English. Never translate names. Keep qualifications ("tentative",
+**Carry the words, not only the gist.** For every request, offer, promise,
+term (number, price, date, condition), decision, correction or instruction,
+and every "how to reach me", add the speaker's exact sentence in quotes, in
+its original language, one or two whole sentences: `Quote: “…”`. The page can
+only quote what you kept; a paraphrase here cannot be undone later.
+
+Write notes in English, whatever language the messages are in; the page writer
+puts them into the notebook's language. Quotes stay in their original language. Never translate names. Keep qualifications ("tentative",
 "not confirmed"). No length cap: a hundred mails need a hundred or more bullets.
 Prefer a precise bullet over a summary, and nothing over a guess.

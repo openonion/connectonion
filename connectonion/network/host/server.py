@@ -1350,6 +1350,8 @@ def host(
         provider_station=provider_station,
     )
     route_handlers["rem_root"] = _rem_root(rem_root, config)
+    # Where the local reader's token lives (rem_http.py): beside this Host's key.
+    route_handlers["identity_dir"] = co_dir
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
 

@@ -14,9 +14,16 @@ them showed up in the run's own summary.
   to see where they look, not treated as a failure.
 - cites REM's own session: a page cites a coding session that ran in a
   notebook's .state/tasks, i.e. REM's own turn, as the user's words.
-- refusal missing from ledger: a page's last run was refused, and
+- refusal missing from ledger: a page's last turn was refused -- in an
+  investigation, a sync's one-page maintenance, or a daily row -- and
   .state/refused-investigations.json does not record it.
+- page shrank: one maintenance turn left less than 60% of a page's
+  characters (connectonion 14,356 -> 4,132 on 2026-10-13).
 - background never started: launchd loaded the job and never ran it.
+
+Reported, not severe (2026-10-15 audit): refused rounds inside accepted
+investigations, and churn -- a page worked more than three times in three
+days, with how many of those turns changed nothing.
 """
 
 import argparse
@@ -46,14 +53,82 @@ def run_summary(runs: list[dict]) -> dict:
             "errors": dict(errors.most_common(12)), "unfinished": unfinished}
 
 
-def missing_refusals(root: Path, runs: list[dict]) -> list[str]:
-    last = {}
+def page_turns(runs: list[dict]) -> list[dict]:
+    """Every page turn the runs record, oldest first: {at, page, outcome, chars, refused_rounds}.
+
+    An investigation names its page; a sync names its one-page turns in
+    page_chars and refusals; a daily run names them in its page rows."""
+    turns = []
     for run in sorted(runs, key=lambda run: run.get("started_at") or ""):
-        if run.get("record"):
-            last[run["record"]] = run.get("outcome")
+        at = run.get("started_at") or ""
+        if run.get("record") and not run.get("pages"):
+            turns.append({"at": at, "page": run["record"], "outcome": run.get("outcome"),
+                          "refused_rounds": run.get("refused_rounds") or []})
+        for page, chars in (run.get("page_chars") or {}).items():
+            outcome = "completed" if page in (run.get("changed") or []) else "no_change"
+            turns.append({"at": at, "page": page, "outcome": outcome, "chars": chars})
+        for row in run.get("refusals") or []:
+            turns.append({"at": at, "page": row["record"], "outcome": "refused"})
+        for row in run.get("pages") or []:
+            turns.append({"at": at, "page": row["page"], "outcome": row.get("outcome"),
+                          "refused_rounds": row.get("refused_rounds") or []})
+    return turns
+
+
+def missing_refusals(root: Path, runs: list[dict]) -> list[str]:
+    """Pages refused and not accepted since, which the ledger does not hold.
+
+    A later nothing_found or NO CHANGE settles nothing: job-followup and x-reply
+    were refused at init and came back nothing_found every day after."""
+    refused = set()
+    for turn in page_turns(runs):
+        if turn["outcome"] == "refused":
+            refused.add(turn["page"])
+        elif turn["outcome"] in ("completed", "accepted"):
+            refused.discard(turn["page"])
     ledger = root / ".state" / "refused-investigations.json"
     recorded = json.loads(ledger.read_text()) if ledger.is_file() else {}
-    return sorted(record for record, outcome in last.items() if outcome == "refused" and record not in recorded)
+    return sorted(refused - set(recorded))
+
+
+def refused_turns(root: Path, runs: list[dict]) -> dict:
+    """Refused turns the task folders kept, against those the run records name.
+
+    Two refusals on the 2026-10-10 notebook were in task folders only (Ody
+    Zhou's and Dora's rounds): swallowed by an accepted investigation."""
+    tasks = sum(1 for review in (root / ".state" / "tasks").glob("*/review.json")
+                if json.loads(review.read_text()).get("accepted") is False)
+    turns = page_turns(runs)
+    recorded = sum(turn["outcome"] == "refused" for turn in turns) + sum(len(turn.get("refused_rounds") or [])
+                                                                       for turn in turns)
+    return {"tasks": tasks, "recorded": recorded, "swallowed": max(0, tasks - recorded)}
+
+
+def refused_rounds(runs: list[dict]) -> list[str]:
+    """Pages accepted with a refused round inside: material no later round read."""
+    return sorted({turn["page"] for turn in page_turns(runs) if turn.get("refused_rounds")})
+
+
+def shrinks(runs: list[dict], keep: float = 0.6, floor: int = 1000) -> list[str]:
+    return [f"{turn['page']} {turn['chars'][0]:,} -> {turn['chars'][1]:,} at {turn['at'][:16]}"
+            for turn in page_turns(runs) if turn.get("chars")
+            and turn["chars"][0] >= floor and turn["chars"][1] < turn["chars"][0] * keep]
+
+
+def churn(runs: list[dict], most: int = 3, days: int = 3) -> list[dict]:
+    """Pages worked more than `most` times within `days` days, and how many of those turns changed nothing."""
+    by_page = {}
+    for turn in page_turns(runs):
+        by_page.setdefault(turn["page"], []).append(turn)
+    found = []
+    for page, turns in sorted(by_page.items()):
+        stamps = [datetime.fromisoformat(turn["at"]) for turn in turns]
+        window = max(sum(1 for other in stamps if timedelta(0) <= other - stamp <= timedelta(days=days))
+                     for stamp in stamps)
+        if window > most:
+            found.append({"page": page, "turns": len(turns), "in_window": window,
+                          "no_change": sum(1 for turn in turns if turn["outcome"] == "no_change")})
+    return found
 
 
 def session_files(sessions: Path) -> dict[str, Path]:
@@ -137,7 +212,7 @@ def self_citations(root: Path, files: dict[str, Path]) -> list[str]:
         for session in set(re.findall(r"(?:codex|claude-code):([0-9a-f-]{8,})", page.read_text())):
             path = files.get(session)
             if path and rem_task(meta(path).get("cwd", "")):
-                found.append(f"{page.relative_to(root)} cites {session}")
+                found.append(f"{page.relative_to(root)} cites {session} (the next sync's tidy removes it)")
     return found
 
 
@@ -206,16 +281,26 @@ def audit(root: Path, sessions: Path, home: Path, allowed: list[Path] = (), stri
         severe.append({"check": "cites REM's own session", "count": 1, "example": finding})
     for record in missing_refusals(root, runs):
         severe.append({"check": "refusal missing from ledger", "count": 1, "example": record})
+    for shrink in shrinks(runs):
+        severe.append({"check": "page shrank", "count": 1, "example": shrink})
     if never := background_never_started(root):
         severe.append({"check": "background never started", "count": 1, "example": never})
     traces["outside_reads"] = len(traces["outside"])
-    return {"runs": run_summary(runs), "traces": {k: v for k, v in traces.items() if k != "outside"},
+    return {"runs": {**run_summary(runs), "refused_rounds": refused_rounds(runs),
+                     "refused_turns": refused_turns(root, runs), "churn": churn(runs)},
+            "traces": {k: v for k, v in traces.items() if k != "outside"},
             "severe": severe, "pages": page_checks(root)}
 
 
 def show(report: dict) -> str:
     lines = [f"Runs: {report['runs']['runs']}", *(f"  {k}: {v}" for k, v in report["runs"]["by_phase"].items())]
     lines += ["Errors:", *(f"  {n:3d}  {e}" for e, n in report["runs"]["errors"].items())]
+    turns = report["runs"]["refused_turns"]
+    lines += [f"Refused turns: {turns['tasks']} in task folders, {turns['recorded']} in run records, "
+              f"{turns['swallowed']} swallowed"]
+    lines += ["Refused rounds inside accepted pages:", *(f"  {page}" for page in report["runs"]["refused_rounds"])]
+    lines += ["Churn (turns, most in 3 days, NO CHANGE):",
+              *(f"  {c['page']}: {c['turns']}, {c['in_window']}, {c['no_change']}" for c in report["runs"]["churn"])]
     lines += [f"Traces: {json.dumps(report['traces'])}", "Severe:"]
     lines += [f"  {f['check']} ×{f['count']}: {f['example']}" for f in report["severe"]] or ["  none"]
     tally = Counter(f["check"] for f in report["pages"])

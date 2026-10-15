@@ -82,7 +82,8 @@ def test_the_overview_and_the_people_list_are_one_queue(root):
     assert overview.exit_code == listing.exit_code == 0, overview.output + listing.output
     people = json.loads(overview.stdout)["data"]["people"]
     order = json.loads(listing.stdout)["data"]["order"]
-    assert people["unfinished"] == len(order)
+    # Every queued page is either not written yet or written and due a refresh (UI audit #3).
+    assert people["mapped"] - people["written"] + people["to_refresh"] == len(order)
     assert people["next"] == [row["record"] for row in order][:3]
 
 

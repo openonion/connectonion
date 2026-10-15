@@ -303,10 +303,17 @@
   .maint .k { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
   .maint .v { font: 500 16px var(--mono); margin-top: 3px; }
   .maint .state { font-size: 14px; color: var(--ink-2); margin: 4px 0 14px; max-width: 72ch; }
-  table.runs { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
-  table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  table.runs td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
-  table.runs td:first-child { color: var(--ink); }
+  .activity-runs { list-style: none; margin: 0; padding: 0; max-width: 80ch; border-top: 1px solid var(--line); }
+  .activity-runs > li { padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+  .run-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; font-size: 14px; }
+  .run-meta { margin-top: 3px; font-size: 12px; color: var(--ink-3); }
+  .run-pages { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 6px; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+  .run-pages .k { font: 600 10px/1.9 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .run-pages .k.warn { color: var(--lamp); }
+  .run-pages .why { flex-basis: 100%; color: var(--ink-2); font-size: 13px; }
+  .activity-runs .run-trace { margin: 4px 0 0; border-bottom: 0; }
+  .activity-shelf { margin-top: 28px; border-top: 1px solid var(--line); }
+  .activity-shelf > summary { cursor: pointer; padding: 12px 0; min-height: 44px; box-sizing: border-box; font: 500 15px var(--ui); color: var(--ink-2); }
   .run-trace { margin: 8px 0; border-bottom: 1px solid var(--line-2); }
   .run-trace > summary { cursor: pointer; padding: 8px 0; font: 12px var(--mono); color: var(--ink-2); }
   .run-trace h3 { font: 600 12px var(--ui); margin: 12px 0 4px; }
@@ -912,6 +919,9 @@
     .hypno .trace { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.4s ease-out 120ms forwards; }
     @keyframes draw { to { stroke-dashoffset: 0; } }
   }
+  /* Languages: read a page in another language (languageBar below). */
+  .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font: 13px var(--ui); color: var(--ink-2); }
+  .lang-bar select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13px var(--ui); }
 </style>
 </head>
 <body>
@@ -939,8 +949,10 @@
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
 
-// Private sentences are visible until the reader chooses to hide them.
+// Private sentences are visible until the reader chooses to hide them, on the
+// owner's own machine; a shared or remote view starts with them hidden.
 (function() {
+  if (REM && REM.shared) document.documentElement.classList.add("hide-private");
   try {
     if (location.protocol === "file:" && localStorage.getItem("co-rem-private") === "hidden")
       document.documentElement.classList.add("hide-private");
@@ -996,7 +1008,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "AI notes", logs: "Run logs"
+  agenda: "Agenda", notes: "AI notes", logs: "Maps"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -1008,15 +1020,20 @@ const CATEGORY_ASK = {
   decisions: "what we chose and why",
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
-  agenda: "promises, waiting on others, dates that matter",
-  notes: "the AI's own working notes: reflections and open questions",
-  logs: "what co rem recorded while it worked: maps and skill run counts"
+  agenda: "promises, waiting on others, dates that matter"
 };
+// notes/ and logs/ are what co rem wrote about its own work: read under Activity, not counted as memory.
+const ACTIVITY = new Set(["notes", "logs"]);
+function memoryCategories() { return REM.categories.filter(c => !ACTIVITY.has(c)); }
+// A skill's run report is opened from its skill page, never listed on its own.
+function skillReport(r) { return r.path.startsWith("logs/skill-runs-"); }
+function categoryHref(c) { return ACTIVITY.has(c) ? "#view=activity" : "#c=" + c; }
+function categoryName(c) { return ACTIVITY.has(c) ? "Activity" : label(c); }
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
-function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
+function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
@@ -1852,7 +1869,8 @@ function route() {
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
-  return reviews ? "reviews" : view || c || (r ? r.split("/")[0] : (query ? "search" : "today"));
+  const kind = r && r.split("/")[0];
+  return reviews ? "reviews" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
 }
 function scheduleState(s) {
   const state = s.state || "";
@@ -1872,12 +1890,13 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title })]));
   nav.appendChild(el("div", { class: "label", text: "Explore memory" }));
   nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: "All records" }), el("span", { class: "n", text: String(listedRecords().length) })]));
-  for (const c of REM.categories) {
+  for (const c of memoryCategories()) {
     const n = inCategory(c).length;
     if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
   }
+  nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: "Activity" })]));
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
   if ((REM.reviews || []).length || active === "reviews") nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
@@ -2022,30 +2041,9 @@ function morningBrief() {
     if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
     if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
     brief.appendChild(el("p", { class: "memory-empty", text: failed.length + " investigation" + (failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") }));
-    const review = el("button", { type: "button", text: "Review failed runs →" });
-    review.onclick = () => {
-      const maintenance = document.querySelector("details.maint");
-      if (!maintenance) return;
-      maintenance.open = true;
-      const failedRun = maintenance.querySelector(".runs tr.failed-run");
-      const target = failedRun || maintenance.querySelector(":scope > summary");
-      target?.focus();
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-    };
-    brief.appendChild(el("div", { class: "first-map-actions" }, [review]));
+    brief.appendChild(el("div", { class: "first-map-actions" }, [el("a", { href: "#view=activity", text: "Review failed runs →" })]));
   }
-  if ((REM.logs || []).some(run => run.evidence?.length || run.report || run.pages?.some(page => page.evidence?.length || page.report))) {
-    const trail = el("button", { type: "button", class: "inspection-link", text: "View recent inspection trail →" });
-    trail.onclick = () => {
-      const maintenance = document.querySelector("details.maint");
-      const trace = maintenance?.querySelector("details.run-trace");
-      if (!maintenance) return;
-      maintenance.open = true;
-      if (trace) trace.open = true;
-      (trace || maintenance).scrollIntoView({ behavior: "smooth", block: "center" });
-    };
-    brief.appendChild(trail);
-  }
+  if ((REM.logs || []).some(run => runTrace(run))) brief.appendChild(el("a", { class: "inspection-link", href: "#view=activity", text: "View recent inspection trail →" }));
   if (pass?.claims?.length) {
     const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
       pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
@@ -2198,7 +2196,7 @@ function overview() {
     main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
   }
 
-  const categories = REM.categories.map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
+  const categories = memoryCategories().map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
   if (categories.length) {
     main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
     main.appendChild(el("div", { class: "category-cards" }, categories.map(({ c, count }) =>
@@ -2231,51 +2229,79 @@ function maintenance(s) {
     });
     maint.appendChild(line);
   }
-  if ((REM.logs || []).length) {
-    const table = el("table", { class: "runs" });
-    table.appendChild(el("tr", {}, ["Run", "Outcome", "Items", "Pages changed", "Input", "Output", "Seconds"].map(h => el("th", { text: h }))));
-    for (const run of REM.logs.slice(0, 8)) {
-      const u = run.usage || {};
-      const outcome = String(run.outcome || "");
-      const ok = /^(completed|pass)$/i.test(outcome);
-      table.appendChild(el("tr", FAILED.test(outcome) ? { class: "failed-run", tabindex: "-1" } : {}, [
-        el("td", { text: fmtTime(run.started_at) }),
-        el("td", {}, [el("span", { class: "pill" + (ok ? "" : FAILED.test(outcome) ? " warn" : " quiet"), text: outcome })]),
-        el("td", { text: String(run.items ?? "") }),
-        el("td", { text: String((run.changed || []).length) }),
-        el("td", { text: num(u.input_tokens) }),
-        el("td", { text: num(u.output_tokens) }),
-        el("td", { text: run.seconds == null ? "—" : String(run.seconds) })]));
-    }
-    maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
-    for (const run of REM.logs.slice(0, 8)) {
-      const pages = run.pages?.length ? run.pages : [run];
-      if (!pages.some(page => page.evidence?.length || page.report)) continue;
-      const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
-      const trace = el("details", { class: "run-trace" }, [el("summary", {
-        text: fmtTime(run.started_at) + " · " + count + " supplied items · inspection report"
-      })]);
-      trace.addEventListener("toggle", () => {
-        if (!trace.open || trace.dataset.loaded) return;
-        trace.dataset.loaded = "true";
-        for (const page of pages) {
-          const record = page.page || page.record;
-          if (record) trace.appendChild(el("h3", {}, [el("a", { href: "#r=" + encodeURIComponent(record), text: record })]));
-          if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
-          if (!page.evidence?.length) continue;
-          trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
-          const sources = el("ul");
-          for (const item of page.evidence) sources.appendChild(el("li", { text: [
-            item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
-            item.captured_at && "captured: " + item.captured_at,
-            item.paths?.join(", ")].filter(Boolean).join(" · ") }));
-          trace.appendChild(sources);
-        }
-      });
-      maint.appendChild(trace);
-    }
-  }
+  const latest = (REM.logs || [])[0];
+  if (latest) maint.appendChild(el("p", { class: "state" }, ["Latest run " + fmtTime(latest.started_at) + " · " + (latest.outcome || "") + " · "
+    + (latest.changed || []).length + " pages changed · ", el("a", { href: "#view=activity", text: "Activity →" })]));
   return maint;
+}
+
+// ---------- activity: what co rem did, run by run ----------
+function pageLink(path) {
+  return el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path });
+}
+// Pages a run looked at and did not write, each with the reason it gave.
+function unwritten(run) {
+  const refused = (run.refusals || []).map(x => ({ k: "Refused", page: x.record, why: (x.errors || []).join("; ") }));
+  const skipped = (Array.isArray(run.pages) ? run.pages : []).filter(page => page.outcome && page.outcome !== "accepted")
+    .map(page => ({ k: "Not written", page: page.page || page.record, why: page.why || page.outcome }));
+  // The kept candidate's path is the runner's business, not the reason.
+  return [...refused, ...skipped].map(x => ({ ...x, why: String(x.why).replace(/^Candidate rejected, kept at .*?: |^Not written: /, "") }));
+}
+function runTrace(run) {
+  const pages = run.pages?.length ? run.pages : [run];
+  if (!pages.some(page => page.evidence?.length || page.report)) return null;
+  const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
+  const trace = el("details", { class: "run-trace" }, [el("summary", { text: count ? count + " supplied items · inspection report" : "Inspection report" })]);
+  trace.addEventListener("toggle", () => {
+    if (!trace.open || trace.dataset.loaded) return;
+    trace.dataset.loaded = "true";
+    for (const page of pages) {
+      const record = page.page || page.record;
+      if (record) trace.appendChild(el("h3", {}, [pageLink(record)]));
+      if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
+      if (!page.evidence?.length) continue;
+      trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
+      trace.appendChild(el("ul", {}, page.evidence.map(item => el("li", { text: [
+        item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
+        item.captured_at && "captured: " + item.captured_at,
+        item.paths?.join(", ")].filter(Boolean).join(" · ") }))));
+    }
+  });
+  return trace;
+}
+function runItem(run) {
+  const outcome = String(run.outcome || ""), u = run.usage || {};
+  const tone = /^(completed|pass)$/i.test(outcome) ? "" : FAILED.test(outcome) ? " warn" : " quiet";
+  const li = el("li", { class: FAILED.test(outcome) ? "failed-run" : "" }, [
+    el("div", { class: "run-head" }, [el("span", { class: "mono", text: fmtTime(run.started_at) }),
+      el("span", { text: run.phase || "sync" }), el("span", { class: "pill" + tone, text: outcome })]),
+    el("div", { class: "run-meta mono", text: (run.items || 0) + " read" + (u.input_tokens == null ? "" : " · " + num(u.input_tokens) + " in / " + num(u.output_tokens) + " out tokens") })]);
+  if ((run.changed || []).length) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k", text: "Changed" }), ...run.changed.map(pageLink)]));
+  for (const x of unwritten(run)) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k warn", text: x.k }), pageLink(x.page), el("span", { class: "why", text: x.why })]));
+  const trace = runTrace(run);
+  if (trace) li.appendChild(trace);
+  return li;
+}
+function activityShelf(title, records) {
+  if (!records.length) return null;
+  return el("details", { class: "activity-shelf" }, [el("summary", { text: title + " · " + records.length }),
+    el("ul", { class: "hits" }, records.sort(byActivity).map(r => row(r)))]);
+}
+function activityView() {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
+  main.appendChild(el("div", { class: "eyebrow", text: "co rem / Activity" }));
+  main.appendChild(el("h1", { text: "Activity" }));
+  main.appendChild(el("p", { class: "lede", text: "What co rem did on each run: what it read, the pages it changed, and the ones it would not write." }));
+  const runs = REM.logs || [];
+  main.appendChild(sectionHead("Runs", runs.length ? "latest " + runs.length : "none yet"));
+  main.appendChild(runs.length ? el("ol", { class: "activity-runs" }, runs.map(runItem))
+    : el("div", { class: "empty" }, [el("span", { class: "lead", text: "No runs yet" }), "Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
+  const notes = activityShelf("AI notes", REM.records.filter(r => r.category === "notes"));
+  if (notes) main.appendChild(notes);
+  const maps = activityShelf("Maps", REM.records.filter(r => r.category === "logs" && !skillReport(r)));
+  if (maps) main.appendChild(maps);
 }
 
 function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }
@@ -2880,14 +2906,16 @@ function record(path, heading) {
   const parts = splitTrailers(r.text);
   const k = known(r);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
-  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
+  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }), el("span", { class: "sep", text: "/" }),
     statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
   head.appendChild(leadRow(r));
+  const languages = languageBar(r);
+  if (languages) head.appendChild(languages);
   main.appendChild(head);
   main.appendChild(recordFocus(r));
 
@@ -3030,7 +3058,7 @@ function search(q) {
   const grouped = new Map();
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
-    if (r.path === "skills/catalog/index.md") continue;
+    if (r.path === "skills/catalog/index.md" || skillReport(r)) continue;
     const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
@@ -3135,10 +3163,11 @@ function render() {
   else if (query) search(query);
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
+  else if (view === "activity") activityView();
   else if (c) category(c);
   else overview();
   document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query :
-    view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
+    view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : view === "activity" ? "Activity" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
   refreshFocusExpansion();
 }
@@ -3312,6 +3341,60 @@ document.addEventListener("keydown", e => {
     e.preventDefault(); qInput.focus();
   }
 });
+// ---- Languages ---------------------------------------------------------------
+// A page read in another language. Translations are made by co ai on the Host
+// (rem/translate.py) and cached beside the notebook; the page as written stays
+// the record. A snapshot offers only the translations it carries; the live
+// reader (served by rem_http.py) can ask the Host for any language.
+// The menu offers the owner's own languages first (languages.py: detected from
+// their mail and sessions, or `co rem config set languages`), then on a person
+// the languages they speak, then the rest under "Other…". The page's own
+// language is not offered: "As written" is that.
+const READ_LANGUAGES = ["en", "zh", "zh-TW", "ja", "ko", "es", "fr", "de"];
+function nativeName(tag) { return new Intl.DisplayNames([tag], { type: "language" }).of(tag) || tag; }
+function languageBar(r) {
+  const cached = Object.keys(r.translations || {});
+  const offered = tag => tag !== r.written_in && (REM.live || cached.includes(tag));
+  const yours = [...new Set(REM.your_languages || [])].filter(offered);
+  const theirs = [...new Set(r.speaks || [])].filter(tag => offered(tag) && !yours.includes(tag));
+  const rest = [...new Set([...READ_LANGUAGES, ...cached])].filter(tag => offered(tag) && !yours.includes(tag) && !theirs.includes(tag));
+  if (!yours.length && !theirs.length && !rest.length) return null;
+  const option = (tag, prefix) => el("option", { value: tag, text: (prefix || "") + nativeName(tag) + (cached.includes(tag) ? "" : " · translate with co ai") });
+  const select = el("select", { "aria-label": "Read this page in" }, [el("option", { value: "", text: "As written" }),
+    ...yours.map(tag => option(tag)), ...theirs.map(tag => option(tag, "Their language: ")),
+    rest.length ? el("optgroup", { label: "Other…" }, rest.map(tag => option(tag))) : null]);
+  select.value = r.shown || "";
+  const status = el("span", { class: "lang-status", role: "status" });
+  select.onchange = () => readIn(r, select.value, status, select);
+  return el("div", { class: "lang-bar" }, [el("span", { text: "Read in" }), select, status]);
+}
+async function readIn(r, tag, status, select) {
+  if (!tag || r.translations?.[tag]) return showLanguage(r, tag);
+  select.disabled = true;
+  status.textContent = "Translating with co ai… this takes a minute or two.";
+  let answer = await askHost({ page: r.path, language: tag });
+  while (answer.state === "running") {
+    await new Promise(done => setTimeout(done, 2000));
+    answer = await askHost({ page: r.path, language: tag });
+  }
+  select.disabled = false;
+  if (answer.state === "failed") { status.textContent = "Not translated: " + answer.error; return; }
+  (r.translations ||= {})[tag] = answer.text;
+  showLanguage(r, tag);
+}
+function askHost(body) {
+  return fetch("/rem/translate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+    .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run co rem open again" } : response.json())
+    .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run co rem open again" }));
+}
+function showLanguage(r, tag) {
+  r.original ??= r.text;
+  r.text = tag ? r.translations[tag] : r.original;
+  r.shown = tag;
+  KNOWN.delete(r.path);
+  render();
+}
+
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 render();

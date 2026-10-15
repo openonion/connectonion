@@ -85,8 +85,10 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
     return sorted(merged.values(), key=lambda row: (-row['mails'], row['address'])), own
 
 
-# Relays: an event platform writes on someone's behalf from an address of its own.
-RELAY = re.compile(r'@(?:[\w-]+\.)*luma-mail\.com$', re.I)
+# Relays: a platform writes on someone's behalf from an address of its own --
+# Luma's per-user addresses and calendar-invite@lu.ma, Airbnb's message relay.
+# Replying reaches the platform, so a relay is never a person's Email (contacts audit E1-E3).
+RELAY = re.compile(r'@(?:[\w-]+\.)*(?:luma-mail\.com|lu\.ma)$|^express@airbnb\.com$', re.I)
 # Where bulk mail comes from: a newsletter platform, or a sending subdomain a
 # company keeps apart from its people (mail.aitinkerers.org, e.domain.com.au,
 # news.ato.gov.au). A person writes from the company domain itself. On
@@ -296,11 +298,16 @@ def _people_groups(rows: list[dict]) -> list[list[dict]]:
 
     A single first name ("Aaron", "John") is too common to join on, so it keeps its
     own page. Most mail first, so the busiest address leads its group.
+
+    A relay carries the person's name but is the platform's address: joined by
+    name, Ody's Luma relay became his Email and its host copy gave his page
+    another man's mobile (contacts audit P2, E2). It stays a group of its own.
     """
     groups = {}
     for row in rows:
         name = ' '.join(str(row.get('name') or '').split()).casefold()
-        key = name if len(name.split()) >= 2 and '@' not in name else row['address'].casefold()
+        named = len(name.split()) >= 2 and '@' not in name and not RELAY.search(row['address'])
+        key = name if named else row['address'].casefold()
         groups.setdefault(key, []).append(row)
     return sorted(groups.values(), key=lambda g: (-sum(r.get('mails', 0) for r in g), g[0]['address']))
 
@@ -728,7 +735,11 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
     section = re.search(r'(?ms)^## Paths\n(.*?)(?=^## |\Z)', page)
     if section:
         body = section.group(1)
-        refreshed = (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last']))
+        # The session index can lag what an investigation read: Facts said Last
+        # activity 2026-10-15 while Paths said Last seen 2026-10-08 (claims audit C5).
+        activity = re.search(r'^- Last activity: (\d{4}-\d\d-\d\d)', page, re.M)
+        last = max(str(row['last']), activity[1] if activity else '')
+        refreshed = (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', last))
         for label, value in refreshed if refresh else ():
             body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
         if refresh and worktrees:
@@ -958,13 +969,13 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     absent = dict(absent or {})
     report['coverage'] += [f'{kind}: ' + (absent.get(kind) or 'not configured or disabled; not searched')
                            for kind in ('gmail', 'outlook') if kind not in clients]
-    report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
+    report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record, report.get('owner'))
     if progress:
-        progress("mapped people and organizations", len(report['people']) + len(report['orgs']))
+        progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
-    report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
+    report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
-                              'organization identity unverified; existing organization pages preserved')
+                              'organisation identity unverified; existing organisation pages preserved')
     save()
     if progress:
         progress("scanning local projects")
@@ -1016,5 +1027,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     # Derived and rebuilt next time, so a failure is reported, never the map's.
     from .store import refresh_safely
     report['store'] = refresh_safely(root)
+    # The owner's languages, from their own mail in the index just built.
+    from .languages import refresh
+    refresh(root, report)
     save()
     return report

@@ -235,7 +235,7 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
     with tempfile.TemporaryDirectory(prefix='skill-', dir=evidence_root) as directory:
         if records:
             items.append(_record_index(Path(directory), records, samples, stamp))
-        result = run_stage(notebook, items, config, stage='investigate')
+        result = _ledgered(root, record, items, lambda: run_stage(notebook, items, config, stage='investigate'))
     if record in result.get('changed', []):
         from .reader_model import _source_ids
         retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
@@ -251,6 +251,21 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
             'session_turns_reviewable': len(samples['items']),
             'session_invocations_indexed': samples['matched_invocations'],
             'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
+
+
+def _ledgered(root: Path, record: str, items: list[dict], turn) -> dict:
+    """The turn, with its refusal in the ledger: job-followup and x-reply were
+    refused on 2026-10-10 and nothing recorded it, so nothing retried them."""
+    from .refusals import forget_refusal, material_sources, remember_refusal
+    from .runner import RunFailed
+    try:
+        result = turn()
+    except RunFailed as error:
+        if 'rejected' in str(error):
+            remember_refusal(root, record, material_sources(items), str(error), stage='skill')
+        raise
+    forget_refusal(root, record)
+    return result
 
 
 def skill_record_snapshots(items: list[dict], stamp: str) -> list[dict]:

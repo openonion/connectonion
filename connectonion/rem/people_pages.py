@@ -182,7 +182,7 @@ def fill_companies(root: Path) -> list[str]:
         material = person_material(root, record, handles=found)
         items = [item for group in (material[0].values() if material else []) for item in group]
         rows = extract(items, [name, *found], timezone=read_config(root)["schedule"]["timezone"])
-        if notebook.write(record, company_from_domain(notebook, record, text, rows)):
+        if notebook.write(record, company_from_domain(notebook, record, text, rows)[0]):
             filled.append(record)
     return filled
 
@@ -198,7 +198,8 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
                                            subscriptions=subscriptions, max_calls=max_calls, progress=progress,
                                            stage_progress=stage_progress,
                                            fetch_attachments=row.get("attachments", True),
-                                           rounds=row.get("rounds"), read_before=row.get("read_before", ""))
+                                           rounds=row.get("rounds"), read_before=row.get("read_before", ""),
+                                           retry_refused=row.get("retry_refused", False))
     except investigation.NothingNew:
         # The window was read and held nothing: mail before `started` is not
         # new next run, or the same person is gathered again every run (#1984).

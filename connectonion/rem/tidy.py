@@ -13,9 +13,10 @@ and every action -- each removed line with its text -- is appended to
 
 from __future__ import annotations
 
+import json
 import re
 from contextlib import nullcontext
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .files import Notebook, maintenance_lock, read_json, state_path, write_json
@@ -40,8 +41,9 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _empty_orgs(notebook, state)
         actions += _own_addresses(notebook, state) if own_addresses else []
         actions += _skills(notebook)
-        actions += _orgs(notebook)
+        actions += _orgs(notebook, state)
         actions += _lines(notebook)
+        actions += _not_typed(notebook)
         actions += _map_history(notebook)
         actions += _dead_links(notebook)
         actions += _link_people(notebook, state)
@@ -179,15 +181,20 @@ def _empty_orgs(notebook: Notebook, state: dict) -> list[dict]:
     return moved
 
 
-def _orgs(notebook: Notebook) -> list[dict]:
-    """Organisation pages for a mailbox provider or an event relay, never investigated: archived (#2018).
+def _orgs(notebook: Notebook, state: dict) -> list[dict]:
+    """Organisation pages for a mailbox provider, an event relay or the owner's own company,
+    never investigated: archived (#2018).
 
     Where someone keeps their mail is not who they work for: orgs/yahoo-com-hk
-    and orgs/luma-mail-com were on the 1.9.0a5 acceptance notebook.
+    and orgs/luma-mail-com were on the 1.9.0a5 acceptance notebook. The owner's
+    own company is not a counterparty: orgs/connectonion-com (2026-10-10).
     """
     from .census import written
     from .map import RELAY
+    from .org_map import own_domain
     from .scan import personal_mailbox
+    owner = state.get("owner")
+    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
     moved = []
     for record in notebook.list("orgs"):
         text = notebook.read(record)
@@ -195,7 +202,8 @@ def _orgs(notebook: Notebook) -> list[dict]:
         domains = re.findall(r"^- ([A-Za-z0-9.-]+)\s*$", section, re.M)
         if written(text) or not domains:
             continue
-        if all(personal_mailbox(domain) or RELAY.search("x@" + domain) for domain in domains):
+        if all(personal_mailbox(domain) or RELAY.search("x@" + domain) or own_domain(domain, owner, page)
+               for domain in domains):
             moved.append({"action": "archived organisation", "page": record, "archived": _archive(notebook, record)})
     return moved
 
@@ -446,3 +454,93 @@ def _lines(notebook: Notebook) -> list[dict]:
             notebook.write(record, "\n".join(kept))
             removed += [{"action": "removed line", "page": record, "line": line} for line in gone]
     return removed
+
+
+# Which cited session lines the user typed, checked once each: the session
+# files are read only for ids no earlier tidy has seen.
+TYPED = "typed-sources.json"
+SESSION_SOURCE = re.compile(r"(?m)^\s*- \[(W?\d+)\]\s*:?\s*((codex|claude-code):([^\s:]+):(\d+))")
+
+
+def _not_typed(notebook: Notebook) -> list[dict]:
+    """Citations of a session line the user did not type, gone with what rests on them alone.
+
+    The owner's page cited REM's own model-access probe ("Reply READY only")
+    as the user's open thread, four times; it was written on 2026-10-10, before
+    the source filter, and nothing repaired it. projects/layeredvisions cited
+    a launchd job's prompt as the user's request (2026-10-14)."""
+    cited = {}
+    for record in notebook.list():
+        sources = notebook.read(record).partition("\n## Sources\n")[2]
+        cited[record] = {match[1]: match[2] for match in SESSION_SOURCE.finditer(sources)}
+    path = state_path(notebook.root, TYPED)
+    typed = read_json(path, {})
+    unseen = {source for ids in cited.values() for source in ids.values()} - set(typed)
+    if unseen:
+        files = _session_files(notebook.root)
+        typed.update({source: _typed(files, source) for source in sorted(unseen)})
+        write_json(path, typed)
+    removed = []
+    for record, ids in cited.items():
+        bad = {key for key, source in ids.items() if not typed[source]}
+        if bad:
+            text, gone = _without_citations(notebook.read(record), bad)
+            notebook.write(record, text)
+            removed += [{"action": "removed a citation the user did not type", "page": record,
+                         "source": ids[key]} for key in sorted(bad)]
+            removed += [{"action": "removed line", "page": record, "line": line} for line in gone]
+    return removed
+
+
+def _session_files(root: Path) -> dict[str, tuple[str, Path]]:
+    """Every subscribed Codex and Claude Code session file by its session id, without opening them."""
+    from .service import subscriptions
+    files = {}
+    for subscription in subscriptions(root).values():
+        kind, folder = subscription.get("kind"), Path(subscription.get("root") or "")
+        if kind in ("codex", "claude-code") and folder.is_dir():
+            for found in folder.rglob("rollout-*.jsonl" if kind == "codex" else "*.jsonl"):
+                files[found.stem[-36:] if kind == "codex" else found.stem] = (kind, found)
+    return files
+
+
+def _typed(files: dict, source: str) -> bool:
+    """Did the user type the line `kind:session:offset` names? A file gone or unreadable says nothing: kept."""
+    from .files import RemError
+    from .source import KINDS, SKIPPED
+    kind, session, offset = source.split(":")
+    if session not in files:
+        return True
+    with files[session][1].open("rb") as transcript:
+        first = transcript.readline(1_000_000)
+        transcript.seek(int(offset))
+        line = transcript.readline()
+    try:
+        meta = KINDS[kind]["meta"](json.loads(first))
+        item = None if meta.get("skip") else KINDS[kind]["message"](
+            json.loads(line), datetime.min.replace(tzinfo=timezone.utc), meta)
+    except (ValueError, TypeError, AttributeError, RemError):
+        return True
+    return not (meta.get("skip") or item is SKIPPED)
+
+
+def _without_citations(text: str, keys: set[str]) -> tuple[str, list[str]]:
+    """The page without citations `keys`: a line resting on them alone goes (a contact
+    field keeps its label as Unknown), a marker beside another citation goes, and so
+    do their Sources entries."""
+    from .page_review import CITATION, CONTACT_LINE, _fill_emptied_sections, renumber_sources
+    head, marker, tail = text.partition("\n## Sources\n")
+    kept, gone = [], []
+    for line in head.split("\n"):
+        cited = set(CITATION.findall(line))
+        if not cited & keys:
+            kept.append(line)
+        elif cited <= keys:
+            gone.append(line)
+            if CONTACT_LINE.match(line):
+                kept.append(CONTACT_LINE.match(line).group(0) + " Unknown")
+        else:
+            kept.append(re.sub(r"[ \t]*\[(?:" + "|".join(sorted(keys)) + r")\](?!\()", "", line))
+    tail = "".join(line for line in tail.splitlines(keepends=True)
+                   if not ((match := re.match(r"^\s*(?:- )?\[(W?\d+)\]", line)) and match[1] in keys))
+    return renumber_sources(_fill_emptied_sections("\n".join(kept)) + marker + tail), gone

@@ -68,3 +68,62 @@ def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeyp
     prepare(tmp_path / "rem")
     assert (read_config(tmp_path / "rem")["runner"], read_config(tmp_path / "rem")["model"]) == \
         ("claude-code", "claude-sonnet-5-5")
+
+
+def test_the_notebook_language_is_a_setting_the_page_turns_are_told(tmp_path):
+    from connectonion.rem.config import prepare, read_config, set_config
+    from connectonion.rem.files import RemError
+    from connectonion.rem.runner import language_note
+    prepare(tmp_path)
+    assert read_config(tmp_path)["language"] == "en"
+    assert set_config(tmp_path, ["language", "zh"])["language"] == "zh"
+    note = language_note(tmp_path)
+    assert "`zh`" in note and "headings, Facts labels" in note and "original language" in note
+    import pytest
+    with pytest.raises(RemError, match="language tag"):
+        set_config(tmp_path, ["language", "Chinese please"])
+
+
+def test_a_config_saved_before_the_language_setting_reads_as_english(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config
+    tmp_path.joinpath("config.yaml").write_text(
+        yaml.safe_dump({k: v for k, v in default_config().items() if k != "language"}))
+    assert read_config(tmp_path)["language"] == "en"
+
+
+def test_speed_defaults_to_fast_for_new_and_existing_notebooks(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config
+    assert read_config(tmp_path)["speed"] == "fast"
+    old = default_config()
+    old.pop("speed")
+    saved = yaml.safe_dump(old)
+    tmp_path.joinpath("config.yaml").write_text(saved)
+    assert read_config(tmp_path)["speed"] == "fast"
+    assert tmp_path.joinpath("config.yaml").read_text() == saved
+
+
+def test_speed_override_is_saved_and_invalid_speed_saves_nothing(tmp_path):
+    import pytest
+    from connectonion.rem.config import read_config, set_config
+    from connectonion.rem.files import RemError
+    assert set_config(tmp_path, ["speed", "standard"])["speed"] == "standard"
+    assert read_config(tmp_path)["speed"] == "standard"
+    with pytest.raises(RemError, match="speed must be fast or standard"):
+        set_config(tmp_path, ["speed", "turbo"])
+    assert read_config(tmp_path)["speed"] == "standard"
+    assert set_config(tmp_path, ["speed", "fast"])["speed"] == "fast"
+
+
+def test_cli_can_set_speed_without_a_model_check(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import read_config
+    monkeypatch.setattr("connectonion.rem.tier.check_and_record", lambda *args: pytest.fail("model called"))
+    result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "--json", "config", "set", "speed", "standard"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["config"]["speed"] == "standard"
+    assert read_config(tmp_path)["speed"] == "standard"

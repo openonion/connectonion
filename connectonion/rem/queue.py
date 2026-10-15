@@ -154,6 +154,8 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
                  if row.get("people") and not weight.get(row.get("record"))}
     hollow = hollow_investigations(root) if category in ("people", "orgs") else set()
     notebook = Notebook(root)
+    if category == "orgs":
+        excluded |= own_orgs(notebook, state.get("owner"))
     entries = notebook.unfinished(prefix.split("/")[0])
     listed = {entry["path"] for entry in entries}
     # A hollow page may have had its Unknowns written over with nothing; it is
@@ -176,6 +178,15 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
                      **({"hollow": True} if path in hollow else {})})
     rows.sort(key=lambda row: (row["recent"], -row["weight"], -row["unknown"], row["path"]))
     return rows
+
+
+def own_orgs(notebook: Notebook, owner: dict | None) -> set:
+    """Organisation pages for the owner's own company: not counterparties, never investigated as one."""
+    from .investigate import org_domains
+    from .org_map import own_domain
+    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
+    return {record for record in notebook.list("orgs")
+            if any(own_domain(domain, owner, page) for domain in org_domains(notebook.read(record)))}
 
 
 ALL = ("people", "projects", "orgs", "skills")

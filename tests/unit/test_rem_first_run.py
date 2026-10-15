@@ -67,6 +67,8 @@ def first_run(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
+    # Init also abstracts accepted pages; keep that model turn offline too.
+    monkeypatch.setattr("connectonion.rem.runner.run_stage", lambda *args, **kwargs: {"changed": [], "usage": None})
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: True)
     skills = tmp_path / "empty-skills"
     skills.mkdir()
@@ -100,6 +102,8 @@ def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatc
     from connectonion.rem.service import run_logs
     assert run_logs(root)[0]["phase"] == "model access"
     assert run_logs(root)[0]["outcome"] == "failed"
+    assert run_logs(root)[0]["speed"] == "fast"
+    assert run_logs(root)[0]["harness"] == "codex"
 
 
 def test_provider_denial_stops_dispatching_the_remaining_pages():
@@ -289,7 +293,7 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     result = init()
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-5:]
-    assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
+    assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
     assert tail[3].startswith("Background upkeep: Background upkeep needs approval.")

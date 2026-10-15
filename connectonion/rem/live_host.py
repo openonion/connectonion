@@ -1,6 +1,7 @@
 """Start the existing co ai Host when the owner explicitly opens live REM."""
 
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -63,7 +64,7 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     directory = selected_identity_dir()
     state = directory / "rem-live-host.json"
     log = directory / "rem-live-host.log"
-    process = None
+    process, saved = None, {}
     with _owner_invite_lock(directory):
         if host_online(address):
             return None
@@ -71,7 +72,7 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
         if saved.get("address") != address or not _alive(saved):
             process = _spawn(directory)
             try:
-                write_json(state, {"address": address, "pid": process.pid,
+                write_json(state, {"address": address, "pid": process.pid, "port": _port(process.args),
                                    "command": " ".join(process.args[1:])})
             except (OSError, RemError):
                 _stop(process)
@@ -80,9 +81,64 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
             return f"co ai exited during startup; see {log}. Retry with `co ai` to see the error"
+        port = _port(process.args) if process is not None else saved.get("port")
+        if port and answers(port, address):
+            return None
         if host_online(address, timeout=min(1.0, max(0.01, deadline - time.monotonic()))):
             return None
         time.sleep(0.2)
     if process is not None:
         _stop(process)
     return f"co ai did not become reachable within {timeout:g}s; see {log}. Retry with `co ai`"
+
+
+# `co ai`'s own default port: a Host the owner started by hand is usually here.
+DEFAULT_PORT = 8000
+
+
+def _port(args) -> int | None:
+    return int(args[args.index("--port") + 1]) if "--port" in args else None
+
+
+def answers(port: int, address: str) -> bool:
+    """Is this identity's Host serving on 127.0.0.1:port? Works with no network."""
+    import httpx
+    try:
+        response = httpx.get(f"http://127.0.0.1:{port}/info", timeout=1.0)
+    except httpx.HTTPError:
+        return False
+    return response.status_code == 200 and response.json().get("address") == address
+
+
+def local_reader(address: str) -> str | None:
+    """The base URL of this identity's Host on this computer, if one answers."""
+    from ..project import selected_identity_dir
+    saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
+    for port in dict.fromkeys(p for p in (saved.get("port"), DEFAULT_PORT) if isinstance(p, int)):
+        if answers(port, address):
+            return f"http://127.0.0.1:{port}"
+    return None
+
+
+def ensure_local(address: str) -> tuple[str | None, str | None]:
+    """(url, None) for the live reader on this computer, starting co ai when none
+    runs; (None, reason) when there is no Host here to read through."""
+    from ..project import selected_identity_dir
+    if not (base := local_reader(address)):
+        if failure := ensure_online(address):
+            return None, failure
+        base = local_reader(address)
+    if not base:
+        return None, ("co ai is running, but not on a port co rem knows (8000 or one it started); "
+                      "use `co rem open --live`, or stop that co ai and open again")
+    return f"{base}/rem?token={reader_token(selected_identity_dir())}", None
+
+
+def reader_token(directory: Path) -> str:
+    """The local reader's secret, beside the Host's key and as private (rem_http.py)."""
+    path = directory / "rem-reader-token"
+    if not path.exists():
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as output:
+            output.write(secrets.token_urlsafe(32))
+    return path.read_text().strip()

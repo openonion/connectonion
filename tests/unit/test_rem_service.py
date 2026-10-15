@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from connectonion.rem.config import prepare, set_config
+from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook, RemError, read_json, state_path, write_json
 from connectonion.rem.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_rem_source import rollout
@@ -57,6 +57,8 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     calls = []
     runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
     worked = run_sync(root, runner=runner)
+    assert worked["speed"] == "fast"
+    assert worked["harness"] == read_config(root)["runner"]
     quiet = run_sync(root, runner=runner)
     assert quiet["outcome"] == "no_change" and len(calls) == 1
     assert [record["id"] for record in run_logs(root)] == [worked["id"]]
@@ -105,15 +107,15 @@ def test_failed_daily_investigation_takes_priority_over_source_warning(tmp_path)
     assert "investigation failed" in shown["state"]
 
 
-def _two_projects(rem, monkeypatch):
-    """tallyho already cites the one message typed in its folder; kite has read nothing."""
+def _two_people(rem, monkeypatch):
+    """Tally already cites the one message naming her; Kit has read nothing."""
     root, sessions = rem
     notebook = Notebook(root)
-    notebook.stub_project("projects/tallyho.md", "tallyho", ["/work/tallyho"])
-    notebook.stub_project("projects/kite.md", "kite", ["/work/kite"])
-    rollout(sessions / "rollout-t.jsonl", [("user", "ship it friday")], project="/work/tallyho")
+    notebook.stub_person("people/tally.md", "Tally Ho", [])
+    notebook.stub_person("people/kit.md", "Kit Kite", [])
+    rollout(sessions / "rollout-t.jsonl", [("user", "Tally Ho ships it friday")])
     offset = len((sessions / "rollout-t.jsonl").read_text().splitlines()[0]) + 1
-    notebook.write("projects/tallyho.md", notebook.read("projects/tallyho.md").replace(
+    notebook.write("people/tally.md", notebook.read("people/tally.md").replace(
         "- (none yet)", f"- [1] codex:rollout-t:{offset} — 2026-09-07"))
     turns = []
 
@@ -128,20 +130,77 @@ def _two_projects(rem, monkeypatch):
 def test_a_page_already_written_from_its_material_gets_no_turn(rem, monkeypatch):
     """Two of three page turns in a measured batch changed nothing, at about
     110k tokens each (#1846). The page with something new still gets its turn."""
-    root, sessions, turns = _two_projects(rem, monkeypatch)
-    rollout(sessions / "rollout-k.jsonl", [("user", "the logo is late")], project="/work/kite")
+    root, sessions, turns = _two_people(rem, monkeypatch)
+    rollout(sessions / "rollout-k.jsonl", [("user", "Kit Kite says the logo is late")])
     record = run_sync(root)
-    assert turns == ["projects/kite.md"]
-    assert record["up_to_date"] == ["projects/tallyho.md"] and record["runner_attempts"] == 1
+    assert turns == ["people/kit.md"]
+    assert record["up_to_date"] == ["people/tally.md"] and record["runner_attempts"] == 1
 
 
 def test_material_every_page_has_already_read_spends_nothing(rem, monkeypatch):
-    root, sessions, turns = _two_projects(rem, monkeypatch)
+    root, sessions, turns = _two_people(rem, monkeypatch)
     record = run_sync(root)
     assert turns == [] and record["runner_attempts"] == 0 and record["usage"] is None
-    assert record["outcome"] == "completed" and record["up_to_date"] == ["projects/tallyho.md"]
+    assert record["outcome"] == "completed" and record["up_to_date"] == ["people/tally.md"]
     assert read_json(state_path(root, "progress.json"), {})   # read, so not read again tomorrow
     assert run_sync(root)["outcome"] == "no_change"
+
+
+def test_a_project_with_folders_is_left_to_the_project_writer(rem, monkeypatch):
+    """projects/connectonion was rewritten by the sync and the project writer in
+    turn, 16 times in 5 days, shrinking each time the sync had it (2026-10-13/14).
+    Its sessions are the project writer's; the sync spends nothing on them."""
+    root, sessions = rem
+    Notebook(root).stub_project("projects/kite.md", "kite", ["/work/kite"])
+    monkeypatch.setattr("connectonion.rem.runner.run_stage", lambda *a, **k: pytest.fail("no sync turn"))
+    rollout(sessions / "rollout-k.jsonl", [("user", "the logo is late")], project="/work/kite")
+    record = run_sync(root)
+    assert record["for_project_writer"] == ["projects/kite.md"] and record["runner_attempts"] == 0
+
+
+def test_a_project_is_not_a_lead_for_a_word_in_its_title(rem, monkeypatch):
+    """"browser" is in nearly every session (`co browser`): projects/browser got a
+    turn on 12 of 26 syncs, 9 of them NO CHANGE, 5.36M tokens (2026-10-10..15)."""
+    from connectonion.rem.leads import page_leads
+    root, _ = rem
+    notebook = Notebook(root)
+    notebook.stub_project("projects/browser.md", "browser", ["/work/browser"])
+    notebook.stub_project("projects/notes.md", "notes", [])
+    items = [{"text": "open it with co browser and keep notes", "project": "/work/site", "source": "codex:a:1"}]
+    assert page_leads(notebook, items) == ["projects/notes.md"]
+
+
+def test_a_page_that_changed_nothing_rests_a_day(rem, monkeypatch):
+    root, sessions, turns = _two_people(rem, monkeypatch)
+    rollout(sessions / "rollout-k.jsonl", [("user", "Kit Kite says the logo is late")])
+    run_sync(root)
+    rollout(sessions / "rollout-k.jsonl", [("user", "Kit Kite says the logo is late"), ("user", "Kit Kite again")])
+    record = run_sync(root)
+    assert turns == ["people/kit.md"] and record["cooling"] == ["people/kit.md"]
+
+
+def test_each_sync_starts_at_the_source_after_the_one_read_last(tmp_path, monkeypatch):
+    """26 syncs read only codex, which always had 40 items; claude-code, gmail and
+    outlook never got a cursor (2026-10-10..15)."""
+    from connectonion.rem.config import default_config
+    from connectonion.rem.service import _sync_locked
+    from tests.unit.test_rem_source import subscription
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    root = tmp_path / "rem"
+    prepare(root)
+    selected = {}
+    for name in ("codex", "other"):
+        rollout(tmp_path / name / "rollout-a.jsonl", [("user", f"one from {name}")])
+        rollout(tmp_path / name / "rollout-b.jsonl", [("user", f"two from {name}")])
+        selected[name] = {**subscription(tmp_path / name), "kind": "codex"}
+    config = default_config()
+    config["limits"]["extract_items_per_batch"] = 1
+    progress, read = {}, []
+    for _ in range(3):
+        record = _sync_locked(root, selected, progress, config, lambda nb, items, c, kind="": {"changed": []})
+        read += list(record["items_by_source"])
+        progress = read_json(state_path(root, "progress.json"), {})
+    assert read == ["codex", "other", "codex"]
 
 
 def test_failure_preserves_progress_and_counts_attempt(rem):

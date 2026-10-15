@@ -25,14 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Beta **1.9.3b4**: the line a recipient pastes, the mail and the help now say a handoff passes on
-the context of a session, not a task. See [1.9.3b4 notes](releases/1.9.3b4.md).
+Beta **1.9.3b5**: `co rem` pages you can trust on the first run. Quotes and contact facts are
+checked against their sources, review repairs a page instead of refusing it, and `co rem open`
+serves a live reader that can show a page in your language. See
+[1.9.3b5 notes](releases/1.9.3b5.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3b4'
+python -m pip install --upgrade 'connectonion==1.9.3b5'
 ```
 
 ## Previous previews
+
+Beta **1.9.3b4**: the line a recipient pastes, the mail and the help now say a handoff passes on
+the context of a session, not a task. See [1.9.3b4 notes](releases/1.9.3b4.md).
 
 Beta **1.9.3b3**: the thread a handoff adds in Codex now shows in `/resume` and the app's
 sidebar in a Codex that had been used before, and the receiving agent names it when it

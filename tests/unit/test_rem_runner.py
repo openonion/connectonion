@@ -12,6 +12,7 @@ import pytest
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
+from connectonion.rem import runner
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
@@ -184,15 +185,27 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
+        assert argv[argv.index("--speed") + 1] == "fast"
         assert argv[argv.index("--sandbox") + 1] == (
             "danger-full-access" if investigating else "workspace-write")
     else:
+        assert "--speed" not in argv
         assert "--sandbox" not in argv
     assert options["material"] == [item]
     assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
-    assert list((notebook.root / ".state/tasks").glob("*/result.json"))
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "fast")
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
+
+
+def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
+    config = {**default_config(), "speed": "standard"}
+    run_stage(notebook, [], config)
+    argv = delegate[0][0]
+    assert argv[argv.index("--speed") + 1] == "standard"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["speed"] == "standard"
 
 
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
@@ -380,7 +393,7 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     items = [{"role": "user", "source": "codex:abc:1", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}]
     good = before["people/good.md"].replace("## Who they are\n- Unknown — not investigated yet",
                                              "## Who they are\n- Ships the agent. [1]").replace(
-        "## Sources\n- (none yet)", "## Sources\n- [1] `codex:abc:1`, 2026-09-24.")
+        "## Sources\n- (none yet)", "## Sources\n- [1] codex:abc:1, 2026-09-24.")
     bad = before["people/bad.md"].replace("## Who they are\n- Unknown — not investigated yet",
                                            "## Who they are\n- Invented. [1]").replace(
         "## Sources\n- (none yet)", "## Sources\n- [1] Outlook message 39.")
@@ -393,6 +406,34 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     assert notebook.read("people/bad.md") == before["people/bad.md"]     # kept as it was
     assert [r["record"] for r in refusals] == ["people/bad.md"]
     assert (directory / "refused" / "people/bad.md").read_text() == bad  # the model's work is kept
+
+
+def test_a_maintenance_batch_that_guts_a_page_keeps_the_old_one(tmp_path):
+    """projects/connectonion went 14,356 -> 4,132 characters in one accepted
+    maintenance turn (2026-10-13): nothing it dropped was invalid, only gone."""
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.runner import _promote_maintenance
+    root, work = tmp_path / "rem", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    notebook.stub_person("people/dora.md", "Dora", [])
+    lines = "\n".join(f"- Dora settled point {n} of the lease, in writing, with the agent. [{n}]" for n in range(1, 13))
+    sources = "\n".join(f"- [{n}] codex:abc:{n} — 2026-09-24" for n in range(1, 13))
+    full = notebook.read("people/dora.md").replace("## Who they are\n- Unknown — not investigated yet",
+                                                   f"## Who they are\n{lines}").replace(
+        "## Sources\n- (none yet)", f"## Sources\n{sources}")
+    notebook.write("people/dora.md", full)
+    gutted = full.replace(lines, lines.split("\n")[0]).replace(sources, sources.split("\n")[0])
+    working.write("people/dora.md", gutted)
+    items = [{"role": "user", "source": f"codex:abc:{n}", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}
+             for n in range(1, 13)]
+    directory = tmp_path / "task"
+    directory.mkdir()
+    refusals = _promote_maintenance(notebook, working, {"people/dora.md": full}, items, directory, None, False)
+    assert notebook.read("people/dora.md") == full
+    assert any("kept the old page" in error for error in refusals[0]["errors"])
 
 
 def test_a_small_maintenance_prompt_carries_its_instructions_and_material(tmp_path):
@@ -695,7 +736,6 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     """#2014: the placeholder rule for a page's own investigation refused every
     one-page maintenance turn on a never-investigated page (290k tokens, 0 pages)."""
     from connectonion.rem import runner
-    from connectonion.rem.runner import RunFailed
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
@@ -706,13 +746,10 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     candidate = tmp_path / "candidate.md"
 
     candidate.write_text(one_line)
-    with pytest.raises(RunFailed, match="not investigated yet"):
-        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
-                                  tmp_path, None)
-    candidate.write_text(one_line)
     runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
                               tmp_path, None, investigation=False)
-    assert "Leads the data team." in notebook.read("people/mia.md")
+    page = notebook.read("people/mia.md")
+    assert "Leads the data team." in page and "## Insight\n- Unknown — not investigated yet" in page
 
 
 def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatch):
@@ -915,12 +952,15 @@ def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(n
         result = run_stage(notebook, items, default_config(), stage='investigate')
         assert claim in notebook.read(record) and source in notebook.read(record)
         assert result['usage'] == {'input_tokens': 20}
+        assert len(prompts) == 2
     else:
-        with pytest.raises(RunFailed, match='Finding has unresolved citations') as caught:
+        # Two repairs, then the finding goes with its line; with nothing cited left, the page is refused.
+        with pytest.raises(RunFailed, match='no numbered evidence references') as caught:
             run_stage(notebook, items, default_config(), stage='investigate')
         assert notebook.read(record) == original
-        assert caught.value.usage == {'input_tokens': 20}
-    assert len(prompts) == 2 and 'copy the exact source ids' in prompts[1]
+        assert caught.value.usage == {'input_tokens': 30}
+        assert len(prompts) == 1 + runner.MAX_REPAIRS
+    assert 'copy the exact source ids' in prompts[1]
 
 
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
@@ -1022,3 +1062,42 @@ def test_a_run_names_the_codex_threads_that_ran_it(notebook, monkeypatch):
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda argv, **kw: SimpleNamespace(
         returncode=0, stdout='{"outcome": "natural", "session_id": "01a12370-thread"}', stderr=""))
     assert run_stage(notebook, [], default_config())["threads"] == ["01a12370-thread"]
+
+
+def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
+    """Ody's page kept 13 and 14 October events as open threads on the 15th:
+    no turn was told the date."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.config import set_config
+    set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
+    today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
+    note = runner.today_note(notebook.root)
+    assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
+    argv, options = delegate[0]
+    handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
+                                if path.is_file())
+    assert f"Today is {today}" in handed
+
+
+def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):
+    """Ody's Luma relay became his Email (contacts audit E2); a one-page sync turn is
+    held to the same contact rule as an investigation."""
+    from connectonion.rem.runner import _promote_maintenance
+    root, work = tmp_path / "rem", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody.zhou@example.com"], email="ody.zhou@example.com")
+    before = notebook.read("people/ody.md")
+    after = before.replace("- Email: ody.zhou@example.com",
+                           "- Email: ody.zhou@example.com; usr-abc@user.luma-mail.com; larry@estate.example")
+    working.write("people/ody.md", after)
+    directory = tmp_path / "task"
+    directory.mkdir()
+    refusals = _promote_maintenance(notebook, working, {"people/ody.md": before}, [], directory, None, False)
+    saved = notebook.read("people/ody.md")
+    assert not refusals
+    assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
+    assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved

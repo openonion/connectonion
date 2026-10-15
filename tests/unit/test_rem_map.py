@@ -199,14 +199,15 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
     platform's relay, and a Drive share notice -- and notice senders were 165 of
     565 people pages. A full display name joins addresses; a sender that only ever
-    sends and looks like a system, or writes through a relay, is listed, not paged."""
+    sends and looks like a system, or writes through a relay, is listed, not paged.
+    The relay keeps its own group: joined to Ody by name it became his Email (contacts audit E2)."""
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
     people = [
-        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
+        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
+        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 3, 'sent': 1, 'received': 2,
          'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
@@ -229,19 +230,20 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     pages = {row['record']: row for row in result['people']}
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
-    assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
-    assert ody['mails'] == 34
+    assert ody['addresses'] == ['ody@example.com', 'ody.zhou@example.com']
+    assert ody['mails'] == 33
     assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
     from connectonion.rem.reader import mail_facts
     facts = mail_facts(tmp_path)[ody['record']]
     assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
     page = Notebook(tmp_path).read(ody['record'])
     assert 'Last contact: 2026-09-29' in page
-    assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
+    assert 'ody.zhou@example.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
+    assert 'luma-mail' not in page
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
-            'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
+            'usr-abc@user.luma-mail.com', 'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
             '0xa633fd2e63@mail.openonion.ai'} <= listed
     # listed with the notice senders, but no organisation page: nobody writes from it (#1844)
     assert 'neon.tech' not in {row['domain'] for row in result['orgs']}
@@ -382,9 +384,9 @@ def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch)
         def my_name(self): return 'Aaron x'
 
     people = [
-        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 20, 'received': 10,
+        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 20, 'received': 10,
          'one_way': False, 'first': '2026-07-01', 'last': '2026-09-20', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 4, 'sent': 2, 'received': 2,
+        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 4, 'sent': 2, 'received': 2,
          'one_way': False, 'boxes': ['outlook']},
         {'name': 'Tamara Berryman', 'address': 'tamara@unsw.example', 'mails': 12, 'sent': 5, 'received': 7,
          'one_way': False, 'boxes': ['outlook']},
@@ -1147,3 +1149,43 @@ def test_knowing_nothing_of_the_owner_a_write_only_correspondent_still_gets_a_pa
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills], days=90)
     assert {address for row in result['people'] for address in row.get('addresses', [])} == {'ken@y.example'}
+
+
+def test_last_seen_does_not_lag_the_last_activity_an_investigation_read(tmp_path):
+    """Claims audit C5: Facts said Last activity 2026-10-15, Paths said Last seen 2026-10-08."""
+    from connectonion.rem.map import file_project
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    row = {'name': 'tide', 'paths': ['/work/tide'], 'sessions': 4, 'first': '2026-09-01', 'last': '2026-10-08'}
+    record, _ = file_project(nb, 'tide', row)
+    nb.write(record, nb.read(record).replace('- Last activity: Unknown', '- Last activity: 2026-10-15 [1]'))
+    file_project(nb, 'tide', row)
+    assert '- Last seen: 2026-10-15' in nb.read(record)
+
+
+def test_the_owners_own_domain_is_never_a_counterparty_organisation(tmp_path, monkeypatch):
+    """orgs/openonion-ai (2026-10-10): the owner's colleagues write from the owner's own domain."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': 'Zi Ming', 'address': 'ziming@openonion.ai', 'mails': 6, 'sent': 3, 'received': 3},
+              {'name': 'Bot', 'address': 'agent@mail.openonion.ai', 'mails': 4, 'sent': 2, 'received': 2},
+              {'name': 'Ann Lee', 'address': 'ann@partner.com.au', 'mails': 4, 'sent': 2, 'received': 2}]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, {'me@openonion.ai'}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert [row['domain'] for row in result['orgs']] == ['partner.com.au']
+
+
+def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():
+    """Contacts audit E1-E3: Luma's per-user addresses, calendar-invite@lu.ma and
+    Airbnb's message relay write under a person's name; replying reaches the platform."""
+    from connectonion.rem.map import RELAY, _people_groups
+    for relay in ('usr-abc@user.luma-mail.com', 'calendar-invite@lu.ma', 'express@airbnb.com'):
+        assert RELAY.search(relay)
+    assert not RELAY.search('host@airbnb.com') and not RELAY.search('ody@lu.ma.example.com')
+    rows = [{'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 5},
+            {'name': 'Ody Zhou', 'address': 'calendar-invite@lu.ma', 'mails': 2},
+            {'name': 'Ody Zhou', 'address': 'express@airbnb.com', 'mails': 1}]
+    assert [[row['address'] for row in group] for group in _people_groups(rows)] == [
+        ['ody.zhou@example.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]

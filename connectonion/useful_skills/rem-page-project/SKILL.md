@@ -6,7 +6,7 @@ description: A project page with a short visual overview and evidence-backed det
 # A project's page
 
 Read the page and material. Write once, check once, fix once, stop.
-Do not search examples, logs or the repo for a format.
+Search the repo for evidence, not for a format: this Skill is the format.
 
 Explain purpose and flow first, for a new teammate.
 After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
@@ -97,16 +97,21 @@ An unknown flow is omitted; a plausible diagram is not evidence.
 
 **Background and technical detail**
 
-- `Why it exists`: original problem, user needs, intended outcome, scope.
-- `Key decisions`: dated choices, why, tradeoffs, sources; label proposals and
-  superseded ones. Current behaviour alone is not a decision.
+- `Why it exists`: original problem, user needs, intended outcome, scope. Open
+  with the user's own words that started it: `YYYY-MM-DD — “<exact words>” [n]`.
+- `Key decisions`: one line each, `- YYYY-MM-DD — <choice, under 12 words>:
+  “<the user's exact words>” [n]`, the sentence that made the choice, in its
+  original language; a reversal is its own line quoting the reversal. Label
+  proposals and superseded ones. Current behaviour alone is not a decision.
 - `How it is built`: main components and responsibilities; link deeper docs.
 - `Architecture map`: ASCII diagram of verified modules and data flow; cite
   inspected paths and revision outside it; label proposed apart from built.
 - `Paths`: observed repositories, directories, design/doc locations, each with
   its purpose. Never guess paths.
-- `Open threads`: confirmed pending work, owner when known, date. Missing
-  completion evidence is unknown status, not proof a historical request is open.
+- `Open threads`: `- YYYY-MM-DD — <who> asked: “<exact words>” [n] — status:
+  <done / open / unknown> <evidence>`. Look for the outcome in later messages
+  and the git history first. Missing completion evidence is unknown status,
+  not proof a historical request is open.
 - `Uncertainties`: missing, unread, stale or conflicting evidence, said once
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected

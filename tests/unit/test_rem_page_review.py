@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from connectonion.rem.runner import MAX_REPAIRS
+
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.page_review import normalize, normalize_numbered_sources, validate
@@ -182,7 +184,7 @@ def test_numbered_source_list_is_normalized_without_changing_claims():
             '1. `codex:synthetic:1` — user correction\n'
             '   Continued description.\n\nInvestigation: mapped today\n')
     normalized = normalize_numbered_sources(text)
-    assert '- [1] `codex:synthetic:1` — user correction' in normalized
+    assert '- [1] codex:synthetic:1 — user correction' in normalized       # backticks are not part of the id
     assert '   Continued description.' in normalized
     assert normalized.count('The date is open. [1]') == 1
     assert normalize_numbered_sources(normalized) == normalized
@@ -253,18 +255,18 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     candidate = candidate.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
     candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     if invalid:
-        candidate += '\n## What it is\nDuplicate\n'
+        candidate += '\n## Current status\nOne\n\n# Second title\n'
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
         path.write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
     if invalid:
-        with pytest.raises(RunFailed, match='Duplicate'):
-            run_stage(nb, items, default_config(), stage='investigate')
-        assert nb.read('projects/atlas.md') == old
+        # A second title is the turn repeating itself: code keeps the first, the page is not refused.
+        run_stage(nb, items, default_config(), stage='investigate')
+        assert '# Second title' not in nb.read('projects/atlas.md') and 'One' in nb.read('projects/atlas.md')
     else:
         result = run_stage(nb, items, default_config(), stage='investigate')
         assert result['changed'] == ['projects/atlas.md']
@@ -395,7 +397,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
     page = page.replace('- (none yet)', '- [1] fixture:readme')
     def execute(directory, prompt, config, stage):
-        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(page)
+        Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     with pytest.raises(RunFailed, match='Project Overview'):
@@ -403,7 +405,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
                        {'source': 'fixture:readme', 'text': 'Local counter'}], default_config(), stage='investigate')
     assert nb.read('projects/atlas.md') == old
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12 * (1 + MAX_REPAIRS)
 
 
 def test_investigation_cannot_drop_scripted_project_metadata(tmp_path):
@@ -450,7 +452,8 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
     # was, and the correction to it stays pending for the next pass.
     assert result['outcome'] == 'completed' and result['refused'] == 1
     assert result['refusals'][0]['record'] == 'projects/atlas.md'
-    assert result['usage']['input_tokens'] == 9
+    # The first turn and its repair turns are all paid for.
+    assert result['usage']['input_tokens'] == 9 * (1 + MAX_REPAIRS)
     assert nb.read('projects/atlas.md') == old
     progress = json.loads((tmp_path / '.state/progress.json').read_text()) if (tmp_path / '.state/progress.json').exists() else {}
     assert 'reflection:' + correction['id'] not in progress.get('rem_local_material', [])
@@ -656,44 +659,64 @@ def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_
     from connectonion.rem.page_review import company_from_domain
     notebook, original = _person(tmp_path)
     notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
-    rows = [{'field': 'Company domain', 'value': 'gmail.example', 'qualifier': '', 'source': 'gmail:aaa', 'date': '2026-09-02'},
-            {'field': 'Company domain', 'value': 'student.unsw.edu.au', 'qualifier': '',
-             'source': 'outlook:bbb', 'date': '2026-08-01'}]
-    filled = company_from_domain(notebook, 'people/mia.md', original, rows)
-    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-08-01$', filled, re.M)[1]
+    rows = [{'field': 'Email', 'value': 'mia.chen@unsw.edu.au', 'qualifier': '', 'source': 'outlook:bbb',
+             'date': '2026-09-02', 'own': True},
+            {'field': 'Company domain', 'value': 'unsw.edu.au', 'qualifier': '', 'source': 'outlook:bbb',
+             'date': '2026-09-02'}]
+    filled, what = company_from_domain(notebook, 'people/mia.md', original, rows)
+    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-09-02$', filled, re.M)[1]
     assert f'- Company: [UNSW Sydney](../orgs/unsw-1234.md) [{number}]' in filled
+    assert what == {'company': 'UNSW Sydney', 'domain': 'unsw.edu.au', 'source': 'outlook:bbb'}
     named = original.replace('- Company: Unknown', '- Company: Acme [1]')
-    assert company_from_domain(notebook, 'people/mia.md', named, rows) == named
-    assert company_from_domain(notebook, 'people/mia.md', original, rows[:1]) == original
+    assert company_from_domain(notebook, 'people/mia.md', named, rows) == (named, {})
 
 
-def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
+@pytest.mark.parametrize('newest', [
+    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Ziming, C1)
+    'z1234567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
+    'mia.chen@student.unsw.edu.au',  # seven students got UNSW as employer (C3)
+    'usr-abc@user.luma-mail.com',    # a relay's domain is the platform's
+    '0x3c3ae74550@mail.openonion.ai',  # an agent's mail domain is ConnectOnion's (C4)
+])
+def test_company_comes_only_from_the_address_they_write_from_now_and_never_a_student_one(tmp_path, newest):
+    """Contacts audit C1-C4: `company_from_domain` fell back to any older domain,
+    and to student, relay and agent-mail domains, overriding the model's Unknown."""
+    from connectonion.rem.page_review import company_from_domain
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    notebook.stub_org('orgs/luma.md', 'Luma', ['luma-mail.com'])
+    notebook.stub_org('orgs/openonion.md', 'OpenOnion', ['openonion.ai'])
+    rows = [{'field': 'Email', 'value': newest, 'qualifier': '', 'source': 'gmail:new', 'date': '2026-09-02',
+             'own': True},
+            {'field': 'Email', 'value': 'mia.chen@unsw.edu.au', 'qualifier': '', 'source': 'outlook:old',
+             'date': '2025-01-13', 'own': True}]
+    assert company_from_domain(notebook, 'people/mia.md', original, rows) == (original, {})
+
+
+def test_an_investigated_page_that_still_says_not_investigated_yet_says_unknown(tmp_path):
     """#2008: project pages came back after 0.6-0.9M tokens with five and six
-    sections still saying "Unknown — not investigated yet"."""
+    sections still saying "Unknown — not investigated yet", and were refused.
+    Code writes the bare Unknown the material shows instead."""
     from connectonion.rem import runner
-    from connectonion.rem.page_review import placeholder_errors
-    from connectonion.rem.runner import RunFailed
+    from connectonion.rem.page_review import clear_placeholders
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = nb.read('projects/atlas.md')
     written = (old.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [1]')
                .replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme'))
-    errors = placeholder_errors(written)
-    assert len(errors) == 1 and 'Where it stands' in errors[0] and 'What it is' not in errors[0]
-    assert 'bare "Unknown"' in errors[0]
-    finished = written.replace('- Unknown — not investigated yet', '- Unknown')
-    assert placeholder_errors(finished) == []
+    cleared = clear_placeholders(written)
+    assert 'not investigated yet' not in cleared.partition('Investigation:')[0]
+    assert '## Where it stands\n- Unknown\n' in cleared and 'A local demo. [1]' in cleared
+    assert clear_placeholders('# P\n\n## Facts\n- Phone: Unknown — not investigated yet\n') == (
+        '# P\n\n## Facts\n- Phone: Unknown\n')                       # a field keeps its label
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
              {'source': 'fixture:readme', 'text': 'A local demo.'}]
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
-    with pytest.raises(RunFailed, match='not investigated yet'):
-        runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
-    assert nb.read('projects/atlas.md') == old
-    candidate.write_text(finished)
     runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
-    assert 'A local demo. [1]' in nb.read('projects/atlas.md')
+    page = nb.read('projects/atlas.md')
+    assert 'A local demo. [1]' in page and 'not investigated yet' not in page.partition('Investigation:')[0]
 
 
 def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
@@ -751,12 +774,14 @@ def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
     old = _grown(nb.read('projects/atlas.md'), 13_421)
-    grown = _grown(old, 25_255)
+    grown = _grown(old, 31_000)
     assert PAGE_LIMIT == 20_000
     errors = size_errors(grown, old)
-    assert errors and '25,' in errors[0] and '20,000' in errors[0] and 'History' in errors[0]
+    assert errors and '31,' in errors[0] and '20,000' in errors[0] and 'History' in errors[0]
     assert any('20,000' in error for error in validate('projects/atlas.md', grown, old, []))
     assert size_errors(_grown(old, 18_000), old) == []               # growth under the limit: fine
+    # 25,255, the real case, is kept: History folds in code and the next pass is asked to come down.
+    assert size_errors(_grown(old, 25_255), old) == []
     oversized = _grown(old, 26_000)
     assert size_errors(_grown(old, 22_000), oversized) == []         # an oversized page may come down in steps
 
@@ -862,7 +887,7 @@ def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(
     seen = []
 
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'(?:page is the file|existing page at) (.+?candidate.md)', prompt)[1])
         seen.append(path.read_text())
         assert 'Do not rewrite the page from scratch' in prompt
         return {'usage': {'input_tokens': 1}, 'result': 'Nothing new. NO CHANGE'}
@@ -993,3 +1018,37 @@ def test_a_missing_section_is_reported_as_missing_not_as_a_duplicate():
     errors = validate('projects/a.md', page, '', [])
     assert 'Missing section: Open threads' in errors
     assert not any('must occur once: Open threads' in e for e in errors)
+
+
+def test_a_carried_over_project_source_is_recognised_when_reworded():
+    """browser and handoff (2026-10-14): `project-source:` was not a source scheme, so
+    a real id carried over from the page counted only when its whole line matched."""
+    from connectonion.rem.page_review import _carried_over
+    real = "project-source:" + "a1" * 32
+    old_sources = f"- [3] {real} — README.md, captured 2026-10-01\n"
+    assert _carried_over(f"{real} — the project README", old_sources)
+    assert not _carried_over("project-source:" + "b2" * 32 + " — invented", old_sources)
+
+
+def test_a_file_cited_with_its_current_hash_is_a_source_on_any_page(tmp_path):
+    """job-followup's skill page cited its applications log this way and was refused
+    (1.9.2b3): only project pages accepted a `file:` id."""
+    import hashlib
+    from connectonion.rem.page_review import _pinned_file
+    log = tmp_path / 'applications.md'
+    log.write_text('2026-10-01 applied to Acme\n')
+    digest = hashlib.sha256(log.read_bytes()).hexdigest()
+    assert _pinned_file(f'file:{log}#sha256:{digest} — applications log')
+    log.write_text('2026-10-02 rewritten\n')
+    assert not _pinned_file(f'file:{log}#sha256:{digest}')              # the file changed since
+    assert not _pinned_file(f'file:{tmp_path / "gone.md"}#sha256:{digest}')
+    assert not _pinned_file(f'file:{log}')                                # no hash, nothing pinned
+
+
+def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.page_review import source_dates
+    items = [{'source': 'gmail:a', 'timestamp': '2026-10-14T20:30:00Z'},
+             {'source': 'gmail:b', 'timestamp': 'yesterday'}]
+    dates = source_dates(Path('/nonexistent-notebook'), '# X\n', items, ZoneInfo('Australia/Sydney'))
+    assert dates == {'gmail:a': '2026-10-15'}

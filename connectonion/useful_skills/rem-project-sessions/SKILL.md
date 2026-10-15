@@ -150,9 +150,9 @@ typed. Never guess a correction.
 
 ## One language
 
-Write the whole page in one language: English, headings and body alike,
-whatever language the messages are in. A short quote may stay in its original
-language inside quotation marks. Never an English heading over a Chinese body.
+Write the page's prose in one language, the notebook's (the task names it),
+whatever language the messages are in. Headings and labels stay as the page
+has them. A quote stays in its original language inside quotation marks.
 
 ## Never copy a secret
 

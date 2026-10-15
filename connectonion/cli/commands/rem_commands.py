@@ -166,8 +166,17 @@ def _moved(ctx, old: str, new: list):
     rem_look.line(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.0.", err=True)
 
 
-UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
-UNITS_ONE = {"mails": ("mail",), "sessions": ("session",), "people": ("person", "people"), "": ("", "")}
+# What a queue weighs each kind of page by; a skill has no weight, so no unit ("0 s" in 1.9.2b3).
+UNITS = {"people": ("mail",), "projects": ("session",), "orgs": ("person", "people")}
+
+
+def _queued(row: dict) -> str:
+    """One line of `investigate CATEGORY --list`: the page, its weight, when it was last investigated."""
+    from .rem_people import counted
+    unit = UNITS.get(row["path"].split("/")[0])
+    return (f"{row['path']}  (" + (f"{counted(row['weight'], *unit)}, " if unit else "")
+            + (f"investigated {row['last_investigated']}" if row["last_investigated"] else "not investigated")
+            + (", skipped: this week" if row["recent"] else "") + ")")
 
 
 def _by_stage(chars, phase: str) -> dict:
@@ -195,7 +204,8 @@ def _logged(root, record, phase, call, quiet=False):
     abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
-           "record": record, "model": config["model"], "outcome": "running",
+           "record": record, "harness": config["runner"], "model": config["model"],
+           "speed": config["speed"], "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
@@ -266,6 +276,10 @@ def _logged(root, record, phase, call, quiet=False):
         if isinstance(error, RemError):
             error._rem_retry_page = True
             raise
+        # Where it broke, for co rem logs: a UnicodeDecodeError on a real project
+        # page (2026-10-15) said only its type, and nothing could find the file.
+        import traceback
+        run["traceback"] = "".join(traceback.format_exception(error))[-4000:]
         failure = RemError(f"Investigation could not finish ({type(error).__name__}); "
                             "check co rem logs and retry this page")
         failure._rem_retry_page = True
@@ -496,7 +510,7 @@ def _first_project_rows(root, cap) -> list[dict]:
 
 
 def _first_org_rows(root, cap) -> list[dict]:
-    """Every pending mapped organization, most relevant first."""
+    """Every pending mapped organisation, most relevant first."""
     from ...rem.queue import order
     rows = [row for row in order(root, "orgs") if not row["recent"]]
     return _capped(rows, cap)
@@ -769,7 +783,7 @@ def _init_done(ctx, result) -> str:
     skills = result.get("skills") or {}
     names = len({str(row.get("name", "")).casefold() for row in skills.get("skills") or []})
     counts = [f"{len(result.get(kind) or [])} {label}" for kind, label in
-              (("people", "people"), ("orgs", "organizations"), ("projects", "projects"))]
+              (("people", "people"), ("orgs", "organisations"), ("projects", "projects"))]
     written = (["your page"] if (result.get("investigate_me") or {}).get("outcome") == "completed" else [])
     people = sum(page.get("outcome") == "accepted" for page in (result.get("people_pages") or {}).get("pages") or [])
     written += [f"{people} {'person' if people == 1 else 'people'}"] if people else []
@@ -1085,7 +1099,8 @@ def make_rem_app(factory):
                     write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
                         "started_at": stamp, "finished_at": stamp, "phase": "model access",
                         "outcome": "failed", "error": access_problem[:300], "changed": [], "items": 0,
-                        "model": config["model"], "sources": []})
+                        "harness": config["runner"], "model": config["model"], "speed": config["speed"],
+                        "sources": []})
                     result["model_access"] = {"ready": False, "problem": access_problem, "fix": access_fix}
                     say(f"Model access failed: {access_problem}. Run {access_fix}, then retry init; "
                         "the map and saved mail are retained.")
@@ -1199,6 +1214,7 @@ def make_rem_app(factory):
                                      progress=progress, retry_refused=retry_refused)
 
         def overview(root):
+            from ...rem import census
             from ...rem.people_pages import queue as people_queue
             from .rem_people import owner_first
             state = read_json(state_path(root, "map.json"), {})
@@ -1214,15 +1230,19 @@ def make_rem_app(factory):
                 rows["me"] = {"page": owner, "investigated": not pending}
             if first_lines:
                 rows["first"] = first_lines
+            # Written of mapped is the census `co rem status` counts (UI audit #3):
+            # "Unfinished: 27" beside status's "27 of 28 written" counted pages
+            # investigated this week, and an investigated page with new mail.
+            # Those are "to refresh" now: written, and due another pass.
+            found = census.pages(root)
+            tally = census.counts(root, found)
             for category in CATEGORIES:
-                if category == "people":
-                    # The same queue `investigate people --list` prints and runs (#1974).
-                    queue = people_queue(root)
-                    rows[category] = {"unfinished": len(queue), "next": [row["record"] for row in queue][:3]}
-                    continue
-                queue = order(root, category)
-                rows[category] = {"unfinished": len(queue),
-                                  "next": [row["path"] for row in queue if not row["recent"]][:3]}
+                # People: the same queue `investigate people --list` prints and runs (#1974).
+                queue = ([row["record"] for row in people_queue(root)] if category == "people" else
+                         [row["path"] for row in order(root, category) if not row["recent"]])
+                rows[category] = {"written": tally[category]["written"], "mapped": tally[category]["mapped"],
+                                  "to_refresh": sum(bool(found.get(record, {}).get("written")) for record in queue),
+                                  "next": queue[:3]}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
             return rows, (["investigate", "me"] if pending
                           else ["investigate", first] if first else ["list"])
@@ -1232,16 +1252,13 @@ def make_rem_app(factory):
             queue = [row for row in ranked() if not row["recent"]]
             chosen = queue if pages_limit == 0 else queue[:pages_limit]
             if list_only:
-                rows = ranked()
+                # Heaviest evidence first (UI audit #10): five 0-session projects
+                # led the list above Ody's 274 mails, because his page was read
+                # this week. A skipped page keeps its place, marked; the pages a
+                # run takes are still in the order it takes them.
+                rows = sorted(ranked(), key=lambda row: -row["weight"])
                 if not ctx.obj["json"]:
-                    from .rem_people import counted
-                    unit = UNITS.get(category)
-                    rows = [f"{row['path']}  ("
-                            + (f"{counted(row['weight'], *UNITS_ONE[unit or UNITS.get(row['path'].split('/')[0], '')])}, "
-                               if unit or category == "all" else "")
-                            + (f"investigated {row['last_investigated']}" if row["last_investigated"]
-                               else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
-                            for row in rows]
+                    rows = [_queued(row) for row in rows]
                 return {"category": category, "order": rows}, ["investigate", category]
             from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
             notebook, done, stopped = Notebook(root), [], ""
@@ -1340,7 +1357,12 @@ def make_rem_app(factory):
             record = _resolve_page(notebook, target)
             from ...rem.investigate import NothingNew
             try:
-                result = one(root, notebook, record)
+                # The owner naming a page is the retry: the refusal ledger is
+                # for scheduled runs, and made them add --retry-refused to
+                # their own request.
+                result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
+                                           progress=progress,
+                                           retry_refused=retry_refused or not record.startswith("skills/"))
             except NothingNew as quiet:
                 # Nothing new is a finished run, not a failure: it read every
                 # source and made no model call. It printed "Error:", exited 1
@@ -1370,12 +1392,26 @@ def make_rem_app(factory):
             # (#1637); a custom --root is never assumed to belong to it.
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
-            # The snapshot is the default (#1828); the live view is asked for.
-            wanted = not local and (live or reader.LIVE_IS_DEFAULT)
-            result = reader.live_or_snapshot(root, identity and identity["address"],
-                                             live=wanted, launch=launch)
+            owner = identity and identity["address"]
+            if local:
+                result = reader.open_snapshot(root, launch=launch)
+            elif live:
+                result = reader.live_or_snapshot(root, owner, live=True, launch=launch)
+            else:
+                result = reader.local_or_snapshot(root, owner, launch=launch)
             return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
         _handle(ctx, operation, ["doctor"])
+
+    @rem.command("translate", cls=V("co rem translate"))
+    def translate_page(ctx: typer.Context, page: str = typer.Argument(...),
+                       to: str = typer.Option(..., "--to", help="Language tag: zh, zh-TW, ja, en ...")):
+        from ...rem.files import Notebook
+        from ...rem.translate import translate
+
+        def operation(root):
+            record = _resolve_page(Notebook(root), page)
+            return translate(root, record, to), ["show", record]
+        _handle(ctx, operation, ["list"])
 
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
@@ -1421,9 +1457,17 @@ def make_rem_app(factory):
                             "connected. Connect one with co auth google or co auth microsoft, then run "
                             + _next(ctx, ["init"]) + "."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
-        from .rem_table import draw
+        from .rem_table import draw, names
         order = "most recent contact first" if sort == "last_contact" else "by " + sort.replace("_", " ")
-        _handle(ctx, operation, ["list"], draw=lambda rows: draw(rows, order) if table else None)
+
+        def drawn(rows):
+            if table:
+                return draw(rows, order)
+            # A category's pages by title, the path beside it; the counts, aliases and review keep their layout.
+            if category and not (aliases or review) and isinstance(rows, list) and rows:
+                return names(Notebook(ctx.obj["root"]), rows)
+            return None
+        _handle(ctx, operation, ["list"], draw=drawn)
 
     def _person(notebook, query: str) -> str:
         """The one page a name, alias or address names; several or none is an error that lists them."""
@@ -1680,8 +1724,10 @@ def make_rem_app(factory):
                 tier["note"] += (f"; to check it, set the same model again: "
                                  + _next(ctx, ["config", "set", "model", str(config.get("model"))])
                                  + " (one or two model calls)")
+            from ...rem.languages import owner_languages
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
-                     "config": config, "tier": tier, "routes": routing(root)}, ["status"])
+                     "config": config, "tier": tier, "routes": routing(root),
+                     "your languages": owner_languages(root)}, ["status"])
         if ctx.invoked_subcommand is None:
             _handle(ctx, operation, ["doctor"])
 
@@ -2022,7 +2068,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate open list show search start stop status sync sources config logs doctor "
+    order = ("init investigate open list show search translate start stop status sync sources config logs doctor "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

@@ -80,3 +80,15 @@ def test_an_org_of_unsubscribe_addresses_is_not_queued_and_an_org_counts_only_re
                  {"record": "orgs/google.md", "domain": "google.com", "people": ["people/jeff.md"]}]})
     rows = order(tmp_path, "orgs", today=date(2026, 10, 1))
     assert [(row["path"], row["weight"]) for row in rows] == [("orgs/google.md", 1)]
+
+
+def test_the_owners_own_company_is_not_queued_as_an_organisation(tmp_path):
+    """orgs/openonion-ai was investigated as a counterparty: the owner's own company."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/me.md", "Me", ["me@openonion.ai"], email="me@openonion.ai")
+    for domain in ("openonion.ai", "unsw.edu.au"):
+        notebook.stub_org(f"orgs/{domain}.md", domain, [domain], [])
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md",
+                                                            "addresses": ["me@openonion.ai"]}})
+    assert [row["path"] for row in order(tmp_path, "orgs")] == ["orgs/unsw.edu.au.md"]

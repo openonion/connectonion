@@ -17,9 +17,8 @@ Work like an investigative journalist, not a summariser.
 - **Follow every lead.** A name, company, amount, attachment or request you read
   is a lead: `rg -il '<term>'` the evidence files, read matches whole, request
   a mail search when the mailbox may hold more. Pivot until the picture is whole.
-- **Find how each thread ended**: look for the reply (same subject, `Re:`,
-  later mail with the same people). "No reply found" only after that search.
-- **Read whole**: every supplied part; when output is cut, read the rest.
+- **Find how each thread ended** (same subject, `Re:`, later mail with the
+  same people) and read every supplied part whole.
 - **Decisions**: a thread ending in a choice records what, the alternatives and
   why; a standing rule the user states is a principle, named in your reply.
 - Unknown stays Unknown without evidence: search local mail archives and
@@ -35,11 +34,31 @@ settled; longer is not better.
 keep the lead and current state. Growth beyond 20,000 characters is refused.
 `History`: one dated line per thread, how it ended; at most sixteen.
 
+## Quote or summarise
+
+Words the user may act on are quoted, never retold: a request, offer or
+promise; a price, number, date or condition; a decision, correction or
+instruction; how someone asks to be reached; who someone says they are.
+Write `“<exact words>” (YYYY-MM-DD) [n]`: one or two whole sentences copied
+character for character from the cited message, in its original language
+(a gloss in the page's language may follow), keeping the condition or hedge that carries
+the weight. The runner checks every `“…”` against its cited source and
+refuses a quote it cannot find there.
+
+- The speaker is the cited message's `From`. In a thread, check who wrote
+  which line before "X confirmed" or "X approved"; a cc is not a party.
+- Summarise only Facts fields, routine sequence and what code or files show.
+- Inference is labelled and rests on quotes; one incident is not a pattern.
+- An old open item keeps its date ("on 2026-08-02 he said he would send the
+  deck", never "owes the deck"); an event whose date has passed is not open.
+- "Not established" or `Unknown` only after `rg` over every supplied source:
+  a granted access sat in the material while the page called it unknown.
+
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or write bare
-  `Unknown`. Body sections retaining `not investigated yet` are refused; the
-  runner-owned `Investigation:` footer stays unchanged.
+  `Unknown`; a leftover one becomes bare `Unknown`, the page has not been
+  investigated otherwise. The runner-owned `Investigation:` footer stays unchanged.
 - The user dictates, so a name in their own messages can be misheard ("WTF
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
@@ -55,8 +74,8 @@ keep the lead and current state. Growth beyond 20,000 characters is refused.
 ## Evidence format
 
 Cite `[1]`, `[2]`; under `Sources` define each number once, `- [n] <source id> —
-<date>`, nothing more. Only citable, or the page is rejected: a source id
-from the material (the `###` heading of an evidence entry: `outlook:…`,
+<date>`, nothing more. Only a source id that resolves is kept: one
+from the material or the mail archive (the `###` heading of an evidence entry: `outlook:…`,
 `gmail:…`, `codex:…:81499`). Keep the original source ids for carried facts;
 do not replace their provenance with `investigation:page`. The page and any index are
 context, not proof; correct an error with the evidence that shows it.
@@ -68,7 +87,7 @@ date does not prove first contact.
 ## Candidate and finish
 
 Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
-or write other pages. Keep each normalized heading once and the `Investigation:`
+or write other pages: the runner reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
 footer unchanged. Requests prove intent, not completion. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says
 `not investigated yet` (exclude the footer); every private sentence, including

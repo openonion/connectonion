@@ -211,7 +211,7 @@ def test_contact_calendar_repair_keeps_qualified_or_multiple_source_interpretati
 def test_a_fact_from_the_carrier_email_does_not_cite_its_attachment_instead():
     page = PAGE.replace('gmail:a2 —', 'gmail:a2:Signed contract.pdf —')
     row = {'field': 'Phone', 'value': '+61 2 5550 0142', 'qualifier': 'work', 'source': 'gmail:a2',
-           'date': '2026-09-10'}
+           'date': '2026-09-10', 'own': True}
     kept, restored = facts.keep_extracted('people/mia.md', page, [row])
     assert '- Phone: +61 2 5550 0142 (work) [2]' in kept
     assert '- [1] gmail:a2:Signed contract.pdf —' in kept
@@ -347,6 +347,8 @@ def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_dom
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
                     clients={"outlook": Signed()}, subscriptions={}, runner=write)
     assert "- Company: [UNSW Sydney](../orgs/unsw.md) [1]" in notebook.read("people/vern.md")
+    review = __import__("json").loads((tmp_path / "review.json").read_text())
+    assert review["company_from_domain"]["domain"] == "unsw.edu.au"   # code-made changes are on record
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
@@ -380,3 +382,148 @@ def test_a_new_fact_without_a_citation_is_refused_but_a_mapped_address_is_not():
     errors = validate("people/mia.md", candidate, original, items)
     assert any("Fact without a citation: Phone" in e for e in errors)
     assert not any("Email" in e for e in errors if e.startswith("Fact without"))
+
+
+# ------------------------------------------- contact facts are right or Unknown (contacts audit, #2348, #2135)
+
+NOTICE = ("Hi all,\nPlease see the notice below about the co-working space.\n\n"
+          "There will be a power outage on Saturday 7 February.\n"
+          "Thank you for your understanding as we continue to improve the building.\n"
+          "For more information contact Pat Lee, Facilities Manager, Estate Management\n"
+          "Ph 0491 570 156\nEmail p.lee@harbour.example\n")
+
+
+@pytest.mark.parametrize("subject", ["Important Notice - Co Working access + power outage Feb", "Co Working access"])
+def test_a_number_under_someone_elses_name_in_the_subjects_own_mail_is_not_theirs(subject):
+    """P1: Nina forwarded an estate notice; "Thank you for your understanding…" opened a
+    "signature" and the facilities manager's mobile was restored onto her page."""
+    rows = extract([mail("outlook:n1", "2026-02-03T01:00:00+00:00", NOTICE, subject=subject)], HANDLES)
+    assert not found(rows, "Phone")
+    kept, restored = facts.keep_extracted("people/mia.md", PAGE, rows)
+    assert "0466" not in kept and not [r for r in restored if r["field"] == "Phone"]
+
+
+LUMA = ("https://luma.com/xfkmdqae\nBuild Your AI Sales Engine\nAug 20, 6:00 PM GMT+10 · Harbour Tower\n\n"
+        "Mia Chen\n\nPlease meet us in the ground floor lobby at 6:00pm. If you are late and did not see us, "
+        "call Sam 0491570006\nView Event: https://luma.com/xfkmdqae\n"
+        "You received this email because you are part of Build Your AI Sales Engine on Luma.\n")
+RELAY = "Mia Chen <usr-s2godxk@user.luma-mail.com>"
+
+
+def test_a_luma_host_copy_gives_no_phone_and_its_relay_is_no_email():
+    """P2/E2: the relay joined Ody's handles by display name; his name line opened a
+    "signature" and "call Larry 0405…" became his phone in 8 of 8 runs."""
+    item = mail("gmail:l1", "2026-08-20T06:20:45+00:00", LUMA, speaker=RELAY,
+                subject="[Host Copy] New message in Build Your AI Sales Engine")
+    rows = extract([item], [*HANDLES, "usr-s2godxk@user.luma-mail.com"])
+    assert not found(rows, "Phone") and not found(rows, "Email") and not found(rows, "Company domain")
+    assert "0405" not in facts_item(rows)["text"]
+
+
+def test_a_number_named_for_someone_else_in_a_signature_is_not_the_subjects():
+    text = "Thanks,\nMia Chen\nHarbour Analytics\nAfter hours call Sam 0491 570 006\nM: 0400 555 019\n"
+    rows = extract([mail("gmail:s1", "2026-08-04T01:00:00+00:00", text)], HANDLES)
+    assert [p["value"] for p in found(rows, "Phone")] == ["0400 555 019"]
+
+
+def test_a_block_after_a_thank_you_that_never_names_the_sender_gives_no_phone():
+    text = "Thank you\nFacilities desk\nPh 0491 570 156\n"
+    assert not found(extract([mail("gmail:t1", "2026-08-04T01:00:00+00:00", text)], HANDLES), "Phone")
+
+
+def test_one_number_in_two_formats_is_one_row():
+    """Morgan's care line came as 1800 737 633 and +61 1800 737 633 and went on her page twice (P3)."""
+    text = "Regards,\nMia Chen\nT: 1800 737 633\n"
+    other = "Regards,\nMia Chen\nO +61 1800 737 633\n"
+    rows = extract([mail("gmail:m1", "2026-08-04T01:00:00+00:00", text),
+                    mail("gmail:m2", "2026-08-05T01:00:00+00:00", other)], HANDLES)
+    assert len(found(rows, "Phone")) == 1
+
+
+def test_a_restored_phone_or_address_must_be_the_subjects_own():
+    rows = [{"field": "Phone", "value": "0491 570 006", "qualifier": "", "source": "gmail:l1", "date": "2026-08-20"}]
+    assert facts.keep_extracted("people/mia.md", PAGE, rows) == (PAGE, [])
+
+
+def test_last_contact_is_human_mail_between_them_not_a_broadcast_or_notice():
+    """T2: Tamara's kitchen-etiquette note to about 30 startups became her Last contact."""
+    everyone = {"from": "Mia Chen <mia.chen@harbour.example>", "to": [f"p{n}@x.example" for n in range(30)], "cc": []}
+    rows = extract([
+        mail("gmail:h1", "2026-09-01T01:00:00+00:00", "Thursday works.\nMia"),
+        {**mail("gmail:b1", "2026-10-06T01:00:00+00:00", "Kitchen etiquette reminder"), "participants": everyone},
+        mail("gmail:n1", "2026-10-07T01:00:00+00:00", "Your weekly digest", speaker="Mia Chen <noreply@harbour.example>"),
+        {**mail("gmail:u1", "2026-10-08T01:00:00+00:00", "Updates", role="user", speaker="Alex <a@r.example>"),
+         "participants": {"from": "Alex <a@r.example>", "to": ["someone@else.example"], "cc": []}},
+    ], [*HANDLES, "noreply@harbour.example"])
+    assert found(rows, "Last contact")[0]["source"] == "gmail:h1"
+
+
+# ------------------------------------------- promotion keeps a contact detail only when the mail shows it
+
+def contact_page(email, phone, sources):
+    return ("# Mia Chen\n\nMia runs the pilot [1].\n\n## Facts\n"
+            f"- Email: {email}\n- Phone: {phone}\n- Company: Unknown\n\n## Sources\n"
+            + "".join(f"- [{n}] {source} — 2026-08-20\n" for n, source in enumerate(sources, 1)))
+
+
+def test_promotion_drops_a_number_from_a_luma_notice_and_keeps_one_given_in_their_own_words(tmp_path):
+    """P2 kept "call Larry"; Andrew's "ring me at 0481…" through the same relay is his (contacts audit)."""
+    from connectonion.rem.config import prepare
+    from connectonion.rem.page_review import verify_contacts
+    prepare(tmp_path)
+    own = LUMA.replace("If you are late and did not see us, call Sam 0491570006",
+                       "If anyone is lost, ring me at 0491570157")
+    items = [mail("gmail:l1", "2026-08-20T06:20:45+00:00", LUMA, speaker=RELAY,
+                  subject="[Host Copy] New message in Build Your AI Sales Engine"),
+             mail("gmail:l2", "2026-08-21T06:20:45+00:00", own, speaker=RELAY,
+                  subject="[Host Copy] New message in Build Your AI Sales Engine")]
+    page = contact_page("Unknown", "0491570006 [1]; 0491570157 [2]", ["gmail:l1", "gmail:l2"])
+    text, removed = verify_contacts(tmp_path, "people/mia.md", page, items)
+    assert "- Phone: 0491570157 [2]\n" in text and removed == ["0491570006 [1]"]
+
+
+def test_promotion_keeps_a_number_an_airbnb_relay_shows_under_their_name(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.page_review import verify_contacts
+    prepare(tmp_path)
+    body = ("--- Email Body ---\nhttps://www.airbnb.com.au/?c=x\nYou’ve got a new message\n"
+            "Mia Chen - Harbour Homes\nSure my number is +61491570158\nReply <https://www.airbnb.com.au/x>\n")
+    items = [mail("outlook:a1", "2026-08-25T23:29:20Z", body, speaker="Airbnb <express@airbnb.com>",
+                  subject="You’ve got a new message")]
+    page = contact_page("Unknown", "+61 491 570 158 [1]", ["outlook:a1"])
+    assert verify_contacts(tmp_path, "people/mia.md", page, items) == (page, [])
+
+
+def test_promotion_drops_a_number_from_a_notice_the_subject_forwarded(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.page_review import verify_contacts
+    prepare(tmp_path)
+    items = [mail("outlook:n1", "2026-02-03T01:00:00+00:00", NOTICE + "\nBest regards,\nMia Chen\nM: 0400 555 019\n",
+                  subject="Co Working access")]
+    page = contact_page("Unknown", "0491 570 156 (work) [1]; 0400 555 019 (mobile) [1]", ["outlook:n1"])
+    text, removed = verify_contacts(tmp_path, "people/mia.md", page, items)
+    assert "- Phone: 0400 555 019 (mobile) [1]\n" in text and removed == ["0491 570 156 (work) [1]"]
+
+
+def test_promotion_keeps_only_addresses_they_send_from_or_are_written_to_at_by_name(tmp_path):
+    """E1/E2: Luma relays sat in Email; E5: addresses from a signature they never write from."""
+    from connectonion.rem.config import prepare
+    from connectonion.rem.page_review import verify_contacts
+    prepare(tmp_path)
+    items = [{**mail("gmail:a1", "2026-08-04T01:00:00+00:00", SIGNED),
+              "participants": {"from": "Mia Chen <mia.chen@harbour.example>", "to": ["me@x.y"], "cc": []}},
+             {**mail("gmail:a2", "2026-08-05T01:00:00+00:00", "ok", role="user", speaker="Me <me@x.y>"),
+              "participants": {"from": "Me <me@x.y>", "to": ['"Mia Chen" <mia@home.example>'], "cc": []}}]
+    page = contact_page("mia.chen@harbour.example, usr-abc@user.luma-mail.com, mia@home.example, "
+                        "z1234567@ad.harbour.example", "Unknown", ["gmail:a1"])
+    page = page.replace("- Company: Unknown", "- Company: Unknown\n- Handles: mia; usr-abc@user.luma-mail.com")
+    text, removed = verify_contacts(tmp_path, "people/mia.md", page, items)
+    assert "- Email: mia.chen@harbour.example; mia@home.example\n" in text
+    assert "- Handles: mia\n" in text
+    assert sorted(removed) == ["usr-abc@user.luma-mail.com", "usr-abc@user.luma-mail.com", "z1234567@ad.harbour.example"]
+
+
+def test_a_spelling_the_person_rejected_leaves_also_known_as():
+    """A1: Ody wrote that his Chinese name is 周泽凯, not 周泽楷; the page listed both."""
+    page = "# Ody\n\n## Facts\n- Also known as: 周泽凯; 周泽楷 (corrected by Ody); ody@x.example\n"
+    assert "- Also known as: 周泽凯\n" in facts.names_not_addresses("people/ody.md", page)

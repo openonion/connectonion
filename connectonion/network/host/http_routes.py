@@ -29,7 +29,7 @@ _RESERVED_PATHS = {
     "/input", "/sessions", "/health", "/info", "/docs", "/ws",
     "/admin/logs", "/admin/sessions",
 }
-_RESERVED_PREFIXES = ("/_co", "/admin/trust", "/superadmin")
+_RESERVED_PREFIXES = ("/_co", "/admin/trust", "/superadmin", "/rem")
 _PARAMETER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 

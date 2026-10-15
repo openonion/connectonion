@@ -43,6 +43,7 @@ def test_ai_forwards_full_access_options():
         sandbox="workspace-write",
         permission_mode="default",
         timeout=600,
+        speed=None,
     )
 
 
@@ -76,6 +77,7 @@ def test_ai_forwards_json_and_resume_options():
         sandbox="workspace-write",
         permission_mode="default",
         timeout=600,
+        speed=None,
     )
 
 

@@ -160,7 +160,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co rem investigate          # What is left to investigate, by category; no model
-co rem investigate PAGE --retry-refused  # Retry a refused Person/Project/Org page on the same sources
+co rem investigate PAGE    # One page; a page refused before is retried on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
 co rem sync --dry-run       # Inspect pending metadata, without running a model
@@ -447,7 +447,10 @@ remain available. A wholly empty notebook still says **Not started**.
   4,096 characters, retained coding inputs up to 4,096, and repository
   snapshots up to 65,536, with truncation
   marked. Cited conversations show up to twelve recent archived
-  messages with the total count. Missing original bodies are labeled, never
+  messages with the total count. Excerpts labelled `[personal]` or
+  `[sensitive]` appear only in the reader on this computer (the snapshot and
+  the local live reader), behind **Hide labelled passages**; the O Chat view
+  never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
 - **Open threads** shows all supported obligations with direct record links.
@@ -592,6 +595,14 @@ an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
+A prompt a program sent is not the user's: a Claude Code row with an `sdk`
+entrypoint or an `sdk`/`system` prompt source is skipped. A launchd job's
+scheduling prompt had become the user's request on projects/layeredvisions; on
+the owner's machine 1,437 of 1,454 sessions opened that way were schedulers,
+harnesses and REM's own turns. Claude Code project discovery reads forward to
+the first record with a `cwd` (at most 256 records or one megabyte), because a
+session can open with queue, mode or bridge records (#2336).
+
 The first investigation saves the parsed, typed coding messages it scanned in
 the notebook's private `.state/session-windows/` directory. Later CLI runs
 check the local session files and read only changed files, then select messages
@@ -641,6 +652,12 @@ launchd invokes the resolved `co rem --root ... sync --scheduled` CLI every
 five minutes, with PATH entries for co and installed delegates. Saved local
 time slots determine whether a batch is due. Repeated start reloads one job;
 missed slots coalesce into one catch-up. No permanent co rem daemon is added.
+
+The job imports the checkout that ran `co rem start` when that is a source
+checkout, and nothing for an installed package; it never copies the shell's
+`PYTHONPATH`. The live job carried a scratch folder from an old session, which
+would have shadowed the installed package on every tick had it held a
+`connectonion/__init__.py`.
 
 Each notebook root is its own job, `ai.openonion.co-rem.<hash of the root>`,
 the default `~/.co/rem` included, so `co rem start`/`stop` under another
@@ -953,14 +970,19 @@ reads either.
 ### Extracted before prose
 
 Before the model turn, `connectonion/rem/fact_extract.py` reads the gathered
-material with no model: the subject's own addresses, phone numbers in their
-signature blocks (with `work` / `mobile` from the line's label), LinkedIn
-links, the dates of the first and last message, the signature block itself,
+material with no model: the subject's own addresses, phone numbers in the
+signature blocks they sign with their name (with `work` / `mobile` from the
+line's label; not a number someone else is named beside), LinkedIn links, the
+date of the last human mail between the user and them (not a newsletter, a
+broadcast or a notice), the signature block itself,
 the lines of calendar invitations that name the subject, and the company domain
 when it is not a mailbox provider. They go to the turn as the
 `investigation:facts` item, each with its source id, even when the rest of the
 material is in files to search — the turn confirms them, extends them and
 cites the source id, not the item.
+
+Mail a relay or a system sends (Luma, Airbnb, no-reply), and a notice passed
+on, gives no facts: the person's name sits over someone else's words there.
 
 The model may correct a fact the material contradicts; it may not lose one.
 After the turn, a phone, address, LinkedIn link or contact date the extractor
@@ -968,6 +990,15 @@ found that appears nowhere on the page is put back into its field with its
 source (`review.json` lists it under `facts_restored`). Company and role from a
 signature are context, not restored: reading a title off a signature is a
 judgement.
+
+A contact detail must be right or `Unknown`. On a person's page an `Email`
+stays only if the person sends from it or is written to at it under their
+name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
+person (or relayed under their name) with the number in it and nobody else
+named to call beside it. What goes is listed under `contacts_unverified`. An
+unknown `Company` is filled from the domain of the address they write from now,
+never a mailbox provider, a relay, an agent address or a student address
+(`company_from_domain` in `review.json`).
 
 ### Insight
 
@@ -1006,8 +1037,79 @@ the full window; the run was a quick pass of the newest mail) and Tamara to 11,
 her mobile among them, each with three labelled Insight lines.
 
 When an investigation finds nothing new, the restore step still runs: a page
-whose cited mail carries a phone the page lacks gets it back with no model call.
-In a quick pass (`--quick`), the extractor sees only the sampled mail.
+whose cited mail carries a phone the person signed with gets it back with no
+model call. In a quick pass (`--quick`), the extractor sees only the sampled mail.
+
+## Review before a page is saved (decision 079)
+
+Every page a model writes — by `investigate`, `init`, the project writer or a
+sync's one-page turn — passes the same review, and review settles what it can
+before it refuses anything.
+
+- **Quotes are checked.** A `“…”` on a person, organisation or project page
+  must appear word for word in a source its line cites (line wraps, quoted
+  reply markers and curly or full-width punctuation are ignored; `…` joins parts
+  that appear in order). A quote whose original is not held, or is truncated,
+  is left to the audit. On the 1.9.2b3 notebook 8 of 89 quotes failed: a fee
+  quoted as “8% of gross revenue” where the owner wrote net, Chinese put into
+  English inside quotation marks. Pages quote rather than retell the words a
+  reader may act on (decision 076, originals over summaries).
+- **Cited claims are audited** on every people, organisation and project page
+  write, not only project investigations. The auditor reads the cited
+  originals and the turn's own material, so mail the archive does not hold
+  still counts. A packet over the bound is fitted by shortening every excerpt
+  evenly instead of auditing nothing; a citation with no readable original is
+  skipped, not a reason to stop. People and organisation pages add who-said-what
+  rules: the sender of the cited message is who asked or approved, a cc is not
+  a party, a passed event is not open, a contact detail must be the person's,
+  and "not established" fails when a supplied original establishes it. Each
+  finding names its failing claim. `INSUFFICIENT` is recorded, never a refusal.
+  The auditor also reads the later messages in each cited thread, and the
+  First and Last contact code computed from the whole archive: the packet's
+  date range is not the relationship's. A claim a truncated excerpt neither
+  supports nor contradicts is left out, not failed.
+- **Two repair turns for every page type.** What review names goes back to the
+  writer with where to read the originals. Only project pages had repairs
+  before; hamish-mcfarlane and two skill pages stayed unwritten after 1.9.2b3's
+  first run for one section or one citation. A page someone changed meanwhile
+  gets no repair: it is theirs.
+- **Last resort removes only what is refuted.** If, after the repairs, every
+  remaining error is a citation, a misquote or an audit finding, the sentence
+  holding each refuted claim goes (found without its `[n]` markers, since the
+  audit copies claims without them), a contact field says `Unknown`, and the
+  rest of the page is saved. `review.json` says `bounded citation audit failed;
+  N refuted claims removed`. Anything else still refuses the page.
+- **Code settles shape.** A heading glued to a paragraph goes back on its own
+  line and a repeated section is merged into the first, instead of refusing
+  the page (hamish-mcfarlane was refused for it on every pass). A second page
+  title goes; a leftover "not investigated yet" becomes bare `Unknown`; a
+  History past 16 lines folds its oldest years into one line each; an
+  `investigation:` citation goes from project and skill pages. A page is
+  refused for size only past 30,000 characters and longer than before.
+- **A citation that resolves is kept.** Inline ids (`[outlook:3a09…]`,
+  (`` `project-source:…` ``)) become numbered citations before Facts are
+  checked; mail rem holds in `rem.db` or `.state/mail` counts even when the
+  turn was not handed it; a raw provider id is written as its digest, a
+  backticked id without backticks, and `file:/x@<short hash>` pinned to the
+  file's SHA-256 when that hash names its current content. An id that resolves
+  nowhere still goes. Maintenance records what code dropped (`review.json`:
+  `repairs`), keeps the pages it refused under `refused/`, and is handed the
+  later messages in its batch's threads (`thread-tail` items).
+- **A hash-pinned local file is a source on any page**:
+  `file:/path#sha256:<current hash>`. The job-followup skill page cited its
+  applications log this way and was refused, because only project pages took
+  `file:` ids.
+- **The runner dates sources.** Each source is listed once, under one number,
+  dated from its original in the notebook's timezone; the audit had found one
+  mail cited as `[1]` and `[2]` with two dates, and dates the writer typed that
+  matched no message.
+- **Every turn is told today's date** (`Today is 2026-10-15 (Australia/Sydney)`),
+  and that an event before it is history, never an open thread. Ody's page kept
+  13 and 14 October events open on the 15th.
+- A one-page sync turn that keeps less than 60% of a page's characters, or of
+  its cited sources, keeps the old page (pages under 1,000 characters are
+  exempt): projects/connectonion went 14,356 → 4,132 characters in one
+  accepted turn on 2026-10-13.
 
 ## co rem status (#1996, #2008)
 
@@ -1093,6 +1195,53 @@ investigation reads many sources and is not split across them. Tokens per 1k
 characters is measured on sync batches only: an investigation's material goes
 into files the model searches, so its characters are not what it read.
 
+## Refused pages and the daily round
+
+**One refusal ledger** (`.state/refused-investigations.json`). Every path that
+can refuse a page writes it: an investigation and each of its rounds, a skill
+page, the project writer, and a sync's one-page turn. Before, only
+`investigate()` did: the 2026-10-10 notebook ledgered one of eight refused
+pages. A sync's refusal also holds the batch's material for that page, from
+every source, because the cursor moves on and the batch is not read twice. A
+refused round inside an accepted investigation stays in the ledger with the
+sources no later round read (Ody Zhou's and Dora's, 2026-10-10 and 10-12), and
+the daily row shows it as `refused_rounds`.
+
+**Retries.** Every later run of the day retries ledger pages neither refused
+nor retried in the last 20 hours, oldest refusal first: from the held material when a sync refused it, otherwise by the
+page's own investigator. A page refused three times on the same material waits
+for new material, so a refusal that will always happen does not cost a turn a
+day for ever. An accepted page clears what it read.
+
+**The first run of the day** sends each page to its own investigator: people to
+the person investigation, `skills/catalog/` pages to the skill investigator,
+projects with messages pending to the project writer, and the rest to the
+older mail search. Skill pages had gone to the mail search and come back
+`nothing_found` on 2026-10-11, 10-13 and 10-14. A page with nothing to write
+from rests a week (`.state/nothing-found.json`) and takes no slot. When no page
+is accepted, the reason says which: `nothing_found`, `refused`, `failed`,
+`nothing_unfinished` or `no_page_fits_budget` (2026-10-13 said
+`no_page_fits_budget` when every page tried had found nothing).
+
+**Fewer wasted sync turns.** Measured on the 2026-10-10..15 notebook:
+
+| Found | Now |
+|---|---|
+| A batch reads the first source with anything new; Codex always had some, and in 26 syncs Claude Code, Gmail and Outlook were never read | each sync starts at the source after the one it read last |
+| "browser" and "connectonion" are words in nearly every session: projects/browser got a turn on 12 of 26 syncs, 9 of them NO CHANGE, 5.36M tokens | a project page with folders is routed by folder only and written only by the project writer |
+| projects/connectonion was rewritten at 06:05, 07:10 and 08:05 on 2026-10-13 for 1–3 messages each | the project writer updates a page at most once in 20 hours unless 10 messages wait |
+| a page whose turn changed nothing got the next batch again | it rests a day (`.state/no-change.json`) |
+
+`scripts/rem_trial_audit.py` counts what the run records used to hide: sync
+maintenance refusals missing from the ledger, refused turns in task folders
+that no run names, refused rounds inside accepted pages, pages that shrank
+below 60% in one turn, and churn (a page worked more than three times in three
+days, with how many of those changed nothing).
+
+An unexpected failure in an investigation keeps its traceback (the last 4,000
+characters) in its run record, for `co rem logs`: a UnicodeDecodeError on a
+real project page said only its type.
+
 ## Tidying a notebook made by an older version (#1999, #2008)
 
 Maps get better, and the pages an older map made stay. An upgraded notebook
@@ -1114,6 +1263,8 @@ when nothing needs tidying. No model is called. What it does:
 | A people page for an address that is clearly the owner's: never replied to, and the address or display name carries the owner's name or an address the owner already confirmed | folded into the owner's page (`merge.merge_into`: written lines kept, page archived, record an alias); the address added to the owner's addresses | `.state/aliases.json` names the archived copy |
 | Two catalog pages for one skill (a `SKILL.md` without a `name:` takes its folder's name, so `~/.codex/skills/changxing-nonfiction-refine` and `~/.agents/skills/nonfiction-refine` were two skills) | folded into the page of the named skill, as the map does for copies | as above |
 | An organisation page for a mailbox provider (`gmail.com`, `yahoo.com.hk`, `outlook.com.au`, `qq.com`, `163.com` …) or an event platform's relay domain (`luma-mail.com`), never investigated | moved to `.state/archived/orgs/…` | move the file back |
+| An organisation page for the owner's own company — a domain the owner writes from, or one named like the Company or Signing entity on the owner's page (`orgs/openonion-ai`, `orgs/connectonion-com`), never investigated | moved to `.state/archived/orgs/…`; the map makes none and the queue skips it | move the file back |
+| A citation of a coding-session line the user did not type (a scheduler's `claude -p` prompt, REM's own model-access probe cited four times on the owner page) | the citation and its Sources entry removed; a line resting on it alone goes, a contact field says `Unknown`. Each session line is checked once (`.state/typed-sources.json`) | the removed lines are in the log |
 | A line `- web: not searched …`, or a `Sources` entry `[N] investigation:coverage …` and its `[N]` markers | that line or marker removed; every other line kept | the removed text is in the log |
 
 An investigated page is never archived or folded: a person's work on a page is
