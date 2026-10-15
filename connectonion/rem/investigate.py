@@ -1617,6 +1617,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
+    elif not record.startswith("projects/"):
+        # One turn reads it all; thread by thread, each reply sits under its ask.
+        items = by_thread(items)
     from .page_review import normalize
     if original_material:
         write_json(original_material, original_items)

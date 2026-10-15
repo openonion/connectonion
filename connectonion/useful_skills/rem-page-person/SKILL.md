@@ -49,10 +49,10 @@ sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 Rules:
 
 - **Lead: three cited sentences, then `Last contact: <date>, <channel>.`**
-  (1) Who they are to the user: role, organisation, why they matter. (2) What
-  is live: the most consequential open item, who owes whom, the ask as a short
-  exact quote with its date and any due date; with nothing open, how the last
-  thread ended. (3) The user's next step (reply, decide, chase, wait until a
+  (1) Who they are to the user: role, organisation, the work or deal between
+  them and its stakes (amount, term). (2) What is live: the most consequential
+  open item, who owes whom, the ask as a short exact quote with its date and
+  any due date; with nothing open, how the last thread ended. (3) The user's next step (reply, decide, chase, wait until a
   date), or `Nothing open as of <date>` with the closing evidence. Never open
   on a gap or a doubt.
 - **One voice**: the owner is `the user` in every sentence, never their name,
@@ -63,18 +63,18 @@ Rules:
   (work) [3]; +61 400 555 019 (mobile) [5]`). Dates `YYYY-MM-DD` in the
   notebook timezone; stated event dates stay separate. Every value is cited
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
-  sentence instead of its field. `Links`: LinkedIn, personal or company site.
+  sentence instead of its field. `Links`: LinkedIn or a site.
   `How we know them`: who introduced whom, or the first thread.
 - **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`,
-  `Changed:`, `At stake:` or `Pattern:`**: what no other section says outright:
-  what moved, what is at risk, a pattern over time (reply speed, topics, who
-  chases whom). Never restate the lead or an open thread; never generic
-  ("key stakeholder"); thin material: `- Unknown`.
-- **`Language` is observed**: the language they write to the user in.
+  `Changed:`, `At stake:` or `Pattern:`**: what reading the threads one by one
+  would not show: what moved, what is at risk, a pattern over time (reply
+  speed, topics, who chases whom). Never a copy of the lead or an open thread;
+  never generic ("key stakeholder"); a single thread: `- Unknown`.
+- **`Language`**: the language they write to the user in.
 - **`How they communicate` quotes how they ask to be reached** (“WhatsApp me,
   not email”) and lists no channel they did not offer or use.
 - **`Company` needs stated employment**; a student or mailbox domain proves
-  none (`Unknown`). Link schools/groups in relationship text.
+  none (`Unknown`).
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
@@ -89,10 +89,12 @@ Rules:
 - **`Open threads` lists only what someone still owes**, one line each, the
   user's debts first, then by due date:
   `- The user owes <Name>: <what> — “<exact ask>” (YYYY-MM-DD) [n] — due <date>`
-  or `- <Name> owes the user: …`, `- <A> owes <B>: …`, ending `— open as of
+  or `- <Name> owes the user: …` (once they agreed; unanswered, it is `- The
+  user asked <Name>: …`), `- <A> owes <B>: …`, ending `— open as of
   <date>` when no due date was set. A later reply, a delivered item or a passed
   event date closes a thread: it moves to `History`. An ask with no movement
-  for 60 days goes to `History` as `went quiet`. Reports, optional offers,
+  for 60 days goes to `History` as `went quiet`, but only after `rg` for its
+  people and object finds nothing later (an access grant came in another thread). Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
   due date and any permission to proceed without a reply. Closure:
   `Nothing open as of <date>`.
@@ -106,7 +108,7 @@ Rules:
   the same name is left out and named in `Uncertainties`.
 - Say their name or "they"; "he"/"she" only where their own words show it.
 - **Sources**: `- [n] <source id> — <date>`; claims stay in sentences. Never an
-  assistant's memory file. Reuse numbers and list only cited sources.
+  assistant's memory file. List only cited sources.
 
 ## Exact headings
 

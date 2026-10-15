@@ -67,8 +67,8 @@ refuses a quote it cannot find there.
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
 - Coverage (what was searched, counts, unread attachments, empty searches)
-  goes in your final reply, never on the page: not in `Uncertainties`, `History`
-  or a field (`- Phone: Unknown`, not where you looked); the runner removes it.
+  goes in your final reply, never on the page (`- Phone: Unknown`, not where
+  you looked).
 - **Never cite an `Unknown`**; write it bare.
 - **Label private life; never drop it.** End such a sentence, before its claim
   number, with `[personal]` (family, home, trips, hobbies, private plans) or
@@ -89,7 +89,7 @@ files by source ID, path and date or revision, not commands or queries.
 
 Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
 or write other pages: the runner reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
-footer unchanged. Requests prove intent, not completion. Before replying: the
+footer unchanged. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says
 `not investigated yet` (exclude the footer); every private sentence, including
 the user's own trips, ends with its label. Reply with a lead ledger
