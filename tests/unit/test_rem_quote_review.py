@@ -262,3 +262,15 @@ def test_a_refuted_unknown_drops_nothing_and_a_sentence_leaves_no_bare_citations
             '## Open threads\nUnknown\n\n## Sources\n- [5] codex:a:1 — 2026-10-01\n- [6] codex:a:2 — 2026-10-01\n')
     kept, unlocated = drop_claims('projects/x.md', text, ['Unknown', 'The gateway is curated'])
     assert unlocated == [] and 'Unknown' in kept and '\n[5][6]' not in kept and 'The gateway' not in kept
+
+
+def test_a_source_cited_in_place_is_numbered_so_its_quote_is_checked(tmp_path):
+    """v193q1 STR (2026-10-15): a quote cited as [codex:…] skipped the quote check."""
+    from connectonion.rem.page_review import normalize_numbered_sources
+    text = ('# X\n\n## Key decisions\n- 2026-08-10 — “start now” [codex:s:9] and [1]\n\n'
+            '## Sources\n- [1] codex:s:1 — 2026-08-10\n\nInvestigation: mapped\n')
+    fixed = normalize_numbered_sources(text)
+    assert '“start now” [2] and [1]' in fixed and '- [2] codex:s:9' in fixed and fixed.endswith('Investigation: mapped\n')
+    items = [{'source': 'codex:s:9', 'text': 'please begin', 'role': 'user'},
+             {'source': 'codex:s:1', 'text': 'x', 'role': 'user'}]
+    assert misquoted(tmp_path, 'projects/x.md', fixed, items)

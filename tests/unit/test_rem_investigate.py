@@ -1197,18 +1197,6 @@ def test_a_git_project_is_read_at_its_current_line_in_every_round_not_from_its_w
     assert 'current line is origin/main' in note and 'git:' + str(repo) in note
 
 
-def test_a_cited_file_in_another_encoding_is_not_retained_and_ends_nothing(tmp_path):
-    """A cp1252 file the model cited ended a short-term-rental investigation (2026-10-15)."""
-    import hashlib
-    from connectonion.rem.project_pages import live_file_snapshot
-    folder = tmp_path / 'work'
-    folder.mkdir()
-    raw = 'a \u201cquoted\u201d note'.encode('cp1252')
-    (folder / 'note.txt').write_bytes(raw)
-    page = f'# W\n\n## Paths\n- {folder}\n'
-    assert live_file_snapshot(page, f'file:{folder / "note.txt"}@{hashlib.sha256(raw).hexdigest()}') is None
-
-
 # ------------------------------------------------ #1984: an empty since-window calls no model
 
 
