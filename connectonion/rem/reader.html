@@ -2930,7 +2930,8 @@ function mappedProjectLine(r) {
 function personLead(r) {
   const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^Now:/i.test(t));
   const text = (known(r).intro || now?.replace(/^Now:\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
-  const sentences = text.match(/.*?[.!?](?:\s*\[W?\d{1,3}\])*(?=\s|$)|.+$/g) || [];
+  // A quotation is one unit: Tamara's lead ended at the "!" inside “That's great news, thank you! …”.
+  const sentences = text.match(/(?:[^“.!?]|“[^”]*”)*?[.!?](?:\s*\[W?\d{1,3}\])*(?=\s|$)|.+$/g) || [];
   return privateFallback(el("p", { class: "person-lead", html: inline(sentences.slice(0, 2).join(" "), r.path) }));
 }
 function contactLine(r) {
