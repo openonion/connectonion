@@ -1,4 +1,6 @@
-# REM: current product review, 7 October 2026
+# REM: historical product review, 7 October 2026
+
+> Historical snapshot: observations, screenshots, timings, model-access probes and priorities below describe 7 October and its candidate, not the current release. Read the **Published-source correction — 12 October** below before interpreting the nightly finding. Later fixes require separate acceptance evidence.
 
 ## What was actually checked
 
@@ -18,7 +20,7 @@ not results of a fresh complete initialization.
 
 ## Ten problems, ranked by harm to the REM promise
 
-| Rank | Problem | Current evidence and best next step |
+| Rank | Problem | Evidence captured on 7 October and proposed next step |
 | --- | --- | --- |
 | 1 | **The night can stop while the product says it is running.** | The real launchd job is installed/loaded with last exit code 1; newest saved run is 2 October. Status still advertises the next scheduled slot. Retain the prefix-integrity guard, diagnose/quarantine the changed source, continue safe sources, and surface last successful maintenance plus recovery. [#2301](https://github.com/openonion/connectonion/issues/2301). |
 | 2 | **A failed first run does not reliably leave a useful partial memory or a short recovery path.** | The public a42 five-day sample took 672.34s, selected five writing tasks, timed out four and received one auth refusal, writing zero pages. a43 reports failure on Home; runner access preflight, circuit stopping and actionable per-stage recovery remain. A newly successful minimal model request does not rerun that acceptance. [#2302](https://github.com/openonion/connectonion/issues/2302). |
@@ -41,21 +43,21 @@ night, verified morning changes, asking/correcting memory, task retrieval and
 recall over several days. Passing the release gate must not be presented as
 passing that broader product bar.
 
-The next implementation priority is night health and recoverable first-run
+At that review, the proposed implementation priority was night health and recoverable first-run
 failure, followed by identity/source truth, then morning presentation and
 activity/navigation. The desired aha is: REM notices a supported change or
 connection, explains why it matters now, and lets the owner reach its original
 or correct it. Attractive cards alone do not establish that behavior.
 
-CI has a separate engineering problem: release preparation triggers duplicate
-push/PR matrices despite parallel Python jobs and pytest workers. The current
+The 7 October CI observation was a separate engineering problem: release preparation triggers duplicate
+push/PR matrices despite parallel Python jobs and pytest workers. The observed
 PR run took approximately 12 minutes from creation to completion. Track
 critical path and duplication in [#2134](https://github.com/openonion/connectonion/issues/2134);
 do not remove coverage or immutable-tag verification to shorten it.
 
-## Access changed during the review
+## Model-access observation — 7 October 2026
 
-Both source-free probes now succeed: the standard `sonnet` alias took 11.8s,
+On 7 October, both source-free probes succeeded: the standard `sonnet` alias took 11.8s,
 and configured `claude-sonnet-5-5` took 11.92s (exit 0, result OK, reported model
 matches). No ambient Anthropic API key was used. The previous authentication
 403 must not be repeated as the current diagnosis. The next real-writing
