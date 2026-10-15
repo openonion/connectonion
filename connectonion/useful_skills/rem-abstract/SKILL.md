@@ -52,7 +52,8 @@ others lost, and whether it was ever reversed.
 ## Lift two: principles, out of decisions
 
 A principle is **a reason that keeps coming back**; never extract one from a
-single source.
+single source. A rule the user stated themselves ("from now on…") is already a
+principle, written by `rem-maintain`; this lift finds the ones never said.
 
 Read the `## Why` of every decision page and group them by the reason, not by
 the topic (three decisions that each measured behaviour instead of trusting an

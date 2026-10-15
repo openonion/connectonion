@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from .files import read_json
-from .reader_model import SOURCE, cited_context
+from .reader_model import SOURCE, cited_context, later_in_threads
 
 
 SCHEMA = {
@@ -54,7 +54,15 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
         sources.append({"citation": number, "source_id": source,
                         "definition": line, "context": {**context,
                         **({"mapped_session_folder": folders[source]} if source in folders else {})}})
-    return {"candidate": candidate, "sources": sources}, missing
+    # What came after the cited mail, and the contact dates code read from the
+    # whole archive: the audit judged "open" and "last contact" by the packet alone.
+    cited = {row["source_id"] for row in sources}
+    later = [{key: row[key] for key in ("source", "speaker", "timestamp", "subject", "text")}
+             for row in later_in_threads(notebook.root, cited) if row["source"] not in cited]
+    computed = [{key: row.get(key) for key in ("field", "value", "source")}
+                for item in items if item.get("role") == "facts" for row in item.get("facts") or []
+                if row.get("field") in ("First contact", "Last contact")]
+    return {"candidate": candidate, "sources": sources, "later_messages": later, "runner_facts": computed}, missing
 
 
 # Who said and who owes: the errors a person page made on a real first run
@@ -63,11 +71,17 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
 PEOPLE = (
     "Who did something is the sender of the cited message: a claim that someone asked, approved, "
     "confirmed, offered or promised fails unless their own message says so; a cc'd person is not a party. "
-    "An open thread fails when a later supplied message resolves it or when its event date has passed; "
+    "An open thread fails when a later message (later_messages: what came after the cited mail in its thread) "
+    "resolves it or when its event date has passed; "
     "a past ask is not a current debt unless the page dates it. A quote in “…” must match the original "
     "word for word in its original language. A contact detail (phone, email, company, role) fails unless "
     "the original shows it belongs to this person, not to someone named beside it. A claim that something "
-    "is unknown, unconfirmed or not established fails when a supplied original establishes it. ")
+    "is unknown, unconfirmed or not established fails when a supplied original establishes it. "
+    # kupjb5r8 and z3qdttxi failed a correct First/Last contact because the
+    # packet could not prove no earlier or later mail (v193q1).
+    "The packet holds only what the page cites: its earliest and latest dates are not the relationship's "
+    "first and last contact. Code computes First contact and Last contact from the whole archive "
+    "(runner_facts); judge such a claim against those, not against the packet. ")
 BOUND = 250_000
 
 
@@ -103,7 +117,9 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         "Do not use tools, browse, or edit files. Compare every concrete claim, implication and proposed action "
         "in the candidate with its exact adjacent numbered citation and the original excerpt below. "
         "A user's request or question proves intent, not implementation, authorization, completion or current status. "
-        "A truncated excerpt supports only the words shown; omitted text is not evidence. "
+        # hvcuo9no failed for a role in the part of [17] this packet cut off (v193q1).
+        "A truncated excerpt is a part of its original, cut to fit this packet: it supports only the words shown, "
+        "and a claim the shown words neither support nor contradict is left out, not failed. "
         "A claim citing only an original not supplied here is neither passed nor failed: leave it out. "
         "A mapped_session_folder identifies where a coding session was assigned; it groups these "
         "inputs under the page, but proves neither implementation nor that earlier work belongs "

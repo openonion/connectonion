@@ -194,8 +194,11 @@ def repository_snapshots(items: list[dict]) -> list[dict]:
 
 
 def retain_repository_context(root: Path, items: list[dict], cited: set[str]) -> int:
-    """Keep cited packet bodies under the caller's maintenance lock, after acceptance."""
-    from .reader_model import PRIVATE
+    """Keep cited packet bodies under the caller's maintenance lock, after acceptance.
+
+    A labelled ([personal]/[sensitive]) body is kept too: it stays in .state,
+    and `repository_context` shows it only to the owner's own local reader.
+    """
     count = 0
     for item in items:
         source, origin, text = item.get("source", ""), item.get("origin", ""), item.get("text", "")
@@ -205,7 +208,7 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
                 or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
                 or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
                 or not isinstance(text, str) or not 0 < len(text) <= limit
-                or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+                or SECRET_SHAPES.search(text)
                 or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
             continue
         path = state_path(root, "project-sources/" + source.split(":")[1] + ".json")
@@ -222,8 +225,11 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     return count
 
 
-def repository_context(root: Path, source: str) -> dict | None:
-    """Use the retained packet only; never reread a mutable Git ref or working file."""
+def repository_context(root: Path, source: str, private: bool = False) -> dict | None:
+    """Use the retained packet only; never reread a mutable Git ref or working file.
+
+    `private`: the reader is the owner's own, on this machine, so a labelled body may show.
+    """
     from .reader_model import PRIVATE
     if source.startswith("file:"):
         saved = read_json(state_path(root, "project-sources/live-" + hashlib.sha256(source.encode()).hexdigest() + ".json"), {})
@@ -254,7 +260,7 @@ def repository_context(root: Path, source: str) -> dict | None:
     text, origin = saved.get("text"), saved.get("origin", "")
     limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if _file_snapshot(saved.get("snapshot_kind"), origin) else REPOSITORY_EVIDENCE_CHARS
     if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
-            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or (PRIVATE.search(text) and not private)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
     return {"excerpt": text.strip()[:REPOSITORY_EXCERPT_CHARS],

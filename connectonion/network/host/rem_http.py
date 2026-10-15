@@ -70,7 +70,7 @@ async def handle_rem_http(scope, receive, send, routes):
         return
     if scope["method"] == "GET" and scope["path"] == "/rem":
         from ...rem.reader import render
-        await _reply(send, 200, await asyncio.to_thread(render, root, live=True), "text/html")
+        await _reply(send, 200, await asyncio.to_thread(render, root, live=True, local=True), "text/html")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     else:

@@ -160,7 +160,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co rem investigate          # What is left to investigate, by category; no model
-co rem investigate PAGE --retry-refused  # Retry a refused Person/Project/Org page on the same sources
+co rem investigate PAGE    # One page; a page refused before is retried on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
 co rem sync --dry-run       # Inspect pending metadata, without running a model
@@ -447,7 +447,10 @@ remain available. A wholly empty notebook still says **Not started**.
   4,096 characters, retained coding inputs up to 4,096, and repository
   snapshots up to 65,536, with truncation
   marked. Cited conversations show up to twelve recent archived
-  messages with the total count. Missing original bodies are labeled, never
+  messages with the total count. Excerpts labelled `[personal]` or
+  `[sensitive]` appear only in the reader on this computer (the snapshot and
+  the local live reader), behind **Hide labelled passages**; the O Chat view
+  never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
 - **Open threads** shows all supported obligations with direct record links.
@@ -1061,6 +1064,10 @@ before it refuses anything.
   a party, a passed event is not open, a contact detail must be the person's,
   and "not established" fails when a supplied original establishes it. Each
   finding names its failing claim. `INSUFFICIENT` is recorded, never a refusal.
+  The auditor also reads the later messages in each cited thread, and the
+  First and Last contact code computed from the whole archive: the packet's
+  date range is not the relationship's. A claim a truncated excerpt neither
+  supports nor contradicts is left out, not failed.
 - **Two repair turns for every page type.** What review names goes back to the
   writer with where to read the originals. Only project pages had repairs
   before; hamish-mcfarlane and two skill pages stayed unwritten after 1.9.2b3's
@@ -1071,11 +1078,23 @@ before it refuses anything.
   holding each refuted claim goes (found without its `[n]` markers, since the
   audit copies claims without them), a contact field says `Unknown`, and the
   rest of the page is saved. `review.json` says `bounded citation audit failed;
-  N refuted claims removed`. Anything else (two page titles, a missing section)
-  still refuses the page.
+  N refuted claims removed`. Anything else still refuses the page.
 - **Code settles shape.** A heading glued to a paragraph goes back on its own
   line and a repeated section is merged into the first, instead of refusing
-  the page (hamish-mcfarlane was refused for it on every pass).
+  the page (hamish-mcfarlane was refused for it on every pass). A second page
+  title goes; a leftover "not investigated yet" becomes bare `Unknown`; a
+  History past 16 lines folds its oldest years into one line each; an
+  `investigation:` citation goes from project and skill pages. A page is
+  refused for size only past 30,000 characters and longer than before.
+- **A citation that resolves is kept.** Inline ids (`[outlook:3a09…]`,
+  (`` `project-source:…` ``)) become numbered citations before Facts are
+  checked; mail rem holds in `rem.db` or `.state/mail` counts even when the
+  turn was not handed it; a raw provider id is written as its digest, a
+  backticked id without backticks, and `file:/x@<short hash>` pinned to the
+  file's SHA-256 when that hash names its current content. An id that resolves
+  nowhere still goes. Maintenance records what code dropped (`review.json`:
+  `repairs`), keeps the pages it refused under `refused/`, and is handed the
+  later messages in its batch's threads (`thread-tail` items).
 - **A hash-pinned local file is a source on any page**:
   `file:/path#sha256:<current hash>`. The job-followup skill page cited its
   applications log this way and was refused, because only project pages took

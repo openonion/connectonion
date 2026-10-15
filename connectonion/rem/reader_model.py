@@ -137,8 +137,14 @@ def input_scope(saved: dict, message: dict) -> str:
         if message.get("body_line") else "")
 
 
-def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -> dict[str, dict]:
-    """Only archived, cited excerpts enter the owner-only local snapshot."""
+def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
+                  private: bool = False) -> dict[str, dict]:
+    """Only archived, cited excerpts enter the owner-only local snapshot.
+
+    `private` is for the owner's reader on this machine: labelled
+    ([personal]/[sensitive]) excerpts show there, behind the reader's toggle.
+    Without it -- the claim audit's model, the O Chat view -- they are left out.
+    """
     ids = _source_ids(records)
     file = state_path(root, "rem.db")
     if not ids or file.is_symlink():
@@ -158,7 +164,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
-                           or repository_context(root, source) or retained_session_context(root, source)
+                           or repository_context(root, source, private) or retained_session_context(root, source)
                            or attachment_context(root, source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
@@ -168,7 +174,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             message = dict(row)
             saved = archived_message(root, message) or {}
             raw = saved.get("text" if message.get("body_line") else "body")
-            if not isinstance(raw, str) or PRIVATE.search(raw):
+            if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
                 continue
             mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
@@ -194,7 +200,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
 
 
 def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: int = 40,
-                        budget: int = 300_000) -> dict[str, dict]:
+                        budget: int = 300_000, private: bool = False) -> dict[str, dict]:
     """A bounded local conversation view around cited archived messages.
 
     Each thread is selected by a cited message. Its latest twelve archived
@@ -224,7 +230,7 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
                 message = dict(row)
                 saved = archived_message(root, message) or {}
                 raw = saved.get("text" if message.get("body_line") else "body")
-                if not isinstance(raw, str) or PRIVATE.search(raw):
+                if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
                     continue
                 excerpt = raw.strip()[:min(900, budget)]
                 if not excerpt:
@@ -240,3 +246,46 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
     finally:
         db.close()
     return output
+
+
+def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1_500,
+                     budget: int = 40_000) -> list[dict]:
+    """The archived mail that came after these messages in their own threads, oldest first.
+
+    A turn that sees only its batch reads an ask as still open after the reply
+    that settled it: 10 of 35 bad claims in a real audit were stale this way.
+    Labelled ([personal]/[sensitive]) mail is left out; secret shapes are removed.
+    """
+    from contextlib import closing
+    from .files import SECRET_SHAPES
+    file = state_path(root, "rem.db")
+    if not file.is_file() or file.is_symlink():
+        return []
+    with closing(sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)) as db:
+        db.row_factory = sqlite3.Row
+        rows = [row for source in dict.fromkeys(sources) if (row := _cited_row(db, source)) is not None
+                and (row["thread"] or "").startswith("mail:")]
+        given, after = {row["id"] for row in rows}, {}
+        for row in rows:
+            after[row["thread"]] = max(after.get(row["thread"], ""), row["time"] or "")
+        later = [row for thread, time in after.items() for row in reversed(db.execute(
+            "select * from messages where thread = ? and time > ? order by time desc limit ?",
+            (thread, time, per_thread)).fetchall()) if row["id"] not in given]
+    found = []
+    for row in later:
+        saved = archived_message(root, dict(row)) or {}
+        raw = saved.get("body")
+        if not isinstance(raw, str) or PRIVATE.search(raw):
+            continue
+        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]",
+                                 raw.partition("--- Email Body ---")[2] or raw).strip()[:min(chars, budget)]
+        if not text:
+            continue
+        provider, _, raw_id = row["id"].partition(":")
+        found.append({"role": "thread-tail", "source": f"{provider}:{hashlib.sha256(raw_id.encode()).hexdigest()[:12]}",
+                      "speaker": row["sender"] or "", "timestamp": row["time"] or "", "subject": row["subject"] or "",
+                      "thread": row["thread"], "text": text})
+        budget -= len(text)
+        if budget <= 0:
+            break
+    return found

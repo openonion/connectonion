@@ -949,8 +949,10 @@
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
 
-// Private sentences are visible until the reader chooses to hide them.
+// Private sentences are visible until the reader chooses to hide them, on the
+// owner's own machine; a shared or remote view starts with them hidden.
 (function() {
+  if (REM && REM.shared) document.documentElement.classList.add("hide-private");
   try {
     if (location.protocol === "file:" && localStorage.getItem("co-rem-private") === "hidden")
       document.documentElement.classList.add("hide-private");

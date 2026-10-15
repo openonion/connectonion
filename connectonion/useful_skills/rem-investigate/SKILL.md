@@ -57,8 +57,8 @@ refuses a quote it cannot find there.
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or write bare
-  `Unknown`. Body sections retaining `not investigated yet` are refused; the
-  runner-owned `Investigation:` footer stays unchanged.
+  `Unknown`; a leftover one becomes bare `Unknown`, the page has not been
+  investigated otherwise. The runner-owned `Investigation:` footer stays unchanged.
 - The user dictates, so a name in their own messages can be misheard ("WTF
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
@@ -74,8 +74,8 @@ refuses a quote it cannot find there.
 ## Evidence format
 
 Cite `[1]`, `[2]`; under `Sources` define each number once, `- [n] <source id> —
-<date>`, nothing more. Only citable, or the page is rejected: a source id
-from the material (the `###` heading of an evidence entry: `outlook:…`,
+<date>`, nothing more. Only a source id that resolves is kept: one
+from the material or the mail archive (the `###` heading of an evidence entry: `outlook:…`,
 `gmail:…`, `codex:…:81499`). Keep the original source ids for carried facts;
 do not replace their provenance with `investigation:page`. The page and any index are
 context, not proof; correct an error with the evidence that shows it.
@@ -87,7 +87,7 @@ date does not prove first contact.
 ## Candidate and finish
 
 Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
-or write other pages. Keep each normalized heading once and the `Investigation:`
+or write other pages: the runner reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
 footer unchanged. Requests prove intent, not completion. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says
 `not investigated yet` (exclude the footer); every private sentence, including

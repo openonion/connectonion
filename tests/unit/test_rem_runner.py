@@ -381,7 +381,7 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     items = [{"role": "user", "source": "codex:abc:1", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}]
     good = before["people/good.md"].replace("## Who they are\n- Unknown — not investigated yet",
                                              "## Who they are\n- Ships the agent. [1]").replace(
-        "## Sources\n- (none yet)", "## Sources\n- [1] `codex:abc:1`, 2026-09-24.")
+        "## Sources\n- (none yet)", "## Sources\n- [1] codex:abc:1, 2026-09-24.")
     bad = before["people/bad.md"].replace("## Who they are\n- Unknown — not investigated yet",
                                            "## Who they are\n- Invented. [1]").replace(
         "## Sources\n- (none yet)", "## Sources\n- [1] Outlook message 39.")
@@ -724,7 +724,6 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     """#2014: the placeholder rule for a page's own investigation refused every
     one-page maintenance turn on a never-investigated page (290k tokens, 0 pages)."""
     from connectonion.rem import runner
-    from connectonion.rem.runner import RunFailed
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
@@ -735,13 +734,10 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     candidate = tmp_path / "candidate.md"
 
     candidate.write_text(one_line)
-    with pytest.raises(RunFailed, match="not investigated yet"):
-        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
-                                  tmp_path, None)
-    candidate.write_text(one_line)
     runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
                               tmp_path, None, investigation=False)
-    assert "Leads the data team." in notebook.read("people/mia.md")
+    page = notebook.read("people/mia.md")
+    assert "Leads the data team." in page and "## Insight\n- Unknown — not investigated yet" in page
 
 
 def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatch):

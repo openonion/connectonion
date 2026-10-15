@@ -1355,7 +1355,12 @@ def make_rem_app(factory):
             record = _resolve_page(notebook, target)
             from ...rem.investigate import NothingNew
             try:
-                result = one(root, notebook, record)
+                # The owner naming a page is the retry: the refusal ledger is
+                # for scheduled runs, and made them add --retry-refused to
+                # their own request.
+                result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
+                                           progress=progress,
+                                           retry_refused=retry_refused or not record.startswith("skills/"))
             except NothingNew as quiet:
                 # Nothing new is a finished run, not a failure: it read every
                 # source and made no model call. It printed "Error:", exited 1
