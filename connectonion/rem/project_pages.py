@@ -417,21 +417,27 @@ def current_line_packet(folder: str, ref: str, revision: str, stamp: str, newest
     commits; read from the working tree, its page described August (2026-10-15).
     """
     from .investigate import _git, checkout_state
+    # Dated by the revision, not by when it was read: a README cited "2026-10-15"
+    # said nothing about when the project was described that way.
+    committed = _git(folder, "show", "-s", "--format=%cI", revision) or stamp
     items = []
     for name in ("README.md", "README.rst", "README.txt", "README"):
         content = _git(folder, "show", f"{revision}:{name}")
         if content:
             items.append({"role": "readme", "source": f"git:{folder}:{revision}:{name}",
-                          "timestamp": stamp, "text": _excerpt(content, README_CHARS)})
+                          "timestamp": committed, "text": _excerpt(content, README_CHARS)})
             break
     for name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift"):
         content = _git(folder, "show", f"{revision}:{name}")
         if content:
             items.append({"role": "project-file", "source": f"git:{folder}:{revision}:{name}",
-                          "timestamp": stamp, "text": _excerpt(content, 1_500)})
+                          "timestamp": committed, "text": _excerpt(content, 1_500)})
         if len(items) >= 3:
             break
     state = checkout_state(folder, newest_session)
+    remote = re.sub(r"//[^/@]+@", "//", _git(folder, "remote", "get-url", "origin"))
+    if state and remote:
+        state += f" Remote origin: {remote}."
     if state:
         state += "\nWorking tree status (not the fixed revision):\n" + (_git(folder, "status", "--short") or "clean")
         items.append({"role": "checkout-state", "source": f"git:{folder}:checkout-state",
@@ -439,7 +445,7 @@ def current_line_packet(folder: str, ref: str, revision: str, stamp: str, newest
     history = _history(folder, ref, revision)
     if history:
         items.append({"role": "recent-commits", "source": f"git:{folder}:{revision}:recent-commits",
-                      "timestamp": stamp, "text": history})
+                      "timestamp": committed, "text": history})
     return items
 
 

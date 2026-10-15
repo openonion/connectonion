@@ -14,8 +14,10 @@ Join them; neither alone is the page.
    its commits and the unmerged branches committed lately. A working tree on
    an old branch is not the project: read files at the named revision with
    `git show`, never from the checkout.
-2. **Find the purpose** in the README at that revision and the owner's
-   earliest messages that describe the whole project. Quote the owner.
+2. **Hear the owner.** Read every supplied message: why they started it,
+   the choices they made (price, scope, audience, people), what they
+   reversed. These are the page's voice, quoted; the repository verifies
+   them. Purpose comes from those words or the README at that revision.
 3. **Close every thread you can.** For each ask, issue or plan in the
    messages, look for its outcome: later messages, commit subjects
    (`git log --all --grep '<term>'`), branch names. A commit after the ask

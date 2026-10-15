@@ -69,9 +69,11 @@ Keep this order for those shown:
 
 **Insight**: 2–4 cited bullets of at most 30 words, starting `Now:`,
 `Changed:`, `At stake:` or `Pattern:`: what changes a teammate's next
-decision. A reversed choice, a requirement that moved, or a conflict between
-the owner's words and the code (the owner says 8% of net, the PDF says gross).
-A branch, commit date or README topic is not an insight. None: `- Unknown`.
+decision. Compare the owner's words with the repository first: a requirement
+the code contradicts or has not caught up with (the owner says 8% of net, the
+PDF says gross), a reversed choice, a requirement that moved. What the code
+does belongs in `What it is`; a branch, commit date or README topic is not an
+insight. None: `- Unknown`.
 
 **What it is**: one or two sentences: the product, who it serves, what it
 does, from the README or the owner's description of the whole project, never
@@ -80,7 +82,7 @@ the loudest recent thread.
 **Why it exists**: the problem and intended outcome, opened with the owner's
 words that started it or best state its purpose:
 `YYYY-MM-DD — “<exact words>” [n]`. The newest request is not why a project
-exists; without such words, cite the README's purpose statement.
+exists; without such words, quote the README's purpose, dated by its revision.
 
 **Where it stands**: 3–5 bullets about now, newest first, each dated: the
 latest finished work (commit subjects on the current line, the owner's
@@ -100,9 +102,11 @@ Nothing open: bare `Unknown`, never a "no pending work" line.
 status with its evidence. Check the history for a fix before calling one
 open. A report is not a diagnosis; a proposed fix is not a resolution.
 
-**Key decisions**: `- YYYY-MM-DD — <choice, under 12 words>: “<the owner's
-exact words>” [n]`. A reversal is its own line quoting the reversal. A
-request alone or current behaviour alone is not a decision; label proposals.
+**Key decisions**: the choices the owner made, newest first, up to eight:
+price, scope, audience, positioning, architecture, what to drop.
+`- YYYY-MM-DD — <choice, under 12 words>: “<the owner's exact words>” [n]`.
+A reversal is its own line quoting the reversal. A request alone or current
+behaviour alone is not a decision; label proposals.
 
 **Overview** and **Try it**, when the README, docs or code at the current line
 show them: `Overview` is 3–7 narrow ASCII steps in a `text` fence (user start,
@@ -110,7 +114,8 @@ actions, outcome); `Try it` is an entry point, a tiny example and the visible
 result, at most three steps, in the source's order. A plausible diagram is
 not evidence; an unknown flow is omitted.
 
-**People and ownership**: who to ask, by area, linking person pages. One
+**People and ownership**: who to ask, by area, and the partners, clients or
+collaborators the messages name on this project, linking person pages. One
 commit or message never makes someone an owner.
 
 **Getting started**: per role, commands and outputs only when verified.
