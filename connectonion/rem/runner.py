@@ -666,6 +666,29 @@ def _owner_phones(notebook, record) -> list[str]:
             if "unknown" not in part.casefold() and part.strip()]
 
 
+def _lead(text: str) -> str:
+    """The prose between a page's title and its first section."""
+    body = re.split(r"(?m)^## ", text.partition("\n")[2], maxsplit=1)[0]
+    return body.strip()
+
+
+def _keep_identity(record: str, before: str, after: str) -> str:
+    """A lead whose first sentence the last resort dropped opens with who they are, from Facts.
+
+    Tamara's and Nina's after-pages (2026-10-15) lost "who this is to the user"
+    to an audit finding that a citation was missing beside it; the lead then
+    opened on an HR ticket. Role and Company are cited fields on the same page.
+    """
+    from . import facts
+    lead, first = _lead(after), re.split(r"(?<=[.!?。])\s+", _lead(before), maxsplit=1)[0]
+    identity = facts.identity_sentence(record, after)
+    if not identity or not first or lead.startswith(first):
+        return after
+    title, _, rest = after.partition("\n")
+    body = rest.lstrip("\n")
+    return f"{title}\n\n{identity}" + (" " if lead else "\n\n") + body
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
@@ -683,6 +706,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
+    text, foreign = facts.drop_foreign_labels(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     if record.startswith("people/") and record != owner.get("record"):
@@ -741,11 +765,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
                    read_json(directory / "claim-review.json", {}).get("findings") or []]
+        before_drop = text
         text, unlocated = drop_claims(record, text, [*refuted, *(
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
+        text = _keep_identity(record, before_drop, text)
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
+    if last_resort and record.startswith("people/") and not _lead(text):
+        # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
+        # claim in each of its sentences. The page before this turn had one.
+        errors.append("Audit removed the whole lead; the page before this turn is kept")
     # A refuted claim no line holds any more is already gone: a repair turn
     # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
     # on the v193q1 trial (2026-10-15); it is recorded instead.
@@ -788,7 +818,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
-                   "facts_uncited_dropped": uncited,
+                   "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
@@ -1143,11 +1173,16 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if candidate and search and not quick_first_pass:
+        # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
                    f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
-                   "plain words, or from:, to:, participants: an address. You get one more turn with what they "
-                   "find. The coverage item says what was already searched; do not repeat those addresses.")
+                   "plain words, or from:, to:, participants: an address. For GitHub work, "
+                   "`github:<owner/repo>#<number>` or `github:<owner/repo> created:>=<promise-date>`; "
+                   "repository and date only, optionally one title word, never person/team names. "
+                   "Match returned `Author:` logins to the person (a login like jdoe2001 for Jane Doe); state the match. "
+                   "You get one more turn with what they find; cite their ids. The coverage item says what was "
+                   "already searched; do not repeat those addresses.")
     started = time.monotonic()
     result = {}
     inquiry_usage = {}

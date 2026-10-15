@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -879,6 +880,9 @@ def mail_search(clients: dict, known: set | None = None):
     def search(queries: list[str]) -> list[dict]:
         found, seen = [], set()
         for query in queries:
+            if query.startswith("github:"):
+                found += github_search(query)
+                continue
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
                 try:
@@ -912,6 +916,39 @@ def mail_search(clients: dict, known: set | None = None):
                                   "source": f"{kind}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}"})
         return found
     return search
+
+
+GITHUB_QUERY = re.compile(r"^github:([\w.-]+/[\w.-]+)(?:#(\d+)|\s+(.+))$")
+GITHUB_FIELDS = "number,title,author,createdAt,state,url"
+
+
+def github_search(query: str) -> list[dict]:
+    """Read-only GitHub lookups a turn asks for, as citable items (2026-10-15).
+
+    Richard Lai opened #2443-#2446 on 2026-10-12, as he had promised. A turn
+    found them with its own `gh` call and cited the issue URLs, and the next
+    repair removed them: the audit reads only supplied originals. Run here,
+    they are supplied: `github:owner/repo#2443`, or `github:owner/repo <search>`.
+    """
+    match = GITHUB_QUERY.match(query.strip())
+    if not match:
+        return [{"role": "search-failure", "source": "", "query": query,
+                 "text": "write github:<owner/repo>#<number> or github:<owner/repo> <search words>"}]
+    repo, number, words = match.groups()
+    argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
+            ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
+             GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
+    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    if run.returncode:
+        return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
+    rows = json.loads(run.stdout or "[]")
+    return [{"role": "github", "source": f"github:{repo}#{row['number']}", "query": query,
+             "speaker": (row.get("author") or {}).get("login", ""), "timestamp": row.get("createdAt", ""),
+             "subject": row.get("title", ""),
+             "text": f"{row.get('url', '')}\nState: {row.get('state', '')}\nAuthor: "
+                     f"{(row.get('author') or {}).get('login', '')}\nCreated: {row.get('createdAt', '')}\n"
+                     f"Title: {row.get('title', '')}\n\n{row.get('body') or ''}"[:6000]}
+            for row in (rows if isinstance(rows, list) else [rows])]
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):
@@ -1001,8 +1038,49 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+ATTACHMENT_EXCERPT = 8000
+
+
+def _excerpt(item: dict) -> dict:
+    """A long attachment travels as its head and the file that holds the rest.
+
+    Ody's first round (2026-10-15) was one 14k-character generated report and
+    one message: agent-written PDFs and CSVs filled whole rounds while the
+    mail that set the relationship's terms stayed in files nobody opened.
+    """
+    text = item.get("text")
+    if item.get("role") != "attachment" or not isinstance(text, str) or len(text) <= ATTACHMENT_EXCERPT:
+        return item
+    rest = f"{len(text) - ATTACHMENT_EXCERPT:,} more characters"
+    where = f" in {item['file']}" if item.get("file") else ""
+    return {**item, "text": f"{text[:ATTACHMENT_EXCERPT]}\n[Excerpt: {rest}{where}.]"}
+
+
+def _thread_of(item: dict, threads: dict) -> str:
+    """The provider thread a message or its attachment belongs to; else the item alone."""
+    source = str(item.get("source") or "")
+    parent = ":".join(source.split(":")[:2])
+    return item.get("thread") or threads.get(parent) or source or str(id(item))
+
+
+def by_thread(items: list[dict]) -> list[dict]:
+    """Each thread whole and in order, threads ordered by their latest message.
+
+    Cut by date, a request sat in one round and its reply in the next, and
+    the page said "no reply is established" (Tamara, Richard 2026-10-15). A
+    thread read whole shows how it ended; the last round holds what is live.
+    """
+    threads = {i["source"]: i["thread"] for i in items if i.get("source") and i.get("thread")}
+    groups = {}
+    for item in items:
+        groups.setdefault(_thread_of(item, threads), []).append(item)
+    stamp = lambda i: str(i.get("timestamp") or "")
+    ordered = sorted((sorted(group, key=stamp) for group in groups.values()), key=lambda g: stamp(g[-1]))
+    return [item for group in ordered for item in group]
+
+
 def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
-    """Oldest first, each round small enough to travel in the prompt, every item whole or split.
+    """Thread by thread, the most recently active last, each round small enough for the prompt.
 
     Laid out in files, the model read 3.6-8.7% of a large page's evidence
     (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
@@ -1010,7 +1088,7 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
     from .runner import readable_material
     measure = lambda parts: len(readable_material(parts).encode("utf-8"))
     rounds, current, size = [], [], 0
-    for item in sorted(items, key=lambda i: str(i.get("timestamp") or "")):
+    for item in by_thread([_excerpt(item) for item in items]):
         for part in _split_item(item, room_bytes, measure):
             weight = measure([part])
             if current and size + weight > room_bytes:
@@ -1039,27 +1117,32 @@ def known_addresses(root: Path) -> set:
 
 
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
-              "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
-              "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
-              "The page should get better, not only longer. Then follow the leads it raises.")
+              "in full, each thread together, the most recently active last. Read all of it. Improve the page "
+              "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
+              "corrects; delete what it supersedes, repeats or settles. The page should get better, not only "
+              "longer. Then follow the leads it raises.")
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
-                  "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
-                  "superseded statements and doubts that do not change what the user does next; merge what "
-                  "is said twice. Insight says what matters now; History has one line per thread -- date, what "
-                  "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
-                  "most five, each one that would change the next step. For a thread whose outcome is not "
-                  "established, request a mail search for the reply before writing so. Keep each cited fact you "
-                  "keep with its citation; add no claim without a citation on the page or from a search. "
-                  "This round supplies no evidence on purpose: its work is editing, so NO CHANGE is only right "
-                  "when the page already reads as one account with every doubt under Uncertainties.")
+                  "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
+                  "user sees first. The lead's three sentences say who they are to the user, what is live (who "
+                  "owes whom, the ask quoted, its date and any due date) and the user's next step. Open threads "
+                  "keeps only what is still owed, each line starting with who owes whom, the user's debts first; "
+                  "a thread that was answered, delivered, past its event date or quiet for 60 days moves to "
+                  "History. History has one line per thread -- date, what it was about, how it ended. Insight "
+                  "says what no other section does. Then delete: repetition across sections, superseded "
+                  "statements, and every 'not established', 'unconfirmed' or 'in the supplied mail' clause -- "
+                  "state the dated fact instead, or move a doubt that changes the next step to Uncertainties "
+                  "(at most five). For a thread whose outcome you have not seen, request a mail search for the "
+                  "reply before writing so. Keep each cited fact you keep with its citation; add no claim without "
+                  "a citation on the page or from a search. This round supplies no evidence on purpose: its work "
+                  "is editing, so NO CHANGE is only right when the page already reads this way.")
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
-                "section. Make exactly one edit per listed line: rewrite it as what its citation does establish "
-                "(the ask, the date, who owes what) and drop the clause about what is not known; or move it under "
-                "Uncertainties if the doubt would change the user's next step (five there at most); or delete it. "
-                "Add no claim, no source and no new line about what is not evidenced. Then end. NO CHANGE is not "
-                "an answer to this round.\n\n{lines}")
+                "section. Make exactly one edit per listed line: delete only the clause about what is not known "
+                "and keep the rest of the sentence, its facts and citations (the ask, the date, who owes what); "
+                "or move the doubt under Uncertainties if it would change the user's next step (five there at "
+                "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
+                "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
 
 
 def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
@@ -1085,11 +1168,24 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
              {"role": "round", "source": "investigation:round", "text": note}]
     if stage_progress:
         stage_progress("editing round")
+    page = notebook.read(record)
     try:
         out = runner(notebook, items, config, stage="investigate")
     except RunFailed as error:
         out = {"usage": error.usage, "refused": str(error), "changed": []}
+    if _cut_too_much(page, notebook.read(record)):
+        # Ody Zhou, 2026-10-15: told it could delete a hedged line, the turn took
+        # the lead, the term-sheet paragraph and its Signing entity: 6.6k -> 3.9k.
+        notebook.write(record, page)
+        out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
+               "changed": []}
     return before, hedged_lines(notebook.read(record)), out
+
+
+def _cut_too_much(before: str, after: str) -> bool:
+    """An edit of hedges that emptied the lead or removed over a third of the page."""
+    from .runner import _lead
+    return bool(_lead(before)) and not _lead(after) or len(after) < len(before) * 2 // 3
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
@@ -1571,6 +1667,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
+    elif not record.startswith("projects/"):
+        # One turn reads it all; thread by thread, each reply sits under its ask.
+        items = by_thread(items)
     from .page_review import normalize
     if original_material:
         write_json(original_material, original_items)

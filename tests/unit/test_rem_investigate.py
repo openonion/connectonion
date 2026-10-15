@@ -2128,3 +2128,61 @@ def test_a_deepen_with_nothing_before_the_window_is_nothing_new_not_a_failure(tm
         inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                         extractor=lambda *a: pytest.fail("no digest pass"), rounds=3, read_before="2026-04-12",
                         runner=lambda *a, **kw: pytest.fail("no model turn"))
+
+
+def test_a_thread_is_read_whole_in_one_round_and_the_live_threads_come_last():
+    """2026-10-15: cut by date, a request sat in one round and its reply in the
+    next, and Tamara's and Richard's pages said "no reply is established"."""
+    from connectonion.rem.investigate import evidence_rounds
+    ask = {"role": "other", "source": "outlook:a1", "thread": "mail:outlook:t1", "timestamp": "2026-07-01T00:00:00Z",
+           "text": "Could you send the deck?"}
+    other = {"role": "other", "source": "outlook:b1", "thread": "mail:outlook:t2", "timestamp": "2026-08-01T00:00:00Z",
+             "text": "Lunch?"}
+    reply = {"role": "user", "source": "outlook:a2", "thread": "mail:outlook:t1", "timestamp": "2026-09-01T00:00:00Z",
+             "text": "Sent."}
+    order = [item["source"] for part in evidence_rounds([other, reply, ask], 100_000) for item in part]
+    assert order == ["outlook:b1", "outlook:a1", "outlook:a2"]
+
+
+def test_a_long_attachment_travels_as_its_head_and_its_file():
+    """Ody's first round (2026-10-15) was one generated 14k-character report."""
+    from connectonion.rem.investigate import ATTACHMENT_EXCERPT, evidence_rounds
+    report = {"role": "attachment", "source": "gmail:m1:report.pdf", "file": "/a/report.pdf",
+              "timestamp": "2026-09-22T00:00:00Z", "text": "x" * (ATTACHMENT_EXCERPT * 3)}
+    mail = {"role": "other", "source": "gmail:m1", "thread": "mail:gmail:t", "timestamp": "2026-09-22T00:00:00Z",
+            "text": "see attached"}
+    [part] = evidence_rounds([report, mail], 100_000)
+    shown = next(item for item in part if item["source"] == "gmail:m1:report.pdf")["text"]
+    assert len(shown) < ATTACHMENT_EXCERPT + 200 and "/a/report.pdf" in shown
+
+
+def test_an_editing_round_that_deletes_the_lead_is_undone():
+    """Ody Zhou, 2026-10-15: told it could delete a hedged line, the editing turn
+    took the lead and the term-sheet paragraph, 6.6k -> 3.9k characters."""
+    from connectonion.rem.investigate import _cut_too_much
+    page = "# Ody\n\nOdy is the user's co-founder [1]; completion is not established.\n\n## Facts\n" + "- x\n" * 40
+    assert _cut_too_much(page, page.replace("Ody is the user's co-founder [1]; completion is not established.", ""))
+    assert _cut_too_much(page, "# Ody\n\nOdy is the user's co-founder [1].\n\n## Facts\n")
+    assert not _cut_too_much(page, page.replace("; completion is not established", ""))
+
+
+def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
+    """Richard Lai's four issues (2026-10-12) were found by the turn's own gh
+    call and then removed: the audit reads only supplied originals."""
+    import subprocess
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        rows = [{"number": 2443, "title": "[BUG] init scans before consent", "author": {"login": "rlai2001"},
+                 "createdAt": "2026-10-12T16:30:54Z", "state": "OPEN",
+                 "url": "https://github.com/openonion/connectonion/issues/2443"}]
+        return subprocess.CompletedProcess(argv, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(inv.subprocess, "run", run)
+    [item] = inv.mail_search({})(["github:openonion/connectonion created:>=2026-10-12"])
+    assert item["source"] == "github:openonion/connectonion#2443" and "rlai2001" in item["text"]
+    assert calls[0][:5] == ["gh", "search", "issues", "-R", "openonion/connectonion"]
+    assert calls[0][calls[0].index("--limit") + 1] == "30"
+    [bad] = inv.github_search("github:not a repo")
+    assert bad["role"] == "search-failure"
