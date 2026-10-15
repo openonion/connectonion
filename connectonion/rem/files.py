@@ -352,10 +352,12 @@ class Notebook:
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
+    # The first screen answers what, why, where it stands and what is next;
+    # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
     PROJECT_SECTIONS = (
-        "What it is", "Overview", "Try it", "Where it stands", "Latest issues",
-        "People and ownership", "Getting started", "Why it exists", "Key decisions",
-        "How it is built", "Architecture map", "Paths", "Open threads", "Uncertainties",
+        "What it is", "Why it exists", "Where it stands", "Open threads", "Latest issues",
+        "Key decisions", "Overview", "Try it", "People and ownership", "Getting started",
+        "How it is built", "Architecture map", "Paths", "Uncertainties",
     )
 
     def stub_project(self, record: str, name: str, paths=(), **known) -> bool:

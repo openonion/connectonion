@@ -10,8 +10,6 @@ Output: that page, edited. Kind-specific rules follow.
 
 ## Investigate like a reporter
 
-Work like an investigative journalist, not a summariser.
-
 - **Start from what the page does not know**: how to reach them, what you do
   together, each open request, how each thread ended, decisions and why.
 - **Follow every lead.** A name, company, amount, attachment or request you read
@@ -32,7 +30,7 @@ settled; longer is not better.
 
 **Aim for about 15k characters.** Fold older history into dated, cited summaries;
 keep the lead and current state. Growth beyond 20,000 characters is refused.
-`History`: one dated line per thread, how it ended; at most sixteen.
+`History`, on a page whose shape has one: one dated line per thread, how it ended; at most sixteen.
 
 ## Quote or summarise
 

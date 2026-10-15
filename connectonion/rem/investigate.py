@@ -310,7 +310,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -1119,9 +1119,11 @@ def known_addresses(root: Path) -> set:
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
               "in full, each thread together, the most recently active last. Read all of it. Improve the page "
               "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
-              "corrects; delete what it supersedes, repeats or settles. The page should get better, not only "
-              "longer. Then follow the leads it raises.")
-SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
+              "corrects; delete what it supersedes, repeats or settles. Keep what earlier rounds established from "
+              "sources this round does not hold: a decision quoted from an earlier part is still a decision. "
+              "The page should get better, not only longer. Then follow the leads it raises.")
+# A person page's editor shapes the lead and who owes whom; a project's keeps its own shape.
+PERSON_SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
                   "user sees first. The lead's three sentences say who they are to the user, what is live (who "
                   "owes whom, the ask quoted, its date and any due date) and the user's next step. Open threads "
@@ -1135,6 +1137,16 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
                   "reply before writing so. Keep each cited fact you keep with its citation; add no claim without "
                   "a citation on the page or from a search. This round supplies no evidence on purpose: its work "
                   "is editing, so NO CHANGE is only right when the page already reads this way.")
+SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
+                  "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
+                  "superseded statements and doubts that do not change what the user does next; merge what "
+                  "is said twice. Insight says what matters now; History, on a page that has it, has one line per thread -- date, what "
+                  "it was about, how it ended (add no heading the page's shape lacks); Open threads keeps only what is still open; Uncertainties keeps at "
+                  "most five, each one that would change the next step. For a thread whose outcome is not "
+                  "established, request a mail search for the reply before writing so. Keep each cited fact you "
+                  "keep with its citation; add no claim without a citation on the page or from a search. "
+                  "This round supplies no evidence on purpose: its work is editing, so NO CHANGE is only right "
+                  "when the page already reads as one account with every doubt under Uncertainties.")
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
@@ -1196,6 +1208,22 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
     return max(INLINE_LIMIT - used, 20_000)
 
 
+def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> str:
+    """Keep carried evidence: connectonion's sixth round paraphrased all fifteen
+    owner quotes away; oo-api's synthesis gutted eight rounds' work (2026-10-15)."""
+    from .page_review import KEEP_SHARE, QUOTE, drop_claims, prose, shrinkage
+    if refuted:
+        before, _ = drop_claims(record, before, refuted)
+    after = notebook.read(record)
+    old = set(QUOTE.findall(prose(before)))
+    kept = old & set(QUOTE.findall(prose(after)))
+    reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
+              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
+    if reason:
+        notebook.write(record, before)
+    return reason
+
+
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
                config: dict, stage_progress=None) -> dict:
     """One turn per part, each on the page the last one left, then a synthesis turn.
@@ -1214,12 +1242,13 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
         note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
                                   last=max(dates, default="?"))
-                if part else SYNTHESIS_NOTE.format(total=total))
+                if part else (PERSON_SYNTHESIS_NOTE if record.startswith("people/") else SYNTHESIS_NOTE).format(total=total))
         leads = ("\n\nLeads from earlier rounds:\n" + "\n\n".join(ledgers)[-6000:]) if ledgers else ""
         items = [page_item(notebook.read(record)), *context,
                  {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
         if stage_progress:
             stage_progress(f"investigation round {number} of {total + 1}")
+        before = notebook.read(record)
         try:
             out = runner(notebook, items, config, stage="investigate")
         except RunFailed as error:
@@ -1231,21 +1260,33 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         threads += out.get("threads", [])
+        reason = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
+        if reason:
+            refused.append(f"Round {number} rejected: {reason}")
+            unread += material_sources(part)
+            continue
         changed = sorted({*changed, *out.get("changed", [])})
         if out.get("report"):
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
+    page = notebook.read(record)
     before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
     if edit is not None:
+        reason = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         if edit.get("refused"):
             refused.append(edit["refused"])
         threads += edit.get("threads", [])
-        changed = sorted({*changed, *edit.get("changed", [])})
-        if edit.get("report"):
-            ledgers.append(f"Editing round: {str(edit['report']).strip()}")
+        if reason:
+            from .page_review import hedged_lines
+            refused.append(f"Editing round rejected: {reason}")
+            after = hedged_lines(notebook.read(record))
+        else:
+            changed = sorted({*changed, *edit.get("changed", [])})
+            if edit.get("report"):
+                ledgers.append(f"Editing round: {str(edit['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
             "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
             "hedged_lines": [len(before), len(after)]}
@@ -1440,6 +1481,29 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
             and (not sent_only or item.get("role") == "user")]
 
 
+def prefill_project_dates(page: str, line_items: list[dict]) -> str:
+    """STR left dates Unknown despite its supplied first/newest commits (2026-10-15)."""
+    history = next((item for item in line_items if item.get('role') == 'recent-commits'), None)
+    section = re.search(r'(?ms)^## Facts\n(.*?)(?=^## |\Z)', page)
+    if not history or not section:
+        return page
+    number = max((int(n) for n in re.findall(r'\[(\d+)\]', page)), default=0) + 1
+    body = section[1]
+    commit = r'([0-9a-f]+) (\d{4}-\d{2}-\d{2}) (.+)'
+    for field, prefix in (('Started', 'First commit: '), ('Last activity', '')):
+        match = re.search(r'(?m)^' + prefix + commit, history['text'])
+        if match:
+            detail = f'first commit {match[1]}' if field == 'Started' else f'{match[3]} (commit {match[1]})'
+            body = re.sub(rf'(?m)^- {field}: Unknown[ \t]*$',
+                          lambda _: f'- {field}: {match[2]} — {detail} [{number}]', body)
+    if body == section[1]:
+        return page
+    page = page[:section.start(1)] + body + page[section.end(1):]
+    head, marker, sources = page.partition('\n## Sources\n')
+    sources = re.sub(r'(?m)^- \(none yet\)\n?', '', sources)
+    return head + marker + f'- [{number}] {history["source"]} — {history["timestamp"][:10]}\n' + sources
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -1540,6 +1604,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     gathered_items = len(items)
     leads = []
     project_roots = []
+    line = None
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
         # stale copy it would otherwise quote as current (#1955).
@@ -1547,14 +1612,19 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
         project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
-        leads = project_file_inventory(corrected)
+        from .project_pages import current_line
+        # A Git project is read at its current line, handed to every round; only
+        # a plain folder is read file by file. Sixty whole files of oo-api's
+        # working tree took five rounds before one of the owner's messages (2026-10-15).
+        line = current_line(corrected)
+        leads = [] if line else project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
         newest = _newest_session(root, record, corrected)
-        for path in project_roots:
+        for path in ([] if line else project_roots):
             state = checkout_state(path, newest)
             if state:
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
@@ -1586,14 +1656,24 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
         room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
-    repository_items = []
+    repository_items, line_items = [], []
     if record.startswith("projects/"):
-        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        from .project_pages import FILE_SNAPSHOT_CHARS, current_line_packet, repository_snapshots, retain_repository_context
+        if line:
+            line_items = repository_snapshots(current_line_packet(
+                *line, datetime.now(timezone.utc).isoformat(), newest))
+            corrected = prefill_project_dates(notebook.read(record), line_items)
+            if corrected != notebook.read(record):
+                # NO CHANGE or a failed turn still leaves these cited dates on the page (2026-10-15).
+                with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+                    retain_repository_context(root, line_items,
+                                              {i['source'] for i in line_items if i['role'] == 'recent-commits'})
+                    notebook.write(record, corrected)
         states = [item for item in items if item.get("role") == "checkout-state"]
         items = [item for item in items if item.get("role") != "checkout-state"]
         files = project_file_texts(leads) if summary else project_file_texts(
             leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
-        repository_items = repository_snapshots(states + files)
+        repository_items = line_items + repository_snapshots(states + files)
         if last and not gathered_items:
             supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
             previous = supplied.get("provided_sources")
@@ -1601,7 +1681,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 item["source"] in cited for item in repository_items)
             if same:
                 raise _nothing_new(record, subject, coverage, last)
-        items += repository_items
+        items += repository_items[len(line_items):]
     gathered_sources.update(item["source"] for item in repository_items)
     if not retry_refused and refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
         raise _refused_again(record, subject, refusal)
@@ -1681,11 +1761,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 "timestamp": now, "source": "investigation:page"}
 
     prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
-           "paths": project_roots, "timestamp": now,
-           "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
-                   ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
-                   "cite verifiable source IDs and revisions."}]
-         if project_roots else []) + (
+           "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
+         if project_roots else []) + line_items + (
         [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
            "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
            "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
@@ -1810,6 +1887,18 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
                       "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def _repositories_note(roots: list[str], line) -> str:
+    note = "Live local repository paths for direct inspection: " + ", ".join(roots) + ". "
+    if not line:
+        return note + ("Use git log, git show, README.md, pyproject.toml and package.json where present; "
+                       "cite verifiable source IDs and revisions.")
+    folder, ref, revision = line
+    return note + (f"The project's current line is {ref} at {revision}; the working tree may be an older branch. "
+                   f"Read files there with `git -C {folder} show {revision}:<file>` and cite "
+                   f"`git:{folder}:{revision}:<file>`. Find how a request ended with `git -C {folder} log "
+                   f"--all --grep` and the branch names in the supplied history.")
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],

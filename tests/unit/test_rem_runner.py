@@ -94,15 +94,15 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'Inspect mapped repository paths' in prompts[0]
+    assert 'Start from the current line' in prompts[0]
     assert 'git log' in prompts[0] and 'git show' in prompts[0]
-    assert 'A branch, commit date or' in prompts[0] and 'belongs elsewhere' in prompts[0]
+    assert 'alone is not an insight. None' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
-    assert 'Every concrete purpose, architecture, command, URL' in prompts[0]
+    assert 'earlier rounds read sources this turn does not hold' in prompts[0]
     assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 
@@ -907,8 +907,10 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
             write_json(directory / 'review.json', {'accepted': False,
                 'errors': ['Cited-claim audit did not pass; see claim-review.json']})
             write_json(directory / 'claim-review.json', {'verdict': 'fail',
-                'findings': [{'issue': 'A different adjacent claim needs correction'}]})
+                'findings': [{'claim': f'False claim {len(promotions)}',
+                              'issue': 'A different adjacent claim needs correction'}]})
             raise RunFailed('Claim audit failed', {'input_tokens': usage['input_tokens'] + 2})
+        write_json(directory / 'claim-review.json', {'verdict': 'pass', 'findings': []})
         book.write(record, candidate.read_text())
 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
@@ -920,6 +922,7 @@ def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(noteboo
     assert all('exact Sessions, First seen, and Last seen lines' in prompt for prompt in prompts[1:])
     assert promotions == [10, 22, 34]
     assert result['usage'] == {'input_tokens': 34}
+    assert result['refuted_claims'] == ['False claim 1', 'False claim 2']
     assert 'Candidate 3' in notebook.read(record)
 
 

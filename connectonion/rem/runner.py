@@ -641,6 +641,11 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             refused = rejected
             result["usage"] = rejected.usage or result.get("usage")
             errors = read_json(directory / "review.json", {}).get("errors") or []
+            # Keep earlier findings when a repair passes: quotes refuted in this turn may go (2026-10-15).
+            audit = read_json(directory / "claim-review.json", {})
+            if audit.get("verdict") == "fail":
+                result["refuted_claims"] = sorted({*result.get("refuted_claims", []),
+                                                   *(f["claim"] for f in audit["findings"])})
             # A page someone else changed meanwhile is theirs; a repair would overwrite it.
             if not errors or attempt == repairs or any(e.startswith("Page changed during") for e in errors):
                 break
@@ -1133,11 +1138,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
                    "nearby checkouts outside those Paths cannot be retained as evidence. "
-                   "Every concrete purpose, architecture, command, URL, status and next-action clause needs "
-                   "an original source that actually supports it; use bare Unknown if that source is unavailable. "
-                   "Audit carried text too, because the prior page is not an original source. "
-                   "Remove claims without original support; put search limits in the final run reply, not the page. "
-                   "In Open threads, list only supported unresolved exchanges; if none is confirmed, "
+                   "A carried line keeps its original citation and stays unless this material corrects or "
+                   "supersedes it: earlier rounds read sources this turn does not hold. "
+                   "Open threads holds only what is still open; if nothing is, "
                    "write bare Unknown, not a no-pending-work summary as an open item.")
     if stage == "maintain" and items:
         sources = sorted({item["source"] for item in items if isinstance(item.get("source"), str) and item["source"]})
@@ -1248,6 +1251,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "instructions_chars": metrics["instructions_chars"],
                "report": str(result.get("result") or ""),
                "review_candidates": read_json(directory / "review-candidates.json", [])}
+    outcome["refuted_claims"] = result.get("refuted_claims", [])
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).
         outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]

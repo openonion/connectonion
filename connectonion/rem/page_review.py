@@ -97,6 +97,15 @@ def compact_page(record: str, text: str) -> str:
     The map keeps its full scaffold until a write. A written page carries only
     supported detail plus the core needed to resume and audit it (#2122).
     """
+    # connectonion gained a History outside the project shape (2026-10-15); keep its lines as decisions.
+    history = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
+    if record.startswith('projects/') and history:
+        body = text[history.start(1):history.end(1)].strip()
+        text = text[:history.start()] + text[history.end():]
+        decisions = re.search(r'(?ms)^## Key decisions[ \t]*\n.*?(?=^## |^Investigation:|\Z)', prose(text))
+        at = decisions.end() if decisions else history.start()
+        heading = '' if decisions else '## Key decisions\n'
+        text = text[:at].rstrip('\r\n') + '\n\n' + heading + body + '\n\n' + text[at:]
     visible = prose(text)
     matches = list(SECTION_HEADING_RE.finditer(visible))
     if not matches:
@@ -1367,9 +1376,13 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
     held his own reply, which was true. A contact field keeps its label and
     says Unknown, as an untraceable citation leaves it.
     """
-    wanted = {claim: _claim_key(claim) for claim in claims if _claim_key(claim)}
+    # "Unknown" refuted is a gap to fill, not a line to drop: as a substring it
+    # matched every Unknown on oo-api's page (2026-10-15).
+    wanted = {claim: _claim_key(claim) for claim in claims
+              if _claim_key(claim) and not re.fullmatch(r'(?:[^:]{1,40}:)?unknown', _claim_key(claim))}
     head, marker, tail = text.partition('\n## Sources\n')
-    kept, found = [], set()
+    head, found = _drop_diagrams(head, wanted)
+    kept = []
     for line in head.split('\n'):
         hits = [claim for claim, key in wanted.items() if key in _claim_key(line)]
         found.update(hits)
@@ -1380,9 +1393,26 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
         else:
             sentences = re.split(r'(?<=[.!?。])\s+', line)
             rest = [s for s in sentences if not any(wanted[c] in _claim_key(s) for c in hits)]
-            if rest and len(rest) < len(sentences) and re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', rest[0]):
+            if rest and len(rest) < len(sentences) and _claim_key(re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', ' '.join(rest))):
                 kept.append(' '.join(rest))
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
+
+
+FENCE = re.compile(r'^```[^\n]*\n.*?^```[ \t]*$\n?', re.M | re.S)
+
+
+def _drop_diagrams(head: str, wanted: dict[str, str]) -> tuple[str, set[str]]:
+    """A refuted arrow drops its whole diagram: the audit refuted STR's collector -> Postgres
+    flow, copied across two lines no single line held, and the page was refused (2026-10-15)."""
+    found = set()
+
+    def refuted(match):
+        block = ' '.join(_claim_key(line) for line in match[0].splitlines())
+        hits = {claim for claim, key in wanted.items()
+                if ' '.join(_claim_key(line) for line in claim.splitlines()) in block}
+        found.update(hits)
+        return '' if hits else match[0]
+    return FENCE.sub(refuted, head), found
 
 
 SOURCE_LINE = re.compile(r'^([ \t]*- \[(\d+)\][ \t]+)([a-z][\w-]*:[^\s]+)(.*)$', re.M)
