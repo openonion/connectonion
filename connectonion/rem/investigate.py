@@ -301,6 +301,96 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
     return items
 
 
+def _project_documents(root: Path):
+    """Bound the client-note search to documents in mapped folders, not code or secrets.
+
+    A client's people appeared in the owner's project notes, while their Feishu
+    chat was unreadable to rem (2026-10-16). This follows the inventory's limits,
+    with at most 400 documents examined per folder.
+    """
+    resolved = root.resolve()
+    if (not root.is_dir() or root.is_symlink() or resolved == Path.home()
+            or resolved in Path.home().parents or len(resolved.parts) < 3):
+        return
+    excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
+    seen = 0
+    for current, dirs, files in os.walk(root, followlinks=False):
+        depth = len(Path(current).relative_to(root).parts)
+        dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
+                         and not (Path(current) / d).is_symlink()) if depth < 4 else []
+        for name in sorted(files):
+            if name.startswith(".") or Path(name).suffix.lower() not in (".md", ".txt"):
+                continue
+            seen += 1
+            if seen > 400:
+                return
+            if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
+                continue
+            path = Path(current) / name
+            if not path.is_symlink():
+                yield path
+
+
+def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
+    """Keep the lines around a client's name, rather than sending their whole project file."""
+    text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", text)
+    lines = text.splitlines()
+    hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
+    selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
+    parts, previous = [], -1
+    for n in selected:
+        if previous >= 0 and n > previous + 1:
+            parts.append("...")
+        parts.append(lines[n])
+        previous = n
+    excerpt = "\n".join(parts)
+    first = pattern.search(excerpt)
+    start = max(0, first.start() - chars // 2) if first and first.end() > chars else 0
+    return sum(count for _, count in hits), excerpt[start:start + chars]
+
+
+def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int = 12,
+                     chars: int = 2400) -> tuple[list[dict], str]:
+    """Read the owner's record of a subject whose messages rem cannot see.
+
+    A client lead's page found nothing in mail or typed sessions, although the
+    owner's delivery notes named them (2026-10-16). Notes are the owner's record,
+    never the subject's own messages or proof of their contact details.
+    """
+    names = [name for handle in handles if (name := handle.strip()) and not is_address(name)
+             and len(name) >= (2 if re.search(r"[\u3400-\u9fff]", name) else 4)]
+    if not names:
+        return [], "project documents: none name the subject (no identifying name supplied)"
+    pattern = re.compile("|".join(re.escape(name) for name in dict.fromkeys(names)), re.I)
+    roots = {Path(path).expanduser().resolve() for record in notebook.list("projects")
+             for path in project_paths(collapse_worktree_paths(notebook.read(record)))
+             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()}
+    found, seen = [], set()
+    for root in sorted(roots):
+        for path in _project_documents(root):
+            if path in seen:
+                continue
+            seen.add(path)
+            count, text = _mention_excerpt(path.read_text(encoding="utf-8", errors="replace"), pattern, chars)
+            if count:
+                found.append((count, path, text))
+    items = []
+    for _, path, text in sorted(found, key=lambda row: (-row[0], str(row[1])))[:max_files]:
+        items.append({"role": "project-file", "source": "file:" + str(path), "file": str(path),
+                      "snapshot_kind": "local-file", "captured_at": datetime.now(timezone.utc).isoformat(),
+                      "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                      "timestamp_scope": "File modification time, not the date anything in it happened.",
+                      "input_scope": "Excerpts of the owner's own project document around mentions of the subject; "
+                                     "written by the owner, not by the subject; a quote here is the owner's record "
+                                     "of what someone said, never their own message.",
+                      "text": text})
+    coverage = (f"project documents: {len(found)} file(s) name the subject in {len(roots)} project folder(s) searched; "
+                f"excerpts read from {len(items)} file(s)")
+    if not found:
+        coverage = f"project documents: {len(roots)} project folder(s) searched; none name the subject"
+    return items, coverage
+
+
 # Where a repository's current line is, in the order it is looked for.
 CURRENT_REFS = ("origin/HEAD", "origin/main", "origin/master", "main", "master")
 # A checkout whose HEAD is this much older than the newest session is not what is being worked on.
@@ -1532,6 +1622,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    if not sent_only and record.startswith(("people/", "orgs/")):
+        mentions, documents_coverage = project_mentions(notebook, [subject, *search_handles])
+        items.extend(mentions)
+        coverage.append(documents_coverage)
     if own_domains and not quick:
         if stage_progress:
             stage_progress("reading the organisation's website")

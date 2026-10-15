@@ -278,6 +278,162 @@ def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp
     assert inv.project_file_inventory(cited, max_files=2) == leads
 
 
+@pytest.fixture
+def project_documents(tmp_path):
+    root = _notebook(tmp_path, 'codex')
+    folder = tmp_path / 'client'
+    (folder / 'notes').mkdir(parents=True)
+    (folder / 'code').mkdir()
+    book = inv.Notebook(root)
+    book.stub_project('projects/client.md', 'Client delivery', [str(folder)])
+    return book, folder
+
+
+def test_project_mentions_reads_document_excerpts_and_redacts_secrets(project_documents):
+    book, folder = project_documents
+    note = folder / 'notes/a.md'
+    note.write_text('Outside the excerpt\n' + 'Context\n' * 10 + 'Before the question\n'
+                    '**宋佳颐**：请确认交付时间。\nKey: sk-' + 'a' * 32 + '\n'
+                    + 'After the question\n' * 10)
+    (folder / 'code/x.py').write_text('# 宋佳颐 is also named in code')
+    items, coverage = inv.project_mentions(book, ['宋佳颐', 'lead@example.org'])
+    assert len(items) == 1
+    item = items[0]
+    assert item['source'] == 'file:' + str(note) and item['file'] == str(note)
+    assert '**宋佳颐**' in item['text'] and 'Before the question' in item['text']
+    assert 'Outside the excerpt' not in item['text']
+    assert 'sk-' not in item['text'] and '[secret-shaped text removed by co rem]' in item['text']
+    assert item['role'] == 'project-file' and item['snapshot_kind'] == 'local-file'
+    assert item['captured_at'] and item['timestamp']
+    assert item['timestamp_scope'] == 'File modification time, not the date anything in it happened.'
+    assert "written by the owner, not by the subject" in item['input_scope']
+    assert '1 file(s)' in coverage and '1 project folder(s)' in coverage and 'excerpts read' in coverage
+
+
+@pytest.mark.parametrize('handle', ['Al', 'Tom', '宋', 'lead@example.org'])
+def test_project_mentions_ignores_generic_names_and_addresses(project_documents, handle):
+    book, folder = project_documents
+    (folder / 'README.md').write_text(handle)
+    items, coverage = inv.project_mentions(book, [handle])
+    assert items == [] and 'none name the subject' in coverage
+
+
+@pytest.mark.parametrize('handle,text', [('任昱', '**任昱**：那个表其实就是收款记录。'),
+                                         ('naturewill.ai', 'Delivery for NATUREWILL.AI')])
+def test_project_mentions_reads_two_character_names_and_domains(project_documents, handle, text):
+    book, folder = project_documents
+    (folder / 'README.txt').write_text(text)
+    items, _ = inv.project_mentions(book, [handle])
+    assert len(items) == 1 and items[0]['text'] == text
+
+
+def test_project_mentions_merges_windows_ranks_matches_and_bounds_excerpts(project_documents):
+    book, folder = project_documents
+    (folder / 'README.md').write_text('宋佳颐 once')
+    (folder / 'notes/a.md').write_text('宋佳颐 first\nShared context\n宋佳颐 second\n'
+                                     + 'Unrelated\n' * 20 + '宋佳颐 later\n')
+    items, _ = inv.project_mentions(book, ['宋佳颐'], max_files=1, chars=120)
+    assert len(items) == 1 and items[0]['file'].endswith('/notes/a.md')
+    assert items[0]['text'].count('Shared context') == 1
+    assert '宋佳颐 later' in items[0]['text'] and '\n...\n' in items[0]['text']
+    assert len(items[0]['text']) <= 120
+
+
+def test_project_mentions_keeps_a_name_after_a_long_context_line(project_documents):
+    book, folder = project_documents
+    (folder / 'README.md').write_text('x' * 4000 + '\n宋佳颐 asks about delivery.\n')
+    items, _ = inv.project_mentions(book, ['宋佳颐'], chars=100)
+    assert '宋佳颐' in items[0]['text'] and len(items[0]['text']) <= 100
+
+
+def test_project_mentions_skips_hidden_sensitive_linked_and_deep_files(project_documents):
+    book, folder = project_documents
+    for name in ('secret.md', 'password.txt', 'credential.md', 'private.md', 'token.txt',
+                 '.hidden.md', 'data.json', 'page.html'):
+        (folder / name).write_text('宋佳颐')
+    for name in ('node_modules', 'venv', '__pycache__', 'dist', 'build', '.state', '.hidden'):
+        directory = folder / name
+        directory.mkdir()
+        (directory / 'README.md').write_text('宋佳颐')
+    outside = folder.parent / 'outside'
+    outside.mkdir()
+    (outside / 'README.md').write_text('宋佳颐')
+    (folder / 'linked.md').symlink_to(outside / 'README.md')
+    (folder / 'linked').symlink_to(outside, target_is_directory=True)
+    deep = folder / 'one/two/three/four'
+    (deep / 'five').mkdir(parents=True)
+    (deep / 'README.md').write_text('宋佳颐 at depth four')
+    (deep / 'five/README.md').write_text('宋佳颐 too deep')
+    items, _ = inv.project_mentions(book, ['宋佳颐'])
+    assert [item['file'] for item in items] == [str(deep / 'README.md')]
+
+
+def test_project_mentions_bounds_each_folder_and_reads_all_project_pages(project_documents):
+    book, folder = project_documents
+    for n in range(400):
+        (folder / f'{n:03}.md').write_text('Unrelated')
+    (folder / 'last.md').write_text('宋佳颐 beyond the scan limit')
+    for n in range(5):
+        other = folder.parent / f'project-{n}'
+        other.mkdir()
+        (other / 'README.md').write_text('宋佳颐 delivery')
+        book.stub_project(f'projects/other-{n}.md', 'Another project', [str(other)])
+    book.stub_project('projects/duplicate.md', 'Same folder', [str(folder)])
+    items, coverage = inv.project_mentions(book, ['宋佳颐'])
+    assert len(items) == 5 and all('beyond' not in item['text'] for item in items)
+    assert '6 project folder(s)' in coverage
+
+
+@pytest.mark.parametrize('record', ['people/lead.md', 'orgs/client.md'])
+def test_project_mention_alone_reaches_the_person_or_org_writer(project_documents, monkeypatch, record):
+    from connectonion.rem.fact_extract import extract
+    from connectonion.rem.page_review import misquoted, validate
+
+    book, folder = project_documents
+    note = folder / 'notes/a.md'
+    note.write_text('**宋佳颐**：请确认交付时间。\nEmail: lead@example.org\nPhone: +61 412 345 678')
+    if record.startswith('people/'):
+        book.stub_person(record, '宋佳颐')
+    else:
+        book.stub_org(record, '宋佳颐的公司')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['mail: none; sessions: none']))
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.extend(item for item in items if item['role'] == 'project-file')
+        original = notebook.read(record)
+        source = seen[0]['source']
+        candidate = original.replace('- (none yet)', '- [1] ' + source)
+        candidate = candidate.replace('\n## Sources\n', '\nOwner records “请确认交付时间” [1].\n\n## Sources\n')
+        assert validate(record, candidate, original, items) == []
+        assert misquoted(notebook.root, record, candidate, items) == []
+        assert misquoted(notebook.root, record, candidate.replace('请确认交付时间', '已经交付完成'), items)
+        return {'changed': [], 'usage': None}
+
+    result = inv.investigate(book.root, record, '宋佳颐', ['宋佳颐'], days=30,
+                             clients={}, subscriptions={}, runner=runner)
+    assert len(seen) == 1 and result['items_available'] == 1
+    assert extract(seen, ['宋佳颐']) == []
+    assert any('project documents: 1 file(s)' in line for line in result['coverage'])
+
+
+@pytest.mark.parametrize('record,sent_only', [('people/vern.md', True),
+                                              ('projects/client.md', False),
+                                              ('skills/catalog/example.md', False)])
+def test_project_mentions_are_not_gathered_for_owner_projects_or_skills(project_documents, monkeypatch,
+                                                                     record, sent_only):
+    book, folder = project_documents
+    if record.startswith('skills/'):
+        book.stub_skill(record, 'example', str(folder / 'SKILL.md'))
+    monkeypatch.setattr(inv, 'project_mentions', lambda *a, **kw: pytest.fail('only people and organisations'))
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([
+        {'source': 'codex:s:1', 'role': 'user', 'timestamp': '2026-10-16', 'text': 'Delivery notes'}], []))
+    result = inv.investigate(book.root, record, 'Client delivery', ['Client delivery'], days=30,
+                             clients={}, subscriptions={}, sent_only=sent_only,
+                             runner=lambda *a, **kw: {'changed': [], 'usage': None})
+    assert not any(line.startswith('project documents:') for line in result['coverage'])
+
+
 # The whole command line before the prompt, pinned per executor for both
 # attended and scheduled investigation runs.
 PINNED = {

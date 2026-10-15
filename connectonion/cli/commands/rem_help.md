@@ -167,15 +167,19 @@ Examples:
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
-            readable attachments; coding sessions that mention them. A person
-            investigated before reads only the mail since then.
+            readable attachments; coding sessions and project documents that name
+            them. A person investigated before reads only the mail since then.
   projects  The coding sessions run in the project's folders, and the project's own files.
   orgs      Mail on the organisation's domains; primary correspondence from shared
             contact candidates on other domain pages, with identity left to verify.
+            Project documents that name the organisation or its domains.
   skills    Installed source and recorded runs (co eval results; --eval-dir to choose where).
             A model writes a cited page; the skill itself is never executed.
             Missing runs remain unverified; invocation counts are not successes.
   me        Your own sent mail and coding sessions from the last --days (default 30).
+
+Project documents are the owner's record: cite them as such; contact details only
+found there are not the person's own.
 
 Options:
   --days N       How far back to read (default 150; 30 for me)
