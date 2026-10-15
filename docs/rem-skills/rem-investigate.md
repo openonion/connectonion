@@ -115,7 +115,8 @@ not contain. The search belongs in `Uncertainties`.
   addresses, paths) — you do not have to work out who "odi" is. So the ordinary
   maintenance rule (search first, judge carefully, mark a possible twin) does
   not apply the same way here.
-- **Every given handle on the page, wrong spellings too:** that line is how the
+- **Every given handle on the page, wrong spellings too, unless the person said
+  it is not their name** (Ody's rejected 周泽楷 sat beside 周泽凯): that line is how the
   daily pass recognises the subject without thinking. Discovered handles let the
   next sweep reach material this one could not.
 - **A handle that produced nothing is a finding** (unless it is the page's own

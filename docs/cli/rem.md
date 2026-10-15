@@ -953,14 +953,19 @@ reads either.
 ### Extracted before prose
 
 Before the model turn, `connectonion/rem/fact_extract.py` reads the gathered
-material with no model: the subject's own addresses, phone numbers in their
-signature blocks (with `work` / `mobile` from the line's label), LinkedIn
-links, the dates of the first and last message, the signature block itself,
+material with no model: the subject's own addresses, phone numbers in the
+signature blocks they sign with their name (with `work` / `mobile` from the
+line's label; not a number someone else is named beside), LinkedIn links, the
+date of the last human mail between the user and them (not a newsletter, a
+broadcast or a notice), the signature block itself,
 the lines of calendar invitations that name the subject, and the company domain
 when it is not a mailbox provider. They go to the turn as the
 `investigation:facts` item, each with its source id, even when the rest of the
 material is in files to search — the turn confirms them, extends them and
 cites the source id, not the item.
+
+Mail a relay or a system sends (Luma, Airbnb, no-reply), and a notice passed
+on, gives no facts: the person's name sits over someone else's words there.
 
 The model may correct a fact the material contradicts; it may not lose one.
 After the turn, a phone, address, LinkedIn link or contact date the extractor
@@ -968,6 +973,15 @@ found that appears nowhere on the page is put back into its field with its
 source (`review.json` lists it under `facts_restored`). Company and role from a
 signature are context, not restored: reading a title off a signature is a
 judgement.
+
+A contact detail must be right or `Unknown`. On a person's page an `Email`
+stays only if the person sends from it or is written to at it under their
+name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
+person (or relayed under their name) with the number in it and nobody else
+named to call beside it. What goes is listed under `contacts_unverified`. An
+unknown `Company` is filled from the domain of the address they write from now,
+never a mailbox provider, a relay, an agent address or a student address
+(`company_from_domain` in `review.json`).
 
 ### Insight
 

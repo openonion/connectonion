@@ -9,7 +9,7 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;
   `Email`/`Handles` take only addresses the subject writes from.
-- Every handle you were given, wrong spellings too, goes in `Also known as:`;
+- Every handle you were given goes in `Also known as:`, unless they said it is not their name;
   add the ones you discover (signature, second address, other script). Company
   names go in their own field.
 - The subject is the owner of a coverage mailbox → the user's own page: follow

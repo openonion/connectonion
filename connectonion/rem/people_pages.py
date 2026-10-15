@@ -182,7 +182,7 @@ def fill_companies(root: Path) -> list[str]:
         material = person_material(root, record, handles=found)
         items = [item for group in (material[0].values() if material else []) for item in group]
         rows = extract(items, [name, *found], timezone=read_config(root)["schedule"]["timezone"])
-        if notebook.write(record, company_from_domain(notebook, record, text, rows)):
+        if notebook.write(record, company_from_domain(notebook, record, text, rows)[0]):
             filled.append(record)
     return filled
 

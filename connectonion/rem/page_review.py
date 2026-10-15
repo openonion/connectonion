@@ -386,6 +386,128 @@ def drop_others_phones(text: str, others: list[str], own: list[str]) -> tuple[st
     return PHONE_LINE.sub(clean, text), removed
 
 
+def _cited_sources(text: str) -> dict[str, str]:
+    """Citation number to source id, from the page's Sources."""
+    from .reader_model import SOURCE
+    return dict(SOURCE.findall(text.partition("\n## Sources\n")[2]))
+
+
+def _source_item(root: Path, source: str, items: list[dict]) -> dict | None:
+    """The cited mail or attachment as an item: from this run, else the private mail archive."""
+    given = next((item for item in items if item.get("source") == source and "text" in item), None)
+    provider, _, rest = source.partition(":")
+    short, _, name = rest.partition(":")
+    if given or provider not in ("gmail", "outlook") or not re.fullmatch(r"[0-9a-f]{12}", short):
+        return given
+    from .files import read_json, state_path
+    from .mail_archive import _material_item
+    path = next((path for folder in ("messages", "observed")
+                 for path in sorted(state_path(root, f"mail/{folder}/{provider}").glob(short + "*.json"))), None)
+    if path is None:
+        return None
+    item = _material_item(read_json(path, {}), set())
+    if not name:
+        return item
+    from .attachments import extract_text
+    attached = state_path(root, f"attachments/{provider}/{short}/{name}")
+    return {**item, "text": extract_text(attached, limit=None)} if attached.is_file() else None
+
+
+def _full_names(text: str, people: list[dict]) -> list[str]:
+    """What the person is called in full: the page's title, a name in its brackets, the map's display names."""
+    title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
+    full = [re.sub(r"\s*\(.*?\)", "", title), *re.findall(r"\((.*?)\)", title), *(p.get("name") or "" for p in people)]
+    return sorted({" ".join(name.split()).casefold() for name in full if len(name.strip()) >= 3 and "@" not in name})
+
+
+def _named_at(root: Path, items: list[dict], full: list[str]) -> set[str]:
+    """Addresses that carry the person's name in a From, To or Cc of any mail we hold."""
+    from email.utils import getaddresses
+
+    from .mail_archive import mail_metadata
+    found = set()
+    given = [item.get("participants") or {"from": item.get("speaker") or ""} for item in items]
+    for row in [*mail_metadata(root), *given]:
+        for value in (row.get("from") or [], row.get("to") or [], row.get("cc") or []):
+            for display, address in getaddresses(value if isinstance(value, list) else [value]):
+                display = " ".join(display.strip("\"' ").split()).casefold()
+                if display in full:
+                    found.add(address.casefold())
+    return found
+
+
+def _own_addresses(text: str, held: set[str]) -> tuple[str, list[str]]:
+    """Email keeps the addresses in `held`; Handles, which hold more than addresses, lose only relays."""
+    from .files import EMAIL
+    from .map import RELAY
+    removed = []
+    for label in ("Email", "Handles"):
+        line = re.search(rf"(?m)^- {label}:[ \t]*(.*)$", text)
+        if not line or not EMAIL.search(line[1]):
+            continue
+        parts = [piece.strip() for part in facts._split(line[1])
+                 for piece in (part.split(",") if len(EMAIL.findall(part)) > 1 else [part]) if piece.strip()]
+        found = [EMAIL.findall(part) for part in parts]
+        kept = [part for part, addresses in zip(parts, found)
+                if all(a.casefold() in held for a in addresses)
+                or label == "Handles" and not any(RELAY.search(a) for a in addresses)]
+        if kept != parts:
+            removed += [part for part in parts if part not in kept]
+            text = text[:line.start(1)] + ("; ".join(kept) or "Unknown") + text[line.end(1):]
+    return text, removed
+
+
+def _own_phones(root: Path, text: str, items: list[dict], held: set[str], names: list[str]) -> tuple[str, list[str]]:
+    """Phone keeps a number a mail it cites, or any mail this run gathered, shows the person giving.
+
+    Ivan's number was cited to an assistant session that quoted his Airbnb
+    message; the message is in the material, so the number is still his. A
+    number cited to a web page `[W…]` is a published one and is left as it was.
+    """
+    from .fact_extract import MAIL_SOURCES, gave_number
+    line = re.search(r"(?m)^- Phone:[ \t]*(.*)$", text)
+    parts, found = (facts._split(line[1]), facts.values(line[1])) if line else ([], [])
+    if not found or len(parts) != len(found):
+        return text, []
+    sources = _cited_sources(text)
+    mail = [item for item in items if str(item.get("source", "")).startswith(MAIL_SOURCES)]
+    kept = [part for part, value in zip(parts, found)
+            if any(n.startswith("W") for n in value["citations"]) or any(item and gave_number(item, value["value"], held, names)
+                   for item in [*(_source_item(root, sources[n], items) for n in value["citations"] if n in sources),
+                                *mail])]
+    if len(kept) == len(parts):
+        return text, []
+    return text[:line.start(1)] + ("; ".join(kept) or "Unknown") + text[line.end(1):], [
+        part for part in parts if part not in kept]
+
+
+def verify_contacts(root: Path, record: str, text: str, items: list[dict], original: str = "") -> tuple[str, list[str]]:
+    """A Phone or Email stays only when the material shows it is this person's own (#2348).
+
+    Removal was a denylist: another sender's signature number went, and anything
+    else stayed. 1.9.2b3 still put a facilities manager's mobile on Nina's page
+    from a notice she forwarded, "call Larry 0405…" on Ody's from a Luma host
+    copy, and Luma relays as two people's Email (contacts audit P1, P2, E1, E2).
+    An Email is one the page already carried (the map's, or the user's own
+    `co rem stub`), or one the person is named at in a From, To or Cc; a relay
+    never is. A Phone needs a mail the person sent (or a
+    relay message under their name) with the number and nobody else named to
+    call beside it. A missing value is Unknown; a wrong one is worse.
+    """
+    from .files import EMAIL, read_json, state_path
+    from .map import RELAY
+    people = [p for p in read_json(state_path(root, "map.json"), {}).get("people", []) if p.get("record") == record]
+    carried = re.search(r"(?m)^- Email:[ \t]*(.*)$", original)
+    known = {a.casefold() for p in people for a in p.get("addresses") or [p.get("address") or ""] if a} | {
+        a.casefold() for a in EMAIL.findall(carried[1] if carried else "")}
+    full = _full_names(text, people)
+    names = sorted({*full, *(name.split()[0] for name in full if len(name.split()[0]) >= 3)})
+    held = {a for a in known | _named_at(root, items, full) if not RELAY.search(a)}
+    text, addresses = _own_addresses(text, held)
+    text, phones = _own_phones(root, text, items, held, names)
+    return text, addresses + phones
+
+
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
@@ -948,23 +1070,45 @@ def _named_orgs(notebook) -> list[tuple[str, str, list[str]]]:
     return found
 
 
-def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> str:
+def _employer_domain(address: str) -> str:
+    """The domain of an address that can name an employer, or '' (contacts audit C1-C4).
+
+    Not a mailbox provider, a relay, a ConnectOnion agent's mail, or a student
+    address: `student.`/`ad.` subdomains and an ID for a local part
+    (z5479567@unsw.edu.au) prove enrolment, and the skill says that is Unknown.
+    """
+    from .map import AGENT_ADDRESS, RELAY
+    from .scan import personal_mailbox
+    local, _, domain = address.casefold().rpartition("@")
+    if (personal_mailbox(domain) or RELAY.search(address) or AGENT_ADDRESS.search(address)
+            or domain.endswith("mail.openonion.ai") or re.match(r"(?:student|students|ad)\.", domain)
+            or re.fullmatch(r"[a-z]?\d{6,}", local)):
+        return ""
+    return domain
+
+
+def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> tuple[str, dict]:
     """`Company: Unknown` takes the organisation page whose Domains hold the person's own mail domain (#2349).
 
     28 of 53 unknown companies on a real notebook wrote from a domain it had a
-    page for. The newest mail from that domain is the citation. A page still
-    titled by its domain is the map's stub: its name is not known yet.
+    page for. Only the address they write from now counts: falling back to older
+    domains named UNSW for Ziming, graduated and writing from Hotmail, and for
+    Sam, writing from his own company; seven students got their university as
+    employer (contacts audit C1-C3). A page still titled by its domain is the
+    map's stub: its name is not known yet. Returns the page and what was filled.
     """
     match = re.search(r'^- Company: (.*)$', text, re.M)
     if not record.startswith('people/') or not match or not match.group(1).casefold().startswith('unknown'):
-        return text
-    for row in (row for row in rows if row['field'] == 'Company domain'):
-        for org, title, domains in _named_orgs(notebook):
-            if any(row['value'] == domain or row['value'].endswith('.' + domain) for domain in domains):
-                text, number = facts._cite(text, row)
-                match = re.search(r'^- Company: (.*)$', text, re.M)
-                return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
-    return text
+        return text, {}
+    newest = next((row for row in rows if row['field'] == 'Email'), None)
+    domain = _employer_domain(newest['value']) if newest else ''
+    for org, title, domains in _named_orgs(notebook) if domain else []:
+        if any(domain == known or domain.endswith('.' + known) for known in domains):
+            text, number = facts._cite(text, newest)
+            match = re.search(r'^- Company: (.*)$', text, re.M)
+            filled = {'company': title, 'domain': domain, 'source': newest['source']}
+            return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():], filled
+    return text, {}
 
 
 # A quotation mark is a promise that these are the speaker's words. Decision
