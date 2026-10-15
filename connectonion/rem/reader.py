@@ -152,10 +152,16 @@ def snapshot(root: Path) -> dict:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
     from .translate import cached_languages
+    from .languages import language_of, owner_languages, spoken
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
+        # For the "Read in" menu: what the page is written in, and what this person speaks.
+        record["written_in"] = language_of(record["text"])
+        if record["category"] == "people":
+            record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = contact_candidates(root)
-    return {"language": read_config(root, validated=False).get("language") or "en","as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    return {"language": read_config(root, validated=False).get("language") or "en",
+            "your_languages": owner_languages(root)["languages"], "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts),

@@ -1027,5 +1027,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     # Derived and rebuilt next time, so a failure is reported, never the map's.
     from .store import refresh_safely
     report['store'] = refresh_safely(root)
+    # The owner's languages, from their own mail in the index just built.
+    from .languages import refresh
+    refresh(root, report)
     save()
     return report

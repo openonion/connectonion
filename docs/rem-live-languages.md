@@ -116,3 +116,28 @@ browser key, so it proves ownership through the file system:
   (`POST /rem/ask`, polled the same way).
 - **Remembering the language across pages.** Each page is switched on its own
   for now.
+
+## Your languages first (rem/q-langs)
+
+The "Read in" menu is ordered around the owner, not around a fixed list:
+
+1. **As written**, the page itself.
+2. **Your languages**, by native name (中文, English, 日本語…), most used first. Any language
+   the page is already written in is left out.
+3. On a person page, **Their language: …** for each language on their Facts `Language:` line
+   that is not one of yours.
+4. **Other…** for the rest (live reader only).
+
+Your languages are set with `co rem config set languages zh,en`. When that is not set, they are
+detected (`connectonion/rem/languages.py`) from the owner's own words only:
+
+- sent mail in the index, with headers and the quoted thread cut off;
+- typed session messages (the session windows already drop sdk/automated prompts, sidechains
+  and REM's own turns).
+
+Each message counts as one vote for its main script: Han → zh, kana → ja, Hangul → ko,
+Cyrillic → ru, Arabic → ar, Latin → en. A language with at least 10% of the votes is kept.
+The map computes the list after it builds the index, and the daily round refreshes it. It is
+kept on `map.json`'s owner and fills the owner page's `Language:` fact when that is empty or
+`Unknown`. `co rem config` shows it under "your languages", saying whether it was set or
+detected (with shares).

@@ -3343,15 +3343,24 @@ document.addEventListener("keydown", e => {
 // A page read in another language. Translations are made by co ai on the Host
 // (rem/translate.py) and cached beside the notebook; the page as written stays
 // the record. A snapshot offers only the translations it carries; the live
-// reader (served by rem_http.py) can ask the Host for any of READ_LANGUAGES.
+// reader (served by rem_http.py) can ask the Host for any language.
+// The menu offers the owner's own languages first (languages.py: detected from
+// their mail and sessions, or `co rem config set languages`), then on a person
+// the languages they speak, then the rest under "Other…". The page's own
+// language is not offered: "As written" is that.
 const READ_LANGUAGES = ["en", "zh", "zh-TW", "ja", "ko", "es", "fr", "de"];
-function languageName(tag) { return new Intl.DisplayNames([navigator.language || "en"], { type: "language" }).of(tag) || tag; }
+function nativeName(tag) { return new Intl.DisplayNames([tag], { type: "language" }).of(tag) || tag; }
 function languageBar(r) {
   const cached = Object.keys(r.translations || {});
-  if (!REM.live && !cached.length) return null;
-  const tags = REM.live ? [...new Set([REM.language, ...READ_LANGUAGES, ...cached])] : cached;
+  const offered = tag => tag !== r.written_in && (REM.live || cached.includes(tag));
+  const yours = [...new Set(REM.your_languages || [])].filter(offered);
+  const theirs = [...new Set(r.speaks || [])].filter(tag => offered(tag) && !yours.includes(tag));
+  const rest = [...new Set([...READ_LANGUAGES, ...cached])].filter(tag => offered(tag) && !yours.includes(tag) && !theirs.includes(tag));
+  if (!yours.length && !theirs.length && !rest.length) return null;
+  const option = (tag, prefix) => el("option", { value: tag, text: (prefix || "") + nativeName(tag) + (cached.includes(tag) ? "" : " · translate with co ai") });
   const select = el("select", { "aria-label": "Read this page in" }, [el("option", { value: "", text: "As written" }),
-    ...tags.map(tag => el("option", { value: tag, text: languageName(tag) + (cached.includes(tag) ? "" : " · translate with co ai") }))]);
+    ...yours.map(tag => option(tag)), ...theirs.map(tag => option(tag, "Their language: ")),
+    rest.length ? el("optgroup", { label: "Other…" }, rest.map(tag => option(tag))) : null]);
   select.value = r.shown || "";
   const status = el("span", { class: "lang-status", role: "status" });
   select.onchange = () => readIn(r, select.value, status, select);

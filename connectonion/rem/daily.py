@@ -159,6 +159,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
                                                 'investigation': None}, scheduled)
     config = read_config(root)
     with maintenance_lock(root):
+        # The owner's languages follow what they wrote lately (languages.py).
+        from .languages import refresh
+        refresh(root)
         state = status(root)
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         logs = run_logs(root)
