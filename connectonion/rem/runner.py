@@ -1169,11 +1169,14 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if candidate and search and not quick_first_pass:
+        # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
                    f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
                    "plain words, or from:, to:, participants: an address. For GitHub work, "
-                   "`github:<owner/repo>#<number>` or `github:<owner/repo> <gh search words>` (`created:>=2026-10-12`). "
+                   "`github:<owner/repo>#<number>` or `github:<owner/repo> created:>=<promise-date>`; "
+                   "repository and date only, optionally one title word, never person/team names. "
+                   "Match returned `Author:` logins to the person (a login like jdoe2001 for Jane Doe); state the match. "
                    "You get one more turn with what they find; cite their ids. The coverage item says what was "
                    "already searched; do not repeat those addresses.")
     started = time.monotonic()

@@ -2183,5 +2183,6 @@ def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
     [item] = inv.mail_search({})(["github:openonion/connectonion created:>=2026-10-12"])
     assert item["source"] == "github:openonion/connectonion#2443" and "rlai2001" in item["text"]
     assert calls[0][:5] == ["gh", "search", "issues", "-R", "openonion/connectonion"]
+    assert calls[0][calls[0].index("--limit") + 1] == "30"
     [bad] = inv.github_search("github:not a repo")
     assert bad["role"] == "search-failure"

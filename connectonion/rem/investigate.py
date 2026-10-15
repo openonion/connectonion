@@ -936,7 +936,7 @@ def github_search(query: str) -> list[dict]:
                  "text": "write github:<owner/repo>#<number> or github:<owner/repo> <search words>"}]
     repo, number, words = match.groups()
     argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
-            ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "20", "--json",
+            ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
              GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
     run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
     if run.returncode:
