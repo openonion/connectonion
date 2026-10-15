@@ -86,7 +86,7 @@ _open_threads_lock = threading.Lock()
 
 def codex(prompt: str = "", session_id: str = "", cwd: str = "",
           sandbox: str = "workspace-write", model: str = "", timeout: int = 600,
-          approval: str = "manual", agent=None) -> str:
+          approval: str = "manual", agent=None, speed: str = "standard") -> str:
     """Run Codex (via `codex app-server`) and optionally resume a session.
 
     Args:
@@ -97,6 +97,8 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         sandbox: "read-only", "workspace-write" (default), or "danger-full-access"
         model: Codex model override (e.g., "gpt-5-codex"); empty uses the default
         timeout: Seconds before timeout (default: 600)
+        speed: "fast" selects the priority service tier; "standard" (default)
+            leaves the user's configured tier unchanged
         approval: "manual" asks the operator when Codex requests permission;
             "auto" runs without prompts inside the selected sandbox and fails
             closed on unexpected approval callbacks; "deny" also refuses every
@@ -110,6 +112,8 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     """
     if sandbox not in SANDBOX_LEVELS:
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
+    if speed not in ("fast", "standard"):
+        return _envelope(session_id, error=f"Invalid speed {speed!r}. Use fast or standard.")
     if approval not in APPROVAL_MODES:
         return _envelope(
             session_id,
@@ -157,6 +161,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                 sandbox=sandbox,
                 model=model,
                 approval_policy=approval_policy,
+                speed=speed,
             )
         reused_open_thread = client is not None
         if client is not None:
@@ -186,6 +191,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                     model=model,
                     approval_policy=approval_policy,
                     timeout=_remaining(deadline),
+                    speed=speed,
                 )
                 resumed = True
             else:
@@ -194,6 +200,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                     model=model,
                     approval_policy=approval_policy,
                     timeout=_remaining(deadline),
+                    speed=speed,
                 )
                 resumed = False
         if not has_prompt:
@@ -205,6 +212,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                     sandbox=sandbox,
                     model=model,
                     approval_policy=approval_policy,
+                    speed=speed,
                 )
                 keep_open = True
             return _envelope(
@@ -259,17 +267,17 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}")
 
 
-def _thread_config(cwd, sandbox, model, approval_policy):
-    return cwd, sandbox, model, approval_policy
+def _thread_config(cwd, sandbox, model, approval_policy, speed):
+    return cwd, sandbox, model, approval_policy, speed
 
 
 def _store_open_thread(
-    thread_id, client, *, cwd, sandbox, model, approval_policy
+    thread_id, client, *, cwd, sandbox, model, approval_policy, speed="standard"
 ):
     """Keep a no-turn thread alive until its first Work Room message."""
     record = {
         "client": client,
-        "config": _thread_config(cwd, sandbox, model, approval_policy),
+        "config": _thread_config(cwd, sandbox, model, approval_policy, speed),
         "opened_at": time.monotonic(),
     }
     timer = threading.Timer(
@@ -293,11 +301,11 @@ def _store_open_thread(
 
 
 def _take_open_thread(
-    thread_id, *, cwd, sandbox, model, approval_policy
+    thread_id, *, cwd, sandbox, model, approval_policy, speed="standard"
 ):
     """Claim a matching live open-only thread for its first provider turn."""
     _close_expired_open_threads()
-    expected = _thread_config(cwd, sandbox, model, approval_policy)
+    expected = _thread_config(cwd, sandbox, model, approval_policy, speed)
     with _open_threads_lock:
         record = _open_threads.get(thread_id)
         if record is None:
@@ -1254,11 +1262,14 @@ class CodexAppServer:
         model="",
         approval_policy="on-request",
         timeout=60,
+        speed="standard",
     ):
         params = {"cwd": self.cwd or ".", "sandbox": sandbox,
                   "approvalPolicy": approval_policy, "approvalsReviewer": "user"}
         if model:
             params["model"] = model
+        if speed == "fast":
+            params["serviceTier"] = "priority"
         result = self.request("thread/start", params, timeout=timeout)
         return result["thread"]["id"]
 
@@ -1269,6 +1280,7 @@ class CodexAppServer:
         model="",
         approval_policy="on-request",
         timeout=60,
+        speed="standard",
     ):
         params = {
             "threadId": thread_id,
@@ -1279,6 +1291,8 @@ class CodexAppServer:
         }
         if model:
             params["model"] = model
+        if speed == "fast":
+            params["serviceTier"] = "priority"
         result = self.request("thread/resume", params, timeout=timeout)
         returned_id = (result or {}).get("thread", {}).get("id")
         if returned_id != thread_id:

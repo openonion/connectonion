@@ -204,7 +204,8 @@ def _logged(root, record, phase, call, quiet=False):
     abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
-           "record": record, "model": config["model"], "outcome": "running",
+           "record": record, "harness": config["runner"], "model": config["model"],
+           "speed": config["speed"], "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
@@ -1098,7 +1099,8 @@ def make_rem_app(factory):
                     write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
                         "started_at": stamp, "finished_at": stamp, "phase": "model access",
                         "outcome": "failed", "error": access_problem[:300], "changed": [], "items": 0,
-                        "model": config["model"], "sources": []})
+                        "harness": config["runner"], "model": config["model"], "speed": config["speed"],
+                        "sources": []})
                     result["model_access"] = {"ready": False, "problem": access_problem, "fix": access_fix}
                     say(f"Model access failed: {access_problem}. Run {access_fix}, then retry init; "
                         "the map and saved mail are retained.")

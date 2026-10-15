@@ -759,6 +759,10 @@ def ai(
         help="Claude Code headless permissions. The default is manual; select a broader mode explicitly.",
     ),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Delegated harness task timeout, in seconds"),
+    speed: Optional[str] = typer.Option(
+        None, "--speed", metavar="fast|standard",
+        help="Codex only: fast selects the Fast tier; standard leaves your configured tier unchanged.",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt. Runs an agent whose tools can edit files and run commands here, with approval."""
     from .commands.ai_commands import handle_ai
@@ -784,6 +788,7 @@ def ai(
         sandbox=sandbox,
         permission_mode=permission_mode,
         timeout=timeout,
+        speed=speed,
     )
 
 

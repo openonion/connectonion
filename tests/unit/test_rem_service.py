@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from connectonion.rem.config import prepare, set_config
+from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook, RemError, read_json, state_path, write_json
 from connectonion.rem.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_rem_source import rollout
@@ -57,6 +57,8 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     calls = []
     runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
     worked = run_sync(root, runner=runner)
+    assert worked["speed"] == "fast"
+    assert worked["harness"] == read_config(root)["runner"]
     quiet = run_sync(root, runner=runner)
     assert quiet["outcome"] == "no_change" and len(calls) == 1
     assert [record["id"] for record in run_logs(root)] == [worked["id"]]

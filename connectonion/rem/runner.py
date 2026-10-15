@@ -243,6 +243,7 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     investigating = stage in ("init", "investigate")
     if harness == "codex":
         flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
+        flags += ["--speed", config["speed"]]
     elif harness == "claude-code":
         flags += ["--permission-mode", "bypassPermissions" if investigating else "acceptEdits"]
     if config["model"] != "default":
@@ -345,6 +346,8 @@ def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> di
     schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
     command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                "--json", "--output-schema", str(schema), "-o", str(answer)]
+    if config["speed"] == "fast":
+        command += ["-c", 'service_tier="priority"']
     if config["model"] != "default":
         command += ["--model", config["model"]]
     completed = subprocess.run(command + ["-"], input=prompt, capture_output=True, text=True,
@@ -1129,6 +1132,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
     metrics = {"stage": stage, "harness": config["runner"], "model": config["model"],
+               "speed": config["speed"],
                "tier": "summary" if summary else "agent",
                "instructions_chars": len((directory / "instructions.md").read_text()),
                "material_chars": len((directory / "material.json").read_text()),

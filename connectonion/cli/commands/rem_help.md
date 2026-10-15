@@ -436,6 +436,7 @@ Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
 Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
+          speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
                                          headings, labels and quotes stay as they are
           languages                      zh,en: the languages you read, first in the reader's

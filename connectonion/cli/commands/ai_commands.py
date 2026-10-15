@@ -43,6 +43,7 @@ def handle_ai(
     sandbox: str = _harness.DEFAULT_SANDBOX,
     permission_mode: str = "default",
     timeout: int = 600,
+    speed: str | None = None,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -63,6 +64,7 @@ def handle_ai(
         sandbox: What a delegated Codex run may write: read-only,
             workspace-write (cwd + TMPDIR), or danger-full-access
         permission_mode: Claude Code's headless permission mode; default is manual
+        speed: Codex tier: fast selects priority; standard leaves the user's default
 
     Examples:
         co ai                                    # Start web server
@@ -86,8 +88,16 @@ def handle_ai(
 
     if harness != _harness.OURS or harness not in _harness.HARNESSES:
         _handle_delegated(harness, prompt, model, json_output, sandbox, timeout,
-                          permission_mode)
+                          permission_mode, speed)
         return
+
+    problem = _harness.validate_speed(harness, speed)
+    if problem:
+        if json_output:
+            _print_envelope(None, None, "error", problem)
+        else:
+            console.print(f"[red]{problem}[/red]")
+        raise typer.Exit(2)
 
     if permission_mode != "default":
         console.print("[red]--permission-mode applies only to --harness claude-code.[/red]")
@@ -172,14 +182,15 @@ def _this_co_first() -> None:
 
 
 def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600,
-                      permission_mode="default") -> None:
+                      permission_mode="default", speed=None) -> None:
     """Hand the whole task to a native coding agent, spending none of our tokens.
 
     This is the point of the flag: reaching Codex used to cost a full turn of
     our own model first, purely to have it decide to call the codex tool.
     """
     problem = (_harness.validate(harness, model) or _harness.validate_sandbox(harness, sandbox)
-               or _harness.validate_permission(harness, permission_mode))
+               or _harness.validate_permission(harness, permission_mode)
+               or _harness.validate_speed(harness, speed))
     if not problem and not prompt:
         # There is no web server to hand over: a delegate answers one task and exits.
         problem = f"--harness {harness} needs a one-shot prompt."
@@ -194,7 +205,7 @@ def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600,
         # An unset --model means "your default", not ours, which names nothing
         # in the delegate's catalogue.
         answer = _harness.run(harness, prompt, model or "", sandbox=sandbox, timeout=timeout,
-                              permission_mode=permission_mode)
+                              permission_mode=permission_mode, speed=speed or "standard")
     except ValueError as exc:  # skill missing, or its requirements are not met
         if json_output:
             _print_envelope(None, None, "error", str(exc))

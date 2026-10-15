@@ -164,7 +164,8 @@ def test_failed_project_claim_review_preserves_previous_page(tmp_path, monkeypat
     assert json.loads((tmp_path / 'review.json').read_text())['factual_quality'] == 'bounded citation audit failed'
 
 
-def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch):
+@pytest.mark.parametrize('speed', ['fast', 'standard'])
+def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch, speed):
     codex = importlib.import_module('connectonion.useful_tools.codex')
 
     monkeypatch.setattr(codex, '_base_command', lambda: ['codex', 'app-server'])
@@ -177,10 +178,14 @@ def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch):
         return SimpleNamespace(returncode=0, stdout=json.dumps(event), stderr='')
 
     monkeypatch.setattr(runner.subprocess, 'run', completed)
-    config = {'runner': 'codex', 'model': 'gpt-6-luna', 'limits': {'timeout_seconds': 600}}
+    config = {'runner': 'codex', 'model': 'gpt-6-luna', 'speed': speed, 'limits': {'timeout_seconds': 600}}
     result = runner.run_claim_task(tmp_path, 'PRIVATE SOURCE BODY', config, 'claim-audit')
     assert seen['input'] == 'PRIVATE SOURCE BODY'
     assert 'PRIVATE SOURCE BODY' not in ' '.join(seen['command'])
+    if speed == 'fast':
+        assert seen['command'][seen['command'].index('-c') + 1] == 'service_tier="priority"'
+    else:
+        assert '-c' not in seen['command']
     assert result['usage'] == {'input_tokens': 42, 'cached_input_tokens': 0, 'output_tokens': 4}
 
 

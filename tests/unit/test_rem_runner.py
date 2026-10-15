@@ -185,15 +185,27 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
+        assert argv[argv.index("--speed") + 1] == "fast"
         assert argv[argv.index("--sandbox") + 1] == (
             "danger-full-access" if investigating else "workspace-write")
     else:
+        assert "--speed" not in argv
         assert "--sandbox" not in argv
     assert options["material"] == [item]
     assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
-    assert list((notebook.root / ".state/tasks").glob("*/result.json"))
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "fast")
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
+
+
+def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
+    config = {**default_config(), "speed": "standard"}
+    run_stage(notebook, [], config)
+    argv = delegate[0][0]
+    assert argv[argv.index("--speed") + 1] == "standard"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["speed"] == "standard"
 
 
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
