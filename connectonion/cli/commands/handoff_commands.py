@@ -1207,7 +1207,7 @@ def make_handoff_app(factory) -> typer.Typer:
         handoff_id: str = typer.Argument(..., help="An accepted handoff's id"),
         agent: Optional[str] = typer.Option(None, "--agent", help="codex or claude (default: the one this runs inside, else codex)"),
     ):
-        """Add an accepted handoff's conversation to Codex or Claude Code as a thread of its own, in this folder.
+        """Writes an accepted handoff's conversation into Codex or Claude Code as a thread of its own, in this folder.
 
         Accept does this itself inside either; this is for when it could not
         (Codex's sandbox keeps ~/.codex read-only) or to add it to the other one.
