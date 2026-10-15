@@ -68,6 +68,14 @@ def delegate(monkeypatch):
     return calls
 
 
+def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
+    result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
+    argv = delegate[0][0]
+    assert all("\0" not in argument for argument in argv)
+    assert argv[-1] == "Continue investigating."
+    assert result["outcome"] == "natural"
+
+
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
     """`venv/bin/co rem ...` from a non-activated venv, with an older co earlier
     on PATH, sent every model turn to that older `co ai` (seen on 1.8.8b7)."""

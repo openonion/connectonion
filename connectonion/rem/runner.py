@@ -263,6 +263,8 @@ AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Run every co rem model turn from its stable task workspace."""
+    # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
+    prompt = prompt.replace("\0", "")
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup.
