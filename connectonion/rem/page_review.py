@@ -1365,7 +1365,10 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
     held his own reply, which was true. A contact field keeps its label and
     says Unknown, as an untraceable citation leaves it.
     """
-    wanted = {claim: _claim_key(claim) for claim in claims if _claim_key(claim)}
+    # "Unknown" refuted is a gap to fill, not a line to drop: as a substring it
+    # matched every Unknown on oo-api's page (2026-10-15).
+    wanted = {claim: _claim_key(claim) for claim in claims
+              if _claim_key(claim) and not re.fullmatch(r'(?:[^:]{1,40}:)?unknown', _claim_key(claim))}
     head, marker, tail = text.partition('\n## Sources\n')
     head, found = _drop_diagrams(head, wanted)
     kept = []
@@ -1379,7 +1382,7 @@ def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[st
         else:
             sentences = re.split(r'(?<=[.!?。])\s+', line)
             rest = [s for s in sentences if not any(wanted[c] in _claim_key(s) for c in hits)]
-            if rest and len(rest) < len(sentences) and re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', rest[0]):
+            if rest and len(rest) < len(sentences) and _claim_key(re.sub(r'^[-*\s]*(?:\d{4}-\d{2}-\d{2}:?)?\s*', '', ' '.join(rest))):
                 kept.append(' '.join(rest))
     return _fill_emptied_sections('\n'.join(kept)) + marker + tail, [c for c in wanted if c not in found]
 

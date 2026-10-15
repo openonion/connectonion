@@ -253,3 +253,12 @@ def test_a_refuted_arrow_drops_its_diagram_and_keeps_the_page():
             '  -> Cloud Postgres property_prod\n```\n\n## Paths\n- /a\n\n## Sources\n- [1] codex:a:1 — 2026-10-01\n')
     kept, unlocated = drop_claims('projects/x.md', text, ['Melbourne rental collectors\n  -> Cloud Postgres property_prod'])
     assert unlocated == [] and 'collectors' not in kept and 'The flow, as the README tells it [1].' in kept
+
+
+def test_a_refuted_unknown_drops_nothing_and_a_sentence_leaves_no_bare_citations():
+    """oo-api (2026-10-15): an audited "Unknown" matched every Unknown line, and a
+    dropped last sentence left a line of bare citation markers."""
+    text = ('# X\n\n## Insight\n- At stake: the owner wanted every model. The gateway is curated. [5][6]\n\n'
+            '## Open threads\nUnknown\n\n## Sources\n- [5] codex:a:1 — 2026-10-01\n- [6] codex:a:2 — 2026-10-01\n')
+    kept, unlocated = drop_claims('projects/x.md', text, ['Unknown', 'The gateway is curated'])
+    assert unlocated == [] and 'Unknown' in kept and '\n[5][6]' not in kept and 'The gateway' not in kept
