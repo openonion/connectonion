@@ -1188,8 +1188,8 @@ refused round inside an accepted investigation stays in the ledger with the
 sources no later round read (Ody Zhou's and Dora's, 2026-10-10 and 10-12), and
 the daily row shows it as `refused_rounds`.
 
-**Retries.** Every later run of the day retries ledger pages not tried in the
-last 20 hours: from the held material when a sync refused it, otherwise by the
+**Retries.** Every later run of the day retries ledger pages neither refused
+nor retried in the last 20 hours, oldest refusal first: from the held material when a sync refused it, otherwise by the
 page's own investigator. A page refused three times on the same material waits
 for new material, so a refusal that will always happen does not cost a turn a
 day for ever. An accepted page clears what it read.
