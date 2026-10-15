@@ -954,13 +954,14 @@ def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
 
 def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
     """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
+    from datetime import timezone
     from connectonion.rem.runner import _searched_turn
     (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
     first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
 
     def never(*args):
         raise AssertionError("no search should run")
-    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
+    out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first, timezone.utc)
     assert out["result"] == "edited" and "not valid JSON" in out["report"]
 
 
