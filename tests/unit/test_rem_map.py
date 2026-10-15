@@ -3,6 +3,65 @@ from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map
 
 
+def test_map_files_projects_found_only_in_attributed_messages(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.project_material import stored
+    root = tmp_path / 'rem'
+    prepare(root)
+    code = tmp_path / 'code/acmewidget'
+    (code / '.git').mkdir(parents=True)
+    when = datetime.now(timezone.utc) - timedelta(days=30)
+    message = {'source': 'codex:workspace:100', 'tool': 'codex', 'timestamp': when.isoformat(),
+               'cwd': str(code), 'typed_in': str(code.parent), 'text': 'Reconcile the client invoices.'}
+    calls = []
+
+    def messages(subscriptions, *, since, **kwargs):
+        calls.append(since)
+        return [message], {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}
+
+    monkeypatch.setattr('connectonion.rem.project_material.session_messages', messages)
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [])
+    report = build_map(root, {}, {}, days=90, skill_directories=[])
+    project, = report['projects']
+    record = project['record']
+    assert project == {'name': 'acmewidget', 'paths': [str(code)], 'sessions': 1, 'worktrees': 0,
+                       'first': when.date().isoformat(), 'last': when.date().isoformat(), 'record': record}
+    assert record in report['created'] and record not in report['archived']
+    assert Notebook(root).list('projects') == [record]
+    assert stored(root, record) == [message]
+    assert any('workspace folder or after a cd; made pages' in line for line in report['coverage'])
+    second = build_map(root, {}, {}, days=90, skill_directories=[])
+    assert [row['record'] for row in second['projects']] == [record]
+    assert record not in second['archived'] and Notebook(root).path(record).is_file()
+    assert len(calls) == 2 and calls[1] < when  # a map always rereads its full window
+
+
+def test_map_keeps_an_existing_document_page_reused_by_attribution(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.project_material import stored
+    root = tmp_path / 'rem'
+    prepare(root)
+    nb = Notebook(root)
+    documents = tmp_path / 'Documents/Acmewidget'
+    documents.mkdir(parents=True)
+    record = 'projects/documents.md'
+    nb.stub_project(record, 'Acmewidget', [str(documents)])
+    code = tmp_path / 'code/acmewidget'
+    (code / '.git').mkdir(parents=True)
+    message = {'source': 'codex:workspace:100', 'tool': 'codex',
+               'timestamp': (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+               'cwd': str(code), 'typed_in': str(code.parent), 'text': 'Reconcile the client invoices.'}
+    monkeypatch.setattr('connectonion.rem.project_material.session_messages',
+                        lambda *a, **kw: ([message], {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [])
+    report = build_map(root, {}, {}, days=90, skill_directories=[])
+    assert [row['record'] for row in report['projects']] == [record]
+    assert report['created'] == [] and record not in report['archived']
+    assert nb.list('projects') == [record]
+    assert str(code) in nb.read(record) and str(documents) in nb.read(record)
+    assert stored(root, record) == [message]
+
+
 def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, monkeypatch):
     prepare(tmp_path)
     skills = tmp_path / 'installed'

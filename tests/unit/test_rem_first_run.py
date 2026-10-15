@@ -438,7 +438,7 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
 def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
     from connectonion.rem.config import prepare
-    from connectonion.rem.files import Notebook
+    from connectonion.rem.map import build_map
     from connectonion.rem.project_material import extract, stored
     from connectonion.cli.commands.rem_commands import _first_project_rows
     root = tmp_path / 'rem'
@@ -452,8 +452,11 @@ def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monke
                                                      {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     extract(root, {}, create_pages=False)
-    record = 'projects/older.md'
-    Notebook(root).stub_project(record, 'Older', [folder], sessions=1)
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a, **kw: [
+        {'path': folder, 'repo': '', 'origin': '', 'sessions': 3,
+         'first': when.date().isoformat(), 'last': when.date().isoformat()}])
+    report = build_map(root, {}, {}, skill_directories=[])
+    record = report['projects'][0]['record']
     rows = _first_project_rows(root, None)
     assert [row['record'] for row in rows] == [record]
     assert stored(root, record) == [message]
@@ -491,7 +494,8 @@ def projects(first_run, monkeypatch):
              "recent": recent, "new_messages": 4, "chars": 2000, "left_out": 0}
             for name, recent in (("alpha", True), ("beta", True), ("old", False))]
     written = []
-    monkeypatch.setattr("connectonion.rem.project_material.extract", lambda root, subs, **kw: {})
+    monkeypatch.setattr("connectonion.rem.project_material.extract",
+                        lambda root, subs, **kw: {"created": [], "filed_rows": [], "pages": []})
     monkeypatch.setattr("connectonion.rem.project_pages.queue",
                         lambda root, **kw: [row for row in rows if row["record"] not in written])
 

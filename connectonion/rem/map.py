@@ -622,6 +622,56 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     return sorted(moved)
 
 
+def _repository_folder(path: str) -> str:
+    """The checkout a folder belongs to, or '' for documents outside a repository.
+
+    The owner's client contracts lived outside git; only those folders should
+    join code by name. Worktrees and folders below a checkout already belong
+    to a repository, even when their own folder has no `.git`.
+    """
+    folder = Path(path)
+    return main_checkout(path) or next(
+        (str(parent) for parent in (folder, *folder.parents) if (parent / '.git').exists()), '')
+
+
+def _same_named_project(name: str, repository: bool, other: str, other_repository: bool) -> bool:
+    """The owner's client documents and code shared a name but became two pages.
+
+    Join a plain folder to code, never two repositories or two plain folders.
+    Names shorter than four characters are too easy to share by accident.
+    """
+    return len(name) >= 4 and name.casefold() == other.casefold() and repository != other_repository
+
+
+def _join_document_groups(groups: dict, rows: list[dict]) -> None:
+    """Client contracts in Documents and code in a checkout were mapped separately.
+
+    A plain folder joins the one repository with its name. Two repositories
+    sharing that name leave the documents alone: the map cannot choose one.
+    """
+    repositories = {key: any(row['repo'] or _repository_folder(row['path'])
+                             for row in rows if row['path'] in group['members'])
+                    for key, group in groups.items()}
+    names = collections.Counter(group['name'].casefold() for key, group in groups.items() if repositories[key])
+    for group in groups.values():
+        if names[group['name'].casefold()] > 1:
+            group['ambiguous_name'] = True  # filing must not undo the grouping's refusal to choose
+    for key, group in list(groups.items()):
+        if repositories[key]:
+            continue
+        matches = [other for other, candidate in groups.items()
+                   if _same_named_project(group['name'], False, candidate['name'], repositories[other])]
+        if len(matches) != 1:
+            continue
+        target = groups[matches[0]]
+        target['paths'] = list(dict.fromkeys(target['paths'] + group['paths']))
+        target['members'] += group['members']
+        target['sessions'] += group['sessions']
+        target['first'] = min(target['first'], group['first'])
+        target['last'] = max(target['last'], group['last'])
+        del groups[key]
+
+
 def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
     """Folders (rows shaped like `scan_projects`') grouped into projects: a worktree
     joins its repository by origin, Codex's dated scratch folders join by name.
@@ -661,6 +711,7 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
         group['sessions'] += row['sessions']
         group['first'] = min(group['first'], row['first'])
         group['last'] = max(group['last'], row['last'])
+    _join_document_groups(groups, kept)
     for key, group in list(groups.items()):
         members = [row for row in kept if row['path'] in group['members']]
         if group['sessions'] <= 1 and all(row['path'] in short for row in members):
@@ -685,20 +736,32 @@ def _listed_paths(page: str) -> list[str]:
     return list(dict.fromkeys(listed))
 
 
-def _project_pages(notebook: Notebook, paths: list[str], record: str) -> list[tuple[str, bool]]:
+def _project_pages(notebook: Notebook, paths: list[str], record: str, name: str) -> list[tuple[str, bool]]:
     """Every existing page for one project, with whether it may be merged away.
 
     A page belongs when the map's identity names it or it lists one of the
     project's folders, worktrees compared as their main checkout. It may be
     merged into another only if it lists no folder of a different project that
     still exists: an older page naming two repositories stays whole.
+
+    The owner's contract folder already had a page when workspace messages
+    finally found the code. A same-titled plain-folder page belongs to that
+    repository too, in either order; its other paths are safe to merge.
     """
     wanted = set(paths)
+    repositories = {_repository_folder(path) for path in paths} - {''}
+    pages = [(page, notebook.read(page)) for page in notebook.list('projects')]
+    named = [(page, _listed_paths(body), body.split('\n', 1)[0].removeprefix('# ').strip())
+             for page, body in pages]
+    repositories |= {_repository_folder(path) for _, listed, title in named
+                     if title.casefold() == name.casefold() for path in listed} - {''}
+    repository = any(_repository_folder(path) for path in paths)
     found = {}
-    for page in notebook.list('projects'):
-        listed = _listed_paths(notebook.read(page))
-        if page == record or wanted.intersection(listed):
-            found[page] = not any(path not in wanted and Path(path).exists() for path in listed)
+    for page, listed, title in named:
+        same_name = len(repositories) == 1 and bool(listed) and _same_named_project(
+            name, repository, title, any(_repository_folder(path) for path in listed))
+        if page == record or wanted.intersection(listed) or same_name:
+            found[page] = same_name or not any(path not in wanted and Path(path).exists() for path in listed)
     return list(found.items())
 
 
@@ -718,7 +781,7 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
     from .investigate import collapse_worktree_paths, project_paths
     from .merge import merge_into, resolve, weight
     record = resolve(notebook.root, _record('projects', row['name'], identity))
-    pages = _project_pages(notebook, row['paths'], record)
+    pages = _project_pages(notebook, row['paths'], record, '' if row.get('ambiguous_name') else row['name'])
     if pages:
         # Most written first; on a tie the page the map would name.
         pages.sort(key=lambda item: (weight(notebook.read(item[0])), item[0] == record), reverse=True)
@@ -758,6 +821,47 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
         if updated != original:
             notebook.write(record, updated)
     return record, created
+
+
+def _filed_projects(root: Path, rows: list[dict], material: list[dict], dropped: list[dict]) -> list[dict]:
+    """Attribution found client code after its documents were already mapped.
+
+    Filing can reuse that page or merge it into a more-written one. Keep one
+    map row under the surviving record, with both folders and their counts.
+    On later maps those messages already have a page: keep it in the map even
+    when the first-cwd scan still finds none of its workspace sessions.
+    """
+    from .merge import resolve
+    filed = {}
+    for row in rows:
+        record = resolve(root, row['record'])
+        if record not in filed:
+            filed[record] = {**row, 'record': record}
+            continue
+        target = filed[record]
+        target['paths'] = list(dict.fromkeys(target['paths'] + row['paths']))
+        target['sessions'] += row['sessions']
+        target['worktrees'] = target.get('worktrees', 0) + row.get('worktrees', 0)
+        target['first'] = min(target['first'], row['first'])
+        target['last'] = max(target['last'], row['last'])
+        target['merged'] = list(dict.fromkeys(target.get('merged', []) + row.get('merged', [])))
+    from .project_material import page_state
+    notebook = Notebook(root)
+    excluded = {row['path'] for row in dropped}
+    for page in material:
+        record = page['record']
+        if record in filed or not page['messages']:
+            continue
+        body, state = notebook.read(record), page_state(root, record)
+        paths = _listed_paths(body)
+        if paths and all(path in excluded for path in paths):
+            continue  # old one-off pages still get archived even when they have messages
+        worktrees = re.search(r'^- Worktrees: (\d+)$', body, re.M)
+        filed[record] = {'name': body.split('\n', 1)[0].removeprefix('# ').strip(),
+                         'paths': paths, 'sessions': state['sessions'],
+                         'first': state['first'][:10], 'last': state['last_activity'][:10],
+                         'worktrees': int(worktrees[1]) if worktrees else 0, 'record': record}
+    return list(filed.values())
 
 
 def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) -> dict:
@@ -988,6 +1092,16 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
         if created:
             report['created'].append(record)
         report['projects'].append({**row, 'record': record})
+    # The owner's client repo vanished from init: its sessions began in the
+    # workspace container, or cd'd into code later. File their attributed
+    # messages before tidy and archiving decide which project pages are used.
+    from .project_material import extract
+    material = extract(root, subscriptions, full=True, create_pages=True, days=days, recent_days=days, lock_held=True)
+    report['created'] += material['created']
+    report['projects'] = _filed_projects(root, report['projects'] + material['filed_rows'], material['pages'], dropped)
+    if material['created']:
+        report['coverage'].append(f"{len(material['created'])} project folders found from messages typed in a "
+                                  "workspace folder or after a cd; made pages")
     report['projects_dropped'] = dropped
     if dropped:
         report['coverage'].append(f"{len(dropped)} folder{'s' if len(dropped) > 1 else ''} with sessions not made "
