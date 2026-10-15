@@ -51,6 +51,8 @@ refuses a quote it cannot find there.
 - Inference is labelled and rests on quotes; one incident is not a pattern.
 - An old open item keeps its date ("on 2026-08-02 he said he would send the
   deck", never "owes the deck"); an event whose date has passed is not open.
+- "Not established" or `Unknown` only after `rg` over every supplied source:
+  a granted access sat in the material while the page called it unknown.
 
 ## Filling the page
 

@@ -66,7 +66,8 @@ PEOPLE = (
     "An open thread fails when a later supplied message resolves it or when its event date has passed; "
     "a past ask is not a current debt unless the page dates it. A quote in “…” must match the original "
     "word for word in its original language. A contact detail (phone, email, company, role) fails unless "
-    "the original shows it belongs to this person, not to someone named beside it. ")
+    "the original shows it belongs to this person, not to someone named beside it. A claim that something "
+    "is unknown, unconfirmed or not established fails when a supplied original establishes it. ")
 BOUND = 250_000
 
 
