@@ -800,7 +800,7 @@ HEDGE = re.compile(r"not (?:established|confirmed|documented|verified|recorded|s
                    r"|is unknown|remains? (?:unknown|unconfirmed|unresolved)"
                    r"|no (?:outcome|reply) (?:is )?(?:documented|found|recorded)|does not say|cannot be verified"
                    # Richard Lai, 2026-10-15: "no reply or completion is established in the supplied mail", 8 times.
-                   r"|\bunconfirmed\b|is established in|in the supplied (?:mail|material|messages|record)", re.I)
+                   r"|\bunconfirmed\b|is established in|do(?:es)? not establish|in the supplied (?:mail|material|messages|record)", re.I)
 
 
 def hedged_lines(text: str) -> list[tuple[str, str]]:
