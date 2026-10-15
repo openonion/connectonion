@@ -68,6 +68,8 @@ Rules:
   a pattern over time (reply speed, topics, who chases whom). Never generic
   ("key stakeholder", "valuable relationship"); thin material: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
+- **`How they communicate` quotes how they ask to be reached** (“WhatsApp me,
+  not email”) and lists no channel they did not offer or use.
 - Attribute group replies to their sender using exact From/To/Cc metadata.
   Greetings do not bind names by recipient order; relay addresses are not
   `Email`. Date historical plans and handoffs; missing completion
@@ -77,13 +79,16 @@ Rules:
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
-  terms, who owes what.
+  terms, who owes what. A term (amount, ratio, date, condition) is quoted with
+  its date: `“<exact words>” (YYYY-MM-DD) [n]`, never restated in other words.
   Keep each local link with its relationship, citations and privacy markers;
   separate different events onto separate lines.
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
-- **Open threads keep exact asks.** Check later replies; separate terms/forms.
+- **Open threads quote the ask.** One line each: `- YYYY-MM-DD — <who> asked
+  <whom>: “<exact words>” [n] — <status and evidence>`. Check later replies;
+  separate terms/forms.
   Reports/optional offers create none. Prerequisites aren't agreed commitments;
   missing historical outcomes aren't current debts.
   Accepting an invitation or trial proves intent; attendance/activation need

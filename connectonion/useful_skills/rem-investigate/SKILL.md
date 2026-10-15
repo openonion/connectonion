@@ -35,6 +35,38 @@ settled; longer is not better.
 keep the lead and current state. Growth beyond 20,000 characters is refused.
 `History`: one dated line per thread, how it ended; at most sixteen.
 
+## Quote or summarise
+
+Someone's words the user may act on are quoted, not retold. A paraphrase of
+an ask, a term or an instruction is where pages go wrong: “可以放在 Connect
+页面上……我们自己再转发一下也可以” became "use the Connect company page" (a
+misheard ConnectOnion, now a page name) plus a cost nobody stated.
+
+- **Quote** (exact words, original language, with date and `[n]`): a request,
+  offer or promise; a number, price, date or condition in someone's terms; a
+  decision, correction or instruction the user gave; how someone says to reach
+  them; a statement of who someone is; an opinion or preference; wording that
+  is ambiguous or may be misheard. One or two whole sentences, `“…”`, never a
+  cut fragment and never a changed word; a condition in the same sentence
+  ("but before we publish…") stays in the quote; non-English stays as written, with a short English gloss after
+  it if needed. A lead sentence may introduce a quote, never restate it.
+- **Quote the line that carries the weight**: the condition, hedge, limit or
+  amount ("only if paid by Friday", "I think", "not before March"), not a greeting, a
+  sign-off or boilerplate around it. An amount is always on the page.
+- **A quote belongs to its message.** The speaker is that message's `From`;
+  cite that message, with its date. In a thread of three or more, check who
+  wrote which line and in what order before "X confirmed" or "X offered". A
+  mail to many recipients is a notice, not an ask of the user.
+- **Summarise**: Facts fields, roles, dates, counts, routine sequence (who sent
+  what when), and anything read from code, files or a git snapshot.
+- **Inference is labelled and rests on quotes.** An `Insight`, a pattern or a
+  cost is never written as a fact; one incident is not a pattern. Nothing the
+  sources do not say: no added channel, item or month.
+- **An old open item keeps its date.** "On 2026-08-02 the user said he would
+  send the deck", never "owes the deck". A broadcast mail is not last contact.
+- Before writing `Unknown` or "not established", search the sources you
+  already cite.
+
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or write bare
