@@ -2174,14 +2174,14 @@ def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
 
     def run(argv, **kw):
         calls.append(argv)
-        rows = [{"number": 2443, "title": "[BUG] init scans before consent", "author": {"login": "rlai2001"},
+        rows = [{"number": 2443, "title": "[BUG] init scans before consent", "author": {"login": "student-dev01"},
                  "createdAt": "2026-10-12T16:30:54Z", "state": "OPEN",
                  "url": "https://github.com/openonion/connectonion/issues/2443"}]
         return subprocess.CompletedProcess(argv, 0, json.dumps(rows), "")
 
     monkeypatch.setattr(inv.subprocess, "run", run)
     [item] = inv.mail_search({})(["github:openonion/connectonion created:>=2026-10-12"])
-    assert item["source"] == "github:openonion/connectonion#2443" and "rlai2001" in item["text"]
+    assert item["source"] == "github:openonion/connectonion#2443" and "student-dev01" in item["text"]
     assert calls[0][:5] == ["gh", "search", "issues", "-R", "openonion/connectonion"]
     assert calls[0][calls[0].index("--limit") + 1] == "30"
     [bad] = inv.github_search("github:not a repo")
