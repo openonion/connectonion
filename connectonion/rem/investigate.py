@@ -1554,11 +1554,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # before, the window is not the whole history. Even a first full window's
     # earliest retained mail cannot establish when this relationship began.
     from . import facts
-    from .fact_extract import extract, facts_item
+    from .fact_extract import extract, facts_item, mail_merge_subjects
+    from .mail_archive import mail_metadata
     config = read_config(root)
+    manifest = read_json(state_path(root, "mail/archive.json"), {})
+    own_addresses = set(manifest.get("owner_addresses", [])) | {
+        _address(item.get("speaker") or "") for item in items if item.get("role") == "user"}
+    merged_subjects = mail_merge_subjects(mail_metadata(root), own_addresses)
     fact_rows = [] if record.startswith("projects/") else [
         row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
-                               owner=sent_only, timezone=config["schedule"]["timezone"])
+                               owner=sent_only, timezone=config["schedule"]["timezone"], merged_subjects=merged_subjects)
         if not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
