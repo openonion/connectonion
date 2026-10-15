@@ -1101,11 +1101,11 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
-                "section. Make exactly one edit per listed line: rewrite it as what its citation does establish "
-                "(the ask, the date, who owes what) and drop the clause about what is not known; or move it under "
-                "Uncertainties if the doubt would change the user's next step (five there at most); or delete it. "
-                "Add no claim, no source and no new line about what is not evidenced. Then end. NO CHANGE is not "
-                "an answer to this round.\n\n{lines}")
+                "section. Make exactly one edit per listed line: delete only the clause about what is not known "
+                "and keep the rest of the sentence, its facts and citations (the ask, the date, who owes what); "
+                "or move the doubt under Uncertainties if it would change the user's next step (five there at "
+                "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
+                "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
 
 
 def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
@@ -1131,11 +1131,24 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
              {"role": "round", "source": "investigation:round", "text": note}]
     if stage_progress:
         stage_progress("editing round")
+    page = notebook.read(record)
     try:
         out = runner(notebook, items, config, stage="investigate")
     except RunFailed as error:
         out = {"usage": error.usage, "refused": str(error), "changed": []}
+    if _cut_too_much(page, notebook.read(record)):
+        # Ody Zhou, 2026-10-15: told it could delete a hedged line, the turn took
+        # the lead, the term-sheet paragraph and its Signing entity: 6.6k -> 3.9k.
+        notebook.write(record, page)
+        out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
+               "changed": []}
     return before, hedged_lines(notebook.read(record)), out
+
+
+def _cut_too_much(before: str, after: str) -> bool:
+    """An edit of hedges that emptied the lead or removed over a third of the page."""
+    from .runner import _lead
+    return bool(_lead(before)) and not _lead(after) or len(after) < len(before) * 2 // 3
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:

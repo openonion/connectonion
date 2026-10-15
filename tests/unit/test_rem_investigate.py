@@ -2154,3 +2154,13 @@ def test_a_long_attachment_travels_as_its_head_and_its_file():
     [part] = evidence_rounds([report, mail], 100_000)
     shown = next(item for item in part if item["source"] == "gmail:m1:report.pdf")["text"]
     assert len(shown) < ATTACHMENT_EXCERPT + 200 and "/a/report.pdf" in shown
+
+
+def test_an_editing_round_that_deletes_the_lead_is_undone():
+    """Ody Zhou, 2026-10-15: told it could delete a hedged line, the editing turn
+    took the lead and the term-sheet paragraph, 6.6k -> 3.9k characters."""
+    from connectonion.rem.investigate import _cut_too_much
+    page = "# Ody\n\nOdy is the user's co-founder [1]; completion is not established.\n\n## Facts\n" + "- x\n" * 40
+    assert _cut_too_much(page, page.replace("Ody is the user's co-founder [1]; completion is not established.", ""))
+    assert _cut_too_much(page, "# Ody\n\nOdy is the user's co-founder [1].\n\n## Facts\n")
+    assert not _cut_too_much(page, page.replace("; completion is not established", ""))
