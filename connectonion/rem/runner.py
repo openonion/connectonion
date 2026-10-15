@@ -663,6 +663,12 @@ def _owner_phones(notebook, record) -> list[str]:
             if "unknown" not in part.casefold() and part.strip()]
 
 
+def _lead(text: str) -> str:
+    """The prose between a page's title and its first section."""
+    body = re.split(r"(?m)^## ", text.partition("\n")[2], maxsplit=1)[0]
+    return body.strip()
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
@@ -744,6 +750,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
+    if last_resort and record.startswith("people/") and not _lead(text):
+        # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
+        # claim in each of its sentences. The page before this turn had one.
+        errors.append("Audit removed the whole lead; the page before this turn is kept")
     # A refuted claim no line holds any more is already gone: a repair turn
     # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
     # on the v193q1 trial (2026-10-15); it is recorded instead.

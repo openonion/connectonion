@@ -1089,3 +1089,10 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     assert not refusals
     assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
     assert "zhouody@gmail.com" in saved and "luma-mail" not in saved and "larry@" not in saved
+def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():
+    """Ody Zhou (2026-10-15) was kept with no lead: the audit refuted a claim in
+    each sentence. `_lead` is what the last resort checks before keeping a page."""
+    from connectonion.rem.runner import _lead
+    assert _lead("# Ody Zhou\n\n\n## Facts\n- Email: x\n") == ""
+    assert _lead("# Ody Zhou\n\nOdy is a co-founder [1]. Last contact: 2026-10-15.\n\n## Facts\n") \
+        .startswith("Ody is a co-founder")
