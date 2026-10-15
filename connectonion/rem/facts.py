@@ -19,7 +19,8 @@ validator, maintenance and the reader all read the same way:
   (work, mobile, personal) and then its citations `[n]`, numbers defined under
   `## Sources`. A value may be a Markdown link.
 - Dates are `YYYY-MM-DD`. Every value is cited except the identity fields the
-  map fills from addresses (`UNCITED`).
+  map fills from addresses (`UNCITED`); an Email is checked against the mail
+  instead (`page_review.verify_contacts`).
 
 `parse(page)` returns `{label: [{"value", "qualifier", "citations"}]}` in field
 order, `[]` for Unknown. A page written before 1.9.0a9 has `## Contact` with
@@ -263,10 +264,17 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
     holds several. A bare contact date citing the exact extracted original uses
     its notebook-calendar day; other interpretations stay. Returns the page and
     the rows restored or corrected.
+
+    A phone or address comes back only when the subject sent the mail and it is
+    theirs (`own`: their From line, or their own signed block). Restoring every
+    extracted number made one bad read certain: a facilities manager's mobile
+    came back onto Nina's page after the turn had left it off (contacts audit P1, #2348).
     """
     restored = []
     for row in rows:
         if row["field"] not in RESTORABLE or row["field"] not in fields(record):
+            continue
+        if row["field"] in ("Phone", "Email") and not row.get("own"):
             continue
         corrected = _correct_contact_date(text, row)
         if corrected != text:
@@ -287,17 +295,26 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
     return text, restored
 
 
+# A spelling the page itself says is wrong: "周泽楷 (corrected by Ody)" sat in
+# Ody's Also known as after he wrote "我中文名字是周泽凯 不是周泽楷" (contacts audit A1).
+REJECTED_NAME = re.compile(r"\b(?:corrected|wrong|incorrect|misspel\w*|typo|rejected)\b|not (?:his|her|their) name"
+                           r"|不是", re.I)
+
+
 def names_not_addresses(record: str, text: str) -> str:
-    """Also known as holds names; an address there only repeats the Email line.
+    """Also known as holds names they answer to; an address there only repeats the Email line.
 
     The map once seeded every handle into it, and a turn copies the Email line
     across, so the reader showed Ody's address three times (1.9.2b3 review).
-    A half address (`name@gmail`) goes too.
+    A half address (`name@gmail`) goes too, and a spelling marked as one they rejected.
     """
     if kind(record) != "people":
         return text
     match = re.search(r"(?m)^- Also known as:[ \t]*(.*)$", text)
-    if not match or "@" not in match[1]:
+    if not match:
         return text
-    names = [part for part in _split(match[1]) if "@" not in part]
+    parts = _split(match[1])
+    names = [part for part in parts if "@" not in part and not REJECTED_NAME.search(part)]
+    if names == parts:
+        return text
     return text[:match.start(1)] + ("; ".join(names) or "Unknown") + text[match.end(1):]

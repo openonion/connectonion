@@ -656,15 +656,38 @@ def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_
     from connectonion.rem.page_review import company_from_domain
     notebook, original = _person(tmp_path)
     notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
-    rows = [{'field': 'Company domain', 'value': 'gmail.example', 'qualifier': '', 'source': 'gmail:aaa', 'date': '2026-09-02'},
-            {'field': 'Company domain', 'value': 'student.unsw.edu.au', 'qualifier': '',
-             'source': 'outlook:bbb', 'date': '2026-08-01'}]
-    filled = company_from_domain(notebook, 'people/mia.md', original, rows)
-    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-08-01$', filled, re.M)[1]
+    rows = [{'field': 'Email', 'value': 'mia.chen@unsw.edu.au', 'qualifier': '', 'source': 'outlook:bbb',
+             'date': '2026-09-02', 'own': True},
+            {'field': 'Company domain', 'value': 'unsw.edu.au', 'qualifier': '', 'source': 'outlook:bbb',
+             'date': '2026-09-02'}]
+    filled, what = company_from_domain(notebook, 'people/mia.md', original, rows)
+    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-09-02$', filled, re.M)[1]
     assert f'- Company: [UNSW Sydney](../orgs/unsw-1234.md) [{number}]' in filled
+    assert what == {'company': 'UNSW Sydney', 'domain': 'unsw.edu.au', 'source': 'outlook:bbb'}
     named = original.replace('- Company: Unknown', '- Company: Acme [1]')
-    assert company_from_domain(notebook, 'people/mia.md', named, rows) == named
-    assert company_from_domain(notebook, 'people/mia.md', original, rows[:1]) == original
+    assert company_from_domain(notebook, 'people/mia.md', named, rows) == (named, {})
+
+
+@pytest.mark.parametrize('newest', [
+    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Ziming, C1)
+    'z5479567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
+    'mia.chen@student.unsw.edu.au',  # seven students got UNSW as employer (C3)
+    'usr-abc@user.luma-mail.com',    # a relay's domain is the platform's
+    '0x3c3ae74550@mail.openonion.ai',  # an agent's mail domain is ConnectOnion's (C4)
+])
+def test_company_comes_only_from_the_address_they_write_from_now_and_never_a_student_one(tmp_path, newest):
+    """Contacts audit C1-C4: `company_from_domain` fell back to any older domain,
+    and to student, relay and agent-mail domains, overriding the model's Unknown."""
+    from connectonion.rem.page_review import company_from_domain
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    notebook.stub_org('orgs/luma.md', 'Luma', ['luma-mail.com'])
+    notebook.stub_org('orgs/openonion.md', 'OpenOnion', ['openonion.ai'])
+    rows = [{'field': 'Email', 'value': newest, 'qualifier': '', 'source': 'gmail:new', 'date': '2026-09-02',
+             'own': True},
+            {'field': 'Email', 'value': 'mia.chen@unsw.edu.au', 'qualifier': '', 'source': 'outlook:old',
+             'date': '2025-01-13', 'own': True}]
+    assert company_from_domain(notebook, 'people/mia.md', original, rows) == (original, {})
 
 
 def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):

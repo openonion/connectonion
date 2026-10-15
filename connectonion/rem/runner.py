@@ -588,7 +588,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import (add_missing_sections, compact_page, drop_owner_addresses, drop_tool_text,
                               drop_uncited_sources, drop_unresolved, company_from_domain, drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
-                              renumber_sources, restore_runner_fields, unresolved_findings, validate)
+                              renumber_sources, restore_runner_fields, unresolved_findings, validate,
+                              verify_contacts)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -624,15 +625,18 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
     text, restored = facts.keep_extracted(record, text, extracted)
-    text = company_from_domain(notebook, record, text, extracted)
+    text, company = company_from_domain(notebook, record, text, extracted)
+    unverified = []
     if record.startswith("people/") and record != owner.get("record"):
         # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
         text, again = drop_owner_addresses(text, owner_values)
         # Nor a number from someone else's own signature in the thread (#2348).
         values = lambda field: [row["value"] for row in extracted if row["field"] == field]  # noqa: E731
         text, borrowed = drop_others_phones(text, values(OTHERS_PHONE), values("Phone"))
+        # Nor anything the material does not show as theirs.
+        text, unverified = verify_contacts(notebook.root, record, text, items, original)
         removed = sorted({*removed, *again, *borrowed})
-        if again or borrowed:
+        if again or borrowed or unverified:
             # The number's own source, cited nowhere else now: Dannielle's page was refused for it.
             text = drop_uncited_sources(text)
     from .page_review import link_people, link_projects, person_names, project_names
@@ -685,6 +689,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "facts_uncited_dropped": uncited,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
+                   "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
                    "factual_quality": audit_status})
@@ -707,7 +712,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and investigating that page reads every source again.
     """
     from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
-                              renumber_sources, restore_runner_fields, validate)
+                              renumber_sources, restore_runner_fields, validate, verify_contacts)
+    owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
     accepted, refusals = [], []
@@ -719,6 +725,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text, _ = drop_unresolved(record, normalize_numbered_sources(facts.upgrade(record,
             restore_runner_fields(record, after[record], before.get(record, '')))), before.get(record, ''), items,
             pages=set(before))
+        if record.startswith("people/") and record != owner:
+            text = verify_contacts(notebook.root, record, text, items, before.get(record, ''))[0]
         text = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))[0]
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
