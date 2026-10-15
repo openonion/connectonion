@@ -199,7 +199,8 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
     platform's relay, and a Drive share notice -- and notice senders were 165 of
     565 people pages. A full display name joins addresses; a sender that only ever
-    sends and looks like a system, or writes through a relay, is listed, not paged."""
+    sends and looks like a system, or writes through a relay, is listed, not paged.
+    The relay keeps its own group: joined to Ody by name it became his Email (contacts audit E2)."""
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
@@ -229,8 +230,8 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     pages = {row['record']: row for row in result['people']}
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
-    assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
-    assert ody['mails'] == 34
+    assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com']
+    assert ody['mails'] == 33
     assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
     from connectonion.rem.reader import mail_facts
     facts = mail_facts(tmp_path)[ody['record']]
@@ -240,8 +241,9 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
+    assert 'luma-mail' not in page
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
-            'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
+            'usr-abc@user.luma-mail.com', 'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
             '0xa633fd2e63@mail.openonion.ai'} <= listed
     # listed with the notice senders, but no organisation page: nobody writes from it (#1844)
     assert 'neon.tech' not in {row['domain'] for row in result['orgs']}
@@ -1147,3 +1149,15 @@ def test_knowing_nothing_of_the_owner_a_write_only_correspondent_still_gets_a_pa
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills], days=90)
     assert {address for row in result['people'] for address in row.get('addresses', [])} == {'ken@y.example'}
+
+
+def test_last_seen_does_not_lag_the_last_activity_an_investigation_read(tmp_path):
+    """Claims audit C5: Facts said Last activity 2026-10-15, Paths said Last seen 2026-10-08."""
+    from connectonion.rem.map import file_project
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    row = {'name': 'tide', 'paths': ['/work/tide'], 'sessions': 4, 'first': '2026-09-01', 'last': '2026-10-08'}
+    record, _ = file_project(nb, 'tide', row)
+    nb.write(record, nb.read(record).replace('- Last activity: Unknown', '- Last activity: 2026-10-15 [1]'))
+    file_project(nb, 'tide', row)
+    assert '- Last seen: 2026-10-15' in nb.read(record)
