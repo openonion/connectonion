@@ -119,7 +119,8 @@ commit or message never makes someone an owner.
 from files at the current line, citing the revision; label proposed apart
 from built. Short: a page is not a code tour.
 
-**Paths**: observed folders and their purpose. Never guess paths.
+**Paths**: the project's own folders (repository, data or design locations
+outside it) with their purpose; modules belong in `How it is built`. Never guess.
 
 **Uncertainties**: at most five, each one that would change the next step;
 provenance limits are said once here, not on every bullet.
