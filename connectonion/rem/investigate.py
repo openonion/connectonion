@@ -1565,8 +1565,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     own_addresses = set(manifest.get("owner_addresses", [])) | {
         _address(item.get("speaker") or "") for item in items if item.get("role") == "user"}
     merged_subjects = mail_merge_subjects(mail_metadata(root), own_addresses)
+    # An org's own domains may appear only in its Domains section, not its handles.
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
+        row for row in extract([item for item in items if not item.get("relationship_scope")], [*handles, *own_domains],
                                owner=sent_only, timezone=config["schedule"]["timezone"], merged_subjects=merged_subjects)
         if not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)

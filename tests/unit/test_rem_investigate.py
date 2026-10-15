@@ -612,6 +612,48 @@ def test_an_org_s_mail_is_asked_of_the_server_by_domain_not_found_by_listing_eve
     assert "searched on the server for unsw" in coverage[0] and "1 matched" in coverage[0]
 
 
+@pytest.mark.parametrize('latest_sender', ['org', 'owner'])
+def test_org_domains_supply_last_contact_facts_to_investigation(tmp_path, latest_sender):
+    """The org's page domain reaches extraction even when its handles omit it."""
+    import hashlib
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+
+    root = _notebook(tmp_path, 'codex')
+    set_config(root, ['schedule.timezone', 'UTC'])
+    notebook = inv.Notebook(root)
+    record = 'orgs/prodigitalfund-com.md'
+    notebook.stub_org(record, 'ProDigital Fund', ['prodigitalfund.com'])
+    assert '## Domains\n- prodigitalfund.com' in notebook.read(record)
+    now = datetime.now(timezone.utc)
+    write_json(state_path(root, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
+        'range_start': (now - timedelta(days=30)).isoformat(), 'range_end': now.isoformat()})
+    for sender in ('org', 'owner'):
+        address = 'ada@prodigitalfund.com'
+        retain_message(root, 'gmail', {
+            'id': sender, 'from': address if sender == 'org' else 'me@example.org',
+            'to': ['me@example.org' if sender == 'org' else address], 'subject': 'Pilot discussion',
+            'date': (now - timedelta(days=1 if sender == latest_sender else 2)).isoformat()},
+            'Let us discuss the pilot.', fetched_at=now.isoformat())
+    received = []
+
+    def runner(notebook, items, config, stage):
+        received.extend(items)
+        return {'changed': [], 'usage': None}
+
+    inv.investigate(root, record, 'ProDigital Fund', ['ProDigital Fund'], days=30,
+                    clients={}, subscriptions={}, runner=runner,
+                    website=lambda url: {'url': url, 'markdown': 'ProDigital Fund'})
+    assert {item['role'] for item in received if item['source'].startswith('gmail:')} == {'user', 'other'}
+    rows = [row for item in received if item.get('role') == 'facts' for row in item['facts']
+            if row['field'] == 'Last contact']
+    assert len(rows) == 1
+    assert rows[0]['value'] == (now - timedelta(days=1)).date().isoformat()
+    assert rows[0]['source'] == 'gmail:' + hashlib.sha256(latest_sender.encode()).hexdigest()[:12]
+
+
 class LikeGraph(Quiet):
     """What Graph did on the owner's mailbox (2026-09-30): `participants:unsw.edu.au`
     and `participants:@unsw.edu.au` → HTTP 500; `participants:unsw` → rows."""
