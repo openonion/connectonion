@@ -436,6 +436,9 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if batch.get('outcome') not in ('completed', None):
         material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
     lines = [rem_look.section('New material', said(material))]
+    if batch.get('failed_source'):
+        lines.append(rem_look.section('Source failed', said(
+            f"{batch['failed_source']}: {batch.get('error') or 'source could not be read'}")))
     lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
                            style.warn(rem_look.BROKEN))
               for row in batch.get('refusals') or [] if isinstance(row, dict)]

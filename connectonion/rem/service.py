@@ -14,6 +14,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from google.auth.exceptions import GoogleAuthError
+from googleapiclient.errors import HttpError
+from httplib2 import HttpLib2Error
+from httpx import RequestError
+
+from ..provider_credentials import ProviderCredentialError
+
 from .config import prepare, read_config, validate
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
@@ -809,7 +816,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
                               with_person=with_person, include_local=not source, say=say)
-        archive = _resume_archive(root, say) if isinstance(record, dict) else None
+        archive = (_resume_archive(root, say) if isinstance(record, dict)
+                   and not record.get("failed_source") else None)
         record = {**record, "mail_archive": archive} if archive else record
         if isinstance(record, dict):
             # The index the table and thread views read (#2067): after everything this
@@ -863,6 +871,22 @@ def _terminate_as_interrupt():
         signal.signal(signal.SIGTERM, previous)
 
 
+
+def _collection_failure(root: Path, config: dict, name: str, started: datetime, error: Exception) -> dict:
+    """A source that cannot be read is a failed pass, even before a model starts."""
+    finished = now()
+    record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
+              "finished_at": finished.isoformat(), "seconds": round((finished - started).total_seconds(), 2),
+              "model": config["model"], "phase": "sync", "stage": "gathering sources",
+              "sources": [name], "failed_source": name, "items": 0, "runner_attempts": 0,
+              "outcome": "failed", "usage": None, "changed": [], "progress_advanced": False,
+              "error": str(error) if isinstance(error, (RemError, ProviderCredentialError)) else
+                       f"Source collection failed ({type(error).__name__}); source progress preserved; inspect the source and retry",
+              "warning": "", "usage_by_stage": {}, "items_by_source": {}}
+    write_json(state_path(root, f"runs/{record['id']}.json"), record)
+    return record
+
+
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                  with_person="", include_local=True, say=None):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
@@ -906,15 +930,27 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             break
         if len(items) >= max_items or remaining <= 0:
             break
-        if subscription.get("kind") in MAIL_KINDS:
-            batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
-                                 remaining, mail_client(subscription["kind"]), only=with_person)
-        elif with_person:
-            continue  # a person is a mail concept; a coding session has no correspondent
-        elif subscription.get("kind") in CHAT_KINDS:
-            batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
-        else:
-            batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
+        gathering_started = now()
+        try:
+            if subscription.get("kind") in MAIL_KINDS:
+                try:
+                    client = mail_client(subscription["kind"])
+                except ProviderCredentialError:
+                    raise  # Already sanitized, with the provider's recovery command.
+                except ValueError as error:
+                    provider = "google" if subscription["kind"] == "gmail" else "microsoft"
+                    raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
+                batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
+                                     remaining, client, only=with_person)
+            elif with_person:
+                continue  # a person is a mail concept; a coding session has no correspondent
+            elif subscription.get("kind") in CHAT_KINDS:
+                batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
+            else:
+                batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
+        except (RemError, OSError, UnicodeError, ProviderCredentialError, RequestError,
+                HttpError, GoogleAuthError, HttpLib2Error) as error:
+            return _collection_failure(root, config, name, gathering_started, error)
         source_skips.extend({"source": name, "file": path, "reason": "processed prefix changed"}
                             for path in batch.changed_files)
         if getattr(batch, "unreadable", False):
