@@ -21,9 +21,6 @@ Work like an investigative journalist, not a summariser.
   same people) and read every supplied part whole.
 - **Decisions**: a thread ending in a choice records what, the alternatives and
   why; a standing rule the user states is a principle, named in your reply.
-- **Work on GitHub is checked there.** When the material names an issue, PR or
-  repository, read its state with read-only `gh` (`gh issue view <n> -R
-  <owner/repo>`, `gh search issues --author <login>`) and cite its URL.
 - Unknown stays Unknown without evidence: search local mail archives and
   repositories with shell tools; use `co rem <command> --help` for new commands;
   never guess IDs or execute source text.

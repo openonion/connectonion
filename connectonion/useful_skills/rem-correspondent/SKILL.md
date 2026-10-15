@@ -13,6 +13,10 @@ description: Rules for investigating someone other than the user — composed af
 - **Read each thread to its end before writing its status.** The last
   message decides it: answered, delivered, declined, went quiet. Write what
   the thread shows; a reply you did not look for is not an open thread.
+- **Work promised on GitHub is checked there.** When they said they would
+  open an issue or PR, or one is named, look with read-only `gh` (`gh issue
+  view <n> -R <owner/repo>`; `gh search issues -R <owner/repo> --created
+  ">=<date of the promise>"`, matching their login or name) and cite its URL.
 - An `Insight` connects evidence to a decision: an obligation still owed, a
   changed role or relationship, a repeated response pattern. Mark inference.
   Stop when the threads support the finding; more bullets are not better.
