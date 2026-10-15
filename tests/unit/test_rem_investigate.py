@@ -2164,3 +2164,24 @@ def test_an_editing_round_that_deletes_the_lead_is_undone():
     assert _cut_too_much(page, page.replace("Ody is the user's co-founder [1]; completion is not established.", ""))
     assert _cut_too_much(page, "# Ody\n\nOdy is the user's co-founder [1].\n\n## Facts\n")
     assert not _cut_too_much(page, page.replace("; completion is not established", ""))
+
+
+def test_a_github_lookup_comes_back_as_a_citable_item(monkeypatch):
+    """Richard Lai's four issues (2026-10-12) were found by the turn's own gh
+    call and then removed: the audit reads only supplied originals."""
+    import subprocess
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        rows = [{"number": 2443, "title": "[BUG] init scans before consent", "author": {"login": "rlai2001"},
+                 "createdAt": "2026-10-12T16:30:54Z", "state": "OPEN",
+                 "url": "https://github.com/openonion/connectonion/issues/2443"}]
+        return subprocess.CompletedProcess(argv, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(inv.subprocess, "run", run)
+    [item] = inv.mail_search({})(["github:openonion/connectonion created:>=2026-10-12"])
+    assert item["source"] == "github:openonion/connectonion#2443" and "rlai2001" in item["text"]
+    assert calls[0][:5] == ["gh", "search", "issues", "-R", "openonion/connectonion"]
+    [bad] = inv.github_search("github:not a repo")
+    assert bad["role"] == "search-failure"

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -879,6 +880,9 @@ def mail_search(clients: dict, known: set | None = None):
     def search(queries: list[str]) -> list[dict]:
         found, seen = [], set()
         for query in queries:
+            if query.startswith("github:"):
+                found += github_search(query)
+                continue
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
                 try:
@@ -912,6 +916,39 @@ def mail_search(clients: dict, known: set | None = None):
                                   "source": f"{kind}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}"})
         return found
     return search
+
+
+GITHUB_QUERY = re.compile(r"^github:([\w.-]+/[\w.-]+)(?:#(\d+)|\s+(.+))$")
+GITHUB_FIELDS = "number,title,author,createdAt,state,url"
+
+
+def github_search(query: str) -> list[dict]:
+    """Read-only GitHub lookups a turn asks for, as citable items (2026-10-15).
+
+    Richard Lai opened #2443-#2446 on 2026-10-12, as he had promised. A turn
+    found them with its own `gh` call and cited the issue URLs, and the next
+    repair removed them: the audit reads only supplied originals. Run here,
+    they are supplied: `github:owner/repo#2443`, or `github:owner/repo <search>`.
+    """
+    match = GITHUB_QUERY.match(query.strip())
+    if not match:
+        return [{"role": "search-failure", "source": "", "query": query,
+                 "text": "write github:<owner/repo>#<number> or github:<owner/repo> <search words>"}]
+    repo, number, words = match.groups()
+    argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
+            ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "20", "--json",
+             GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
+    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    if run.returncode:
+        return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
+    rows = json.loads(run.stdout or "[]")
+    return [{"role": "github", "source": f"github:{repo}#{row['number']}", "query": query,
+             "speaker": (row.get("author") or {}).get("login", ""), "timestamp": row.get("createdAt", ""),
+             "subject": row.get("title", ""),
+             "text": f"{row.get('url', '')}\nState: {row.get('state', '')}\nAuthor: "
+                     f"{(row.get('author') or {}).get('login', '')}\nCreated: {row.get('createdAt', '')}\n"
+                     f"Title: {row.get('title', '')}\n\n{row.get('body') or ''}"[:6000]}
+            for row in (rows if isinstance(rows, list) else [rows])]
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):

@@ -14,9 +14,10 @@ description: Rules for investigating someone other than the user — composed af
   message decides it: answered, delivered, declined, went quiet. Write what
   the thread shows; a reply you did not look for is not an open thread.
 - **Work promised on GitHub is checked there.** When they said they would
-  open an issue or PR, or one is named, look with read-only `gh` (`gh issue
-  view <n> -R <owner/repo>`; `gh search issues -R <owner/repo> --created
-  ">=<date of the promise>"`, matching their login or name) and cite its URL.
+  open an issue or PR, or one is named, request a `github:` search (by number,
+  or by repository and `created:>=<date of the promise>`) and cite the
+  `github:` ids it returns; a URL from your own `gh` call is not supplied, and
+  review removes it.
 - An `Insight` connects evidence to a decision: an obligation still owed, a
   changed role or relationship, a repeated response pattern. Mark inference.
   Stop when the threads support the finding; more bullets are not better.
