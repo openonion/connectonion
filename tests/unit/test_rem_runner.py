@@ -1017,11 +1017,13 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
     and the results come back as cited material for one more turn."""
     import json as jsonlib
     import re as regex
+    from connectonion.rem.config import set_config
+    set_config(notebook.root, ['schedule.timezone', 'Australia/Sydney'])
     record = 'people/first.md'
     notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
     prompts, asked, promoted = [], [], []
     found = [{'role': 'other', 'speaker': 'Second <second@example.org>', 'text': 'First runs the lab.',
-              'timestamp': '2025-08-06', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
+              'timestamp': '2026-08-27T21:30:00Z', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
 
     def search(queries):
         asked.append(queries)
@@ -1033,10 +1035,14 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
         candidate.write_text('# First\n')
         if len(prompts) == 1:
             (candidate.parent / 'search-requests.json').write_text(jsonlib.dumps(['First lab', 'from:x@y.z']))
+        else:
+            assert 'Date: 2026-08-27T21:30:00Z (2026-08-28 07:30 Australia/Sydney)' in (
+                candidate.parent / 'search-results.md').read_text()
         return {'usage': {'input_tokens': 10}, 'result': 'done'}
 
     def promote(book, record, candidate, original, items, directory, usage, **options):
         promoted.append([item['source'] for item in items])
+        assert items[-1]['local_time'] == '2026-08-28 07:30 Australia/Sydney'
 
     monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
     monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
@@ -1046,6 +1052,7 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
     assert len(prompts) == 2 and 'search-results.md' in prompts[1] and 'search-requests.json' in prompts[0]
     assert all(prompt.endswith('</co_rem_task>') for prompt in prompts)
     assert 'outlook:abc123abc123' in promoted[0]
+    assert 'local_time' not in found[0]
 
 
 def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monkeypatch):
@@ -1112,6 +1119,27 @@ def test_a_run_names_the_codex_threads_that_ran_it(notebook, monkeypatch):
     assert run_stage(notebook, [], default_config())["threads"] == ["01a12370-thread"]
 
 
+def test_material_carries_local_times_without_changing_the_sources(notebook, delegate):
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.config import set_config
+    from connectonion.rem.source import local_time, with_local_times
+    zone = ZoneInfo("Australia/Sydney")
+    stamp = "2026-08-27T21:30:00Z"
+    items = [{"source": "outlook:reply", "timestamp": stamp, "text": "Reply sent."},
+             {"source": "undated", "text": "No date."},
+             {"source": "non-iso", "timestamp": "yesterday", "text": "No exact time."},
+             {"source": "date-only", "timestamp": "2026-08-27", "text": "No exact time."}]
+    shown = with_local_times(items, zone)
+    assert local_time(stamp, zone) == "2026-08-28 07:30 Australia/Sydney"
+    assert list(shown[0]) == ["source", "timestamp", "local_time", "text"]
+    assert shown[1:] == items[1:] and all(copy is not item for copy, item in zip(shown, items))
+    assert all("local_time" not in item for item in items)
+    assert "timestamp: " + stamp + "\nlocal_time: 2026-08-28 07:30 Australia/Sydney" in runner.readable_material(shown)
+    set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
+    run_stage(notebook, items, default_config())
+    assert delegate[0][1]["material"] == shown
+
+
 def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
     """Ody's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
@@ -1122,6 +1150,7 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
     today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
     assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
     handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")

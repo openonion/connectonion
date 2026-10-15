@@ -269,6 +269,18 @@ def renumber_sources(text: str) -> str:
     return ''.join(parts) + swap(text[last:])
 
 
+def collapse_repeated_markers(text: str) -> str:
+    """Keep each numeric citation once per run, leaving code and links alone."""
+    # Dora and Jiexuan's pages repeated citations after sources merged (2026-10-16).
+    swap = lambda prose: re.sub(r'\[\d+\](?!\()(?: ?\[\d+\](?!\())*',  # noqa: E731
+                                lambda m: ''.join(dict.fromkeys(re.findall(r'\[\d+\]', m[0]))), prose)
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [swap(text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + swap(text[last:])
+
+
 # Every `investigation:` item is the run's own context, never the subject's
 # evidence; cited, it refused pages it could simply leave out.
 RUN_SOURCES = {"projects/": ("investigation:",),
