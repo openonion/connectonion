@@ -10,6 +10,7 @@ with what was discussed, what was concluded and what is still open.
 import html
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -385,6 +386,78 @@ def test_the_replayed_thread_is_listed_in_the_codex_app_with_short_labels_and_re
     assert replied == ["(Aaron Xie 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
     assert {r["timestamp"] for r in rows[1:6]} == {"2026-10-13T02:13:00.000Z"}        # a turn with no reply: 5 rows
     assert opener.REPORT.startswith("(co handoff)")
+
+
+# ---- #2513: a pasted handoff gets the sender's conversation as its own thread ----
+
+def _accept_from_session(world, tmp_path) -> str:
+    from tests.unit.test_handoff_accept import _send_from_session
+    code = _send_from_session(world, tmp_path)
+    world["be"](RECIPIENT)
+    result = _invoke("handoff", "accept", code)
+    assert result.exit_code == 0, result.output
+    return result.output.replace("\n", "")
+
+
+def test_accept_inside_codex_writes_the_senders_conversation_as_a_thread_in_the_list(world, tmp_path, monkeypatch):
+    """Parrot, 2026-10-14: after the paste, Codex held one thread, with the pasted line and its own summary;
+    the sender's turns were nowhere, and only `co handoff open` (which the page never names) replayed them."""
+    monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    said = _accept_from_session(world, tmp_path)
+    [rollout] = (tmp_path / "codex" / "sessions").glob("*/*/*/rollout-*.jsonl")
+    rows = [json.loads(line) for line in rollout.read_text().splitlines()]
+    thread = rows[0]["payload"]["id"]
+    replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
+    assert replied[0].endswith("The cookie lives 30 days, as product asked.")        # the sender's own turn
+    assert "## Still open" in replied[-1] and "Cookie lifetime?" in replied[-1]       # then where it stands
+    named = json.loads((tmp_path / "codex" / "session_index.jsonl").read_text())
+    assert named["id"] == thread and named["thread_name"] in said
+    assert f"codex resume {thread}" in said and "/resume" in said
+
+
+def test_accept_inside_claude_code_writes_a_session_that_claude_resume_opens(world, tmp_path, monkeypatch):
+    from connectonion.handoff.sessions import claude_slug
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "the-pasted-session")
+    said = _accept_from_session(world, tmp_path)
+    [session] = (Path.home() / ".claude" / "projects" / claude_slug(tmp_path.resolve())).glob("*.jsonl")
+    rows = [json.loads(line) for line in session.read_text().splitlines()]
+    turns = [r for r in rows if r["type"] in ("user", "assistant")]
+    assert [r["parentUuid"] for r in turns[1:]] == [r["uuid"] for r in turns[:-1]]   # one chain, oldest first
+    assert {r["sessionId"] for r in turns} == {session.stem}
+    assert turns[0]["message"]["content"].endswith("Store the login token.")
+    assert "## Still open" in turns[-1]["message"]["content"][0]["text"]
+    [title] = [r["customTitle"] for r in rows if r["type"] == "custom-title"]
+    assert title in said and f"claude --resume {session.stem}" in said
+
+
+def test_a_sandbox_that_keeps_codex_home_read_only_costs_the_thread_not_the_accept(world, tmp_path, monkeypatch):
+    """Parrot, 2026-10-15, Codex TUI with -s workspace-write --add-dir $HOME: writing the rollout raised
+    "[Errno 30] Read-only file system" after the sender had been told, and the rules never printed."""
+    from connectonion.handoff import opener
+    monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
+    def read_only(bundle, cwd, closing=False):
+        raise OSError(30, "Read-only file system")
+    monkeypatch.setattr(opener, "write_replay", read_only)
+    said = _accept_from_session(world, tmp_path)
+    assert "co handoff thread ho-1a2b3c4d" in said and "Read-only file system" in said
+    assert "co handoff done" in said                                                 # the rules still came
+
+
+def test_co_handoff_thread_adds_an_accepted_handoff_to_either_agent(world, tmp_path):
+    from connectonion.handoff.sessions import claude_slug
+    _accept_from_session(world, tmp_path)
+    said = _invoke("handoff", "thread", "ho-1a2b3c4d", "--agent", "claude").output.replace("\n", "")
+    [session] = (Path.home() / ".claude" / "projects" / claude_slug(tmp_path.resolve())).glob("*.jsonl")
+    assert f"claude --resume {session.stem}" in said
+    said = _invoke("handoff", "thread", "ho-1a2b3c4d").output.replace("\n", "")
+    assert "codex resume" in said and list((Path.home() / ".codex" / "sessions").glob("*/*/*/rollout-*.jsonl"))
+
+
+def test_accept_outside_codex_and_claude_code_writes_no_thread(world, tmp_path):
+    said = _accept_from_session(world, tmp_path)
+    assert not (Path.home() / ".codex").exists() and not (Path.home() / ".claude").exists()
+    assert "resume" not in said
 
 
 # ---- the conversation as the viewer shows it: one reply per turn, no repeats, clean cuts ----

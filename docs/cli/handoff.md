@@ -102,6 +102,16 @@ machine being online:
   and the preview says to push.
 - **The session copy**, the same redacted copy an answer used to bring, saved
   as `session.md`. Answers point to it.
+- **The sender's conversation as a thread of its own**, when accept runs inside
+  Codex or Claude Code. The pasted thread holds the paste, the work and the
+  agent's summary; the sender's turns are in a second one, named
+  `Handoff from <sender>: <title>`, each side labelled, ending in the report
+  (Discussed, Concluded, Still open, the diagram) and "You can keep asking me
+  here." Accept prints how to open it, and the agent passes that on. In Codex it
+  is in the conversation list (`/resume`, or the app's sidebar) and opens with
+  `codex resume <id>`; in Claude Code it is in `claude --resume`'s list and opens
+  with `claude --resume <id>`. In any other agent there is no thread format to
+  write, and the conversation stays in `session.md`.
 
 The rules accept prints: do the work in this folder without asking the person,
 ask them only before something that cannot be undone or leaves the machine,
@@ -377,7 +387,7 @@ folder you can find: `~/handoffs/<title>` (or `--cd <dir>`).
   asks the sender what the handoff does not say, and finishes with
   `co handoff done`. Its log is `~/.co/handoff/received/<id>/work-codex.log`.
 - **Claude Code** (`--agent claude`) gets the same two turns, without the
-  replayed thread.
+  replayed thread. (Accept, run inside Claude Code, does write one.)
 
 Both turns run with full access in that folder (`codex exec -s danger-full-access`,
 `claude --permission-mode bypassPermissions`). Opening the same handoff again

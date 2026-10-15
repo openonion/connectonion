@@ -813,8 +813,31 @@ def handle_accept(code_text: str, brief: Optional[Path]) -> None:
             print(f"The sender's whole session: {folder / 'session.md'} (search it before asking them anything)")
     if brief or picked:
         out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
+    if picked and opener.inside():
+        _print_thread(picked["bundle"], opener.inside())
     out.print(_rules(code_text, code["id"]), markup=False)
     _next(f'when it is done, co handoff done {code_text} "<what you did, and where the result is>"')
+
+
+def _print_thread(bundle: dict, agent: str) -> None:
+    """The sender's conversation as a thread of its own (#2513). Last, and the one place a write may fail:
+    Codex's workspace-write sandbox keeps ~/.codex read-only even under --add-dir (Parrot, 2026-10-15),
+    which cost the whole accept its rules after the sender had been told."""
+    try:
+        line = opener.replay_here(bundle, Path.cwd(), agent)
+    except OSError as e:
+        line = (f"{opener.thread_name(bundle)} could not be added to {opener.CLIENTS[agent]}'s conversations from "
+                f"inside the sandbox ({e.strerror}). Ask to run co handoff thread {bundle['id']} outside it, or run "
+                "it yourself in a terminal in this folder.")
+    print(f"Tell the person here, in these words: {line}")
+
+
+def handle_thread(handoff_id: str, agent: Optional[str]) -> None:
+    saved = _home() / "accepted" / handoff_id / "bundle.json"
+    if not saved.exists():
+        _fail(f"Handoff {handoff_id} was not accepted on this machine with its conversation.", "co handoff inbox")
+    out.print(opener.replay_here(json.loads(saved.read_text(encoding="utf-8")), Path.cwd(),
+                                 agent or opener.inside() or "codex"), markup=False)
 
 
 def _safe_name(name: str, fallback: str) -> str:
@@ -1178,6 +1201,20 @@ def make_handoff_app(factory) -> typer.Typer:
         prompt came from: mail, chat, or a pasted message.
         """
         handle_accept(code, brief)
+
+    @app.command("thread", epilog="Examples:  co handoff thread ho-1a2b3c4d  |  co handoff thread ho-1a2b3c4d --agent claude")
+    def thread(
+        handoff_id: str = typer.Argument(..., help="An accepted handoff's id"),
+        agent: Optional[str] = typer.Option(None, "--agent", help="codex or claude (default: the one this runs inside, else codex)"),
+    ):
+        """Add an accepted handoff's conversation to Codex or Claude Code as a thread of its own, in this folder.
+
+        Accept does this itself inside either; this is for when it could not
+        (Codex's sandbox keeps ~/.codex read-only) or to add it to the other one.
+        """
+        if agent not in (None, *AGENTS):
+            _fail(f"--agent must be codex or claude, not {agent}.", f"co handoff thread {handoff_id} --agent codex")
+        handle_thread(handoff_id, agent)
 
     @app.command("ask", epilog='Example:  co handoff ask coh1.eyJhIjoi... "Cookie lifetime: 7 or 30 days?"')
     def ask(
