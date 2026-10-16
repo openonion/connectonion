@@ -160,3 +160,20 @@ def test_a_later_handoff_to_the_contact_reaches_their_inbox_boxed(world):
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output
     assert "ho-2b3c4d5e" in listed and "Rotate the signing key" in listed
+
+
+def test_another_agent_accepting_a_handoff_sent_to_one_agents_mailbox_does_not_take_its_name(world):
+    """#2542: sent to Bob's agent mailbox, accepted by Mallory with a forwarded link. Bob's name must stay
+    Bob's, or every later handoff to it is boxed for Mallory."""
+    code = _code(_send(world))
+    mallory = _agent(15)
+    world["be"](mallory)
+    assert _invoke("handoff", "accept", code).exit_code == 0
+    world["be"](SENDER)
+    status = " ".join(_invoke("handoff", "status", "ho-1a2b3c4d").output.split())
+    assert "not the agent you sent it to" in status
+    book = transport.contacts()
+    bob = RECIPIENT["mail"].split("@")[0]
+    assert book.get(bob, {}).get("agent") in (None, RECIPIENT["address"])
+    assert book[mallory["mail"].split("@")[0]]["agent"] == mallory["address"]
+    assert f"{bob} finished it" not in status and f"{bob} is working on it" not in status

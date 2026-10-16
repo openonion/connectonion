@@ -66,10 +66,16 @@ def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: 
     reaches them: a name already reached at `mail`, or already known as `agent`, keeps its name and
     gains the agent; anyone else is saved under the mailbox's name. `reason` (which handoff)
     goes into the record.
+
+    A handoff sent to one agent's own mailbox and accepted by another agent (a forwarded link) does not
+    rebind that mailbox's name to the acceptor (#2542): the acceptor is met under its own mailbox, so a
+    later send to the name still reaches, and is boxed for, the agent it names.
     """
     from ..network.trust.tools import admit_for_handoffs, promote_to_contact
     admit = admit_for_handoffs if level == "handoffs" else promote_to_contact
     admit(agent, global_config_dir(), reason)
+    if not_theirs(mail, agent):
+        mail = agent_email(agent)
     book = contacts()
     name = next((n for n, e in book.items() if e["mail"] == mail or e.get("agent") == agent), None)
     if name is None:
@@ -83,6 +89,11 @@ def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: 
         book[name]["sealed"] = True
     _save(book)
     return name
+
+
+def not_theirs(mail: str, agent: str) -> bool:
+    """`mail` is one agent's own mailbox, and `agent` is a different agent."""
+    return bool(re.fullmatch(r"0x[0-9a-f]{10}@mail\.openonion\.ai", mail.lower())) and agent_email(agent.lower()) != mail.lower()
 
 
 def mail_address(address: str) -> str:
