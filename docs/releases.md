@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc6**: a forwarded link no longer takes the name. A handoff addressed to
+one agent's mailbox and accepted by another agent is saved under the acceptor's own name, the
+addressed name keeps its own key, and names rc5 already re-pointed read as mail contacts again. See
+[1.9.3rc6 notes](releases/1.9.3rc6.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc6'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc5**: handoffs are end-to-end encrypted. `send` seals the handoff on
 your machine and the key travels after `#` in the link; after acceptance every message between the
 two agents is boxed to the other's key. The backend holds ciphertext. See
 [1.9.3rc5 notes](releases/1.9.3rc5.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc5'
-```
-
-## Previous previews
 
 Release candidate **1.9.3rc4**: enrich and muse, fixed. A Codex sub-agent finishing no longer
 ends the main turn; enrich's ledger for a project page holds its coding sessions, GitHub issues and
