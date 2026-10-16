@@ -412,6 +412,53 @@ def test_grouped_citation_sources_are_each_openable_on_phone(reader):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
+@pytest.mark.parametrize("width", [1440, 390])
+def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width):
+    page, uri = reader
+    first = ("Mara is a professor involved in the RMIT ARC Research Hub proposal and invited your company "
+             "to join as a Partner Organisation")
+    second = ("You owe Mara the promised Letter of Support draft and contribution questions: "
+              "“I'll come back to you shortly with a draft and a couple of questions about the contribution details.” "
+              "(2026-10-14)")
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate("""text => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = '# Mara Ostrowski\\n\\n' + text + '\\n\\n## Facts' + r.text.split('## Facts')[1];
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", first + " [2][6]. " + second + " [4].", isolated_context=False)
+    chips = page.locator(".person-lead .cite")
+    assert chips.count() == 3
+    for index, expected, other in ((1, first, second), (2, second, first)):
+        chips.nth(index).click()
+        claim = page.locator(".evidence-claim > div").inner_text()
+        assert claim == expected
+        assert other not in claim
+        page.get_by_role("button", name="Close source context").click()
+
+
+def test_evidence_sentence_boundaries_keep_quotes_and_short_claims_local(reader):
+    page, _ = reader
+    cases = {
+        "Earlier finding! Dr. Mara gives examples, e.g. support letters [1].":
+            "Dr. Mara gives examples, e.g. support letters",
+        'Earlier question? A quoted promise: "I will send it. Please wait!" (2026-10-14) [1].':
+            'A quoted promise: "I will send it. Please wait!" (2026-10-14)',
+        "Earlier finding; A separate supported clause with enough words [1].":
+            "A separate supported clause with enough words",
+        "Previous sentence. Tiny [1]. Another sentence follows.": "Tiny.",
+        "Previous sentence. Send [1] the promised draft. Another sentence follows.": "Send the promised draft.",
+        "[1] Send the promised draft. Another sentence follows.": "Send the promised draft.",
+        "[1]": "",
+    }
+    claims = page.evaluate("""texts => texts.map(text => {
+      const line = document.createElement('p');
+      line.innerHTML = inline(text, 'people/mara-ostrowski.md');
+      return evidenceLine(line.querySelector('.cite')).text;
+    })""", list(cases), isolated_context=False)
+    assert claims == list(cases.values())
+
+
 def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reader):
     page, _ = reader
     cases = {

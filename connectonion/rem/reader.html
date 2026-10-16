@@ -3617,21 +3617,45 @@ function supportingSpan(claim, excerpt) {
 function markedSpan(text, range) {
   return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
 }
+function evidenceText(range) {
+  const copy = range.cloneContents();
+  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
+  return copy.textContent.trim();
+}
+function sentenceEnds(text) {
+  const ends = [0];
+  // Quotes and parentheticals are units, including a quote's closing full stop.
+  for (const match of text.matchAll(/“[^”]*”|"[^"\n]*"|\([^)]*\)|[.!?;](?=\s)/g)) {
+    if (match[0].length !== 1) continue;
+    if (match[0] === "." && /\b(?:[a-z]\.){2,}$|\b(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr|St|vs|etc)\.$/i.test(text.slice(0, match.index + 1))) continue;
+    ends.push(match.index + 1);
+  }
+  return ends;
+}
 function evidenceSentence(trigger, line) {
   const content = line.querySelector(".focus-statement") || line;
   const range = document.createRange();
   range.selectNodeContents(content);
   if (content.contains(trigger)) {
-    range.setEndBefore(trigger);
-    const chips = [...content.querySelectorAll("a.cite")], previous = chips[chips.indexOf(trigger) - 1];
-    if (previous) range.setStartAfter(previous);
+    const chips = [...content.querySelectorAll("a.cite")];
+    let first = chips.indexOf(trigger);
+    // Every adjacent chip supports the words before the group's first chip.
+    for (; first > 0; first--) {
+      range.setStartAfter(chips[first - 1]);
+      range.setEndBefore(chips[first]);
+      if (range.toString().trim()) break;
+    }
+    range.selectNodeContents(content);
+    range.setEndBefore(chips[first]);
+    if (first > 0) range.setStartAfter(chips[first - 1]);
   }
-  const copy = range.cloneContents();
-  copy.querySelectorAll(".privacy-tag, .dir, .age, .when").forEach(node => node.remove());
-  const text = copy.textContent.trim();
-  // A closing full stop belongs to this sentence, not the previous one.
-  const beforeEnd = text.replace(/[.;]["”’')\]]*$/, "");
-  return text.slice(Math.max(beforeEnd.lastIndexOf("."), beforeEnd.lastIndexOf(";")) + 1).trim();
+  const before = evidenceText(range), start = sentenceEnds(before).at(-1);
+  const sentence = before.slice(start).trim();
+  if (sentence.length >= 20) return sentence;
+  // A short prefix may have its remaining words after the chip.
+  range.setEnd(content, content.childNodes.length);
+  const text = evidenceText(range), end = sentenceEnds(text).find(at => at >= before.length && at > start);
+  return text.slice(start, end).trim();
 }
 function evidenceLine(trigger) {
   const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
@@ -3641,7 +3665,7 @@ function evidenceLine(trigger) {
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
   const sentence = evidenceSentence(trigger, line);
-  return { text: sentence.length >= 20 ? sentence : copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  return { text: sentence || copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
 }
 function scrollEvidenceSpan(panel) {
   const mark = panel.querySelector(".evidence-original mark.span");
