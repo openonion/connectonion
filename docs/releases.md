@@ -25,16 +25,22 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc4**: enrich and muse, fixed. A Codex sub-agent finishing no longer
+ends the main turn; enrich's ledger for a project page holds its coding sessions, GitHub issues and
+pull requests and the git log, and the review gate accepts what the ledger lists. On a test project
+page, enrich then muse took quotes from 3 to 15 and cited sources from 10 to 40. See
+[1.9.3rc4 notes](releases/1.9.3rc4.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc4'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc3**: deepen one page. `co rem enrich PAGE` follows the leads a page has
 not followed (links, attachments, older threads) and adds what they establish; `co rem muse PAGE`
 asks many questions of a page, studies the five best and writes only on insight. Both pass
 investigate's review gate. See [1.9.3rc3 notes](releases/1.9.3rc3.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc3'
-```
-
-## Previous previews
 
 Release candidate **1.9.3rc2**: Agent sessions. `co rem import sessions` keeps one page per
 Codex or Claude Code conversation you typed in, with what it produced and its project;
