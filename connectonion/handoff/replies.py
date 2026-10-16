@@ -11,6 +11,9 @@ contact (transport.meet); the acceptor is also recorded in
 Replies travel as a small base64 block, like the bundle itself. A `coh2` code says
 its sender reads the agent inbox (#2410), so replies go there, addressed to the
 agent the code names; a `coh1` code is from a sender that reads only mail.
+
+A `coh4` code also carries the key the handoff was sealed with (sealing.py), and says both
+sides open boxes: every reply about it is boxed to the other agent's key.
 """
 
 import base64
@@ -27,9 +30,10 @@ from ..address import agent_email
 from ..env_file import env_lock
 from ..environment import global_config_dir
 from . import bundle as bundles
-from . import private, sessions, transport
+from . import private, sealing, sessions, transport
 
 PREFIX = "coh2."
+SEALED_PREFIX = "coh4."      # the drop is sealed with the key the code carries, and replies are boxed
 DROP_PREFIX = "coh3."        # the handoff itself waits on the backend under a drop id (#2459)
 MAIL_ONLY_PREFIX = "coh1."   # from senders before the agent inbox: reply by mail
 REPLY_BEGIN = "----- BEGIN CO HANDOFF REPLY -----"
@@ -50,9 +54,10 @@ def new_secret() -> str:
 def make_code(fields: dict) -> str:
     mailbox = "" if fields["mailbox"] == agent_email(fields["address"]) else fields["mailbox"]
     drop = _unpadded(fields["drop"]) if fields.get("drop") else b""
+    key = sealing.key_from(fields["key"]) if fields.get("key") else b""
     raw = (bytes.fromhex(fields["address"][2:]) + bytes.fromhex(fields["id"][3:]) + bytes.fromhex(fields["hash"])
-           + bytes.fromhex(fields["secret"]) + drop + mailbox.encode())
-    prefix = DROP_PREFIX if drop else PREFIX
+           + bytes.fromhex(fields["secret"]) + drop + key + mailbox.encode())
+    prefix = SEALED_PREFIX if key else DROP_PREFIX if drop else PREFIX
     return prefix + base64.urlsafe_b64encode(raw + hashlib.sha256(raw).digest()[:4]).decode().rstrip("=")
 
 
@@ -64,11 +69,13 @@ def _unpadded(text: str) -> bytes:
 
 
 def parse_code(code: str) -> dict:
-    """{address, mailbox, id, hash, secret}. ValueError for anything else, including a typo."""
+    """{address, mailbox, id, hash, secret}, with drop and key when it has them. ValueError for anything
+    else, including a typo."""
     code = "".join(code.split())   # a terminal or mail client may have wrapped it
-    if not code.startswith((DROP_PREFIX, PREFIX, MAIL_ONLY_PREFIX)):
-        raise ValueError(f"a handoff code starts with {DROP_PREFIX}")
-    inbox, dropped, body = not code.startswith(MAIL_ONLY_PREFIX), code.startswith(DROP_PREFIX), code[len(PREFIX):]
+    if not code.startswith((SEALED_PREFIX, DROP_PREFIX, PREFIX, MAIL_ONLY_PREFIX)):
+        raise ValueError(f"a handoff code starts with {SEALED_PREFIX}")
+    sealed = code.startswith(SEALED_PREFIX)
+    inbox, dropped, body = not code.startswith(MAIL_ONLY_PREFIX), sealed or code.startswith(DROP_PREFIX), code[len(PREFIX):]
     try:
         data = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
     except ValueError as error:
@@ -76,11 +83,14 @@ def parse_code(code: str) -> dict:
     raw, check = data[:-4], data[-4:]
     if len(raw) < 54 or hashlib.sha256(raw).digest()[:4] != check:
         raise ValueError(_CHANGED)
-    address, rest = "0x" + raw[:32].hex(), raw[54 + DROP_BYTES:] if dropped else raw[54:]
+    end = 54 + (DROP_BYTES if dropped else 0) + (sealing.KEY_BYTES if sealed else 0)
+    address, rest = "0x" + raw[:32].hex(), raw[end:]
     code = {"address": address, "id": "ho-" + raw[32:36].hex(), "hash": raw[36:44].hex(),
             "secret": raw[44:54].hex(), "mailbox": rest.decode() or agent_email(address), "inbox": inbox}
     if dropped:
         code["drop"] = base64.urlsafe_b64encode(raw[54:54 + DROP_BYTES]).decode().rstrip("=")
+    if sealed:   # as text, like the rest: accept saves the code as JSON
+        code["key"] = sealing.key_text(raw[54 + DROP_BYTES:end])
     return code
 
 
@@ -126,16 +136,33 @@ def prompt(code: str, handoff_id: str, sender: str, title: str) -> str:
     One paragraph with no line breaks: a mail cannot run a copy button (Aaron clicked "Copy from
     here" and nothing happened, 2026-10-13), and a triple-click selects a whole paragraph in any
     mail client. Nothing else (#2459): it is the first message of the recipient's thread, and
-    `accept` fetches the handoff and says what to do next."""
-    return (f"{sender} handed you the context of \"{title}\" (handoff {handoff_id}). If co --version prints nothing or a version "
-            f"{older_than(MIN_VERSION)}, install co first, which keeps to its own environment (right after a release it can wait a few minutes "
-            f"for PyPI, so let it finish): "
-            f"on macOS or Linux run "
-            f"curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh, and on Windows run "
-            f"uv tool install \"connectonion=={MIN_VERSION}\" then co init --yes. Then run co handoff accept {code} "
-            f"yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for "
-            f"me: the work, questions to {sender} with co handoff ask, and co handoff done when it is finished. Then "
-            f"tell me in a few lines what {sender} was working on and what you did.\n")
+    `accept` fetches the handoff and says what to do next. It names the code, so it goes only
+    inside the sealed page; the page's public copy is outer_prompt."""
+    return (f"{sender} handed you the context of \"{title}\" (handoff {handoff_id}). {_install()} Then run co handoff accept {code} "
+            f"yourself; it fetches the handoff and says what to do. {_then(sender)}")
+
+
+def outer_prompt(handoff_id: str, sender: str, drop_id: str) -> str:
+    """The prompt as the backend holds it, which the agent reads at the link its person pasted: no title and
+    no code. The handoff is sealed, and its key is the link's #k= part, which reached the agent in the line
+    it was given but never the page it fetched."""
+    return (f"{sender} handed you the context of a session (handoff {handoff_id}). It is encrypted, and its key is the "
+            f"#k= part of the link you were given. {_install()} Then run co handoff accept with that whole link, "
+            f"#k= part included, in quotes: co handoff accept \"{transport.VIEWER}{drop_id}/codex#k=<the key from your link>\". "
+            f"Run it yourself; it decrypts the handoff here and says what to do. {_then(sender)}")
+
+
+def _install() -> str:
+    return (f"If co --version prints nothing or a version {older_than(MIN_VERSION)}, install co first, which keeps to its "
+            f"own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or "
+            f"Linux run curl -fsSL {INSTALLER} | CO_VERSION={MIN_VERSION} sh, and on Windows run "
+            f"uv tool install \"connectonion=={MIN_VERSION}\" then co init --yes.")
+
+
+def _then(sender: str) -> str:
+    return (f"Do that here, in this folder, without waiting for me: the work, questions to {sender} with co handoff ask, "
+            f"and co handoff done when it is finished. Then tell me in a few lines what {sender} was working on and what "
+            f"you did.\n")
 
 
 PASTE = {   # one line a person pastes; the page it names holds the prompt above (Aaron, 2026-10-13)
@@ -157,14 +184,16 @@ def paste(sender: str, title: str, url: str, lang: str = "en") -> str:
 # ---- reply messages ----
 
 def send(kind: str, code: dict, to: str, agent: str | None = None, **extra) -> dict:
-    """One reply block about handoff code['id']: to `agent`'s inbox when given, else mailed to `to`."""
+    """One reply block about handoff code['id']: to `agent`'s inbox when given, else mailed to `to`.
+    A sealed handoff's (its code has a key) is boxed to that agent: both sides of one open boxes."""
     block = {"kind": kind, "id": code["id"], "secret": code["secret"],
              "address": transport.my_address(), "at": _now(), **extra}
     encoded = base64.b64encode(json.dumps(block, ensure_ascii=False).encode()).decode()
     body = (f"<p>{html.escape(_human(kind, block))}</p>\n<pre>{REPLY_BEGIN}\n"
             + "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76)) + f"\n{REPLY_END}</pre>\n")
     return transport.deliver(to, f"{transport.SUBJECT_PREFIX}{kind} {code['id']}", body,
-                             idempotency_key=f"{code['id']}-{kind}-{secrets.token_hex(4)}", agent=agent)
+                             idempotency_key=f"{code['id']}-{kind}-{secrets.token_hex(4)}", agent=agent,
+                             sealed=bool(code.get("key")))
 
 
 def _human(kind: str, block: dict) -> str:
@@ -306,7 +335,7 @@ def _answer(record: dict, who: dict, session: dict, question: dict, questions: l
     copy = not record["copy_sent"] and Path(session["path"]).exists()
     extra = {"context": _copy(record, session)} if copy else {}
     text = (POINTER if record["copy_sent"] else WITH_COPY if copy else NO_COPY) + _who_else(record)
-    result = send("answer", {"id": record["id"], "secret": record["secret"]}, who["mailbox"],
+    result = send("answer", code_of(record), who["mailbox"],
                   agent=who["address"] if record.get("inbox") else None, text=text, **extra)
     if not result.get("success"):
         return False, f"[handoff] {record['id']} could not answer \"{question['text']}\": {result.get('error')}"
@@ -337,7 +366,7 @@ def tell_taken(record: dict, state: dict) -> None:
             if address in told or not mailbox:
                 continue
             text = TAKEN.format(mailbox=who["mailbox"], day=who["at"][:10])
-            if send("answer", {"id": record["id"], "secret": record["secret"]}, mailbox,
+            if send("answer", code_of(record), mailbox,
                     agent=address if record.get("inbox") else None, text=text).get("success"):
                 told.append(address)
         on_disk["told_taken"] = record["told_taken"] = told
@@ -469,7 +498,12 @@ def unpack_file(packed: str) -> bytes:
     return gzip.decompress(base64.b64decode(packed))
 
 
-def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: bool = False) -> str:
+def code_of(record: dict) -> dict:
+    """What `send` needs of a sent handoff to answer about it: its id, secret, and key if it was sealed."""
+    return {"id": record["id"], "secret": record["secret"], **({"key": record["key"]} if record.get("key") else {})}
+
+
+def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: bool = False, sealed: bool = False) -> str:
     """The acceptor may send this agent handoff messages, named after whoever `to` was; returns that name.
     Only that: a contact drives this agent and approves its own tool calls (audit, 2026-10-14).
 
@@ -481,7 +515,7 @@ def remember_peer(address: str, mailbox: str, handoff_id: str, to: str, inbox: b
     if handoff_id not in peer["handoffs"]:
         peer["handoffs"].append(handoff_id)
     path.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return transport.meet(to, address, inbox, f"accepted our handoff {handoff_id}", level="handoffs")
+    return transport.meet(to, address, inbox, f"accepted our handoff {handoff_id}", level="handoffs", sealed=sealed)
 
 
 def _now() -> str:
