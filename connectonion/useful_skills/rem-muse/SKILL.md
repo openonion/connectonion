@@ -86,6 +86,10 @@ Decide one of:
   user does next.
 - **no insight** — the answer is a restatement, a detail, or already on the
   page. **Do not edit the page.** Say so; that is a normal result.
+  A page that already *links* another page has not said they are the same
+  person or project; confirming that from the originals is an **insight** —
+  say it on the page with the tie (shared address, signature, name), and fill
+  this page's `Unknown` facts that the other subject's originals settle.
   These are never insights: that one record does not prove another; that
   more evidence is needed; that two documents describe different things;
   the same fact with more quotes. If you can only say it as "Inference: …
@@ -97,9 +101,11 @@ Decide one of:
 Never answer from plausibility. An inference is labelled and rests on quotes.
 Each edit is small and cited; never rewrite a correct section, never drop a
 cited fact that is still true, keep every quote verbatim.
-An insight is written as a finding the user can act on, not as a hedge;
-`Insight` keeps at most four bullets, so a new one replaces the weakest (move
-that one's fact where it belongs). An insight adds a sentence or two, not a
+An insight is written as a finding the user can act on, not as a hedge; an
+`Insight` bullet never starts with or contains `Inference:` — if it needs that
+label it is not ready. `Insight` keeps at most four bullets, so a new one
+replaces the weakest (move that one's fact, quotes and citations where they
+belong). An insight adds a sentence or two, not a
 paragraph of supporting quotes. The owner is `the user`, never their name.
 
 Reply each turn:
@@ -117,6 +123,9 @@ Only if the page was edited this run: reread it top to bottom; remove what the
 new insight made superseded or said twice; check the lead still says who they
 are, what is live and what the user does next. Otherwise leave it. The page
 should leave this run no longer than it came in, apart from the insights.
+Removing repetition merges sentences; it never removes a `“…”` quote or a
+citation — compare with the page at the start of the run and restore any that
+went missing. Every `[n]` must be defined under `Sources`.
 
 Reply: insights added, questions left open (ranked, with the record that would
 answer each), and pages that should be linked or merged — never merge.

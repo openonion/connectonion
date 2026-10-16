@@ -32,6 +32,9 @@ not followed. A lead is anything that could hold more:
   another mailbox or address.
 - **A number or date** that implies another record: an invoice number, an
   order, a meeting, a deadline someone must have acted on.
+- **The reading ledger itself**: every kind of source it lists that the page
+  cites none of (sessions, GitHub items, attachments, another address) is a
+  lead; open at least the ones about this subject in each kind.
 
 ## 2. Follow them
 
@@ -64,8 +67,8 @@ Most promising first: what could change the lead, Open threads or Facts.
   their mail).
 
 Before you finish, compare your page with the page you were given: every
-`“…”` quote and every `Sources` id it had must still be on the page. Restore
-any you dropped.
+`“…”` quote and every `Sources` id it had must still be on the page, and every
+`[n]` in the text must be defined under `Sources`. Restore any you dropped.
 
 ## Final reply
 
