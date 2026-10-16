@@ -2073,35 +2073,63 @@ function weekChanges() {
 function listWords(words) {
   return words.length <= 1 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
 }
-// The trace shows real runs in the last pass; a dot marks a written page.
+function runSegments(runs, span) {
+  const segments = [], gap = Math.max(span * .02, 5 * 60e3);
+  for (const run of runs) {
+    const start = runTime(run), end = runEnd(run);
+    let segment = segments[segments.length - 1];
+    if (!segment || start >= segment.end + gap) {
+      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0 };
+      segments.push(segment);
+    }
+    segment.end = Math.max(segment.end, end);
+    segment.items += Number(run.items) || 0;
+    segment.changed += (run.changed || []).length;
+    segment.runs++;
+    segment.failed += Number(FAILED.test(String(run.outcome || "")));
+  }
+  return segments;
+}
+function runMarkers(markers) {
+  const last = new Map(), dots = [];
+  for (const marker of markers.sort((a, b) => a.left - b.left)) {
+    if (marker.left - (last.get(marker.kind) ?? -Infinity) < 1.6) continue;
+    last.set(marker.kind, marker.left);
+    dots.push('<span class="dot ' + marker.kind + '" style="left:' + marker.left.toFixed(2) + '%;top:' + marker.top + 'px" title="' + esc(marker.title) + '"></span>');
+  }
+  return dots.join("");
+}
+// The trace groups nearby runs; dots mark changed pages and stopped runs.
 function hypnogram(asOf) {
   const runs = (lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b));
   const W = 1000, H = 84, TOP = 14, FLOOR = 72;
   const finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
   const start = Math.floor((runs.length ? runTime(runs[0]) : asOf - 4 * HOUR) / HOUR) * HOUR - HOUR / 2;
   const end = Math.max(start + HOUR, Math.ceil(finished / HOUR) * HOUR + HOUR / 2);
+  const segments = runSegments(runs, end - start), markers = [];
   const x = t => 4 + (W - 8) * (t - start) / (end - start);
   const pct = v => (100 * v / W).toFixed(2) + "%";
+  const time = t => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
   const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
   const over = [], step = Math.max(HOUR, Math.ceil((end - start) / (6 * HOUR)) * HOUR);
   for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += step) {
     svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="4" x2="' + x(t).toFixed(1) + '" y2="80"/>');
-    const hour = new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
-    over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(hour) + "</span>");
+    over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(time(t)) + "</span>");
   }
   let path = "M4," + TOP;
-  for (const run of runs) {
-    const x0 = x(runTime(run)), x1 = Math.min(W - 4, Math.max(x0 + 2, x(Math.min(asOf, runEnd(run)))));
-    const weight = (Number(run.items) || 0) + 4 * (run.changed || []).length;
-    const depth = FAILED.test(String(run.outcome || "")) ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
+  for (const segment of segments) {
+    const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
+    const weight = segment.items + 4 * segment.changed;
+    const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
     path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
-    if (FAILED.test(String(run.outcome || ""))) over.push('<span class="dot woke" style="left:' + pct(x0) + ';top:6px" title="' + esc(fmtTime(run.started_at) + " · " + run.outcome) + '"></span>');
-    if ((run.changed || []).length) over.push('<span class="dot changed" style="left:' + pct((x0 + x1) / 2) + ";top:" + depth.toFixed(0) + 'px" title="' + esc(fmtTime(run.started_at) + " · " + run.changed.length + " pages changed") + '"></span>');
+    const range = time(segment.start) + "–" + time(segment.end);
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + segment.failed + " runs stopped early" });
+    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + segment.runs + " runs · " + segment.changed + " pages changed" });
   }
   path += " L" + (W - 4) + "," + TOP;
   svg.push('<path class="trace" d="' + path + '"/>', "</svg>");
   if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="Last run ended ' + esc(fmtTime(new Date(finished).toISOString())) + '"></span>');
-  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + "</div>";
+  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in ' + segments.length + ' stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 function nightBand() {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": "The last pass" });

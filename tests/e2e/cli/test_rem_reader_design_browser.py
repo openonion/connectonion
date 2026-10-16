@@ -8,6 +8,7 @@ view must fit a phone without sideways scrolling, in both themes.
 """
 
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -190,6 +191,44 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
     page.goto(uri + '#c=orgs')
     row = page.get_by_role('row').filter(has=page.get_by_role('link', name='ConnectOnion', exact=True))
     assert row.get_by_role('cell', name='connectonion.com', exact=True).is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1400, 390])
+def test_night_hypnogram_clusters_dense_runs(reader, width):
+    page, _ = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.evaluate("""() => {
+      const start = new Date(REM.as_of).getTime() - 4 * HOUR;
+      REM.logs = Array.from({length: 22}, (_, n) => {
+        const at = start + (n < 20 ? n * 90e3 : HOUR + (n - 20) * 90e3);
+        return {started_at: new Date(at).toISOString(), finished_at: new Date(at + 60e3).toISOString(),
+          items: 3, changed: ['people/mara-ostrowski.md'], outcome: n === 4 || n === 12 ? 'failed' : 'completed'};
+      }).reverse();
+      render();
+    }""", isolated_context=False)
+    band = page.locator('.night-strip')
+    hypno = band.locator('.hypno')
+    assert hypno.locator('.dot.changed').count() == 2
+    assert hypno.locator('.dot.woke').count() == 1
+    assert hypno.locator('.dot.dawn').count() == 1
+    assert re.fullmatch(r'\d{2}:\d{2}–\d{2}:\d{2} · 20 runs · 20 pages changed',
+                        hypno.locator('.dot.changed').first.get_attribute('title'))
+    assert '2 runs stopped early' in hypno.locator('.dot.woke').get_attribute('title')
+    assert '22 runs in 2 stretches' in hypno.get_attribute('aria-label')
+    assert hypno.locator('.trace').get_attribute('d').count(' L') == 9  # Four edges per dip, then the baseline.
+    dots = [dot.bounding_box() for dot in hypno.locator('.dot').all()]
+    for n, a in enumerate(dots):
+        for b in dots[n + 1:]:
+            assert (a['x'] + a['width'] <= b['x'] or b['x'] + b['width'] <= a['x'] or
+                    a['y'] + a['height'] <= b['y'] or b['y'] + b['height'] <= a['y'])
+    labels = [label.bounding_box() for label in hypno.locator('.day').all()]
+    assert all(a['x'] + a['width'] <= b['x'] for a, b in zip(labels, labels[1:]))
+    stages = band.locator('.stages')
+    assert 'Read 66 items' in stages.inner_text()
+    assert '22 runs' in stages.inner_text()
+    assert '2 stopped early' in stages.inner_text()
+    assert stages.locator('.stat').count() == 4
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -1667,7 +1706,9 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     assert 'A request timed out' in brief.inner_text()
     assert 'private payload' not in brief.inner_text()
     assert 'No memory pages were written' in brief.inner_text()
-    assert page.locator('.night-details .hypno .dot.woke').count() == 2
+    stopped = page.locator('.night-details .hypno .dot.woke')
+    assert stopped.count() == 1
+    assert '2 runs stopped early' in stopped.get_attribute('title')
     link = brief.get_by_role('link', name='Review failed runs →')
     assert link.bounding_box()['height'] >= 44
     link.focus()
