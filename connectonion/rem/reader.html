@@ -4479,7 +4479,9 @@ document.addEventListener("keydown", event => {
   if (!panel || panel.parentElement.hidden) return;
   if (event.key === "Escape") { event.preventDefault(); closeEvidence(); }
   if (event.key !== "Tab" || innerWidth >= 1100) return;
-  const controls = [...panel.querySelectorAll('a, button, input, select, summary')].filter(node => node.getClientRects().length);
+  const controls = [...panel.querySelectorAll('a, button, input, select, summary')]
+    .filter(node => !node.matches(':disabled') && node.tabIndex >= 0 && node.getClientRects().length);
+  if (!controls.length) { event.preventDefault(); panel.focus(); return; }
   const first = controls[0], last = controls.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
