@@ -75,8 +75,11 @@ Most promising first: what could change the lead, Open threads or Facts.
   published it themselves for people to contact them (their own site or
   profile's contact section), and it ends with `[personal]` before its claim
   number: `+61 4xx xxx xxx (WhatsApp, on their site for contact) [personal]
-  [9]`. A number on a company page is the company's: qualify it so. Anything
-  else found about their private life stays off the page.
+  [9]`. A number only on a company page is the company's: qualify it so.
+  A number the subject publishes on their own site or profile is theirs even
+  when a company page also lists it: write it once, as theirs, with
+  `[personal]`, and cite both. Anything else found about their private life
+  stays off the page.
 - Anything you add to `Uncertainties` is a question ending in `?`.
 
 Keep the page near the page rules' size (about 15,000 characters). As it

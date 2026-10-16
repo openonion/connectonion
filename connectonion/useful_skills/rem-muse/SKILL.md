@@ -8,7 +8,9 @@ description: Think one page through slowly over several turns in one thread — 
 Input: a written page, its cited originals, the open leads from enrich, the
 questions earlier runs left, and the pages it links to.
 Follow the page kind's `rem-page-*` rules and `rem-investigate`'s quote and
-evidence rules unchanged.
+evidence rules unchanged. Contact details keep the label enrich gave them; a
+number the subject publishes on their own site stays theirs, `[personal]`,
+even when a company page lists it too.
 
 Muse is thinking, not searching. Everything you need is already in the
 originals; what is missing is the right question. **Asking a precise question
