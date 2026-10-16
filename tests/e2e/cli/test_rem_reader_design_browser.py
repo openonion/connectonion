@@ -798,7 +798,7 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
     }""", isolated_context=False)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
-        assert page.locator('.focus-statement').inner_text() == 'Origin/main has a commit titled “1.9.3b5 release”.'
+        assert page.locator('.focus-statement').inner_text() == 'origin/main has a commit titled “1.9.3b5 release”.'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.evaluate("""() => {
       const r = byPath('projects/harbour.md');

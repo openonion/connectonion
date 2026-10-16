@@ -10,9 +10,72 @@ import pytest
 
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
-from connectonion.rem.reader import contact_candidates, open_reader, reader_path, render, write_reader
+from connectonion.rem.reader import TEMPLATE, contact_candidates, open_reader, reader_path, render, write_reader
 
 HOSTILE = "# Alice\n\nSaid: <script>alert(1)</script> and </script><img src=x onerror=alert(2)>\n"
+
+
+def _run_reader_js(script):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is not installed; it runs the reader's JavaScript")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_this_week_project_rows_strip_the_now_label():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
+                          for name in ["splitTrailers", "plainLine"])
+    week = page[page.index("  // This week: what"):page.index('  const processing = el("details"')]
+    script = "\n".join([
+        parsing, functions,
+        'const youify = text => text;',
+        'const el = (tag, attrs, children = []) => ({tag, ...attrs, children});',
+        'const shortDate = day => day, moon = () => null, href = r => r.path;',
+        'const singular = () => "project", sectionHead = text => ({text});',
+        'let r; const weekChanges = () => [{r, day: "2026-10-16"}];',
+        'const rows = [], main = {appendChild: node => rows.push(node)};',
+        'for (const [i, line] of ["Now: waiting on review", "**Now:** waiting on review"].entries()) {',
+        'r = {path: `projects/pilot-${i}.md`, title: "Pilot", category: "projects",',
+        'text: "# Pilot\\n\\n## Insight\\n- " + line};',
+        week, '}', 'console.log(JSON.stringify(rows));',
+    ])
+    rows = _run_reader_js(script)
+    for week_list in rows[1::2]:
+        summary = week_list["children"][0]["children"][2]["children"][2]["text"]
+        assert summary == "waiting on review"
+
+
+def test_statement_capitalisation_preserves_code_and_paths():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
+                          for name in ["capFirst", "memoryStatement", "newestStanding", "plainLine", "listItems"])
+    cases = [
+        ("origin/main is ahead", "origin/main is ahead"),
+        ("`co rem` runs nightly", "`co rem` runs nightly"),
+        ("src/app.py fails", "src/app.py fails"),
+        ("waiting on review", "Waiting on review"),
+        ("iOS builds pass", "iOS builds pass"),
+        ("camelCase stays", "camelCase stays"),
+        *[(word + " is pending", word + " is pending")
+          for word in [r"src\app", "app.py", "task_id", "a`b", "user@example.com", "ref:main", "issue#2", "v2"]],
+        ("équipe ready", "Équipe ready"),
+        ("", ""),
+    ]
+    script = "\n".join([
+        functions, 'const REM = {owner: "people/owner.md"}, youify = text => text;',
+        'const known = r => ({summary: ""});',
+        'const section = (r, name) => name === "where it stands" && r.statement ? {text: "- 2026-10-16 — " + r.statement} : null;',
+        'const cases = ' + json.dumps(cases) + ';',
+        'console.log(JSON.stringify(cases.map(([text]) => [capFirst(text),',
+        'memoryStatement({path: "projects/pilot.md", category: "projects", statement: text})])));',
+    ])
+    for (text, expected), (capitalised, lead) in zip(cases, _run_reader_js(script)):
+        assert capitalised == expected, text
+        assert lead == expected.replace("`", "").replace("#", ""), text
 
 
 def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
