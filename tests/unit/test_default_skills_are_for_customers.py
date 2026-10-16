@@ -11,6 +11,8 @@ EXPECTED_DEFAULTS = {
     "handoff",
     "rem-init",
     "rem-investigate",
+    "rem-enrich",
+    "rem-muse",
     "rem-extract",
     "rem-maintain",
     "rem-abstract",

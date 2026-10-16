@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc3**: deepen one page. `co rem enrich PAGE` follows the leads a page has
+not followed (links, attachments, older threads) and adds what they establish; `co rem muse PAGE`
+asks many questions of a page, studies the five best and writes only on insight. Both pass
+investigate's review gate. See [1.9.3rc3 notes](releases/1.9.3rc3.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc3'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc2**: Agent sessions. `co rem import sessions` keeps one page per
 Codex or Claude Code conversation you typed in, with what it produced and its project;
 `--summarise` adds a title, summary, topics and outcome, and the reader lists them by topic with one
 search. Also reader fixes from the first rc. See [1.9.3rc2 notes](releases/1.9.3rc2.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc2'
-```
-
-## Previous previews
 
 Release candidate **1.9.3rc1**: `co rem` you can show. The reader opens on what is waiting on
 you, a person page opens on what is between you, and every citation names who, where and when and

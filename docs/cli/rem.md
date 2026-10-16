@@ -366,6 +366,8 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co rem investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](rem-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
 | `co rem investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
+| `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
+| `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem abstract` | Run rem-abstract over existing notebook evidence. |
 | `co rem start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co rem sync` runs one. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -399,6 +401,42 @@ the headings still empty are named once at the foot of the page with the
 `co rem investigate '<page>'` command that fills them. Lists put pages with
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
+
+### Deepen one page: enrich and muse
+
+`investigate` writes a page from what its gather found. Two commands go further
+on one page that is already written, each through the same `co ai` runner and
+the same review gate as investigate (citations trace to a source, every quote is
+word for word in the source it cites, contacts are the subject's own, the cited
+claims pass the audit; review names problems back to the writer twice at most).
+
+```bash
+co rem enrich projects/aurora.md   # discovery: follow what the page has not followed
+co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on insight
+```
+
+- **enrich** reads the page, its cited originals and a reading ledger: every
+  source the saved mail archive and coding sessions hold about the subject,
+  laid out as searchable files with an index, and which of them the page
+  already cites. The model follows links (it may open them on the web),
+  unread attachments, names, older threads and other channels, adds what they
+  establish, and replies with a lead list: `followed`, `open` (the next run's
+  work) and `blocked`. The lead list is printed and kept in the run record.
+- **muse** is one conversation of seven turns in the same Codex or Claude Code
+  thread (`co ai --json --resume <session>`): turn 1 writes at least twenty
+  questions and picks five; turns 2–6 study one question each and edit the
+  page only when the answer is an insight that needed two or more sources;
+  the last turn looks back, brings the lead and the page's shape in line with
+  what changed, and lists the questions left open. Its material is the page,
+  its cited originals, and the latest enrich lead list and muse open questions
+  for that page. After the review gate, a page that lost any `“…”` quote or
+  any `Sources` id it had at the start is put back as it was, and the result
+  says so.
+
+Both print whether the page changed and its size before and after, record a
+run in `co rem logs` (with usage, counted in the weekly budget like
+investigate), and change no other page. They work on people, projects and orgs
+pages.
 
 ### What the reader shows
 

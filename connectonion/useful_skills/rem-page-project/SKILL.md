@@ -102,7 +102,7 @@ Nothing open: bare `Unknown`, never a line about what the material does not show
 status with its evidence. Check the history for a fix before calling one
 open. A report is not a diagnosis; a proposed fix is not a resolution.
 
-**Key decisions**: the choices the owner made, newest first, up to eight:
+**Key decisions**: the choices the owner made, newest first, at most sixteen:
 price, scope, audience, positioning, architecture, what to drop.
 `- YYYY-MM-DD — <choice, under 12 words>: “<the owner's exact words>” [n]`.
 A reversal is its own line quoting the reversal. A request alone or current

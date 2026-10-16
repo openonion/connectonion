@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc2
+## Current Version: 1.9.3rc3
+
+1.9.3rc3 is the third 1.9.3 release candidate; stable remains 1.9.2. `co rem` gains two commands
+that deepen one written page: `co rem enrich PAGE` follows the leads the page has not followed
+(links, attachments, older threads) and adds what they establish, and `co rem muse PAGE` thinks the
+page through in one seven-turn thread, writing only when a question yields an insight. Both go
+through investigate's review gate. See [1.9.3rc3 notes](docs/releases/1.9.3rc3.md).
+
+- 1.9.3rc3 (enrich and muse).
+
+## Previous preview: 1.9.3rc2
 
 1.9.3rc2 is the second 1.9.3 release candidate; stable remains 1.9.2. `co rem` keeps your coding
 sessions as Agent sessions: `co rem import sessions` writes one page per Codex or Claude Code
@@ -411,7 +421,7 @@ runs drawn as stretches, code and paths keep their case. See [1.9.3rc2 notes](do
 
 - 1.9.3rc2 (Agent sessions).
 
-## Previous preview: 1.9.3rc1
+## Earlier preview: 1.9.3rc1
 
 1.9.3rc1 is the 1.9.3 release candidate; stable remains 1.9.2. This candidate's `co rem` was given a
 real first run: a fresh notebook over 180 days of mail and coding sessions. It found pages lost

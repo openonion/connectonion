@@ -21,6 +21,8 @@ DEFAULT_LIBRARY_SKILLS = (
     # co rem stages share the same CLI skill resolution for every harness.
     "rem-init",
     "rem-investigate",
+    "rem-enrich",
+    "rem-muse",
     "rem-extract",
     "rem-maintain",
     "rem-abstract",
