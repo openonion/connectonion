@@ -36,6 +36,7 @@ FIELDS = {
     "projects": ("Repository", "Stack", "Status", "People", "Organisation", "Started", "Last activity"),
     "orgs": ("What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact",
              "Last contact"),
+    "sessions": ("Date", "Agent", "Project", "Folder", "Session", "Turns"),
 }
 UNCITED = ("Email", "Handles", "Also known as")
 # Fields that hold several values: a value the extractor found is added beside

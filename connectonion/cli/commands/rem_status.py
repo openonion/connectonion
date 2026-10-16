@@ -16,7 +16,8 @@ from .. import style
 from . import rem_look
 from .rem_look import highlight
 
-CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisations"), ("skills", "Skills"))
+CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisations"), ("skills", "Skills"),
+              ("sessions", "Agent sessions"))
 
 
 def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:

@@ -1,0 +1,58 @@
+version: v1.9.3rc2
+images:
+- file: sessions-desktop.png
+  alt: The Agent sessions list in the co rem reader on a desktop
+  caption: "Agent sessions opens on the topics the summaries tagged and how sessions ended, then one search, project, agent and time filters, and sessions by day."
+  scenario: Invented reader-test notebook (tests/fixtures/rem_reader_notebook.py, owner Avery Lin) with five invented session pages in the format co rem import sessions writes, frozen at 2026-10-16 12:00 UTC, rendered by reader.render(local=True), #c=sessions
+  viewport: 1400x900, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: session-desktop.png
+  alt: One session page on a desktop
+  caption: "A session page leads with its facts line, tags, summary, the decision quoted with its time, a follow-up linked to the person, and what the session produced."
+  scenario: Same invented notebook, the session sessions/2026-10-15-harbour-long-threads.md
+  viewport: 1400x900, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: sessions-phone.png
+  alt: The Agent sessions list on a phone
+  caption: "On a phone the topics fold after two rows and the filters sit behind a Filter button."
+  scenario: Same invented notebook, #c=sessions
+  viewport: 390x844 at 2x, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: session-phone.png
+  alt: One session page on a phone
+  caption: "The same session page on a phone."
+  scenario: Same invented notebook and session
+  viewport: 390x844 at 2x, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: home-desktop.png
+  alt: The co rem reader home on a desktop
+  caption: "Home: last night's run as one stretch, then the four things waiting on you."
+  scenario: Same invented notebook, home view
+  viewport: 1400x900, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: home-phone.png
+  alt: The co rem reader home on a phone
+  caption: "Home on a phone."
+  scenario: Same invented notebook, home view
+  viewport: 390x844 at 2x, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: person-desktop.png
+  alt: A person page on a desktop
+  caption: "Mara Ostrowski's page (invented): the lead, Between you, Where it stands and Recently."
+  scenario: Same invented notebook, people/mara-ostrowski.md
+  viewport: 1400x900, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"
+- file: person-phone.png
+  alt: A person page on a phone
+  caption: "The same person page on a phone."
+  scenario: Same invented notebook, people/mara-ostrowski.md
+  viewport: 390x844 at 2x, light
+  commit: b3775c87
+  source_run: "Headless Chrome (patchright) capture of a file:// render from release/1.9.3rc2; 2026-10-16"

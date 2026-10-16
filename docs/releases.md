@@ -25,16 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc2**: Agent sessions. `co rem import sessions` keeps one page per
+Codex or Claude Code conversation you typed in, with what it produced and its project;
+`--summarise` adds a title, summary, topics and outcome, and the reader lists them by topic with one
+search. Also reader fixes from the first rc. See [1.9.3rc2 notes](releases/1.9.3rc2.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc2'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc1**: `co rem` you can show. The reader opens on what is waiting on
 you, a person page opens on what is between you, and every citation names who, where and when and
 opens the original beside the line. On a real 180-day first run, 66 pages were accepted with none
 refused or lost to the notebook lock. See [1.9.3rc1 notes](releases/1.9.3rc1.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc1'
-```
-
-## Previous previews
 
 Beta **1.9.3b5**: `co rem` pages you can trust on the first run. Quotes and contact facts are
 checked against their sources, review repairs a page instead of refusing it, and `co rem open`

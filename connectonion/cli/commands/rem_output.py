@@ -268,6 +268,9 @@ def _init_text(value: dict, failed: bool) -> str:
                              f" · {value.get('phase', 'unknown')} · {scope}")
     lines = [title, '', *(labelled(label, f"{number:,}".rjust(wide) + tail) for label, number, tail in counts),
              labelled('Detailed map', '.state/map.json in this notebook, or rerun with --json')]
+    if value.get('sessions'):
+        from ...rem.sessions import summary
+        lines.append(summary(value['sessions']))
     for error in value.get('errors') or []:
         source = str(error.get('source', 'source'))
         lines.append(f"  {BROKEN} {source}" + ' ' * max(1, COLUMN - 4 - len(source)) + str(error.get('error', 'unavailable')))
@@ -439,6 +442,9 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if batch.get('outcome') not in ('completed', None):
         material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
     lines = [rem_look.section('New material', said(material))]
+    if batch.get('sessions'):
+        from ...rem.sessions import summary
+        lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
     if batch.get('failed_source'):
         lines.append(rem_look.section('Source failed', said(
             f"{batch['failed_source']}: {batch.get('error') or 'source could not be read'}")))

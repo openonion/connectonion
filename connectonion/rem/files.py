@@ -46,7 +46,7 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "电话:", "电话：", "公司:", "公司：")
 
 CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
-              "decisions", "principles", "works", "agenda", "notes", "logs")
+              "decisions", "principles", "works", "agenda", "sessions", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
 # The map's default window. 90 days left out people the owner works with every
 # season but had not written to this quarter; the owner chose 180 (2026-10-08).

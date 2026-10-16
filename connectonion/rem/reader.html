@@ -287,6 +287,8 @@
   .thread.theirs .dir { color: var(--ink-2); }
   .thread.plain .dir { color: var(--ink-3); }
   .thread .what { color: var(--ink); font: 16px/1.55 var(--text); }
+  .also-on { color: var(--ink-3); font: 12px/1.5 var(--ui); margin-top: 4px; overflow-wrap: anywhere; }
+  .also-on a { color: inherit; }
   .thread .who { font-size: 13px; color: var(--ink-2); margin-top: 3px; font-family: var(--ui); }
   .thread .when { font: 11.5px var(--ui); color: var(--ink-3); white-space: nowrap; }
 
@@ -713,6 +715,9 @@
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .project-sessions { grid-column: 1 / -1; }
+  .project-sessions li { margin: 7px 0; overflow-wrap: anywhere; }
   .focus-section { min-width: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 18px/1.3 var(--display); }
   .focus-section .threads { margin: 0; padding: 0; }
@@ -1083,6 +1088,132 @@
     .focus-head.purpose-lead .focus-more:not([hidden]) { margin-top: 0; }
     .focus-facts { gap: 8px; }
   }
+  /* Sessions keep structure above the attached conversation. */
+  .sessions-view { max-width: 1200px; min-width: 0; }
+  .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary { font-family: var(--ui); font-size: 13px; }
+  .sessions-view button, .sessions-view select, .sessions-view input { color: var(--ink-2); border: 1px solid var(--line); background: var(--sheet); border-radius: 5px; }
+  .sessions-view button { cursor: pointer; padding: 6px 12px; min-height: 36px; }
+  .sessions-view [aria-pressed="true"] { color: var(--dawn); background: var(--dawn-soft); border-color: var(--dawn-line); }
+  .session-topics { margin: 24px 0 18px; padding: 14px 0; border-block: 1px solid var(--line); color: var(--ink-2); font: 13px var(--ui); }
+  .session-topic-buttons, .session-outcomes { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .session-topics button { border-radius: 999px; height: 32px; min-height: 32px; padding: 4px 11px; }
+  .session-topics summary { cursor: pointer; padding: 8px 0; min-height: 32px; width: fit-content; }
+  .session-unsummarised { display: block; color: var(--ink-3); margin-top: 10px; }
+  #session-search { display: block; width: 100%; height: 44px; padding: 10px 12px; margin: 18px 0 14px; font: 15px var(--ui); }
+  .session-filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
+  .session-filter { flex: 0 1 auto; display: flex; flex-direction: column; gap: 6px; max-width: 100%; color: var(--ink-3); font: 12px var(--ui); }
+  .session-filter select { width: 170px; height: 38px; padding: 6px 28px 6px 10px; max-width: 100%; }
+  .session-segments { display: flex; flex-wrap: wrap; gap: 3px; }
+  .session-dates { color: var(--ink-2); font: 13px var(--ui); }
+  .session-dates summary { cursor: pointer; min-height: 36px; padding: 8px 0; }
+  .session-dates label { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; }
+  .session-dates input { min-height: 38px; padding: 5px; min-width: 0; max-width: 100%; }
+  .session-filter-toggle { display: none; }
+  .session-result-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 14px 0 8px; color: var(--ink-3); font: 13px var(--ui); }
+  .session-person { margin-top: 8px; }
+  .session-day, .session-group > summary { display: flex; align-items: baseline; gap: 12px; font: 500 23px/1.4 var(--display); color: var(--ink); margin: 26px 0 8px; }
+  .session-count { font: 13px var(--ui); color: var(--ink-3); }
+  .session-group > summary { cursor: pointer; min-height: 40px; }
+  .session-group > summary::before { content: "›"; color: var(--ink-3); }
+  .session-group[open] > summary::before { content: "⌄"; }
+  .session-rows { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+  .session-row { padding: 16px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+  .session-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font: 18px/1.5 var(--text); }
+  .session-excerpt { margin: 4px 0; color: var(--ink-2); font: 15px/1.5 var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .session-speaker { font: 12px var(--ui); }
+  .session-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--ink-3); font: 12px var(--ui); }
+  .session-tags:empty { display: none; }
+  .session-tags a { display: inline-flex; align-items: center; min-height: 32px; }
+  .session-meta { margin-top: 5px; color: var(--ink-3); font: 12px/1.6 var(--ui); }
+  .session-meta a { color: inherit; }
+  @media (max-width: 719px) {
+    .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary, .session-tags a { min-height: 40px; }
+    .sessions-view [hidden] { display: none; }
+    .session-topics button { height: 40px; }
+    .session-filter-toggle { display: block; }
+    .session-filter-panel { display: none; }
+    .session-filter-panel.is-open { display: flex; }
+    .session-filter { width: 100%; }
+    .session-segments button { padding-inline: 10px; }
+    .session-dates label { display: flex; margin: 6px 0; }
+    #session-search { font-size: 16px; }
+    .session-title { min-height: 40px; display: block; line-height: 40px; }
+    .session-meta a { display: inline-flex; align-items: center; min-height: 40px; }
+  }
+  .session-page { min-width: 0; }
+  .session-page h2 { font: 500 23px/1.4 var(--display); margin: 24px 0 8px; }
+  .session-page h3 { font: 14px/1.5 var(--ui); color: var(--ink-2); margin: 18px 0 8px; }
+  .session-page .page-head { margin-bottom: 18px; }
+  .session-facts-line { color: var(--ink-2); font: 13px/1.8 var(--ui); overflow-wrap: anywhere; }
+  .session-page .lede { white-space: pre-wrap; }
+  .session-page .session-unsummarised { font: 16px/1.55 var(--text); }
+  .session-structure > ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .session-structure > ul > li { padding: 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .session-decisions li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .session-decision-quote, .session-followups li { font: 17px/1.6 var(--text); }
+  .session-decisions a, .session-artifacts { font: 13px/1.6 var(--ui); }
+  .session-decisions a { white-space: nowrap; }
+  .session-artifacts li > a { display: block; overflow-wrap: anywhere; }
+  .session-artifact-label { color: var(--ink-3); margin-right: 10px; }
+  .session-artifact-branch { color: var(--ink-3); }
+  .session-page code { font: 12px/1.6 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-artifacts details ul { padding-left: 18px; margin: 8px 0; }
+  .session-page summary { cursor: pointer; color: var(--ink-2); font: 14px/1.6 var(--ui); padding: 10px 0; }
+  .session-neighbours { display: flex; flex-direction: row; justify-content: space-between; gap: 20px; margin: 26px 0; font: 13px/1.6 var(--ui); }
+  .session-neighbours a { display: block; padding: 0; max-width: 48%; overflow-wrap: anywhere; }
+  .session-attachment, .session-details { border-top: 1px solid var(--line); margin-top: 24px; }
+  .session-attachment > summary { font-weight: 600; }
+  .session-find { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; font: 12px var(--ui); }
+  .session-find input { flex: 1 1 210px; min-width: 0; padding: 9px; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; font: 16px var(--ui); }
+  .session-page button { cursor: pointer; color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; min-height: 40px; font: 13px var(--ui); }
+  .session-page button:disabled { opacity: .45; cursor: default; }
+  .session-find-status { color: var(--ink-3); }
+  .session-outline { min-width: 0; color: var(--ink-3); font: 12px/1.5 var(--ui); margin-bottom: 20px; }
+  .session-outline ol { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; margin: 8px 0; }
+  .session-outline li { max-width: 100%; overflow-wrap: anywhere; }
+  .session-outline a { display: block; padding: 5px 0; font: inherit; }
+  .session-messages { min-width: 0; }
+  .session-message, .session-final { scroll-margin-top: 20px; padding: 4px 0 16px; border-top: 1px solid var(--line); }
+  .session-page .session-quote { margin: 0; padding: 0; border: 0; background: none; font: 17px/1.65 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-page mark { background: var(--mark); color: inherit; }
+  .session-page mark.current { outline: 2px solid var(--dawn); outline-offset: 2px; }
+  .session-show-all { margin-top: 12px; }
+  .session-details { margin-bottom: 32px; }
+  .session-details dl { font: 13px/1.6 var(--ui); }
+  .session-details dt { margin-top: 10px; color: var(--ink-3); }
+  .session-details dd { margin: 0; overflow-wrap: anywhere; }
+  .session-context-rows { list-style: none; padding: 0; margin: 10px 0; }
+  .session-context-rows .session-context-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; align-items: baseline; gap: 4px 14px; margin: 0; padding: 10px 0; border-top: 1px solid var(--line); font: 13px/1.5 var(--ui); }
+  .session-context-row > a { font-family: var(--text); overflow-wrap: anywhere; }
+  .session-context-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .session-context-row time { color: var(--ink-3); white-space: nowrap; }
+  .session-context-row .session-tags { grid-column: 1 / -1; }
+  .session-filter-panel .session-segments { flex-wrap: nowrap; }
+  .session-filter-panel button { padding-inline: 9px; min-height: 38px; }
+  .session-date-filter { position: relative; }
+  .session-dates { height: 38px; }
+  .session-dates summary { min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; white-space: nowrap; }
+  .session-date-inputs { position: absolute; z-index: 2; top: 100%; left: 0; padding: 10px; border: 1px solid var(--line); background: var(--sheet); }
+  .session-date-inputs label { display: flex; margin: 6px 0; }
+  .session-topics[hidden] { display: none; }
+  @media (min-width: 1100px) {
+    .session-conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 32px; align-items: start; }
+    .session-outline { grid-column: 2; grid-row: 1; position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .session-outline ol { display: block; }
+    .session-messages { grid-column: 1; grid-row: 1; }
+  }
+  @media (max-width: 719px) {
+    .session-filter-panel .session-filter { width: 100%; }
+    .session-filter-panel .session-segments { flex-wrap: wrap; }
+    .session-filter-panel select { width: 100%; }
+    .session-filter-panel button { min-height: 40px; }
+    .session-dates, .session-dates summary { min-height: 40px; height: auto; }
+    .session-date-inputs { position: static; padding: 0; border: 0; background: none; }
+    .session-context-rows .session-context-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .session-context-summary { grid-column: 1 / -1; grid-row: 2; }
+    .session-outline a, .session-neighbours a { min-height: 40px; }
+    .session-page .session-quote { font-size: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -1169,7 +1300,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "AI notes", logs: "Maps"
+  agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -1181,7 +1312,8 @@ const CATEGORY_ASK = {
   decisions: "what we chose and why",
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
-  agenda: "promises, waiting on others, dates that matter"
+  agenda: "promises, waiting on others, dates that matter",
+  sessions: "what you worked on with your coding agents"
 };
 // notes/ and logs/ are what co rem wrote about its own work: read under Activity, not counted as memory.
 const ACTIVITY = new Set(["notes", "logs"]);
@@ -1550,7 +1682,8 @@ const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
   const stamp = (STAMP.exec(r.text) || [""])[0];
-  const body = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(STAMP, "").replace(COMMENT, "");
+  const body = (r.category === "sessions" ? r.text : splitTrailers(r.text).body.replace(COMMENT, ""))
+    .replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
   const title = r.title.trim().toLowerCase();
   const repeatsTitle = line => (/^\s*[-*]\s*[^:\n]{1,40}:\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
   const kept = [], missing = [];
@@ -1559,7 +1692,7 @@ function known(r) {
     const head = /^## ([^\n]*)\n?/.exec(part);
     // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
     if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
-    const text = part.slice(head[0].length).split("\n").filter(line => {
+    const text = r.category === "sessions" ? part.slice(head[0].length) : part.slice(head[0].length).split("\n").filter(line => {
       // Keep a specific missing outcome readable, without promoting it to a task.
       const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
         && !UNFILLED_LINE.test(line.replace(/^\s*[-*]\s*/, ""));
@@ -1575,14 +1708,16 @@ function known(r) {
   // Written or not is the census's answer (census.py), the one co rem status
   // counts with: a mapped skill's description or a project's paths read here
   // as findings, and "174 with findings" meant three written pages (#2008).
-  const status = r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
+  const status = r.category === "sessions" ? "" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
   const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
   const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
-  const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
+  const summary = r.category === "sessions" ? [parseFacts(r).get("Agent")?.[0]?.value, r.session_time,
+    plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
+    : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
@@ -1603,6 +1738,7 @@ function byActivity(a, b) {
   return auto(a) - auto(b) || rank(a) - rank(b) || known(b).last.localeCompare(known(a).last) || a.title.localeCompare(b.title);
 }
 function statusPill(r) {
+  if (r.category === "sessions") return null;
   const st = known(r).status;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
   return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
@@ -1681,10 +1817,55 @@ function threads(r) {
 }
 // One row set for home, Open threads and the rail; census.py mirrors the count.
 function threadEntries() {
-  return listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
+  const order = (a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
+    || (b.t.since || "").localeCompare(a.t.since || "");
+  const entries = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
     .flatMap(r => threads(r).items.filter(t => t.dir !== "third").map(t => ({ r, t })))
-    .sort((a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
-      || (b.t.since || "").localeCompare(a.t.since || ""));
+    .sort(order);
+  return threadGroups(entries).map(group => {
+    const chosen = group.find(entry => group.some(other => threadCounterpart(other, entry.r))) || group[0];
+    const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
+    return { ...chosen, also };
+  }).sort(order);
+}
+// Source numbers belong to their page; copied promises share the resolved id.
+function obligationWords(text) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+function obligationEvidence({ r, t }) {
+  const sources = new Map([...rawSection(r, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+  const ids = new Set([...t.text.matchAll(/\[(W?\d+)\]/g)].map(m => sources.get(m[1])).filter(Boolean));
+  const quotes = [...t.text.matchAll(/“([^”\n]{6,})”|"([^"\n]{6,})"/g)];
+  return { ids, quotes: quotes.map(m => obligationWords(m[1] || m[2])).filter(Boolean),
+    text: obligationWords(t.text.replace(/“([^”\n]{6,})”|"([^"\n]{6,})"/g, "").replace(/\[W?\d+\]/g, "")) };
+}
+function sameObligation(a, b) {
+  return [...a.ids].some(id => b.ids.has(id)) && (a.text === b.text ||
+    a.quotes.some(x => b.quotes.some(y => x.includes(y) || y.includes(x))));
+}
+function threadGroups(entries) {
+  const groups = [], evidence = entries.map(obligationEvidence);
+  entries.forEach((entry, i) => {
+    const matches = groups.filter(group => group.some(j => sameObligation(evidence[i], evidence[j])));
+    if (!matches.length) groups.push([i]);
+    else {
+      matches[0].push(i, ...matches.slice(1).flat());
+      for (const group of matches.slice(1)) groups.splice(groups.indexOf(group), 1);
+    }
+  });
+  return groups.map(group => group.sort((a, b) => a - b).map(i => entries[i]));
+}
+function threadCounterpart({ r, t }, person) {
+  if (person.path === REM.owner) return false;
+  const first = REM.owner ? byPath(REM.owner)?.title.trim().split(/\s+/)[0] : "";
+  const me = "(?:the user|user|you" + (first ? "|" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "") + ")";
+  const text = t.text.replaceAll("**", "");
+  const named = new RegExp("^" + me + "\\s+(?:owes?|asked)\\s+(.+)", "i").exec(text)?.[1]
+    || new RegExp("^(.+?)\\s+owes?\\s+" + me + "\\b", "i").exec(text)?.[1] || "";
+  const link = /^\s*\[[^\]]+\]\(([^)]+\.md)\)/.exec(named);
+  if (link && resolve(r.path, link[1]) === person.path) return true;
+  const words = obligationWords(named.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")), title = obligationWords(person.title);
+  return !!title && (words === title || words.startsWith(title + " "));
 }
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
@@ -1722,6 +1903,7 @@ function sourceList(r) {
   for (const item of listItems(rawSection(r, "Sources"))) {
     const m = /^\[(W?\d{1,3})\]\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
+    else if (r.category === "sessions" && /^(codex|claude-code):[^\s:]+:\d+$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
   return out;
 }
@@ -1813,7 +1995,7 @@ function facts(r) {
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
-    domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
+    domain: r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
@@ -2026,35 +2208,63 @@ function weekChanges() {
 function listWords(words) {
   return words.length <= 1 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
 }
-// The trace shows real runs in the last pass; a dot marks a written page.
+function runSegments(runs, span) {
+  const segments = [], gap = Math.max(span * .02, 5 * 60e3);
+  for (const run of runs) {
+    const start = runTime(run), end = runEnd(run);
+    let segment = segments[segments.length - 1];
+    if (!segment || start >= segment.end + gap) {
+      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0 };
+      segments.push(segment);
+    }
+    segment.end = Math.max(segment.end, end);
+    segment.items += Number(run.items) || 0;
+    segment.changed += (run.changed || []).length;
+    segment.runs++;
+    segment.failed += Number(FAILED.test(String(run.outcome || "")));
+  }
+  return segments;
+}
+function runMarkers(markers) {
+  const last = new Map(), dots = [];
+  for (const marker of markers.sort((a, b) => a.left - b.left)) {
+    if (marker.left - (last.get(marker.kind) ?? -Infinity) < 1.6) continue;
+    last.set(marker.kind, marker.left);
+    dots.push('<span class="dot ' + marker.kind + '" style="left:' + marker.left.toFixed(2) + '%;top:' + marker.top + 'px" title="' + esc(marker.title) + '"></span>');
+  }
+  return dots.join("");
+}
+// The trace groups nearby runs; dots mark changed pages and stopped runs.
 function hypnogram(asOf) {
   const runs = (lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b));
   const W = 1000, H = 84, TOP = 14, FLOOR = 72;
   const finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
   const start = Math.floor((runs.length ? runTime(runs[0]) : asOf - 4 * HOUR) / HOUR) * HOUR - HOUR / 2;
   const end = Math.max(start + HOUR, Math.ceil(finished / HOUR) * HOUR + HOUR / 2);
+  const segments = runSegments(runs, end - start), markers = [];
   const x = t => 4 + (W - 8) * (t - start) / (end - start);
   const pct = v => (100 * v / W).toFixed(2) + "%";
+  const time = t => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
   const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
   const over = [], step = Math.max(HOUR, Math.ceil((end - start) / (6 * HOUR)) * HOUR);
   for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += step) {
     svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="4" x2="' + x(t).toFixed(1) + '" y2="80"/>');
-    const hour = new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
-    over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(hour) + "</span>");
+    over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(time(t)) + "</span>");
   }
   let path = "M4," + TOP;
-  for (const run of runs) {
-    const x0 = x(runTime(run)), x1 = Math.min(W - 4, Math.max(x0 + 2, x(Math.min(asOf, runEnd(run)))));
-    const weight = (Number(run.items) || 0) + 4 * (run.changed || []).length;
-    const depth = FAILED.test(String(run.outcome || "")) ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
+  for (const segment of segments) {
+    const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
+    const weight = segment.items + 4 * segment.changed;
+    const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
     path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
-    if (FAILED.test(String(run.outcome || ""))) over.push('<span class="dot woke" style="left:' + pct(x0) + ';top:6px" title="' + esc(fmtTime(run.started_at) + " · " + run.outcome) + '"></span>');
-    if ((run.changed || []).length) over.push('<span class="dot changed" style="left:' + pct((x0 + x1) / 2) + ";top:" + depth.toFixed(0) + 'px" title="' + esc(fmtTime(run.started_at) + " · " + run.changed.length + " pages changed") + '"></span>');
+    const range = time(segment.start) + "–" + time(segment.end);
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + segment.failed + " runs stopped early" });
+    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + segment.runs + " runs · " + segment.changed + " pages changed" });
   }
   path += " L" + (W - 4) + "," + TOP;
   svg.push('<path class="trace" d="' + path + '"/>', "</svg>");
   if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="Last run ended ' + esc(fmtTime(new Date(finished).toISOString())) + '"></span>');
-  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + "</div>";
+  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in ' + segments.length + ' stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 function nightBand() {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": "The last pass" });
@@ -2090,7 +2300,8 @@ function nightBand() {
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
-    view: params.get("view"), reviews: params.has("reviews") };
+    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
+    ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -2170,20 +2381,38 @@ function row(r, opts) {
   const open = threads(r).items[0];
   if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
+  if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
   return li;
 }
-function threadRow(r, t, withPage) {
+function alsoOn(records = []) {
+  if (!records.length) return null;
+  return el("div", { class: "also-on" }, ["Also on ", ...records.flatMap((r, i) =>
+    [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
+}
+function threadRow(r, t, withPage, also = []) {
   return el("li", { class: "thread " + t.dir }, [
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
-      withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
+      withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null,
+      withPage ? alsoOn(also) : null]),
     el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : ""), text: threadAge(t) })]);
 }
 
 function sectionHead(title, note) {
   return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
+}
+function capFirst(text) {
+  const word = text.match(/^\p{L}+(?=\s|$)/u)?.[0];
+  return word && word === word.toLowerCase() ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+function newestStanding(r) {
+  if (r.category !== "projects" || r.path === REM.owner) return "";
+  const lines = (section(r, "where it stands")?.text || "").split("\n")
+    .map(line => /^\s*-\s+(\d{4}-\d{2}-\d{2})\s*[—–-]\s+(.+)/.exec(line))
+    .filter(line => line && !/^Unknown\b/i.test(line[2].trim()));
+  lines.sort((a, b) => b[1].localeCompare(a[1]));
+  return lines[0]?.[2] || "";
 }
 function memoryStatement(r) {
   const insight = section(r, "insight");
@@ -2194,8 +2423,9 @@ function memoryStatement(r) {
   const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
-  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
-  return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
+  const statement = newestStanding(r) || (line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
+  const first = statement.split("\n").find(line => plainLine(line)) || "";
+  return plainLine(capFirst(listItems(first)[0] || ""));
 }
 function memoryConnection(records) {
   const visible = new Set(listedRecords().map(r => r.path));
@@ -2275,10 +2505,10 @@ function morningWords(text, r) {
     context: [text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim(),
       (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
   const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const summary = plainLine(threadWords(text, r)).replace(/^you owe\s+\S+\s*/i, "");
+  const summary = plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, "")));
   const clause = summary.split(/;|(?<=[.!?])\s/)[0];
   const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
-  return { words: words.charAt(0).toUpperCase() + words.slice(1), context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
+  return { words, context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
 function morningEntries(entries) {
@@ -2304,7 +2534,7 @@ function threadDate(day) {
 function dueLabel(t) {
   return (t.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(t.due);
 }
-function morningThread({ r, t }) {
+function morningThread({ r, t, also }) {
   const { words, context } = morningWords(t.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
@@ -2313,17 +2543,18 @@ function morningThread({ r, t }) {
   return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
     el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
-      privateFallback(el("p", { class: "context", html: inline(context, r.path) }))]),
+      privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also)]),
     el("div", { class: "waiting-age" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : "") },
       [el("b", { text: t.due ? dueLabel(t) : age(t.since) }), el("span", { text: label })])]);
 }
 function quietThreads(entries, count, home = false) {
+  if (!count) return null;
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: "Gone quiet (" + count + ")" }),
-    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) })]), el("span", { text: age(t.since) })])))
-      : el("ul", { class: "threads" }, items.map(({ r, t }) => threadRow(r, t, true))),
+    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
+      el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
+      : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
     home ? el("a", { href: "#view=open", text: "See all quiet threads →" }) : null]);
 }
 function morningNight() {
@@ -2345,18 +2576,24 @@ function taskView(kind) {
     else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No verified claim change in this pass" }),
       "The pass may have refreshed pages; that alone is not a new memory."]));
     if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
-      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true })))]));
+      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
     return;
   }
   main.appendChild(el("h1", { text: "Open threads" }));
   const entries = threadEntries(), counts = threadCounts();
-  main.appendChild(el("p", { class: "lede", text: counts.mine + " waiting on you, " + counts.theirs + " on someone else, " + counts.other + " other open context. Newest and due first." }));
-  if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
-    "No supported open loop is in this snapshot."]));
+  if (!entries.length) {
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
+      "No supported open loop is in this snapshot."]));
+    return;
+  }
+  const summary = [[counts.mine, "waiting on you"], [counts.theirs, "on someone else"], [counts.other, "other open context"]]
+    .filter(([count]) => count).map(([count, text]) => count + " " + text).join(", ");
+  if (summary) main.appendChild(el("p", { class: "lede", text: summary + ". Newest and due first." }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
+    if (!count) continue;
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      items.length ? el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true))) : el("p", { class: "quiet-line", text: "Nothing here." })]));
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true, row.also)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);
@@ -2395,6 +2632,13 @@ function connectionReview() {
       ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
       el("a", { href: "#reviews=1", text: "Review the evidence →" })])]);
 }
+function waitingMore(counts) {
+  if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: "Nothing is open between you and anyone right now." });
+  const others = counts.theirs + (counts.theirs === 1 ? " is" : " are") + " waiting on someone else";
+  return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: counts.mine
+    ? "See all " + counts.mine + " waiting on you" : counts.theirs + " waiting on someone else →" }),
+    counts.mine && counts.theirs ? " and " + others : null]);
+}
 function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
@@ -2408,10 +2652,9 @@ function overview() {
     // The heading counts what the sidebar and co rem status count; the rows are its top few.
     el("h1", { text: counts.mine === 0 ? "Nothing is waiting on you" : counts.mine === 1 ? "One thing is waiting on you" : counts.mine + " things are waiting on you" }),
     firstMap,
-    el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }),
-    el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)),
-    el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: "See all " + counts.mine + " waiting on you" }),
-      " and " + counts.theirs + " are waiting on someone else"]), morningBrief()]);
+    counts.mine ? el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }) : null,
+    counts.mine ? el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)) : null,
+    waitingMore(counts), morningBrief()]);
   const side = el("aside", { class: "morning-side" });
   const recall = recallPrompt();
   if (recall) side.appendChild(recall);
@@ -2428,7 +2671,7 @@ function overview() {
     main.appendChild(el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
       el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
       el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), el("span", { class: "meta", text: singular(r.category) }),
-        known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
+        known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?Now:(?:\*\*)?\s*/i, "") }) : null])]))));
   }
 
   const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
@@ -2609,6 +2852,7 @@ function contactDirectory() {
 }
 
 function category(c) {
+  if (c === "sessions") { sessionsView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
@@ -2647,6 +2891,478 @@ function category(c) {
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
 
+// ---------- sessions: structure first, conversations searchable ----------
+let lastSessionListHash = "#c=sessions";
+const SESSION_TEXT = new Map();
+const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "by", "person", "tag", "outcome"];
+const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
+function sessionText(r) {
+  if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
+  const clean = text => String(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
+  const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
+  const fields = { title: clean(r.session_title || r.title), summary: clean(r.session_summary),
+    tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
+  fields.lower = Object.values(fields).join("\n").toLowerCase();
+  SESSION_TEXT.set(r.path, fields);
+  return fields;
+}
+function sessionTerms(query) { return [...new Set((query || "").toLowerCase().split(/\s+/).filter(Boolean))]; }
+function sessionHash(state) {
+  const params = new URLSearchParams({ c: "sessions" });
+  for (const key of SESSION_KEYS) if (state[key]) params.set(key, state[key]);
+  return "#" + params.toString();
+}
+function sessionActive(state) { return SESSION_KEYS.filter(key => key !== "by" && state[key]); }
+function sessionAgent(r) { return (r.session_agent || "").toLowerCase().replaceAll(" ", "-"); }
+function sessionStart(when) {
+  const today = calendarDay(REM.as_of);
+  if (when === "month") return today.slice(0, 8) + "01";
+  if (when !== "week") return today;
+  const monday = new Date(today + "T00:00:00Z");
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+  return monday.toISOString().slice(0, 10);
+}
+function sessionMatches(r, state, terms, structure = true) {
+  if (state.project && (state.project === "none" ? !!r.session_project : r.session_project !== state.project)) return false;
+  if (state.agent && sessionAgent(r) !== state.agent) return false;
+  if (state.person && !(byPath(state.person)?.session_mentions || []).includes(r.path)) return false;
+  const from = state.from || (state.when ? sessionStart(state.when) : "");
+  const to = state.to || (state.when ? calendarDay(REM.as_of) : "");
+  if (from && (r.session_date || "") < from || to && (!r.session_date || r.session_date > to)) return false;
+  if (structure && state.tag && !(r.session_tags || []).includes(state.tag)) return false;
+  if (structure && state.outcome && r.session_outcome !== state.outcome) return false;
+  return terms.every(term => sessionText(r).lower.includes(term));
+}
+function sessionHighlight(text, terms) {
+  if (!terms.length) return esc(text);
+  const lower = text.toLowerCase(), spans = [];
+  for (const term of terms) {
+    let at = lower.indexOf(term);
+    while (at !== -1) { spans.push([at, at + term.length]); at = lower.indexOf(term, at + term.length); }
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]); else merged.push(span);
+  }
+  let at = 0, html = "";
+  for (const [start, end] of merged) {
+    html += esc(text.slice(at, start)) + highlight(text.slice(start, end), lower.slice(start, end));
+    at = end;
+  }
+  return html + esc(text.slice(at));
+}
+function sessionExcerpt(r, terms) {
+  const text = sessionText(r);
+  if (terms.length && !terms.some(term => text.title.toLowerCase().includes(term))) {
+    for (const key of ["summary", "tags", "you", "agent", "artifacts"]) {
+      const positions = terms.map(term => text[key].toLowerCase().indexOf(term)).filter(at => at >= 0);
+      if (!positions.length) continue;
+      const start = Math.max(0, Math.min(...positions) - 50), end = start + 160;
+      return { speaker: key === "you" ? "You:" : key === "agent" ? "Agent:" : "", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
+    }
+  }
+  return { speaker: "", text: text.summary || text.agent };
+}
+function sessionRow(r, terms) {
+  const state = route(), text = sessionText(r), excerpt = sessionExcerpt(r, terms);
+  const project = byPath(r.session_project), folder = r.session_folder || "";
+  const meta = el("div", { class: "session-meta" }, [project ? el("a", { href: href(project), text: project.title })
+    : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder })]);
+  const clock = (state.by === "project" ? shortDate(r.session_date) + " " : "") + (r.session_time || "");
+  meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), (r.session_turns || 0) + (r.session_turns === 1 ? " turn" : " turns")].filter(Boolean).join(" · ")));
+  const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
+    href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
+  if (["done", "partial", "abandoned"].includes(r.session_outcome)) tags.appendChild(el("span", { text: SESSION_OUTCOMES[r.session_outcome] }));
+  return el("li", { class: "session-row" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
+    el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
+      el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta]);
+}
+function sessionGroups(records, state, terms) {
+  const groups = new Map(), content = document.createDocumentFragment();
+  for (const r of records) {
+    const key = state.by === "project" ? r.session_project || "none" : r.session_date || "Undated";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  if (state.by === "project" && groups.has("none")) { const none = groups.get("none"); groups.delete("none"); groups.set("none", none); }
+  let index = 0;
+  for (const [key, rows] of groups) {
+    const title = state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
+    const heading = [el("span", { text: title }), el("span", { class: "session-count", text: String(rows.length) })];
+    const list = el("ul", { class: "session-rows" }, rows.map(r => sessionRow(r, terms)));
+    if (state.by === "project") {
+      const group = el("details", { class: "session-group" }, [el("summary", {}, heading), list]);
+      group.open = !!terms.length || index < 3;
+      content.appendChild(group);
+    } else content.append(el("h2", { class: "session-day" }, heading), list);
+    index++;
+  }
+  return content;
+}
+function sessionButton(text, action, attrs = {}) {
+  const button = el("button", { type: "button", ...attrs, text });
+  button.onclick = action;
+  return button;
+}
+function sessionSegments(name, key, choices, change) {
+  const group = el("div", { class: "session-segments", role: "group", "aria-label": name });
+  for (const [value, text] of choices) group.appendChild(sessionButton(text, () => change(key, value), { "data-session-key": key, "data-value": value, "aria-pressed": "false" }));
+  return el("div", { class: "session-filter" }, [el("span", { text: name }), group]);
+}
+function sessionProjectSelect(records, change) {
+  const counts = new Map();
+  for (const r of records) counts.set(r.session_project || "none", (counts.get(r.session_project || "none") || 0) + 1);
+  const select = el("select", { "aria-label": "Project", "data-session-key": "project" }, [el("option", { value: "", text: "All projects" })]);
+  for (const [path, count] of [...counts].filter(([path]) => path !== "none").sort((a, b) => b[1] - a[1]))
+    select.appendChild(el("option", { value: path, text: (byPath(path)?.title || path) + " · " + count }));
+  if (counts.has("none")) select.appendChild(el("option", { value: "none", text: "No project · " + counts.get("none") }));
+  select.onchange = () => change("project", select.value);
+  return el("label", { class: "session-filter" }, [el("span", { text: "Project" }), select]);
+}
+function sessionDates(change, state) {
+  const dates = el("details", { class: "session-dates" }, [el("summary", { text: "Choose dates" })]);
+  dates.open = !!(state.from || state.to);
+  const inputs = el("div", { class: "session-date-inputs" });
+  for (const key of ["from", "to"]) {
+    const input = el("input", { type: "date", "aria-label": key === "from" ? "From" : "To", "data-session-key": key });
+    input.onchange = () => change(key, input.value);
+    inputs.appendChild(el("label", {}, [key === "from" ? "From " : "To ", input]));
+  }
+  dates.appendChild(inputs);
+  return el("div", { class: "session-filter session-date-filter" }, [el("span", { text: "Dates" }), dates]);
+}
+function sessionTopics(records, change) {
+  const tags = [...new Set(records.flatMap(r => r.session_tags || []))];
+  const row = el("div", { class: "session-topics" }, [el("span", { text: "Topics" })]);
+  const top = el("div", { class: "session-topic-buttons" });
+  const more = el("details", {}, [el("summary", { text: "More topics", "aria-controls": "session-topic-list" })]);
+  top.id = "session-topic-list";
+  const buttons = new Map(tags.map(tag => [tag, sessionButton(tag, () => change("tag", tag), { "aria-pressed": "false" })]));
+  top.append(...buttons.values());
+  more.ontoggle = () => {
+    for (const button of buttons.values()) button.hidden = button.dataset.available !== "true" || button.dataset.overflow === "true" && !more.open;
+  };
+  const outcomes = el("div", { class: "session-outcomes" });
+  const outcomeButtons = Object.entries(SESSION_OUTCOMES).map(([value, text]) => [value, sessionButton(text, () => change("outcome", value), { "aria-pressed": "false" })]);
+  outcomes.append(...outcomeButtons.map(([, button]) => button));
+  const missing = el("span", { class: "session-unsummarised" });
+  row.append(top, more, outcomes, missing);
+  row.hidden = !tags.length;
+  function sync(base, state) {
+    const counts = new Map();
+    for (const r of base) for (const tag of new Set(r.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
+    row.hidden = !counts.size;
+    const limit = matchMedia("(max-width: 719px)").matches ? 6 : 16;
+    const sorted = [...buttons].sort((a, b) => (counts.get(b[0]) || 0) - (counts.get(a[0]) || 0) || a[0].localeCompare(b[0]));
+    let visible = 0;
+    for (const [tag, button] of sorted) {
+      const count = counts.get(tag) || 0;
+      const available = !!count || state.tag === tag;
+      button.dataset.available = String(available);
+      button.dataset.overflow = String(visible >= limit);
+      button.style.order = String(visible);
+      if (state.tag === tag && available && visible >= limit) more.open = true;
+      button.hidden = !available || visible >= limit && !more.open;
+      button.textContent = tag + " " + count;
+      button.setAttribute("aria-pressed", String(state.tag === tag));
+      if (available) visible++;
+    }
+    more.hidden = visible <= limit;
+    for (const [value, button] of outcomeButtons) {
+      const count = base.filter(r => r.session_outcome === value).length;
+      button.hidden = !count && state.outcome !== value;
+      button.textContent = SESSION_OUTCOMES[value] + " " + count;
+      button.setAttribute("aria-pressed", String(state.outcome === value));
+    }
+    const n = base.filter(r => !r.session_summary && !r.session_tags?.length && !r.session_outcome).length;
+    missing.textContent = n ? "Not summarised " + n : "";
+  }
+  return { node: row, outcomes, sync };
+}
+function sessionFilterNames(state) {
+  const names = { find: 'Search: “' + state.find + '”', project: "Project: " + (byPath(state.project)?.title || (state.project === "none" ? "No project" : state.project)),
+    agent: "Agent: " + ({ codex: "Codex", "claude-code": "Claude Code" }[state.agent] || state.agent),
+    when: { today: "Today", week: "This week", month: "This month" }[state.when], from: "From " + state.from, to: "To " + state.to,
+    person: "Mentioning " + (byPath(state.person)?.title || state.person), tag: "Topic: " + state.tag, outcome: "Outcome: " + (SESSION_OUTCOMES[state.outcome] || state.outcome) };
+  return sessionActive(state).map(key => names[key]).join(" · ");
+}
+function sessionResults(records, total, state, terms, change) {
+  const active = sessionActive(state), results = document.createDocumentFragment();
+  if (state.person) results.appendChild(sessionButton("Mentioning " + (byPath(state.person)?.title || state.person) + " ×", () => change("person", ""), { class: "session-person" }));
+  const line = el("div", { class: "session-result-line" }, [el("span", { role: "status", text: (active.length ? records.length + " of " : "") + total + " sessions" })]);
+  if (active.length) line.appendChild(sessionButton("Clear", () => change("clear", "")));
+  results.appendChild(line);
+  if (records.length) results.appendChild(sessionGroups(records, state, terms));
+  else results.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No session matches" }),
+    el("p", { text: active.length ? sessionFilterNames(state) : "Import conversations you typed in with " + remCommand("import sessions") + "." })]));
+  return results;
+}
+function sessionsView() {
+  const main = document.getElementById("main"), records = inCategory("sessions").sort(sessionOrder);
+  const state = Object.fromEntries(SESSION_KEYS.map(key => [key, route()[key] || ""]));
+  if (state.from || state.to) state.when = "";
+  const view = el("section", { class: "sessions-view" }), results = el("div", { id: "session-results" });
+  const topics = sessionTopics(records, change);
+  const search = el("input", { id: "session-search", type: "search", "aria-label": "Search sessions", placeholder: "Search what you typed and what the agent replied", value: state.find });
+  let timer;
+  search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { if (view.isConnected) change("find", search.value); }, 120); };
+  const panel = el("div", { class: "session-filter-panel", id: "session-filter-panel" }, [sessionProjectSelect(records, change),
+    sessionSegments("Agent", "agent", [["", "All"], ["codex", "Codex"], ["claude-code", "Claude Code"]], change),
+    sessionSegments("Time", "when", [["", "All"], ["today", "Today"], ["week", "This week"], ["month", "This month"]], change), sessionDates(change, state),
+    sessionSegments("View", "by", [["", "By day"], ["project", "By project"]], change)]);
+  const toggle = sessionButton("Filter", () => { const open = panel.classList.toggle("is-open"); toggle.setAttribute("aria-expanded", String(open)); },
+    { class: "session-filter-toggle", "aria-expanded": "false", "aria-controls": "session-filter-panel" });
+  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← Contents" })]), el("h1", { text: label("sessions") }), el("p", { class: "lede", text: CATEGORY_ASK.sessions.replace(/^./, ch => ch.toUpperCase()) }), view);
+  view.append(search, topics.node, toggle, panel, results);
+  const mobile = matchMedia("(max-width: 719px)");
+  function placeOutcomes() { (mobile.matches ? panel : topics.node).appendChild(topics.outcomes); update(); }
+  mobile.addEventListener("change", () => { if (view.isConnected) placeOutcomes(); });
+  if (mobile.matches) panel.appendChild(topics.outcomes);
+  view.onclick = event => { const tag = event.target.closest("a[data-session-tag]"); if (tag) { event.preventDefault(); change("tag", tag.dataset.sessionTag); } };
+  function change(key, value) {
+    clearTimeout(timer);
+    state.find = search.value;
+    if (key === "clear") for (const name of SESSION_KEYS) { if (name !== "by") state[name] = ""; }
+    else state[key] = ["tag", "outcome"].includes(key) && state[key] === value ? "" : value;
+    if (key === "from" || key === "to") state.when = "";
+    if (key === "when") { state.from = ""; state.to = ""; }
+    history.replaceState(null, "", sessionHash(state));
+    update();
+  }
+  function update() {
+    lastSessionListHash = sessionHash(state);
+    const terms = sessionTerms(state.find), base = records.filter(r => sessionMatches(r, state, terms, false));
+    const matches = base.filter(r => sessionMatches(r, state, terms));
+    if (search.value !== state.find) search.value = state.find;
+    for (const control of panel.querySelectorAll("[data-session-key]")) {
+      const value = state[control.dataset.sessionKey];
+      if (control.tagName === "BUTTON") control.setAttribute("aria-pressed", String(control.dataset.value === value)); else control.value = value;
+    }
+    const count = sessionActive(state).filter(key => key !== "find").length;
+    toggle.textContent = "Filter" + (count ? " · " + count : "");
+    topics.sync(base, state);
+    results.replaceChildren(sessionResults(matches, records.length, state, terms, change));
+  }
+  update();
+  if (matchMedia("(min-width: 720px)").matches) search.focus({ preventScroll: true });
+}
+
+function sessionOrder(a, b) {
+  return ((b.session_date || "") + (b.session_time || "")).localeCompare((a.session_date || "") + (a.session_time || "")) || b.path.localeCompare(a.path);
+}
+
+function sessionContextRow(r, find = "") {
+  return el("li", { class: "session-context-row" }, [
+    el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: r.title }),
+    el("span", { class: "session-context-summary", text: r.session_summary || r.session_reply || sessionText(r).agent }),
+    el("time", { text: fmtDate(r.session_date) }),
+    el("span", { class: "session-tags" }, (r.session_tags || []).slice(0, 3).map(tag => el("a", {
+      href: sessionHash({ project: r.session_project, tag }), text: tag })))]);
+}
+function projectSessions(r) {
+  const sessions = inCategory("sessions").filter(s => s.session_project === r.path).sort(sessionOrder);
+  if (!sessions.length) return null;
+  const counts = new Map();
+  for (const s of sessions) for (const tag of new Set(s.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
+  return el("section", { class: "focus-section project-sessions" }, [el("h2", { text: "Sessions" }),
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 10).map(s => sessionContextRow(s))),
+    el("a", { href: sessionHash({ project: r.path }), text: "All " + sessions.length + " sessions" }),
+    el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
+      .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
+}
+function personSessions(r) {
+  const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
+  if (!sessions.length) return null;
+  return el("section", { class: "focus-section person-sessions" }, [el("h2", { text: "Mentioned in sessions" }),
+    // Beside Recently, not under the full note: five rows, the rest one link away.
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
+    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: "All " + sessions.length + " sessions" }) : null]);
+}
+
+function sessionSection(r, name) {
+  return (r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1).trim();
+}
+function sessionMessages(r) {
+  return sessionSection(r, "What you typed").split(/^### /m).filter(part => /^\d/.test(part)).map((part, i) => {
+    const [time, ...lines] = part.split("\n");
+    return { id: "session-message-" + (i + 1), time, text: sessionUnquote(lines.join("\n")) };
+  });
+}
+function sessionUnquote(text) { return text.replace(/^> ?/gm, "").replace(/^\n+|\n+$/g, ""); }
+function sessionJump(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
+  target.scrollIntoView({ block: "start" });
+}
+function sessionMessageLink(r, message, text) {
+  const link = el("a", { href: href(r) + "&h=" + message.id, text });
+  link.onclick = event => { event.preventDefault(); sessionJump(message.id); };
+  return link;
+}
+function sessionQuote(text) {
+  return el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(text) ? " private" : ""), text });
+}
+function sessionFinalReply(r) {
+  const text = sessionUnquote(sessionSection(r, "Final reply"));
+  if (!text) return null;
+  const quote = sessionQuote(text.length > 1200 ? text.slice(0, 600) + "…" : text);
+  quote.sessionFullText = text;
+  const out = el("section", { class: "session-final", id: "session-final" }, [el("h3", { text: "Final reply" }), quote]);
+  if (text.length > 1200) {
+    const button = sessionButton("Show all", () => {
+      quote.textContent = text; quote.sessionExpanded = true; button.remove();
+      out.dispatchEvent(new Event("session-reply-expanded", { bubbles: true }));
+    }, { class: "session-show-all", "aria-expanded": "false" });
+    out.appendChild(button);
+  }
+  return out;
+}
+// Only text nodes enter the attachment's find results.
+function sessionMarkText(quote, text, needle) {
+  const nodes = [], lower = text.toLowerCase();
+  let start = 0, at = needle ? lower.indexOf(needle) : -1;
+  while (at !== -1) {
+    nodes.push(document.createTextNode(text.slice(start, at)), el("mark", { text: text.slice(at, at + needle.length) }));
+    start = at + needle.length; at = lower.indexOf(needle, start);
+  }
+  nodes.push(document.createTextNode(text.slice(start)));
+  quote.replaceChildren(...nodes);
+}
+function sessionFind(attachment, body, initial) {
+  const input = el("input", { type: "search", placeholder: "Find in this conversation", "aria-label": "Find in this conversation" });
+  const status = el("span", { class: "session-find-status", role: "status", "aria-live": "polite" });
+  const previous = sessionButton("↑", () => move(-1), { "aria-label": "Previous match" });
+  const next = sessionButton("↓", () => move(1), { "aria-label": "Next match" });
+  previous.disabled = next.disabled = true;
+  const quotes = [...body.querySelectorAll(".session-quote")];
+  for (const quote of quotes) quote.sessionFullText ??= quote.textContent;
+  let matches = [], current = -1;
+  function move(step) {
+    if (!matches.length) return;
+    matches[current]?.classList.remove("current");
+    current = (current + step + matches.length) % matches.length;
+    matches[current].classList.add("current");
+    status.textContent = (current + 1) + " of " + matches.length;
+    matches[current].scrollIntoView({ block: "center" });
+  }
+  function find() {
+    const needle = input.value.trim().toLowerCase();
+    for (const quote of quotes) {
+      const full = quote.sessionFullText;
+      const clipped = quote.closest(".session-final") && full.length > 1200 && !quote.sessionExpanded && !needle;
+      sessionMarkText(quote, clipped ? full.slice(0, 600) + "…" : full, needle);
+    }
+    matches = [...body.querySelectorAll("mark")]; current = -1;
+    previous.disabled = next.disabled = !matches.length;
+    status.textContent = needle ? "0 of " + matches.length : "";
+    if (matches.length) move(1);
+  }
+  input.oninput = find;
+  input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); move(event.shiftKey ? -1 : 1); } };
+  body.addEventListener("session-reply-expanded", find);
+  const bar = el("div", { class: "session-find" }, [input, status, previous, next]);
+  input.value = initial || "";
+  return { node: bar, run: find };
+}
+function sessionAttachment(r, messages) {
+  const reply = sessionFinalReply(r);
+  const attachment = el("details", { class: "session-attachment", id: "original-conversation" }, [el("summary", {
+    text: "Original conversation · " + messages.length + " messages" + (reply ? " · final reply" : "") })]);
+  const outline = el("nav", { class: "session-outline", "aria-label": "Conversation outline" }, [
+    el("span", { text: "Messages" }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
+      message.time + " · " + message.text.replace(/\s+/g, " ").slice(0, 60))])))]);
+  const body = el("div", { class: "session-messages" }, messages.map(message => el("section", { class: "session-message", id: message.id }, [
+    el("h3", { text: message.time }), sessionQuote(message.text)])));
+  if (reply) body.appendChild(reply);
+  const find = sessionFind(attachment, body, route().find || route().query);
+  attachment.append(find.node, el("div", { class: "session-conversation-layout" }, [outline, body]));
+  return { node: attachment, find };
+}
+function sessionDecisions(r, messages) {
+  const text = sessionSection(r, "Decisions");
+  if (!text) return null;
+  return el("section", { class: "session-structure session-decisions" }, [el("h2", { text: "Decisions" }),
+    el("ul", {}, listItems(text).map(line => {
+      const match = /^(.*?)\s*\((\d{2}:\d{2})\)$/.exec(line), clock = match?.[2];
+      const quote = (match?.[1] || line).replace(/^[“"「]|[”"」]$/g, "");
+      const message = messages.find(m => m.time.endsWith(clock) && m.text.includes(quote)) || messages.find(m => m.time.endsWith(clock));
+      return el("li", {}, [el("span", { class: "session-decision-quote", text: "“" + quote + "”" }),
+        message ? sessionMessageLink(r, message, clock) : null]);
+    }))]);
+}
+function sessionArtifact(line) {
+  const match = /^([^:]+):\s*(.*)$/.exec(line);
+  if (!match) return el("li", { text: line });
+  const [, name, value] = match;
+  if (/^Files changed \(\d+\)$/.test(name) || name === "Commands") {
+    const values = name === "Commands" ? [...value.matchAll(/`([^`]+)`/g)].map(m => m[1]) : value.split(/,\s*/);
+    return el("li", {}, [el("details", {}, [el("summary", { text: name + (name === "Commands" ? " · " + value.split(";")[0] : "") }),
+      el("ul", {}, values.map(text => el("li", {}, [el("code", { text: text.replace(/^`|`$/g, "") })])))])]);
+  }
+  if (name === "Pull requests") return el("li", {}, [el("span", { class: "session-artifact-label", text: "Pull requests" }),
+    ...[...value.matchAll(/https?:\/\/[^\s,<>]+/g)].map(m => el("a", { href: m[0], target: "_blank", rel: "noopener", text: m[0] }))]);
+  if (name === "Commits") {
+    const commit = /^`([^`]+)`\s*(.*?)(?:\s+\(([^()]*)\))?$/.exec(value);
+    if (commit) return el("li", {}, [el("code", { text: commit[1] }), " " + commit[2],
+      commit[3] ? el("span", { class: "session-artifact-branch", text: " · " + commit[3] }) : null]);
+  }
+  return el("li", {}, [el("span", { class: "session-artifact-label", text: name }), el(name === "Branches" ? "code" : "span", { text: value })]);
+}
+function sessionArtifacts(r) {
+  const text = sessionSection(r, "Artifacts");
+  return text ? el("section", { class: "session-structure session-artifacts" }, [el("h2", { text: "Artifacts" }),
+    el("ul", {}, listItems(text).map(sessionArtifact))]) : null;
+}
+function sessionNeighbours(r) {
+  const sessions = inCategory("sessions").filter(s => !r.session_project || s.session_project === r.session_project).sort(sessionOrder);
+  const index = sessions.findIndex(s => s.path === r.path), older = sessions[index + 1], newer = sessions[index - 1];
+  return el("nav", { class: "session-neighbours", "aria-label": "Neighbouring sessions" }, [
+    older ? el("a", { href: href(older), text: "← Older: " + older.title }) : el("span"),
+    newer ? el("a", { href: href(newer), text: "Newer: " + newer.title + " →" }) : null]);
+}
+function sessionFactsLine(r) {
+  const project = byPath(r.session_project), folder = r.session_folder || "";
+  const line = el("div", { class: "session-facts-line" }, [
+    [fmtDate(r.session_date), r.session_time, r.session_agent].filter(Boolean).join(" · ") + " · ",
+    project ? el("a", { href: href(project), text: project.title }) : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder }),
+    " · " + (r.session_turns || 0) + " turns" + (r.session_outcome ? " · " + (SESSION_OUTCOMES[r.session_outcome] || r.session_outcome) : "")]);
+  return line;
+}
+function sessionDetails(r) {
+  const facts = parseFacts(r), source = section(r, "sources");
+  return el("details", { class: "session-details" }, [el("summary", { text: "Details" }),
+    el("dl", {}, [el("dt", { text: "Folder" }), el("dd", {}, [el("code", { text: r.session_folder || "" })]),
+      el("dt", { text: "Session id" }), el("dd", {}, [el("code", { text: facts.get("Session")?.[0]?.value || "" })])]),
+    source ? el("section", {}, [el("h3", { text: "Sources" }), sectionBody(r, source)]) : null]);
+}
+function sessionRecord(r, heading) {
+  const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
+  const attachment = sessionAttachment(r, messages);
+  CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
+  const summary = r.session_summary || sessionSection(r, "Summary"), followups = sessionSection(r, "Follow-ups");
+  const page = el("article", { class: "session-page" }, [
+    el("div", { class: "eyebrow" }, [el("a", { href: lastSessionListHash, text: label("sessions") }),
+      project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
+    el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
+      el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
+    el("section", { class: "session-summary" }, [summary ? el("h2", { text: "Summary" }) : null,
+      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || "Not summarised yet — " + (r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+    sessionDecisions(r, messages),
+    followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: "Follow-ups" }),
+      el("ul", {}, listItems(followups).map(text => el("li", { html: inline(text, r.path) })))]) : null,
+    sessionArtifacts(r), sessionNeighbours(r), attachment.node, sessionDetails(r)]);
+  main.replaceChildren(page);
+  if (route().find || route().query) {
+    attachment.node.open = true;
+    requestAnimationFrame(() => { if (page.isConnected) attachment.find.run(); });
+  } else if (heading) requestAnimationFrame(() => sessionJump(heading));
+}
+
 // ---------- a page ----------
 // Which sections lead: what is open first on a relationship, the state of play on a project.
 const LEADING = {
@@ -2663,6 +3379,21 @@ function ordered(r, sections) {
 }
 function sectionBody(r, s) {
   const name = s.title.toLowerCase();
+  // Session quotes are the owner's words, including Markdown and citation-looking text.
+  if (r.category === "sessions" && ["what you typed", "final reply"].includes(name)) {
+    const out = el("div", { class: "block" });
+    let quoted = [];
+    const flush = () => {
+      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
+      quoted = [];
+    };
+    for (const line of s.text.split("\n")) {
+      if (line.startsWith("> ")) quoted.push(line.slice(2));
+      else if (line.startsWith("### ")) { flush(); out.appendChild(el("h3", { text: line.slice(4) })); }
+    }
+    flush();
+    return out;
+  }
   // Insight (#2068): each line starts Now / Changed / At stake / Pattern; the label becomes a badge.
   if (name === "insight") {
     const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern):\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
@@ -2870,7 +3601,8 @@ function relationDisclosure(links, label, className = "") {
     el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(relationCard))]) : null;
 }
 function connectedContext(r) {
-  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
+  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
+    && !(r.category === "projects" && byPath(link.path).category === "sessions"));
   if (!related.length) return null;
   const explicit = link => link.kind === "linked" || link.kind === "linked from";
   const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
@@ -2952,7 +3684,7 @@ function ledgerRow(r, t) {
   const text = threadWords(t.text, r);
   const meta = t.quiet ? [age(t.since), "gone quiet"].filter(Boolean).join(", ") : t.due ? dueLabel(t) : age(t.since);
   return el("li", { class: "ledger-row" + (t.quiet ? " quiet" : "") }, [
-    privateFallback(el("p", { html: inline(text.charAt(0).toUpperCase() + text.slice(1), r.path) })),
+    privateFallback(el("p", { html: inline(capFirst(text), r.path) })),
     el("span", { class: "ledger-meta" + (!t.quiet && t.due && t.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta })]);
 }
 function ledgerColumn(r, items, dir) {
@@ -2981,10 +3713,11 @@ function personInsight(r) {
     }))]);
 }
 function personFocus(r) {
-  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true)]);
+  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
 }
 function recordFocus(r) {
   if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
+  if (r.category === "sessions") return el("div");
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
@@ -2994,7 +3727,7 @@ function recordFocus(r) {
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
   const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
   const projectDescription = plainLine(projectPurposeLine);
-  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
+  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" && !newestStanding(r) &&
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
   const finding = plainLine(findingLine);
@@ -3053,7 +3786,7 @@ function recordFocus(r) {
       const step = next.replace(/^Now:\s*/i, "");
       focusHead.appendChild(el("div", { class: "focus-next" }, [
         el("span", { class: "k", text: "Next step" }),
-        el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
+        el("p", { html: inline(capFirst(step), r.path) })]));
     }
   }
   out.appendChild(focusHead);
@@ -3087,6 +3820,10 @@ function recordFocus(r) {
 }
 function recordContext(r) {
   const out = el("div", { class: "record-focus deep-context " + r.category });
+  if (r.category === "projects") {
+    const sessions = projectSessions(r);
+    if (sessions) out.appendChild(sessions);
+  }
   // Enrich (#2315): the documents this page cites, each one click from its file.
   const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
     .filter(([, c]) => c?.source === "attachment" && c.file);
@@ -3198,6 +3935,7 @@ function record(path, heading) {
     main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not in this snapshot" }), "No such page in this snapshot: " + path]));
     return;
   }
+  if (r.category === "sessions") { sessionRecord(r, heading); return; }
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
@@ -3207,6 +3945,7 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
     ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
+  if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
@@ -3367,6 +4106,10 @@ function search(q) {
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
     if (r.path === "skills/catalog/index.md" || skillReport(r)) continue;
+    if (r.category === "sessions") {
+      if (sessionText(r).lower.includes(needle)) hits.push({ r, lines: [sessionExcerpt(r, [needle]).text.slice(0, 240)] });
+      continue;
+    }
     const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
@@ -3390,7 +4133,7 @@ function search(q) {
   const best = hits.find(h => FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
   if (best) main.appendChild(bestMatch(best.r));
   // Grouped by kind, people first; one snippet a page, never a local path.
-  const ORDER = ["people", "orgs", "projects", "skills"];
+  const ORDER = ["people", "orgs", "projects", "skills", "sessions"];
   const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
   const groups = new Map();
   for (const hit of hits.sort((a, b) => rank(a.r.category) - rank(b.r.category))) {
@@ -3401,15 +4144,17 @@ function search(q) {
   for (const [c, list] of groups) {
     main.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
     const ul = el("ul", { class: "hits" });
-    for (const { r, lines } of list) {
+    for (const { r, lines } of (c === "sessions" ? list.slice(0, 8) : list)) {
       const li = el("li", {}, [
-        el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r), html: highlight(r.title, needle) }), statusPill(r)]),
+        el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(r.title, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
       const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
       if (line) li.appendChild(el("div", { class: "hit", html: highlight(line.replace(/\s*\[W?\d{1,3}\]/g, ""), needle) }));
       ul.appendChild(li);
     }
     main.appendChild(ul);
+    if (c === "sessions") main.appendChild(el("a", { href: sessionHash({ find: q }),
+      text: list.length === 1 ? "Open in " + label("sessions") + " →" : "All " + list.length + " matching sessions →" }));
   }
 }
 function bestMatch(r) {
@@ -3596,21 +4341,45 @@ function supportingSpan(claim, excerpt) {
 function markedSpan(text, range) {
   return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
 }
+function evidenceText(range) {
+  const copy = range.cloneContents();
+  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
+  return copy.textContent.trim();
+}
+function sentenceEnds(text) {
+  const ends = [0];
+  // Quotes and parentheticals are units, including a quote's closing full stop.
+  for (const match of text.matchAll(/“[^”]*”|"[^"\n]*"|\([^)]*\)|[.!?;](?=\s)/g)) {
+    if (match[0].length !== 1) continue;
+    if (match[0] === "." && /\b(?:[a-z]\.){2,}$|\b(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr|St|vs|etc)\.$/i.test(text.slice(0, match.index + 1))) continue;
+    ends.push(match.index + 1);
+  }
+  return ends;
+}
 function evidenceSentence(trigger, line) {
   const content = line.querySelector(".focus-statement") || line;
   const range = document.createRange();
   range.selectNodeContents(content);
   if (content.contains(trigger)) {
-    range.setEndBefore(trigger);
-    const chips = [...content.querySelectorAll("a.cite")], previous = chips[chips.indexOf(trigger) - 1];
-    if (previous) range.setStartAfter(previous);
+    const chips = [...content.querySelectorAll("a.cite")];
+    let first = chips.indexOf(trigger);
+    // Every adjacent chip supports the words before the group's first chip.
+    for (; first > 0; first--) {
+      range.setStartAfter(chips[first - 1]);
+      range.setEndBefore(chips[first]);
+      if (range.toString().trim()) break;
+    }
+    range.selectNodeContents(content);
+    range.setEndBefore(chips[first]);
+    if (first > 0) range.setStartAfter(chips[first - 1]);
   }
-  const copy = range.cloneContents();
-  copy.querySelectorAll(".privacy-tag, .dir, .age, .when").forEach(node => node.remove());
-  const text = copy.textContent.trim();
-  // A closing full stop belongs to this sentence, not the previous one.
-  const beforeEnd = text.replace(/[.;]["”’')\]]*$/, "");
-  return text.slice(Math.max(beforeEnd.lastIndexOf("."), beforeEnd.lastIndexOf(";")) + 1).trim();
+  const before = evidenceText(range), start = sentenceEnds(before).at(-1);
+  const sentence = before.slice(start).trim();
+  if (sentence.length >= 20) return sentence;
+  // A short prefix may have its remaining words after the chip.
+  range.setEnd(content, content.childNodes.length);
+  const text = evidenceText(range), end = sentenceEnds(text).find(at => at >= before.length && at > start);
+  return text.slice(start, end).trim();
 }
 function evidenceLine(trigger) {
   const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
@@ -3620,7 +4389,7 @@ function evidenceLine(trigger) {
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
   const sentence = evidenceSentence(trigger, line);
-  return { text: sentence.length >= 20 ? sentence : copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  return { text: sentence || copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
 }
 function scrollEvidenceSpan(panel) {
   const mark = panel.querySelector(".evidence-original mark.span");

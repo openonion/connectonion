@@ -795,6 +795,7 @@ def _init_done(ctx, result) -> str:
     missed = sum(page.get("outcome") not in ("accepted", "nothing_new")
                  for key in KEYS.values() for page in (result.get(key) or {}).get("pages") or [])
     pairs = _pair_lines(ctx, (result.get("tidy") or {}).get("pairs") or [])
+    from ...rem.sessions import summary
     return "\n".join([
         # A failed result is printed after "Error: "; this line is what it says.
         f"{missed} page{' was' if missed == 1 else 's were'} not written this run; each is named above with why."
@@ -802,6 +803,7 @@ def _init_done(ctx, result) -> str:
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
+        *([summary(result["sessions"])] if result.get("sessions") else []),
         *pairs,
         *([f"Your page: {owner}"] if owner else [])])
 
@@ -951,6 +953,12 @@ def make_rem_app(factory):
                                    absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
                                    capture_sources=True, progress=progress)
                 run_state["result"] = result
+                if not estimate_only:
+                    from ...rem.sessions import import_sessions, summarise_line, summarise_sessions
+                    result["sessions"] = import_sessions(root, days=days, consented_only=True)
+                    if not rem_runner.ready(config)[0]:
+                        result["sessions_summary"] = summarise_sessions(root, limit=40, say=progress)
+                        progress(summarise_line(result["sessions_summary"]))
                 if archive_mail and not estimate_only and result.get("source_inventory"):
                     from ...rem.files import read_json, write_json
                     from ...rem.mail_archive import archive_init
@@ -2009,6 +2017,8 @@ def make_rem_app(factory):
     # ------------------- Project pages from the user's own messages (#1943)
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
+    from .rem_import import add_import_app
+    add_import_app(rem, factory, _handle)
 
     # ------------------------------------------------ Old names (until 1.9.0)
 

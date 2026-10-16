@@ -37,7 +37,7 @@ Init offers nightly upkeep after the first run, once you approve its sources and
 Use --yes to approve the shown summary noninteractively, or --no-start to leave upkeep off.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage still work until 1.9.0 and print their new name.
@@ -551,6 +551,7 @@ Everyday use needs none of them.
 Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
+  import        Write one page per Codex / Claude Code session you typed in. No model.
   stub          Create one empty page by hand, with every section marked Unknown.
 Manage pages
   merge         Fold one page into another; archive the old page and keep its name as an alias.
@@ -567,6 +568,46 @@ Experimental: project pages from your own messages (#1943)
   projects      Write project pages from what you typed to Codex and Claude Code.
 
 Back:     co rem --help
+```
+
+## co rem import
+
+```
+Import source material as notebook pages; optionally add model summaries.
+Init and sync already import your approved coding sessions automatically.
+
+Usage:    co rem import sessions [--days N] [--summarise] [--limit N]
+Example:  co rem import sessions
+Subcommand: co rem import sessions --help
+Back:     co rem advanced --help
+```
+
+## co rem import sessions
+
+```
+Agent sessions: one page per Codex or Claude Code conversation you typed in.
+The import is deterministic and uses no model.
+Includes your typed messages and the final agent reply, with secret-shaped text removed.
+Automation, subagents and REM's own sessions stay out. Repeating the import updates
+changed sessions in place and skips unchanged files.
+With --summarise, the configured model adds a title, summary, tags, outcome,
+verified owner decisions and open follow-ups in batches. Init and daily rounds
+summarise up to 40 sessions when the runner is ready.
+
+Usage:    co rem import sessions [--days N] [--summarise] [--limit N] [--json]
+Example:  co rem import sessions --days 30 --summarise --json
+          --days       read sessions active in the last N days (default 180)
+          --summarise  summarise new or changed sessions with the configured model
+          --limit      maximum sessions to summarise (default 40), newest first
+          --json       print one {"ok", "data", "next"} result
+Effects:  Reads enabled local coding sources and writes sessions/ pages and private
+          progress. This explicit command authorizes the import; automatic runs
+          read only sources you have approved. Summaries use the configured runner
+          and model; failed batches are left for next time. Usage is in rem logs.
+Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
+          With --summarise, a summary report (under "summary" in JSON).
+Next:     co rem list sessions
+Back:     co rem import --help
 ```
 
 ## co rem scan
