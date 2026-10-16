@@ -1230,3 +1230,42 @@ class TestTokenUsage:
         with patch.object(client, "request", return_value={}):
             client.run_turn("thread-1", "continue", timeout=10)
         assert client._token_usage == {}
+
+
+class TestActiveThreadNotifications:
+    @pytest.mark.parametrize("thread_id", ["sub", "main", None])
+    @pytest.mark.parametrize("method", ["turn/completed", "turn/failed", "item/started", "item/completed",
+                                       "thread/tokenUsage/updated"])
+    def test_only_active_or_unscoped_notifications_affect_the_turn(self, thread_id, method):
+        events = []
+        client = codex_module.CodexAppServer(["codex", "app-server"], on_event=events.append)
+        client._active_thread_id = "main"
+        client._active_turn_id = "turn-1"
+        client._token_usage = {"input_tokens": 10}
+        params = {"turn": {"status": "completed"},
+                  "item": {"type": "agentMessage", "text": "Verdict"},
+                  "tokenUsage": {"total": {"inputTokens": 25}}}
+        if thread_id is not None:
+            params["threadId"] = thread_id
+        client._handle_notification(method, params)
+
+        accepted = thread_id != "sub"
+        assert client._turn_done.is_set() == (accepted and method in ("turn/completed", "turn/failed"))
+        assert events == ([{"kind": "agent_message", "id": "", "text": "Verdict"}]
+                          if accepted and method.startswith("item/") else [])
+        assert client._token_usage == {"input_tokens": 25 if accepted and method == "thread/tokenUsage/updated" else 10}
+        if not accepted:
+            assert client._turn_result == {} and client._active_turn_id == "turn-1"
+
+    def test_thread_is_active_before_the_turn_start_response(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+
+        def start(*args, **kwargs):
+            assert client._active_thread_id == "main"
+            client._handle_notification("turn/completed", {"threadId": "sub", "turn": {"status": "interrupted"}})
+            assert not client._turn_done.is_set()
+            client._handle_notification("turn/completed", {"threadId": "main", "turn": {"status": "completed"}})
+            return {}
+
+        with patch.object(client, "request", side_effect=start):
+            assert client.run_turn("main", "Review", timeout=1) == {"status": "completed"}

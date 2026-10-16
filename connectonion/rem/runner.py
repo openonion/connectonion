@@ -624,6 +624,13 @@ def _add_usage(*parts) -> dict | None:
     return {key: sum(part.get(key) or 0 for part in parts) for part in parts for key in part} or None
 
 
+def _thread_usage(config, prior, current) -> dict | None:
+    # Resumed Codex turns report the thread's cumulative usage (2026-10-16 trial).
+    if config["runner"] == "codex":
+        return current or prior
+    return _add_usage(prior, current)
+
+
 def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path) -> str:
     """What the review refused, and where the writer reads the originals to fix it."""
     text = (f"Review refused the page: {'; '.join(errors)}. Read the cited originals in "
@@ -1258,7 +1265,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 stage_progress(f"turn {number} of {len(turns)}")
             prior_turn_usage = result.get("usage")
             result = run_task(workdir, text, selected_config, stage, session=session)
-            result["usage"] = _add_usage(prior_turn_usage, result.get("usage"))
+            result["usage"] = _thread_usage(selected_config, prior_turn_usage, result.get("usage"))
             prior_turn_usage = None
         untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
         if candidate and not summary and (not candidate.is_file()
@@ -1297,7 +1304,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if prior_turn_usage:
-            usage = _add_usage(prior_turn_usage, usage)
+            usage = _thread_usage(selected_config, prior_turn_usage, usage)
         if isinstance(error, RunFailed) and inquiry_usage and not result:
             usage = {key: (usage or {}).get(key, 0) + inquiry_usage.get(key, 0)
                      for key in (usage or {}).keys() | inquiry_usage.keys()}

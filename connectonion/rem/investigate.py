@@ -27,6 +27,7 @@ from .mail import _address, _list_all, correspondent, on_domains, participants, 
 from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
+SESSION_WIDEST_DAYS = 730
 # Shared by every page in flight, one pool per mailbox: Gmail takes many
 # concurrent reads; Microsoft Graph allows four per mailbox (8 drew HTTP 429). One shared
 # 10 left half of a 10-page init waiting on mail (2026-10-08).
@@ -802,7 +803,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if not Path(sub.get("root", "")).is_dir():
             coverage.append(f"{name}: source directory unavailable, not searched")
             continue
-        scoped = {**sub, "enabled": True, "consented": True, "since": start.isoformat()}
+        session_start = start if chat else max(start, end - timedelta(days=SESSION_WIDEST_DAYS))
+        if session_start > start:
+            coverage.append(f"{name}: sessions read from {session_start.date()}; "
+                            f"REM keeps a {SESSION_WIDEST_DAYS}-day session window")
+        scoped = {**sub, "enabled": True, "consented": True, "since": session_start.isoformat()}
         scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
         read = collect_chat if chat else collect
@@ -922,7 +927,6 @@ SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800
-SESSION_WIDEST_DAYS = 730  # the longest window a first run asks of coding sessions
 
 
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:

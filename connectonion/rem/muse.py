@@ -2,11 +2,10 @@
 
 import re
 import shutil
-import uuid
 from pathlib import Path
 
 from .config import read_config
-from .evidence import write_evidence
+from .evidence import INDEX, write_evidence
 from .files import Notebook, RemError, state_path
 from .investigate import gather, page_handles
 from .page_review import QUOTE, _listed_sources, prose
@@ -18,6 +17,15 @@ MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
                 "Follow the skill's Turns 2–6 rules." for n in range(2, 7)),
               "Last turn — look back, as the skill says.")
+
+
+def ledger_dir(root, record) -> Path:
+    return state_path(root, f"enrich/{Path(record).stem}")
+
+
+def _archive_note(root) -> str:
+    return (f"Raw mail archive: {root}/.state/mail/messages (search with rg -il). "
+            f"Attachments: {root}/.state/attachments.")
 
 
 def _page(root: Path, record: str, stage: str, runner):
@@ -55,8 +63,10 @@ def _ledger(laid_out: dict, page: str) -> dict:
             "file": str(index), "sources": laid_out["sources"],
             "text": (f"{len(sources)} reachable sources; the page already cites {len(sources & cited)} of them "
                      f"({len(cited)} cited source ids in total).\nUncited source ids (first 200 of {len(uncited)}):\n"
-                     + "\n".join(uncited[:200]) + "\n\n" + index.read_text(encoding="utf-8")[:30_000]
-                     + f"\nRead the full index at {index}; evidence files are under {index.parent}. ")}
+                     + "\n".join(uncited[:200])
+                     + f"\n\nRead the full index at {index}: one line per evidence file; inside a file "
+                     "each entry starts with `### <source id> · ...`, cite that id. "
+                     f"Evidence files are under {index.parent}.")}
 
 
 def _outcome(notebook, record, before, result, *, items=0, coverage=()) -> dict:
@@ -76,19 +86,16 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
         title, handles, days=ENRICH_DAYS, clients={}, subscriptions=subscriptions(root), attachments_dir=None,
         mail_skipped="live mail is not searched by enrich; the saved mail archive was read",
         stage_progress=stage_progress, archive_root=root, record=record)
-    directory = state_path(root, f"evidence/{uuid.uuid4().hex}")
-    try:
-        ledger = _ledger(write_evidence(directory, gathered), page)
-        coverage_item = {"role": "coverage", "source": "investigation:coverage", "timestamp": now().isoformat(),
-                         "text": "\n".join(coverage) + f"\nRaw mail archive: {root}/.state/mail/messages "
-                                 f"(search with rg -il). Attachments: {root}/.state/attachments."}
-        items = [_page_item(root, record, page), coverage_item, ledger,
-                 *_cited_originals(root, page, set(ledger["sources"]))]
-        if stage_progress:
-            stage_progress("following leads")
-        result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
-    finally:
-        shutil.rmtree(directory, ignore_errors=True)
+    directory = ledger_dir(root, record)
+    shutil.rmtree(directory, ignore_errors=True)
+    ledger = _ledger(write_evidence(directory, gathered), page)
+    coverage_item = {"role": "coverage", "source": "investigation:coverage", "timestamp": now().isoformat(),
+                     "text": "\n".join(coverage) + "\n" + _archive_note(root)}
+    items = [_page_item(root, record, page), coverage_item, ledger,
+             *_cited_originals(root, page, set(ledger["sources"]))]
+    if stage_progress:
+        stage_progress("following leads")
+    result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
     return _outcome(notebook, record, page, result, items=len(gathered), coverage=coverage)
 
 
@@ -122,7 +129,14 @@ def _restore(notebook: Notebook, record: str, before: str) -> str:
 def muse(root, record, *, runner=None, stage_progress=None) -> dict:
     notebook, page, runner = _page(root, record, "muse", runner)
     originals = _cited_originals(root, page)
-    items = [_page_item(root, record, page), *originals, *_prior_runs(root, record)]
+    index = ledger_dir(root, record) / INDEX
+    note = (f"The reading ledger the last enrich of this page built: {index}. One line per evidence file; "
+            "inside a file each entry starts with `### <source id> · ...`; cite that id. "
+            "A source the page does not cite yet may hold what a question needs."
+            if index.exists() else "No enrich ledger exists for this page yet.")
+    ledger = {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now().isoformat(),
+              "text": note + "\n" + _archive_note(root)}
+    items = [_page_item(root, record, page), ledger, *originals, *_prior_runs(root, record)]
     result = runner(notebook, items, read_config(root), stage="muse", turns=MUSE_TURNS, stage_progress=stage_progress)
     restored = _restore(notebook, record, page)
     return {**_outcome(notebook, record, page, result, items=len(originals)),
