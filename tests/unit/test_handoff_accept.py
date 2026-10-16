@@ -11,13 +11,25 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from nacl.signing import SigningKey
+
+from connectonion.address import agent_email
 from connectonion.cli.main import app
 from connectonion.handoff import bundle as bundles
-from connectonion.handoff import replies, transport
+from connectonion.handoff import replies, sealing, transport
 
 runner = CliRunner()
-SENDER = {"mail": "alice@mail.openonion.ai", "address": "0x" + "a1" * 32}
-RECIPIENT = {"mail": "0xb2b2b2b2b2@mail.openonion.ai", "address": "0x" + "b2" * 32}
+
+
+def _agent(seed: int, mail: str = None) -> dict:
+    """A test agent with a real Ed25519 key: a sealed handoff's replies are boxed to it."""
+    key = SigningKey(bytes([seed]) * 32)
+    address = "0x" + key.verify_key.encode().hex()
+    return {"mail": mail or agent_email(address), "address": address, "key": key}
+
+
+SENDER = _agent(1, "alice@mail.openonion.ai")
+RECIPIENT = _agent(2)
 
 
 def _invoke(*args):
@@ -36,6 +48,7 @@ def world(monkeypatch, tmp_path):
         monkeypatch.setenv("AGENT_CONFIG_PATH", str(homes[who["mail"]]))
         monkeypatch.setenv("AGENT_EMAIL", who["mail"])
         monkeypatch.setattr(transport, "my_address", lambda: who["address"])
+        monkeypatch.setattr(transport, "my_key", lambda: who["key"])
 
     def send_mail(to, subject, body, idempotency_key):
         mails.append({"id": str(len(mails) + 1), "from": os.environ["AGENT_EMAIL"], "to": to,
@@ -52,8 +65,8 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(transport, "_post_message", post_message)
     monkeypatch.setattr(transport, "_read_mail", lambda last: [
         m for m in reversed(mails) if m["to"] == os.environ["AGENT_EMAIL"]])
-    monkeypatch.setattr(transport, "_read_messages", lambda: [
-        transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()])
+    monkeypatch.setattr(transport, "_read_messages", lambda: [   # as the real one: what does not open is not a mail
+        mail for mail in (transport._as_mail(m) for m in inbox if m["to"] == transport.my_address()) if mail])
     def put_drop(body, drop_id, key_hash):
         drops[drop_id], keys[drop_id] = body, key_hash
         return drop_id
@@ -66,8 +79,15 @@ def world(monkeypatch, tmp_path):
         reader = claimed.setdefault(drop_id, transport.my_address())
         return drops[drop_id] if reader == transport.my_address() else ""
 
+    def view(drop_id):   # as oo-api's public view: the page, sealed or not, and never the held part
+        if drop_id not in drops:
+            return None
+        body = json.loads(drops[drop_id])
+        return {"bundle": body.get("bundle"), "page": body.get("page"), "meta": body.get("meta"),
+                "prompt": body.get("prompt", "")}
+
     claimed = {}
-    monkeypatch.setattr(transport, "page_bundle", lambda code: json.loads(drops[code["drop"]])["bundle"])
+    monkeypatch.setattr(transport, "_view", view)
 
     drops, keys = {}, {}
     monkeypatch.setattr(transport, "_put_drop", put_drop)        # the backend's drops (#2459)
@@ -107,13 +127,27 @@ def _paste(world) -> str:
     return bundles.prompt_in(world["mails"][-1]["message"])
 
 
+def _link(world) -> str:
+    """The newest handoff link, key and all, as a mail gives it."""
+    for mail in reversed(world["mails"]):
+        found = transport.LINK.search(html.unescape(mail["message"]))
+        if found and found.group(2):
+            return found.group(0)
+
+
 def _page(world) -> str:
-    """What the recipient's agent reads at the URL the pasted line names: the whole prompt (b24)."""
-    return json.loads(list(world["drops"].values())[-1])["prompt"]
+    """The whole prompt (b24), as the link's page opens with its key: what accept takes the code from."""
+    return transport.open_page(*transport.link_in(_link(world)))["prompt"]
+
+
+def _opened(message: dict, who: dict) -> dict:
+    """An inbox message as `who` reads it: a sealed one opens only with their key."""
+    body = json.loads(message["body"])
+    return sealing.unbox(who["key"], message["from_address"], body["sealed"]) if "sealed" in body else body
 
 
 def _code(text: str) -> str:
-    return re.search(r"co handoff accept (coh[123]\.[A-Za-z0-9_-]+)", text).group(1)
+    return re.search(r"co handoff accept (coh[1234]\.[A-Za-z0-9_-]+)", text).group(1)
 
 
 # ---- the prompt ----
@@ -188,7 +222,8 @@ def test_after_acceptance_each_side_holds_the_other_at_handoffs_only(world):
     said = " ".join(status.output.split())
     assert "co handoff send bob reaches them again" in said and "they can't use your agent" in said
     assert tools.get_level(RECIPIENT["address"], co_dir) == "handoffs" and not tools.is_contact(RECIPIENT["address"], co_dir)
-    assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True}}  # kept its name; reads the inbox
+    assert transport.contacts() == {"bob": {"mail": RECIPIENT["mail"], "agent": RECIPIENT["address"], "inbox": True,
+                                            "sealed": True}}  # kept its name; reads the inbox; opens boxes
     peers = json.loads((co_dir / "handoff" / "peers.json").read_text())
     assert peers[RECIPIENT["address"]] == {"mailbox": RECIPIENT["mail"], "scope": "handoff", "handoffs": ["ho-1a2b3c4d"]}
 
@@ -210,14 +245,14 @@ def test_the_record_says_which_handoff_made_each_side_a_contact(world):
 def test_a_new_contact_never_overwrites_one_with_the_same_name(world):
     world["be"](RECIPIENT)
     assert _invoke("handoff", "contact", "alice", "other-alice@example.com").exit_code == 0
-    assert transport.meet(SENDER["mail"], SENDER["address"]) == "alice-a1a1a1"
+    assert transport.meet(SENDER["mail"], SENDER["address"]) == f"alice-{SENDER['address'][2:8]}"
     assert transport.contacts()["alice"] == {"mail": "other-alice@example.com"}
 
 
 def test_a_contact_named_after_an_agent_mailbox_is_reached_by_that_name(world):
     world["be"](SENDER)                                     # the recipient reads 0x…@mail, so that is its name
     name = transport.meet(RECIPIENT["mail"], RECIPIENT["address"])
-    assert name == "0xb2b2b2b2b2"
+    assert name == RECIPIENT["mail"].split("@")[0]
     assert transport.resolve(name) == RECIPIENT["mail"]     # what `co handoff send <name>` prints as the way back
 
 
@@ -331,7 +366,9 @@ def test_a_one_character_typo_is_refused_not_sent_somewhere_else(world):
 
 
 def test_the_code_is_short_enough_to_copy(world):
-    assert len(_code(_send(world))) < 160   # 1.9.2b21: 32 more characters carry the drop id (#2459)
+    # 1.9.2b21: 32 more characters carry the drop id (#2459); 43 more carry the key it is sealed with. A
+    # person copies the link, not the code; an agent copies the code from accept, and its checksum refuses a typo.
+    assert len(_code(_send(world))) < 200
 
 
 def test_the_install_floor_is_a_published_version_not_the_senders_build(world, monkeypatch):
@@ -393,7 +430,7 @@ def test_an_agent_is_told_a_preview_is_older_than_the_release():
 
 def test_after_the_first_mail_every_reply_goes_to_the_agent_inbox(world):
     code = _code(_send(world))
-    assert code.startswith("coh3.") and len(world["mails"]) == 1
+    assert code.startswith("coh4.") and len(world["mails"]) == 1
     world["be"](RECIPIENT)
     assert _invoke("handoff", "accept", code).exit_code == 0
     assert _invoke("handoff", "ask", code, "7 days or 30?").exit_code == 0
@@ -438,7 +475,7 @@ def test_a_handoff_to_a_contact_goes_to_their_agent_inbox_and_their_inbox_shows_
     listed = _invoke("handoff", "inbox")
     assert "ho-2b3c4d5e" in listed.output and "Second task" in listed.output
     shown = _invoke("handoff", "show", "ho-2b3c4d5e")
-    assert "co handoff accept coh3." in shown.output                         # how to take it over, without the mail
+    assert "co handoff accept coh4." in shown.output                         # how to take it over, without the mail
     assert "[co.path]" not in shown.output                                   # a path, not style markup (b13 test)
 
 
@@ -525,13 +562,13 @@ def test_each_question_is_answered_once_and_the_copy_is_sent_once(world, tmp_pat
     _invoke("handoff", "ask", code, "second?")
     world["be"](SENDER)
     watch.check()
-    answers = [replies._decode(transport._as_mail(m)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
+    answers = [replies._decode(_opened(m, RECIPIENT)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
     assert len(answers) == 2
     assert all("context" not in a and "session copy you already have" in a["text"] for a in answers)  # b22: it went with the handoff
 
 
 def _answers(world) -> list[dict]:
-    return [replies._decode(transport._as_mail(m)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
+    return [replies._decode(_opened(m, RECIPIENT)["message"]) for m in world["inbox"] if m["to"] == RECIPIENT["address"]]
 
 
 def test_a_new_question_is_answered_after_older_ones_expired_from_the_inbox(world, tmp_path):
@@ -542,7 +579,8 @@ def test_a_new_question_is_answered_after_older_ones_expired_from_the_inbox(worl
     _invoke("handoff", "ask", code, "q2?")
     world["be"](SENDER)
     _invoke("handoff", "status", "ho-1a2b3c4d")
-    world["inbox"][:] = [m for m in world["inbox"] if not re.search(r"q[12]\?", transport._as_mail(m)["message"])]  # 30 days on
+    world["inbox"][:] = [m for m in world["inbox"] if m["to"] != SENDER["address"]
+                         or not re.search(r"q[12]\?", _opened(m, SENDER)["message"])]  # 30 days on
     world["be"](RECIPIENT)
     _invoke("handoff", "ask", code, "q3?")
     world["be"](SENDER)
@@ -665,7 +703,7 @@ def test_an_acceptance_that_fell_out_of_the_mailbox_window_still_counts(world, t
     _invoke("handoff", "accept", code)
     world["be"](SENDER)
     _invoke("handoff", "status", "ho-1a2b3c4d")
-    world["inbox"][:] = [m for m in world["inbox"] if "accept" not in transport._as_mail(m)["subject"]]
+    world["inbox"][:] = [m for m in world["inbox"] if "accept" not in json.loads(m["body"])["subject"]]
     world["be"](RECIPIENT)
     _invoke("handoff", "ask", code, "q1?")
     world["be"](SENDER)
@@ -715,7 +753,7 @@ def test_done_before_accept_is_refused_and_another_agents_done_is_ignored(world)
     refused = _invoke("handoff", "done", code, "finished")
     assert refused.exit_code == 1 and f"co handoff accept {code}" in refused.output
     _invoke("handoff", "accept", code)
-    world["be"]({"mail": "mallory@mail.openonion.ai", "address": "0x" + "c3" * 32})
+    world["be"](_agent(3, "mallory@mail.openonion.ai"))
     (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d").mkdir(parents=True)
     (Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "accepted" / "ho-1a2b3c4d" / "code.json").write_text("{}")
     assert _invoke("handoff", "done", code, "I did it, trust me").exit_code == 0
@@ -868,8 +906,8 @@ def test_with_a_gmail_connected_the_handoff_goes_from_it_not_the_agent_mailbox(w
     mail = _FakeGmail.sent[0]
     assert mail["to"] == RECIPIENT["mail"] and "https://o.openonion.ai/h/" in mail["text"]
     assert "<pre" in mail["html"] and "from your Gmail (alice.liddell@gmail.com)" in sent.output
-    world["be"](RECIPIENT)                                                         # the page it names still works
-    assert _invoke("handoff", "accept", _code(_page(world))).exit_code == 0
+    world["be"](RECIPIENT)                                       # the link it names, key and all, is what accept takes
+    assert _invoke("handoff", "accept", transport.LINK.search(mail["text"]).group(0)).exit_code == 0
 
 
 def test_without_one_the_preview_says_the_agent_mailbox_may_read_as_spam_and_how_to_avoid_it(world):
@@ -907,7 +945,7 @@ def test_the_mail_is_in_the_language_the_sender_wrote_in(world):
 
 
 def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(world):
-    # The person's mail no longer starts "[co handoff]"; an agent mailbox finds it by the bundle in it.
+    # The person's mail no longer starts "[co handoff]"; an agent mailbox finds it by its link, whose page it opens.
     _send(world)
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output
@@ -939,7 +977,7 @@ def test_the_sender_can_take_the_page_down(world, monkeypatch):
     page = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())["page"]
     result = _invoke("handoff", "withdraw", "ho-1a2b3c4d")
     assert result.exit_code == 0, result.output
-    assert gone == [page.rsplit("/", 1)[1]] and not world["drops"]
+    assert gone == [page.split("#")[0].rsplit("/", 1)[1]] and not world["drops"]
     assert "taken down" in result.output and page in result.output
 
 
@@ -984,7 +1022,7 @@ def test_a_question_saying_the_copy_lacks_it_waits_on_the_sender_instead_of_anot
     world["be"](SENDER)
     said = _invoke("handoff", "status", "ho-1a2b3c4d").output
     assert "Which limit?\n  Waiting on you" in said
-    assert not [m for m in world["inbox"][before:] if "answer" in transport._as_mail(m)["subject"]]
+    assert not [m for m in world["inbox"][before:] if "answer" in json.loads(m["body"])["subject"]]
     assert 'co handoff answer ho-1a2b3c4d "<your answer>"' in said
 
 

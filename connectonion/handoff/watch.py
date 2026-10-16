@@ -35,7 +35,8 @@ def check() -> list[str]:
         told = replies.answered_keys({"answered": seen["questions"]}, state["questions"])   # 1.9.2b13 kept a count
         who = state["accepted"]
         if who and not seen["accepted"]:
-            name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"], record.get("inbox", False))
+            name = replies.remember_peer(who["address"], who["mailbox"], record["id"], record["to"], record.get("inbox", False),
+                                         sealed=bool(record.get("key")))
             news.append(f"[handoff] {record['id']} accepted by {who['address']} ({who['mailbox']}), saved as {name}; they can send you handoff messages, not use your agent")
         news += [f"[handoff] {record['id']} question: {q['text']}  (co handoff answer {record['id']} \"...\")"
                  for q in state["questions"] if replies.question_key(q) not in told]

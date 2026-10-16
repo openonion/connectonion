@@ -142,12 +142,16 @@ frozen into a mail.
 
 ## The code
 
-`coh3.…` (about 145 characters) holds the sender's agent address and mailbox,
+`coh4.…` (about 190 characters) holds the sender's agent address and mailbox,
 the handoff id, the bundle's content hash, a random secret, the id the handoff
-waits under on the backend, and a checksum. A
+waits under on the backend, the key it is sealed with (see
+[Encryption](#encryption)), and a checksum. A
 mistyped or cut-off code is refused; in one real run an agent retyped a longer
 code and a single wrong character turned the sender's mailbox into a different
-domain. Whitespace inside a code (a wrapped line) is ignored. A `coh2` code, from
+domain. Whitespace inside a code (a wrapped line) is ignored. `co handoff accept`
+also takes the handoff's link, `#k=` part included, and reads the code from its
+page. A `coh3` code, from 1.9.3rc4 or earlier, names a handoff the backend holds
+in plaintext; it is still accepted. A `coh2` code, from
 1.9.2b12 to 1.9.2b20, carries no backend id and is accepted with
 `--brief HANDOFF.md`; a `coh1` code, from 1.9.2b11 or earlier, is answered by mail.
 
@@ -240,6 +244,52 @@ Bundle format `co-handoff/3`: `title`, `task`, `where_it_stands`, `decided`,
 uncommitted}]`), `conversation` (`[{at, user, ai}]`), `source` (client, session
 id, message count; no local paths) and `content_hash`, which covers all of it so
 the recipient can tell the copy is the one you approved.
+
+## Encryption
+
+What the backend holds of a handoff is ciphertext.
+
+**The handoff itself.** `send` seals it on your machine before anything leaves:
+AES-256-GCM, under a random 256-bit key made for this one handoff. The backend
+stores two sealed parts. The page holds the report, the conversation, and the
+prompt with the code. The pickup holds the code's patches and the session copy,
+and the backend serves it only to whoever holds the code's secret. The key is
+in the link's `#k=` part and in the code, and nowhere on the backend. A browser
+never sends the part of a link after `#`, so the page at `o.openonion.ai/h/<id>`
+decrypts in the reader's browser, and `co handoff accept` decrypts on the
+recipient's machine.
+
+What the backend can see: which agent dropped it, your name, which coding agent
+the session came from, its language, its size, and when it was sent and picked
+up. The prompt its page serves to an agent names no title and no code, only how
+to install co and accept with the whole link.
+
+**Where the key travels.** In the link, in the note to the person.
+- From your own Gmail or Outlook, or your coding agent's own mail tool, the note
+  goes through your mail provider and theirs, not through ConnectOnion.
+- With neither connected, it goes from your agent's mailbox through
+  ConnectOnion's mail service, and the key goes with it. The preview says so.
+
+**After the handshake.** Once their agent accepts, each side knows the other's
+agent address, which is its Ed25519 public key. From then on, every message
+between the two agents is boxed to the other agent's key: X25519 `crypto_box`,
+from those same keys. That covers:
+- the acceptance;
+- questions and answers;
+- results and their files;
+- the inbox copies of later handoffs.
+
+The backend relays only ciphertext, with `[co handoff]` outside it. Opening a
+box also proves which agent sent it, so a message relayed under another agent's
+name is not believed. Only the two agents can read these messages.
+
+**What this does not cover.**
+- The note to the person is ordinary mail, for the first handoff and for later
+  ones.
+- A question that waits on you, and a finished result, are mailed to you too.
+  They go from your own mailbox when one is connected.
+- A handoff sent by co 1.9.3rc4 or earlier (a `coh3` code) stays plaintext on
+  the backend until it expires, and so do the messages about it.
 
 ## Where the session comes from
 
@@ -360,9 +410,10 @@ handoff to a contact therefore arrives in `co handoff inbox`, not as a mail;
 
 Both work while the other side is offline, and no Host is needed. The backend
 keeps an inbox message for 30 days, and reading it does not delete it, so a
-second machine with the same identity reads it too. Messages are not
-end-to-end encrypted yet. `connectonion/handoff/transport.py` is the only
-module that knows the wire.
+second machine with the same identity reads it too. The agents' messages to each
+other are boxed end to end ([Encryption](#encryption)).
+`connectonion/handoff/transport.py` is the only module that knows the wire, and
+`connectonion/handoff/sealing.py` the only one that knows the cryptography.
 
 ## Power-user commands: inbox, show, open
 

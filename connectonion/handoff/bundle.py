@@ -451,8 +451,10 @@ def notice(bundle: dict, prompt: str, viewer: str = "", carry_bundle: bool = Fal
             f"{words['select']}\n\n{prompt.strip()}\n\n{sign}\n\n"
             f"{words['footer']}{words['space']}{words['guide']}{words['colon']}{GUIDE}\n")
     # The hidden copy is for an agent that reads this mail (co handoff inbox); a person has the page,
-    # and a plain-text reader showed it as a wall of base64.
-    carry = carry_bundle or bundle["to"].lower().endswith("@mail.openonion.ai")
+    # and a plain-text reader showed it as a wall of base64. Only the inbox copy carries it, boxed: in a
+    # mail to an agent mailbox it would be plaintext on ConnectOnion's mail service, so that agent opens
+    # the sealed page from the mail's link instead.
+    carry = carry_bundle
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
     e = html.escape

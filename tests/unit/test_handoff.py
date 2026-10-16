@@ -117,7 +117,7 @@ def mailbox(monkeypatch):
     """The agent mailbox, faked at the transport's two functions."""
     mails = []
 
-    def deliver(to, subject, body, idempotency_key, agent=None):
+    def deliver(to, subject, body, idempotency_key, agent=None, sealed=False):
         mails.append({"id": str(len(mails) + 1), "from": SELF, "to": to, "subject": subject,
                       "message": body, "timestamp": "2026-10-10T10:05:00"})
         return {"success": True, "message_id": f"msg-{len(mails)}", "from": SELF}
@@ -125,17 +125,17 @@ def mailbox(monkeypatch):
     monkeypatch.setattr(transport, "deliver", deliver)
     monkeypatch.setattr(transport, "_send_mail", deliver)                            # a new handoff's mail (#2478)
     monkeypatch.setattr(transport, "own_mailboxes", lambda: {})                       # no Gmail or Outlook connected
-    pages, held = {}, {}
+    pages = {}
 
-    def drop(bundle, drop_id=None, prompt="", **kw):   # the backend's drops (#2459); b24 keeps the prompt for the page
-        pages[drop_id], held[drop_id] = prompt, bundle
+    def drop(drop_id, page, held, outer, meta, secret, key):   # the backend's drops (#2459), as the link's key opens them
+        pages[drop_id] = page
         return drop_id
     monkeypatch.setattr(transport, "drop", drop)
-    monkeypatch.setattr(transport, "page_prompt", lambda drop_id: pages[drop_id])
-    monkeypatch.setattr(transport, "page_bundle", lambda code: held[code["drop"]])      # the public view
-    monkeypatch.setattr(transport, "pickup", lambda code: {"bundle": held[code["drop"]], "code": [], "context": ""})
+    monkeypatch.setattr(transport, "open_page", lambda drop_id, key: pages[drop_id])
+    monkeypatch.setattr(transport, "pickup", lambda code: {"bundle": pages[code["drop"]]["bundle"], "code": [], "context": ""})
     monkeypatch.setattr(transport, "fetch", lambda last=200: [
-        m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]])
+        m for m in reversed(mails) if m["subject"].startswith(transport.SUBJECT_PREFIX) or transport.MARKER in m["message"]
+        or transport.LINK.search(m["message"])])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
     monkeypatch.setattr(transport, "my_address", lambda: "0x" + "ab" * 32)
     return mails
@@ -194,9 +194,10 @@ def test_yes_with_draft_sends_exactly_the_previewed_bundle(project, model, mailb
     sent = _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
     assert sent.exit_code == 0, sent.output
     assert len(mailbox) == 1 and len(model) == 1                     # drafted once (the report), not again on send
-    arrived = bundles.from_mail(mailbox[0]["message"])
+    assert bundles.from_mail(mailbox[0]["message"]) is None             # no plaintext copy rides in the mail
+    arrived = transport.page_bundle(transport.open_page(*transport.link_in(mailbox[0]["message"])))   # checked by its code
     previewed = json.loads((Path.home() / ".co/handoff/drafts" / f"{handoff_id}.json").read_text())
-    assert arrived["verified"] and arrived["content_hash"] == previewed["content_hash"]
+    assert arrived["content_hash"] == previewed["content_hash"]
     assert f"Next: co handoff status {handoff_id}" in sent.output
 
 
@@ -302,7 +303,7 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     assert "codex resume thread-1" in opened.output
     agent, prompt, brief, cwd, code = seeds[0]
     assert agent == "codex" and "any XSS can read localStorage" in prompt and "Which for the login token?" in prompt
-    assert brief.name == "HANDOFF.md" and code.startswith(("coh2.", "coh3."))        # it accepts by itself
+    assert brief.name == "HANDOFF.md" and code.startswith("coh4.")        # it accepts by itself
     assert cwd.parent.name == "handoffs" and f"Folder: {cwd}" in opened.output      # a folder a person can find
 
     again = _invoke("handoff", "open", handoff_id)

@@ -6,6 +6,10 @@ recipient's, and each side saves the other as a contact), messages go to that ag
 inbox on the backend (`/api/v1/messages`, #2410) instead of through the mail service.
 Both work while the other side is offline, and no Host has to be running. `deliver`
 and `fetch` are the only two functions that know this.
+
+What the backend holds is ciphertext (sealing.py): a drop is locked with a key that travels only
+in the link's #k= part, and once both agents know each other, inbox messages are boxed to the
+other's key.
 """
 
 import html
@@ -16,6 +20,7 @@ import re
 
 from ..address import agent_email
 from ..environment import global_config_dir
+from . import sealing
 
 SUBJECT_PREFIX = "[co handoff] "
 MARKER = "BEGIN CO HANDOFF"   # in every handoff body: a first mail's subject reads like a person's, not like co
@@ -48,12 +53,14 @@ def add_contact(name: str, address: str) -> str:
     return mail
 
 
-def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: str = "handoffs") -> str:
+def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: str = "handoffs",
+         sealed: bool = False) -> str:
     """After a handoff is accepted, each side admits the other at `level`: handoffs, which exchanges handoff
     messages and nothing else, unless a caller asks for more. Returns their name.
 
     `inbox` records that their co reads the agent inbox (they used a coh2 code), so later
     handoffs to them go there; a contact without it gets mail, which every version reads.
+    `sealed` records that their co opens boxed messages (a coh4 handoff), so later ones are boxed to them.
 
     `agent` joins this identity's trust contacts (co trust list). The name book learns that `mail`
     reaches them: a name already reached at `mail`, or already known as `agent`, keeps its name and
@@ -72,6 +79,8 @@ def meet(mail: str, agent: str, inbox: bool = False, reason: str = None, level: 
     book[name]["agent"] = agent
     if inbox:
         book[name]["inbox"] = True
+    if sealed:
+        book[name]["sealed"] = True
     _save(book)
     return name
 
@@ -91,6 +100,12 @@ def my_address() -> str:
     return project_identity()["address"]
 
 
+def my_key():
+    """This agent's Ed25519 signing key: what opens a message boxed to my_address()."""
+    from ..project import project_identity
+    return project_identity()["signing_key"]
+
+
 def resolve(who: str) -> str | None:
     """Recipient mailbox for a name, email or 0x address; None for an unknown name.
 
@@ -103,18 +118,29 @@ def resolve(who: str) -> str | None:
     return None
 
 
-def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None) -> dict:
+def deliver(to: str, subject: str, body: str, idempotency_key: str, agent: str | None = None,
+            sealed: bool = False) -> dict:
     """A reply: to `agent`'s inbox when known (passed, or a contact that reads its inbox), else mail `to`.
+    `sealed`: boxed to that agent, which opens boxes (both sides of a coh4 handoff do).
 
     Returns send_email's result dict; an inbox delivery adds "via": "agent inbox"."""
-    agent = agent or _inbox_agent(to)
-    if agent:
-        return _post_message(agent, json.dumps({"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")}))
+    contact = _inbox_contact(to)
+    if agent or contact:
+        return _post(agent or contact["agent"], {"subject": subject, "message": body, "from": os.getenv("AGENT_EMAIL")},
+                     sealed or bool(contact and contact.get("sealed")))
     return _send_mail(to, subject, body, idempotency_key)
 
 
-def _inbox_agent(to: str) -> str | None:
-    return next((e["agent"] for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
+def _inbox_contact(to: str) -> dict | None:
+    return next((e for e in contacts().values() if e["mail"] == to and e.get("inbox")), None)
+
+
+def _post(agent: str, content: dict, sealed: bool) -> dict:
+    """An inbox message; boxed to `agent` when sealed, with only "[co handoff]" outside the box: a subject
+    names the handoff's title, the backend is not told even that."""
+    if sealed:
+        content = {"subject": SUBJECT_PREFIX.strip(), "sealed": sealing.box(my_key(), agent, content)}
+    return _post_message(agent, json.dumps(content))
 
 
 VIA = ("auto", "mcp", "gmail", "outlook", "agent")
@@ -145,12 +171,15 @@ def hand_over(to: str, mail: dict, idempotency_key: str, via: str = "auto") -> d
     """A new handoff: the person's mail through `via`, and a copy in their agent's inbox when they are a contact.
 
     "mcp" mails nothing: the coding agent sends `mail` with its own mail tool, from the person's mailbox.
-    Returns {success, via, from, message_id, inbox, mailed, error}: success when either arrived."""
-    agent = _inbox_agent(to)
+    Returns {success, via, from, message_id, inbox, mailed, error}: success when either arrived.
+
+    The inbox copy carries the code and its key, so it goes only to a contact that opens boxes, boxed;
+    one met before boxes has the mail, whose link installs a co that reads it."""
+    contact = _inbox_contact(to)
+    agent = contact["agent"] if contact and contact.get("sealed") else None
     if agent:   # the subject prefix and hidden bundle are how co handoff inbox finds it there
-        posted = _post_message(agent, json.dumps({"subject": SUBJECT_PREFIX + mail["subject"],
-                                                  "message": mail.get("inbox_html", mail["html"]),
-                                                  "from": os.getenv("AGENT_EMAIL")}))
+        posted = _post(agent, {"subject": SUBJECT_PREFIX + mail["subject"], "message": mail.get("inbox_html", mail["html"]),
+                               "from": os.getenv("AGENT_EMAIL")}, sealed=True)
         if not posted.get("success"):
             return posted
     channel = channel_for(via)
@@ -180,7 +209,8 @@ def _own_tool(channel: str):
 def fetch(last: int = 200) -> list[dict]:
     """Recent mail and inbox messages that carry a handoff, newest first, in the mail's shape."""
     found = [m for m in _read_mail(last) + _read_messages()
-             if m.get("subject", "").startswith(SUBJECT_PREFIX) or MARKER in m.get("message", "")]
+             if m.get("subject", "").startswith(SUBJECT_PREFIX) or MARKER in m.get("message", "")
+             or LINK.search(m.get("message", ""))]
     return sorted(found, key=lambda m: str(m.get("timestamp", "")), reverse=True)
 
 
@@ -218,6 +248,7 @@ def _post_message(agent: str, body: str) -> dict:
 
 
 VIEWER = "https://o.openonion.ai/h/"
+LINK = re.compile(re.escape(VIEWER) + r"([A-Za-z0-9_-]{32,64})(?:/codex)?(?:#k=([A-Za-z0-9_-]{43}))?")
 
 
 def new_drop_id() -> str:
@@ -226,48 +257,80 @@ def new_drop_id() -> str:
     return secrets.token_urlsafe(24)
 
 
-def viewer_url(drop_id: str) -> str:
-    """The page a person reads the handoff on, before installing anything (oo-frontend /h/<id>)."""
-    return VIEWER + drop_id
+def viewer_url(drop_id: str, key: bytes = None) -> str:
+    """The page a person reads the handoff on, before installing anything (oo-frontend /h/<id>), with the
+    key in its #k= part: the browser decrypts the page with it and never sends it."""
+    return VIEWER + drop_id + (f"#k={sealing.key_text(key)}" if key else "")
 
 
-def agent_url(drop_id: str) -> str:
-    """The plain-text page the one line a person pastes tells their agent to read: the whole prompt."""
-    return viewer_url(drop_id) + "/codex"
+def agent_url(drop_id: str, key: bytes = None) -> str:
+    """The plain-text page the one line a person pastes tells their agent to read: how to install co and
+    accept. Its key part stays in the line the agent was given, which is what accept is run with."""
+    return VIEWER + drop_id + "/codex" + (f"#k={sealing.key_text(key)}" if key else "")
 
 
-def page_bundle(code: dict) -> dict:
-    """The handoff as its public page shows it, checked against the code: reading it claims nothing."""
-    from .bundle import seal
-    import requests
-    from ..backend import backend_url
-    response = requests.get(f"{backend_url()}/api/v1/drops/{code['drop']}/view", timeout=30)
-    response.raise_for_status()
-    bundle = response.json()["bundle"]
-    if seal(bundle)["content_hash"] != code["hash"]:
-        raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
-    return bundle
+def link_in(text: str) -> tuple[str, bytes | None] | None:
+    """(drop id, key or None) of the first handoff link in `text`; one a terminal or mail client wrapped
+    (`co email read` at 80 columns) is joined back up."""
+    found = LINK.search(text or "")
+    if not (found and found.group(2)):
+        found = LINK.search(re.sub(r"\s+", "", text or "")) or found
+    return (found.group(1), sealing.key_from(found.group(2)) if found.group(2) else None) if found else None
 
 
-def page_prompt(drop_id: str) -> str:
-    """The whole prompt a handoff's page shows its recipient's agent (public, like the page)."""
+def open_page(drop_id: str, key: bytes | None) -> dict | None:
+    """{bundle, prompt, code} as the handoff's link shows it, opened here; None once it is withdrawn or expired.
+    Reading it claims nothing. A sealed page needs the link's key; one dropped before sealing (1.9.3rc4 and
+    earlier) is plaintext, and its code is in its prompt."""
+    view = _view(drop_id)
+    if view is None:
+        return None
+    if not view.get("page"):
+        return {"bundle": view["bundle"], "prompt": view.get("prompt", ""), "code": None}
+    if key is None:
+        raise ValueError("this handoff is encrypted and the link has lost its #k= part; copy the whole link again")
+    return sealing.unlock(key, view["page"], f"{drop_id}:page")
+
+
+def _view(drop_id: str) -> dict | None:
+    """The drop's public view (oo-api: the page, sealed or not, and never the held part); None once it is gone."""
     import requests
     from ..backend import backend_url
     response = requests.get(f"{backend_url()}/api/v1/drops/{drop_id}/view", timeout=30)
+    if response.status_code == 404:
+        return None
     response.raise_for_status()
-    return response.json().get("prompt", "")
+    return response.json()
 
 
-def drop(bundle: dict, code: list = (), context: str = "", drop_id: str = None, prompt: str = "", key: str = "") -> str:
-    """Hold the handoff on the backend until the recipient accepts; returns the id their code carries.
+def page_code(page: dict) -> str | None:
+    """The code a handoff's page leads to: a sealed page names it, an older one's prompt holds it."""
+    accept = re.search(r"co handoff accept (\S+)", page.get("prompt") or "")
+    return page.get("code") or (accept.group(1) if accept else None)
+
+
+def page_bundle(page: dict) -> dict:
+    """The page's bundle, checked against the code it names: what the sender approved, or ValueError."""
+    from .bundle import seal
+    from .replies import parse_code
+    code = parse_code(page_code(page))
+    if seal(page["bundle"])["content_hash"] != code["hash"]:
+        raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
+    return page["bundle"]
+
+
+def drop(drop_id: str, page: dict, held: dict, outer: str, meta: dict, secret: str, key: bytes) -> str:
+    """Hold the handoff on the backend until the recipient accepts, sealed with `key`; returns the drop id.
 
     A first recipient has no agent address until they install co, so the agent inbox cannot hold it
-    for them (#2459). With it go the code they cannot fetch (#2469) and the redacted session copy, so
-    nothing waits on the sender's machine being online. Drops expire after 30 days. `key` is the code's
-    secret: only its hash goes to the server, which then gives the whole drop to its holder alone (#2496)."""
-    body = {"bundle": bundle, "code": list(code), "context": context, "prompt": prompt}
-    return _put_drop(json.dumps(body, ensure_ascii=False), drop_id or new_drop_id(),
-                     hashlib.sha256(key.encode()).hexdigest() if key else None)
+    for them (#2459). `page` ({bundle, prompt, code}) is what the link opens: the browser shows it,
+    accept takes the code from it. `held` ({code: patches, context: the session copy}) is read only
+    with the code's secret, whose hash alone goes to the server (#2496), so nothing waits on the
+    sender's machine being online. The backend gets both as ciphertext, `outer` (the prompt without
+    the title or the code) for the agent that reads the page, and `meta` for a link preview."""
+    body = {"v": 2, "meta": meta, "prompt": outer, "page": sealing.lock(key, page, f"{drop_id}:page"),
+            "held": sealing.lock(key, held, f"{drop_id}:held")}
+    return _put_drop(json.dumps(body), drop_id, hashlib.sha256(secret.encode()).hexdigest())
 
 
 def pickup(code: dict) -> dict:
@@ -280,13 +343,22 @@ def pickup(code: dict) -> dict:
         return {"gone": True}
     if not held:       # another agent read it first and claimed it (oo-api#267)
         return {"taken": True}
-    body = json.loads(held)
+    body = _opened(json.loads(held), code)
     if seal(body["bundle"])["content_hash"] != code["hash"]:
         raise ValueError(f"the handoff {code['id']} on the server differs from what the sender approved")
     for entry, patch in zip(body["bundle"].get("code") or [], body.get("code") or []):
         if patch and patch_digest(patch)["sha256"] != (entry.get("patch") or {}).get("sha256"):
             raise ValueError(f"the code for {code['id']} on the server differs from what the sender approved")
     return {"bundle": body["bundle"], "code": body.get("code") or [], "context": body.get("context", "")}
+
+
+def _opened(body: dict, code: dict) -> dict:
+    """A drop as {bundle, code, context}: a sealed one (v2) opened with the code's key, an older one as it is."""
+    if body.get("v") != 2:
+        return body
+    key = sealing.key_from(code["key"])
+    held = sealing.unlock(key, body["held"], f"{code['drop']}:held")
+    return {**held, "bundle": sealing.unlock(key, body["page"], f"{code['drop']}:page")["bundle"]}
 
 
 def _put_drop(body: str, drop_id: str, key_hash: str | None) -> str:
@@ -310,7 +382,7 @@ def _delete_drop(drop_id: str) -> None:
 
 def withdraw(page: str) -> None:
     """Take a handoff's page down, and its pickup with it: only the agent that dropped it can (#2492)."""
-    _delete_drop(page.rstrip("/").rsplit("/", 1)[1])
+    _delete_drop(page.split("#")[0].rstrip("/").rsplit("/", 1)[1])
 
 
 def _get_drop(drop_id: str, key: str) -> str | None:
@@ -350,13 +422,30 @@ PAGE = 500
 
 
 def _as_mail(message: dict) -> dict | None:
-    """A handoff message as a mail-shaped dict; None for anything else another agent posted."""
+    """A handoff message as a mail-shaped dict; None for anything else another agent posted.
+    A boxed one is opened with the key of the agent the backend says posted it, which proves it did."""
     content = json.loads(message["body"])   # the backend takes only JSON objects
     if not isinstance(content, dict) or not isinstance(content.get("subject"), str):
         return None
+    sealed = "sealed" in content
+    if sealed:
+        content = _unboxed(message["from_address"], content["sealed"])
+        if not isinstance(content, dict) or not isinstance(content.get("subject"), str):
+            return None
     return {"id": f"agent-message-{message['id']}", "from": content.get("from") or message["from_address"],
             "sender": message["from_address"],   # who the backend says posted it; "from" is the poster's own word
-            "subject": content["subject"], "message": content.get("message", ""), "timestamp": message["created_at"]}
+            "subject": content["subject"], "message": content.get("message", ""), "timestamp": message["created_at"],
+            "sealed": sealed}
+
+
+def _unboxed(sender: str, blob: str):
+    """What `sender` boxed for us, or None. Anyone can post to an inbox: one message that does not open must
+    not stop every later `co handoff status` from reading the rest, so this is the one place that catches."""
+    from nacl.exceptions import CryptoError
+    try:
+        return sealing.unbox(my_key(), sender, blob)
+    except (CryptoError, ValueError):
+        return None
 
 
 def sent_status(to: str, subject: str) -> dict | None:
