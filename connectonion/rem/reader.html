@@ -1089,7 +1089,7 @@
     .focus-facts { gap: 8px; }
   }
   /* Sessions keep structure above the attached conversation. */
-  .sessions-view { max-width: 880px; min-width: 0; }
+  .sessions-view { max-width: 1200px; min-width: 0; }
   .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary { font-family: var(--ui); font-size: 13px; }
   .sessions-view button, .sessions-view select, .sessions-view input { color: var(--ink-2); border: 1px solid var(--line); background: var(--sheet); border-radius: 5px; }
   .sessions-view button { cursor: pointer; padding: 6px 12px; min-height: 36px; }
@@ -1100,9 +1100,9 @@
   .session-topics summary { cursor: pointer; padding: 8px 0; min-height: 32px; width: fit-content; }
   .session-unsummarised { display: block; color: var(--ink-3); margin-top: 10px; }
   #session-search { display: block; width: 100%; height: 44px; padding: 10px 12px; margin: 18px 0 14px; font: 15px var(--ui); }
-  .session-filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 14px 20px; margin: 16px 0; }
-  .session-filter { display: flex; flex-direction: column; gap: 6px; max-width: 100%; color: var(--ink-3); font: 12px var(--ui); }
-  .session-filter select { height: 38px; padding: 6px 28px 6px 10px; max-width: 100%; }
+  .session-filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
+  .session-filter { flex: 0 1 auto; display: flex; flex-direction: column; gap: 6px; max-width: 100%; color: var(--ink-3); font: 12px var(--ui); }
+  .session-filter select { width: 170px; height: 38px; padding: 6px 28px 6px 10px; max-width: 100%; }
   .session-segments { display: flex; flex-wrap: wrap; gap: 3px; }
   .session-dates { color: var(--ink-2); font: 13px var(--ui); }
   .session-dates summary { cursor: pointer; min-height: 36px; padding: 8px 0; }
@@ -1139,6 +1139,80 @@
     #session-search { font-size: 16px; }
     .session-title { min-height: 40px; display: block; line-height: 40px; }
     .session-meta a { display: inline-flex; align-items: center; min-height: 40px; }
+  }
+  .session-page { min-width: 0; }
+  .session-page h2 { font: 500 23px/1.4 var(--display); margin: 24px 0 8px; }
+  .session-page h3 { font: 14px/1.5 var(--ui); color: var(--ink-2); margin: 18px 0 8px; }
+  .session-page .page-head { margin-bottom: 18px; }
+  .session-facts-line { color: var(--ink-2); font: 13px/1.8 var(--ui); overflow-wrap: anywhere; }
+  .session-page .lede { white-space: pre-wrap; }
+  .session-page .session-unsummarised { font: 16px/1.55 var(--text); }
+  .session-structure > ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .session-structure > ul > li { padding: 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .session-decisions li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .session-decision-quote, .session-followups li { font: 17px/1.6 var(--text); }
+  .session-decisions a, .session-artifacts { font: 13px/1.6 var(--ui); }
+  .session-decisions a { white-space: nowrap; }
+  .session-artifacts li > a { display: block; overflow-wrap: anywhere; }
+  .session-artifact-label { color: var(--ink-3); margin-right: 10px; }
+  .session-artifact-branch { color: var(--ink-3); }
+  .session-page code { font: 12px/1.6 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-artifacts details ul { padding-left: 18px; margin: 8px 0; }
+  .session-page summary { cursor: pointer; color: var(--ink-2); font: 14px/1.6 var(--ui); padding: 10px 0; }
+  .session-neighbours { display: flex; flex-direction: row; justify-content: space-between; gap: 20px; margin: 26px 0; font: 13px/1.6 var(--ui); }
+  .session-neighbours a { display: block; padding: 0; max-width: 48%; overflow-wrap: anywhere; }
+  .session-attachment, .session-details { border-top: 1px solid var(--line); margin-top: 24px; }
+  .session-attachment > summary { font-weight: 600; }
+  .session-find { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; font: 12px var(--ui); }
+  .session-find input { flex: 1 1 210px; min-width: 0; padding: 9px; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; font: 16px var(--ui); }
+  .session-page button { cursor: pointer; color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; min-height: 40px; font: 13px var(--ui); }
+  .session-page button:disabled { opacity: .45; cursor: default; }
+  .session-find-status { color: var(--ink-3); }
+  .session-outline { min-width: 0; color: var(--ink-3); font: 12px/1.5 var(--ui); margin-bottom: 20px; }
+  .session-outline ol { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; margin: 8px 0; }
+  .session-outline li { max-width: 100%; overflow-wrap: anywhere; }
+  .session-outline a { display: block; padding: 5px 0; font: inherit; }
+  .session-messages { min-width: 0; }
+  .session-message, .session-final { scroll-margin-top: 20px; padding: 4px 0 16px; border-top: 1px solid var(--line); }
+  .session-page .session-quote { margin: 0; padding: 0; border: 0; background: none; font: 17px/1.65 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-page mark { background: var(--mark); color: inherit; }
+  .session-page mark.current { outline: 2px solid var(--dawn); outline-offset: 2px; }
+  .session-show-all { margin-top: 12px; }
+  .session-details { margin-bottom: 32px; }
+  .session-details dl { font: 13px/1.6 var(--ui); }
+  .session-details dt { margin-top: 10px; color: var(--ink-3); }
+  .session-details dd { margin: 0; overflow-wrap: anywhere; }
+  .session-context-rows { list-style: none; padding: 0; margin: 10px 0; }
+  .session-context-rows .session-context-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; align-items: baseline; gap: 4px 14px; margin: 0; padding: 10px 0; border-top: 1px solid var(--line); font: 13px/1.5 var(--ui); }
+  .session-context-row > a { font-family: var(--text); overflow-wrap: anywhere; }
+  .session-context-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .session-context-row time { color: var(--ink-3); white-space: nowrap; }
+  .session-context-row .session-tags { grid-column: 1 / -1; }
+  .session-filter-panel .session-segments { flex-wrap: nowrap; }
+  .session-filter-panel button { padding-inline: 9px; min-height: 38px; }
+  .session-date-filter { position: relative; }
+  .session-dates { height: 38px; }
+  .session-dates summary { min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; white-space: nowrap; }
+  .session-date-inputs { position: absolute; z-index: 2; top: 100%; left: 0; padding: 10px; border: 1px solid var(--line); background: var(--sheet); }
+  .session-date-inputs label { display: flex; margin: 6px 0; }
+  .session-topics[hidden] { display: none; }
+  @media (min-width: 1100px) {
+    .session-conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 32px; align-items: start; }
+    .session-outline { grid-column: 2; grid-row: 1; position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .session-outline ol { display: block; }
+    .session-messages { grid-column: 1; grid-row: 1; }
+  }
+  @media (max-width: 719px) {
+    .session-filter-panel .session-filter { width: 100%; }
+    .session-filter-panel .session-segments { flex-wrap: wrap; }
+    .session-filter-panel select { width: 100%; }
+    .session-filter-panel button { min-height: 40px; }
+    .session-dates, .session-dates summary { min-height: 40px; height: auto; }
+    .session-date-inputs { position: static; padding: 0; border: 0; background: none; }
+    .session-context-rows .session-context-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .session-context-summary { grid-column: 1 / -1; grid-row: 2; }
+    .session-outline a, .session-neighbours a { min-height: 40px; }
+    .session-page .session-quote { font-size: 16px; }
   }
 </style>
 </head>
@@ -2813,6 +2887,7 @@ function category(c) {
 }
 
 // ---------- sessions: structure first, conversations searchable ----------
+let lastSessionListHash = "#c=sessions";
 const SESSION_TEXT = new Map();
 const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "by", "person", "tag", "outcome"];
 const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
@@ -2821,7 +2896,7 @@ function sessionText(r) {
   const clean = text => String(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
   const fields = { title: clean(r.session_title || r.title), summary: clean(r.session_summary),
-    tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply") };
+    tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
   fields.lower = Object.values(fields).join("\n").toLowerCase();
   SESSION_TEXT.set(r.path, fields);
   return fields;
@@ -2876,11 +2951,11 @@ function sessionHighlight(text, terms) {
 function sessionExcerpt(r, terms) {
   const text = sessionText(r);
   if (terms.length && !terms.some(term => text.title.toLowerCase().includes(term))) {
-    for (const key of ["summary", "tags", "you", "agent"]) {
+    for (const key of ["summary", "tags", "you", "agent", "artifacts"]) {
       const positions = terms.map(term => text[key].toLowerCase().indexOf(term)).filter(at => at >= 0);
       if (!positions.length) continue;
       const start = Math.max(0, Math.min(...positions) - 50), end = start + 160;
-      return { speaker: key === "you" ? "You:" : "Agent:", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
+      return { speaker: key === "you" ? "You:" : key === "agent" ? "Agent:" : "", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
     }
   }
   return { speaker: "", text: text.summary || text.agent };
@@ -2942,14 +3017,16 @@ function sessionProjectSelect(records, change) {
   return el("label", { class: "session-filter" }, [el("span", { text: "Project" }), select]);
 }
 function sessionDates(change, state) {
-  const dates = el("details", { class: "session-dates" }, [el("summary", { text: "Dates" })]);
+  const dates = el("details", { class: "session-dates" }, [el("summary", { text: "Choose dates" })]);
   dates.open = !!(state.from || state.to);
+  const inputs = el("div", { class: "session-date-inputs" });
   for (const key of ["from", "to"]) {
     const input = el("input", { type: "date", "aria-label": key === "from" ? "From" : "To", "data-session-key": key });
     input.onchange = () => change(key, input.value);
-    dates.appendChild(el("label", {}, [key === "from" ? "From " : "To ", input]));
+    inputs.appendChild(el("label", {}, [key === "from" ? "From " : "To ", input]));
   }
-  return dates;
+  dates.appendChild(inputs);
+  return el("div", { class: "session-filter session-date-filter" }, [el("span", { text: "Dates" }), dates]);
 }
 function sessionTopics(records, change) {
   const tags = [...new Set(records.flatMap(r => r.session_tags || []))];
@@ -2971,21 +3048,23 @@ function sessionTopics(records, change) {
   function sync(base, state) {
     const counts = new Map();
     for (const r of base) for (const tag of new Set(r.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
+    row.hidden = !counts.size;
+    const limit = matchMedia("(max-width: 719px)").matches ? 6 : 16;
     const sorted = [...buttons].sort((a, b) => (counts.get(b[0]) || 0) - (counts.get(a[0]) || 0) || a[0].localeCompare(b[0]));
     let visible = 0;
     for (const [tag, button] of sorted) {
       const count = counts.get(tag) || 0;
       const available = !!count || state.tag === tag;
       button.dataset.available = String(available);
-      button.dataset.overflow = String(visible >= 16);
+      button.dataset.overflow = String(visible >= limit);
       button.style.order = String(visible);
-      if (state.tag === tag && available && visible >= 16) more.open = true;
-      button.hidden = !available || visible >= 16 && !more.open;
+      if (state.tag === tag && available && visible >= limit) more.open = true;
+      button.hidden = !available || visible >= limit && !more.open;
       button.textContent = tag + " " + count;
       button.setAttribute("aria-pressed", String(state.tag === tag));
       if (available) visible++;
     }
-    more.hidden = visible <= 16;
+    more.hidden = visible <= limit;
     for (const [value, button] of outcomeButtons) {
       const count = base.filter(r => r.session_outcome === value).length;
       button.hidden = !count && state.outcome !== value;
@@ -2995,7 +3074,7 @@ function sessionTopics(records, change) {
     const n = base.filter(r => !r.session_summary && !r.session_tags?.length && !r.session_outcome).length;
     missing.textContent = n ? "Not summarised " + n : "";
   }
-  return { node: row, sync };
+  return { node: row, outcomes, sync };
 }
 function sessionFilterNames(state) {
   const names = { find: 'Search: “' + state.find + '”', project: "Project: " + (byPath(state.project)?.title || (state.project === "none" ? "No project" : state.project)),
@@ -3030,8 +3109,12 @@ function sessionsView() {
     sessionSegments("View", "by", [["", "By day"], ["project", "By project"]], change)]);
   const toggle = sessionButton("Filter", () => { const open = panel.classList.toggle("is-open"); toggle.setAttribute("aria-expanded", String(open)); },
     { class: "session-filter-toggle", "aria-expanded": "false", "aria-controls": "session-filter-panel" });
-  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← Contents" })]), el("h1", { text: label("sessions") }), view);
-  view.append(topics.node, search, toggle, panel, results);
+  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← Contents" })]), el("h1", { text: label("sessions") }), el("p", { class: "lede", text: CATEGORY_ASK.sessions.replace(/^./, ch => ch.toUpperCase()) }), view);
+  view.append(search, topics.node, toggle, panel, results);
+  const mobile = matchMedia("(max-width: 719px)");
+  function placeOutcomes() { (mobile.matches ? panel : topics.node).appendChild(topics.outcomes); update(); }
+  mobile.addEventListener("change", () => { if (view.isConnected) placeOutcomes(); });
+  if (mobile.matches) panel.appendChild(topics.outcomes);
   view.onclick = event => { const tag = event.target.closest("a[data-session-tag]"); if (tag) { event.preventDefault(); change("tag", tag.dataset.sessionTag); } };
   function change(key, value) {
     clearTimeout(timer);
@@ -3044,6 +3127,7 @@ function sessionsView() {
     update();
   }
   function update() {
+    lastSessionListHash = sessionHash(state);
     const terms = sessionTerms(state.find), base = records.filter(r => sessionMatches(r, state, terms, false));
     const matches = base.filter(r => sessionMatches(r, state, terms));
     if (search.value !== state.find) search.value = state.find;
@@ -3064,12 +3148,214 @@ function sessionOrder(a, b) {
   return ((b.session_date || "") + (b.session_time || "")).localeCompare((a.session_date || "") + (a.session_time || "")) || b.path.localeCompare(a.path);
 }
 
+function sessionContextRow(r, find = "") {
+  return el("li", { class: "session-context-row" }, [
+    el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: r.title }),
+    el("span", { class: "session-context-summary", text: r.session_summary || r.session_reply || sessionText(r).agent }),
+    el("time", { text: fmtDate(r.session_date) }),
+    el("span", { class: "session-tags" }, (r.session_tags || []).slice(0, 3).map(tag => el("a", {
+      href: sessionHash({ project: r.session_project, tag }), text: tag })))]);
+}
 function projectSessions(r) {
   const sessions = inCategory("sessions").filter(s => s.session_project === r.path).sort(sessionOrder);
   if (!sessions.length) return null;
+  const counts = new Map();
+  for (const s of sessions) for (const tag of new Set(s.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
   return el("section", { class: "focus-section project-sessions" }, [el("h2", { text: "Sessions" }),
-    el("ul", {}, sessions.slice(0, 10).map(s => el("li", {}, [el("a", { href: href(s), text: s.title }), " · " + fmtDate(s.session_date)]))),
-    sessions.length > 10 ? el("a", { href: "#c=sessions&project=" + encodeURIComponent(r.path), text: "All " + sessions.length + " sessions" }) : null]);
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 10).map(s => sessionContextRow(s))),
+    el("a", { href: sessionHash({ project: r.path }), text: "All " + sessions.length + " sessions" }),
+    el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
+      .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
+}
+function personSessions(r) {
+  const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
+  if (!sessions.length) return null;
+  return el("section", { class: "focus-section person-sessions" }, [el("h2", { text: "Mentioned in sessions" }),
+    // Beside Recently, not under the full note: five rows, the rest one link away.
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
+    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: "All " + sessions.length + " sessions" }) : null]);
+}
+
+function sessionSection(r, name) {
+  return (r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1).trim();
+}
+function sessionMessages(r) {
+  return sessionSection(r, "What you typed").split(/^### /m).filter(part => /^\d/.test(part)).map((part, i) => {
+    const [time, ...lines] = part.split("\n");
+    return { id: "session-message-" + (i + 1), time, text: sessionUnquote(lines.join("\n")) };
+  });
+}
+function sessionUnquote(text) { return text.replace(/^> ?/gm, "").replace(/^\n+|\n+$/g, ""); }
+function sessionJump(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
+  target.scrollIntoView({ block: "start" });
+}
+function sessionMessageLink(r, message, text) {
+  const link = el("a", { href: href(r) + "&h=" + message.id, text });
+  link.onclick = event => { event.preventDefault(); sessionJump(message.id); };
+  return link;
+}
+function sessionQuote(text) {
+  return el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(text) ? " private" : ""), text });
+}
+function sessionFinalReply(r) {
+  const text = sessionUnquote(sessionSection(r, "Final reply"));
+  if (!text) return null;
+  const quote = sessionQuote(text.length > 1200 ? text.slice(0, 600) + "…" : text);
+  quote.sessionFullText = text;
+  const out = el("section", { class: "session-final", id: "session-final" }, [el("h3", { text: "Final reply" }), quote]);
+  if (text.length > 1200) {
+    const button = sessionButton("Show all", () => {
+      quote.textContent = text; quote.sessionExpanded = true; button.remove();
+      out.dispatchEvent(new Event("session-reply-expanded", { bubbles: true }));
+    }, { class: "session-show-all", "aria-expanded": "false" });
+    out.appendChild(button);
+  }
+  return out;
+}
+// Only text nodes enter the attachment's find results.
+function sessionMarkText(quote, text, needle) {
+  const nodes = [], lower = text.toLowerCase();
+  let start = 0, at = needle ? lower.indexOf(needle) : -1;
+  while (at !== -1) {
+    nodes.push(document.createTextNode(text.slice(start, at)), el("mark", { text: text.slice(at, at + needle.length) }));
+    start = at + needle.length; at = lower.indexOf(needle, start);
+  }
+  nodes.push(document.createTextNode(text.slice(start)));
+  quote.replaceChildren(...nodes);
+}
+function sessionFind(attachment, body, initial) {
+  const input = el("input", { type: "search", placeholder: "Find in this conversation", "aria-label": "Find in this conversation" });
+  const status = el("span", { class: "session-find-status", role: "status", "aria-live": "polite" });
+  const previous = sessionButton("↑", () => move(-1), { "aria-label": "Previous match" });
+  const next = sessionButton("↓", () => move(1), { "aria-label": "Next match" });
+  previous.disabled = next.disabled = true;
+  const quotes = [...body.querySelectorAll(".session-quote")];
+  for (const quote of quotes) quote.sessionFullText ??= quote.textContent;
+  let matches = [], current = -1;
+  function move(step) {
+    if (!matches.length) return;
+    matches[current]?.classList.remove("current");
+    current = (current + step + matches.length) % matches.length;
+    matches[current].classList.add("current");
+    status.textContent = (current + 1) + " of " + matches.length;
+    matches[current].scrollIntoView({ block: "center" });
+  }
+  function find() {
+    const needle = input.value.trim().toLowerCase();
+    for (const quote of quotes) {
+      const full = quote.sessionFullText;
+      const clipped = quote.closest(".session-final") && full.length > 1200 && !quote.sessionExpanded && !needle;
+      sessionMarkText(quote, clipped ? full.slice(0, 600) + "…" : full, needle);
+    }
+    matches = [...body.querySelectorAll("mark")]; current = -1;
+    previous.disabled = next.disabled = !matches.length;
+    status.textContent = needle ? "0 of " + matches.length : "";
+    if (matches.length) move(1);
+  }
+  input.oninput = find;
+  input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); move(event.shiftKey ? -1 : 1); } };
+  body.addEventListener("session-reply-expanded", find);
+  const bar = el("div", { class: "session-find" }, [input, status, previous, next]);
+  input.value = initial || "";
+  return { node: bar, run: find };
+}
+function sessionAttachment(r, messages) {
+  const reply = sessionFinalReply(r);
+  const attachment = el("details", { class: "session-attachment", id: "original-conversation" }, [el("summary", {
+    text: "Original conversation · " + messages.length + " messages" + (reply ? " · final reply" : "") })]);
+  const outline = el("nav", { class: "session-outline", "aria-label": "Conversation outline" }, [
+    el("span", { text: "Messages" }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
+      message.time + " · " + message.text.replace(/\s+/g, " ").slice(0, 60))])))]);
+  const body = el("div", { class: "session-messages" }, messages.map(message => el("section", { class: "session-message", id: message.id }, [
+    el("h3", { text: message.time }), sessionQuote(message.text)])));
+  if (reply) body.appendChild(reply);
+  const find = sessionFind(attachment, body, route().find || route().query);
+  attachment.append(find.node, el("div", { class: "session-conversation-layout" }, [outline, body]));
+  return { node: attachment, find };
+}
+function sessionDecisions(r, messages) {
+  const text = sessionSection(r, "Decisions");
+  if (!text) return null;
+  return el("section", { class: "session-structure session-decisions" }, [el("h2", { text: "Decisions" }),
+    el("ul", {}, listItems(text).map(line => {
+      const match = /^(.*?)\s*\((\d{2}:\d{2})\)$/.exec(line), clock = match?.[2];
+      const quote = (match?.[1] || line).replace(/^[“"「]|[”"」]$/g, "");
+      const message = messages.find(m => m.time.endsWith(clock) && m.text.includes(quote)) || messages.find(m => m.time.endsWith(clock));
+      return el("li", {}, [el("span", { class: "session-decision-quote", text: "“" + quote + "”" }),
+        message ? sessionMessageLink(r, message, clock) : null]);
+    }))]);
+}
+function sessionArtifact(line) {
+  const match = /^([^:]+):\s*(.*)$/.exec(line);
+  if (!match) return el("li", { text: line });
+  const [, name, value] = match;
+  if (/^Files changed \(\d+\)$/.test(name) || name === "Commands") {
+    const values = name === "Commands" ? [...value.matchAll(/`([^`]+)`/g)].map(m => m[1]) : value.split(/,\s*/);
+    return el("li", {}, [el("details", {}, [el("summary", { text: name + (name === "Commands" ? " · " + value.split(";")[0] : "") }),
+      el("ul", {}, values.map(text => el("li", {}, [el("code", { text: text.replace(/^`|`$/g, "") })])))])]);
+  }
+  if (name === "Pull requests") return el("li", {}, [el("span", { class: "session-artifact-label", text: "Pull requests" }),
+    ...[...value.matchAll(/https?:\/\/[^\s,<>]+/g)].map(m => el("a", { href: m[0], target: "_blank", rel: "noopener", text: m[0] }))]);
+  if (name === "Commits") {
+    const commit = /^`([^`]+)`\s*(.*?)(?:\s+\(([^()]*)\))?$/.exec(value);
+    if (commit) return el("li", {}, [el("code", { text: commit[1] }), " " + commit[2],
+      commit[3] ? el("span", { class: "session-artifact-branch", text: " · " + commit[3] }) : null]);
+  }
+  return el("li", {}, [el("span", { class: "session-artifact-label", text: name }), el(name === "Branches" ? "code" : "span", { text: value })]);
+}
+function sessionArtifacts(r) {
+  const text = sessionSection(r, "Artifacts");
+  return text ? el("section", { class: "session-structure session-artifacts" }, [el("h2", { text: "Artifacts" }),
+    el("ul", {}, listItems(text).map(sessionArtifact))]) : null;
+}
+function sessionNeighbours(r) {
+  const sessions = inCategory("sessions").filter(s => !r.session_project || s.session_project === r.session_project).sort(sessionOrder);
+  const index = sessions.findIndex(s => s.path === r.path), older = sessions[index + 1], newer = sessions[index - 1];
+  return el("nav", { class: "session-neighbours", "aria-label": "Neighbouring sessions" }, [
+    older ? el("a", { href: href(older), text: "← Older: " + older.title }) : el("span"),
+    newer ? el("a", { href: href(newer), text: "Newer: " + newer.title + " →" }) : null]);
+}
+function sessionFactsLine(r) {
+  const project = byPath(r.session_project), folder = r.session_folder || "";
+  const line = el("div", { class: "session-facts-line" }, [
+    [fmtDate(r.session_date), r.session_time, r.session_agent].filter(Boolean).join(" · ") + " · ",
+    project ? el("a", { href: href(project), text: project.title }) : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder }),
+    " · " + (r.session_turns || 0) + " turns" + (r.session_outcome ? " · " + (SESSION_OUTCOMES[r.session_outcome] || r.session_outcome) : "")]);
+  return line;
+}
+function sessionDetails(r) {
+  const facts = parseFacts(r), source = section(r, "sources");
+  return el("details", { class: "session-details" }, [el("summary", { text: "Details" }),
+    el("dl", {}, [el("dt", { text: "Folder" }), el("dd", {}, [el("code", { text: r.session_folder || "" })]),
+      el("dt", { text: "Session id" }), el("dd", {}, [el("code", { text: facts.get("Session")?.[0]?.value || "" })])]),
+    source ? el("section", {}, [el("h3", { text: "Sources" }), sectionBody(r, source)]) : null]);
+}
+function sessionRecord(r, heading) {
+  const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
+  const attachment = sessionAttachment(r, messages);
+  CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
+  const summary = r.session_summary || sessionSection(r, "Summary"), followups = sessionSection(r, "Follow-ups");
+  const page = el("article", { class: "session-page" }, [
+    el("div", { class: "eyebrow" }, [el("a", { href: lastSessionListHash, text: label("sessions") }),
+      project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
+    el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
+      el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
+    el("section", { class: "session-summary" }, [summary ? el("h2", { text: "Summary" }) : null,
+      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || "Not summarised yet — " + (r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+    sessionDecisions(r, messages),
+    followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: "Follow-ups" }),
+      el("ul", {}, listItems(followups).map(text => el("li", { html: inline(text, r.path) })))]) : null,
+    sessionArtifacts(r), sessionNeighbours(r), attachment.node, sessionDetails(r)]);
+  main.replaceChildren(page);
+  if (route().find || route().query) {
+    attachment.node.open = true;
+    requestAnimationFrame(() => { if (page.isConnected) attachment.find.run(); });
+  } else if (heading) requestAnimationFrame(() => sessionJump(heading));
 }
 
 // ---------- a page ----------
@@ -3422,7 +3708,7 @@ function personInsight(r) {
     }))]);
 }
 function personFocus(r) {
-  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true)]);
+  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
 }
 function recordFocus(r) {
   if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
@@ -3644,6 +3930,7 @@ function record(path, heading) {
     main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not in this snapshot" }), "No such page in this snapshot: " + path]));
     return;
   }
+  if (r.category === "sessions") { sessionRecord(r, heading); return; }
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
@@ -3814,6 +4101,10 @@ function search(q) {
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
     if (r.path === "skills/catalog/index.md" || skillReport(r)) continue;
+    if (r.category === "sessions") {
+      if (sessionText(r).lower.includes(needle)) hits.push({ r, lines: [sessionExcerpt(r, [needle]).text.slice(0, 240)] });
+      continue;
+    }
     const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
@@ -3837,7 +4128,7 @@ function search(q) {
   const best = hits.find(h => FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
   if (best) main.appendChild(bestMatch(best.r));
   // Grouped by kind, people first; one snippet a page, never a local path.
-  const ORDER = ["people", "orgs", "projects", "skills"];
+  const ORDER = ["people", "orgs", "projects", "skills", "sessions"];
   const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
   const groups = new Map();
   for (const hit of hits.sort((a, b) => rank(a.r.category) - rank(b.r.category))) {
@@ -3848,15 +4139,17 @@ function search(q) {
   for (const [c, list] of groups) {
     main.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
     const ul = el("ul", { class: "hits" });
-    for (const { r, lines } of list) {
+    for (const { r, lines } of (c === "sessions" ? list.slice(0, 8) : list)) {
       const li = el("li", {}, [
-        el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r), html: highlight(r.title, needle) }), statusPill(r)]),
+        el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(r.title, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
       const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
       if (line) li.appendChild(el("div", { class: "hit", html: highlight(line.replace(/\s*\[W?\d{1,3}\]/g, ""), needle) }));
       ul.appendChild(li);
     }
     main.appendChild(ul);
+    if (c === "sessions") main.appendChild(el("a", { href: sessionHash({ find: q }),
+      text: list.length === 1 ? "Open in " + label("sessions") + " →" : "All " + list.length + " matching sessions →" }));
   }
 }
 function bestMatch(r) {

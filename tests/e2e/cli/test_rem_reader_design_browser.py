@@ -2151,9 +2151,26 @@ def session_reader(tmp_path, monkeypatch):
         project_fact = f"[{project.title()}](../projects/{project}.md)" if project else "/work/scratch"
         structure = f"## Summary\n{summary}\n\n" if summary else ""
         facts = f"- Tags: {tags}\n- Outcome: {outcome}\n- Started with: {typed}\n" if summary else ""
+        turns = 12 if key == "release" else 1
+        conversation = f"### 09:12\n> {typed}\n"
+        artifacts = ""
+        if key == "release":
+            conversation += "".join(
+                f"### 09:{12 + i:02d}\n> " + ("Avery will check seventhneedle and <img src=x onerror=alert(1)> seventhneedle."
+                                               if i == 6 else f"Reader message {i + 1}: keep the page useful.") + "\n\n"
+                for i in range(1, 12)
+            )
+            reply = (reply + "\n" + "Detailed reader guidance. " * 130)[:3000]
+            artifacts = ("## Decisions\n- “keep the page useful.” (09:13)\n\n"
+                         "## Follow-ups\n- Ask [Avery](../people/avery.md) to check the reader.\n\n"
+                         "## Artifacts\n- Pull requests: https://github.com/openonion/connectonion/pull/123\n"
+                         "- Commits: `abc123def` Lead with the session summary (reader-structure)\n"
+                         "- Branches: reader-structure\n- Files changed (3): reader.html, sessions.py, reader_test.py\n"
+                         "- Commands: 2 run; notable: `gcloud sql instances list`; `python -m pytest`\n\n")
         book.write(f"sessions/{key}.md", f"# {title}\n\n{structure}## Facts\n- Date: {day}\n- Agent: {agent}\n"
-                   f"- Project: {project_fact}\n- Folder: /work/{project or 'scratch'}\n- Session: {key}\n- Turns: 1\n{facts}\n"
-                   f"## What you typed\n### 09:12\n> {typed}\n\n## Final reply\n> {reply}\n\n## Sources\n- metadata-only-secret\n")
+                   f"- Project: {project_fact}\n- Folder: /work/{project or 'scratch'}\n- Session: {key}\n- Turns: {turns}\n{facts}\n"
+                   f"{artifacts}## What you typed\n{conversation}\n## Final reply\n"
+                   + "\n".join("> " + line for line in reply.split("\n")) + "\n\n## Sources\n- metadata-only-secret\n- codex:release:1\n")
     book.write("people/avery.md", "# Avery\n\n## Facts\n")
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     original = rem_reader.snapshot
@@ -2372,3 +2389,181 @@ def test_sessions_more_topics_and_unstructured_notebooks(session_reader):
     expect(page.locator(".session-topics")).not_to_be_visible()
     expect(page.locator(".session-row")).to_have_count(6)
     expect(page.get_by_role("searchbox", name="Search sessions")).to_be_visible()
+
+
+@pytest.mark.parametrize("width", [1400, 375])
+def test_session_page_structure_precedes_closed_conversation(session_reader, width):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 812})
+    page.goto(uri + "#r=sessions%2Frelease.md")
+    expect(page.locator("h1")).to_have_text("Release the reader")
+    attachment = page.locator(".session-attachment")
+    assert not attachment.evaluate("node => node.open")
+    for heading in ("Summary", "Decisions", "Follow-ups", "Artifacts"):
+        node = page.get_by_role("heading", name=heading, exact=True)
+        expect(node).to_be_visible()
+        assert node.bounding_box()["y"] < attachment.bounding_box()["y"]
+    expect(page.locator(".session-facts-line")).to_contain_text("09:12 · Codex · Alpha · 12 turns · Done")
+    assert page.locator(".session-page .status, .session-page .toc, .session-page .record-focus").count() == 0
+    expect(page.locator(".session-followups a")).to_have_attribute("href", "#r=people%2Favery.md")
+    pr = page.locator(".session-artifacts a")
+    expect(pr).to_have_attribute("target", "_blank")
+    expect(pr).to_have_attribute("rel", "noopener")
+    page.locator(".session-artifacts summary").filter(has_text="Files changed (3)").click()
+    expect(page.locator(".session-artifacts details").first.locator("li")).to_have_count(3)
+    page.get_by_role("link", name="09:13", exact=True).click()
+    assert attachment.evaluate("node => node.open")
+    expect(page.locator(".session-outline li")).to_have_count(12)
+    assert page.locator("#session-message-2").bounding_box()["y"] < 100
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1400, 375])
+def test_session_find_outline_and_long_reply(session_reader, width):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 812})
+    page.goto(uri + "#r=sessions%2Frelease.md&find=seventhneedle")
+    expect(page.locator(".session-find-status")).to_have_text("1 of 2")
+    assert page.locator(".session-attachment").evaluate("node => node.open")
+    expect(page.get_by_role("searchbox", name="Find in this conversation")).to_have_value("seventhneedle")
+    expect(page.locator(".session-message mark")).to_have_count(2)
+    assert page.locator(".session-message img").count() == 0
+    current = page.locator("mark.current")
+    expect(current).to_be_in_viewport()
+    page.get_by_role("button", name="Next match", exact=True).click()
+    expect(page.locator(".session-find-status")).to_have_text("2 of 2")
+    box = page.get_by_role("searchbox", name="Find in this conversation")
+    box.press("Shift+Enter")
+    expect(page.locator(".session-find-status")).to_have_text("1 of 2")
+    box.press("Enter")
+    expect(page.locator(".session-find-status")).to_have_text("2 of 2")
+    box.fill("guidance")
+    expect(page.locator(".session-final mark").first).to_be_visible()
+    box.press("Shift+Enter")
+    expect(page.locator(".session-final mark.current")).to_be_in_viewport()
+    assert len(page.locator(".session-final .session-quote").inner_text()) == 3000
+    box.fill("")
+    expect(page.locator(".session-messages mark")).to_have_count(0)
+    assert len(page.locator(".session-final .session-quote").inner_text()) < 650
+    # Outline navigation also works when the attachment was initially closed.
+    page.goto(uri + "#r=sessions%2Frelease.md")
+    page.locator(".session-attachment > summary").click()
+    expect(page.get_by_role("button", name="Next match", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Previous match", exact=True)).to_be_disabled()
+    outline = page.locator(".session-outline li a")
+    expect(outline).to_have_count(12)
+    outline.nth(6).click()
+    assert 0 <= page.locator("#session-message-7").bounding_box()["y"] < 100
+    reply = page.locator(".session-final .session-quote")
+    assert len(reply.inner_text()) < 650
+    page.get_by_role("button", name="Show all", exact=True).click()
+    assert len(reply.inner_text()) == 3000
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_session_neighbours_and_remembered_list(session_reader):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.goto(uri + "#c=sessions&project=projects%2Falpha.md&tag=reader")
+    saved = page.evaluate("location.hash")
+    page.locator(".session-title").click()
+    expect(page.locator(".session-page .eyebrow a").first).to_have_attribute("href", saved)
+    page.locator(".session-neighbours a").filter(has_text="Older:").click()
+    expect(page.locator("h1")).to_have_text("检查仓库")
+    expect(page.locator(".session-neighbours")).to_contain_text("Older: Check the deployment")
+    expect(page.locator(".session-neighbours")).to_contain_text("Newer: Release the reader")
+    page.locator(".session-neighbours a").filter(has_text="Newer:").click()
+    expect(page.locator("h1")).to_have_text("Release the reader")
+    page.locator(".session-page .eyebrow a").first.click()
+    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
+    page.goto(uri + "#r=sessions%2Flate.md")
+    expect(page.locator(".session-summary")).to_contain_text("Not summarised yet — Verify deployment")
+
+
+def test_session_project_person_and_global_search_cross_links(session_reader):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.evaluate("""() => {
+      const original = REM.records.find(r => r.path === 'sessions/release.md');
+      for (let i = 0; i < 9; i++) REM.records.push({...original, path: 'sessions/extra-' + i + '.md'});
+      REM.records.find(r => r.path === 'people/avery.md').session_mentions =
+        REM.records.filter(r => r.category === 'sessions').map(r => r.path);
+    }""", isolated_context=False)
+    page.evaluate("location.hash = '#r=projects%2Falpha.md'", isolated_context=False)
+    rows = page.locator(".project-sessions .session-context-row")
+    expect(rows).to_have_count(10)
+    expect(rows.first.locator(".session-context-summary")).to_have_text("Shipped a searchable reader with stable focus.")
+    expect(rows.first.locator(".session-tags a")).to_have_count(2)
+    page.locator(".project-sessions").get_by_role("link", name="All 12 sessions", exact=True).click()
+    expect(page.locator(".session-result-line")).to_contain_text("12 of 15 sessions")
+    assert "project=projects%2Falpha.md" in page.url
+    page.evaluate("location.hash = '#r=people%2Favery.md'", isolated_context=False)
+    mentions = page.locator(".person-sessions")  # beside Recently, not inside the full note
+    expect(mentions.get_by_role("heading", name="Mentioned in sessions")).to_be_visible()
+    expect(mentions.locator(".session-context-row")).to_have_count(5)
+    expect(mentions.get_by_role("link", name="All 15 sessions", exact=True)).to_have_attribute("href", "#c=sessions&person=people%2Favery.md")
+    mentions.locator(".session-context-row a").first.click()
+    expect(page.get_by_role("searchbox", name="Find in this conversation")).to_have_value("Avery")
+    page.evaluate("location.hash = '#q=seventhneedle'", isolated_context=False)
+    group = page.locator("h2.group").filter(has_text="Agent sessions")
+    expect(group).to_be_visible()
+    expect(group.locator(".n")).to_have_text("10")
+    expect(page.locator(".hits li")).to_have_count(8)
+    all_hits = page.get_by_role("link", name="All 10 matching sessions →", exact=True)
+    expect(all_hits).to_have_attribute("href", "#c=sessions&find=seventhneedle")
+    expect(page.locator(".hits .t a").first).to_have_attribute("href", re.compile(r"&find=seventhneedle$"))
+    all_hits.click()
+    expect(page.locator(".session-result-line")).to_contain_text("10 of 15 sessions")
+
+
+@pytest.mark.parametrize("width", [1400, 390])
+def test_sessions_real_data_list_order_artifact_search_and_topic_limits(session_reader, width):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 844})
+    page.goto(uri + "#c=sessions")
+    page.evaluate("""() => {
+      REM.records.find(r => r.path === 'sessions/release.md').session_tags =
+        Array.from({length: 20}, (_, i) => 'topic-' + i);
+      render();
+    }""", isolated_context=False)
+    search = page.get_by_role("searchbox", name="Search sessions")
+    expect(page.locator("#main > .lede")).to_have_text("What you worked on with your coding agents")
+    assert page.locator("h1").bounding_box()["y"] < search.bounding_box()["y"]
+    assert search.bounding_box()["y"] < page.locator(".session-topics").bounding_box()["y"]
+    assert search.bounding_box()["y"] + search.bounding_box()["height"] < (900 if width == 1400 else 844)
+    expect(page.locator(".session-topic-buttons button:visible")).to_have_count(16 if width == 1400 else 6)
+    if width == 1400:
+        controls = page.locator(".session-filter-panel > .session-filter")
+        bottoms = [node.bounding_box()["y"] + node.bounding_box()["height"] for node in controls.all()]
+        assert max(bottoms) - min(bottoms) <= 1
+        assert len({round(node.bounding_box()["y"]) for node in controls.all()}) == 1
+    if width == 390:
+        expect(page.locator(".session-outcomes")).not_to_be_visible()
+        page.get_by_role("button", name="Filter", exact=True).click()
+        expect(page.locator(".session-filter-panel .session-outcomes")).to_be_visible()
+    search.fill("no-such-session")
+    expect(page.locator(".empty .lead")).to_have_text("No session matches")
+    expect(page.locator(".session-topics")).not_to_be_visible()
+    for query in ("gcloud sql", "abc123def", "reader-structure", "github.com/openonion/connectonion/pull/123"):
+        search.fill(query)
+        expect(page.locator(".session-title")).to_have_text("Release the reader")
+        expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_session_source_deep_link_reveals_details(session_reader):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.goto(uri + "#r=sessions%2Frelease.md&h=src-1")
+    expect(page.locator("#src-1")).to_be_in_viewport()
+    assert page.locator(".session-details").evaluate("node => node.open")
+    assert not page.locator(".session-attachment").evaluate("node => node.open")
