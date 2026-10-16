@@ -643,6 +643,10 @@ def _sender_status(record: dict, mails: list[dict], verbose: bool = False) -> No
     out.print(style.ok(_where_it_stands(name, record, state, files).replace("[", "\\[")))
     _sent_line(record, verbose)
     out.print(f"Accepted by {who['mailbox']} at {who['at']}" + (f" ({who['address']})" if verbose else ""))
+    if transport.not_theirs(record["to"], who["address"]):   # a forwarded link (#2542)
+        sent_to = record["to"].split("@")[0]
+        out.print(style.warn(f"{who['address'][:12]} accepted it, not the agent you sent it to ({sent_to}): someone "
+                             f"else had the link. {sent_to} keeps its name and its own key."))
     out.print(f"Saved as {name}: co handoff send {shlex.quote(name)} reaches them again. They can send you handoff "
               "messages, but they can't use your agent"
               + (f"; to let them: co trust add {who['address']}." if verbose else " (--verbose says how to let them)."))
