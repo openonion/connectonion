@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from . import config, runner, service, source
 from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
-from .scan import project_exclusion
+from .scan import WORKTREE_FOLDER, main_checkout, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
 from .page_review import _plain, _quoted_in
 
@@ -26,6 +26,10 @@ NOTABLE = re.compile(r"^(?:git (?:commit|push|merge|rebase)|gh (?:pr|release|wor
                      r"npm publish|twine upload|uv publish|docker|wrangler|vercel|gcloud|ssh|"
                      r"\./deploy[^\s]*|[^\s]*deploy[^\s]*\.sh|co (?:deploy|rem))(?:\s|$)")
 SHELL_TOOLS = {"exec", "exec_command", "shell", "shell_command", "run_shell_command", "Bash"}
+# These are harness-launched runs, not the owner's words.
+AUTOMATED_PROMPT = re.compile(
+    r"\A(?:Read[ \t]+[`\"']?(?:[^\s`\"']*/)?(?:prompt|instructions|task)\.(?:txt|md)\b|"
+    r"You are an independent[^\n]*\b(?:auditor|reviewer)\b)", re.I)
 
 
 def _tool_calls(row: dict, kind: str) -> list[str]:
@@ -54,14 +58,21 @@ def _touched(text: str, cwd: str) -> Counter:
     return paths
 
 
+def _project_path(path: str) -> str:
+    folder = WORKTREE_FOLDER.match(path)
+    if folder and (Path(folder[1]) / ".git").exists():
+        return folder[1] + (folder[3] or "")
+    return main_checkout(path) or path
+
+
 def _project(session: dict, folders: dict) -> str | None:
     cwd = session["cwd"]
-    project = page_for(cwd, folders) if cwd else None
+    project = page_for(_project_path(cwd), folders) if cwd else None
     if project:
         return project
     counts = Counter()
     for path, count in session["touched"].items():
-        project = page_for(path, folders)
+        project = page_for(_project_path(path), folders)
         if project:
             counts[project] += count
     return min(counts, key=lambda page: (-counts[page], page), default=None)
@@ -231,6 +242,7 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
                                  "commands": {"count": 0, "notable": {}}}}
         reasons = set()
         offset = 0
+        first_typed = True
         transcript.seek(0)  # Claude's first row can itself be the first typed message.
         for line in transcript:
             at, offset = offset, offset + len(line)
@@ -240,7 +252,8 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
                 continue
             try:
                 row = json.loads(line)
-                item = parsers["message"](row, since, meta) if isinstance(row, dict) else None
+                cutoff = datetime.min.replace(tzinfo=timezone.utc) if first_typed else since
+                item = parsers["message"](row, cutoff, meta) if isinstance(row, dict) else None
                 if isinstance(row, dict):
                     _collect_artifacts(row, session)
             except (ValueError, UnicodeError, AttributeError, TypeError, RemError):
@@ -255,6 +268,12 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
                 session["reply"] = _redact(reply)
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
+            if first_typed:
+                first_typed = False
+                if AUTOMATED_PROMPT.match(_owner_request(item["text"])):
+                    return {}, "automated_prompt"
+            if source.timestamp(item["timestamp"]) < since:
+                continue
             session["id"] = item.get("session") or session["id"]
             session["cwd"] = item.get("cwd") or session["cwd"]
             session["messages"].append({**item, "text": _redact(item["text"]),
@@ -265,8 +284,22 @@ def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
     return session, "" if session["messages"] else why
 
 
+def _owner_request(text: str) -> str:
+    request = re.search(r"^## My request for Codex:[ \t]*$", text, re.M)
+    if request:
+        return text[request.end():].strip()
+    lines = text.strip().splitlines()
+    headings = ("# Context from my IDE setup:", "# Files mentioned by the user:")
+    if lines and lines[0] in headings:
+        while lines and (not lines[0].strip() or lines[0] in headings
+                         or re.match(r"## [^:]+:", lines[0]) or lines[0].startswith("- ")):
+            lines.pop(0)
+    return "\n".join(lines).strip()
+
+
 def _title(session: dict) -> str:
-    first = next(line for line in session["messages"][0]["text"].splitlines() if line.strip())
+    text = _owner_request(session["messages"][0]["text"])
+    first = next((line for line in text.splitlines() if line.strip()), "")
     title = " ".join(first.split())
     return title[:79] + "…" if len(title) > 80 else title
 
@@ -400,6 +433,7 @@ def reader_fields(text: str) -> dict:
     clock = re.search(r"^### (\d{2}:\d{2})$", typed, re.M)
     first = re.sub(r"^### [^\n]*\n", "", typed, count=1, flags=re.M)
     first = re.split(r"^### ", first, maxsplit=1, flags=re.M)[0]
+    first = _owner_request(re.sub(r"^> ?", "", first, flags=re.M))
     heading = re.search(r"^# (.+)$", text, re.M)
     artifacts = _section(text, "Artifacts")
     files = re.search(r"^- Files changed \((\d+)\):", artifacts, re.M)

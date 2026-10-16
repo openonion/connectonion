@@ -97,6 +97,84 @@ def test_rem_session_automation_stays_out(notebook, meta, reason):
     assert not Notebook(notebook[0]).list("sessions")
 
 
+@pytest.mark.parametrize("kind", ["codex", "claude-code"])
+@pytest.mark.parametrize("text", [
+    "Read prompt.txt and follow its instructions.",
+    "Read PROMPT.md and execute the task.",
+    "Read /work/demo/task.md and follow the instructions.",
+    "Read instructions.md and execute it.",
+    "You are an independent code auditor. Review the changes.",
+    "You are an independent claims auditor. Check the evidence.",
+    "You are an independent reviewer. Review the page.",
+    "# Context from my IDE setup:\n## My request for Codex:\nRead prompt.txt and follow it.",
+])
+def test_rem_session_automated_first_prompt_stays_out(notebook, kind, text):
+    message = codex if kind == "codex" else claude
+    transcript(notebook, kind=kind, rows=[message(text), message("Done", role="assistant")])
+    report = import_sessions(notebook[0], now=NOW)
+    assert report["skipped"] == {"automated_prompt": 1}
+    assert not Notebook(notebook[0]).list("sessions")
+
+
+def test_rem_session_owner_read_request_and_later_handoff_stay_in(notebook):
+    transcript(notebook, rows=[codex("Read the README and tell me what's wrong"),
+                               codex("Read prompt.txt and follow its instructions.")])
+    report = import_sessions(notebook[0], now=NOW)
+    assert report["imported"] == 1 and report["skipped"] == {}
+    book = Notebook(notebook[0])
+    assert "- Turns: 2" in book.read(book.list("sessions")[0])
+
+
+@pytest.mark.parametrize("kind", ["codex", "claude-code"])
+@pytest.mark.parametrize("automated", [False, True])
+def test_rem_session_first_prompt_before_import_window(notebook, kind, automated):
+    message = codex if kind == "codex" else claude
+    owner, handoff = "fix the login redirect", "Read prompt.txt and follow its instructions."
+    first, latest = (handoff, owner) if automated else (owner, handoff)
+    transcript(notebook, kind=kind, rows=[
+        {**message(first), "timestamp": "2026-01-01T00:00:00Z"}, message(latest)])
+    report = import_sessions(notebook[0], now=NOW)
+    assert report["skipped"] == ({"automated_prompt": 1} if automated else {})
+    book = Notebook(notebook[0])
+    if automated:
+        assert not book.list("sessions")
+    else:
+        page = book.read(book.list("sessions")[0])
+        assert "- Turns: 1" in page and "> " + latest in page
+        assert first not in page
+
+
+@pytest.mark.parametrize("preamble", [
+    "# Context from my IDE setup:\n\n## Active file: src/app.py\n\n"
+    "## Open tabs:\n- app.py: src/app.py\n\n# Files mentioned by the user:\n\n"
+    "## shot.png: /work/demo/shot.png\n\n## My request for Codex:\n",
+    "# Files mentioned by the user:\n\n## shot.png: /work/demo/shot.png\n\n",
+    "# Context from my IDE setup:\n\n## Active file: src/app.py\n\n"
+    "## Open tabs:\n- app.py: src/app.py\n\n",
+])
+def test_rem_session_codex_ide_preamble_keeps_owner_request(notebook, preamble):
+    root, _, _ = notebook
+    text = preamble + "fix the login redirect"
+    transcript(notebook, rows=[codex(text)])
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    book = Notebook(root)
+    record, = book.list("sessions")
+    assert record == "sessions/2026-10-16-fix-the-login-redirect-abcdef12.md"
+    page = book.read(record)
+    assert page.startswith("# fix the login redirect\n")
+    fields = reader_fields(page)
+    assert fields["session_first"] == fields["session_started_with"] == "fix the login redirect"
+    raw = page.split("## What you typed\n")[1]
+    assert "> " + text.replace("\n", "\n> ") in raw
+    key = "codex:3456-abcdef12"
+    write_json(summary_path(root, key), {"key": key, "title": "Login redirect fixed"})
+    assert rewrite_session(root, key) == record
+    page = book.read(record)
+    assert "- Started with: fix the login redirect\n" in page
+    assert reader_fields(page)["session_started_with"] == "fix the login redirect"
+    assert page.split("## What you typed\n")[1] == raw
+
+
 @pytest.mark.parametrize("fields,reason", [
     ({}, ""), ({"entrypoint": "sdk-cli"}, "program_prompt"),
     ({"promptSource": "system"}, "program_prompt"),
@@ -150,6 +228,33 @@ def test_rem_session_project_link_uses_deepest_path(notebook):
     from connectonion.rem.reader import snapshot
     row = next(r for r in snapshot(root)["records"] if r["path"] == record)
     assert row["session_project"] == "projects/demo.md"
+
+
+@pytest.mark.parametrize("layout", [".worktrees", ".worktree", ".claude/worktrees"])
+@pytest.mark.parametrize("subfolder", ["", "src"])
+@pytest.mark.parametrize("exists", [False, True])
+@pytest.mark.parametrize("listed", ["none", "container", "worktree"])
+@pytest.mark.parametrize("touched", [False, True])
+def test_rem_session_worktree_belongs_to_repository(notebook, tmp_path, layout, subfolder,
+                                                   exists, listed, touched):
+    from collections import Counter
+    from connectonion.rem.project_material import page_folders
+    from connectonion.rem.sessions import _project
+    repo = tmp_path / "demo"
+    (repo / ".git").mkdir(parents=True)
+    worktree = repo / layout / "feature"
+    path = worktree / subfolder if subfolder else worktree
+    if exists:
+        path.mkdir(parents=True)
+        (worktree / ".git").write_text(f"gitdir: {repo}/.git/worktrees/feature\n")
+    book = Notebook(notebook[0])
+    book.stub_project("projects/demo.md", "Demo", paths=[str(repo)])
+    if listed != "none":
+        stub = worktree.parent if listed == "container" else worktree
+        book.stub_project("projects/stub.md", "Stub", paths=[str(stub)])
+    session = {"cwd": "/unmapped" if touched else str(path),
+               "touched": Counter({str(path / "app.py"): 1}) if touched else Counter()}
+    assert _project(session, page_folders(book)) == "projects/demo.md"
 
 
 @pytest.mark.parametrize("cwd,expected", [("/work", "Demo"), ("/work/other", "Other")])
