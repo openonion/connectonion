@@ -66,6 +66,10 @@ Most promising first: what could change the lead, Open threads or Facts.
   something ties them (the same address, company, photo caption, link from
   their mail).
 
+Keep the page near the page rules' size (about 15,000 characters). As it
+fills, add only what changes Facts, the lead, `Open threads` or `History`;
+other findings go in your reply as followed leads, so muse can use them.
+
 Before you finish, compare your page with the page you were given: every
 `“…”` quote and every `Sources` id it had must still be on the page, and every
 `[n]` in the text must be defined under `Sources`. Restore any you dropped.

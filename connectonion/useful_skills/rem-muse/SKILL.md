@@ -80,7 +80,9 @@ Decide one of:
 - **insight** — the answer shows something the user could not see from any
   single message and that changes what they believe or do: a stake, a turn, a
   pattern, a contradiction, a thread that is really closed, a sentence on the
-  page that is wrong. **Only now edit the page**: put it, cited, in the right
+  page that is wrong. Test it before you call it one: if a single message
+  says it, or the page already says it, it is not an insight. Your reply
+  names the two or more sources it needed. **Only now edit the page**: put it, cited, in the right
   place (`Insight` as `At stake:`/`Changed:`/`Pattern:`, a turn in `History`,
   a closed thread out of `Open threads`, a correction where the error was),
   and adjust the lead if it changes who they are, what is live or what the
