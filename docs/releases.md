@@ -25,17 +25,22 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc5**: handoffs are end-to-end encrypted. `send` seals the handoff on
+your machine and the key travels after `#` in the link; after acceptance every message between the
+two agents is boxed to the other's key. The backend holds ciphertext. See
+[1.9.3rc5 notes](releases/1.9.3rc5.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc5'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc4**: enrich and muse, fixed. A Codex sub-agent finishing no longer
 ends the main turn; enrich's ledger for a project page holds its coding sessions, GitHub issues and
 pull requests and the git log, and the review gate accepts what the ledger lists. On a test project
 page, enrich then muse took quotes from 3 to 15 and cited sources from 10 to 40. See
 [1.9.3rc4 notes](releases/1.9.3rc4.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc4'
-```
-
-## Previous previews
 
 Release candidate **1.9.3rc3**: deepen one page. `co rem enrich PAGE` follows the leads a page has
 not followed (links, attachments, older threads) and adds what they establish; `co rem muse PAGE`

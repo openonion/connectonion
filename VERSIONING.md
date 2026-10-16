@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc4
+## Current Version: 1.9.3rc5
+
+1.9.3rc5 is the fifth 1.9.3 release candidate; stable remains 1.9.2. `co handoff` is end-to-end
+encrypted: `send` seals the handoff on the sender's machine and the key travels after `#` in the
+link (`coh4` codes), and after acceptance every message between the two agents is boxed to the other
+agent's key. The pasted prompt's install floor is 1.9.3rc5. See [1.9.3rc5 notes](docs/releases/1.9.3rc5.md).
+
+- 1.9.3rc5 (handoffs sealed).
+
+## Previous preview: 1.9.3rc4
 
 1.9.3rc4 is the fourth 1.9.3 release candidate; stable remains 1.9.2. It fixes `co rem enrich` and
 `co rem muse` as rc3 shipped them: a Codex sub-agent finishing no longer ends the main turn, enrich's
@@ -410,7 +419,7 @@ the git log, muse reads the same ledger, and the review gate accepts what the le
 
 - 1.9.3rc4 (enrich and muse, fixed).
 
-## Previous preview: 1.9.3rc3
+## Earlier preview: 1.9.3rc3
 
 1.9.3rc3 is the third 1.9.3 release candidate; stable remains 1.9.2. `co rem` gains two commands
 that deepen one written page: `co rem enrich PAGE` follows the leads the page has not followed
