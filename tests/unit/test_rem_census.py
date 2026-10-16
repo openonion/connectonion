@@ -180,6 +180,73 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
         "mine": 2, "theirs": 2, "other": 1, "quiet": 3, "open": 5}
 
 
+
+def test_shared_thread_census_groups_copied_letter_of_support(tmp_path):
+    from datetime import date
+    from connectonion.rem.census import open_threads
+
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    quote = "I'll come back to you shortly with a draft and a couple of questions about the contribution details."
+    longer = "We're preparing the letter and supporting documents now, and " + quote
+    records = [("people/cc-one.md", "Copied One", "7", quote),
+               ("people/cc-two.md", "Copied Two", "W5", longer),
+               ("people/weiwei.md", "Weiwei Lei", "3", quote.replace("'", "’")),
+               ("people/me.md", "Aaron Xie", "3", longer)]
+    for record, title, n, words in records:
+        sources_heading = "## sources " if n == "W5" else "## Sources"
+        book.write(record, f"# {title}\n\n## Open threads\n"
+                   f'- The user owes [Weiwei Lei](../people/weiwei.md): a Letter of Support draft; “{words}” [{n}].\n'
+                   f"\n{sources_heading}\n- [{n}] gmail:27472b21b17e — letter; observed 2026-10-15\n")
+    record = "people/cc-one.md"
+    book.write(record, book.read(record).replace("\n## Sources",
+               '- The user owes Copied One: the invoice; "I will send the invoice tomorrow." [7].\n'
+               f'- The user owes Copied One: another draft; “{quote}” [8].\n\n## Sources')
+               + "- [8] gmail:other-mail — another promise\n")
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md"}})
+    found = {record: {"category": "people", "held": False, "service": False, "duplicate": False}
+             for record, *_ in records}
+    assert open_threads(tmp_path, found, as_of=date(2026, 10, 16)) == {
+        "mine": 3, "theirs": 0, "other": 0, "quiet": 0, "open": 3}
+
+
+def test_thread_groups_are_transitive_and_require_resolved_shared_sources():
+    from connectonion.rem.census import _thread_groups
+
+    def item(text, sources):
+        return ({"path": "people/a.md", "title": "A"}, text, sources)
+
+    items = [item('First promise “send the draft” [1].', {"1": "gmail:a"}),
+             item('Second promise "send the questions" [W2].', {"W2": "gmail:b"}),
+             item('Bridge “send the draft and send the questions” [3][4].', {"3": "gmail:a", "4": "gmail:b"}),
+             item('First promise “send the draft” [1].', {"1": "gmail:other"}),
+             item('First promise “send the draft” [99].', {}),
+             item('THE USER owes a reply! [5].', {"5": "gmail:plain"}),
+             item('The user owes a reply [W7]', {"W7": "gmail:plain"})]
+    assert _thread_groups(items) == [items[:3], [items[3]], [items[4]], items[5:]]
+
+
+def test_shared_thread_census_uses_the_named_counterparts_state(tmp_path):
+    from datetime import date
+    from connectonion.rem.census import open_threads
+
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    records = [("people/cc.md", "Copied One", "2026-10-15"),
+               ("people/weiwei.md", "Weiwei Lei", "2026-07-01")]
+    for path, title, since in records:
+        book.write(path, f"# {title}\n\n## Open threads\n"
+                   '- The user owes Weiwei Lei: a draft to discuss with [Copied One](../people/cc.md); '
+                   f'“I will send the Letter of Support draft”; since {since} [1].\n'
+                   '\n## Sources\n- [1] gmail:letter\n')
+    found = {path: {"category": "people", "held": False, "service": False, "duplicate": False}
+             for path, *_ in records}
+    # The newer copied page cannot override the counterpart's quiet state,
+    # and a later link in the description does not name the counterpart.
+    assert open_threads(tmp_path, found, as_of=date(2026, 10, 16)) == {
+        "mine": 0, "theirs": 0, "other": 0, "quiet": 1, "open": 0}
+
+
 def test_a_thread_last_moved_recently_is_not_quiet():
     from datetime import date
     from connectonion.rem.census import _quiet

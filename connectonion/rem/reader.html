@@ -287,6 +287,8 @@
   .thread.theirs .dir { color: var(--ink-2); }
   .thread.plain .dir { color: var(--ink-3); }
   .thread .what { color: var(--ink); font: 16px/1.55 var(--text); }
+  .also-on { color: var(--ink-3); font: 12px/1.5 var(--ui); margin-top: 4px; overflow-wrap: anywhere; }
+  .also-on a { color: inherit; }
   .thread .who { font-size: 13px; color: var(--ink-2); margin-top: 3px; font-family: var(--ui); }
   .thread .when { font: 11.5px var(--ui); color: var(--ink-3); white-space: nowrap; }
 
@@ -1681,10 +1683,55 @@ function threads(r) {
 }
 // One row set for home, Open threads and the rail; census.py mirrors the count.
 function threadEntries() {
-  return listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
+  const order = (a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
+    || (b.t.since || "").localeCompare(a.t.since || "");
+  const entries = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
     .flatMap(r => threads(r).items.filter(t => t.dir !== "third").map(t => ({ r, t })))
-    .sort((a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
-      || (b.t.since || "").localeCompare(a.t.since || ""));
+    .sort(order);
+  return threadGroups(entries).map(group => {
+    const chosen = group.find(entry => group.some(other => threadCounterpart(other, entry.r))) || group[0];
+    const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
+    return { ...chosen, also };
+  }).sort(order);
+}
+// Source numbers belong to their page; copied promises share the resolved id.
+function obligationWords(text) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+function obligationEvidence({ r, t }) {
+  const sources = new Map([...rawSection(r, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+  const ids = new Set([...t.text.matchAll(/\[(W?\d+)\]/g)].map(m => sources.get(m[1])).filter(Boolean));
+  const quotes = [...t.text.matchAll(/“([^”\n]{6,})”|"([^"\n]{6,})"/g)];
+  return { ids, quotes: quotes.map(m => obligationWords(m[1] || m[2])).filter(Boolean),
+    text: obligationWords(t.text.replace(/“([^”\n]{6,})”|"([^"\n]{6,})"/g, "").replace(/\[W?\d+\]/g, "")) };
+}
+function sameObligation(a, b) {
+  return [...a.ids].some(id => b.ids.has(id)) && (a.text === b.text ||
+    a.quotes.some(x => b.quotes.some(y => x.includes(y) || y.includes(x))));
+}
+function threadGroups(entries) {
+  const groups = [], evidence = entries.map(obligationEvidence);
+  entries.forEach((entry, i) => {
+    const matches = groups.filter(group => group.some(j => sameObligation(evidence[i], evidence[j])));
+    if (!matches.length) groups.push([i]);
+    else {
+      matches[0].push(i, ...matches.slice(1).flat());
+      for (const group of matches.slice(1)) groups.splice(groups.indexOf(group), 1);
+    }
+  });
+  return groups.map(group => group.sort((a, b) => a - b).map(i => entries[i]));
+}
+function threadCounterpart({ r, t }, person) {
+  if (person.path === REM.owner) return false;
+  const first = REM.owner ? byPath(REM.owner)?.title.trim().split(/\s+/)[0] : "";
+  const me = "(?:the user|user|you" + (first ? "|" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "") + ")";
+  const text = t.text.replaceAll("**", "");
+  const named = new RegExp("^" + me + "\\s+(?:owes?|asked)\\s+(.+)", "i").exec(text)?.[1]
+    || new RegExp("^(.+?)\\s+owes?\\s+" + me + "\\b", "i").exec(text)?.[1] || "";
+  const link = /^\s*\[[^\]]+\]\(([^)]+\.md)\)/.exec(named);
+  if (link && resolve(r.path, link[1]) === person.path) return true;
+  const words = obligationWords(named.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")), title = obligationWords(person.title);
+  return !!title && (words === title || words.startsWith(title + " "));
 }
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
@@ -2174,11 +2221,17 @@ function row(r, opts) {
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
   return li;
 }
-function threadRow(r, t, withPage) {
+function alsoOn(records = []) {
+  if (!records.length) return null;
+  return el("div", { class: "also-on" }, ["Also on ", ...records.flatMap((r, i) =>
+    [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
+}
+function threadRow(r, t, withPage, also = []) {
   return el("li", { class: "thread " + t.dir }, [
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
-      withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
+      withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null,
+      withPage ? alsoOn(also) : null]),
     el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : ""), text: threadAge(t) })]);
 }
 
@@ -2312,7 +2365,7 @@ function threadDate(day) {
 function dueLabel(t) {
   return (t.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(t.due);
 }
-function morningThread({ r, t }) {
+function morningThread({ r, t, also }) {
   const { words, context } = morningWords(t.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
@@ -2321,7 +2374,7 @@ function morningThread({ r, t }) {
   return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
     el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
-      privateFallback(el("p", { class: "context", html: inline(context, r.path) }))]),
+      privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also)]),
     el("div", { class: "waiting-age" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : "") },
       [el("b", { text: t.due ? dueLabel(t) : age(t.since) }), el("span", { text: label })])]);
 }
@@ -2330,9 +2383,9 @@ function quietThreads(entries, count, home = false) {
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: "Gone quiet (" + count + ")" }),
-    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) })]), el("span", { text: age(t.since) })])))
-      : el("ul", { class: "threads" }, items.map(({ r, t }) => threadRow(r, t, true))),
+    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
+      el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
+      : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
     home ? el("a", { href: "#view=open", text: "See all quiet threads →" }) : null]);
 }
 function morningNight() {
@@ -2371,7 +2424,7 @@ function taskView(kind) {
     if (!count) continue;
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true)))]));
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true, row.also)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);

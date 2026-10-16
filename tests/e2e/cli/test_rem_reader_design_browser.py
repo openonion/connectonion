@@ -995,8 +995,8 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
       for (const r of REM.records)
         r.text = r.text.replace(/(^## Open threads[^\n]*\n)[\s\S]*?(?=^## |^Investigation:|(?![\s\S]))/mi, '$1Unknown\n\n');
       const items = [
-        ...Array(mine).fill('- You owe Mara a reply [1].'),
-        ...Array(theirs).fill('- Mara owes you a reply [1].')
+        ...Array.from({ length: mine }, (_, i) => '- You owe Mara reply ' + i + ' [1].'),
+        ...Array.from({ length: theirs }, (_, i) => '- Mara owes you answer ' + i + ' [1].')
       ];
       const r = byPath('people/mara-ostrowski.md');
       r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + (items.join('\n') || 'Unknown'));
@@ -2035,6 +2035,46 @@ def test_project_focus_and_deep_note_do_not_repeat_purpose_or_threads(reader):
     page.goto(uri + '#r=projects%2Fharbour.md&h=what-it-is')
     assert page.locator('#what-it-is').is_visible()
 
+
+
+@pytest.mark.parametrize("width", [375, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_path, width, theme):
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.emulate_media(color_scheme=theme)
+    page.evaluate(r"""() => {
+      const quote = "I'll come back to you shortly with a draft and a couple of questions about the contribution details.";
+      for (const [path, n] of [['people/mara-ostrowski.md', '91'], ['people/tomas-reyes.md', 'W92']]) {
+        const r = byPath(path);
+        const words = n === '91' ? "We're preparing the letter and supporting documents now, and " + quote : quote;
+        r.text = r.text.replace('## Open threads\n', '## Open threads\n' +
+          '- The user owes [Tomás Reyes](../people/tomas-reyes.md): a Letter of Support draft; “' + words + '” [' + n + ']; due: 2026-10-01.\n');
+        r.text = r.text.replace('## Sources\n', '## Sources\n- [' + n + '] gmail:27472b21b17e — Letter of Support promise\n');
+      }
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    home = page.locator('.waiting-ledger > li').filter(has_text='Letter of Support draft')
+    assert home.count() == 1
+    assert home.locator('.waiting-person a').inner_text() == 'Tomás Reyes'
+    assert home.locator('.also-on').inner_text() == 'Also on Mara Ostrowski'
+    also = home.locator('.also-on a')
+    assert also.get_attribute('href') == '#r=people%2Fmara-ostrowski.md'
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.screenshot(path=str(tmp_path / 'deduped-home.png'), full_page=True)
+    # Hash navigation preserves the injected notebook records.
+    page.evaluate("location.hash = 'view=open'", isolated_context=False)
+    page.get_by_role('heading', name='Open threads', exact=True).wait_for()
+    rows = page.locator('.task-band .thread.mine')
+    shared = rows.filter(has_text='Letter of Support draft')
+    assert shared.count() == 1
+    assert shared.locator('.who a').inner_text() == 'Tomás Reyes'
+    assert shared.locator('.also-on').inner_text() == 'Also on Mara Ostrowski'
+    assert page.locator('#nav a[href="#view=open"] .n.waiting').inner_text() == str(rows.count())
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.screenshot(path=str(tmp_path / 'deduped-open.png'), full_page=True)
+    shared.locator('.also-on a').click()
+    page.get_by_role('heading', name='Mara Ostrowski', exact=True).wait_for()
 
 def test_morning_keeps_separate_people_with_the_same_kind_of_request(reader):
     page, _ = reader

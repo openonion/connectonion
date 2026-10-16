@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from pathlib import Path
+from posixpath import normpath
 
 from .files import Notebook, read_json, state_path
 
@@ -181,7 +182,7 @@ def threads(page: str) -> list[str]:
             and not NOT_A_THREAD.match(item)]
 
 
-def _quiet(text: str, today: date) -> bool:
+def _thread_dates(text: str, today: date) -> tuple[str, str]:
     # Dates and the 60-day boundary mirror reader.html threads().
     days = re.findall(DAY, text)
     due = re.search(rf"\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*{DAY}", text, re.I)
@@ -189,8 +190,85 @@ def _quiet(text: str, today: date) -> bool:
     since = re.search(rf"\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*{DAY}", text, re.I)
     moved = re.search(rf"\blast moved(?:\s+on)?\s*:?\s*{DAY}", text, re.I)
     since = moved[1] if moved else since[1] if since else next((day for day in days if day != due and day <= today.isoformat()), "")
+    return since, due
+
+
+def _quiet(text: str, today: date) -> bool:
+    since, due = _thread_dates(text, today)
     return bool(since and (today - date.fromisoformat(since)).days > 60
                 and (not due or due <= today.isoformat()))
+
+
+# Source numbers belong to their page; copied promises share the resolved id.
+QUOTED_WORDS = re.compile(r'“([^”\n]{6,})”|"([^"\n]{6,})"')
+CITATION = re.compile(r"\[(W?\d+)\]")
+
+
+def _obligation_words(text: str) -> str:
+    return " ".join("".join(c if c.isalnum() else " " for c in text.lower()).split())
+
+
+def _obligation_evidence(item: tuple) -> tuple:
+    _, text, sources = item
+    ids = {sources[n] for n in CITATION.findall(text) if n in sources}
+    quotes = [_obligation_words(a or b) for a, b in QUOTED_WORDS.findall(text)]
+    words = _obligation_words(CITATION.sub("", QUOTED_WORDS.sub("", text)))
+    return ids, [q for q in quotes if q], words
+
+
+def _same_obligation(a: tuple, b: tuple) -> bool:
+    return bool(a[0] & b[0]) and (a[2] == b[2] or
+                                 any(x in y or y in x for x in a[1] for y in b[1]))
+
+
+def _thread_groups(items: list) -> list:
+    """Connected obligations, preserving the reader's existing sort order."""
+    groups, evidence = [], [_obligation_evidence(item) for item in items]
+    for i in range(len(items)):
+        matches = [group for group in groups if any(_same_obligation(evidence[i], evidence[j]) for j in group)]
+        if not matches:
+            groups.append([i])
+            continue
+        matches[0].extend([i] + [j for group in matches[1:] for j in group])
+        for group in matches[1:]:
+            groups.remove(group)
+    return [[items[i] for i in sorted(group)] for group in groups]
+
+
+def _thread_counterpart(item: tuple, person: dict, owner: str, first: str) -> bool:
+    if person["path"] == owner:
+        return False
+    record, text, _ = item
+    me = "(?:the user|user|you" + (f"|{re.escape(first)}" if first else "") + ")"
+    text = text.replace("**", "")
+    named = re.match(rf"^{me}\s+(?:owes?|asked)\s+(.+)", text, re.I) or re.match(
+        rf"^(.+?)\s+owes?\s+{me}\b", text, re.I)
+    named = named[1] if named else ""
+    link = re.match(r"\s*\[[^\]]+\]\(([^)]+\.md)\)", named)
+    if link and normpath(str(Path(record["path"]).parent / link[1])) == person["path"]:
+        return True
+    words = _obligation_words(re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", named))
+    title = _obligation_words(person["title"])
+    return bool(title) and (words == title or words.startswith(title + " "))
+
+
+def _thread_sources(page: str) -> dict:
+    page = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    section = re.search(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", page, re.I | re.M)
+    return dict(re.findall(r"^\s*- \[(W?\d+)\]\s+(\S+)", section[1], re.M)) if section else {}
+
+
+def _thread_items(notebook: Notebook, found: dict, first: str) -> list:
+    items = []
+    for path, entry in found.items():
+        if not listed(entry) or entry["category"] not in THREAD_KINDS:
+            continue
+        page = notebook.read(path)
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith("# ")), path)
+        record = {"path": path, "title": title}
+        sources = _thread_sources(page)
+        items.extend((record, item, sources) for item in threads(page) if direction(item, first) != "third")
+    return items
 
 
 def open_threads(root: Path, found: dict | None = None, *, as_of: date | None = None) -> dict:
@@ -201,17 +279,19 @@ def open_threads(root: Path, found: dict | None = None, *, as_of: date | None = 
     title = next((line[2:] for line in notebook.read(owner).splitlines() if line.startswith("# ")), "") \
         if owner and notebook.path(owner).is_file() else ""
     first = (title.split() or [""])[0]
-    items = [item for record, entry in found.items() if listed(entry) and entry["category"] in THREAD_KINDS
-             for item in threads(notebook.read(record))]
+    items = _thread_items(notebook, found, first)
     from .config import read_config
     from .service import notebook_zone
     today = as_of or datetime.now(notebook_zone(read_config(root))).date()
     # Keep the census identical to reader.html threadCounts(), including quiet context.
+    items.sort(key=lambda item: _thread_dates(item[1], today)[0], reverse=True)
+    items.sort(key=lambda item: _thread_dates(item[1], today)[1] or "9999")
     result = dict.fromkeys(("mine", "theirs", "other", "quiet", "open"), 0)
-    for item in items:
+    for group in _thread_groups(items):
+        representative = next((item for item in group if any(
+            _thread_counterpart(other, item[0], owner, first) for other in group)), group[0])
+        item = representative[1]
         who = direction(item, first)
-        if who == "third":
-            continue
         if _quiet(item, today):
             result["quiet"] += 1
         else:
