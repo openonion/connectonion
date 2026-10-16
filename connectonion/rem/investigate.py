@@ -1092,7 +1092,8 @@ def github_context(root: Path, source: str) -> dict | None:
     body = saved.get("text")
     if saved.get("source") != source or not isinstance(body, str):
         return None
-    excerpt = body.strip()[:6000]
+    # Enrich retains discussions with comments; the audit must reach past long issue bodies.
+    excerpt = body.strip()[:40_000]
     return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
             "time": saved.get("timestamp") or "", "sender": "", "thread": "",
             "source": "github", "input_scope": ""}

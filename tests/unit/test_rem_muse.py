@@ -9,9 +9,10 @@ import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
-from connectonion.rem import muse as feature, runner
+from connectonion.rem import muse as feature, page_review, project_claim_review, runner
 from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook, RemError, state_path, write_json
+from connectonion.rem.investigate import GITHUB_SOURCE
 
 
 RECORD = "people/avery-lin.md"
@@ -151,6 +152,9 @@ def test_enrich_keeps_and_replaces_its_ledger(notebook, monkeypatch):
         assert seen["index"].read_text() not in ledger["text"]
         assert "one line per evidence file" in ledger["text"]
         assert "### <source id>" in ledger["text"]
+        originals = next(item for item in items if item["role"] == "original_evidence")
+        assert json.loads(Path(originals["file"]).read_text()) == gathered
+        assert Path(originals["file"]).name == "items.json"
         return {"changed": [], "report": "Open lead"}
 
     monkeypatch.setattr(feature, "gather", gather)
@@ -170,6 +174,7 @@ def test_muse_includes_ledger_and_archive_paths(notebook, has_ledger):
     if has_ledger:
         index.parent.mkdir(parents=True)
         index.write_text("Saved ledger")
+        write_json(index.parent / "items.json", [{"source": "github:owner/repo#42", "text": "Issue"}])
 
     def fake(book, items, config, **kw):
         ledger = items[1]
@@ -180,7 +185,16 @@ def test_muse_includes_ledger_and_archive_paths(notebook, has_ledger):
         assert (str(index) in ledger["text"]) == has_ledger
         assert ("No enrich ledger exists for this page yet." in ledger["text"]) == (not has_ledger)
         if has_ledger:
-            assert "A source the page does not cite yet" in ledger["text"]
+            assert ledger["file"] == str(index)
+            assert ledger["sources"] == ["github:owner/repo#42"]
+            assert "Uncited source ids" in ledger["text"]
+            originals = items[2]
+            assert originals["role"] == "original_evidence"
+            assert originals["source"] == "investigation:original-evidence"
+            assert originals["timestamp"]
+            assert originals["file"] == str(index.parent / "items.json")
+        else:
+            assert not any(item["role"] == "original_evidence" for item in items)
         return {}
 
     feature.muse(notebook.root, RECORD, runner=fake)
@@ -321,3 +335,152 @@ def test_project_handles_use_mapped_paths_instead_of_aliases(notebook):
     notebook.stub_project("projects/atlas.md", "Atlas", ["/work/atlas"])
     title, handles = page_handles(notebook, "projects/atlas.md", ["explicit@example.com"])
     assert title == "Atlas" and handles == ["explicit@example.com", "/work/atlas", "Atlas"]
+
+
+@pytest.fixture
+def project(notebook, monkeypatch):
+    record = "projects/atlas.md"
+    checkout = notebook.root / "checkout"
+    checkout.mkdir()
+    notebook.stub_project(record, "Atlas", [str(checkout)])
+    rows = [{"source": f"codex:atlas:{n}", "timestamp": "2026-10-01", "cwd": str(checkout),
+             "text": f"Owner input {n}"} for n in (1, 2)]
+    messages = state_path(notebook.root, "projects/atlas/messages.jsonl")
+    messages.parent.mkdir(parents=True)
+    messages.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: (
+        [{"role": "user", **rows[0]}], ["Saved mail read"]))
+    monkeypatch.setattr(feature.shutil, "which", lambda command: "/mock/gh")
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        assert kw == {"capture_output": True, "text": True, "timeout": 120}
+        if argv[0] == "gh":
+            assert argv[2:9] == ["list", "-R", "owner/atlas", "--state", "all", "--limit", "400"]
+            assert argv[9:] == ["--json", "number,title,body,author,createdAt,state,url,comments"]
+            number = 41 if argv[1] == "issue" else 42
+            output = json.dumps([{
+                "number": number, "title": f"Discussion {number}", "body": "Original body " + "x" * 7_000,
+                "author": {"login": "owner"}, "createdAt": "2026-10-02T00:00:00Z", "state": "OPEN",
+                "url": f"https://github.com/owner/atlas/issues/{number}",
+                "comments": [{"author": {"login": "reviewer"}, "createdAt": "2026-10-03T00:00:00Z",
+                              "body": "Comment retained for review"}]}])
+        elif argv[3:] == ["remote", "get-url", "origin"]:
+            output = "git@github.com:owner/atlas.git\n"
+        else:
+            assert argv[3:] == ["log", "origin/HEAD", "--date=short", "--format=%h %ad %an %s"]
+            output = "abc123 2026-10-02 Owner Ship atlas\n"
+        return SimpleNamespace(returncode=0, stdout=output, stderr="")
+
+    monkeypatch.setattr(feature.subprocess, "run", run)
+    return SimpleNamespace(book=notebook, record=record, checkout=checkout, calls=calls)
+
+
+def test_project_enrich_retains_all_originals_and_review_can_open_them(project):
+    book, record = project.book, project.record
+    stages = []
+
+    def review(book, items, config, **kw):
+        stages.append(kw["stage"])
+        ledger = next(item for item in items if item["role"] == "evidence-index")
+        originals = next(item for item in items if item["role"] == "original_evidence")
+        gathered = json.loads(Path(originals["file"]).read_text())
+        assert [item["source"] for item in gathered] == [
+            "codex:atlas:1", "codex:atlas:2", "github:owner/atlas#41", "github:owner/atlas#42",
+            f"git-log:{project.checkout}"]
+        assert ledger["sources"] == [item["source"] for item in gathered[:-1]]
+        assert gathered[0]["speaker"] == "owner" and gathered[0]["project"] == str(project.checkout)
+        assert "Ship atlas" in gathered[-1]["text"]
+        assert len(gathered[2]["text"]) > 7_000
+        for item in gathered[2:4]:
+            assert GITHUB_SOURCE.fullmatch(item["source"])
+            assert "--- comment by reviewer at 2026-10-03T00:00:00Z" in item["text"]
+            assert "Comment retained for review" in item["text"]
+            assert page_review._identifiable(item["source"], known=page_review._known_sources([ledger]),
+                                             record=record, original=book.read(record), old_sources=set(),
+                                             items=[ledger], pages=[])
+        assert "4 reachable sources" in ledger["text"]
+        material = runner.readable_material([ledger, originals])
+        assert str(Path(originals["file"])) in material and "Original body" not in material
+        candidate = "# Atlas\n\nA discussion. [1]\n\n## Sources\n- [1] github:owner/atlas#42\n"
+        project_claim_review.retain_cited_originals(book, candidate, items)
+        packet, missing = project_claim_review.packet(book, candidate, record, items)
+        assert missing == [] and packet["sources"][0]["source_id"] == "github:owner/atlas#42"
+        assert "Original body" in packet["sources"][0]["context"]["excerpt"]
+        assert "Comment retained for review" in packet["sources"][0]["context"]["excerpt"]
+        assert packet["sources"][0]["context"]["truncated"] is False
+        return {}
+
+    result = feature.enrich(book.root, record, runner=review)
+    assert result["items"] == 5
+    assert "github owner/atlas: 1 issues, 1 pull requests" in result["coverage"]
+    assert "mapped sessions: 2 owner messages" in result["coverage"]
+    feature.muse(book.root, record, runner=review)
+    assert stages == ["enrich", "muse"]
+
+
+@pytest.mark.parametrize("failed_kind", ["issue", "pr"])
+def test_failed_github_read_is_covered_and_enrich_runs(project, monkeypatch, failed_kind):
+    run = feature.subprocess.run
+
+    def fail(argv, **kw):
+        if argv[:2] == ["gh", failed_kind]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="Not logged in " + "x" * 300)
+        return run(argv, **kw)
+
+    monkeypatch.setattr(feature.subprocess, "run", fail)
+    seen = []
+    result = feature.enrich(project.book.root, project.record,
+                            runner=lambda book, items, config, **kw: seen.extend(items) or {})
+    assert "github owner/atlas: not read (" + ("Not logged in " + "x" * 300)[:200] + ")" in result["coverage"]
+    assert result["items"] == 3
+    assert not any(source.startswith("github:") for source in seen[2]["sources"])
+
+
+@pytest.mark.parametrize("remote", ["https://github.com/owner/atlas.git", "ssh://git@github.com/owner/atlas.git",
+                                   "git@github.com:owner/atlas", "https://github.com/owner/atlas/"])
+def test_github_repositories_are_deduplicated(project, monkeypatch, remote):
+    run = feature.subprocess.run
+
+    def origin(argv, **kw):
+        if argv[0] == "git":
+            return SimpleNamespace(returncode=0, stdout=remote, stderr="")
+        return run(argv, **kw)
+
+    second = project.book.root / "worktree"
+    second.mkdir()
+    page = project.book.read(project.record).replace(str(project.checkout), f"{project.checkout}\n- {second}")
+    monkeypatch.setattr(feature.subprocess, "run", origin)
+    items, coverage = feature._github_items(page)
+    assert len(items) == 2 and len(coverage) == 1
+    assert len([call for call in project.calls if call[0] == "gh"]) == 2
+
+
+def test_git_log_falls_back_to_head(project, monkeypatch):
+    run = feature.subprocess.run
+
+    def log(argv, **kw):
+        if argv[3:5] == ["log", "origin/HEAD"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="Unknown revision")
+        if argv[3:5] == ["log", "HEAD"]:
+            return SimpleNamespace(returncode=0, stdout="Fallback history", stderr="")
+        return run(argv, **kw)
+
+    monkeypatch.setattr(feature.subprocess, "run", log)
+    assert feature._git_log_items(project.book.read(project.record))[0]["text"] == "Fallback history"
+
+
+def test_github_item_preserves_long_discussion_up_to_40000_characters():
+    item = feature._github_item("owner/atlas", {
+        "number": 99, "author": None, "title": "Deleted author", "url": "url",
+        "state": "OPEN", "createdAt": "date", "body": "x" * 50_000})
+    assert len(item["text"]) == 40_000 and item["speaker"] == ""
+
+
+def test_missing_gh_is_covered_and_enrich_runs(project, monkeypatch):
+    monkeypatch.setattr(feature.shutil, "which", lambda command: None)
+    result = feature.enrich(project.book.root, project.record, runner=lambda *a, **kw: {})
+    assert "github owner/atlas: not read (gh is not installed)" in result["coverage"]
+    assert result["items"] == 3
+    assert not any(call[0] == "gh" for call in project.calls)
