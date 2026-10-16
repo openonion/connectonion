@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc3
+## Current Version: 1.9.3rc4
+
+1.9.3rc4 is the fourth 1.9.3 release candidate; stable remains 1.9.2. It fixes `co rem enrich` and
+`co rem muse` as rc3 shipped them: a Codex sub-agent finishing no longer ends the main turn, enrich's
+reading ledger for a project page includes its coding sessions, GitHub issues and pull requests and
+the git log, muse reads the same ledger, and the review gate accepts what the ledger lists. See
+[1.9.3rc4 notes](docs/releases/1.9.3rc4.md).
+
+- 1.9.3rc4 (enrich and muse, fixed).
+
+## Previous preview: 1.9.3rc3
 
 1.9.3rc3 is the third 1.9.3 release candidate; stable remains 1.9.2. `co rem` gains two commands
 that deepen one written page: `co rem enrich PAGE` follows the leads the page has not followed
@@ -410,7 +420,7 @@ through investigate's review gate. See [1.9.3rc3 notes](docs/releases/1.9.3rc3.m
 
 - 1.9.3rc3 (enrich and muse).
 
-## Previous preview: 1.9.3rc2
+## Earlier preview: 1.9.3rc2
 
 1.9.3rc2 is the second 1.9.3 release candidate; stable remains 1.9.2. `co rem` keeps your coding
 sessions as Agent sessions: `co rem import sessions` writes one page per Codex or Claude Code

@@ -2,7 +2,7 @@
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
   Dependencies: imports from [atexit, json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
-  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log; a completed native imageView becomes a bounded PNG/JPEG provider_artifact only when it stays inside cwd → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
+  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log; a completed native imageView becomes a bounded PNG/JPEG provider_artifact only when it stays inside cwd → method-specific approval responses are answered by the approval gate → waits for the active thread’s turn/completed → returns JSON envelope: str
   State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | open-only threads remain in a process-local registry for at most 15 minutes (maximum 8) until their first turn persists the rollout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
   Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | lifecycle revisions/cache are owned by plugins/coding_agents.py and core/provider_events.py | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
   Performance: one process per active call; open-only keeps its initialized process until first follow-up/expiry | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
@@ -1315,13 +1315,13 @@ class CodexAppServer:
         self._turn_done.clear()
         self._turn_result = {}
         self._token_usage = {}
+        self._active_thread_id = thread_id
         started = self.request("turn/start", {
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
         }, timeout=_remaining(deadline))
         turn = started.get("turn", {}) if isinstance(started, dict) else {}
         turn_id = turn.get("id") if isinstance(turn, dict) else None
-        self._active_thread_id = thread_id
         self._active_turn_id = turn_id if isinstance(turn_id, str) and turn_id else None
         self._interrupt_sent_for_turn = None
         if callable(on_turn_started) and self._active_turn_id:
@@ -1535,6 +1535,10 @@ class CodexAppServer:
                         "error": {"code": -32601, "message": f"method not supported: {method}"}})
 
     def _handle_notification(self, method, params):
+        # Sub-agent threads share this connection; their completion ended the parent in the 2026-10-16 muse trial.
+        thread_id = params.get("threadId")
+        if isinstance(thread_id, str) and self._active_thread_id and thread_id != self._active_thread_id:
+            return
         if method == "thread/tokenUsage/updated":
             # turn/completed carries no token figures; this notification does.
             # `total` is the thread's running total -- the whole run for a fresh

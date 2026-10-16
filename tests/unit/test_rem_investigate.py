@@ -1870,6 +1870,24 @@ def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch
     assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
 
 
+@pytest.mark.parametrize("days,kind,expected_days", [(3650, "codex", inv.SESSION_WIDEST_DAYS),
+                                                    (180, "codex", 180), (3650, "whatsapp", 3650)])
+def test_gather_clamps_only_coding_sessions_to_the_cached_window(tmp_path, monkeypatch, days, kind, expected_days):
+    from datetime import datetime, timedelta, timezone
+
+    seen = []
+    before = datetime.now(timezone.utc)
+    monkeypatch.setattr(inv, "_window_items", lambda read, scoped, *args: seen.append(scoped) or ([], 0))
+    _, coverage = inv.gather("Vern", ["Vern"], days=days, clients={}, subscriptions={
+        kind: {"kind": kind, "root": str(tmp_path), "chats": ["Vern"]}})
+    since = datetime.fromisoformat(seen[0]["since"])
+    assert before - timedelta(days=expected_days) <= since <= datetime.now(timezone.utc) - timedelta(days=expected_days)
+    window_lines = [line for line in coverage if "REM keeps" in line]
+    assert window_lines == ([f"codex: sessions read from {since.date()}; "
+                             f"REM keeps a {inv.SESSION_WIDEST_DAYS}-day session window"]
+                            if kind == "codex" and days > inv.SESSION_WIDEST_DAYS else [])
+
+
 def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypatch):
     """A second CLI run reads no unchanged transcript, but sees a newly appended turn."""
     from contextlib import contextmanager

@@ -257,10 +257,10 @@ def test_cited_github_original_is_openable_without_rem_db(tmp_path):
         'excerpt': 'Issue body', 'truncated': False, 'time': created_at,
         'sender': '', 'thread': '', 'source': 'github', 'input_scope': ''}
 
-    retain_cited_github(tmp_path, [{**item, 'text': 'Updated issue body\n' + 'x' * 6000}], {source})
+    retain_cited_github(tmp_path, [{**item, 'text': 'Updated issue body\n' + 'x' * 40_000}], {source})
     context = cited_context(tmp_path, [{'text': page}])[source]
     assert context['excerpt'].startswith('Updated issue body')
-    assert len(context['excerpt']) == 6000 and context['truncated'] is True
+    assert len(context['excerpt']) == 40_000 and context['truncated'] is True
     assert context['time'] == created_at
 
 

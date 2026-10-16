@@ -3,7 +3,7 @@ Purpose: Lay out one investigation's gathered material as files an agent searche
 LLM-Note:
   Dependencies: imports from [hashlib, json, pathlib, .chat.CHAT_KINDS] | imported by [rem/investigate.py] | tested by [tests/unit/test_rem_evidence.py]
   Data flow: write_evidence(directory, items) → one file per mailbox-month (split past 40k chars), per attachment, per session or chat → index.md, one line per file → {"index", "files", "sources", "chars"}
-  State/Effects: writes under the given directory only (0700); the caller deletes it after the run
+  State/Effects: writes under the given directory only (0700); the caller owns retention
 
 Why files (#1850, owner 2026-09-24/30). The script has already gathered and
 sorted the material; summarising all of it before writing a word cost the
