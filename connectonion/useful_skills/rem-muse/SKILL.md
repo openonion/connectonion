@@ -138,7 +138,10 @@ step as they stand now, keeping each quote the lead had (move one you no
 longer lead with to where it belongs). A lead that still reads as the page
 did before this run, after an insight changed what is live, is wrong. The
 lead stays the page rule's three short sentences with a few citations each:
-it names the one live item and the next step, not every finding, and a
+it names the one live item and the next step, not every finding. The live
+item is the one with the most at stake for the user — what they owe, money,
+a deadline, a decision only they can make — not the newest message; an
+agent's status report is never the ask it quotes. A
 same-person finding goes in `Facts` and `Insight`, not into the lead. A
 project page has no lead: its first lines of `Where it stands` and `Open
 threads` carry what is live and next, and `What it is` stays the product
