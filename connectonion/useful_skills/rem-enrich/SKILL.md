@@ -50,11 +50,22 @@ Most promising first: what could change the lead, Open threads or Facts.
 - Additions and corrections only: cited facts, dated history lines, the end of
   a thread, contact details exactly as the source writes them.
 - What is already right stays as written. Do not reorganise, merge pages or
-  draw conclusions across pages — that is `rem-muse`.
+  draw conclusions across pages — that is `rem-muse`. The lead changes only
+  when a new fact changes what is live; even then keep its quotes.
+- Never delete or swap out a quote, an owner instruction or a cited fact
+  because you found a different one; add yours beside it. Remove a sentence
+  only when a source contradicts it, and say which.
+- Cite with the id on the material's `Source:` line (`gmail:` or `outlook:`
+  plus 12 hex characters), never a provider's raw message id or thread id.
+- The owner is `the user`, never their name, even when mail is signed with it.
 - A link that only confirms what the page says is cited once, not quoted.
 - A web page about someone with the same name is not this person unless
   something ties them (the same address, company, photo caption, link from
   their mail).
+
+Before you finish, compare your page with the page you were given: every
+`“…”` quote and every `Sources` id it had must still be on the page. Restore
+any you dropped.
 
 ## Final reply
 

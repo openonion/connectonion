@@ -48,11 +48,20 @@ Ask from several angles:
   is this really about, which other page holds the other half?
 - **Why**: why did the user decide what they decided; what principle shows?
 - **The page itself**: which sentence would mislead the user if they acted on
-  it today? Which open thread is actually closed?
+  it today? Which open thread is actually closed? Is another page the same
+  person or project (same name, an address or handle that the material ties to
+  them)?
 
 Then **choose the five** most worth pursuing: the ones whose answer would most
 change what the user understands or does, and that the originals can plausibly
-settle. Reply with all questions, the five marked and why each was chosen:
+settle.
+
+- If another page may be the same subject, that question is chosen first.
+- At least three of the five are about the subject and the user — stakes,
+  change, pattern, silence — not about one document's details.
+- No two chosen questions come from the same thread.
+
+Reply with all questions, the five marked and why each was chosen:
 
 ```
 * 1. <question> — why it matters
@@ -77,6 +86,10 @@ Decide one of:
   user does next.
 - **no insight** — the answer is a restatement, a detail, or already on the
   page. **Do not edit the page.** Say so; that is a normal result.
+  These are never insights: that one record does not prove another; that
+  more evidence is needed; that two documents describe different things;
+  the same fact with more quotes. If you can only say it as "Inference: …
+  does not establish …", it is **no insight** or **open**.
 - **open** — the originals cannot settle it. Do not edit the page. Name the
   record that would answer it; it becomes enrich's next lead, and if it
   matters, the last turn puts it in `Uncertainties` as the question.
@@ -84,6 +97,10 @@ Decide one of:
 Never answer from plausibility. An inference is labelled and rests on quotes.
 Each edit is small and cited; never rewrite a correct section, never drop a
 cited fact that is still true, keep every quote verbatim.
+An insight is written as a finding the user can act on, not as a hedge;
+`Insight` keeps at most four bullets, so a new one replaces the weakest (move
+that one's fact where it belongs). An insight adds a sentence or two, not a
+paragraph of supporting quotes. The owner is `the user`, never their name.
 
 Reply each turn:
 
@@ -98,7 +115,8 @@ verdict: insight | no insight | open
 
 Only if the page was edited this run: reread it top to bottom; remove what the
 new insight made superseded or said twice; check the lead still says who they
-are, what is live and what the user does next. Otherwise leave it.
+are, what is live and what the user does next. Otherwise leave it. The page
+should leave this run no longer than it came in, apart from the insights.
 
 Reply: insights added, questions left open (ranked, with the record that would
 answer each), and pages that should be linked or merged — never merge.
