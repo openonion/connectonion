@@ -17,7 +17,7 @@ from . import rem_look
 from .rem_look import highlight
 
 CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisations"), ("skills", "Skills"),
-              ("sessions", "AI sessions"))
+              ("sessions", "Agent sessions"))
 
 
 def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:

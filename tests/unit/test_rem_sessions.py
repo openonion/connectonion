@@ -77,7 +77,7 @@ def test_rem_session_codex_page_and_openable_sources(notebook):
     assert "## Sources\n- " + source in page
     from connectonion.rem.reader import snapshot, TEMPLATE
     data = snapshot(root, local=True)
-    assert "sessions" in data["categories"] and "AI sessions" in TEMPLATE.read_text()
+    assert "sessions" in data["categories"] and "Agent sessions" in TEMPLATE.read_text()
     assert data["source_context"][source]["excerpt"].startswith("Build a simple session reader")
     assert data["counts"]["sessions"] == {"mapped": 1, "written": 1}
 
@@ -724,7 +724,7 @@ def test_rem_import_sessions_summarise_cli_text_and_limit(notebook, monkeypatch)
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--summarise", "--limit", "7"])
     assert result.exit_code == 0, result.output
     lines = result.stdout.splitlines()
-    assert lines[0].startswith("AI sessions: 1 imported")
+    assert lines[0].startswith("Agent sessions: 1 imported")
     assert lines[1] == "Summarised 2 of 3 sessions in 1 batches; 1 left for next time; 3 quotes dropped"
     assert calls == [{"limit": 7}]
 

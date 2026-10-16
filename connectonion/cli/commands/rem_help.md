@@ -585,7 +585,7 @@ Back:     co rem advanced --help
 ## co rem import sessions
 
 ```
-Write one page per Codex or Claude Code conversation you typed in.
+Agent sessions: one page per Codex or Claude Code conversation you typed in.
 The import is deterministic and uses no model.
 Includes your typed messages and the final agent reply, with secret-shaped text removed.
 Automation, subagents and REM's own sessions stay out. Repeating the import updates

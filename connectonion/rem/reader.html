@@ -1088,6 +1088,58 @@
     .focus-head.purpose-lead .focus-more:not([hidden]) { margin-top: 0; }
     .focus-facts { gap: 8px; }
   }
+  /* Sessions keep structure above the attached conversation. */
+  .sessions-view { max-width: 880px; min-width: 0; }
+  .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary { font-family: var(--ui); font-size: 13px; }
+  .sessions-view button, .sessions-view select, .sessions-view input { color: var(--ink-2); border: 1px solid var(--line); background: var(--sheet); border-radius: 5px; }
+  .sessions-view button { cursor: pointer; padding: 6px 12px; min-height: 36px; }
+  .sessions-view [aria-pressed="true"] { color: var(--dawn); background: var(--dawn-soft); border-color: var(--dawn-line); }
+  .session-topics { margin: 24px 0 18px; padding: 14px 0; border-block: 1px solid var(--line); color: var(--ink-2); font: 13px var(--ui); }
+  .session-topic-buttons, .session-outcomes { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .session-topics button { border-radius: 999px; height: 32px; min-height: 32px; padding: 4px 11px; }
+  .session-topics summary { cursor: pointer; padding: 8px 0; min-height: 32px; width: fit-content; }
+  .session-unsummarised { display: block; color: var(--ink-3); margin-top: 10px; }
+  #session-search { display: block; width: 100%; height: 44px; padding: 10px 12px; margin: 18px 0 14px; font: 15px var(--ui); }
+  .session-filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 14px 20px; margin: 16px 0; }
+  .session-filter { display: flex; flex-direction: column; gap: 6px; max-width: 100%; color: var(--ink-3); font: 12px var(--ui); }
+  .session-filter select { height: 38px; padding: 6px 28px 6px 10px; max-width: 100%; }
+  .session-segments { display: flex; flex-wrap: wrap; gap: 3px; }
+  .session-dates { color: var(--ink-2); font: 13px var(--ui); }
+  .session-dates summary { cursor: pointer; min-height: 36px; padding: 8px 0; }
+  .session-dates label { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; }
+  .session-dates input { min-height: 38px; padding: 5px; min-width: 0; max-width: 100%; }
+  .session-filter-toggle { display: none; }
+  .session-result-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 14px 0 8px; color: var(--ink-3); font: 13px var(--ui); }
+  .session-person { margin-top: 8px; }
+  .session-day, .session-group > summary { display: flex; align-items: baseline; gap: 12px; font: 500 23px/1.4 var(--display); color: var(--ink); margin: 26px 0 8px; }
+  .session-count { font: 13px var(--ui); color: var(--ink-3); }
+  .session-group > summary { cursor: pointer; min-height: 40px; }
+  .session-group > summary::before { content: "›"; color: var(--ink-3); }
+  .session-group[open] > summary::before { content: "⌄"; }
+  .session-rows { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+  .session-row { padding: 16px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+  .session-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font: 18px/1.5 var(--text); }
+  .session-excerpt { margin: 4px 0; color: var(--ink-2); font: 15px/1.5 var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .session-speaker { font: 12px var(--ui); }
+  .session-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--ink-3); font: 12px var(--ui); }
+  .session-tags:empty { display: none; }
+  .session-tags a { display: inline-flex; align-items: center; min-height: 32px; }
+  .session-meta { margin-top: 5px; color: var(--ink-3); font: 12px/1.6 var(--ui); }
+  .session-meta a { color: inherit; }
+  @media (max-width: 719px) {
+    .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary, .session-tags a { min-height: 40px; }
+    .sessions-view [hidden] { display: none; }
+    .session-topics button { height: 40px; }
+    .session-filter-toggle { display: block; }
+    .session-filter-panel { display: none; }
+    .session-filter-panel.is-open { display: flex; }
+    .session-filter { width: 100%; }
+    .session-segments button { padding-inline: 10px; }
+    .session-dates label { display: flex; margin: 6px 0; }
+    #session-search { font-size: 16px; }
+    .session-title { min-height: 40px; display: block; line-height: 40px; }
+    .session-meta a { display: inline-flex; align-items: center; min-height: 40px; }
+  }
 </style>
 </head>
 <body>
@@ -1174,7 +1226,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", sessions: "AI sessions", notes: "AI notes", logs: "Maps"
+  agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -1582,7 +1634,7 @@ function known(r) {
   // Written or not is the census's answer (census.py), the one co rem status
   // counts with: a mapped skill's description or a project's paths read here
   // as findings, and "174 with findings" meant three written pages (#2008).
-  const status = r.category === "sessions" ? "Imported" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
+  const status = r.category === "sessions" ? "" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
@@ -1612,6 +1664,7 @@ function byActivity(a, b) {
   return auto(a) - auto(b) || rank(a) - rank(b) || known(b).last.localeCompare(known(a).last) || a.title.localeCompare(b.title);
 }
 function statusPill(r) {
+  if (r.category === "sessions") return null;
   const st = known(r).status;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
   return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
@@ -2173,7 +2226,8 @@ function nightBand() {
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
-    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews") };
+    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
+    ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -2719,19 +2773,18 @@ function contactDirectory() {
 }
 
 function category(c) {
+  if (c === "sessions") { sessionsView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
-  const project = c === "sessions" ? byPath(route().project) : null;
-  const items = (c === "all" ? listedRecords() : inCategory(c)).filter(r => !project || r.session_project === project.path);
-  const counts = project ? null : (REM.counts || {})[c];
+  const items = c === "all" ? listedRecords() : inCategory(c);
+  const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
-  if (project) main.appendChild(el("p", {}, ["Project: ", el("a", { href: href(project), text: project.title }), " · ", el("a", { href: "#c=sessions", text: "All AI sessions" })]));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
-    items.length || other ? el("span", { class: "mono", text: (c === "sessions" ? items.length + " sessions" : counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
+    items.length || other ? el("span", { class: "mono", text: (counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
       + (other ? " · " + other + " other contacts" : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
@@ -2748,8 +2801,6 @@ function category(c) {
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
-      : c === "sessions" ? el("div", { class: "empty" }, [el("span", { class: "lead", text: project ? "No sessions for this project yet" : "No AI sessions yet" }),
-        "Import conversations you typed in with ", el("code", { text: remCommand("import sessions") }), ". Init and sync also import approved sources."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
@@ -2757,17 +2808,256 @@ function category(c) {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
-  if (c === "sessions") {
-    const days = new Map();
-    for (const r of items.sort(sessionOrder)) {
-      const day = r.session_date || "Undated";
-      if (!days.has(day)) days.set(day, []);
-      days.get(day).push(r);
-    }
-    for (const [day, records] of days) main.append(el("h2", { text: fmtDate(day) }), el("ul", { class: "hits" }, records.map(r => row(r))));
-  }
-  else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- sessions: structure first, conversations searchable ----------
+const SESSION_TEXT = new Map();
+const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "by", "person", "tag", "outcome"];
+const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
+function sessionText(r) {
+  if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
+  const clean = text => String(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
+  const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
+  const fields = { title: clean(r.session_title || r.title), summary: clean(r.session_summary),
+    tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply") };
+  fields.lower = Object.values(fields).join("\n").toLowerCase();
+  SESSION_TEXT.set(r.path, fields);
+  return fields;
+}
+function sessionTerms(query) { return [...new Set((query || "").toLowerCase().split(/\s+/).filter(Boolean))]; }
+function sessionHash(state) {
+  const params = new URLSearchParams({ c: "sessions" });
+  for (const key of SESSION_KEYS) if (state[key]) params.set(key, state[key]);
+  return "#" + params.toString();
+}
+function sessionActive(state) { return SESSION_KEYS.filter(key => key !== "by" && state[key]); }
+function sessionAgent(r) { return (r.session_agent || "").toLowerCase().replaceAll(" ", "-"); }
+function sessionStart(when) {
+  const today = calendarDay(REM.as_of);
+  if (when === "month") return today.slice(0, 8) + "01";
+  if (when !== "week") return today;
+  const monday = new Date(today + "T00:00:00Z");
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+  return monday.toISOString().slice(0, 10);
+}
+function sessionMatches(r, state, terms, structure = true) {
+  if (state.project && (state.project === "none" ? !!r.session_project : r.session_project !== state.project)) return false;
+  if (state.agent && sessionAgent(r) !== state.agent) return false;
+  if (state.person && !(byPath(state.person)?.session_mentions || []).includes(r.path)) return false;
+  const from = state.from || (state.when ? sessionStart(state.when) : "");
+  const to = state.to || (state.when ? calendarDay(REM.as_of) : "");
+  if (from && (r.session_date || "") < from || to && (!r.session_date || r.session_date > to)) return false;
+  if (structure && state.tag && !(r.session_tags || []).includes(state.tag)) return false;
+  if (structure && state.outcome && r.session_outcome !== state.outcome) return false;
+  return terms.every(term => sessionText(r).lower.includes(term));
+}
+function sessionHighlight(text, terms) {
+  if (!terms.length) return esc(text);
+  const lower = text.toLowerCase(), spans = [];
+  for (const term of terms) {
+    let at = lower.indexOf(term);
+    while (at !== -1) { spans.push([at, at + term.length]); at = lower.indexOf(term, at + term.length); }
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]); else merged.push(span);
+  }
+  let at = 0, html = "";
+  for (const [start, end] of merged) {
+    html += esc(text.slice(at, start)) + highlight(text.slice(start, end), lower.slice(start, end));
+    at = end;
+  }
+  return html + esc(text.slice(at));
+}
+function sessionExcerpt(r, terms) {
+  const text = sessionText(r);
+  if (terms.length && !terms.some(term => text.title.toLowerCase().includes(term))) {
+    for (const key of ["summary", "tags", "you", "agent"]) {
+      const positions = terms.map(term => text[key].toLowerCase().indexOf(term)).filter(at => at >= 0);
+      if (!positions.length) continue;
+      const start = Math.max(0, Math.min(...positions) - 50), end = start + 160;
+      return { speaker: key === "you" ? "You:" : "Agent:", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
+    }
+  }
+  return { speaker: "", text: text.summary || text.agent };
+}
+function sessionRow(r, terms) {
+  const state = route(), text = sessionText(r), excerpt = sessionExcerpt(r, terms);
+  const project = byPath(r.session_project), folder = r.session_folder || "";
+  const meta = el("div", { class: "session-meta" }, [project ? el("a", { href: href(project), text: project.title })
+    : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder })]);
+  const clock = (state.by === "project" ? shortDate(r.session_date) + " " : "") + (r.session_time || "");
+  meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), (r.session_turns || 0) + (r.session_turns === 1 ? " turn" : " turns")].filter(Boolean).join(" · ")));
+  const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
+    href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
+  if (["done", "partial", "abandoned"].includes(r.session_outcome)) tags.appendChild(el("span", { text: SESSION_OUTCOMES[r.session_outcome] }));
+  return el("li", { class: "session-row" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
+    el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
+      el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta]);
+}
+function sessionGroups(records, state, terms) {
+  const groups = new Map(), content = document.createDocumentFragment();
+  for (const r of records) {
+    const key = state.by === "project" ? r.session_project || "none" : r.session_date || "Undated";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  if (state.by === "project" && groups.has("none")) { const none = groups.get("none"); groups.delete("none"); groups.set("none", none); }
+  let index = 0;
+  for (const [key, rows] of groups) {
+    const title = state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
+    const heading = [el("span", { text: title }), el("span", { class: "session-count", text: String(rows.length) })];
+    const list = el("ul", { class: "session-rows" }, rows.map(r => sessionRow(r, terms)));
+    if (state.by === "project") {
+      const group = el("details", { class: "session-group" }, [el("summary", {}, heading), list]);
+      group.open = !!terms.length || index < 3;
+      content.appendChild(group);
+    } else content.append(el("h2", { class: "session-day" }, heading), list);
+    index++;
+  }
+  return content;
+}
+function sessionButton(text, action, attrs = {}) {
+  const button = el("button", { type: "button", ...attrs, text });
+  button.onclick = action;
+  return button;
+}
+function sessionSegments(name, key, choices, change) {
+  const group = el("div", { class: "session-segments", role: "group", "aria-label": name });
+  for (const [value, text] of choices) group.appendChild(sessionButton(text, () => change(key, value), { "data-session-key": key, "data-value": value, "aria-pressed": "false" }));
+  return el("div", { class: "session-filter" }, [el("span", { text: name }), group]);
+}
+function sessionProjectSelect(records, change) {
+  const counts = new Map();
+  for (const r of records) counts.set(r.session_project || "none", (counts.get(r.session_project || "none") || 0) + 1);
+  const select = el("select", { "aria-label": "Project", "data-session-key": "project" }, [el("option", { value: "", text: "All projects" })]);
+  for (const [path, count] of [...counts].filter(([path]) => path !== "none").sort((a, b) => b[1] - a[1]))
+    select.appendChild(el("option", { value: path, text: (byPath(path)?.title || path) + " · " + count }));
+  if (counts.has("none")) select.appendChild(el("option", { value: "none", text: "No project · " + counts.get("none") }));
+  select.onchange = () => change("project", select.value);
+  return el("label", { class: "session-filter" }, [el("span", { text: "Project" }), select]);
+}
+function sessionDates(change, state) {
+  const dates = el("details", { class: "session-dates" }, [el("summary", { text: "Dates" })]);
+  dates.open = !!(state.from || state.to);
+  for (const key of ["from", "to"]) {
+    const input = el("input", { type: "date", "aria-label": key === "from" ? "From" : "To", "data-session-key": key });
+    input.onchange = () => change(key, input.value);
+    dates.appendChild(el("label", {}, [key === "from" ? "From " : "To ", input]));
+  }
+  return dates;
+}
+function sessionTopics(records, change) {
+  const tags = [...new Set(records.flatMap(r => r.session_tags || []))];
+  const row = el("div", { class: "session-topics" }, [el("span", { text: "Topics" })]);
+  const top = el("div", { class: "session-topic-buttons" });
+  const more = el("details", {}, [el("summary", { text: "More topics", "aria-controls": "session-topic-list" })]);
+  top.id = "session-topic-list";
+  const buttons = new Map(tags.map(tag => [tag, sessionButton(tag, () => change("tag", tag), { "aria-pressed": "false" })]));
+  top.append(...buttons.values());
+  more.ontoggle = () => {
+    for (const button of buttons.values()) button.hidden = button.dataset.available !== "true" || button.dataset.overflow === "true" && !more.open;
+  };
+  const outcomes = el("div", { class: "session-outcomes" });
+  const outcomeButtons = Object.entries(SESSION_OUTCOMES).map(([value, text]) => [value, sessionButton(text, () => change("outcome", value), { "aria-pressed": "false" })]);
+  outcomes.append(...outcomeButtons.map(([, button]) => button));
+  const missing = el("span", { class: "session-unsummarised" });
+  row.append(top, more, outcomes, missing);
+  row.hidden = !tags.length;
+  function sync(base, state) {
+    const counts = new Map();
+    for (const r of base) for (const tag of new Set(r.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
+    const sorted = [...buttons].sort((a, b) => (counts.get(b[0]) || 0) - (counts.get(a[0]) || 0) || a[0].localeCompare(b[0]));
+    let visible = 0;
+    for (const [tag, button] of sorted) {
+      const count = counts.get(tag) || 0;
+      const available = !!count || state.tag === tag;
+      button.dataset.available = String(available);
+      button.dataset.overflow = String(visible >= 16);
+      button.style.order = String(visible);
+      if (state.tag === tag && available && visible >= 16) more.open = true;
+      button.hidden = !available || visible >= 16 && !more.open;
+      button.textContent = tag + " " + count;
+      button.setAttribute("aria-pressed", String(state.tag === tag));
+      if (available) visible++;
+    }
+    more.hidden = visible <= 16;
+    for (const [value, button] of outcomeButtons) {
+      const count = base.filter(r => r.session_outcome === value).length;
+      button.hidden = !count && state.outcome !== value;
+      button.textContent = SESSION_OUTCOMES[value] + " " + count;
+      button.setAttribute("aria-pressed", String(state.outcome === value));
+    }
+    const n = base.filter(r => !r.session_summary && !r.session_tags?.length && !r.session_outcome).length;
+    missing.textContent = n ? "Not summarised " + n : "";
+  }
+  return { node: row, sync };
+}
+function sessionFilterNames(state) {
+  const names = { find: 'Search: “' + state.find + '”', project: "Project: " + (byPath(state.project)?.title || (state.project === "none" ? "No project" : state.project)),
+    agent: "Agent: " + ({ codex: "Codex", "claude-code": "Claude Code" }[state.agent] || state.agent),
+    when: { today: "Today", week: "This week", month: "This month" }[state.when], from: "From " + state.from, to: "To " + state.to,
+    person: "Mentioning " + (byPath(state.person)?.title || state.person), tag: "Topic: " + state.tag, outcome: "Outcome: " + (SESSION_OUTCOMES[state.outcome] || state.outcome) };
+  return sessionActive(state).map(key => names[key]).join(" · ");
+}
+function sessionResults(records, total, state, terms, change) {
+  const active = sessionActive(state), results = document.createDocumentFragment();
+  if (state.person) results.appendChild(sessionButton("Mentioning " + (byPath(state.person)?.title || state.person) + " ×", () => change("person", ""), { class: "session-person" }));
+  const line = el("div", { class: "session-result-line" }, [el("span", { role: "status", text: (active.length ? records.length + " of " : "") + total + " sessions" })]);
+  if (active.length) line.appendChild(sessionButton("Clear", () => change("clear", "")));
+  results.appendChild(line);
+  if (records.length) results.appendChild(sessionGroups(records, state, terms));
+  else results.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No session matches" }),
+    el("p", { text: active.length ? sessionFilterNames(state) : "Import conversations you typed in with " + remCommand("import sessions") + "." })]));
+  return results;
+}
+function sessionsView() {
+  const main = document.getElementById("main"), records = inCategory("sessions").sort(sessionOrder);
+  const state = Object.fromEntries(SESSION_KEYS.map(key => [key, route()[key] || ""]));
+  if (state.from || state.to) state.when = "";
+  const view = el("section", { class: "sessions-view" }), results = el("div", { id: "session-results" });
+  const topics = sessionTopics(records, change);
+  const search = el("input", { id: "session-search", type: "search", "aria-label": "Search sessions", placeholder: "Search what you typed and what the agent replied", value: state.find });
+  let timer;
+  search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { if (view.isConnected) change("find", search.value); }, 120); };
+  const panel = el("div", { class: "session-filter-panel", id: "session-filter-panel" }, [sessionProjectSelect(records, change),
+    sessionSegments("Agent", "agent", [["", "All"], ["codex", "Codex"], ["claude-code", "Claude Code"]], change),
+    sessionSegments("Time", "when", [["", "All"], ["today", "Today"], ["week", "This week"], ["month", "This month"]], change), sessionDates(change, state),
+    sessionSegments("View", "by", [["", "By day"], ["project", "By project"]], change)]);
+  const toggle = sessionButton("Filter", () => { const open = panel.classList.toggle("is-open"); toggle.setAttribute("aria-expanded", String(open)); },
+    { class: "session-filter-toggle", "aria-expanded": "false", "aria-controls": "session-filter-panel" });
+  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← Contents" })]), el("h1", { text: label("sessions") }), view);
+  view.append(topics.node, search, toggle, panel, results);
+  view.onclick = event => { const tag = event.target.closest("a[data-session-tag]"); if (tag) { event.preventDefault(); change("tag", tag.dataset.sessionTag); } };
+  function change(key, value) {
+    clearTimeout(timer);
+    state.find = search.value;
+    if (key === "clear") for (const name of SESSION_KEYS) { if (name !== "by") state[name] = ""; }
+    else state[key] = ["tag", "outcome"].includes(key) && state[key] === value ? "" : value;
+    if (key === "from" || key === "to") state.when = "";
+    if (key === "when") { state.from = ""; state.to = ""; }
+    history.replaceState(null, "", sessionHash(state));
+    update();
+  }
+  function update() {
+    const terms = sessionTerms(state.find), base = records.filter(r => sessionMatches(r, state, terms, false));
+    const matches = base.filter(r => sessionMatches(r, state, terms));
+    if (search.value !== state.find) search.value = state.find;
+    for (const control of panel.querySelectorAll("[data-session-key]")) {
+      const value = state[control.dataset.sessionKey];
+      if (control.tagName === "BUTTON") control.setAttribute("aria-pressed", String(control.dataset.value === value)); else control.value = value;
+    }
+    const count = sessionActive(state).filter(key => key !== "find").length;
+    toggle.textContent = "Filter" + (count ? " · " + count : "");
+    topics.sync(base, state);
+    results.replaceChildren(sessionResults(matches, records.length, state, terms, change));
+  }
+  update();
+  if (matchMedia("(min-width: 720px)").matches) search.focus({ preventScroll: true });
 }
 
 function sessionOrder(a, b) {

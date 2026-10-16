@@ -606,7 +606,8 @@ def _summary_prompt(rows: list[dict], tags: dict) -> str:
         'Followups: <=3 short open items left undone by final reply or last messages; keep people/project names as written. '
         'Tags: 3–6 per session. Reuse existing tags when they fit. New tags: lowercase, 1–2 words joined by "-", '
         'topic-level product, subsystem or kind of work (email, deploy, rem, billing, release, reader-ui), '
-        'never a session-specific phrase.\nExisting tags: ' + ', '.join(vocabulary)
+        'never a session-specific phrase, never a catch-all (workflow, platform, automation, tools, misc). '
+        '\nExisting tags: ' + ', '.join(vocabulary)
         + '\nSessions:\n')
     # Native argv is byte-bounded; CJK needs shorter samples to fit the same batch.
     for limit in (6000, 3000, 1500):
@@ -758,5 +759,5 @@ def summarise_line(report: dict) -> str:
 
 
 def summary(report: dict) -> str:
-    return (f"AI sessions: {report['imported']} imported, {report['updated']} updated, "
+    return (f"Agent sessions: {report['imported']} imported, {report['updated']} updated, "
             f"{report['unchanged']} unchanged; {sum(report['skipped'].values())} skipped; {report['seconds']}s")

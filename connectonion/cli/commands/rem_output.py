@@ -444,7 +444,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     lines = [rem_look.section('New material', said(material))]
     if batch.get('sessions'):
         from ...rem.sessions import summary
-        lines.append(rem_look.section('AI sessions', said(summary(batch['sessions']).removeprefix('AI sessions: '))))
+        lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
     if batch.get('failed_source'):
         lines.append(rem_look.section('Source failed', said(
             f"{batch['failed_source']}: {batch.get('error') or 'source could not be read'}")))
