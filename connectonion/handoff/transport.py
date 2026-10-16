@@ -37,7 +37,15 @@ def contacts() -> dict:
     """
     path = contacts_file()
     book = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    return {name: entry if isinstance(entry, dict) else {"mail": entry} for name, entry in book.items()}
+    return {name: _unbound(entry if isinstance(entry, dict) else {"mail": entry}) for name, entry in book.items()}
+
+
+def _unbound(entry: dict) -> dict:
+    """An agent mailbox's name that 1.9.3rc5 bound to a different agent (#2542) is a mail contact again:
+    its own agent is met when it next accepts, and the next save writes the book back corrected."""
+    if entry.get("agent") and not_theirs(entry["mail"], entry["agent"]):
+        return {"mail": entry["mail"]}
+    return entry
 
 
 def _save(book: dict) -> None:

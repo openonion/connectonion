@@ -177,3 +177,13 @@ def test_another_agent_accepting_a_handoff_sent_to_one_agents_mailbox_does_not_t
     assert book.get(bob, {}).get("agent") in (None, RECIPIENT["address"])
     assert book[mallory["mail"].split("@")[0]]["agent"] == mallory["address"]
     assert f"{bob} finished it" not in status and f"{bob} is working on it" not in status
+
+
+def test_a_name_rc5_already_bound_to_the_wrong_agent_is_a_plain_mail_contact_again(world):
+    """#2542, the data 1.9.3rc5 already wrote: the next read unbinds it, so nothing is boxed for the forwarder."""
+    world["be"](SENDER)
+    bob = RECIPIENT["mail"].split("@")[0]
+    transport._save({bob: {"mail": RECIPIENT["mail"], "agent": _agent(16)["address"], "inbox": True, "sealed": True},
+                     "alice": {"mail": SENDER["mail"], "agent": SENDER["address"], "inbox": True}})
+    assert transport.contacts()[bob] == {"mail": RECIPIENT["mail"]}
+    assert transport.contacts()["alice"]["agent"] == SENDER["address"]      # an email-named contact is any agent's
