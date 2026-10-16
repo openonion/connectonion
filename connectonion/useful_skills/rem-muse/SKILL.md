@@ -50,7 +50,8 @@ Ask from several angles:
 - **The page itself**: which sentence would mislead the user if they acted on
   it today? Which open thread is actually closed? Is another page the same
   person or project (same name, an address or handle that the material ties to
-  them)?
+  them)? Is each current `Insight` bullet, and the lead, still true and still
+  the most important thing — or left over from an earlier, thinner page?
 
 Then **choose the five** most worth pursuing: the ones whose answer would most
 change what the user understands or does, and that the originals can plausibly
@@ -120,9 +121,16 @@ verdict: insight | no insight | open
 ## Last turn — look back
 
 Only if the page was edited this run: reread it top to bottom; remove what the
-new insight made superseded or said twice; check the lead still says who they
-are, what is live and what the user does next. Otherwise leave it. The page
-should leave this run no longer than it came in, apart from the insights.
+new insight made superseded or said twice; rewrite the lead if this run's
+insights changed who they are, what is live or what the user does next.
+Otherwise leave it. The page should leave this run no longer than it came in,
+apart from the insights.
+
+Then bring the page back to its kind's shape, which enrich does not do:
+`History` within the page rule's limit — fold the oldest lines into one dated
+sentence per period (`- 2026-07 to 2026-09: <what changed> [n][n]`), never a
+semicolon list; `Our relationship` a state, with long contract quotes cut to
+the clause the user acts on; no blank lines inside a list.
 Removing repetition merges sentences; it never removes a `“…”` quote or a
 citation — compare with the page at the start of the run and restore any that
 went missing. Every `[n]` must be defined under `Sources`.
