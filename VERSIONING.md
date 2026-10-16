@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc1
+## Current Version: 1.9.3rc2
+
+1.9.3rc2 is the second 1.9.3 release candidate; stable remains 1.9.2. `co rem` keeps your coding
+sessions as Agent sessions: `co rem import sessions` writes one page per Codex or Claude Code
+conversation you typed in, with what it produced and its project, and `--summarise` adds a title,
+summary, topic tags, outcome and your verified decisions. The reader lists them by topic with one
+search and filters. Also reader fixes: one obligation counted once, calm empty states, last night's
+runs drawn as stretches, code and paths keep their case. See [1.9.3rc2 notes](docs/releases/1.9.3rc2.md).
+
+- 1.9.3rc2 (Agent sessions).
+
+## Previous preview: 1.9.3rc1
 
 1.9.3rc1 is the 1.9.3 release candidate; stable remains 1.9.2. This candidate's `co rem` was given a
 real first run: a fresh notebook over 180 days of mail and coding sessions. It found pages lost
