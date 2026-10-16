@@ -29,7 +29,10 @@ not followed. A lead is anything that could hold more:
 - **An older period**: first contact earlier than the page's First contact;
   mail before the window init read.
 - **Another channel**: the same person in sessions, GitHub issues, WhatsApp,
-  another mailbox or address.
+  another mailbox or address. The subject's agent mailboxes and aliases
+  (`<name>@mail.openonion.ai`, `0x…@mail.openonion.ai`, a relay or handoff
+  address) are their channels too: search mail from and to each one as you
+  would their own address.
 - **A number or date** that implies another record: an invoice number, an
   order, a meeting, a deadline someone must have acted on.
 - **The reading ledger itself**: every kind of source it lists that the page
@@ -65,6 +68,14 @@ Most promising first: what could change the lead, Open threads or Facts.
 - A web page about someone with the same name is not this person unless
   something ties them (the same address, company, photo caption, link from
   their mail).
+- A personal contact detail found on the web (a mobile or WhatsApp number, a
+  home address, a private email) goes on the page only if the subject
+  published it themselves for people to contact them (their own site or
+  profile's contact section), and it ends with `[personal]` before its claim
+  number: `+61 4xx xxx xxx (WhatsApp, on their site for contact) [personal]
+  [9]`. A number on a company page is the company's: qualify it so. Anything
+  else found about their private life stays off the page.
+- Anything you add to `Uncertainties` is a question ending in `?`.
 
 Keep the page near the page rules' size (about 15,000 characters). As it
 fills, add only what changes Facts, the lead, `Open threads` or `History`;

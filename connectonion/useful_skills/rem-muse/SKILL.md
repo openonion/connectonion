@@ -84,9 +84,9 @@ Decide one of:
   says it, or the page already says it, it is not an insight. Your reply
   names the two or more sources it needed. **Only now edit the page**: put it, cited, in the right
   place (`Insight` as `At stake:`/`Changed:`/`Pattern:`, a turn in `History`,
-  a closed thread out of `Open threads`, a correction where the error was),
-  and adjust the lead if it changes who they are, what is live or what the
-  user does next.
+  a closed thread out of `Open threads`, a correction where the error was).
+  If it changes who they are, what is live or what the user does next,
+  rewrite that sentence of the lead now.
 - **no insight** — the answer is a restatement, a detail, or already on the
   page. **Do not edit the page.** Say so; that is a normal result.
   A page that already *links* another page has not said they are the same
@@ -104,9 +104,14 @@ Decide one of:
 Never answer from plausibility. An inference is labelled and rests on quotes.
 Each edit is small and cited; never rewrite a correct section, never drop a
 cited fact that is still true, keep every quote verbatim.
-An insight is written as a finding the user can act on, not as a hedge; an
-`Insight` bullet never starts with or contains `Inference:` — if it needs that
-label it is not ready. `Insight` keeps at most four bullets, so a new one
+An `Insight` bullet states what is true and why it matters — a finding, not
+advice and not a hedge. It never tells the user what to do (`verify`,
+`agree`, `complete`, `confirm`, `pursue`, `should`): the action goes in the
+lead's next step or in `Open threads`. Not `At stake: confirm the renewal
+before 30 November`, but `At stake: the contract renews at A$15k on
+2026-11-30 unless one side gives notice, and neither has [4][9]`. It never
+starts with or contains `Inference:` — if it needs that label it is not
+ready. `Insight` keeps at most four bullets, so a new one
 replaces the weakest (move that one's fact, quotes and citations where they
 belong). An insight adds a sentence or two, not a
 paragraph of supporting quotes. The owner is `the user`, never their name.
@@ -122,17 +127,30 @@ verdict: insight | no insight | open
 
 ## Last turn — look back
 
-Only if the page was edited this run: reread it top to bottom; remove what the
-new insight made superseded or said twice; rewrite the lead if this run's
-insights changed who they are, what is live or what the user does next.
-Otherwise leave it. The page should leave this run no longer than it came in,
-apart from the insights.
+Only if the page was edited this run: reread it top to bottom and remove what
+the new insights made superseded or said twice.
+
+Then check the lead against every insight this run added and every `Insight`
+bullet (a project page: the newest `Where it stands` bullet and `Open
+threads`). Ask of each: does it change who they are to the user, what is
+live, or what the user does next? If yes, the lead must say so — rewrite its
+sentences to name the most consequential live item and the user's actual next
+step as they stand now, keeping each quote the lead had (move one you no
+longer lead with to where it belongs). A lead that still reads as the page
+did before this run, after an insight changed what is live, is wrong. In
+your reply, give the lead before and after, or the insight that left it
+standing and why.
+
+The page should leave this run no longer than it came in, apart from the
+insights.
 
 Then bring the page back to its kind's shape, which enrich does not do:
-`History` within the page rule's limit — fold the oldest lines into one dated
-sentence per period (`- 2026-07 to 2026-09: <what changed> [n][n]`), never a
+`History` (a project's `Key decisions`) at most sixteen lines — fold the
+oldest lines into one dated sentence per period (`- 2026-07 to 2026-09: <what changed> [n][n]`), never a
 semicolon list; `Our relationship` a state, with long contract quotes cut to
-the clause the user acts on; no blank lines inside a list.
+the clause the user acts on; each `Uncertainties` bullet one question ending
+in `?`, then its citations; every `Insight` bullet a finding with no
+instruction in it; no blank lines inside a list.
 Removing repetition merges sentences; it never removes a `“…”` quote or a
 citation — compare with the page at the start of the run and restore any that
 went missing. Every `[n]` must be defined under `Sources`.
