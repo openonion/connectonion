@@ -167,6 +167,32 @@ def reader(tmp_path, monkeypatch):
         assert not requests, requests
 
 
+@pytest.mark.parametrize("width", [390, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 844})
+    page.emulate_media(color_scheme=theme)
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate(r"""() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      r.title = 'ConnectOnion'; r.domain = 'connectonion.com';
+      r.text = r.text.replace(/^# .*/, '# connectonion.com')
+        .replace(/^## Domains\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    assert page.locator('.page-head h1').inner_text() == 'ConnectOnion'
+    domain = page.locator('.page-head .section-sub')
+    assert domain.inner_text() == 'connectonion.com'
+    assert domain.is_visible()
+    assert domain.bounding_box()['y'] >= page.locator('.page-head h1').bounding_box()['y']
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.goto(uri + '#c=orgs')
+    row = page.get_by_role('row').filter(has=page.get_by_role('link', name='ConnectOnion', exact=True))
+    assert row.get_by_role('cell', name='connectonion.com', exact=True).is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
     # One count everywhere: the heading says what "See all" and the sidebar say; the rows are the top three.

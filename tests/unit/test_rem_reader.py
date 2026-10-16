@@ -15,6 +15,69 @@ from connectonion.rem.reader import contact_candidates, open_reader, reader_path
 HOSTILE = "# Alice\n\nSaid: <script>alert(1)</script> and </script><img src=x onerror=alert(2)>\n"
 
 
+def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
+    from connectonion.rem.reader import snapshot
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    pages = {
+        "orgs/resdemou-com-1.md": "# resdemou.com\n\nResdemou's legal identity is recorded.\n",
+        "orgs/connectonion-com-2.md": "# connectonion.com\n\nAn agent framework.\n",
+        "orgs/morganpost-net-3.md": "# morganpost.net\n\nNo name stated.\n\n## Sources\n- MorganPost archived mail\n",
+        "orgs/blackdiamondz-com-au-4.md": "# blackdiamondz.com.au\n\nBlack Diamondz manages properties.\n",
+        "orgs/named.md": "# An existing title\n\nConnectOnion operates here.\n",
+        "projects/domain.md": "# resdemou.com\n\nResdemou operates here.\n",
+        "people/alice.md": "# Alice\n\n## Facts\n- Company: [ConnectOnion](../orgs/connectonion-com-2.md) [3]\n",
+        "people/bob.md": "# Bob\n\n- Company: [An older name](../orgs/resdemou-com-1.md) [1]\n",
+    }
+    for path, text in pages.items():
+        notebook.write(path, text)
+    before = {p.relative_to(tmp_path).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in tmp_path.rglob("*") if p.is_file()}
+
+    records = {r["path"]: r for r in snapshot(tmp_path)["records"]}
+    for path, name, domain in [("orgs/resdemou-com-1.md", "Resdemou", "resdemou.com"),
+                               ("orgs/connectonion-com-2.md", "ConnectOnion", "connectonion.com"),
+                               ("orgs/blackdiamondz-com-au-4.md", "Black Diamondz", "blackdiamondz.com.au")]:
+        assert records[path]["title"] == name
+        assert records[path]["domain"] == domain
+        assert records[path]["text"] == pages[path]
+    assert records["orgs/morganpost-net-3.md"]["title"] == "morganpost.net"
+    assert "domain" not in records["orgs/morganpost-net-3.md"]
+    assert records["orgs/named.md"]["title"] == "An existing title"
+    assert "domain" not in records["orgs/named.md"]
+    assert records["projects/domain.md"]["title"] == "resdemou.com"
+    assert "domain" not in records["projects/domain.md"]
+    assert before == {p.relative_to(tmp_path).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns)
+                      for p in tmp_path.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("domain, text, expected", [
+    ("blackdiamondz.com.au", "Black Diamondz manages properties.", "Black Diamondz"),
+    ("connectonion.com", "Connectonion began. ConnectOnion grew. ConnectOnion ships.", "ConnectOnion"),
+    ("resdemou.com", "Resdemou’s legal identity.", "Resdemou"),
+    ("onetwothreefourfive.com", "One Two Three Four Five operates here.", ""),
+    ("blackdiamondz.com.au", "Black and Diamondz are separate words.", ""),
+    ("resdemou.com", "resdemou is lowercase.", ""),
+    ("resdemou.com", "No name.\n\n## Sources\nResdemou is only a source.\n\n## History\nNothing new.", ""),
+])
+def test_org_prose_name_matches_capitalised_runs_and_most_frequent_spelling(domain, text, expected):
+    from connectonion.rem.reader import _org_name
+
+    assert _org_name(domain, f"# {domain}\n\n{text}\n") == expected
+
+
+def test_org_company_name_uses_the_most_common_linked_company_fact():
+    from connectonion.rem.reader import _org_company_name
+
+    values = ["Older name", "connectonion.com", "connectonion.com", "ConnectOnion", "ConnectOnion"]
+    records = [{"path": f"people/{i}.md", "category": "people",
+                "text": f"# Person {i}\n\n- Company: [{value}](../orgs/co.md) [3]\n"}
+               for i, value in enumerate(values)]
+    assert _org_company_name("orgs/co.md", records) == "ConnectOnion"
+    assert _org_company_name("orgs/other.md", records) == ""
+
+
 @pytest.mark.parametrize("protocol", ["file:", "about:"])
 def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol):
     root = tmp_path / "owner's notebook"

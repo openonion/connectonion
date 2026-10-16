@@ -9,9 +9,11 @@ served site later would hand it the same object over HTTP instead.
 import hashlib
 import json
 import os
+import posixpath
 import re
 import tempfile
 import webbrowser
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from .service import run_logs, seen_outcome, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
+BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
 def _title(record: str, text: str) -> str:
@@ -27,6 +30,39 @@ def _title(record: str, text: str) -> str:
         if line.startswith("#"):
             return line.lstrip("#").strip() or record
     return Path(record).stem.replace("-", " ")
+
+
+def _org_name(domain: str, text: str) -> str:
+    """Find a capitalised spelling of the first domain label in the page itself."""
+    body = re.sub(r"^## Sources[ \t]*\n.*?(?=^## |\Z)", "", text, flags=re.I | re.M | re.S)
+    body = re.sub(r"^#[ \t]+.*$", "", body, flags=re.M)
+    label = re.sub(r"[^a-z]", "", domain.split(".")[0])
+    tokens = list(re.finditer(r"(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]*(?:[’']s)?(?![A-Za-z0-9])", body))
+    names = Counter()
+    for start, first in enumerate(tokens):
+        words, end = [], first.start()
+        for token in tokens[start:start + 4]:
+            if words and not body[end:token.start()].isspace():
+                break
+            words.append(re.sub(r"[’']s$", "", token.group()))
+            end = token.end()
+            if re.sub(r"[^a-z]", "", "".join(words).lower()) == label:
+                names[" ".join(words)] += 1
+    return names.most_common(1)[0][0] if names else ""
+
+
+def _org_company_name(path: str, records: list[dict]) -> str:
+    """People's Company facts can name an organisation whose own prose does not."""
+    names = Counter()
+    for person in records:
+        if person["category"] != "people":
+            continue
+        for fact in re.findall(r"^-[ \t]+Company:[ \t]*(.+)$", person["text"], re.M):
+            for name, link in re.findall(r"\[([^\]]+)\]\(([^)#]+)", fact):
+                linked = posixpath.normpath(posixpath.join(posixpath.dirname(person["path"]), link))
+                if linked == path and not BARE_DOMAIN.fullmatch(name.lower()):
+                    names[name.strip()] += 1
+    return names.most_common(1)[0][0] if names else ""
 
 
 def mail_facts(root: Path) -> dict:
@@ -117,6 +153,11 @@ def snapshot(root: Path, local: bool = False) -> dict:
     found = pages(root)
     mail, index = mail_facts(root), index_rows(root)
     for record in records:
+        if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
+            domain = record["title"]
+            name = _org_name(domain, record["text"]) or _org_company_name(record["path"], records)
+            if name:
+                record.update(title=name, domain=domain)
         if record["path"] in mail:
             record["mail"] = mail[record["path"]]
         if record["path"] in index:

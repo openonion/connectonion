@@ -1813,7 +1813,7 @@ function facts(r) {
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
-    domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
+    domain: r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
@@ -3228,6 +3228,7 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
     ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
+  if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
