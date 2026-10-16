@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc5
+## Current Version: 1.9.3rc6
+
+1.9.3rc6 is the sixth 1.9.3 release candidate; stable remains 1.9.2. A handoff addressed to one
+agent's mailbox and accepted by another agent (a forwarded link) no longer re-points that name to the
+acceptor's key, and names rc5 already re-pointed read as mail contacts again (#2542). See
+[1.9.3rc6 notes](docs/releases/1.9.3rc6.md).
+
+- 1.9.3rc6 (a forwarded link no longer takes the name).
+
+## Previous preview: 1.9.3rc5
 
 1.9.3rc5 is the fifth 1.9.3 release candidate; stable remains 1.9.2. `co handoff` is end-to-end
 encrypted: `send` seals the handoff on the sender's machine and the key travels after `#` in the
@@ -409,7 +418,7 @@ agent's key. The pasted prompt's install floor is 1.9.3rc5. See [1.9.3rc5 notes]
 
 - 1.9.3rc5 (handoffs sealed).
 
-## Previous preview: 1.9.3rc4
+## Earlier preview: 1.9.3rc4
 
 1.9.3rc4 is the fourth 1.9.3 release candidate; stable remains 1.9.2. It fixes `co rem enrich` and
 `co rem muse` as rc3 shipped them: a Codex sub-agent finishing no longer ends the main turn, enrich's
