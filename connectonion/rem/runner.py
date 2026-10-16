@@ -1143,7 +1143,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    + ("" if stage in ("enrich", "muse") else " and end your reply with NO CHANGE") + ". "
                    "Write only that candidate file using an available local file tool. "
                    "The runner owns validation and replacement. Do not start nested co rem jobs. "
-                   "After the candidate is complete, stop using tools and return a brief coverage summary. ")
+                   # enrich and muse end on the reply their Skill asks for: the lead list, the
+                   # insights and open questions. Asked for a coverage summary, the 2026-10-16 trial
+                   # enrich ended on that instead of its leads.
+                   + ("After the candidate is complete, stop using tools and give the final reply the Skill asks for. "
+                      if stage in ("enrich", "muse") else
+                      "After the candidate is complete, stop using tools and return a brief coverage summary. "))
     else:
         if stage in ("maintain", "abstract"):
             task_root = directory / "notebook"

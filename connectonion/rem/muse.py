@@ -84,6 +84,8 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
                                  f"(search with rg -il). Attachments: {root}/.state/attachments."}
         items = [_page_item(root, record, page), coverage_item, ledger,
                  *_cited_originals(root, page, set(ledger["sources"]))]
+        if stage_progress:
+            stage_progress("following leads")
         result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
     finally:
         shutil.rmtree(directory, ignore_errors=True)
