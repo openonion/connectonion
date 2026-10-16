@@ -526,7 +526,7 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
 
 
 def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
-                    consented_only: bool = False) -> dict:
+                    consented_only: bool = False, lock_held: bool = False) -> dict:
     if days < 1:
         raise RemError("Session import days must be positive")
     started = time.monotonic()
@@ -535,7 +535,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
     counts = {"imported": 0, "updated": 0, "unchanged": 0}
     skipped = Counter()
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
         settings = {"days": days, "timezone": str(zone), "format": 4}
         if progress.get("settings") != settings:

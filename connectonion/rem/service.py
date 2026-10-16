@@ -847,8 +847,10 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
     from .sessions import import_sessions
-    sessions = import_sessions(root, consented_only=True)
+    # Inside the sync's own lock: waiting for it here made a second sync sit for
+    # the write wait and then run, instead of saying at once that co rem is busy.
     with maintenance_lock(root), _terminate_as_interrupt():
+        sessions = import_sessions(root, consented_only=True, lock_held=True)
         config = validate(read_config(root))
         abandon_stale_runs(root)
         # An upgraded notebook is tidied by its first sync, before anything reads it (#1999).
