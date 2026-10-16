@@ -766,6 +766,9 @@ def _recipient_status(code: dict, mails: list[dict], quiet: bool = False) -> Non
 # ---- recipient: accept, ask ----
 
 def _parse(code: str) -> dict:
+    """The code, given the code or the handoff's link: an agent that accepted with the link asks with it too
+    (Codex, 2026-10-17)."""
+    code = _resolved(code)
     try:
         return replies.parse_code(code)
     except ValueError as error:

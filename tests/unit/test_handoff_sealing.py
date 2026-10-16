@@ -80,6 +80,8 @@ def test_the_pasted_line_carries_the_key_and_accept_takes_the_link(world):
     accepted = _invoke("handoff", "accept", link)
     assert accepted.exit_code == 0, accepted.output
     assert "co handoff done coh4." in " ".join(accepted.output.split())   # what follows names the code, not the link
+    asked = _invoke("handoff", "ask", link, "Per folder or global?")      # and an agent that keeps the link still gets through
+    assert asked.exit_code == 0, asked.output
 
 
 def test_a_link_without_its_key_says_so_and_accepts_nothing(world):
