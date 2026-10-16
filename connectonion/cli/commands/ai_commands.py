@@ -88,7 +88,7 @@ def handle_ai(
 
     if harness != _harness.OURS or harness not in _harness.HARNESSES:
         _handle_delegated(harness, prompt, model, json_output, sandbox, timeout,
-                          permission_mode, speed)
+                          permission_mode, speed, resume)
         return
 
     problem = _harness.validate_speed(harness, speed)
@@ -182,7 +182,7 @@ def _this_co_first() -> None:
 
 
 def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600,
-                      permission_mode="default", speed=None) -> None:
+                      permission_mode="default", speed=None, resume=None) -> None:
     """Hand the whole task to a native coding agent, spending none of our tokens.
 
     This is the point of the flag: reaching Codex used to cost a full turn of
@@ -205,7 +205,7 @@ def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600,
         # An unset --model means "your default", not ours, which names nothing
         # in the delegate's catalogue.
         answer = _harness.run(harness, prompt, model or "", sandbox=sandbox, timeout=timeout,
-                              permission_mode=permission_mode, speed=speed or "standard")
+                              permission_mode=permission_mode, speed=speed or "standard", session_id=resume or "")
     except ValueError as exc:  # skill missing, or its requirements are not met
         if json_output:
             _print_envelope(None, None, "error", str(exc))

@@ -210,6 +210,27 @@ def project_paths(page: str) -> list[str]:
     return [_listed_path(line) for line in section.splitlines() if _listed_path(line)]
 
 
+def page_handles(notebook: Notebook, record: str, handle=()) -> tuple[str, list[str]]:
+    """The subject's known names and channels; projects use their mapped paths."""
+    from .files import split_handles
+
+    text = notebook.read(record)
+    title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
+    if record.startswith("projects/"):
+        # A project is read from where it lives. Only explicitly named handles
+        # select its mail; its title alone matches unrelated notifications.
+        return title, list(dict.fromkeys([*handle, *project_paths(text), title]))
+    known = []
+    if record.startswith("people/"):
+        person = next((p for p in notebook.people() if p["path"] == record), {})
+        known += person.get("emails", []) + person.get("aliases", [])
+    for line in text.splitlines():
+        low = line.strip().lstrip("-").strip().casefold()
+        if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
+            known += split_handles(line.split(":", 1)[1])
+    return title, list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
+
+
 def _listed_path(line: str) -> str:
     quoted = re.match(r"^- `(/[^`]+)`(?:\s|$)", line)
     if quoted:

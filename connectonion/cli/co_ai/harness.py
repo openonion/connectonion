@@ -137,7 +137,8 @@ def expand_skill(prompt: str) -> str:
 
 
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
-        sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard") -> dict:
+        sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard",
+        session_id: str = "") -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
 
     Each delegate answers in its own JSON shape and with its own idea of what
@@ -154,11 +155,11 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
         # tool fails closed on an unexpected approval callback rather than
         # hanging on a prompt nobody will answer.
         raw = codex(prompt=text, cwd=cwd, sandbox=sandbox, model=model,
-                    timeout=timeout, approval="auto", speed=speed)
+                    timeout=timeout, approval="auto", speed=speed, session_id=session_id)
     else:
         from ...useful_tools.claude_code import _run_claude_code
         raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout,
-                               permission_mode=permission_mode)
+                               permission_mode=permission_mode, session_id=session_id)
 
     try:
         answer = json.loads(raw)

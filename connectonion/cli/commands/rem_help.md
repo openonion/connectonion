@@ -12,6 +12,9 @@ Experimental: a preview; its commands may change before 1.9.0.
 Build (once)
   init          Build the notebook from mail and sessions, investigate mapped pages, then offer nightly upkeep.
   investigate   Fill a page, a whole category, or your own page, using a model.
+Deepen one page
+  enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
+  muse          Think one page through: ask many questions, study the five best, write only on insight.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
@@ -224,6 +227,51 @@ Requires: co rem init.
 Output:   The updated pages, and one line per page: accepted, refused (and why), or skipped.
 
 Next:     co rem show PAGE
+Back:     co rem --help
+```
+
+## co rem enrich
+
+```
+co rem enrich — follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
+
+Read one existing people, projects or orgs page, its cited originals and the
+reachable saved archive (up to ten years). Follow unread links, attachments and
+older threads; add what they establish and return followed, open and blocked
+leads. No live mailbox is searched; the agent may open links on the web.
+The same review gate as investigate decides whether the page is saved.
+
+Usage:    co rem enrich PAGE
+Example:  co rem enrich people/avery-lin.md
+
+Inputs:   PAGE is a path, stem, title or email. Other notebook pages provide context.
+Output:   Whether the page changed, its size before and after, and the lead list.
+Effects:  Uses the configured model; only the selected page can change.
+
+Next:     co rem show people/avery-lin.md
+Back:     co rem --help
+```
+
+## co rem muse
+
+```
+co rem muse — think one page through: ask many questions, study the five best, write only on insight.
+
+Read one existing people, projects or orgs page, its cited originals, other
+notebook pages for context, and this page's latest completed enrich and muse
+reports. One thread of seven turns: ask twenty questions and pick five; study
+one per turn; look back. Edit only on insight. The same review gate as investigate
+decides whether the page is saved. A page that lost a quote or a source id is
+put back as it was at the start of the run, with the reason reported.
+
+Usage:    co rem muse PAGE
+Example:  co rem muse people/avery-lin.md
+
+Inputs:   PAGE is a path, stem, title or email. Saved originals and earlier open leads.
+Output:   Whether the page changed, its size before and after, insights and open questions.
+Effects:  Uses the configured model over seven turns; only the selected page can change.
+
+Next:     co rem show people/avery-lin.md
 Back:     co rem --help
 ```
 

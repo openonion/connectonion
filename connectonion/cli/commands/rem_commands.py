@@ -211,7 +211,8 @@ def _logged(root, record, phase, call, quiet=False):
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
     from .rem_output import Turn
-    turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…"}
+    turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…",
+                 "enrich": f"Enriching {record}…", "muse": f"Musing on {record}…"}
                 .get(phase, f"Investigating {record}…"), quiet=quiet)
 
     # Where the time went, stage by stage: a one-day investigation took 8
@@ -423,7 +424,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
                       quiet=False, retry_refused=False, rounds=None):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
-    from ...rem.files import RemError, split_handles
+    from ...rem.files import RemError
     from ...rem.service import subscriptions
     if record.startswith("skills/"):
         if retry_refused:
@@ -434,24 +435,9 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     if eval_dir:
         raise RemError("--eval-dir applies only to skills pages")
     text = notebook.read(record)
-    title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
-    known = []
-    if record.startswith("people/"):
-        person = next((p for p in notebook.people() if p["path"] == record), {})
-        known += person.get("emails", []) + person.get("aliases", [])
-    for line in text.splitlines():
-        low = line.strip().lstrip("-").strip().casefold()
-        if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
-            known += split_handles(line.split(":", 1)[1])
-    handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
+    title, handles = rem_investigate.page_handles(notebook, record, handle)
     clients = _mail_clients(root)
     if record.startswith("projects/"):
-        # A project is read from where it lives: the sessions run in its
-        # folders. Matching mail on its name pulled in every notification
-        # and signature that mentioned it -- 3,500 mails scanned for one
-        # project on a real mailbox, then a turn that timed out. Mail about
-        # a project comes in through --handle, named on purpose.
-        handles = list(dict.fromkeys([*handle, *rem_investigate.project_paths(text), title]))
         clients = {kind: client for kind, client in clients.items() if handle}
     skipped = "" if clients or not record.startswith("projects/") else \
         "not read for a project page; name its mail with --handle"
@@ -459,6 +445,26 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
         stage_progress=update, retry_refused=retry_refused, rounds=rounds), quiet=quiet)
+
+
+def _deepen_page(ctx, page, stage):
+    from ...rem import muse as muse_module
+    from ...rem.files import Notebook
+
+    def operation(root):
+        record = _resolve_page(Notebook(root), page)
+        function = muse_module.enrich if stage == "enrich" else muse_module.muse
+        result = _logged(root, record, stage, lambda update: function(root, record, stage_progress=update))
+        before, after = result["page_chars"]
+        value = {"page": record, "changed": "yes" if result["changed"] else "no",
+                 "page_chars": f"{before:,} -> {after:,}"}
+        if result.get("restored"):
+            value["restored"] = result["restored"]
+        value["leads" if stage == "enrich" else "result"] = result["report"]
+        return value, ["show", record]
+
+    retry = [stage, page]
+    _handle(ctx, operation, retry, retry=retry, resume=retry)
 
 
 # The first run investigates the owner and every eligible mapped page. The
@@ -1394,6 +1400,14 @@ def make_rem_app(factory):
                  *(["--retry-refused"] if retry_refused else [])]
         _handle(ctx, run, ["investigate"], retry=retry, resume=retry)
 
+    @rem.command("enrich", cls=V("co rem enrich"))
+    def enrich_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
+        _deepen_page(ctx, page, "enrich")
+
+    @rem.command("muse", cls=V("co rem muse"))
+    def muse_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
+        _deepen_page(ctx, page, "muse")
+
     # ------------------------------------------------------------------- Read
 
     @rem.command("open", cls=V("co rem open"))
@@ -2089,7 +2103,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate open list show search translate start stop status sync sources config logs doctor "
+    order = ("init investigate enrich muse open list show search translate start stop status sync sources config logs doctor "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

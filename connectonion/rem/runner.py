@@ -26,9 +26,10 @@ class RunFailed(RemError):
         self.changed = sorted(changed)
 
 
-STAGES = ("init", "extract", "maintain", "investigate", "abstract")
+STAGES = ("init", "extract", "maintain", "investigate", "enrich", "muse", "abstract")
+ONE_PAGE_STAGES = ("investigate", "enrich", "muse")
 # The stages that write notebook pages, and so need the page shapes.
-PAGE_WRITING_STAGES = ("init", "maintain", "investigate")
+PAGE_WRITING_STAGES = ("init", "maintain", *ONE_PAGE_STAGES)
 
 
 def instructions(stage: str, kind: str = "", *, page_kind: str = "", owner: bool = False) -> str:
@@ -53,6 +54,8 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "", owner: bool
     text = (directory / f"rem-{stage}/SKILL.md").read_text(encoding="utf-8")
     if stage == "init":
         text += "\n\n---\n\n# co rem CLI reference (included; no relative lookup needed)\n" + (directory / "rem-init/CLI.md").read_text(encoding="utf-8")
+    if stage in ("enrich", "muse"):
+        text += "\n\n---\n\n" + (directory / "rem-investigate/SKILL.md").read_text(encoding="utf-8")
     # Investigation is a core plus the steps for this kind of subject. One file
     # held a person's identity rules, a project's Paths rules and a web lookup
     # every turn carried, whatever it was investigating; the owner asked that a
@@ -241,7 +244,7 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     # Security note (deferred): In unattended background runs, mail attachments could
     # theoretically carry prompt injection. Defer containment/hardening; utility,
     # tool authorization, and complete context come first.
-    investigating = stage in ("init", "investigate")
+    investigating = stage == "init" or stage in ONE_PAGE_STAGES
     if harness == "codex":
         flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
         flags += ["--speed", config["speed"]]
@@ -262,7 +265,7 @@ _THREADS = contextvars.ContextVar("rem_turn_threads", default=None)
 AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 
 
-def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
+def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
     prompt = prompt.replace("\0", "")
@@ -272,7 +275,8 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     process_timeout = timeout + 15 if config["runner"] != "coai" else timeout
     try:
         completed = subprocess.run(
-            [*preflight(), "ai", "--json", *harness_flags(config, stage), prompt],
+            [*preflight(), "ai", "--json", *harness_flags(config, stage),
+             *(["--resume", session] if session else []), prompt],
             cwd=str(workspace.resolve()), capture_output=True, text=True,
             timeout=process_timeout, env=child_env(config))
     except subprocess.TimeoutExpired as error:
@@ -431,7 +435,7 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
         # or WhatsApp store the user's words was the extract turn's concern.
         # Appended anyway, it took a one-page turn to 17.5k characters (#2000).
         kind = ""
-    one_page = stage == "investigate" or (stage == "maintain" and any(item.get("one_page") for item in items))
+    one_page = stage in ONE_PAGE_STAGES or (stage == "maintain" and any(item.get("one_page") for item in items))
     owner = any(i.get("role") == "page" and i.get("owner") for i in items)
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
     # co ai expands /rem-{stage} before delegating. Repeating that core in the
@@ -1006,21 +1010,24 @@ def private_task_mask():
                 os.umask(_TASK_MASK_PREVIOUS)
 
 
-def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "", **options) -> dict:
+def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
+              *, turns=(), stage_progress=None, **options) -> dict:
     """Run investigation and maintenance on disposable page copies before promotion.
 
     The outcome names the threads its turns ran in, so a run record leads to its trace."""
     seen = []
     token = _THREADS.set(seen)
     try:
-        outcome = _stage_on_copies(notebook, items, config, kind, **options)
+        outcome = _stage_on_copies(notebook, items, config, kind, turns=turns,
+                                   stage_progress=stage_progress, **options)
     finally:
         _THREADS.reset(token)
     return {**outcome, "threads": seen}
 
 
 def _stage_on_copies(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-                     *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
+                     *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None,
+                     turns=(), stage_progress=None) -> dict:
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with _TASK_CLEANUP_LOCK:
@@ -1030,7 +1037,8 @@ def _stage_on_copies(notebook: Notebook, items: list[dict], config: dict, kind: 
     # the last task finishes.
     with private_task_mask():
         try:
-            return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
+            return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+                              search, turns, stage_progress)
         finally:
             # Ctrl-C and anything else unexpected too, not only a RemError.
             with _TASK_CLEANUP_LOCK:
@@ -1070,7 +1078,8 @@ def _with_additions(items: list[dict], additions: list[dict], budget: int) -> li
     return [*items, *kept]
 
 
-def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+               search=None, turns=(), stage_progress=None):
     from .config import read_config
     from .reflections import POLICY
     from .reflections import context as reflections
@@ -1086,7 +1095,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
               + (TAIL_NOTE if any(item.get("role") == "thread-tail" for item in items) else ""))
     # The model must read and write local task files. Codex has a sandboxed
     # shell; forbidding all shell commands made Luna refuse the whole batch.
-    if stage in ("init", "investigate"):
+    if stage == "init" or stage in ONE_PAGE_STAGES:
         prompt += ("\n\n## Investigation tools and provenance\nUse local shell tools such as rg, "
                    "git log, git show and file inspection to search the supplied evidence index, "
                    "local mail archives and project repositories. Find ground truth in the original "
@@ -1111,7 +1120,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     # model two places to reconcile it.
     # One page at a time: investigation, and maintenance handed a single page (#1656).
     one_page = stage == "maintain" and any(item.get("one_page") for item in items)
-    candidate = directory / "candidate.md" if record and (stage == "investigate" or one_page) else None
+    candidate = directory / "candidate.md" if record and (stage in ONE_PAGE_STAGES or one_page) else None
     if candidate is not None:
         # The review refuses a page that ends over the limit; a person page
         # learnt that only after a 643k-token turn (#2041).
@@ -1130,7 +1139,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "Edit it in place the way you edit code: add what the evidence adds, change what it corrects, and delete "
                    "what it supersedes, what the page now says twice and doubts it settles. Leave correct lines as they are. "
                    "Do not rewrite the page from scratch. "
-                   "If the evidence changes nothing on the page, leave the file as it is and end your reply with NO CHANGE. "
+                   "If the evidence changes nothing on the page, leave the file as it is"
+                   + ("" if stage in ("enrich", "muse") else " and end your reply with NO CHANGE") + ". "
                    "Write only that candidate file using an available local file tool. "
                    "The runner owns validation and replacement. Do not start nested co rem jobs. "
                    "After the candidate is complete, stop using tools and return a brief coverage summary. ")
@@ -1152,7 +1162,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                        "other than task outputs explicitly named here. "
                        "Write notebook Markdown pages directly, and report unresolved gaps. ")
 
-    if stage in ("maintain", "investigate"):
+    if stage == "maintain" or stage in ONE_PAGE_STAGES:
         prompt += "\n\n## Citations and review\nFor each cited claim, define its real source ID under Sources as `- [1] source-id`, not a bare numbered list. "
         prompt += (f" Optionally write {directory / 'review-candidates.json'} as a JSON list of zero to two evidence-linked questions or connections. "
                    'Each item has kind (question/link), subjects (one/two existing notebook paths), question, basis. '
@@ -1201,7 +1211,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                             if key in item} for item in items if item.get("source")
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
-    if candidate and search and not quick_first_pass:
+    if stage == "investigate" and candidate and search and not quick_first_pass:
         # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
@@ -1214,12 +1224,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "already searched; do not repeat those addresses.")
     started = time.monotonic()
     result = {}
+    prior_turn_usage = None
     inquiry_usage = {}
     refusals = []
     try:
         from .inquiry import routing, stage_config
         from .inquiry import run as inquiry_run
-        if candidate and routing(notebook.root):
+        if stage == "investigate" and candidate and routing(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,
                 lambda _task_directory, text, route, phase: run_task(workdir, text, route, phase))
@@ -1227,14 +1238,29 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             prompt += f"\n\n## Inquiry findings\nRead {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         if "<co_rem_task>" in prompt:
             prompt += "\n</co_rem_task>"
+        if turns:
+            prompt = _followup_prompt(prompt, turns[0])
         metrics["prompt_chars"] = len(prompt)
-        selected_config = stage_config(notebook.root, config, "render") if candidate else config
+        selected_config = stage_config(notebook.root, config, "render") if candidate and stage == "investigate" else config
+        if turns and stage_progress:
+            stage_progress(f"turn 1 of {len(turns)}")
         result = run_task(workdir, prompt, selected_config, stage)
+        session = result.get("session_id")
+        for number, text in enumerate(turns[1:], 2):
+            if not result.get("session_id"):
+                raise RunFailed("co ai returned no session_id; the next turn cannot be resumed", result.get("usage"))
+            if stage_progress:
+                stage_progress(f"turn {number} of {len(turns)}")
+            prior_turn_usage = result.get("usage")
+            result = run_task(workdir, text, selected_config, stage, session=session)
+            result["usage"] = _add_usage(prior_turn_usage, result.get("usage"))
+            prior_turn_usage = None
         untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
         if candidate and not summary and (not candidate.is_file()
-                                          or untouched and "NO CHANGE" not in str(result.get("result") or "")):
+                                          or untouched and stage not in ("enrich", "muse")
+                                          and "NO CHANGE" not in str(result.get("result") or "")):
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
-        if candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
+        if stage == "investigate" and candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
             result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result,
                                     notebook_zone(read_config(notebook.root, validated=False)))
         if summary:
@@ -1245,11 +1271,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         # An untouched copy the model says needs no change is no change, not a page to review.
         no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
-            and "NO CHANGE" in str(result.get("result") or "")
+            and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
         if candidate and not no_change:
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
-                                 investigation=stage == "investigate", lock_held=maintenance_lock_held,
+                                 investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
                                  # A model that only replies, or never wrote the page, will not edit
                                  # the file a repair names.
                                  repairs=0 if summary or not candidate.is_file()
@@ -1265,6 +1291,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 _verify_no_change(directory, items, result.get("usage"))
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
+        if prior_turn_usage:
+            usage = _add_usage(prior_turn_usage, usage)
         if isinstance(error, RunFailed) and inquiry_usage and not result:
             usage = {key: (usage or {}).get(key, 0) + inquiry_usage.get(key, 0)
                      for key in (usage or {}).keys() | inquiry_usage.keys()}

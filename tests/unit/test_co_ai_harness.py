@@ -320,3 +320,31 @@ def test_an_unknown_sandbox_lists_the_real_ones():
     problem = harness_mod.validate_sandbox("codex", "wide-open")
     for level in harness_mod.SANDBOXES:
         assert level in problem
+
+
+@pytest.mark.parametrize("harness", ["codex", "claude-code"])
+def test_resume_session_reaches_native_delegate(monkeypatch, harness):
+    import importlib
+
+    module = importlib.import_module("connectonion.useful_tools." + harness.replace("-", "_"))
+    seen = {}
+
+    def fake(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"last_message": "done", "result": "done", "exit_code": 0})
+
+    monkeypatch.setattr(module, "codex" if harness == "codex" else "_run_claude_code", fake)
+    harness_mod.run(harness, "next turn", "", session_id="abc")
+    assert seen["session_id"] == "abc"
+
+
+def test_cli_resume_reaches_shared_delegate(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+
+    seen = []
+    monkeypatch.setattr(harness_mod, "run", lambda *a, **kw: seen.append(kw) or {
+        "result": "done", "outcome": "natural", "error": None, "usage": None})
+    result = CliRunner().invoke(app, ["ai", "--json", "--harness", "codex", "--resume", "abc", "prompt"])
+    assert result.exit_code == 0, result.output
+    assert seen[0]["session_id"] == "abc"
