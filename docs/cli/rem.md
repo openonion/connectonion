@@ -355,6 +355,8 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co rem scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co rem scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
+| `co rem import sessions --days 30` | Agent sessions: one page per Codex or Claude Code conversation you typed in, under `sessions/`, linked to the project whose folder it ran in (a worktree counts as its repository). Your typed messages and the final reply, with what the session produced (pull requests, commits, branches, changed files). No model. Automation, harness prompts, subagents, `/tmp` probes and REM's own runs stay out; init and sync run it. |
+| `co rem import sessions --summarise` | Also ask the configured model, eight sessions per turn, for each session's title, summary, topic tags, outcome, your decisions (kept only when quoted word for word) and open follow-ups. `--limit` caps it (default 40). The reader's **Agent sessions** list searches and filters them. |
 | `co rem stub person "Alice" --email alice@example.org --handle 艾丽丝` | Create the canonical person skeleton if absent. |
 | `co rem stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co rem stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
