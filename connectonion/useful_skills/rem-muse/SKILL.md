@@ -1,13 +1,12 @@
 ---
 name: rem-muse
-description: Think one page through slowly — ask precise questions of its originals, answer them one by one, and leave the page with insight it did not have.
+description: Think one page through slowly over several turns in one thread — ask many questions, pick the five worth pursuing, study each, and write only when a question yields an insight.
 ---
 
 # Muse on one page
 
 Input: a written page, its cited originals, the open leads from enrich, the
-questions earlier passes left, and the pages it links to.
-Output: the page, edited, and the question list in your final reply.
+questions earlier runs left, and the pages it links to.
 Follow the page kind's `rem-page-*` rules and `rem-investigate`'s quote and
 evidence rules unchanged.
 
@@ -16,10 +15,15 @@ originals; what is missing is the right question. **Asking a precise question
 matters more than answering it.** Go slowly. One sharp insight is worth more
 than ten new facts.
 
-## 1. Ask
+Muse runs as one conversation. Each turn does one step below, then stops and
+waits for the next turn; what you read and thought in earlier turns stays with
+you, so do not reread what you already read.
 
-Read the page, then every cited original whole. Before editing anything, write
-down at least ten questions this material raises. A good question:
+## Turn 1 — ask, then choose
+
+Read the page, then every cited original whole. Do not edit the page.
+
+Write at least twenty questions this material raises. A good question:
 
 - is **specific**: names the person, the date, the number, the source
   ("Why did replies stop after the 2026-08-20 price change [6]?"), not
@@ -44,51 +48,58 @@ Ask from several angles:
   is this really about, which other page holds the other half?
 - **Why**: why did the user decide what they decided; what principle shows?
 - **The page itself**: which sentence would mislead the user if they acted on
-  it today? Which open thread is actually closed? What is in the wrong section
-  or on the wrong page?
+  it today? Which open thread is actually closed?
 
-Then rank them: most consequential first.
+Then **choose the five** most worth pursuing: the ones whose answer would most
+change what the user understands or does, and that the originals can plausibly
+settle. Reply with all questions, the five marked and why each was chosen:
 
-## 2. Answer, one by one
+```
+* 1. <question> — why it matters
+* 2. ...
+  6. <question>
+  ...
+```
 
-Take the questions in order. For each, reread the originals that bear on it
-and decide:
+## Turns 2–6 — study one question each
 
-- **answered**: the originals settle it — the answer goes on the page, cited
-  and in the right section (an insight in `Insight`, a turn in `History`, a
-  closed thread out of `Open threads`, a correction where the error was);
-- **partly answered**: write what is known, cited, and what remains;
-- **open**: the originals do not settle it — keep it as a question, with the
-  record that would answer it (that is enrich's next lead). A question that
-  matters and stays open goes in `Uncertainties`, phrased as the question.
+Each turn takes the next chosen question. Reread the originals that bear on it,
+search the notebook's archives if a record you need is named there, and think.
+Decide one of:
+
+- **insight** — the answer shows something the user could not see from any
+  single message and that changes what they believe or do: a stake, a turn, a
+  pattern, a contradiction, a thread that is really closed, a sentence on the
+  page that is wrong. **Only now edit the page**: put it, cited, in the right
+  place (`Insight` as `At stake:`/`Changed:`/`Pattern:`, a turn in `History`,
+  a closed thread out of `Open threads`, a correction where the error was),
+  and adjust the lead if it changes who they are, what is live or what the
+  user does next.
+- **no insight** — the answer is a restatement, a detail, or already on the
+  page. **Do not edit the page.** Say so; that is a normal result.
+- **open** — the originals cannot settle it. Do not edit the page. Name the
+  record that would answer it; it becomes enrich's next lead, and if it
+  matters, the last turn puts it in `Uncertainties` as the question.
 
 Never answer from plausibility. An inference is labelled and rests on quotes.
+Each edit is small and cited; never rewrite a correct section, never drop a
+cited fact that is still true, keep every quote verbatim.
 
-## 3. Distill
-
-Last, look at the page as a whole:
-
-- the lead says who they are, what is live and what the user does next — rewrite
-  it if the answers changed any of that;
-- `Insight` holds what the questions found: `At stake:`, `Changed:`,
-  `Pattern:`, each cited, each something the user could not see from one email;
-- remove what is superseded or said twice; keep every cited fact that is
-  still true and every quote verbatim;
-- link the other pages the answers touched; if two pages are one subject,
-  say so in your reply — never merge.
-
-Edit in place. Small, cited changes; never rewrite a correct section to say
-the same thing in other words.
-
-## Final reply
-
-Every question you asked, ranked, one line each:
+Reply each turn:
 
 ```
-- answered | <question> | <answer, one line> [n]
-- partly   | <question> | <what is known> [n] | <what remains>
-- open     | <question> | <the record that would answer it>
+<question>
+verdict: insight | no insight | open
+<what you found, with [n]>
+<the edit you made, or "page unchanged">
 ```
 
-Then: insights added, corrections made, pages that should be linked or merged.
-The next pass starts from your open questions; ask better ones than last time.
+## Last turn — look back
+
+Only if the page was edited this run: reread it top to bottom; remove what the
+new insight made superseded or said twice; check the lead still says who they
+are, what is live and what the user does next. Otherwise leave it.
+
+Reply: insights added, questions left open (ranked, with the record that would
+answer each), and pages that should be linked or merged — never merge.
+The next run starts from these open questions; ask better ones than this run.
