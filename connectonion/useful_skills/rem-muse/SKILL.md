@@ -131,15 +131,19 @@ Only if the page was edited this run: reread it top to bottom and remove what
 the new insights made superseded or said twice.
 
 Then check the lead against every insight this run added and every `Insight`
-bullet (a project page: the newest `Where it stands` bullet and `Open
-threads`). Ask of each: does it change who they are to the user, what is
-live, or what the user does next? If yes, the lead must say so — rewrite its
+bullet. Ask of each: does it change who they are to the user, what is live,
+or what the user does next? If yes, the lead must say so — rewrite its
 sentences to name the most consequential live item and the user's actual next
 step as they stand now, keeping each quote the lead had (move one you no
 longer lead with to where it belongs). A lead that still reads as the page
-did before this run, after an insight changed what is live, is wrong. In
-your reply, give the lead before and after, or the insight that left it
-standing and why.
+did before this run, after an insight changed what is live, is wrong. The
+lead stays the page rule's three short sentences with a few citations each:
+it names the one live item and the next step, not every finding, and a
+same-person finding goes in `Facts` and `Insight`, not into the lead. A
+project page has no lead: its first lines of `Where it stands` and `Open
+threads` carry what is live and next, and `What it is` stays the product
+description. In your reply, give the lead before and after, or the insight
+that left it standing and why.
 
 The page should leave this run no longer than it came in, apart from the
 insights.

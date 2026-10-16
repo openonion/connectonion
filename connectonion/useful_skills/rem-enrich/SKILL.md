@@ -45,6 +45,8 @@ Most promising first: what could change the lead, Open threads or Facts.
 
 - Open links and read the page; a URL you read is a source (`[n] <url> —
   <date read>`). Note what it says about the subject, never what it implies.
+  A quote from a web page is one run of its text as written; never join two
+  fields or labels into one quote.
 - Search the archives (`rg -il`, `co rem search`) for every name, number and
   subject line; read matches whole.
 - Read unread attachments; cite their ids.
