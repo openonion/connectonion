@@ -65,6 +65,8 @@ PROVIDERS = {
     "telegram": ("connectonion.inbox.telegram", "Telegram", {}),
     # Socket Mode is a WebSocket too; experimental, tested against fakes only.
     "slack": ("connectonion.inbox.slack", "Slack", {}),
+    # Graph delta query through Charter (`pip install 'connectonion[outlook]'`), #1733.
+    "outlook": ("connectonion.inbox.outlook", "Outlook", {}),
 }
 
 
