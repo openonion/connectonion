@@ -431,6 +431,22 @@ def test_runner_missing_says_so_once_and_does_not_investigate(first_run, monkeyp
     assert "codex login" in text
 
 
+def test_runner_missing_names_the_configured_runner_and_how_to_switch(first_run, monkeypatch):
+    """#2444: 'Codex is not installed' alone left people unsure what was configured
+    and that `co rem config set runner claude-code` switches away from it."""
+    monkeypatch.setattr("connectonion.rem.runner.ready",
+                        lambda config: ("Codex is not installed", "npm install -g @openai/codex"))
+    root, init, calls = first_run
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    assert calls == []
+    reason = json.loads(result.stdout)["data"]["investigate_me"]["reason"]
+    assert "Codex is not installed" in reason
+    assert "configured runner: codex" in reason
+    assert "npm install -g @openai/codex" in reason
+    assert f"co rem --root {root} config set runner claude-code" in reason
+
+
 def test_no_investigate_builds_the_map_only(first_run):
     _, init, calls = first_run
     result = init("--json", "--no-investigate")
