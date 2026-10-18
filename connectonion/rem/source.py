@@ -7,7 +7,7 @@ import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from .files import RemError, safe_path
 
@@ -139,7 +139,11 @@ def with_local_times(items, zone) -> list[dict]:
 
 def rem_task(cwd) -> bool:
     """A session run in a notebook's .state/tasks: REM's own work, never the user's words."""
-    parts = PurePosixPath(str(cwd or "")).parts
+    value = str(cwd or "")
+    windows = PureWindowsPath(value)
+    # Transcript paths belong to their producer, not the machine reading them.
+    # Drive/UNC paths use Windows separators and case; POSIX keeps its case.
+    parts = tuple(part.casefold() for part in windows.parts) if windows.drive else PurePosixPath(value).parts
     return any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1))
 
 
