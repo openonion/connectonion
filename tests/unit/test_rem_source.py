@@ -468,3 +468,37 @@ def test_a_prompt_a_scheduler_sent_is_not_the_users_request(tmp_path):
     batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 10, 100000)
     assert [i["text"] for i in batch.items] == ["Schedule the ASML piece for January."]
     assert batch.skipped == 1 and batch.unrecognised == 0
+
+
+WINDOWS_TASKS = [
+    r"C:\Users\demo\.co\rem\.state\tasks\model-access",
+    r"C:\Users\demo\.co\rem\.state\tasks",
+    r"C:/Users/demo/.co/rem/.state\tasks/investigate-one",
+    r"C:\Users\demo\.co\rem\.STATE\TASKS\repair",
+    r"\\server\notebooks\rem\.state\tasks\repair",
+]
+
+
+@pytest.mark.parametrize("cwd", WINDOWS_TASKS)
+def test_windows_internal_codex_tasks_do_not_become_memory(tmp_path, cwd):
+    rollout(tmp_path / "rollout-internal.jsonl", [("user", "Reply READY only")],
+            originator="connectonion", project=cwd)
+    rollout(tmp_path / "rollout-user.jsonl", [("user", "Ship the login fix")],
+            originator="connectonion", project=r"C:\work\demo")
+    assert [item["text"] for item in collect(subscription(tmp_path), {}, 20, 10000).items] == ["Ship the login fix"]
+
+
+@pytest.mark.parametrize("cwd", WINDOWS_TASKS)
+def test_windows_internal_claude_rows_do_not_become_memory(tmp_path, cwd):
+    claude_transcript(tmp_path / "project" / "session.jsonl", [
+        ("user", "Repair this candidate page", {"cwd": cwd}),
+        ("user", "Keep the user request", {"cwd": r"C:\work\demo"}),
+    ])
+    batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 20, 10000)
+    assert [item["text"] for item in batch.items] == ["Keep the user request"]
+
+
+@pytest.mark.parametrize("cwd", [r"C:\work\.state\taskshop", r"C:\work\tasks", "/work/.STATE/TASKS"])
+def test_similar_user_directories_are_not_rem_tasks(cwd):
+    from connectonion.rem.source import rem_task
+    assert not rem_task(cwd)

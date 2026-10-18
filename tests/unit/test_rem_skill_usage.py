@@ -145,3 +145,49 @@ def test_co_ai_runs_are_not_sampled_as_coding_sessions(tmp_path):
         str(tmp_path / 'example.yaml'): {'events': [['example', when, 'co-ai', '']]}}})
     result = session_samples(tmp_path, 'example')
     assert result['matched_invocations'] == 0 and not result['missing']
+
+
+def test_cached_windows_task_invocations_are_neither_counted_nor_sampled(tmp_path):
+    from connectonion.rem.skill_usage import usage
+    when = datetime.now(timezone.utc).isoformat()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = sessions / "rollout-internal.jsonl"
+    path.write_text("Cached source must not be reread")
+    stat = path.stat()
+    write_json(state_path(tmp_path, "skill-usage.json"), {"version": VERSION, "files": {
+        str(path): {"stamp": [stat.st_size, stat.st_mtime_ns], "events": [
+            ["example", when, "codex", r"C:\Users\demo\.co\rem\.state\tasks\repair"],
+            ["example", when, "codex", r"\\server\notebooks\.STATE\TASKS\repair"],
+        ]}}})
+    subscriptions = {"codex": {"kind": "codex", "root": str(sessions), "enabled": True}}
+    result = usage(subscriptions, ["example"], root=tmp_path)
+    assert result["files"] == 1
+    assert result["counts"]["example"]["count"] == 0
+    samples = session_samples(tmp_path, "example")
+    assert samples["cache_available"]
+    assert samples["matched_invocations"] == 0
+    assert samples["items"] == samples["missing"] == []
+
+
+def test_cached_windows_user_session_remains_counted_and_available(tmp_path):
+    from connectonion.rem.skill_usage import usage
+    when = datetime.now(timezone.utc).isoformat()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = sessions / "rollout-user.jsonl"
+    rows = [
+        {"type": "session_meta", "payload": {"id": "user", "cwd": r"C:\work\demo"}},
+        {"type": "response_item", "timestamp": when, "payload": {"type": "message", "role": "user",
+            "content": [{"type": "input_text", "text": "Keep my request"}]}},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows))
+    stat = path.stat()
+    write_json(state_path(tmp_path, "skill-usage.json"), {"version": VERSION, "files": {
+        str(path): {"stamp": [stat.st_size, stat.st_mtime_ns], "events": [
+            ["example", when, "codex", r"C:\work\demo"]]}}})
+    subscriptions = {"codex": {"kind": "codex", "root": str(sessions), "enabled": True}}
+    assert usage(subscriptions, ["example"], root=tmp_path)["counts"]["example"]["count"] == 1
+    samples = session_samples(tmp_path, "example")
+    assert samples["matched_invocations"] == 1 and not samples["missing"]
+    assert "Keep my request" in samples["items"][0]["text"]
