@@ -501,7 +501,9 @@ When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
 Status, theme and privacy controls live in the sidebar’s **Reader settings**
-disclosure. On phones, a compact brand and search header keeps Browse within reach.
+disclosure. **EN | 中文** beside the theme controls switches interface labels
+and dates; it starts in Chinese when Chinese is your first detected language
+and remembers your choice. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
   their statements as current context. A changed Project card shows its purpose
@@ -519,7 +521,8 @@ disclosure. On phones, a compact brand and search header keeps Browse within rea
   name), a sticky header, sort on any column, filters (*Something open*,
   *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
   the page. It fits 1440 px; narrower, it scrolls inside itself with the cut
-  edge shaded and the name column held. The columns come from the notebook's
+  edge shaded and the name column held. On phones, People become cards with
+  contact details and open work; empty columns are omitted on desktop. The columns come from the notebook's
   index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
   the snapshot; before it does, from each page's Facts and the map's mail
   counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
@@ -537,7 +540,12 @@ disclosure. On phones, a compact brand and search header keeps Browse within rea
   Insight, History and Sources stay under the always-visible **Full memory and
   sources** section. A claim
   number `[n]` opens its source description and, when locally archived, an
-  original excerpt. Grouped citations keep the page compact; each numbered
+  original excerpt. Prose uses quiet raised date markers, kept beside the
+  preceding word; hover or focus reveals the full source label. Adjacent
+  citations share a marker. The source panel keeps the claim and available
+  sender, channel, date and subject visible while excerpts are hidden; **Show
+  labelled passages** reveals them using the existing privacy setting.
+  Grouped citations keep the page compact; each numbered
   row under Sources can also open its own original on a phone. An accepted
   explicit investigation retains the live coding-session inputs it cites,
   even when they were absent from the older map. Cited mail bodies show up to

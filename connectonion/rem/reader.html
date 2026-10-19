@@ -1258,6 +1258,67 @@
   .night, .night-strip { margin: 0 0 24px; border-radius: 8px; }
   .project-purpose-cites a.cite, .project-purpose-cites .unsure { font: 500 12.5px/16px var(--ui); padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--line-2); color: var(--ink-2); }
   .record-focus.projects .focus-head, .record-focus.projects .focus-facts, .record-focus.projects .thread:last-child { border-bottom: 0; }
+
+  /* Inline evidence stays with the claim; dated rows retain a compact full label. */
+  .cite-tether { display: inline-block; max-width: 100%; white-space: nowrap; }
+  .cite-word { white-space: normal; overflow-wrap: anywhere; }
+  .cite { border: 0; border-radius: 2px; background: transparent; padding: 0 2px; margin: 0 0 0 2px; font: 400 11px/1 var(--ui); font-variant-caps: normal; color: var(--ink-3); position: relative; top: -.35em; vertical-align: baseline; white-space: nowrap; overflow-wrap: normal; }
+  .cite.run { padding: 0 2px; }
+  .cite::before { inset: -8px -3px; min-width: 24px; min-height: 24px; }
+  .cite.missing { border: 0; opacity: 1; }
+  .cite:hover, .cite:focus-visible { text-decoration: underline !important; }
+  .cite-full { display: none; }
+  :is(.timeline, .activity-list) .cite-tether { white-space: normal; }
+  :is(.timeline, .activity-list) .cite { top: 0; max-width: 100%; margin-left: 0; white-space: normal; overflow-wrap: anywhere; padding: 2px 5px; border: 1px solid var(--line); border-radius: 999px; background: var(--line-2); font: 400 11px/15px var(--ui); }
+  :is(.timeline, .activity-list) .cite-full { display: inline; }
+  :is(.timeline, .activity-list) .cite-short { display: none; }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { border: 0; border-radius: 2px; padding: 0 2px; background: transparent; color: var(--ink-3); font: 400 11px/1 var(--ui); }
+  .missing .cmd, .missing.primary .cmd, .empty .cmd { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; min-width: 0; margin: 8px 0; }
+  .missing .cmd code, .missing.primary .cmd code, .empty .cmd code { display: block; min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; font: 11px/1.5 var(--code); }
+  .cmd .btn-action { flex: 0 0 auto; min-height: 32px; background: transparent; border-color: transparent; }
+  .sessions-empty h2 { font: 500 23px/1.4 var(--display); }
+  .evidence-claim > div::before { content: "“"; }
+  .evidence-claim > div::after { content: "”"; }
+  .evidence-identity { border-bottom: 1px solid var(--line); margin-bottom: 16px; padding-bottom: 8px; }
+
+  .people-sheet .sheet { table-layout: fixed; min-width: 1040px; }
+  .people-sheet .sheet .name { width: 23%; min-width: 0; max-width: none; }
+  .people-sheet .sheet .c-open { width: 25%; min-width: 0; max-width: none; }
+  .people-sheet .sheet :is(.c-company, .c-role) { width: 10%; min-width: 0; max-width: none; white-space: normal; }
+  .people-sheet .sheet :is(.c-company, .c-role) .clamp { max-width: none; overflow-wrap: normal; word-break: normal; }
+  .people-sheet .sheet :is(.c-email, .c-phone) { width: 10%; min-width: 0; }
+  .people-sheet .sheet .c-last { width: 8%; }
+  .people-sheet .sheet .c-mails { width: 4%; }
+  .people-sort, .people-card-meta { display: none; }
+  .people-emails, .people-phones { display: flex; gap: 6px; min-width: 0; max-width: 100%; }
+  .contact-first { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-more { flex: none; color: var(--ink-3); font-size: 11px; }
+  @media (max-width: 600px) {
+    .people-sort { display: flex; align-items: center; gap: 8px; font: 13px var(--ui); }
+    .people-sort select { min-height: 44px; max-width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--ink); font: inherit; }
+    .people-sheet .sheet-scroll { max-height: none; overflow: visible; border: 0; }
+    .people-sheet::after, .people-sheet .sheet thead { display: none; }
+    .people-sheet .sheet, .people-sheet .sheet tbody { display: block; min-width: 0; }
+    .people-sheet .sheet tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; border-top: 1px solid var(--line); }
+    .people-sheet .sheet td { position: static; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; box-shadow: none; background: transparent; font-size: 12px; }
+    .people-sheet .sheet td.name { width: auto; min-width: 0; max-width: none; grid-row: 1; }
+    .people-sheet .sheet .nm a { font-weight: 600; font-size: 17px; }
+    .people-sheet .sheet .sum { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .people-sheet .people-card-meta { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 14px; color: var(--ink-3); overflow-wrap: anywhere; white-space: normal; }
+    .people-card-meta .clamp { display: inline; color: inherit; }
+    .people-sheet .sheet td.c-open { width: auto; min-width: 0; max-width: none; grid-row: 2; }
+    .people-sheet .sheet td:is(.c-email, .c-phone) { width: auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+    .people-sheet .sheet td:is(.c-email, .c-phone):not([data-empty="true"])::before { content: attr(data-label) ": "; color: var(--ink-3); }
+    .people-sheet .sheet td.c-email:not([data-empty="true"])::before { content: attr(data-label) " "; font: 11px var(--ui); }
+    .people-sheet .sheet :is(.people-emails, .people-phones, .contact-first) { display: inline; }
+    .people-sheet .contact-first { white-space: normal; overflow-wrap: anywhere; }
+    .people-sheet .sheet .contact-more { display: inline; margin-left: 6px; }
+    .people-sheet .sheet td[data-empty="true"], .people-sheet .sheet td:is(.c-company, .c-role, .c-last, .c-mails) { display: none; }
+    .people-sheet .sheet .name-cell .sum { max-width: 100%; }
+  }
+  .reader-switches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .reader-switches .theme-btn { padding-inline: 6px; }
+  :lang(zh) .rail .label { letter-spacing: 0; }
 </style>
 </head>
 <body>
@@ -1284,46 +1345,424 @@
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
 
-// Private sentences are visible until the reader chooses to hide them, on the
-// owner's own machine; a shared or remote view starts with them hidden.
-(function() {
-  if (REM && REM.shared) document.documentElement.classList.add("hide-private");
-  try {
-    if (location.protocol === "file:" && localStorage.getItem("co-rem-private") === "hidden")
-      document.documentElement.classList.add("hide-private");
-  } catch (_) { /* storage blocked in an embedded preview */ }
-})();
-
+// Blocked storage leaves the current view usable; preferences remain in memory.
+function readerStorage(key, value) {
+  return Promise.resolve().then(() => {
+    if (typeof localStorage === "undefined") return null;
+    return value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value);
+  }).then(result => result, () => null);
+}
+let uiLanguage = /^zh(?:-|$)/i.test(REM?.your_languages?.[0] || navigator.language || "") ? "zh" : "en";
+const UI = {
+  en: {},
+  zh: {
+    "Your day": "你的一天",
+    "Today": "今天",
+    "Waiting on you": "等你回复",
+    "Waiting on others": "等对方回复",
+    "Memory changes": "记忆变化",
+    "Explore memory": "探索记忆",
+    "All records": "全部记录",
+    "People": "人物",
+    "Organisations": "组织",
+    "Projects": "项目",
+    "Skills": "技能",
+    "Decisions": "决定",
+    "Principles": "原则",
+    "Agent sessions": "智能体会话",
+    "Activity": "动态",
+    "Search": "搜索",
+    "Search the notebook": "搜索笔记库",
+    "Clear search": "清除搜索",
+    "You": "你",
+    "Reader settings": "阅读设置",
+    "Theme": "主题",
+    "Auto": "自动",
+    "Light": "浅色",
+    "Dark": "深色",
+    "Browse notebook": "浏览笔记库",
+    "Show labelled passages": "显示已标记段落",
+    "Hide labelled passages": "隐藏已标记段落",
+    "Also hides raw excerpts; other details stay visible.": "也会隐藏原始摘录，其他信息仍可见。",
+    "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.": "也会隐藏原始来源和对话摘录，姓名及未标记文字仍可见。",
+    "Last night": "昨夜",
+    "The last pass": "上次更新",
+    "What changed overnight": "昨夜的变化",
+    "This week": "本周",
+    "This month": "本月",
+    "Explore the memory": "探索记忆",
+    "Worth remembering": "值得记住",
+    "Gone quiet": "久未推进",
+    "See all activity": "查看全部动态",
+    "See all quiet threads →": "查看全部久未推进事项 →",
+    "Between you": "我们之间",
+    "You owe": "等你处理",
+    "They owe": "等对方处理",
+    "Open": "待处理",
+    "Between others": "他人之间",
+    "Where it stands": "现状",
+    "Now": "现在",
+    "At stake": "关键所在",
+    "Changed": "变化",
+    "Pattern": "规律",
+    "Recently": "最近",
+    "All history →": "全部历史 →",
+    "All history": "全部历史",
+    "Open threads": "未完成事项",
+    "Recorded direction": "已记录的方向",
+    "Cited conversations": "引用的对话",
+    "Connected context": "关联背景",
+    "Full memory and sources": "完整记忆与来源",
+    "Only mapped so far": "仅已映射",
+    "Copy the command": "复制命令",
+    "Copy": "复制",
+    "Copied": "已复制",
+    "Select and copy": "请选择并复制",
+    "Copy failed": "复制失败",
+    "Mapped": "仅已映射",
+    "Mapped only": "仅看已映射",
+    "Partly investigated": "部分已调查",
+    "Investigated": "已调查",
+    "Source reviewed": "已核对来源",
+    "Nothing is waiting on you": "目前没有事项等你处理",
+    "One thing is waiting on you": "有 1 件事等你处理",
+    "Newest and due first. Quotes keep their words; other lines summarise the obligation.": "优先显示最新和即将到期的事项。引文保留原话，其余文字概述待办。",
+    "Nothing is open between you and anyone right now.": "目前没有双方待处理的事项。",
+    "Reveal the context": "查看背景",
+    "Hide the context": "收起背景",
+    "Pause before revealing. The answer comes from a page co rem already wrote.": "先回想一下，再查看 co rem 已记录的背景。",
+    "Name": "姓名",
+    "What's open": "待处理事项",
+    "Company": "公司",
+    "Role": "角色",
+    "Email": "邮箱",
+    "Phone": "电话",
+    "Last contact": "最近联系",
+    "Last contact in map": "映射中的最近联系",
+    "Last active": "最近动态",
+    "Uncertain points": "待确认之处",
+    "Mails": "邮件数",
+    "Status": "状态",
+    "Domain": "域名",
+    "What they do": "业务",
+    "All": "全部",
+    "Something open": "有待办",
+    "Yours to answer": "等你回复",
+    "Written": "已撰写",
+    "Sort by": "排序方式",
+    "Show": "显示",
+    "Nothing matches. Clear the filter to see every page.": "没有匹配结果，清除筛选可查看全部页面。",
+    "nothing open": "暂无待办",
+    "No agent sessions yet": "还没有智能体会话",
+    "See what you worked on with your coding agents, including decisions and follow-ups.": "在这里回顾你与编程智能体的工作、决定和后续事项。",
+    "Search sessions": "搜索会话",
+    "Search what you typed and what the agent replied": "搜索你的输入和智能体的回复",
+    "Agent": "智能体",
+    "Time": "时间",
+    "View": "视图",
+    "By day": "按日期",
+    "By project": "按项目",
+    "Filter": "筛选",
+    "Clear filters": "清除筛选",
+    "All projects": "全部项目",
+    "No project": "未关联项目",
+    "No project · ": "未关联项目 · ",
+    "Project": "项目",
+    "Choose dates": "选择日期",
+    "Dates": "日期",
+    "From": "从",
+    "To": "至",
+    "Topics": "主题",
+    "More topics": "更多主题",
+    "Done": "已完成",
+    "Partial": "部分完成",
+    "Abandoned": "已放弃",
+    "Unknown": "未知",
+    "Sessions": "会话",
+    "Mentioned in sessions": "在会话中提及",
+    "Summary": "摘要",
+    "Follow-ups": "后续事项",
+    "Artifacts": "工作产物",
+    "What you typed": "你的输入",
+    "Final reply": "最终回复",
+    "Original conversation": "原始对话",
+    "Messages": "消息",
+    "Details": "详情",
+    "Folder": "文件夹",
+    "Show all": "显示全部",
+    "Show less": "收起",
+    "No session matches": "没有匹配的会话",
+    "Close ×": "关闭 ×",
+    "Close": "关闭",
+    "Close source context": "关闭来源面板",
+    "Source context": "来源背景",
+    "On this page": "本页陈述",
+    "Source for this line": "这条陈述的来源",
+    "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
+    "The original isn't in this snapshot.": "此快照未包含原始内容。",
+    "Full source ID": "完整来源 ID",
+    "Find in archived source": "在存档来源中查找",
+    "Previous match": "上一个匹配",
+    "Next match": "下一个匹配",
+    "Sent date unknown": "发送日期未知",
+    "Instruction excerpt": "指令摘录",
+    "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。",
+    "Source-backed changes from the latest pass. Page rewrites are listed separately.": "上次更新中有来源支持的变化。页面改写单独列出。",
+    "No verified claim change in this pass": "这次更新中没有已核实的陈述变化",
+    "Pages rewritten": "改写的页面",
+    "Current context": "当前背景",
+    "Nothing open": "暂无待办",
+    "Other open context": "其他待处理事项",
+    "No pass yet": "暂无更新",
+    "View sources →": "查看来源 →",
+    "Sources": "来源",
+    "Source": "来源",
+    "Finding source": "发现的来源",
+    "Finding sources": "发现的来源",
+    "Purpose sources": "用途的来源",
+    "At a glance": "概览",
+    "Read full purpose": "展开用途",
+    "Read complete finding": "展开发现",
+    "Read complete relationship": "展开关系",
+    "Read full context": "展开背景",
+    "Needs your explicit request": "需要你明确发起",
+    "Mapped from your sessions": "从会话映射",
+    "What this project does": "项目用途",
+    "Current work": "当前工作",
+    "Where we stand": "目前进展",
+    "Where the work stands": "工作进展",
+    "The relationship now": "目前的关系",
+    "Useful finding": "有用的发现",
+    "When this helps": "何时有用",
+    "What matters now": "当前重点",
+    "Next step": "下一步",
+    "What this is": "项目简介",
+    "View all decisions →": "查看全部决定 →",
+    "Local path": "本地路径",
+    "Last mapped session": "最近映射的会话",
+    "Mapped sessions": "映射的会话数",
+    "Not investigated yet: ": "尚未调查：",
+    "Still unknown: ": "仍不明确：",
+    "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.": "co rem 根据来源的元数据映射了此页，尚未阅读内容。发起一次调查即可阅读材料并补全。",
+    "Automatic investigation skips this private project. To request a write, run the command for this page.": "自动调查会跳过此私有项目。如需撰写，请运行此页的命令。",
+    "Explicit links between notebook pages.": "笔记库页面之间的明确链接。",
+    "Linked in this note": "本页链接",
+    "Linked from another note": "其他页面的链接",
+    "Text mention": "文字提及",
+    "Mentioned in another note": "在其他笔记中提及",
+    "Text mentions": "文字提及",
+    "Name matches help navigate the notebook. A mention alone does not establish a relationship.": "姓名匹配便于浏览笔记库，仅提及姓名并不代表存在关系。",
+    "Search / connected context": "搜索 / 关联背景",
+    "No supported links in this snapshot.": "此快照中没有有据可查的链接。",
+    "No match": "没有匹配结果",
+    "Search / facts": "搜索 / 信息",
+    "Questions & connections": "问题与关联",
+    "Review the evidence →": "查看证据 →",
+    "A possible connection · Your judgment needed": "可能存在的关联 · 等你判断",
+    "Knowledge": "知识",
+    "Opportunities": "机会",
+    "Works": "作品",
+    "Agenda": "日程",
+    "AI notes": "智能体笔记",
+    "Maps": "映射记录",
+    "Person": "人物",
+    "Organisation": "组织",
+    "Skill": "技能",
+    "Decision": "决定",
+    "Principle": "原则",
+    "Conversation": "对话",
+    "Commitment": "承诺",
+    "From this page's dated history": "来自此页的日期记录",
+    "Hidden labelled passage": "已隐藏标记段落",
+    "Not in this snapshot": "此快照未包含",
+    "Read in": "阅读语言",
+    "As written": "原文",
+    "Other…": "其他…",
+    "Reload for latest": "重新加载以查看最新内容",
+    "No pass scheduled": "尚未安排更新",
+    "Explore": "探索",
+    "Contents": "目录",
+    "Only mapped": "仅已映射",
+    "See all…": "查看全部…",
+    "{n} things are waiting on you": "有 {n} 件事等你处理",
+    "{n} sections · {m} sources": "{n} 个章节 · {m} 个来源",
+    "Show all {n}": "显示全部 {n} 项",
+    "Source {n} of {m} for this line": "这条陈述的来源 {n} / {m}",
+    "You owe {name}": "你欠 {name}",
+    "{name} owes you": "{name} 欠你",
+    "Filter {category}": "筛选{category}",
+    "{n} of {m}": "{n} / {m}",
+    "Connected to {name}": "与 {name} 关联",
+    "See all {n} waiting on you": "查看全部 {n} 件等你处理的事项",
+    "{n} waiting on someone else →": "{n} 件事项等对方回复 →",
+    "How do you know {name}?": "你是怎么认识 {name} 的？",
+    "What should you remember about {name}?": "关于 {name}，有什么值得记住？",
+    "{n} matching sessions →": "查看全部 {n} 个匹配的会话 →",
+    "{n} pages match — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
+    "{n} page matches — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
+    "Snapshot": "快照",
+    "Next pass": "下次更新",
+    "Rebuild snapshot": "重新生成快照",
+    "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
+    "What you worked on with your coding agents": "你与编程智能体一起完成的工作",
+    "Not summarised": "尚未总结",
+    "All {n} sessions": "全部 {n} 个会话",
+    "{n} of {m} sessions": "{n} / {m} 个会话",
+    "{n} sessions": "{n} 个会话",
+    "Open in Agent sessions →": "在智能体会话中打开 →",
+    "Clear": "清除",
+    "Original note · all fields · citations": "原始笔记 · 全部字段 · 引用",
+    "Memory": "记忆",
+    "About this snapshot": "关于此快照",
+    "Previous session": "上一个会话",
+    "Next session": "下一个会话",
+    "Read this page in": "此页的阅读语言",
+    "Their language: ": "对方的语言：",
+    "No page contains that. Try a related term, a person's first name, or a project name.": "没有包含此内容的页面。试试相关词、人名或项目名。",
+    "{n} more": "另有 {n} 项",
+    "Open the memory": "打开记忆",
+    "re-renders": "重新生成快照",
+    "Show {n} more cited conversations": "再显示 {n} 个引用对话",
+    "Match {n} of {m} in the archived excerpt": "存档摘录中的匹配 {n} / {m}",
+    "Find a word or phrase in this source": "在此来源中查找词语",
+    "No match in the archived excerpt": "存档摘录中没有匹配结果",
+    "Best match": "最相关的结果",
+    "Session id": "会话 ID",
+    "{n} turn": "{n} 轮",
+    "{n} turns": "{n} 轮",
+    "Older": "较早",
+    "Newer": "较新",
+    "Not summarised yet": "尚未总结",
+    "Translate with co ai": "用 co ai 翻译",
+    "Conversation outline": "对话目录",
+    "Original conversation (private)": "原始对话（私密）",
+    "Find in conversation": "在对话中查找",
+    "Find in original conversation": "在原始对话中查找",
+    "Pull requests": "拉取请求",
+    "Commits": "提交",
+    "Branches": "分支",
+    "Commands": "命令",
+    "Files": "文件",
+    "Agent reply": "智能体回复",
+    "User": "用户",
+    "Category": "分类",
+    "Location": "位置",
+    "How co rem processed the last pass": "co rem 如何处理上次更新",
+    "Recently active": "最近活跃",
+    "Nothing here yet": "这里还没有内容",
+    "Read": "已阅读",
+    "Rewrote": "已改写",
+    "No runs yet": "暂无运行记录",
+    "What co rem did on each run: what it read, the pages it changed, and the ones it would not write.": "co rem 每次运行阅读了什么、改写了哪些页面，以及哪些页面没有写入。",
+    "Copy Markdown": "复制 Markdown",
+    "File updated": "文件更新于",
+    "Open the page and source →": "打开页面和来源 →",
+    "Purpose": "用途",
+    "Cited documents": "引用的文档",
+    "Current context from the latest pass": "上次更新留下的当前背景",
+    "Mentioning {name}": "提及 {name}",
+    "Topic": "主题",
+    "Outcome": "结果",
+    "Sent": "发送于",
+    "to": "收件人",
+    "Cc": "抄送",
+    "Retrieved": "获取于",
+    "Captured": "采集于",
+    "Archived": "存档于",
+    "Open {name} →": "打开{name} →",
+    "the file": "文件",
+    "Mapped project session folder": "映射的项目会话目录",
+    "Source routing only; does not verify completion": "仅表示来源归属，不证明工作已完成",
+    "This archived excerpt is truncated; find searches only the text shown.": "存档摘录已截断，仅搜索此处显示的文字。",
+    "Not started": "尚未开始",
+    "Show more contacts": "显示更多联系人",
+    "Search other contacts": "搜索其他联系人",
+    "Find a name or email…": "搜索姓名或邮箱…",
+    "Prepare in terminal": "在终端中准备",
+    "No contact matches this search.": "没有匹配的联系人。",
+    "Not mapped yet": "尚未映射",
+    "Copy review list command": "复制待审核列表命令",
+    "What is between you now": "目前双方的待办",
+    "Read the context": "阅读背景",
+    "source {n}": "来源 {n}",
+    "Read {n} item": "阅读了 {n} 项",
+    "Read {n} items": "阅读了 {n} 项",
+    "items from your sources": "来自你的来源",
+    "Rewrote {n} page": "改写了 {n} 页",
+    "Rewrote {n} pages": "改写了 {n} 页",
+    "Page rewrites; see memory changes for findings": "页面改写；具体发现见「记忆变化」",
+    "{n} run": "{n} 次运行",
+    "{n} runs": "{n} 次运行",
+    "Dips show how much each run read": "下探深度表示每次运行的阅读量",
+    "{n} stopped early": "{n} 次提前停止",
+    "Nothing stopped early": "均未提前停止",
+    "White: changed · grey: stopped · amber: run ended": "白：有改动 · 灰：提前停止 · 琥珀：运行结束",
+    "overdue · ": "已逾期 · ",
+    "due ": "到期 ",
+    "you promised": "你答应的事",
+    "a question": "一个问题",
+    "a request": "一项请求",
+    "today": "今天",
+    "1 day": "1 天",
+    "{n} days": "{n} 天",
+    " ago": "前",
+    "gone quiet": "久未推进",
+    " and {n} is waiting on someone else": "，另有 {n} 件等对方处理",
+    " and {n} are waiting on someone else": "，另有 {n} 件等对方处理",
+    "Other notebook links": "其他笔记链接",
+    "Show {n} more notebook links": "再显示 {n} 个笔记链接",
+    "Runs": "运行记录",
+    "latest {n}": "最近 {n} 次",
+    "none yet": "暂无",
+    "completed": "已完成",
+    "pass": "通过",
+    "done": "已完成",
+    "failed": "失败",
+    "stopped": "已停止",
+    "sync": "同步",
+    "map": "映射",
+    "investigate": "调查",
+    "{n} read": "阅读了 {n} 项",
+    "{n} in / {m} out tokens": "输入 {n} / 输出 {m} token",
+    "Refused": "拒绝写入",
+    "Not written": "未写入",
+    "Inspection report": "检查报告",
+    "{n} supplied items · inspection report": "{n} 项输入 · 检查报告",
+    "Model's inspection report": "模型检查报告",
+    "Inputs supplied to this run (including context; not proof of inspection)": "本次运行的输入（含背景材料，不代表均已检查）",
+    "Who is this, and where did we leave off?": "这是谁？上次聊到哪了？",
+    "{n} written of {m}": "{m} 人中已撰写 {n} 人",
+    "{n} pages": "{n} 页",
+    "{n} other contacts": "另有 {n} 位联系人",
+    "Last activity": "最近动态",
+    "{n} other contacts found in mail": "邮件中发现的其他联系人：{n} 位",
+    "{n} possible contacts are held for review, outside this list.": "{n} 位可能的联系人待审核，暂未列入此表。",
+    "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。"
+}
+};
+function t(key, values = {}) {
+  return (UI[uiLanguage][key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+}
+function uiLocale() { return uiLanguage === "zh" ? "zh-CN" : undefined; }
+function setInterfaceLanguage(language) {
+  uiLanguage = language;
+  readerStorage("co-rem-ui-language", language);
+  closeEvidence();
+  render();
+}
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
   document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
-  try {
-    if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
-  } catch (_) { /* choice lasts this view only */ }
+  if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
   button.classList.toggle("active", hidden);
   button.setAttribute("aria-pressed", String(hidden));
-  button.textContent = hidden ? "Show labelled passages" : "Hide labelled passages";
+  button.textContent = t(hidden ? "Show labelled passages" : "Hide labelled passages");
 }
-
-// Theme: auto follows the system; light or dark is remembered for file:// only.
-(function() {
-  let saved = null;
-  try { saved = location.protocol === "file:" ? localStorage.getItem("co-rem-theme") : null; } catch (_) { saved = null; }
-  if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
-})();
-
 function setTheme(mode) {
-  try {
-    if (mode === "auto") {
-      delete document.documentElement.dataset.theme;
-      if (location.protocol === "file:") localStorage.removeItem("co-rem-theme");
-    } else {
-      document.documentElement.dataset.theme = mode;
-      if (location.protocol === "file:") localStorage.setItem("co-rem-theme", mode);
-    }
-  } catch (_) { /* storage blocked (sandboxed frame): the choice lasts this view only */ }
-  if (mode !== "auto") document.documentElement.dataset.theme = mode;
+  if (mode === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = mode;
+  if (location.protocol === "file:") readerStorage("co-rem-theme", mode);
   renderRail(railActive());
 }
 
@@ -1365,9 +1804,9 @@ function memoryCategories() { return REM.categories.filter(c => !ACTIVITY.has(c)
 // A skill's run report is opened from its skill page, never listed on its own.
 function skillReport(r) { return r.path.startsWith("logs/skill-runs-"); }
 function categoryHref(c) { return ACTIVITY.has(c) ? "#view=activity" : "#c=" + c; }
-function categoryName(c) { return ACTIVITY.has(c) ? "Activity" : label(c); }
-function label(c) { return CATEGORY_LABEL[c] || c; }
-function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }
+function categoryName(c) { return ACTIVITY.has(c) ? t("Activity") : label(c); }
+function label(c) { return t(CATEGORY_LABEL[c] || c); }
+function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
@@ -1377,7 +1816,7 @@ function peopleExclusions() {
   return { held: people.filter(r => r.needs_review).length,
     service: people.filter(r => r.service && !r.needs_review).length };
 }
-function remCommand(args) { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args; }
+function remCommand(args) { return "co rem" + (REM.default_root ? " " + args : " --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args); }
 function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function calendarDay(iso) {
@@ -1391,19 +1830,19 @@ function calendarDay(iso) {
 function fmtDate(iso) {
   if (!iso) return "";
   const day = calendarDay(iso), d = new Date(day + "T00:00:00Z");
-  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
+  return isNaN(d) ? iso : d.toLocaleDateString(uiLocale(), { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
 }
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
+  return isNaN(d) ? iso : d.toLocaleString(uiLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
 }
 function shortDate(day) {
   if (!day) return "";
   const d = new Date(day + "T00:00:00Z");
   if (isNaN(d)) return day;
   const sameYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
-  return d.toLocaleDateString(undefined, { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
+  return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
 }
 function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
 function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
@@ -1468,28 +1907,39 @@ function sourceSender(context) {
   const name = person?.title || who.name;
   return /\/|\.md/i.test(name) ? "" : name.split(/\s+/)[0];
 }
+function citationDay(date) {
+  if (uiLanguage === "zh") return new Intl.DateTimeFormat("zh-CN", { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return date.getUTCDate() + " " + months[date.getUTCMonth()];
+}
 function chipLabel(r, n) {
   const text = citationSource(r, n), id = sourceId(text);
   const context = (REM.source_context || {})[id];
   const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
   const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
   const date = day && new Date(day + "T00:00:00Z");
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const when = date && !isNaN(date) ? date.getUTCDate() + " " + months[date.getUTCMonth()] : "";
+  const when = date && !isNaN(date) ? citationDay(date) : "";
   const label = [context && sourceSender(context), sourceChannel(kind), when].filter(Boolean);
-  return label.join(", ") || "source " + n;
+  return label.join(", ") || t("source {n}", { n });
+}
+function citationDate(r, n) {
+  const text = citationSource(r, n), context = (REM.source_context || {})[sourceId(text)];
+  const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
+  const date = day && new Date(day + "T00:00:00Z");
+  return date && !isNaN(date) ? citationDay(date) : t("source {n}", { n });
 }
 function citeRun(ns, from) {
   return citeChip(ns[0], from, true, false, ns);
 }
 function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n]) {
   const r = byPath(from), text = citationSource(r, n), context = (REM.source_context || {})[sourceId(text)];
-  const label = chipLabel(r, n), missing = !context;
+  const label = ns.map(number => chipLabel(r, number)).join("; "), missing = ns.some(number => !(REM.source_context || {})[sourceId(citationSource(r, number))]);
+  const when = citationDate(r, n), full = when === t("source {n}", { n }) ? when : chipLabel(r, n);
   const subject = context?.subject || REM.conversations?.[context?.thread]?.subject;
   const tip = "Source: " + label + (subject ? ", subject “" + subject + "”" : "")
     + (missing ? ", original not in this snapshot" : "") + (ns.length > 1 ? ", " + ns.length + " sources for this line" : "");
   return '<a class="cite' + (ns.length > 1 ? " run" : "") + (missing ? " missing" : "") + '" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() +
-    '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + esc(label) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</a>";
+    '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + '<span class="cite-full">' + esc(full) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + '</span><span class="cite-short">' + esc(when) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</span></a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -1542,10 +1992,10 @@ function inline(text, from) {
   s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)([.!?。]?)/g,
     (m, sentence, level, cites, ending) => '<span class="private" data-level="' + level + '">' + sentence +
       ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + ending + '</span>');
-  // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
+  // Adjacent claim numbers share one quiet marker: one chip says how many, and names them on hover.
   s = youify(s);
   const runs = [];
-  s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => { runs.push(citeRun(run.match(/W?\d{1,3}/g), from)); return "\u0003" + (runs.length - 1) + "\u0003"; });
+  s = s.replace(/(?:\s*\[W?\d{1,3}\]){2,}/g, run => { runs.push(citeRun(run.match(/W?\d{1,3}/g), from)); return "\u0003" + (runs.length - 1) + "\u0003"; });
   s = s.replace(/\s*\[(W?\d{1,3})\]/g, (m, n) => citeChip(n, from));
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
@@ -1553,7 +2003,39 @@ function inline(text, from) {
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
     : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
-  return quoteSpans(s);
+  return tetherCitations(quoteSpans(s));
+}
+// Keep a word and marker together; an oversized word can still wrap inside the tether.
+function tetherCitations(html) {
+  if (!html.includes('class="cite')) return html;
+  const box = el("span", { html });
+  for (const cite of box.querySelectorAll("a.cite")) {
+    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    let before = null;
+    while (walker.nextNode() && !cite.contains(walker.currentNode)) {
+      if (walker.currentNode.textContent.replace(/\u2060/g, "").trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) before = walker.currentNode;
+    }
+    if (!before) continue;
+    const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(before.textContent);
+    const word = cjk || /\S+\s*$/.exec(before.textContent);
+    const after = cite.nextSibling, punctuation = after?.nodeType === Node.TEXT_NODE && /^\s*([.!?,;:。！？])/u.exec(after.textContent);
+    if (punctuation) after.textContent = after.textContent.replace(/^\s+/, "");
+    // A joiner preserves nested emphasis, links and quoted spans without splitting their markup.
+    if (before.parentElement !== cite.parentElement) {
+      cite.before(document.createTextNode("\u2060"));
+      if (punctuation) after.textContent = "\u2060" + after.textContent;
+      continue;
+    }
+    const range = document.createRange();
+    range.setStart(before, word.index);
+    if (punctuation) range.setEnd(after, 1); else range.setEndAfter(cite);
+    const tether = el("span", { class: "cite-tether" });
+    tether.appendChild(range.extractContents());
+    const inner = el("span", { class: "cite-word" }, [tether.firstChild]);
+    tether.prepend(inner);
+    range.insertNode(tether);
+  }
+  return box.innerHTML;
 }
 // Walk rendered prose so quotation marks in attributes and code stay untouched.
 // Ranges retain links, citation chips and privacy spans inside a quotation.
@@ -1816,7 +2298,7 @@ function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? "Some sections are filled from sources; the rest are not investigated yet." : known(r).stamp || label }, [moon(st), label]);
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? "Some sections are filled from sources; the rest are not investigated yet." : known(r).stamp || label }, [moon(st), t(label)]);
 }
 
 // ---------- reading a page's parts ----------
@@ -1972,7 +2454,7 @@ function historyItems(text) {
 // A range on two lines so it fits the date column: "Aug 26" over "– 28", or
 // "Jul 29" over "– Aug 4". A month alone is "Oct 2025", not the 1st of it.
 function dayLabel(item) {
-  const one = d => d.length === 7 ? new Date(d + "-01T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC", month: "short", year: "numeric" }) : shortDate(d);
+  const one = d => d.length === 7 ? new Date(d + "-01T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short", year: "numeric" }) : shortDate(d);
   if (!item.end || item.end === item.day) return one(item.day);
   const sameMonth = item.end.length === 10 && item.end.slice(0, 7) === item.day.slice(0, 7);
   return one(item.day) + "\n– " + (sameMonth ? String(Number(item.end.slice(8))) : one(item.end));
@@ -2111,10 +2593,10 @@ function plainValue(v) { return plainLine(v || ""); }
 // ---------- the sheet: People, Organisations, Projects as a table (#2064) ----------
 const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
 function openCell(f) {
-  if (!f.open.length) return f.calm ? el("span", { class: "unk", text: "nothing open" }) : el("span", { class: "unk", text: "—" });
-  const t = f.open[0];
-  return el("span", { class: "open-cell " + t.dir, title: plainLine(t.text) }, [el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
-    el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
+  if (!f.open.length) return f.calm ? el("span", { class: "unk", text: t("nothing open") }) : el("span", { class: "unk", text: "—" });
+  const thread = f.open[0];
+  return el("span", { class: "open-cell " + thread.dir, title: plainLine(thread.text) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
+    el("span", { class: "txt", text: plainLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
   text: shortDate(day) + (fromMap ? " · map" : "") }) : el("span", { class: "unk", text: "—" }); }
@@ -2124,7 +2606,7 @@ function privateFallback(node) {
   if (node.querySelector(".private") && !/[\p{L}\p{N}]/u.test(visible.textContent)) {
     const content = el("span", { class: "privacy-content" });
     while (node.firstChild) content.appendChild(node.firstChild);
-    node.append(content, el("span", { class: "private-hidden-notice", text: "Hidden labelled passage" }));
+    node.append(content, el("span", { class: "private-hidden-notice", text: t("Hidden labelled passage") }));
     node.classList.add("privacy-only");
   }
   return node;
@@ -2132,11 +2614,33 @@ function privateFallback(node) {
 function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
   title: /\[(?:personal|sensitive)\]/i.test(v) ? "" : plainLine(v),
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
+function peopleCardMeta(r, f) {
+  const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && textCell(f.role), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
+  const meta = el("div", { class: "people-card-meta" }, parts.flatMap((node, i) => i ? [" · ", node] : [node]));
+  meta.querySelectorAll("a").forEach(link => link.replaceWith(...link.childNodes));
+  meta.title = meta.querySelector(".private") ? "" : meta.textContent;
+  return meta;
+}
+function peopleEmails(value) {
+  const addresses = plainValue(value).match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || [];
+  return peopleContact(addresses, "email");
+}
+function peoplePhones(value) {
+  return peopleContact(plainValue(value).split(/\s*[;,]\s*/).filter(Boolean), "phone");
+}
+function peopleContact(values, kind) {
+  if (!values.length) return textCell("");
+  return el("span", { class: "people-" + kind + "s", title: values.join("; ") }, [
+    el(kind === "email" ? "a" : "span", { class: "contact-first " + kind + "-first", text: values[0],
+      ...(kind === "email" ? { href: "mailto:" + values[0] } : {}) }),
+    values.length > 1 ? el("span", { class: "contact-more " + kind + "-more", text: "+" + (values.length - 1) }) : null]);
+}
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
-    r.category === "projects" ? el("span", { class: "mobile-status-label", text: k.status }) : null,
-    withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
+    r.category === "projects" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
+    withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null,
+    r.category === "people" ? peopleCardMeta(r, f) : null]);
 }
 const COLUMNS = {
   people: [
@@ -2146,8 +2650,8 @@ const COLUMNS = {
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "company", label: "Company", sort: (r, f) => plainValue(f.company).toLowerCase() || "￿", cell: (r, f) => textCell(f.company) },
     { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
-    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,;\s]/)[0], class: "mono trunc", title: plainValue(f.email), text: plainValue(f.email) }) : textCell("") },
-    { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
+    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? peopleEmails(f.email) : textCell("") },
+    { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? peoplePhones(f.phone) : textCell("") },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
     { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
   ],
@@ -2175,33 +2679,27 @@ const SHEET = {};
 function sheet(c, items) {
   const cols = COLUMNS[c];
   const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
-  const wrap = el("div", { class: "sheet-box" });
+  const wrap = el("div", { class: "sheet-box" + (c === "people" ? " people-sheet" : "") });
   const bar = el("div", { class: "sheet-bar" });
-  const find = el("input", { type: "search", class: "sheet-find", placeholder: "Filter " + label(c).toLowerCase() + "…", "aria-label": "Filter " + label(c).toLowerCase(), value: state.text });
-  const chips = el("div", { class: "seg", role: "group", "aria-label": "Show" });
+  const find = el("input", { type: "search", class: "sheet-find", placeholder: t("Filter {category}", { category: label(c).toLowerCase() }) + "…", "aria-label": t("Filter {category}", { category: label(c).toLowerCase() }), value: state.text });
+  const chips = el("div", { class: "seg", role: "group", "aria-label": t("Show") });
   const count = el("span", { class: "sheet-count mono" });
+  const sortSelect = el("select", { "aria-label": t("Sort by") }, [el("option", { value: "", text: t("Last activity") }),
+    ...cols.map(col => el("option", { value: col.key, text: t(col.label) }))]);
+  const phoneSort = el("label", { class: "people-sort" }, [t("Sort by") + " ", sortSelect]);
   bar.append(find, chips, count);
+  if (c === "people") bar.appendChild(phoneSort);
   const table = el("table", { class: "sheet" });
   const thead = el("thead"), tbody = el("tbody");
   table.append(thead, tbody);
   const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": label(c) + " table" }, [table]);
   wrap.append(bar, scroller);
   const draw = () => {
-    thead.textContent = "";
-    const tr = el("tr");
-    for (const col of cols) {
-      const sorted = state.sort === col.key;
-      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
-      const btn = el("button", { type: "button" }, [col.label, el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
-      btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
-      th.appendChild(btn); tr.appendChild(th);
-    }
-    thead.appendChild(tr);
     chips.textContent = "";
     for (const [key, name, test] of FILTERS) {
       const n = items.filter(r => test(r, facts(r))).length;
       if (key !== "all" && !n) continue;
-      const b = el("button", { type: "button", class: state.filter === key ? "on" : "", "aria-pressed": String(state.filter === key) }, [name, el("span", { class: "n", text: String(n) })]);
+      const b = el("button", { type: "button", class: state.filter === key ? "on" : "", "aria-pressed": String(state.filter === key) }, [t(name), el("span", { class: "n", text: String(n) })]);
       b.onclick = () => { state.filter = key; draw(); };
       chips.appendChild(b);
     }
@@ -2210,14 +2708,34 @@ function sheet(c, items) {
     let rows = items.filter(r => test(r, facts(r)) && (!needle || (r.title + " " + Object.values(facts(r)).filter(v => typeof v === "string").join(" ")).toLowerCase().includes(needle)));
     const col = cols.find(x => x.key === state.sort);
     rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(byActivity);
+    const visibleCols = c === "people" && rows.length ? cols.filter(col => col.key === "name" || rows.some(r => {
+      const text = col.cell(r, facts(r))?.textContent?.trim();
+      return text && text !== "—";
+    })) : cols;
+    sortSelect.value = state.sort || "";
+    thead.textContent = "";
+    const tr = el("tr");
+    for (const col of visibleCols) {
+      const sorted = state.sort === col.key;
+      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
+      const btn = el("button", { type: "button" }, [t(col.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
+      btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
+      th.appendChild(btn); tr.appendChild(th);
+    }
+    thead.appendChild(tr);
     tbody.textContent = "";
     for (const r of rows) {
       const row = el("tr", { "data-href": href(r) });
-      for (const c2 of cols) row.appendChild(el("td", { class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
+      for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
-    if (!rows.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: String(cols.length), class: "none", text: "Nothing matches. Clear the filter to see every page." })]));
-    count.textContent = rows.length + " of " + items.length;
+    if (!rows.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: String(cols.length), class: "none", text: t("Nothing matches. Clear the filter to see every page.") })]));
+    count.textContent = t("{n} of {m}", { n: rows.length, m: items.length });
+  };
+  sortSelect.onchange = () => {
+    state.sort = sortSelect.value || null;
+    state.desc = !!cols.find(col => col.key === state.sort)?.desc;
+    draw();
   };
   find.addEventListener("input", () => { state.text = find.value; draw(); });
   tbody.addEventListener("click", e => {
@@ -2329,7 +2847,7 @@ function hypnogram(asOf) {
   const segments = runSegments(runs, end - start), markers = [];
   const x = t => 4 + (W - 8) * (t - start) / (end - start);
   const pct = v => (100 * v / W).toFixed(2) + "%";
-  const time = t => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
+  const time = t => new Date(t).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
   const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
   const over = [], step = Math.max(HOUR, Math.ceil((end - start) / (6 * HOUR)) * HOUR);
   for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += step) {
@@ -2352,28 +2870,28 @@ function hypnogram(asOf) {
   return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in ' + segments.length + ' stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 function nightBand(showActivityLink = true) {
-  const pass = lastPass(), band = el("section", { class: "night", "aria-label": "The last pass" });
+  const pass = lastPass(), band = el("section", { class: "night", "aria-label": t("The last pass") });
   if (!pass) {
-    band.appendChild(el("h2", { class: "night-title", text: "No pass yet" }));
+    band.appendChild(el("h2", { class: "night-title", text: t("No pass yet") }));
     band.appendChild(el("p", {}, ["Each night co rem reads what came in and rewrites the pages it touches. Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
     return band;
   }
   const asOf = new Date(REM.as_of).getTime() || Date.now();
   const ago = Math.max(0, Math.round((asOf - pass.latest) / HOUR));
   band.appendChild(el("div", { class: "night-head" }, [
-    el("h2", { class: "night-title", text: ago < 24 ? "Last night" : "The last pass" }),
+    el("h2", { class: "night-title", text: t(ago < 24 ? "Last night" : "The last pass") }),
     el("span", { class: "when", text: fmtTime(new Date(pass.latest).toISOString()) }),
-    showActivityLink ? el("a", { href: "#view=activity", text: "See all activity" }) : null]));
+    showActivityLink ? el("a", { href: "#view=activity", text: t("See all activity") }) : null]));
   band.insertAdjacentHTML("beforeend", hypnogram(asOf));
   const stages = el("div", { class: "stages stats" });
   const stage = (heading, detail) => stages.appendChild(el("div", { class: "stat" }, [el("b", { class: "v", text: heading }), el("span", { class: "k", text: detail })]));
-  stage("Read " + num(pass.items) + (pass.items === 1 ? " item" : " items"), pass.sources.length ? listWords(pass.sources) : "items from your sources");
-  stage("Rewrote " + pass.changed.length + (pass.changed.length === 1 ? " page" : " pages"), "Page rewrites; see memory changes for findings");
-  stage(pass.runs.length + (pass.runs.length === 1 ? " run" : " runs"), "Dips show how much each run read");
-  stage(pass.failed.length ? pass.failed.length + " stopped early" : "Nothing stopped early", "White: changed · grey: stopped · amber: run ended");
+  stage(t(pass.items === 1 ? "Read {n} item" : "Read {n} items", { n: num(pass.items) }), pass.sources.length ? listWords(pass.sources) : t("items from your sources"));
+  stage(t(pass.changed.length === 1 ? "Rewrote {n} page" : "Rewrote {n} pages", { n: pass.changed.length }), t("Page rewrites; see memory changes for findings"));
+  stage(t(pass.runs.length === 1 ? "{n} run" : "{n} runs", { n: pass.runs.length }), t("Dips show how much each run read"));
+  stage(pass.failed.length ? t("{n} stopped early", { n: pass.failed.length }) : t("Nothing stopped early"), t("White: changed · grey: stopped · amber: run ended"));
   band.appendChild(stages);
   if (pass.changed.length) {
-    const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: "Pages rewritten" })]);
+    const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: t("Pages rewritten") })]);
     for (const r of pass.changed.slice(0, 14)) changes.appendChild(el("a", { href: href(r), title: label(r.category), text: r.title }));
     if (pass.changed.length > 14) changes.appendChild(el("span", { class: "k", text: "+" + (pass.changed.length - 14) + " more" }));
     band.appendChild(changes);
@@ -2404,50 +2922,57 @@ function renderRail(active) {
   nav.textContent = "";
   const owner = REM.owner && byPath(REM.owner);
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
-    el("span", {}, [moon(known(owner).status), " You"]), el("span", { class: "n", text: owner.title })]));
-  nav.appendChild(el("div", { class: "label", text: "Your day" }));
+    el("span", {}, [moon(known(owner).status), " " + t("You")]), el("span", { class: "n", text: owner.title })]));
+  nav.appendChild(el("div", { class: "label", text: t("Your day") }));
   for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"],
     ["changes", "Memory changes", "#view=changes"]])
-    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
-  nav.appendChild(el("div", { class: "label", text: "Explore memory" }));
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: "All records" }), el("span", { class: "n", text: String(listedRecords().length) })]));
+    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
+  nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of memoryCategories()) {
     const n = inCategory(c).length;
     if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
   }
-  nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: "Activity" })]));
+  nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
   if ((REM.reviews || []).length || active === "reviews") nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
-    [el("span", { text: "Questions & connections" }), el("span", { class: "n" + (pending ? " open" : " zero"), text: String(pending) })]));
+    [el("span", { text: t("Questions & connections") }), el("span", { class: "n" + (pending ? " open" : " zero"), text: String(pending) })]));
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
   foot.textContent = "";
   const current = document.documentElement.dataset.theme || "auto";
-  const themeSwitch = el("div", { class: "theme-switch", role: "radiogroup", "aria-label": "Theme" });
+  const themeSwitch = el("div", { class: "theme-switch", role: "radiogroup", "aria-label": t("Theme") });
   for (const mode of ["auto", "light", "dark"]) {
     const btn = el("button", { class: "theme-btn" + (current === mode ? " active" : ""), type: "button", role: "radio",
-      "aria-checked": String(current === mode), text: mode[0].toUpperCase() + mode.slice(1), title: mode + " theme" });
+      "aria-checked": String(current === mode), text: t(mode[0].toUpperCase() + mode.slice(1)), title: mode + " theme" });
     btn.onclick = () => setTheme(mode);
     themeSwitch.appendChild(btn);
   }
-  foot.appendChild(themeSwitch);
+  const languageSwitch = el("div", { class: "language-switch theme-switch", role: "group", "aria-label": "Interface language" });
+  for (const [tag, name] of [["en", "EN"], ["zh", "中文"]]) {
+    const button = el("button", { type: "button", class: "theme-btn" + (uiLanguage === tag ? " active" : ""),
+      "aria-pressed": String(uiLanguage === tag), lang: tag, text: name });
+    button.onclick = () => setInterfaceLanguage(tag);
+    languageSwitch.appendChild(button);
+  }
+  foot.appendChild(el("div", { class: "reader-switches" }, [themeSwitch, languageSwitch]));
   const hidden = document.documentElement.classList.contains("hide-private");
   const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
-    "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
+    "aria-pressed": String(hidden), text: t(hidden ? "Show labelled passages" : "Hide labelled passages"),
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
-  const settings = el("details", { class: "reader-settings" }, [el("summary", { text: "Reader settings" }), privacy,
-    el("div", { text: "Also hides raw excerpts; other details stay visible." })]);
-  foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
+  const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
+    el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
+  foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
-    : s.next_run ? "Next pass " + fmtTime(s.next_run)
-    : (scheduleState(s) || "No pass scheduled");
-  settings.appendChild(el("div", { text: plainLine(schedule) }));
-  settings.appendChild(el("code", { text: location.protocol === "about:" ? "Reload for latest" : remCommand("open") + " re-renders" }));
+    : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
+    : t(scheduleState(s) || "No pass scheduled");
+  settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "") }));
+  settings.appendChild(el("code", { text: location.protocol === "about:" ? t("Reload for latest") : remCommand("open") + " " + t("re-renders") }));
   foot.appendChild(settings);
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
@@ -2463,7 +2988,7 @@ function row(r, opts) {
   const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
   if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
   const open = threads(r).items[0];
-  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
+  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
@@ -2474,17 +2999,18 @@ function alsoOn(records = []) {
   return el("div", { class: "also-on" }, ["Also on ", ...records.flatMap((r, i) =>
     [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
 }
-function threadRow(r, t, withPage, also = []) {
-  const text = t.text.replace(/^(\d{4}-\d{2}-\d{2}):\s+/, (prefix, day) => day === t.since ? "" : prefix);
-  return el("li", { class: "thread " + t.dir }, [
-    el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
+function threadRow(r, thread, withPage, also = []) {
+  const text = thread.text.replace(/^(\d{4}-\d{2}-\d{2}):\s+/, (prefix, day) => day === thread.since ? "" : prefix);
+  return el("li", { class: "thread " + thread.dir }, [
+    el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null]),
-    el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : "") }, [threadAge(t), blockerTag(t)])]);
+    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? "since " + threadDate(thread.since) : "") + (thread.due ? " · due " + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
 function sectionHead(title, note) {
+  title = t(title);
   return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
 }
 function capFirst(text) {
@@ -2519,7 +3045,7 @@ function memoryConnection(records) {
       const other = byPath(resolve(r.path, match[1]));
       if (!other || other.path === r.path || !visible.has(other.path)) continue;
       return el("div", { class: "memory-connection" }, [
-        el("span", { class: "label", text: "Connected context" }),
+        el("span", { class: "label", text: t("Connected context") }),
         el("a", { href: href(r), text: r.title }),
         el("span", { class: "relation", "aria-hidden": "true", text: "↔" }),
         el("a", { href: href(other), text: other.title }),
@@ -2537,7 +3063,7 @@ function changeCard(claim) {
     claim.before ? el("p", { class: "before", text: "Before: " + claim.before }) : null,
     el("p", { class: "after", text: "Now: " + claim.after }),
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
-      text: "Open the page and source →" })]);
+      text: t("Open the page and source →") })]);
   return card;
 }
 function firstMapBrief() {
@@ -2558,12 +3084,12 @@ function firstMapBrief() {
     el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
   if (held || service) brief.appendChild(el("p", { class: "first-map-held", text:
     (held ? held + " possible contacts are held for review and excluded from the People count." : "") +
-    (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") }));
+    (service ? (held ? " " : "") + t("{n} service or institutional senders are excluded from People.", { n: service }) : "") }));
   return brief;
 }
 function morningBrief() {
   const pass = lastPass(), claims = pass?.claims || [];
-  const brief = el("section", { class: "overnight", "aria-label": "What changed overnight" }, [sectionHead("What changed overnight")]);
+  const brief = el("section", { class: "overnight", "aria-label": t("What changed overnight") }, [sectionHead("What changed overnight")]);
   if (claims.length) brief.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
   else {
     const n = pass?.changed?.length || 0;
@@ -2614,33 +3140,33 @@ function morningEntries(entries) {
   return chosen;
 }
 function threadDate(day) {
-  return new Date(day + "T00:00:00Z").toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).replace("Sept", "Sep");
+  return new Date(day + "T00:00:00Z").toLocaleDateString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).replace("Sept", "Sep");
 }
-function dueLabel(t) {
-  return (t.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(t.due);
+function dueLabel(thread) {
+  return t(thread.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(thread.due);
 }
-function morningThread({ r, t, also }) {
-  const { words, context } = morningWords(t.text, r);
+function morningThread({ r, t: thread, also }) {
+  const { words, context } = morningWords(thread.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
-  const label = /\b(?:promised|agreed|offered to)\b/i.test(t.text) ? "you promised" : /\?|\bquestion\b/i.test(t.text) ? "a question" : "a request";
+  const label = /\b(?:promised|agreed|offered to)\b/i.test(thread.text) ? "you promised" : /\?|\bquestion\b/i.test(thread.text) ? "a question" : "a request";
   const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("");
   return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
     el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
       privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also)]),
-    el("div", { class: "waiting-age" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : "") },
-      [el("b", {}, [threadAge(t), blockerTag(t)]), el("span", { text: label })])]);
+    el("div", { class: "waiting-age" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : "") },
+      [el("b", {}, [threadAge(thread), blockerTag(thread)]), el("span", { text: t(label) })])]);
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
-  return el("details", { class: "gone-quiet" }, [el("summary", { text: "Gone quiet (" + count + ")" }),
+  return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
       el("div", {}, [el("a", { href: href(r), text: r.title }), el("p", { text: threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
-    home ? el("a", { href: "#view=open", text: "See all quiet threads →" }) : null]);
+    home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
 }
 function morningNight() {
   const band = nightBand();
@@ -2651,23 +3177,23 @@ function morningNight() {
 function taskView(kind) {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow", text: "Today" }));
+  main.appendChild(el("div", { class: "eyebrow", text: t("Today") }));
   if (kind === "changes") {
     const pass = lastPass();
-    main.appendChild(el("h1", { text: "Memory changes" }));
-    main.appendChild(el("p", { class: "lede", text: "Source-backed changes from the latest pass. Page rewrites are listed separately." }));
+    main.appendChild(el("h1", { text: t("Memory changes") }));
+    main.appendChild(el("p", { class: "lede", text: t("Source-backed changes from the latest pass. Page rewrites are listed separately.") }));
     const claims = pass?.claims || [];
     if (claims.length) main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
-    else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No verified claim change in this pass" }),
+    else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No verified claim change in this pass") }),
       "The pass may have refreshed pages; that alone is not a new memory."]));
     if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
       el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
     return;
   }
-  main.appendChild(el("h1", { text: "Open threads" }));
+  main.appendChild(el("h1", { text: t("Open threads") }));
   const entries = threadEntries(), counts = threadCounts();
   if (!entries.length) {
-    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing open") }),
       "No supported open loop is in this snapshot."]));
     return;
   }
@@ -2695,34 +3221,34 @@ function recallPrompt() {
   const card = el("section", { class: "recall", "aria-label": "Recall a memory" });
   const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
     el("p", { text: answerText }), el("a", { href: href(r), text: "Open " + r.title + " and its sources →" })]);
-  const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: "Reveal the context" });
+  const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: t("Reveal the context") });
   button.onclick = () => {
     answer.hidden = !answer.hidden;
     button.setAttribute("aria-expanded", String(!answer.hidden));
-    button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
+    button.textContent = t(answer.hidden ? "Reveal the context" : "Hide the context");
   };
-  card.append(el("span", { class: "label", text: "Worth remembering" }),
-    el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
-    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
+  card.append(el("span", { class: "label", text: t("Worth remembering") }),
+    el("h2", { text: t(relationship ? "How do you know {name}?" : "What should you remember about {name}?", { name: r.title }) }),
+    el("p", { class: "why", text: t("Pause before revealing. The answer comes from a page co rem already wrote.") }), button, answer);
   return card;
 }
 function connectionReview() {
   const candidate = (REM.reviews || []).find(row => row.status === "pending" && row.kind === "link");
   if (!candidate) return null;
   return el("section", { class: "connection-review", "aria-label": "Connection awaiting review" }, [
-    el("span", { class: "label", text: "A possible connection · Your judgment needed" }),
+    el("span", { class: "label", text: t("A possible connection · Your judgment needed") }),
     el("h2", { text: candidate.question }),
     el("p", { text: candidate.basis }),
     el("div", { class: "subjects" }, [
       ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
-      el("a", { href: "#reviews=1", text: "Review the evidence →" })])]);
+      el("a", { href: "#reviews=1", text: t("Review the evidence →") })])]);
 }
 function waitingMore(counts) {
-  if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: "Nothing is open between you and anyone right now." });
-  const others = counts.theirs + (counts.theirs === 1 ? " is" : " are") + " waiting on someone else";
+  if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: t("Nothing is open between you and anyone right now.") });
+  const others = t(counts.theirs === 1 ? " and {n} is waiting on someone else" : " and {n} are waiting on someone else", { n: counts.theirs });
   return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: counts.mine
-    ? "See all " + counts.mine + " waiting on you" : counts.theirs + " waiting on someone else →" }),
-    counts.mine && counts.theirs ? " and " + others : null]);
+    ? t("See all {n} waiting on you", { n: counts.mine }) : t("{n} waiting on someone else →", { n: counts.theirs }) }),
+    counts.mine && counts.theirs ? others : null]);
 }
 function overview() {
   const s = REM.status || {};
@@ -2735,9 +3261,9 @@ function overview() {
   const firstMap = firstMapBrief();
   const primary = el("div", { class: "morning-primary" }, [
     // The heading counts what the sidebar and co rem status count; the rows are its top few.
-    el("h1", { text: counts.mine === 0 ? "Nothing is waiting on you" : counts.mine === 1 ? "One thing is waiting on you" : counts.mine + " things are waiting on you" }),
+    el("h1", { text: counts.mine === 0 ? t("Nothing is waiting on you") : counts.mine === 1 ? t("One thing is waiting on you") : t("{n} things are waiting on you", { n: counts.mine }) }),
     firstMap,
-    counts.mine ? el("p", { class: "waiting-intro", text: "Newest and due first. Quotes keep their words; other lines summarise the obligation." }) : null,
+    counts.mine ? el("p", { class: "waiting-intro", text: t("Newest and due first. Quotes keep their words; other lines summarise the obligation.") }) : null,
     counts.mine ? el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)) : null,
     waitingMore(counts), morningBrief()]);
   const side = el("aside", { class: "morning-side" });
@@ -2759,7 +3285,7 @@ function overview() {
         known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?Now:(?:\*\*)?\s*/i, "") }) : null])]))));
   }
 
-  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
+  const processing = el("details", { class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
@@ -2825,16 +3351,16 @@ function runTrace(run) {
   const pages = run.pages?.length ? run.pages : [run];
   if (!pages.some(page => page.evidence?.length || page.report)) return null;
   const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
-  const trace = el("details", { class: "run-trace" }, [el("summary", { text: count ? count + " supplied items · inspection report" : "Inspection report" })]);
+  const trace = el("details", { class: "run-trace" }, [el("summary", { text: count ? t("{n} supplied items · inspection report", { n: count }) : t("Inspection report") })]);
   trace.addEventListener("toggle", () => {
     if (!trace.open || trace.dataset.loaded) return;
     trace.dataset.loaded = "true";
     for (const page of pages) {
       const record = page.page || page.record;
       if (record) trace.appendChild(el("h3", {}, [pageLink(record)]));
-      if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
+      if (page.report) trace.appendChild(el("pre", { text: t("Model's inspection report") + "\n" + page.report }));
       if (!page.evidence?.length) continue;
-      trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
+      trace.appendChild(el("h3", { text: t("Inputs supplied to this run (including context; not proof of inspection)") }));
       trace.appendChild(el("ul", {}, page.evidence.map(item => el("li", { text: [
         item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
         item.captured_at && "captured: " + item.captured_at,
@@ -2848,31 +3374,31 @@ function runItem(run) {
   const tone = /^(completed|pass)$/i.test(outcome) ? "" : FAILED.test(outcome) ? " warn" : " quiet";
   const li = el("li", { class: FAILED.test(outcome) ? "failed-run" : "" }, [
     el("div", { class: "run-head" }, [el("span", { class: "mono", text: fmtTime(run.started_at) }),
-      el("span", { text: run.phase || "sync" }), el("span", { class: "pill" + tone, text: outcome })]),
-    el("div", { class: "run-meta mono", text: (run.items || 0) + " read" + (u.input_tokens == null ? "" : " · " + num(u.input_tokens) + " in / " + num(u.output_tokens) + " out tokens") })]);
-  if ((run.changed || []).length) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k", text: "Changed" }), ...run.changed.map(pageLink)]));
-  for (const x of unwritten(run)) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k warn", text: x.k }), pageLink(x.page), el("span", { class: "why", text: x.why })]));
+      el("span", { text: t(run.phase || "sync") }), el("span", { class: "pill" + tone, text: t(outcome) })]),
+    el("div", { class: "run-meta mono", text: t("{n} read", { n: run.items || 0 }) + (u.input_tokens == null ? "" : " · " + t("{n} in / {m} out tokens", { n: num(u.input_tokens), m: num(u.output_tokens) })) })]);
+  if ((run.changed || []).length) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k", text: t("Changed") }), ...run.changed.map(pageLink)]));
+  for (const x of unwritten(run)) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k warn", text: t(x.k) }), pageLink(x.page), el("span", { class: "why", text: x.why })]));
   const trace = runTrace(run);
   if (trace) li.appendChild(trace);
   return li;
 }
 function activityShelf(title, records) {
   if (!records.length) return null;
-  return el("details", { class: "activity-shelf" }, [el("summary", { text: title + " · " + records.length }),
+  return el("details", { class: "activity-shelf" }, [el("summary", { text: t(title) + " · " + records.length }),
     el("ul", { class: "hits" }, records.sort(byActivity).map(r => row(r)))]);
 }
 function activityView() {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
-  main.appendChild(el("div", { class: "eyebrow", text: "Activity" }));
-  main.appendChild(el("h1", { text: "Activity" }));
-  main.appendChild(el("p", { class: "lede", text: "What co rem did on each run: what it read, the pages it changed, and the ones it would not write." }));
+  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← " + t("Contents")])]));
+  main.appendChild(el("div", { class: "eyebrow", text: t("Activity") }));
+  main.appendChild(el("h1", { text: t("Activity") }));
+  main.appendChild(el("p", { class: "lede", text: t("What co rem did on each run: what it read, the pages it changed, and the ones it would not write.") }));
   main.appendChild(nightBand(false));
   const runs = REM.logs || [];
-  main.appendChild(sectionHead("Runs", runs.length ? "latest " + runs.length : "none yet"));
+  main.appendChild(sectionHead("Runs", runs.length ? t("latest {n}", { n: runs.length }) : t("none yet")));
   main.appendChild(runs.length ? el("ol", { class: "activity-runs" }, runs.map(runItem))
-    : el("div", { class: "empty" }, [el("span", { class: "lead", text: "No runs yet" }), "Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
+    : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No runs yet") }), "Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
   const notes = activityShelf("AI notes", REM.records.filter(r => r.category === "notes"));
   if (notes) main.appendChild(notes);
   const maps = activityShelf("Maps", REM.records.filter(r => r.category === "logs" && !skillReport(r)));
@@ -2885,20 +3411,20 @@ function contactDirectory() {
   const coverage = REM.contact_coverage || {};
   if (!candidates.length && !coverage.incomplete) return null;
   const details = el("details", { class: "contact-directory" });
-  details.appendChild(el("summary", { text: candidates.length + " other contacts found in mail" }));
+  details.appendChild(el("summary", { text: t("{n} other contacts found in mail", { n: candidates.length }) }));
   const body = el("div", { class: "directory-body" });
   body.appendChild(el("p", { class: "directory-note", text:
     "Found in " + (coverage.scope || "mail") + ". These headers have not established a person or a memory page. Search here before deciding whom REM should investigate." }));
   if (coverage.incomplete) body.appendChild(el("p", { class: "directory-note warn", text:
     "Coverage is incomplete: " + coverage.mailbox_errors + " mailbox scan error(s). Retry init before treating this as every contact." }));
-  const find = el("input", { type: "search", class: "directory-find", "aria-label": "Search other contacts", placeholder: "Find a name or email…" });
+  const find = el("input", { type: "search", class: "directory-find", "aria-label": t("Search other contacts"), placeholder: t("Find a name or email…") });
   const count = el("span", { class: "mono", "aria-live": "polite" });
   const table = el("table");
-  table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: name })))]));
+  table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: t(name) })))]));
   const tbody = el("tbody"); table.appendChild(tbody);
   const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": "Other contacts table" }, [table]);
   const action = el("tr", { class: "directory-action" }, [el("td", { colspan: "5" })]);
-  const more = el("button", { type: "button", class: "directory-more", text: "Show more contacts" });
+  const more = el("button", { type: "button", class: "directory-more", text: t("Show more contacts") });
   let limit = 100;
   const draw = () => {
     const needle = find.value.trim().toLowerCase();
@@ -2906,7 +3432,7 @@ function contactDirectory() {
     tbody.textContent = "";
     for (const row of matched.slice(0, limit)) {
       const name = row.name || row.email;
-      const prepare = el("button", { type: "button", text: "Prepare in terminal", "aria-label": "Show the command to prepare a memory for " + name });
+      const prepare = el("button", { type: "button", text: t("Prepare in terminal"), "aria-label": "Show the command to prepare a memory for " + name });
       prepare.onclick = () => {
         const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
           + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
@@ -2925,7 +3451,7 @@ function contactDirectory() {
         el("td", { text: row.last ? shortDate(row.last) : "—" }),
         el("td", { text: String(row.mails) }), el("td", {}, [prepare])]));
     }
-    if (!matched.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: "5", text: "No contact matches this search." })]));
+    if (!matched.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: "5", text: t("No contact matches this search.") })]));
     count.textContent = " · " + matched.length + " found";
     more.hidden = matched.length <= limit;
   };
@@ -2940,23 +3466,22 @@ function category(c) {
   if (c === "sessions") { sessionsView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
   const items = c === "all" ? listedRecords() : inCategory(c);
   const counts = (REM.counts || {})[c];
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
-  main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
+  main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
-  main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
-    items.length || other ? el("span", { class: "mono", text: (counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
-      + (other ? " · " + other + " other contacts" : "") }) : null]));
+  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? (uiLanguage === "zh" ? " " : /[?.]$/.test(lede) ? " " : ". ") : ""),
+    items.length || other ? el("span", { class: "mono", text: (counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped }) : t("{n} pages", { n: items.length }))
+      + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
     const note = el("p", { class: "held-note" }, [el("span", { text:
-      (held ? held + " possible contacts are held for review, outside this list." : "") +
-      (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") })]);
+      (held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "") +
+      (service ? (held ? " " : "") + t("{n} service or institutional senders are excluded from People.", { n: service }) : "") })]);
     if (held) {
-      const review = el("button", { type: "button", text: "Copy review list command" });
+      const review = el("button", { type: "button", text: t("Copy review list command") });
       review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
       note.appendChild(review);
     }
@@ -2964,8 +3489,8 @@ function category(c) {
   }
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
-      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
-      : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
+      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not mapped yet") }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
+      : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing here yet") }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
   if (c === "people") {
@@ -3054,12 +3579,12 @@ function sessionRow(r, terms) {
   const state = route(), text = sessionText(r), excerpt = sessionExcerpt(r, terms);
   const project = byPath(r.session_project), folder = r.session_folder || "";
   const meta = el("div", { class: "session-meta" }, [project ? el("a", { href: href(project), text: project.title })
-    : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder })]);
+    : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || t("No project"), title: folder })]);
   const clock = (state.by === "project" ? shortDate(r.session_date) + " " : "") + (r.session_time || "");
-  meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), (r.session_turns || 0) + (r.session_turns === 1 ? " turn" : " turns")].filter(Boolean).join(" · ")));
+  meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 })].filter(Boolean).join(" · ")));
   const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
     href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
-  if (["done", "partial", "abandoned"].includes(r.session_outcome)) tags.appendChild(el("span", { text: SESSION_OUTCOMES[r.session_outcome] }));
+  if (["done", "partial", "abandoned"].includes(r.session_outcome)) tags.appendChild(el("span", { text: t(SESSION_OUTCOMES[r.session_outcome]) }));
   return el("li", { class: "session-row" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
     el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
       el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta]);
@@ -3075,7 +3600,7 @@ function sessionGroups(records, state, terms) {
   let index = 0;
   for (const [key, rows] of groups) {
     const title = state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
-    const heading = [el("span", { text: title }), el("span", { class: "session-count", text: String(rows.length) })];
+    const heading = [el("span", { text: state.by === "project" && key === "none" ? t("No project") : title }), el("span", { class: "session-count", text: String(rows.length) })];
     const list = el("ul", { class: "session-rows" }, rows.map(r => sessionRow(r, terms)));
     if (state.by === "project") {
       const group = el("details", { class: "session-group" }, [el("summary", {}, heading), list]);
@@ -3087,44 +3612,44 @@ function sessionGroups(records, state, terms) {
   return content;
 }
 function sessionButton(text, action, attrs = {}) {
-  const button = el("button", { type: "button", ...attrs, text });
+  const button = el("button", { type: "button", ...attrs, text: attrs["data-topic"] ? text : t(text) });
   button.onclick = action;
   return button;
 }
 function sessionSegments(name, key, choices, change) {
-  const group = el("div", { class: "session-segments", role: "group", "aria-label": name });
+  const group = el("div", { class: "session-segments", role: "group", "aria-label": t(name) });
   for (const [value, text] of choices) group.appendChild(sessionButton(text, () => change(key, value), { "data-session-key": key, "data-value": value, "aria-pressed": "false" }));
-  return el("div", { class: "session-filter" }, [el("span", { text: name }), group]);
+  return el("div", { class: "session-filter" }, [el("span", { text: t(name) }), group]);
 }
 function sessionProjectSelect(records, change) {
   const counts = new Map();
   for (const r of records) counts.set(r.session_project || "none", (counts.get(r.session_project || "none") || 0) + 1);
-  const select = el("select", { "aria-label": "Project", "data-session-key": "project" }, [el("option", { value: "", text: "All projects" })]);
+  const select = el("select", { "aria-label": t("Project"), "data-session-key": "project" }, [el("option", { value: "", text: t("All projects") })]);
   for (const [path, count] of [...counts].filter(([path]) => path !== "none").sort((a, b) => b[1] - a[1]))
     select.appendChild(el("option", { value: path, text: (byPath(path)?.title || path) + " · " + count }));
-  if (counts.has("none")) select.appendChild(el("option", { value: "none", text: "No project · " + counts.get("none") }));
+  if (counts.has("none")) select.appendChild(el("option", { value: "none", text: t("No project · ") + counts.get("none") }));
   select.onchange = () => change("project", select.value);
-  return el("label", { class: "session-filter" }, [el("span", { text: "Project" }), select]);
+  return el("label", { class: "session-filter" }, [el("span", { text: t("Project") }), select]);
 }
 function sessionDates(change, state) {
-  const dates = el("details", { class: "session-dates" }, [el("summary", { text: "Choose dates" })]);
+  const dates = el("details", { class: "session-dates" }, [el("summary", { text: t("Choose dates") })]);
   dates.open = !!(state.from || state.to);
   const inputs = el("div", { class: "session-date-inputs" });
   for (const key of ["from", "to"]) {
-    const input = el("input", { type: "date", "aria-label": key === "from" ? "From" : "To", "data-session-key": key });
+    const input = el("input", { type: "date", "aria-label": t(key === "from" ? "From" : "To"), "data-session-key": key });
     input.onchange = () => change(key, input.value);
-    inputs.appendChild(el("label", {}, [key === "from" ? "From " : "To ", input]));
+    inputs.appendChild(el("label", {}, [t(key === "from" ? "From" : "To") + " ", input]));
   }
   dates.appendChild(inputs);
-  return el("div", { class: "session-filter session-date-filter" }, [el("span", { text: "Dates" }), dates]);
+  return el("div", { class: "session-filter session-date-filter" }, [el("span", { text: t("Dates") }), dates]);
 }
 function sessionTopics(records, change) {
   const tags = [...new Set(records.flatMap(r => r.session_tags || []))];
-  const row = el("div", { class: "session-topics" }, [el("span", { text: "Topics" })]);
+  const row = el("div", { class: "session-topics" }, [el("span", { text: t("Topics") })]);
   const top = el("div", { class: "session-topic-buttons" });
-  const more = el("details", {}, [el("summary", { text: "More topics", "aria-controls": "session-topic-list" })]);
+  const more = el("details", {}, [el("summary", { text: t("More topics"), "aria-controls": "session-topic-list" })]);
   top.id = "session-topic-list";
-  const buttons = new Map(tags.map(tag => [tag, sessionButton(tag, () => change("tag", tag), { "aria-pressed": "false" })]));
+  const buttons = new Map(tags.map(tag => [tag, sessionButton(tag, () => change("tag", tag), { "aria-pressed": "false", "data-topic": "true" })]));
   top.append(...buttons.values());
   more.ontoggle = () => {
     for (const button of buttons.values()) button.hidden = button.dataset.available !== "true" || button.dataset.overflow === "true" && !more.open;
@@ -3158,39 +3683,48 @@ function sessionTopics(records, change) {
     for (const [value, button] of outcomeButtons) {
       const count = base.filter(r => r.session_outcome === value).length;
       button.hidden = !count && state.outcome !== value;
-      button.textContent = SESSION_OUTCOMES[value] + " " + count;
+      button.textContent = t(SESSION_OUTCOMES[value]) + " " + count;
       button.setAttribute("aria-pressed", String(state.outcome === value));
     }
     const n = base.filter(r => !r.session_summary && !r.session_tags?.length && !r.session_outcome).length;
-    missing.textContent = n ? "Not summarised " + n : "";
+    missing.textContent = n ? t("Not summarised") + " " + n : "";
   }
   return { node: row, outcomes, sync };
 }
 function sessionFilterNames(state) {
-  const names = { find: 'Search: “' + state.find + '”', project: "Project: " + (byPath(state.project)?.title || (state.project === "none" ? "No project" : state.project)),
-    agent: "Agent: " + ({ codex: "Codex", "claude-code": "Claude Code" }[state.agent] || state.agent),
-    when: { today: "Today", week: "This week", month: "This month" }[state.when], from: "From " + state.from, to: "To " + state.to,
-    person: "Mentioning " + (byPath(state.person)?.title || state.person), tag: "Topic: " + state.tag, outcome: "Outcome: " + (SESSION_OUTCOMES[state.outcome] || state.outcome) };
+  const names = { find: t("Search") + ': “' + state.find + '”',
+    project: t("Project") + ": " + (byPath(state.project)?.title || (state.project === "none" ? t("No project") : state.project)),
+    agent: t("Agent") + ": " + state.agent, when: t(({ today: "Today", week: "This week", month: "This month" })[state.when] || state.when),
+    from: t("From") + ": " + state.from, to: t("To") + ": " + state.to,
+    person: t("Mentioning {name}", { name: byPath(state.person)?.title || state.person }),
+    tag: t("Topic") + ": " + state.tag, outcome: t("Outcome") + ": " + t(SESSION_OUTCOMES[state.outcome] || state.outcome) };
   return sessionActive(state).map(key => names[key]).join(" · ");
 }
 function sessionResults(records, total, state, terms, change) {
   const active = sessionActive(state), results = document.createDocumentFragment();
-  if (state.person) results.appendChild(sessionButton("Mentioning " + (byPath(state.person)?.title || state.person) + " ×", () => change("person", ""), { class: "session-person" }));
-  const line = el("div", { class: "session-result-line" }, [el("span", { role: "status", text: (active.length ? records.length + " of " : "") + total + " sessions" })]);
-  if (active.length) line.appendChild(sessionButton("Clear", () => change("clear", "")));
+  if (state.person) results.appendChild(sessionButton(t("Mentioning {name}", { name: byPath(state.person)?.title || state.person }) + " ×", () => change("person", ""), { class: "session-person" }));
+  const line = el("div", { class: "session-result-line" }, [el("span", { role: "status", text: active.length ? t("{n} of {m} sessions", { n: records.length, m: total }) : t("{n} sessions", { n: total }) })]);
+  if (active.length) line.appendChild(sessionButton(t("Clear"), () => change("clear", "")));
   results.appendChild(line);
   if (records.length) results.appendChild(sessionGroups(records, state, terms));
-  else results.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No session matches" }),
+  else results.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No session matches") }),
     el("p", { text: active.length ? sessionFilterNames(state) : "Import conversations you typed in with " + remCommand("import sessions") + "." })]));
   return results;
 }
 function sessionsView() {
   const main = document.getElementById("main"), records = inCategory("sessions").sort(sessionOrder);
+  if (!records.length) {
+    main.replaceChildren(el("h1", { text: label("sessions") }), el("section", { class: "empty sessions-empty" }, [
+      el("h2", { text: t("No agent sessions yet") }),
+      el("p", { text: t("See what you worked on with your coding agents, including decisions and follow-ups.") }),
+      commandChip(remCommand("sources")), commandChip(remCommand("import sessions"))]));
+    return;
+  }
   const state = Object.fromEntries(SESSION_KEYS.map(key => [key, route()[key] || ""]));
   if (state.from || state.to) state.when = "";
   const view = el("section", { class: "sessions-view" }), results = el("div", { id: "session-results" });
   const topics = sessionTopics(records, change);
-  const search = el("input", { id: "session-search", type: "search", "aria-label": "Search sessions", placeholder: "Search what you typed and what the agent replied", value: state.find });
+  const search = el("input", { id: "session-search", type: "search", "aria-label": t("Search sessions"), placeholder: t("Search what you typed and what the agent replied"), value: state.find });
   let timer;
   search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { if (view.isConnected) change("find", search.value); }, 120); };
   const panel = el("div", { class: "session-filter-panel", id: "session-filter-panel" }, [sessionProjectSelect(records, change),
@@ -3199,7 +3733,7 @@ function sessionsView() {
     sessionSegments("View", "by", [["", "By day"], ["project", "By project"]], change)]);
   const toggle = sessionButton("Filter", () => { const open = panel.classList.toggle("is-open"); toggle.setAttribute("aria-expanded", String(open)); },
     { class: "session-filter-toggle", "aria-expanded": "false", "aria-controls": "session-filter-panel" });
-  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← Contents" })]), el("h1", { text: label("sessions") }), el("p", { class: "lede", text: CATEGORY_ASK.sessions.replace(/^./, ch => ch.toUpperCase()) }), view);
+  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← " + t("Contents") })]), el("h1", { text: label("sessions") }), el("p", { class: "lede", text: t("What you worked on with your coding agents") }), view);
   view.append(search, topics.node, toggle, panel, results);
   const mobile = matchMedia("(max-width: 719px)");
   function placeOutcomes() { (mobile.matches ? panel : topics.node).appendChild(topics.outcomes); update(); }
@@ -3226,7 +3760,7 @@ function sessionsView() {
       if (control.tagName === "BUTTON") control.setAttribute("aria-pressed", String(control.dataset.value === value)); else control.value = value;
     }
     const count = sessionActive(state).filter(key => key !== "find").length;
-    toggle.textContent = "Filter" + (count ? " · " + count : "");
+    toggle.textContent = t("Filter") + (count ? " · " + count : "");
     topics.sync(base, state);
     results.replaceChildren(sessionResults(matches, records.length, state, terms, change));
   }
@@ -3251,19 +3785,19 @@ function projectSessions(r) {
   if (!sessions.length) return null;
   const counts = new Map();
   for (const s of sessions) for (const tag of new Set(s.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
-  return el("section", { class: "focus-section project-sessions" }, [el("h2", { text: "Sessions" }),
+  return el("section", { class: "focus-section project-sessions" }, [el("h2", { text: t("Sessions") }),
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 10).map(s => sessionContextRow(s))),
-    el("a", { href: sessionHash({ project: r.path }), text: "All " + sessions.length + " sessions" }),
+    el("a", { href: sessionHash({ project: r.path }), text: t("All {n} sessions", { n: sessions.length }) }),
     el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
       .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
 }
 function personSessions(r) {
   const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
   if (!sessions.length) return null;
-  return el("section", { class: "focus-section person-sessions" }, [el("h2", { text: "Mentioned in sessions" }),
+  return el("section", { class: "focus-section person-sessions" }, [el("h2", { text: t("Mentioned in sessions") }),
     // Beside Recently, not under the full note: five rows, the rest one link away.
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
-    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: "All " + sessions.length + " sessions" }) : null]);
+    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
 }
 
 function sessionSection(r, name) {
@@ -3297,7 +3831,7 @@ function sessionFinalReply(r) {
   if (!text) return null;
   const quote = sessionQuote(text.length > 1200 ? text.slice(0, 600) + "…" : text);
   quote.sessionFullText = text;
-  const out = el("section", { class: "session-final", id: "session-final" }, [el("h3", { text: "Final reply" }), quote]);
+  const out = el("section", { class: "session-final", id: "session-final" }, [el("h3", { text: t("Final reply") }), quote]);
   if (text.length > 1200) {
     const button = sessionButton("Show all", () => {
       quote.textContent = text; quote.sessionExpanded = true; button.remove();
@@ -3321,8 +3855,8 @@ function sessionMarkText(quote, text, needle) {
 function sessionFind(attachment, body, initial) {
   const input = el("input", { type: "search", placeholder: "Find in this conversation", "aria-label": "Find in this conversation" });
   const status = el("span", { class: "session-find-status", role: "status", "aria-live": "polite" });
-  const previous = sessionButton("↑", () => move(-1), { "aria-label": "Previous match" });
-  const next = sessionButton("↓", () => move(1), { "aria-label": "Next match" });
+  const previous = sessionButton("↑", () => move(-1), { "aria-label": t("Previous match") });
+  const next = sessionButton("↓", () => move(1), { "aria-label": t("Next match") });
   previous.disabled = next.disabled = true;
   const quotes = [...body.querySelectorAll(".session-quote")];
   for (const quote of quotes) quote.sessionFullText ??= quote.textContent;
@@ -3332,7 +3866,7 @@ function sessionFind(attachment, body, initial) {
     matches[current]?.classList.remove("current");
     current = (current + step + matches.length) % matches.length;
     matches[current].classList.add("current");
-    status.textContent = (current + 1) + " of " + matches.length;
+    status.textContent = t("{n} of {m}", { n: current + 1, m: matches.length });
     matches[current].scrollIntoView({ block: "center" });
   }
   function find() {
@@ -3344,7 +3878,7 @@ function sessionFind(attachment, body, initial) {
     }
     matches = [...body.querySelectorAll("mark")]; current = -1;
     previous.disabled = next.disabled = !matches.length;
-    status.textContent = needle ? "0 of " + matches.length : "";
+    status.textContent = needle ? t("{n} of {m}", { n: 0, m: matches.length }) : "";
     if (matches.length) move(1);
   }
   input.oninput = find;
@@ -3358,8 +3892,8 @@ function sessionAttachment(r, messages) {
   const reply = sessionFinalReply(r);
   const attachment = el("details", { class: "session-attachment", id: "original-conversation" }, [el("summary", {
     text: "Original conversation · " + messages.length + " messages" + (reply ? " · final reply" : "") })]);
-  const outline = el("nav", { class: "session-outline", "aria-label": "Conversation outline" }, [
-    el("span", { text: "Messages" }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
+  const outline = el("nav", { class: "session-outline", "aria-label": t("Conversation outline") }, [
+    el("span", { text: t("Messages") }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
       message.time + " · " + message.text.replace(/\s+/g, " ").slice(0, 60))])))]);
   const body = el("div", { class: "session-messages" }, messages.map(message => el("section", { class: "session-message", id: message.id }, [
     el("h3", { text: message.time }), sessionQuote(message.text)])));
@@ -3371,7 +3905,7 @@ function sessionAttachment(r, messages) {
 function sessionDecisions(r, messages) {
   const text = sessionSection(r, "Decisions");
   if (!text) return null;
-  return el("section", { class: "session-structure session-decisions" }, [el("h2", { text: "Decisions" }),
+  return el("section", { class: "session-structure session-decisions" }, [el("h2", { text: t("Decisions") }),
     el("ul", {}, listItems(text).map(line => {
       const match = /^(.*?)\s*\((\d{2}:\d{2})\)$/.exec(line), clock = match?.[2];
       const quote = (match?.[1] || line).replace(/^[“"「]|[”"」]$/g, "");
@@ -3386,21 +3920,21 @@ function sessionArtifact(line) {
   const [, name, value] = match;
   if (/^Files changed \(\d+\)$/.test(name) || name === "Commands") {
     const values = name === "Commands" ? [...value.matchAll(/`([^`]+)`/g)].map(m => m[1]) : value.split(/,\s*/);
-    return el("li", {}, [el("details", {}, [el("summary", { text: name + (name === "Commands" ? " · " + value.split(";")[0] : "") }),
+    return el("li", {}, [el("details", {}, [el("summary", { text: t(name) + (name === "Commands" ? " · " + value.split(";")[0] : "") }),
       el("ul", {}, values.map(text => el("li", {}, [el("code", { text: text.replace(/^`|`$/g, "") })])))])]);
   }
-  if (name === "Pull requests") return el("li", {}, [el("span", { class: "session-artifact-label", text: "Pull requests" }),
+  if (name === "Pull requests") return el("li", {}, [el("span", { class: "session-artifact-label", text: t("Pull requests") }),
     ...[...value.matchAll(/https?:\/\/[^\s,<>]+/g)].map(m => el("a", { href: m[0], target: "_blank", rel: "noopener", text: m[0] }))]);
   if (name === "Commits") {
     const commit = /^`([^`]+)`\s*(.*?)(?:\s+\(([^()]*)\))?$/.exec(value);
     if (commit) return el("li", {}, [el("code", { text: commit[1] }), " " + commit[2],
       commit[3] ? el("span", { class: "session-artifact-branch", text: " · " + commit[3] }) : null]);
   }
-  return el("li", {}, [el("span", { class: "session-artifact-label", text: name }), el(name === "Branches" ? "code" : "span", { text: value })]);
+  return el("li", {}, [el("span", { class: "session-artifact-label", text: t(name) }), el(name === "Branches" ? "code" : "span", { text: value })]);
 }
 function sessionArtifacts(r) {
   const text = sessionSection(r, "Artifacts");
-  return text ? el("section", { class: "session-structure session-artifacts" }, [el("h2", { text: "Artifacts" }),
+  return text ? el("section", { class: "session-structure session-artifacts" }, [el("h2", { text: t("Artifacts") }),
     el("ul", {}, listItems(text).map(sessionArtifact))]) : null;
 }
 function sessionNeighbours(r) {
@@ -3408,22 +3942,22 @@ function sessionNeighbours(r) {
   const index = sessions.findIndex(s => s.path === r.path), older = sessions[index + 1], newer = sessions[index - 1];
   return el("nav", { class: "session-neighbours", "aria-label": "Neighbouring sessions" }, [
     older ? el("a", { href: href(older), text: "← Older: " + older.title }) : el("span"),
-    newer ? el("a", { href: href(newer), text: "Newer: " + newer.title + " →" }) : null]);
+    newer ? el("a", { href: href(newer), text: t("Newer") + ": " + newer.title + " →" }) : null]);
 }
 function sessionFactsLine(r) {
   const project = byPath(r.session_project), folder = r.session_folder || "";
   const line = el("div", { class: "session-facts-line" }, [
     [fmtDate(r.session_date), r.session_time, r.session_agent].filter(Boolean).join(" · ") + " · ",
-    project ? el("a", { href: href(project), text: project.title }) : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || "No project", title: folder }),
-    " · " + (r.session_turns || 0) + " turns" + (r.session_outcome ? " · " + (SESSION_OUTCOMES[r.session_outcome] || r.session_outcome) : "")]);
+    project ? el("a", { href: href(project), text: project.title }) : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || t("No project"), title: folder }),
+    " · " + t("{n} turns", { n: r.session_turns || 0 }) + (r.session_outcome ? " · " + t(SESSION_OUTCOMES[r.session_outcome] || r.session_outcome) : "")]);
   return line;
 }
 function sessionDetails(r) {
   const facts = parseFacts(r), source = section(r, "sources");
-  return el("details", { class: "session-details" }, [el("summary", { text: "Details" }),
-    el("dl", {}, [el("dt", { text: "Folder" }), el("dd", {}, [el("code", { text: r.session_folder || "" })]),
-      el("dt", { text: "Session id" }), el("dd", {}, [el("code", { text: facts.get("Session")?.[0]?.value || "" })])]),
-    source ? el("section", {}, [el("h3", { text: "Sources" }), sectionBody(r, source)]) : null]);
+  return el("details", { class: "session-details" }, [el("summary", { text: t("Details") }),
+    el("dl", {}, [el("dt", { text: t("Folder") }), el("dd", {}, [el("code", { text: r.session_folder || "" })]),
+      el("dt", { text: t("Session id") }), el("dd", {}, [el("code", { text: facts.get("Session")?.[0]?.value || "" })])]),
+    source ? el("section", {}, [el("h3", { text: t("Sources") }), sectionBody(r, source)]) : null]);
 }
 function sessionRecord(r, heading) {
   const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
@@ -3435,10 +3969,10 @@ function sessionRecord(r, heading) {
       project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
     el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
       el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
-    el("section", { class: "session-summary" }, [summary ? el("h2", { text: "Summary" }) : null,
-      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || "Not summarised yet — " + (r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+    el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
+      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + (r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
     sessionDecisions(r, messages),
-    followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: "Follow-ups" }),
+    followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: t("Follow-ups") }),
       el("ul", {}, listItems(followups).map(text => el("li", { html: inline(text, r.path) })))]) : null,
     sessionArtifacts(r), sessionNeighbours(r), attachment.node, sessionDetails(r)]);
   main.replaceChildren(page);
@@ -3484,15 +4018,15 @@ function sectionBody(r, s) {
     const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern):\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
     if (items.length && items.every(Boolean)) {
       return el("div", { class: "block-insight" }, [el("ul", { class: "insight" }, items.map(m => el("li", { class: "ins-" + m[1].toLowerCase().replace(/\s+/g, "-") }, [
-        el("span", { class: "badge", text: m[1] }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
+        el("span", { class: "badge", text: t(m[1]) }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
     }
   }
   if (name === "open threads" || name === "more open threads") {
     const all = threads(r);
-    const t = name === "more open threads" ? { items: all.items.slice(3), calm: "" } : all;
+    const state = name === "more open threads" ? { items: all.items.slice(3), calm: "" } : all;
     const box = el("div", { class: "block-threads" });
-    if (t.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: "Clear" }), el("span", { html: inline(t.calm, r.path) })]));
-    if (t.items.length) box.appendChild(el("ul", { class: "threads" }, t.items.map(item => threadRow(r, item, false))));
+    if (state.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: t("Clear") }), el("span", { html: inline(state.calm, r.path) })]));
+    if (state.items.length) box.appendChild(el("ul", { class: "threads" }, state.items.map(item => threadRow(r, item, false))));
     return box.childNodes.length ? box : el("div", { html: markdown(s.text, r.path) });
   }
   // History as a dated spine. Conversations shown as chat history (#2066) will hook in here.
@@ -3579,11 +4113,11 @@ function factList(r) {
       ? "— map date shown above" : "— not found";
     const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
-      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    dl.append(el("dt", { text: label }), softBreaks(dd));
+    dl.append(el("dt", { text: t(label) }), softBreaks(dd));
   }
   if (r.category === "people" && r.mail) {
     dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
@@ -3597,7 +4131,7 @@ function daysSince(day) {
 }
 function age(day) {
   const n = daysSince(day);
-  return n == null ? "" : n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
+  return n == null ? "" : n === 0 ? t("today") : n === 1 ? t("1 day") : t("{n} days", { n });
 }
 // Tag only explicit blocking language; age alone does not imply urgency.
 function blockerTag(t) {
@@ -3614,14 +4148,14 @@ function threadPreview(text) {
 }
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
-  const k = known(r), t = threads(r), row = el("div", { class: "leadrow" });
-  if (t.items.length && r.category !== "projects") {
-    const first = t.items[0];
+  const k = known(r), thread = threads(r), row = el("div", { class: "leadrow" });
+  if (thread.items.length && !["projects", "orgs"].includes(r.category)) {
+    const first = thread.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
-      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: threadPreview(first.text) }),
-      threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
-      t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
-  } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
+      el("span", { class: "dir", text: t(DIRECTION_LABEL[first.dir]) }), el("span", { class: "txt", text: threadPreview(first.text) }),
+      threadAge(first) ? el("span", { class: "age mono" + ((!first.due && daysSince(first.since) === 0) ? " today" : ""), text: threadAge(first) }) : null,
+      thread.items.length > 1 ? el("span", { class: "more mono", text: "+" + (thread.items.length - 1) + " more" }) : null]));
+  } else if (thread.calm && r.category !== "orgs") row.appendChild(el("span", { class: "lead-calm", text: t("Nothing open") }));
   const hasProjectFinding = r.category === "projects" && !/^\s*-?\s*Unknown\b/i.test(section(r, "insight")?.text.trim() || "Unknown");
   const purpose = r.category === "projects" && k.status !== "Mapped" && hasProjectFinding ? section(r, "what it is") : null;
   const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
@@ -3629,21 +4163,21 @@ function leadRow(r) {
     const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
     row.appendChild(privateFallback(el("span", { id: "what-it-is", class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
-    if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
-  } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+    if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
+      [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
+  } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
     el("span", { class: "lead-meta usage-scope", text: "Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome." }));
-  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "?" }), el("span", { text: "Uncertain points" })]));
+  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "?" }), el("span", { text: t("Uncertain points") })]));
   return row;
 }
 function tocPanel(children) { const p = panel("On this page", children); p.classList.add("toc-panel"); return p; }
-function panel(title, children) { return el("section", { class: "panel" }, [el("h3", { text: title }), ...children]); }
+function panel(title, children) { title = t(title); return el("section", { class: "panel" }, [el("h3", { text: title }), ...children]); }
 function sidePanels(r, k) {
   const panels = [];
   const glance = el("dl", {});
-  const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
+  const add = (dt, dd) => glance.append(el("dt", { text: t(dt) }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
   if (k.last && r.category !== "skills") add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
@@ -3677,9 +4211,9 @@ function relationCard(link, currentPath = "") {
     "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
   const entry = el("div", { class: "relation-entry" }, [
     el("a", { class: "relation-card", href: href(other) }, [
-      el("span", { class: "relation-kind", text: singular(other.category) + " · " + (labels[link.kind] || link.kind) }),
+      el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
-      el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Notebook link") })])]);
+      el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis ?? "Notebook link") })])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
@@ -3689,6 +4223,21 @@ function relationDisclosure(links, label, className = "", currentPath = "") {
   return links.length ? el("details", { class: "more-relations " + className }, [
     el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(link => relationCard(link, currentPath)))]) : null;
 }
+function dedupeRelationSnippets(links) {
+  const seen = [], normal = text => String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const duplicate = text => text && seen.some(shown => shown.includes(text) || text.includes(shown));
+  return links.map(link => {
+    let basis = link.basis || "";
+    if (duplicate(normal(basis))) {
+      const page = byPath(link.path), k = known(page);
+      const own = k.intro || facts(page).role || k.summary;
+      basis = /\[(personal|sensitive)\]/i.test(own) ? "" : plainLine(own).split(/(?<=[.!?。])\s/)[0].slice(0, 160);
+      if (duplicate(normal(basis))) basis = "";
+    }
+    if (normal(basis)) seen.push(normal(basis));
+    return { ...link, basis };
+  });
+}
 function connectedContext(r) {
   const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
     && !(r.category === "projects" && byPath(link.path).category === "sessions"));
@@ -3696,22 +4245,30 @@ function connectedContext(r) {
   const explicit = link => link.kind === "linked" || link.kind === "linked from";
   const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
     || link.path.startsWith("skills/catalog/") && !link.path.endsWith("/index.md");
-  const links = related.filter(link => explicit(link) && page(link));
-  const notes = related.filter(link => explicit(link) && !page(link));
-  const mentions = related.filter(link => !explicit(link));
+  const ordered = dedupeRelationSnippets([
+    ...related.filter(link => explicit(link) && page(link)),
+    ...related.filter(link => explicit(link) && !page(link)), ...related.filter(link => !explicit(link))]);
+  const links = ordered.filter(link => explicit(link) && page(link));
+  const notes = ordered.filter(link => explicit(link) && !page(link));
+  const mentions = ordered.filter(link => !explicit(link));
   return el("div", { class: "focus-section related-records" }, [
-    el("h2", { text: "Connected context" }),
-    links.length ? el("p", { class: "relation-description", text: "Explicit links between notebook pages." }) : null,
+    el("h2", { text: t("Connected context") }),
+    links.length ? el("p", { class: "relation-description", text: t("Explicit links between notebook pages.") }) : null,
     links.length ? el("div", { class: "relation-list" }, links.slice(0, 6).map(link => relationCard(link, r.path))) : null,
-    relationDisclosure(links.slice(6), "Show " + (links.length - 6) + " more notebook links", "", r.path),
-    relationDisclosure(notes, "Other notebook links · " + notes.length, "notebook-links", r.path),
+    relationDisclosure(links.slice(6), t("Show {n} more notebook links", { n: links.length - 6 }), "", r.path),
+    relationDisclosure(notes, t("Other notebook links") + " · " + notes.length, "notebook-links", r.path),
     mentions.length ? el("details", { class: "more-relations mention-hints" }, [
-      el("summary", { text: "Text mentions · " + mentions.length }),
-      el("p", { class: "relation-description", text: "Name matches help navigate the notebook. A mention alone does not establish a relationship." }),
+      el("summary", { text: t("Text mentions") + " · " + mentions.length }),
+      el("p", { class: "relation-description", text: t("Name matches help navigate the notebook. A mention alone does not establish a relationship.") }),
       el("div", { class: "relation-list" }, mentions.map(link => relationCard(link, r.path)))]) : null]);
 }
 function investigateCommand(r) {
-  return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
+  return remCommand("investigate '" + r.path.replace(/'/g, "'\\''") + "'");
+}
+function commandChip(command) {
+  const copy = el("button", { class: "btn-action", type: "button", text: t("Copy"), "aria-label": t("Copy the command") });
+  copy.onclick = () => copyToClipboard(command, copy);
+  return el("div", { class: "cmd" }, [el("code", { text: command, title: command, tabindex: "0" }), copy]);
 }
 // Who they are and how to reach them, first on a person (#2104): the owner
 // asked to see email, phone, what to call them and the company at a glance.
@@ -3736,11 +4293,11 @@ function contactStrip(r) {
     const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
     if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
     if (copyable) {
-      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
       btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
       dd.appendChild(btn);
     }
-    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), softBreaks(dd)]);
+    return el("div", { class: "focus-fact" }, [el("dt", { text: t(label) }), softBreaks(dd)]);
   }));
 }
 // A mapped project's hero says it waits and how much there is to read, not its
@@ -3763,7 +4320,7 @@ function contactLine(r) {
   const f = facts(r);
   const fields = [f.role, f.company].filter(v => v && !/^Unknown\b/i.test(String(v)));
   return el("p", { class: "contact-line leadrow" }, [privateFallback(el("span", { class: "lead-meta", html: inline(
-    [f.last ? (mappedContact(r) ? "Last contact in map " : "Last contact ") + threadDate(f.last) : "", ...fields].filter(Boolean).join(" · "), r.path) }))]);
+    [f.last ? t(mappedContact(r) ? "Last contact in map" : "Last contact") + " " + threadDate(f.last) : "", ...fields].filter(Boolean).join(" · "), r.path) }))]);
 }
 // Remove a structured label for display; direction still comes from threads().
 function threadWords(text, r) {
@@ -3773,39 +4330,39 @@ function threadWords(text, r) {
   const words = text.replaceAll("**", "").replace(/^[^:;!?]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
   return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
 }
-function ledgerRow(r, t) {
-  const text = threadWords(t.text, r);
-  const meta = t.quiet ? [age(t.since), "gone quiet"].filter(Boolean).join(", ") : t.due ? dueLabel(t) : age(t.since);
-  return el("li", { class: "ledger-row" + (t.quiet ? " quiet" : "") }, [
+function ledgerRow(r, thread) {
+  const text = threadWords(thread.text, r);
+  const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : thread.due ? dueLabel(thread) : age(thread.since);
+  return el("li", { class: "ledger-row" + (thread.quiet ? " quiet" : "") }, [
     privateFallback(el("p", { html: inline(capFirst(text), r.path) })),
-    el("span", { class: "ledger-meta" + (!t.quiet && t.due && t.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta })]);
+    el("span", { class: "ledger-meta" + (!thread.quiet && thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta })]);
 }
 function ledgerColumn(r, items, dir) {
   const first = r.title.trim().split(/\s+/)[0];
   return el("section", { class: "ledger-column " + dir }, [
-    el("h3", {}, [el("span", { text: dir === "mine" ? "You owe " + first : first + " owes you" }), el("span", { class: "ledger-count", text: String(items.length) })]),
+    el("h3", {}, [el("span", { text: t(dir === "mine" ? "You owe {name}" : "{name} owes you", { name: first }) }), el("span", { class: "ledger-count", text: String(items.length) })]),
     el("ul", { class: "ledger-rows" }, items.slice(0, 3).map(t => ledgerRow(r, t))),
-    items.length > 3 ? el("details", { class: "ledger-more" }, [el("summary", { text: (items.length - 3) + " more" }),
+    items.length > 3 ? el("details", { class: "ledger-more" }, [el("summary", { text: t("{n} more", { n: items.length - 3 }) }),
       el("ul", { class: "ledger-rows" }, items.slice(3).map(t => ledgerRow(r, t)))]) : null]);
 }
 function betweenYou(r) {
-  const t = threads(r), mine = t.items.filter(t => t.dir === "mine"), theirs = t.items.filter(t => t.dir === "theirs");
+  const thread = threads(r), mine = thread.items.filter(thread => thread.dir === "mine"), theirs = thread.items.filter(thread => thread.dir === "theirs");
   if (!mine.length && !theirs.length) return null;
-  return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: "Between you" }),
+  return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: t("Between you") }),
     el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")])]);
 }
 function personInsight(r) {
   const items = listItems(section(r, "insight")?.text || "").slice(0, 4);
   if (!items.length) return null;
-  return el("section", { class: "person-insight", id: "insight" }, [el("h2", { text: "Where it stands" }),
+  return el("section", { class: "person-insight", id: "insight" }, [el("h2", { text: t("Where it stands") }),
     el("dl", {}, items.map(item => {
       const match = /^([^:]+):\s*(.*)$/.exec(item.replace(/^\*\*([^*]+)\*\*/, "$1")), label = match?.[1] || "Now";
-      return el("div", {}, [el("dt", { class: label === "At stake" ? "at-stake" : label === "Changed" ? "changed" : "", text: label }),
+      return el("div", {}, [el("dt", { class: label === "At stake" ? "at-stake" : label === "Changed" ? "changed" : "", text: t(label) }),
         privateFallback(el("dd", { html: inline(match ? match[2] : item, r.path) }))]);
     }))]);
 }
 function personFocus(r) {
-  return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
+  return el("section", { class: "person-focus", "aria-label": t("What is between you now") }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
 }
 function localPath(value) {
   return String(value).split("/").map(part => '<span class="path-segment">' + esc(part) + "</span>").join("/<wbr>");
@@ -3814,7 +4371,7 @@ function recordFocus(r) {
   if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
   if (r.category === "sessions") return el("div");
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
-    "aria-label": "At a glance" });
+    "aria-label": t("At a glance") });
   const privateMapped = r.private_project && k.status === "Mapped";
   const projectMapped = r.category === "projects" && k.status === "Mapped" && !privateMapped;
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
@@ -3833,18 +4390,18 @@ function recordFocus(r) {
   const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
-  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : ""), ...(projectNeedsContext ? { id: "what-it-is" } : {}) }, [el("span", { class: "focus-kicker", text: question })]);
+  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : ""), ...(projectNeedsContext ? { id: "what-it-is" } : {}) }, [el("span", { class: "focus-kicker", text: t(question) })]);
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
   if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
     const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
       r.category === "orgs" ? "Read complete relationship" : "Read full context";
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: t(label), hidden: "" });
     more.onclick = () => {
       const clamped = statementNode.classList.toggle("clamped");
       more.setAttribute("aria-expanded", String(!clamped));
-      more.textContent = clamped ? label : "Show less";
+      more.textContent = t(clamped ? label : "Show less");
       refreshFocusExpansion();
     };
     focusHead.appendChild(more);
@@ -3852,21 +4409,21 @@ function recordFocus(r) {
   if (finding) {
     const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
-      role: "group", "aria-label": "Finding sources" },
-      [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
+      role: "group", "aria-label": t("Finding sources") },
+      [el("span", { text: t(findingSources.length === 1 ? "Finding source" : "Finding sources") }),
         ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   }
   if (projectNeedsContext) {
     const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
-    if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
+    if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
+      [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
     const days = r.project_coverage?.days;
     const limit = r.project_coverage?.inputs_read === 0
       ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
       : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
     focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
   }
-  if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
+  if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -3875,23 +4432,23 @@ function recordFocus(r) {
     if (next) {
       const step = next.replace(/^Now:\s*/i, "");
       focusHead.appendChild(el("div", { class: "focus-next" }, [
-        el("span", { class: "k", text: "Next step" }),
+        el("span", { class: "k", text: t("Next step") }),
         el("p", { html: inline(capFirst(step), r.path) })]));
     }
   }
   out.appendChild(focusHead);
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
-    el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
+    el("h2", { text: t("Open threads") }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
       open.slice(0, 3).map(t => threadRow(r, t, false)))]));
   if (r.category === "projects") {
     const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
     const blocks = [];
-    if (purpose && !projectNeedsContext && k.status === "Mapped") blocks.push(el("section", { class: "focus-section", id: "what-it-is" }, [el("h2", { text: "What this is" }),
+    if (purpose && !projectNeedsContext && k.status === "Mapped") blocks.push(el("section", { class: "focus-section", id: "what-it-is" }, [el("h2", { text: t("What this is") }),
       privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
-    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
+    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: t("Recorded direction") }),
       el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
-      el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
+      el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: t("View all decisions →") })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
   const f = facts(r);
@@ -3902,7 +4459,7 @@ function recordFocus(r) {
       : [];
   const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
-    el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) })]))));
+    el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }), el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) })]))));
   out.append(...recordContext(r).childNodes);
   const activity = activityPanel(r);
   if (activity) out.appendChild(activity);
@@ -3927,7 +4484,7 @@ function recordContext(r) {
     return id && (REM.source_context || {})[id]?.thread;
   }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
   if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
-    el("h2", { text: "Cited conversations" }),
+    el("h2", { text: t("Cited conversations") }),
     el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
       const button = el("button", { type: "button", class: "conversation-open" }, [
         el("strong", { text: byPath(value.subject)?.title || value.subject }),
@@ -3935,7 +4492,7 @@ function recordContext(r) {
       button.onclick = () => openConversation(id, button);
       return button;
     })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
-      el("summary", { text: "Show " + (conversations.length - 3) + " more cited conversations" }),
+      el("summary", { text: t("Show {n} more cited conversations", { n: conversations.length - 3 }) }),
       el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
         const button = el("button", { type: "button", class: "conversation-open" }, [
           el("strong", { text: byPath(value.subject)?.title || value.subject }),
@@ -3959,9 +4516,9 @@ function openConversation(id, trigger) {
   const conversation = (REM.conversations || {})[id];
   if (!conversation) return;
   let dialog = document.getElementById("conversation-dialog");
-  if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": "Conversation" }); document.body.appendChild(dialog); }
+  if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": t("Conversation") }); document.body.appendChild(dialog); }
   dialog.textContent = "";
-  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close conversation" });
+  const close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": "Close conversation" });
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "Archived conversation" }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
@@ -4003,7 +4560,7 @@ function activityDisclosure(list, rows, recent) {
     const visible = new Set(expanded ? matching : matching.slice(0, 5));
     for (const row of rows) row.hidden = !visible.has(row);
     more.hidden = recent || matching.length <= 5;
-    more.textContent = expanded ? "Show less" : "Show all " + matching.length;
+    more.textContent = expanded ? t("Show less") : t("Show all {n}", { n: matching.length });
     more.setAttribute("aria-expanded", String(expanded));
   };
   more.onclick = () => { expanded = !expanded; update(); };
@@ -4018,8 +4575,8 @@ function activityPanel(r, recent = false) {
   const items = historyItems(history.text).filter(item => item.day);
   if (!items.length) return null;
   const box = el("section", { class: "focus-section activity-view" + (recent ? " recent-activity" : ""), "aria-label": recent ? "Recently" : "Activity" });
-  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: recent ? "Recently" : "Activity" }),
-    recent ? el("a", { href: href(r) + "&h=history", text: "All history →" }) : el("span", { class: "activity-note", text: "From this page's dated history" })]));
+  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: t(recent ? "Recently" : "Activity") }),
+    recent ? el("a", { href: href(r) + "&h=history", text: t("All history →") }) : el("span", { class: "activity-note", text: t("From this page's dated history") })]));
   const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
   const list = el("ol", { class: "activity-list" });
   const sorted = items.map(item => ({ ...item, content: historyRowContent(item.text, r.path) }))
@@ -4027,7 +4584,7 @@ function activityPanel(r, recent = false) {
   const rows = (recent ? sorted.slice(0, 5) : sorted).map(item => {
     const type = activityType(item.text);
     const row = el("li", { "data-type": type, class: item.content.classList.contains("privacy-only") ? "private-entry" : "" }, [el("span", { class: "activity-day", text: item.day.length === 7 ? dayLabel(item) : threadDate(item.day) }),
-      el("span", { class: "activity-type", text: type }),
+      el("span", { class: "activity-type", text: t(type) }),
       el("span", { class: "activity-text" }, [item.content])]);
     list.appendChild(row);
     return row;
@@ -4037,7 +4594,7 @@ function activityPanel(r, recent = false) {
     const count = name === "All" ? rows.length : rows.filter(row => row.dataset.type === name).length;
     if (!count) continue;
     const button = el("button", { type: "button", class: name === "All" ? "active" : "",
-      "aria-pressed": String(name === "All"), text: name + " " + count });
+      "aria-pressed": String(name === "All"), text: t(name) + " " + count });
     button.onclick = () => {
       for (const b of filters.querySelectorAll("button")) { b.classList.toggle("active", b === button); b.setAttribute("aria-pressed", String(b === button)); }
       list.filterActivity(name);
@@ -4057,7 +4614,7 @@ function record(path, heading) {
   const main = document.getElementById("main");
   main.textContent = "";
   if (!r) {
-    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not in this snapshot" }), "No such page in this snapshot: " + path]));
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not in this snapshot") }), "No such page in this snapshot: " + path]));
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
@@ -4102,7 +4659,7 @@ function record(path, heading) {
     if (extraThreads && threads(r).items.length <= 3) continue;
     // The focus already shows the first three project threads.
     const rest = extraThreads ? { ...s, title: "More open threads" } : s;
-    note.appendChild(el("h2", { html: inline(rest.title, r.path) }));
+    note.appendChild(el("h2", { html: inline(t(rest.title), r.path) }));
     const body = sectionBody(r, rest);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
@@ -4140,8 +4697,8 @@ function record(path, heading) {
   const hasMemory = note.childElementCount > 0 || !!grid.querySelector(".factlist, .deep-context h2, .side .panel:not(.toc-panel) a")
     || !!parts.related || !!parts.sources || sources > 0;
   const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
-    el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: "Full memory and sources" }),
-      el("span", { class: "deep-hint", text: disclosed ? sections + (sections === 1 ? " section · " : " sections · ") + sources + " sources" : "Original note · all fields · citations" })]), grid]);
+    el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: t("Full memory and sources") }),
+      el("span", { class: "deep-hint", text: disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations") })]), grid]);
   if (hasMemory) main.appendChild(deep);
   const column = grid.firstChild;
 
@@ -4160,7 +4717,7 @@ function record(path, heading) {
       aside.appendChild(box);
     }
     if (parts.sources) {
-      aside.appendChild(el("div", { class: "k", text: "Sources" }));
+      aside.appendChild(el("div", { class: "k", text: t("Sources") }));
       const chips = sourceChips(parts.sources);
       aside.appendChild(chips.length ? el("div", { class: "chips" }, chips) : el("div", { text: parts.sources }));
     }
@@ -4170,27 +4727,27 @@ function record(path, heading) {
   if (k.missing.length) {
     const command = investigateCommand(r);
     const mapped = k.status === "Mapped";
-    const copyCmd = el("button", { class: "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
+    const copyCmd = el("button", { class: "btn-action", type: "button", text: t("Copy"), "aria-label": t("Copy the command") });
     copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
-      mapped ? el("p", { class: "why", text: r.private_project
+      el("span", { class: "lead", text: mapped ? t("Only mapped so far") : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
+      mapped ? el("p", { class: "why", text: t(r.private_project
         ? "Automatic investigation skips this private project. To request a write, run the command for this page."
-        : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
-      mapped ? el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd]) : null,
-      el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
-      mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
+        : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.") }) : null,
+      mapped ? el("div", { class: "cmd" }, [el("code", { text: command, title: command, tabindex: "0" }), copyCmd]) : null,
+      el("div", { class: "names", text: t(mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
+      mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command, title: command, tabindex: "0" }), copyCmd])]);
     if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
   const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Copy the file path" });
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, "Path copied");
-  const copyMd = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
+  const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: "Copy the page as written, unknowns included" });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, "Markdown copied");
-  foot.append(pathBtn, copyMd, el("span", { class: "when", text: "File updated " + fmtDate(r.updated) }));
+  foot.append(pathBtn, copyMd, el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
   (deep.parentNode ? column : main).appendChild(foot);
 
   if (heading) {
@@ -4228,10 +4785,10 @@ function search(q) {
   if (connected) {
     const target = listedRecords().find(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
     if (target) {
-      main.appendChild(el("div", { class: "eyebrow", text: "Search / connected context" }));
-      main.appendChild(el("h1", { text: "Connected to " + target.title }));
+      main.appendChild(el("div", { class: "eyebrow", text: t("Search / connected context") }));
+      main.appendChild(el("h1", { text: t("Connected to {name}", { name: target.title }) }));
       const card = recordFocus(target).querySelector(".related-records");
-      main.appendChild(card || el("div", { class: "empty", text: "No supported links in this snapshot." }));
+      main.appendChild(card || el("div", { class: "empty", text: t("No supported links in this snapshot.") }));
       return;
     }
   }
@@ -4257,11 +4814,11 @@ function search(q) {
   }
   // Names first: a page whose title matches is what was looked for.
   hits.sort((a, b) => (b.r.title.toLowerCase().includes(needle) ? 1 : 0) - (a.r.title.toLowerCase().includes(needle) ? 1 : 0));
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Search" })]));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: t("Search") })]));
   main.appendChild(el("h1", { text: "“" + q + "”" }));
-  main.appendChild(el("p", { class: "lede", text: hits.length + (hits.length === 1 ? " page matches" : " pages match") + " — literal, case-insensitive" }));
+  main.appendChild(el("p", { class: "lede", text: t(hits.length === 1 ? "{n} page matches — literal, case-insensitive" : "{n} pages match — literal, case-insensitive", { n: hits.length }) }));
   if (!hits.length) {
-    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No match" }), "No page contains that. Try a related term, a person's first name, or a project name."]));
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No match") }), t("No page contains that. Try a related term, a person's first name, or a project name.")]));
     return;
   }
   // The best match answers: a person's or organisation's name gets its facts right here.
@@ -4291,7 +4848,7 @@ function search(q) {
     }
     group.appendChild(ul);
     if (c === "sessions") group.appendChild(el("a", { href: sessionHash({ find: q }),
-      text: list.length === 1 ? "Open in " + label("sessions") + " →" : "All " + list.length + " matching sessions →" }));
+      text: list.length === 1 ? t("Open in Agent sessions →") : t("{n} matching sessions →", { n: list.length }) }));
   }
 }
 function bestMatch(r) {
@@ -4304,16 +4861,16 @@ function bestMatch(r) {
       : [[first("Repository") ? "Repository" : "Local path", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
   const open = f.open[0];
   return el("section", { class: "best" }, [
-    el("div", { class: "best-head" }, [el("span", { class: "lead", text: "Best match" }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
-    el("dl", { class: "best-facts" }, cells.filter(([, v]) => knownValue(v)).flatMap(([name, v]) => [el("dt", { text: name }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
-    open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]) : null]);
+    el("div", { class: "best-head" }, [el("span", { class: "lead", text: t("Best match") }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
+    el("dl", { class: "best-facts" }, cells.filter(([, v]) => knownValue(v)).flatMap(([name, v]) => [el("dt", { text: t(name) }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
+    open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: plainLine(open.text) })]) : null]);
 }
 
 function reviewPage() {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Review" })]));
-  main.appendChild(el("h1", { text: "Questions & connections" }));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: "Review" })]));
+  main.appendChild(el("h1", { text: t("Questions & connections") }));
   main.appendChild(el("p", { class: "lede", text: "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again." }));
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
   for (const row of REM.reviews || []) {
@@ -4342,6 +4899,10 @@ function reviewPage() {
 
 function render() {
   if (!REM) return;
+  document.documentElement.lang = uiLanguage;
+  document.getElementById("q").placeholder = t("Search");
+  document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
+  document.querySelector(".nav-toggle").textContent = t("Browse notebook");
   const { record: r, category: c, query, heading, view, reviews } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
@@ -4363,8 +4924,8 @@ function render() {
 }
 
 function sourceFind(excerpt, quote) {
-  const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": "Find in archived source" });
-  const next = el("button", { type: "button", text: "Next match", disabled: "" });
+  const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": t("Find in archived source") });
+  const next = el("button", { type: "button", text: t("Next match"), disabled: "" });
   const status = el("span", { class: "evidence-find-status", role: "status" });
   const original = quote.innerHTML;
   let matches = [], current = 0, term = "";
@@ -4373,7 +4934,7 @@ function sourceFind(excerpt, quote) {
     const mark = el("mark", { text: excerpt.slice(at, at + term.length) });
     quote.replaceChildren(document.createTextNode(excerpt.slice(0, at)), mark,
       document.createTextNode(excerpt.slice(at + term.length)));
-    status.textContent = "Match " + (current + 1) + " of " + matches.length + " in the archived excerpt";
+    status.textContent = t("Match {n} of {m} in the archived excerpt", { n: current + 1, m: matches.length });
     mark.scrollIntoView({ block: "center" });
   }
   input.oninput = () => {
@@ -4384,7 +4945,7 @@ function sourceFind(excerpt, quote) {
     if (!term) { quote.innerHTML = original; status.textContent = ""; return; }
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     matches = [...excerpt.matchAll(new RegExp(escaped, "gi"))].map(match => match.index);
-    if (!matches.length) { status.textContent = "No match in the archived excerpt"; return; }
+    if (!matches.length) { status.textContent = t("No match in the archived excerpt"); return; }
     current = 0;
     next.disabled = matches.length < 2;
     show();
@@ -4392,7 +4953,7 @@ function sourceFind(excerpt, quote) {
   next.onclick = () => { current = (current + 1) % matches.length; show(); };
   input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); if (!next.disabled) next.click(); } };
   return el("div", { class: "evidence-find" }, [
-    el("label", { for: "evidence-find-input", text: "Find a word or phrase in this source" }),
+    el("label", { for: "evidence-find-input", text: t("Find a word or phrase in this source") }),
     el("div", { class: "evidence-find-controls" }, [input, next]), status]);
 }
 
@@ -4431,10 +4992,11 @@ function messageMeta(context) {
   const to = context.participants?.to || [];
   const people = (Array.isArray(to) ? to : [to]).filter(Boolean).map(text => sourceSender({ sender: text }));
   const date = context.time && new Date(context.time);
-  const sent = date && !isNaN(date) ? date.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: REM.status?.timezone || undefined }) : "Sent date unknown";
-  return [people.length ? "to " + people.join(", ") : "", sent, sourceChannel(context.source)].filter(Boolean).join(", ");
+  const sent = date && !isNaN(date) ? date.toLocaleString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: REM.status?.timezone || undefined }) : t("Sent date unknown");
+  return [people.length ? t("to") + " " + people.join(", ") : "", sent, sourceChannel(context.source)].filter(Boolean).join(", ");
 }
 function mailMessage(context, quote) {
+  const subject = context.subject || REM.conversations?.[context.thread]?.subject;
   const headers = context.participants || {};
   const list = value => (Array.isArray(value) ? value : value ? String(value).split(/,\s*(?=[^,]*@)/) : []).filter(Boolean);
   const from = list(headers.from)[0] || context.sender || "";
@@ -4442,11 +5004,11 @@ function mailMessage(context, quote) {
   return el("article", { class: "msg" }, [
     el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
         el("span", { class: "msg-address", text: mailbox(from).address })]),
-      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
-    ...(context.subject ? [el("p", { class: "msg-subject evidence-subject", text: context.subject })] : []),
+      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent") + " " + fmtTime(context.time) : t("Sent date unknown") })]),
+    ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : []),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
-      el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: label }), ...people.map(personChip)])))] : []),
-    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: t("The retained message has no body text. Its headers are available.") })
       : el("div", { class: "msg-body" }, [quote])]);
 }
 // Match original words only; offsets keep whitespace and punctuation intact.
@@ -4481,7 +5043,7 @@ function markedSpan(text, range) {
 function evidenceText(range) {
   const copy = range.cloneContents();
   copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
-  return copy.textContent.trim();
+  return copy.textContent.replace(/\u2060/g, "").trim();
 }
 function sentenceEnds(text) {
   const ends = [0];
@@ -4526,7 +5088,7 @@ function evidenceLine(trigger) {
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
   const sentence = evidenceSentence(trigger, line);
-  return { text: sentence || copy.textContent.trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  return { text: sentence || copy.textContent.replace(/\u2060/g, "").trim(), numbers: [...new Set(numbers.filter(Boolean))] };
 }
 function scrollEvidenceSpan(panel) {
   const mark = panel.querySelector(".evidence-original mark.span");
@@ -4560,7 +5122,7 @@ function evidencePanel() {
   if (panel) return panel;
   const backdrop = el("div", { class: "evidence-backdrop", "aria-hidden": "true" });
   backdrop.onclick = closeEvidence;
-  panel = el("aside", { id: "evidence-panel", class: "evidence-panel", role: "dialog", "aria-label": "Source context", tabindex: "-1" });
+  panel = el("aside", { id: "evidence-panel", class: "evidence-panel", role: "dialog", "aria-label": t("Source context"), tabindex: "-1" });
   document.body.appendChild(el("div", { id: "evidence-layer", class: "evidence-layer", hidden: "" }, [backdrop, panel]));
   return panel;
 }
@@ -4569,39 +5131,52 @@ function evidenceOriginal(context, quote) {
   const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8) : context.origin?.split("/").at(-1) || "";
   return el("div", { class: "evidence-original private" }, [
-    ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : [sourceChannel(context.source), context.sender, context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
+    ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? t("Instruction excerpt") : [sourceChannel(context.source), context.sender, context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
     ...(context.excerpt?.length > 2000 ? [sourceFind(quote.textContent, quote)] : []),
     ...(mail ? [mailMessage(context, quote)] : [quote]),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
-    ...(revision ? [el("details", { class: "evidence-source-id" }, [el("summary", { text: "Full source ID" }), el("code", { text: context.origin })])] : []),
-    el("p", { class: "evidence-meta", text: [context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
-      context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : "", context.body_format].filter(Boolean).join(" · ") }),
-    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener", text: "Open " + (context.filename || "the file") + " →" })] : []),
-    ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
+    ...(revision ? [el("details", { class: "evidence-source-id" }, [el("summary", { text: t("Full source ID") }), el("code", { text: context.origin })])] : []),
+    el("p", { class: "evidence-meta", text: [context.captured_at ? t(mail ? "Retrieved" : "Captured") + " " + fmtTime(context.captured_at) : "",
+      context.retained_at && !context.captured_at ? t("Archived") + " " + fmtTime(context.retained_at) : "", context.body_format].filter(Boolean).join(" · ") }),
+    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener", text: t("Open {name} →", { name: context.filename || t("the file") }) })] : []),
+    ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: t("Mapped project session folder") + ": " + context.mapped_session_folder + " · " + t("Source routing only; does not verify completion") })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
-    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : [])]);
+    ...(context.truncated ? [el("p", { class: "evidence-meta", text: t("This archived excerpt is truncated; find searches only the text shown.") })] : [])]);
+}
+function sourceIdentity(context) {
+  const from = context.participants?.from;
+  const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
+  return byPath(sender)?.title || sender;
 }
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
   const context = (REM.source_context || {})[sourceId(source.text)], line = evidenceLine(trigger);
   const numbers = line.numbers.length ? line.numbers : [source.n];
   const excerpt = context?.excerpt || "", span = supportingSpan(line.text, excerpt);
-  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
+  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
   close.onclick = closeEvidence;
   panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
-    el("div", { class: "evidence-top" }, [el("span", { text: "Source " + (numbers.indexOf(source.n) + 1) + " of " + numbers.length + " for this line" }), close]),
-    el("div", { class: "evidence-claim private" }, [el("small", { text: "On this page" }), el("div", { html: markedSpan(line.text, span?.claim) })]));
+    el("div", { class: "evidence-top" }, [el("span", { text: t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
+    el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })]));
   if (numbers.length > 1) {
-    const select = el("select", { class: "evidence-source-select private", "aria-label": "Source for this line" }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
+    const select = el("select", { class: "evidence-source-select", "aria-label": t("Source for this line") }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
     select.value = source.n;
     select.onchange = () => openEvidence(r, select.value, trigger);
     panel.insertBefore(select, panel.querySelector(".evidence-claim"));
   }
-  panel.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
+  panel.appendChild(el("div", { class: "evidence-identity" }, [
+    el("p", { class: "evidence-meta", text: context
+      ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
+      : chipLabel(r, source.n) }),
+    context && !/^(gmail|outlook)$/.test(context.source) ? el("p", { class: "evidence-subject", text: context.subject || REM.conversations?.[context.thread]?.subject || "" }) : null]));
+  const reveal = el("button", { class: "btn-action", type: "button", text: t("Show labelled passages") });
+  reveal.onclick = () => { togglePrivate(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
+  panel.appendChild(el("div", { class: "private-hidden-notice" }, [
+    el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
   if (context) {
     const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
     panel.appendChild(evidenceOriginal(context, quote));
-  } else panel.appendChild(el("p", { class: "evidence-unavailable", text: "The original isn't in this snapshot." }));
+  } else panel.appendChild(el("p", { class: "evidence-unavailable", text: t("The original isn't in this snapshot.") }));
   evidenceTrigger = trigger;
   panel.parentElement.hidden = false;
   document.body.classList.add("evidence-open");
@@ -4709,14 +5284,14 @@ function languageBar(r) {
   const theirs = [...new Set(r.speaks || [])].filter(tag => offered(tag) && !yours.includes(tag));
   const rest = [...new Set([...READ_LANGUAGES, ...cached])].filter(tag => offered(tag) && !yours.includes(tag) && !theirs.includes(tag));
   if (!yours.length && !theirs.length && !rest.length) return null;
-  const option = (tag, prefix) => el("option", { value: tag, text: (prefix || "") + nativeName(tag) + (cached.includes(tag) ? "" : " · translate with co ai") });
-  const select = el("select", { "aria-label": "Read this page in" }, [el("option", { value: "", text: "As written" }),
+  const option = (tag, prefix) => el("option", { value: tag, text: t(prefix || "") + nativeName(tag) + (cached.includes(tag) ? "" : " · " + t("Translate with co ai")) });
+  const select = el("select", { "aria-label": t("Read this page in") }, [el("option", { value: "", text: t("As written") }),
     ...yours.map(tag => option(tag)), ...theirs.map(tag => option(tag, "Their language: ")),
-    rest.length ? el("optgroup", { label: "Other…" }, rest.map(tag => option(tag))) : null]);
+    rest.length ? el("optgroup", { label: t("Other…") }, rest.map(tag => option(tag))) : null]);
   select.value = r.shown || "";
   const status = el("span", { class: "lang-status", role: "status" });
   select.onchange = () => readIn(r, select.value, status, select);
-  return el("div", { class: "lang-bar" }, [el("span", { text: "Read in" }), select, status]);
+  return el("div", { class: "lang-bar" }, [el("span", { text: t("Read in") }), select, status]);
 }
 async function readIn(r, tag, status, select) {
   if (!tag || r.translations?.[tag]) return showLanguage(r, tag);
@@ -4747,7 +5322,12 @@ function showLanguage(r, tag) {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
-render();
+Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private")]).then(([language, theme, privacy]) => {
+  if (language === "zh" || language === "en") uiLanguage = language;
+  if (location.protocol === "file:" && (theme === "light" || theme === "dark")) document.documentElement.dataset.theme = theme;
+  if (REM?.shared || location.protocol === "file:" && privacy === "hidden") document.documentElement.classList.add("hide-private");
+  render();
+});
 </script>
 </body>
 </html>
