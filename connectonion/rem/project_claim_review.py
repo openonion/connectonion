@@ -1,6 +1,7 @@
 """Read a page's cited originals before accepting its claims."""
 
 import json
+import re
 from pathlib import Path
 
 from .files import read_json
@@ -109,8 +110,13 @@ def fit(material: dict, bound: int) -> dict:
                                     if len(s["context"]["excerpt"]) > each else s for s in sources]}
 
 
+def _claim_text(text: str) -> str:
+    """Compare carried prose without citation markers or whitespace."""
+    return re.sub(r"\[W?\d+\]|\s+", "", text)
+
+
 def review(notebook, candidate: str, config: dict, workspace: Path, run,
-           *, record: str | None = None, items=()) -> tuple[dict, dict]:
+           *, record: str | None = None, items=(), carried: str = "") -> tuple[dict, dict]:
     """One read-only model turn; an uncertain verdict keeps the prior page."""
     material, missing = packet(notebook, candidate, record, items)
     # One citation without a readable original (a carried page, a URL) left
@@ -157,11 +163,21 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
     else:
         report["verdict"] = verdict
         # The audit must not buy repairs or erase Vern Chan's map address (2026-10-16 trial).
-        findings = [f for f in report["findings"] if not uncited_field(f.get("claim", ""))]
-        if findings != report["findings"]:
-            report["findings"] = findings
-            if verdict == "fail" and not findings:
-                report["verdict"] = "pass"
+        findings, carried_findings = [], []
+        carried = _claim_text(carried)
+        for finding in report["findings"]:
+            claim = finding.get("claim", "")
+            if uncited_field(claim):
+                continue
+            claim = _claim_text(claim)
+            if claim and claim in carried:
+                carried_findings.append(finding)
+            else:
+                findings.append(finding)
+        report["findings"] = findings
+        report["carried_findings"] = carried_findings
+        if verdict == "fail" and not findings:
+            report["verdict"] = "pass"
     report["sources_supplied"] = len(material["sources"])
     report["missing_citations"] = missing
     report["scope"] = "Cited originals only; not all Project inputs or live deployment"

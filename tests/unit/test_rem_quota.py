@@ -210,3 +210,25 @@ def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_
              "usage": {"input_tokens": 1_200_000, "cached_input_tokens": 200_000}} for n in (1, 2)]
     assert quota.run_spent(start, now, [earlier, *mine], began) == 2
     assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 5   # the meter, when it says more
+
+
+@pytest.mark.parametrize("known", [True, False])
+def test_depth_points_only_counts_enrich_and_muse_in_its_week(monkeypatch, known):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    today = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: today)
+    meter = {"resets_at": int(today.timestamp()), "window_minutes": WEEK} if known else {"unknown": "fixture"}
+    logs = [{"phase": phase, "started_at": date + "T00:00:00+00:00", "usage": {"input_tokens": 1_000_000}}
+            for phase, date in [("enrich", "2026-10-19"), ("muse", "2026-10-18"),
+                                ("investigate", "2026-10-19"), ("enrich", "2026-10-12")]]
+    assert quota.depth_points(logs, meter) == 2
+    if not known:
+        assert quota.points_spent(logs, meter) == 0
+
+
+def test_points_spent_accepts_a_phase_filter():
+    now = {"used_percent": 30, "window_minutes": WEEK, "resets_at": RESETS}
+    logs = [_run("2026-09-28T01:00:00+00:00", 5, 8, phase="enrich"),
+            _run("2026-09-28T02:00:00+00:00", 8, 10)]
+    assert quota.points_spent(logs, now, phases=quota.DEPTH_PHASES) == 3

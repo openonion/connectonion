@@ -368,6 +368,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
 | `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
+| `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem abstract` | Run rem-abstract over existing notebook evidence. |
 | `co rem start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co rem sync` runs one. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -409,6 +410,7 @@ on one page that is already written, each through the same `co ai` runner and
 the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
 claims pass the audit; review names problems back to the writer twice at most).
+The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
 
 ```bash
 co rem enrich projects/aurora.md   # discovery: follow what the page has not followed
@@ -434,9 +436,55 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   says so.
 
 Both print whether the page changed and its size before and after, record a
-run in `co rem logs` (with usage, counted in the weekly budget like
-investigate), and change no other page. They work on people, projects and orgs
+run in `co rem logs` (with usage, counted in the separate deepening budget),
+and change no other page. They work on people, projects and orgs
 pages.
+
+### Deepen over time: co rem deepen
+
+```bash
+co rem deepen             # one slot: two pages by default
+co rem deepen --pages 1
+co rem deepen projects/lantern-skills.md avery-lin
+```
+
+Optional `PAGE...` selectors resolve like enrich/muse and deepen exactly those
+pages once in the given order, checking the budget before each page; `--pages`
+limits automatic selection only.
+
+One round on one page is **enrich, then muse**, about 25 minutes. Round N reads
+round N-1's open leads and open questions through the latest completed run
+reports. Muse still runs when enrich fails or is refused, using what is there.
+
+Candidates include every notebook page under `people/` and `projects/`, excluding
+the owner and mapped automated accounts; map rows supply activity, while unmapped
+projects use Sessions under Paths (0 if absent) and Last seen, and unmapped people
+have value 0.
+The highest priority goes first, ties by record:
+
+```text
+priority = log2(2 + value) × recent × thin / (1 + rounds)
+value = mails for people, sessions for projects
+recent = 2 for activity within 30 days, otherwise 1
+thin = 1 / (1 + quotes/3 + sources/10)
+```
+
+Quotes and sources count distinct entries on the current page. A page rests
+for 30 days when its last round changed neither characters, quotes nor sources
+and found no insights. Each round appends its metrics, outcomes, lost quotes,
+insights and token-based points to `.state/depth.json`, keyed by record.
+
+`limits.depth_quota_points` defaults to **30 points of the Codex week**,
+separate from investigation's 35; `limits.depth_pages_per_slot` defaults to 2.
+The shared `limits.quota_floor_percent` (90) also stops new pages. Both bounds
+are checked before each page. Usage counts enrich and muse run logs within
+the reported quota window, or the last seven days when the meter is unknown.
+The round table shows before/after characters, quotes and sources, insights,
+lost quotes, both outcomes and points; it also reports why it stopped and how
+many candidates remain.
+
+Scheduled `co rem sync --scheduled` runs a slot after a due daily round,
+unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 

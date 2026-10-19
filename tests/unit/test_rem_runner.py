@@ -601,6 +601,32 @@ def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_pa
     assert json.loads((tmp_path / "review.json").read_text())["factual_quality"] == "bounded citation audit passed"
 
 
+@pytest.mark.parametrize('stage', ['enrich', 'muse', 'investigate', 'maintain'])
+def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, tmp_path, stage):
+    from connectonion.rem import project_claim_review
+    record = 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = notebook.read(record)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Unknown — not investigated yet', '- Unknown')
+                         .replace('## What it is\n- Unknown', '## What it is\nA local demo. [1]')
+                         .replace('- (none yet)', '- [1] codex:invented — 2026-10-01'))
+    seen = []
+
+    def review(*args, **kwargs):
+        seen.append(kwargs['carried'])
+        return {'verdict': 'fail' if len(seen) == 1 else 'pass',
+                'findings': [{'claim': 'A local demo.', 'issue': 'Unsupported'}]}, {}
+
+    monkeypatch.setattr(project_claim_review, 'review', review)
+    items = [{'source': 'codex:invented', 'text': 'A local demo.'}]
+    result = {}
+    runner.promote_with_repairs(notebook, record, candidate, original, items, tmp_path, result,
+        workdir=tmp_path, config={}, stage=stage, run=lambda *args: {})
+    assert seen == [original if stage in ('enrich', 'muse') else ''] * 2
+    assert result['repairs'] == 1
+
+
 def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
     """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
     unresolved [7] was dropped, the half it supported was left uncited, and the

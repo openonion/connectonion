@@ -631,6 +631,28 @@ def _thread_usage(config, prior, current) -> dict | None:
     return _add_usage(prior, current)
 
 
+def _usage_delta(config, before, after) -> dict | None:
+    if config["runner"] != "codex":
+        return after
+    before, after = before or {}, after or {}
+    return {key: max(0, (value or 0) - (before.get(key) or 0)) for key, value in after.items()}
+
+
+def _repair_thread(session, usage):
+    """Reuse the originals already read; charge only the resumed repair (#2533)."""
+    def run(workdir, text, config, stage):
+        nonlocal usage
+        try:
+            result = run_task(workdir, text, config, stage, session=session)
+        except RunFailed as error:
+            raise RunFailed(str(error), _usage_delta(config, usage, error.usage)) from error
+        current = result.get("usage")
+        result["usage"] = _usage_delta(config, usage, current)
+        usage = current or usage
+        return result
+    return run
+
+
 def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path) -> str:
     """What the review refused, and where the writer reads the originals to fix it."""
     text = (f"Review refused the page: {'; '.join(errors)}. Read the cited originals in "
@@ -660,10 +682,15 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     pages stayed unwritten after 1.9.2b3's first run.
     """
     run = run or run_task
+    result.update(repairs=0, repair_usage={})
+    # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
+    # not written; a person page lost a quarter of its text in one round.
+    carried = original if stage in ("enrich", "muse") else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                                       lock_held=lock_held, investigation=investigation, claim_config=config)
+                                       lock_held=lock_held, investigation=investigation, claim_config=config,
+                                       carried=carried)
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -679,16 +706,19 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             if not errors or attempt == repairs or any(e.startswith("Page changed during") for e in errors):
                 break
             try:
+                result["repairs"] += 1
                 repair = run(workdir, f"Edit the existing page at {candidate}. "
                              + repair_instruction(record, errors, directory, workdir), config, stage)
             except RunFailed as error:
                 # A repair turn that fails is still paid for.
+                result["repair_usage"] = _add_usage(result["repair_usage"], error.usage) or {}
                 raise RunFailed(str(error), _add_usage(result.get("usage"), error.usage)) from error
+            result["repair_usage"] = _add_usage(result["repair_usage"], repair.get("usage")) or {}
             result["usage"] = _add_usage(result.get("usage"), repair.get("usage"))
     if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                       lock_held=lock_held, investigation=investigation, last_resort=True)
+                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried)
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -724,7 +754,7 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None, last_resort=False):
+                       investigation=True, claim_config=None, last_resort=False, carried=""):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, normalize_numbered_sources,
@@ -833,7 +863,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         with _promotion_lock(notebook.root, candidate, usage, lock_held):
             retain_cited_originals(notebook, text, items)
         report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
-                                            record=record, items=items)
+                                            record=record, items=items, carried=carried)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
@@ -1240,6 +1270,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     started = time.monotonic()
     result = {}
     prior_turn_usage = None
+    turn_replies = []
     inquiry_usage = {}
     refusals = []
     try:
@@ -1260,6 +1291,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if turns and stage_progress:
             stage_progress(f"turn 1 of {len(turns)}")
         result = run_task(workdir, prompt, selected_config, stage)
+        if turns:
+            turn_replies.append(str(result.get("result") or ""))
         session = result.get("session_id")
         for number, text in enumerate(turns[1:], 2):
             if not result.get("session_id"):
@@ -1268,6 +1301,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 stage_progress(f"turn {number} of {len(turns)}")
             prior_turn_usage = result.get("usage")
             result = run_task(workdir, text, selected_config, stage, session=session)
+            turn_replies.append(str(result.get("result") or ""))
             result["usage"] = _thread_usage(selected_config, prior_turn_usage, result.get("usage"))
             prior_turn_usage = None
         untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
@@ -1288,8 +1322,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
             and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
         if candidate and not no_change:
+            repair_run = (_repair_thread(result["session_id"], result.get("usage"))
+                          if stage in ("enrich", "muse") and result.get("session_id") else None)
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
+                                 run=repair_run,
                                  investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
                                  # A model that only replies, or never wrote the page, will not edit
                                  # the file a repair names.
@@ -1311,9 +1348,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if isinstance(error, RunFailed) and inquiry_usage and not result:
             usage = {key: (usage or {}).get(key, 0) + inquiry_usage.get(key, 0)
                      for key in (usage or {}).keys() | inquiry_usage.keys()}
+        metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
+    metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
@@ -1322,6 +1361,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "report": str(result.get("result") or ""),
                "review_candidates": read_json(directory / "review-candidates.json", [])}
     outcome["refuted_claims"] = result.get("refuted_claims", [])
+    outcome.update(repairs=metrics["repairs"], repair_usage=metrics["repair_usage"])
+    if turns:
+        outcome["turn_replies"] = turn_replies
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).
         outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]

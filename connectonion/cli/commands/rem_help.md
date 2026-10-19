@@ -15,6 +15,7 @@ Build (once)
 Deepen one page
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Think one page through: ask many questions, study the five best, write only on insight.
+  deepen        Deepen valuable thin pages over time, one enrich then muse round each.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
@@ -252,6 +253,40 @@ Next:     co rem show people/avery-lin.md
 Back:     co rem --help
 ```
 
+## co rem deepen
+
+```
+co rem deepen — deepen valuable thin pages over time, one enrich then muse round each.
+
+Choose notebook people and projects by value times thinness, with recent activity
+first and each previous round reducing priority. An unchanged round with no
+insights rests for 30 days. Each round reads earlier open leads and questions.
+Unmapped projects use Sessions under Paths and Last seen; other missing activity is zero.
+
+Usage:    co rem deepen [PAGE...] [--pages N]
+Example:  co rem deepen --pages 1
+          co rem deepen projects/lantern-skills.md avery-lin
+
+Arguments:
+  PAGE...       Resolve like enrich/muse; deepen each once in order, checking budget before each.
+                Explicit pages bypass automatic selection and its resting period.
+
+Options:
+  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 2)
+
+Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
+          from investigation's 35. The shared 90% floor also stops new pages.
+          Without a meter, the budget counts the last seven days of run usage.
+Output:   Rounds with before/after metrics, insights, lost quotes, outcomes and
+          points; the stop reason and candidates left. State: .state/depth.json.
+Effects:  Uses the configured model. A round is about 25 minutes.
+          Scheduled sync runs a slot after a due, non-partial daily round.
+          Manual sync never deepens.
+
+Next:     co rem logs
+Back:     co rem --help
+```
+
 ## co rem muse
 
 ```
@@ -438,7 +473,9 @@ Example:  co rem sync --dry-run
           --all       keep going until nothing is waiting or the day's runner
                       attempts are spent; one line per batch on stderr. To go
                       further today, raise limits.runner_calls_per_day
-          --scheduled what the schedule passes: run only if a scheduled time is due
+          --scheduled what the schedule passes: run only if a scheduled time is due;
+                      after a non-partial daily round, deepen up to two pages within
+                      the separate deepening budget. Manual sync never deepens.
 
 Effects:  Reads message bodies, calls the model, updates pages. A run the daily
           cap refuses is kept in co rem logs. Ctrl-C keeps finished batches and
