@@ -187,9 +187,10 @@
   .night .legend { font: 10.5px var(--ui); color: var(--night-dim); display: flex; gap: 16px; flex-wrap: wrap; }
   .night .legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
   .night .changes { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--night-line); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
+  .night .changes .page-names { min-width: 0; flex: 1; line-height: 1.8; }
   .night .changes .k { font: 11px var(--ui); color: var(--night-dim); margin-right: 4px; letter-spacing: 0; }
-  .night .changes a { color: var(--night-ink); font-size: 13.5px; border-radius: 0; box-shadow: none; background: transparent; padding: 2px 0; text-decoration: underline; text-decoration-color: var(--night-dim); }
-  .night .changes a:hover { background: rgba(255,255,255,0.14); text-decoration: none; }
+  .night .changes a { color: var(--night-ink); font-size: 13.5px; border-radius: 0; box-shadow: none; background: transparent; padding: 2px 0; text-decoration: none; }
+  .night .changes a:hover { text-decoration: underline; }
   .night code { font: 12px var(--ui); color: #fff; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; }
   .night p { margin: 0; color: var(--night-dim); font-size: 14px; }
 
@@ -1287,7 +1288,18 @@
   .missing .cmd, .missing.primary .cmd, .empty .cmd { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; min-width: 0; margin: 8px 0; }
   .missing .cmd code, .missing.primary .cmd code, .empty .cmd code { display: block; min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; font: 11px/1.5 var(--code); }
   .cmd .btn-action { flex: 0 0 auto; min-height: 32px; background: transparent; border-color: transparent; }
-  .sessions-empty h2 { font: 500 23px/1.4 var(--display); }
+  .task-band .thread.grouped { grid-template-columns: minmax(0, 1fr) auto; }
+  .task-band .thread.grouped .when { order: 0; }
+  .search-group h2.section.group { display: flex; justify-content: space-between; align-items: baseline; }
+  .search-group h2.section.group .n { text-align: right; margin-top: 0; }
+  .empty.sessions-empty { border-top: 0; margin-top: 0; padding-top: 0; }
+  .sessions-empty p { margin-top: 8px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .memory-enter:is(.fresh-label, .updated-label) { animation: memory-dawn 600ms ease-out; }
+    .changed-value.memory-enter { text-decoration: none; background: linear-gradient(var(--fresh-soft), var(--fresh-soft)) left bottom / 100% 3px no-repeat; animation: memory-underline 600ms ease-out; }
+    @keyframes memory-dawn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes memory-underline { from { background-size: 0% 3px; } to { background-size: 100% 3px; } }
+  }
   .evidence-claim > div::before { content: "“"; }
   .evidence-claim > div::after { content: "”"; }
   .evidence-identity { border-bottom: 1px solid var(--line); margin-bottom: 16px; padding-bottom: 8px; }
@@ -1395,7 +1407,7 @@ const UI = {
     "not confirmed by sources": "来源未确认",
     "Your day": "你的一天",
     "Today": "今天",
-    "Waiting on you": "等你回复",
+    "Waiting on you": "等你处理",
     "Waiting on others": "等对方回复",
     "Memory changes": "记忆变化",
     "Explore memory": "探索记忆",
@@ -1421,7 +1433,6 @@ const UI = {
     "Show labelled passages": "显示已标记段落",
     "Hide labelled passages": "隐藏已标记段落",
     "Also hides raw excerpts; other details stay visible.": "也会隐藏原始摘录，其他信息仍可见。",
-    "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.": "也会隐藏原始来源和对话摘录，姓名及未标记文字仍可见。",
     "Last night": "昨夜",
     "The last pass": "上次更新",
     "What changed overnight": "昨夜的变化",
@@ -1453,9 +1464,6 @@ const UI = {
     "Only mapped so far": "仅已映射",
     "Copy the command": "复制命令",
     "Copy": "复制",
-    "Copied": "已复制",
-    "Select and copy": "请选择并复制",
-    "Copy failed": "复制失败",
     "Mapped": "仅已映射",
     "Mapped only": "仅看已映射",
     "Partly investigated": "部分已调查",
@@ -1484,13 +1492,13 @@ const UI = {
     "What they do": "业务",
     "All": "全部",
     "Something open": "有待办",
-    "Yours to answer": "等你回复",
+    "Yours to answer": "等你处理",
     "Written": "已撰写",
     "Sort by": "排序方式",
     "Show": "显示",
     "Nothing matches. Clear the filter to see every page.": "没有匹配结果，清除筛选可查看全部页面。",
     "nothing open": "暂无待办",
-    "No agent sessions yet": "还没有智能体会话",
+    "No agent sessions yet.": "还没有智能体会话。",
     "See what you worked on with your coding agents, including decisions and follow-ups.": "在这里回顾你与编程智能体的工作、决定和后续事项。",
     "Search sessions": "搜索会话",
     "Search what you typed and what the agent replied": "搜索你的输入和智能体的回复",
@@ -1768,13 +1776,251 @@ const UI = {
     "Model's inspection report": "模型检查报告",
     "Inputs supplied to this run (including context; not proof of inspection)": "本次运行的输入（含背景材料，不代表均已检查）",
     "Who is this, and where did we leave off?": "这是谁？上次聊到哪了？",
-    "{n} written of {m}": "{m} 人中已撰写 {n} 人",
+    "{n} written of {m}": "已撰写 {n} / {m}{unit}",
     "{n} pages": "{n} 页",
     "{n} other contacts": "另有 {n} 位联系人",
     "Last activity": "最近动态",
     "{n} other contacts found in mail": "邮件中发现的其他联系人：{n} 位",
     "{n} possible contacts are held for review, outside this list.": "{n} 位可能的联系人待审核，暂未列入此表。",
-    "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。"
+    "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。",
+    "Companies, teams, and groups we correspond with": "有往来的公司、团队与组织",
+    "Why, where are we, how to continue?": "为何做、进展如何、下一步是什么？",
+    "Repeatable procedures, recorded not installed": "可复用的操作流程，仅记录，未安装",
+    "What we chose and why": "做了什么决定，为什么",
+    "Standing rules we adopted": "已采用的长期原则",
+    "What is it, how does it work, when does it apply?": "是什么、如何运作、何时适用？",
+    "Worth exploring, not yet committed": "值得探索，尚未决定投入",
+    "Outputs that can be reused or shown": "可复用或展示的成果",
+    "Promises, waiting on others, dates that matter": "承诺、等待对方的事项与重要日期",
+    "People, projects, skills and ideas in one place": "人物、项目、技能与想法，汇于一处",
+    "The pass may have refreshed pages; that alone is not a new memory.": "本次可能更新了页面措辞，这不代表新增了记忆。",
+    "No supported open loop is in this snapshot.": "此快照中没有来源支持的未完成事项。",
+    "{n} waiting on you": "{n} 件等你处理",
+    "{n} on someone else": "{n} 件等对方处理",
+    "{n} other open context": "{n} 项其他未结背景",
+    ". Newest and due first.": "。最新与即将到期的事项在前。",
+    "+{n} more": "另有 {n} 项",
+    "{n} skill-name match · last {last} · version unverified": "{n} 次技能名称匹配 · 最近 {last} · 版本未验证",
+    "{n} skill-name matches · last {last} · version unverified": "{n} 次技能名称匹配 · 最近 {last} · 版本未验证",
+    "0 skill-name matches in {n} days · version unverified": "{n} 天内无技能名称匹配 · 版本未验证",
+    "{n} uses": "{n} 次使用",
+    " · last {last}": " · 最近 {last}",
+    "Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome.": "按编程会话和 co ai 运行中的技能名称匹配；保留的评估尝试另计。两者均不证明使用了当前安装版本，也不证明任务成功。",
+    "daily-update": "每日更新",
+    "daily-investigation": "每日调查",
+    "sessions-summary": "会话总结",
+    "investigate me": "了解你",
+    "mapping": "映射",
+    "enrich": "补充背景",
+    "muse": "梳理问题",
+    "partial": "部分完成",
+    "no_change": "无变化",
+    "nothing_found": "未找到材料",
+    "no_page_fits_budget": "预算不足以调查页面",
+    "budget_exhausted": "预算已用完",
+    "running": "运行中",
+    "accepted": "已接受",
+    "refused": "拒绝写入",
+    "Claude Code session": "Claude Code 会话",
+    "Codex session": "Codex 会话",
+    "Changed page has no numbered evidence references": "改动的页面缺少编号来源引用",
+    "Expected exactly one page title": "页面应恰有一个标题",
+    "Page changed during investigation; preserve current page and retry": "调查期间页面已改变；保留当前页面并重试",
+    "Cited-claim audit did not pass; see claim-review.json": "引用陈述审核未通过，详见 claim-review.json",
+    "Page cites only the page itself and the coverage note; nothing about the subject was read": "页面仅引用自身与覆盖记录，未阅读主题相关材料",
+    "date unknown": "日期未知",
+    "Documents": "文档",
+    "Archived conversation": "存档对话",
+    "Latest {n} of {m} archived messages in this cited thread. Some messages may not have an archived body.": "此引用对话中最近 {n} / {m} 条存档消息。部分消息可能没有存档正文。",
+    "Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them.": "存档消息尚未完成隐私分类，已隐藏。在菜单中选择「显示标记段落」即可阅读。",
+    "Copy investigation preview": "复制调查预览命令",
+    "Source map": "来源映射",
+    "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings.": "可以浏览人物、项目、组织与技能了。这些是元数据线索，尚未经过调查。",
+    "Review failed runs →": "查看失败的运行 →",
+    "Maintenance": "维护",
+    "Activity →": "动态 →",
+    "Copy command": "复制命令",
+    "Run this in a terminal, then follow the next investigation command:": "在终端中运行，再按提示执行调查命令：",
+    "blocker": "阻碍",
+    "Mail": "邮件",
+    "File": "文件",
+    "Found by": "发现方式",
+    "Related": "相关页面",
+    "Review": "审核",
+    "Nothing to review": "没有待审核事项",
+    "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again.": "这些是附有来源的建议，尚未确认为事实。快照只供阅读；请在终端记录你的判断，再运行 co rem open。",
+    "No review candidates yet. No new connection is better than an invented one.": "暂无待审核建议；没有可靠线索时不推测关联。",
+    "Translating with co ai… this takes a minute or two.": "正在用 co ai 翻译…约需一两分钟。",
+    "Not translated: ": "未能翻译：",
+    "Before: ": "之前：",
+    "Now: ": "现在：",
+    "Newly recorded · supported": "新增记录 · 有来源支持",
+    "Revised in memory · supported": "修订记忆 · 有来源支持",
+    "Also on ": "亦见于 ",
+    "No such page in this snapshot: ": "此快照中没有该页面：",
+    "Nothing here yet. The notebook fills what the sources support.": "这里还没有内容；笔记仅记录来源支持的内容。",
+    "Run ": "运行 ",
+    " to do one pass now.": " 即可立即更新一次。",
+    "Each night co rem reads what came in and rewrites the pages it touches. Run ": "co rem 每晚读取新材料并更新相关页面。运行 ",
+    "Recall a memory": "回想一段记忆",
+    "Connection awaiting review": "待审核的关联",
+    "Source map and next step": "来源映射与下一步",
+    "Filter activity": "筛选动态",
+    "Other contacts table": "其他联系人表格",
+    "Direct link to section": "此章节的直接链接",
+    "Copied — paste it in a terminal": "已复制 — 请粘贴到终端",
+    "Copied — paste in a terminal": "已复制 — 请粘贴到终端",
+    "Select and copy the command below": "请选中并复制下方命令",
+    "Copied — edit your name and response": "已复制 — 请填写你的姓名与回复",
+    "Linked in {name}'s page": "在 {name} 的页面中关联",
+    "{n} records mapped": "已映射 {n} 条记录",
+    "0 memories written": "尚未撰写记忆",
+    "Browse {n} people →": "浏览 {n} 人 →",
+    "{n} possible contacts are held for review and excluded from the People count.": "{n} 位可能的联系人待审核，暂未计入人物数量。",
+    "Nothing about your people or projects changed last night.": "昨夜没有记录到人物或项目的新变化。",
+    " {n} page was reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
+    " {n} pages were reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
+    "Model access was refused. Restore access before retrying.": "模型访问被拒绝，请恢复访问后再试。",
+    "A request timed out.": "一次请求超时。",
+    "A model usage limit was reached.": "已达到模型用量限制。",
+    "No memory pages were written in the last pass.": "上次更新未写入记忆页面。",
+    "{n} investigation failed. ": "{n} 次调查失败。",
+    "{n} investigations failed. ": "{n} 次调查失败。",
+    "Open {name} and its sources →": "打开 {name} 及其来源 →",
+    "{n} page rewritten in 7 days": "7 天内改写了 {n} 页",
+    "{n} pages rewritten in 7 days": "7 天内改写了 {n} 页",
+    "last contact or change first": "最近联系或更新在前",
+    " · {n} mapped only": " · {n} 页仅映射",
+    "{n} record": "{n} 条记录",
+    "{n} records": "{n} 条记录",
+    "Batches today": "今日批次",
+    "Model turns today": "今日模型轮次",
+    "Input tokens today": "今日输入 token",
+    "Output tokens today": "今日输出 token",
+    "Timezone": "时区",
+    "Sources: ": "来源：",
+    "off": "已关闭",
+    "reading": "读取中",
+    "waiting for start": "等待启动",
+    "Latest run ": "最近运行 ",
+    "{n} pages changed · ": "改动 {n} 页 · ",
+    "source: ": "来源时间：",
+    "captured: ": "采集时间：",
+    "Found in {scope}. These headers have not established a person or a memory page. Search here before deciding whom REM should investigate.": "发现于 {scope}。这些邮件头尚不足以确认人物或建立记忆页面。可先搜索，再决定让 REM 调查谁。",
+    "Coverage is incomplete: {n} mailbox scan error(s). Retry init before treating this as every contact.": "覆盖不完整：{n} 次邮箱扫描出错。请重新运行 init 后再核对联系人是否齐全。",
+    "Show the command to prepare a memory for {name}": "显示为 {name} 准备记忆的命令",
+    " · {n} found": " · 找到 {n} 项",
+    "No people mapped yet. Run ": "尚未映射人物。运行 ",
+    " (or select gmail) to read correspondent metadata.": "（或选择 gmail）以读取联系人元数据。",
+    "Import conversations you typed in with {command}.": "运行 {command} 导入你参与的对话。",
+    "Original conversation · {n} messages": "原始对话 · {n} 条消息",
+    " · final reply": " · 最终回复",
+    "{n} · {received} in, {sent} out": "{n} 封 · 收到 {received}，发出 {sent}",
+    "since ": "起于 ",
+    " · due ": " · 到期 ",
+    "Sessions in the mapping window; archived input coverage can differ.": "映射时间范围内的会话；存档输入的覆盖范围可能不同。",
+    " since ": " 起于 ",
+    "{n} private entry hidden": "已隐藏 {n} 条私密记录",
+    "{n} private entries hidden": "已隐藏 {n} 条私密记录",
+    "Copy {verdict} command": "复制 {verdict} 命令",
+    "yes": "同意",
+    "no": "不同意",
+    "answer": "回答",
+    "Diagram": "图示",
+    "Code block": "代码块",
+    "{n} installed copies — open to compare sources": "{n} 份安装副本 — 打开比较来源",
+    "{n} of the most-used skill's {m}": "{n} 次，使用最多的技能为 {m} 次",
+    "Missing or duplicate citation: {detail}": "缺失或重复的引用：{detail}",
+    "Unused citation: {detail}": "未使用的引用：{detail}",
+    "Citation has no identifiable source: {detail}": "引用没有可识别的来源：{detail}",
+    "Missing fact field: {detail}": "缺少事实字段：{detail}",
+    "Preserve mapped project metadata: {detail}": "保留已映射的项目元数据：{detail}",
+    "Investigation status belongs to the runner": "调查状态由运行程序填写",
+    "Audit removed the whole lead; the page before this turn is kept": "审核移除了整段摘要，已保留本轮之前的页面",
+    "Missing page": "页面不存在",
+    "Search: ": "搜索：",
+    " · map": " · 映射",
+    "Interface language": "界面语言",
+    "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.": "同时隐藏原始来源与对话摘录。姓名和未标记文字仍然显示。",
+    "Find in this conversation": "在此对话中查找",
+    "Neighbouring sessions": "相邻会话",
+    "Copy {name}": "复制{name}",
+    "Open threads on this record": "此记录的未完成事项",
+    "Close conversation": "关闭对话",
+    "About this page": "关于此页",
+    "Copy the file path": "复制文件路径",
+    "Copy the page as written, unknowns included": "复制页面原文，含未知项",
+    "Path copied": "路径已复制",
+    "Markdown copied": "Markdown 已复制",
+    "Swipe diagram sideways to see all steps →": "横向滑动图示以查看全部步骤 →",
+    "Copy code": "复制代码",
+    "Session": "会话",
+    "Repo": "代码仓库",
+    "you": "你",
+    "mail": "邮件",
+    "pending": "待审核",
+    "link": "关联",
+    "question": "问题",
+    "auto theme": "自动主题",
+    "light theme": "浅色主题",
+    "dark theme": "深色主题",
+    "unknown": "未知",
+    "Categories": "分类",
+    "Show notebook navigation": "显示笔记导航",
+    "Preserve the exact skill invocation name as the page title": "页面标题须保留技能调用名称",
+    "already_written": "已撰写",
+    "scheduled": "已安排",
+    "paused": "已暂停",
+    "no_budget": "预算不足",
+    "{n} of {m} known": "已知 {n} / {m} 项",
+    "read from the page's prose, not its Facts": "取自页面正文，未在事实字段中列出",
+    "Select and copy": "请选中并复制",
+    "Copied": "已复制",
+    "Copy failed": "复制失败",
+    "This page is no longer in the notebook": "此页面已不在笔记库中",
+    "Some sections are filled from sources; the rest are not investigated yet.": "部分章节已有来源支持，其余尚未调查。",
+    "{n} from them, {m} from you": "对方发来 {n} 封，你发出 {m} 封",
+    "{name} table": "{name}表格",
+    "{n} runs stopped early": "{n} 次运行提前停止",
+    "{n} runs · {m} pages changed": "{n} 次运行 · 改动 {m} 页",
+    "Last run ended {time}": "最近一次运行结束于 {time}",
+    "{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending": "上次更新共 {n} 次运行，分为 {m} 段；白点表示页面改动，灰点表示提前停止，琥珀色表示最近运行结束",
+    "Not written yet": "尚未撰写",
+    ": {n} session": "：{n} 个会话",
+    ": {n} sessions": "：{n} 个会话",
+    ", last on {day}": "，最近 {day}",
+    "Recovered later. Original retrieval time unknown; Archived marks retention, not original investigation coverage. Initial window unchanged; provider thread unknown.": "此来源后续补存，原始获取时间未知。「存档于」仅表示保留时间，不代表原调查已读取；最初范围未变，提供方对话未知。",
+    "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.": "语音转录，仅显示你的输入，未包含其他对话背景；转录可能有误。",
+    "Older Desktop input. The app did not record how this input was supplied.": "较早的桌面端输入；应用未记录输入方式。",
+    "Instructions describe intended behavior, not a verified result.": "指令描述预期行为，不代表结果已验证。",
+    " This excerpt was recovered from matching file content.": " 此摘录由匹配的文件内容补存。",
+    "{n} installed copies (may differ)": "{n} 份安装副本（内容可能不同）",
+    "{n} unresolved section": "{n} 个章节仍待确认",
+    "{n} unresolved sections": "{n} 个章节仍待确认",
+    "You:": "你：",
+    "Agent:": "智能体：",
+    "Current project work is unconfirmed in the supplied evidence.": "现有材料尚未确认项目当前进展。",
+    "Mapped from source metadata. REM has not investigated this record yet.": "由来源元数据映射，REM 尚未调查此记录。",
+    "No supported summary yet.": "尚无来源支持的摘要。",
+    "Automatic investigations skip this private project. Name this page to request a write.": "自动调查跳过此私密项目。请指定此页面以请求撰写。",
+    "Missing section: {detail}": "缺少章节：{detail}",
+    "Section must occur once: {detail}": "章节应仅出现一次：{detail}",
+    "Duplicate section: {detail}": "重复章节：{detail}",
+    "Quote is not in its cited source: {detail}": "引用来源中没有这段原话：{detail}",
+    "Fact without a citation: {detail}; cite the message it came from, or write Unknown": "事实缺少引用：{detail}；请引用原消息，或填写 Unknown",
+    "Cited file needs a hash or exact Git commit in a mapped repository: {detail}": "引用文件须有哈希值或映射仓库中的确切 Git 提交：{detail}",
+    "No assigned project session inputs: {detail}": "未提供项目会话输入：{detail}",
+    "Cited local file needs a file: source ID and SHA-256: {detail}": "引用本地文件须有 file: 来源 ID 与 SHA-256：{detail}",
+    "Candidate file inventory is not a citable original: {detail}": "候选文件清单不能作为原始来源：{detail}",
+    "Project paths are reading leads, not citable originals: {detail}": "项目路径仅供查阅线索，不能作为原始来源：{detail}",
+    "Investigation coverage belongs in the run report, not page Sources: {detail}": "调查覆盖范围应记录在运行报告中，而非页面来源：{detail}",
+    "Project input scope is not a citable original: {detail}": "项目输入范围不能作为原始来源：{detail}",
+    "Project timeline is a reading guide, not a citable original: {detail}": "项目时间线仅供阅读指引，不能作为原始来源：{detail}",
+    "Skill run summaries and carried pages are not citable originals: {detail}": "技能运行摘要与沿用页面不能作为原始来源：{detail}",
+    "Citation bundles multiple files: {detail}": "同一引用包含多个文件：{detail}",
+    "projects write": "撰写项目",
+    "skills write": "撰写技能",
+    "sessions import": "导入会话"
 }
 };
 function t(key, values = {}) {
@@ -1881,7 +2127,7 @@ function shortDate(day) {
   const sameYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
   return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
 }
-function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
+function num(n) { return n == null ? t("unknown") : Number(n).toLocaleString(); }
 function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
 function resolve(from, path) {
   const base = from.split("/").slice(0, -1);
@@ -1905,9 +2151,9 @@ function safeHref(from, raw) {
 }
 function copyToClipboard(text, btn, successMsg) {
   const original = btn.textContent;
-  const done = msg => { btn.textContent = msg; btn.classList.add("done"); setTimeout(() => { btn.textContent = original; btn.classList.remove("done"); }, 1500); };
-  if (!navigator.clipboard) { done("Select and copy"); return; }
-  navigator.clipboard.writeText(text).then(() => done(successMsg || "Copied"), () => done("Copy failed"));
+  const done = msg => { btn.textContent = t(msg); btn.classList.add("done"); setTimeout(() => { btn.textContent = original; btn.classList.remove("done"); }, 1500); };
+  if (!navigator.clipboard) { done(t("Select and copy")); return; }
+  navigator.clipboard.writeText(text).then(() => done(successMsg || t("Copied")), () => done(t("Copy failed")));
 }
 // Status as a moon phase: full when investigated, half with some findings, new when only mapped.
 const MOON = {
@@ -1928,19 +2174,19 @@ function citationSource(r, n) {
   return r.path === CITES.from ? CITES.sources[n] || "" : sourceList(r).find(s => s.n === n)?.text || "";
 }
 function sourceChannel(kind) {
-  return ({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
-    || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1));
+  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
+    || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
 }
 function sourceSender(context) {
   const from = context.participants?.from;
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
   const page = byPath(sender);
-  if (page) return page.path === REM.owner ? "you" : page.title.split(/\s+/)[0];
+  if (page) return page.path === REM.owner ? t("you") : page.title.split(/\s+/)[0];
   if (/\/|\.md/i.test(sender)) return "";
   const who = mailbox(sender);
   if (!who.address) return "";
   const person = personByAddress(who.address), owner = byPath(REM.owner);
-  if (owner && (person === owner || owner.index?.emails?.some(address => address.toLowerCase() === who.address))) return "you";
+  if (owner && (person === owner || owner.index?.emails?.some(address => address.toLowerCase() === who.address))) return t("you");
   const name = person?.title || who.name;
   return /\/|\.md/i.test(name) ? "" : name.split(/\s+/)[0];
 }
@@ -2019,7 +2265,7 @@ function inline(text, from) {
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
     // A page that is not in the notebook: say so, rather than look like a link that does nothing (#2054).
-    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title="This page is no longer in the notebook">' + lbl + "</span>" : lbl;
+    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title=t("This page is no longer in the notebook")>' + lbl + "</span>" : lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
@@ -2179,11 +2425,11 @@ const DIAGRAM = /[─│┌┐└┘├┤┬┴┼→←↑↓▶▼]|-->|->|\+
 function codeBlock(code, info) {
   const lang = (info || "").trim().split(/\s+/)[0].toLowerCase();
   const diagram = (!lang || lang === "text" || lang === "ascii" || lang === "txt") && DIAGRAM.test(code);
-  const cap = diagram ? "Diagram" : lang && lang !== "text" ? lang : "";
+  const cap = diagram ? t("Diagram") : lang && lang !== "text" ? lang : "";
   return '<div class="code-block' + (diagram ? " diagram" : "") + '">' + (cap ? '<span class="cap" aria-hidden="true">' + esc(cap) + "</span>" : "") +
-    '<pre tabindex="0" aria-label="' + (diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
-    '</code></pre>' + (diagram ? '<span class="pan-hint">Swipe diagram sideways to see all steps →</span>' : '') +
-    '<button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
+    '<pre tabindex="0" aria-label="' + t(diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
+    '</code></pre>' + (diagram ? '<span class="pan-hint">' + t("Swipe diagram sideways to see all steps →") + '</span>' : '') +
+    '<button class="code-copy" type="button" aria-label="' + t("Copy code") + '">' + t("Copy") + '</button></div>';
 }
 
 function markdown(text, from) {
@@ -2272,12 +2518,21 @@ function splitTrailers(text) {
   return { body: body.join("\n"), related: related.join(", "), sources: sources.join(", ") };
 }
 
+function sourceLabel(id) {
+  const parts = id.split(":");
+  const opaque = /^(?:[0-9a-f]{32,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
+  if (/\.[^/\\]+$/.test(parts.at(-1)) || !parts.some(part => opaque.test(part))) return id;
+  const context = REM.source_context?.[id];
+  const session = /^(codex|claude-code):/.exec(id);
+  if (session && context?.time) return t(session[1] === "codex" ? "Codex session" : "Claude Code session") + " · " + threadDate(context.time.slice(0, 10));
+  return parts.map(part => opaque.test(part) ? part.slice(0, 8) + "…" : part).join(":");
+}
 function sourceChips(text) {
   const chips = [];
   for (const part of text.split(/,\s*(?=[a-z][a-z-]*:)/i)) {
     const m = /^([a-z][a-z-]*:[^\s(]+)\s*(?:\(([^)]*)\))?/i.exec(part.trim());
     if (!m) continue;
-    const chip = el("span", { class: "chip", text: m[1] });
+    const chip = el("span", { class: "chip", text: sourceLabel(m[1]), title: m[1] });
     if (m[2]) chip.appendChild(el("span", { class: "d", text: m[2] }));
     chips.push(chip);
   }
@@ -2365,7 +2620,7 @@ function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? "Some sections are filled from sources; the rest are not investigated yet." : known(r).stamp || label }, [moon(st), t(label)]);
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? t("Some sections are filled from sources; the rest are not investigated yet.") : known(r).stamp || label }, [moon(st), t(label)]);
 }
 
 // ---------- reading a page's parts ----------
@@ -2582,8 +2837,8 @@ function skillUsage(r) {
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
 }
 function usageCaption(u) {
-  return u.count ? u.count + " skill-name " + (u.count === 1 ? "match" : "matches") + " · last " + fmtDate(u.last) + " · version unverified"
-    : "0 skill-name matches in " + u.days + " days · version unverified";
+  return u.count ? t(u.count === 1 ? "{n} skill-name match · last {last} · version unverified" : "{n} skill-name matches · last {last} · version unverified", { n: u.count, last: fmtDate(u.last) })
+    : t("0 skill-name matches in {n} days · version unverified", { n: u.days });
 }
 let MAX_USAGE = null;
 function maxUsage() {
@@ -2592,7 +2847,7 @@ function maxUsage() {
 }
 function usageBar(u) {
   const pct = Math.round(100 * u.count / maxUsage());
-  return el("span", { class: "bar", title: u.count + " of the most-used skill's " + maxUsage() }, [el("i", { style: "width:" + Math.max(u.count ? 3 : 0, pct) + "%" })]);
+  return el("span", { class: "bar", title: t("{n} of the most-used skill's {m}", { n: u.count, m: maxUsage() }) }, [el("i", { style: "width:" + Math.max(u.count ? 3 : 0, pct) + "%" })]);
 }
 function company(r) {
   const c = contactFields(r).find(f => f.label === "Company");
@@ -2666,7 +2921,7 @@ function openCell(f) {
     el("span", { class: "txt", text: plainLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
-  text: shortDate(day) + (fromMap ? " · map" : "") }) : el("span", { class: "unk", text: "—" }); }
+  text: shortDate(day) + (fromMap ? t(" · map") : "") }) : el("span", { class: "unk", text: "—" }); }
 function privateFallback(node) {
   const visible = node.cloneNode(true);
   visible.querySelectorAll(".private, .cite, .privacy-tag").forEach(span => span.remove());
@@ -2720,7 +2975,7 @@ const COLUMNS = {
     { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? peopleEmails(f.email) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? peoplePhones(f.phone) : textCell("") },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
-    { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
+    { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? t("{n} from them, {m} from you", { n: f.received, m: f.sent }) : "", text: String(f.mails) }), desc: true },
   ],
   orgs: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
@@ -2734,7 +2989,7 @@ const COLUMNS = {
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
     { key: "last", label: "Last mapped session", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
-    { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
+    { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: t("Sessions in the mapping window; archived input coverage can differ."), text: f.sessions ? String(f.sessions) : "—" }), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
 };
@@ -2762,7 +3017,7 @@ function sheet(c, items) {
   const table = el("table", { class: "sheet" });
   const thead = el("thead"), tbody = el("tbody");
   table.append(thead, tbody);
-  const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": label(c) + " table" }, [table]);
+  const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label(c) }) }, [table]);
   wrap.append(bar, scroller);
   const draw = () => {
     wrap.classList.toggle("more-columns-shown", morePeopleColumns);
@@ -2906,6 +3161,7 @@ function weekChanges() {
   return [...seen.values()].filter(x => !x.r.catalog_parent && x.r.path !== "skills/catalog/index.md").sort((a, b) => b.day.localeCompare(a.day) || byActivity(a.r, b.r));
 }
 function listWords(words) {
+  if (uiLanguage === "zh") return words.join("、");
   return words.length <= 1 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
 }
 function runSegments(runs, span) {
@@ -2958,19 +3214,19 @@ function hypnogram(asOf) {
     const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
     path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
     const range = time(segment.start) + "–" + time(segment.end);
-    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + segment.failed + " runs stopped early" });
-    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + segment.runs + " runs · " + segment.changed + " pages changed" });
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
+    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
   }
   path += " L" + (W - 4) + "," + TOP;
   svg.push('<path class="trace" pathLength="1" d="' + path + '"/>', "</svg>");
-  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="Last run ended ' + esc(fmtTime(new Date(finished).toISOString())) + '"></span>');
-  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in ' + segments.length + ' stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
+  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
+  return '<div class="hypno" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 function nightBand(showActivityLink = true) {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": t("The last pass") });
   if (!pass) {
     band.appendChild(el("h2", { class: "night-title", text: t("No pass yet") }));
-    band.appendChild(el("p", {}, ["Each night co rem reads what came in and rewrites the pages it touches. Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
+    band.appendChild(el("p", {}, [t("Each night co rem reads what came in and rewrites the pages it touches. Run "), el("code", { text: "co rem sync" }), t(" to do one pass now.")]));
     return band;
   }
   const asOf = new Date(REM.as_of).getTime() || Date.now();
@@ -2989,8 +3245,9 @@ function nightBand(showActivityLink = true) {
   band.appendChild(stages);
   if (pass.changed.length) {
     const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: t("Pages rewritten") })]);
-    for (const r of pass.changed.slice(0, 14)) changes.appendChild(el("a", { href: href(r), title: label(r.category), text: r.title }));
-    if (pass.changed.length > 14) changes.appendChild(el("span", { class: "k", text: "+" + (pass.changed.length - 14) + " more" }));
+    changes.appendChild(el("span", { class: "page-names" }, pass.changed.slice(0, 14).flatMap((r, i) =>
+      [i ? (uiLanguage === "zh" ? "、" : ", ") : "", el("a", { href: href(r), title: label(r.category), text: r.title })])));
+    if (pass.changed.length > 14) changes.appendChild(el("span", { class: "k", text: t("+{n} more", { n: pass.changed.length - 14 }) }));
     band.appendChild(changes);
   }
   return band;
@@ -3045,11 +3302,11 @@ function renderRail(active) {
   const themeSwitch = el("div", { class: "theme-switch", role: "radiogroup", "aria-label": t("Theme") });
   for (const mode of ["auto", "light", "dark"]) {
     const btn = el("button", { class: "theme-btn" + (current === mode ? " active" : ""), type: "button", role: "radio",
-      "aria-checked": String(current === mode), text: t(mode[0].toUpperCase() + mode.slice(1)), title: mode + " theme" });
+      "aria-checked": String(current === mode), text: t(mode[0].toUpperCase() + mode.slice(1)), title: t(mode + " theme") });
     btn.onclick = () => setTheme(mode);
     themeSwitch.appendChild(btn);
   }
-  const languageSwitch = el("div", { class: "language-switch theme-switch", role: "group", "aria-label": "Interface language" });
+  const languageSwitch = el("div", { class: "language-switch theme-switch", role: "group", "aria-label": t("Interface language") });
   for (const [tag, name] of [["en", "EN"], ["zh", "中文"]]) {
     const button = el("button", { type: "button", class: "theme-btn" + (uiLanguage === tag ? " active" : ""),
       "aria-pressed": String(uiLanguage === tag), lang: tag, text: name });
@@ -3060,7 +3317,7 @@ function renderRail(active) {
   const hidden = document.documentElement.classList.contains("hide-private");
   const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: t(hidden ? "Show labelled passages" : "Hide labelled passages"),
-    title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
+    title: t("Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.") });
   privacy.onclick = togglePrivate;
   const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
     el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
@@ -3089,28 +3346,28 @@ function row(r, opts) {
   const open = threads(r).items[0];
   if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
-  if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
+  if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "meta usage" }, [t("{n} uses", { n: u.count }) + (u.last ? t(" · last {last}", { last: shortDate(u.last) }) : "")]));
+  if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: t("{n} installed copies — open to compare sources", { n: r.installations.length }) }));
   return li;
 }
 function alsoOn(records = []) {
   if (!records.length) return null;
-  return el("div", { class: "also-on" }, ["Also on ", ...records.flatMap((r, i) =>
+  return el("div", { class: "also-on" }, [t("Also on "), ...records.flatMap((r, i) =>
     [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
 }
-function threadRow(r, thread, withPage, also = []) {
+function threadRow(r, thread, withPage, also = [], grouped = false) {
   const text = thread.text.replace(/^(\d{4}-\d{2}-\d{2}):\s+/, (prefix, day) => day === thread.since ? "" : prefix);
-  return el("li", { class: "thread " + thread.dir }, [
-    el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
+  return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
+    grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null]),
-    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? "since " + threadDate(thread.since) : "") + (thread.due ? " · due " + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
+    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
 function sectionHead(title, note) {
   title = t(title);
-  return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
+  return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [t(note)]) : null]);
 }
 function capFirst(text) {
   const word = text.match(/^\p{L}+(?=\s|$)/u)?.[0];
@@ -3148,7 +3405,7 @@ function memoryConnection(records) {
         el("a", { href: href(r), text: r.title }),
         el("span", { class: "relation", "aria-hidden": "true", text: "↔" }),
         el("a", { href: href(other), text: other.title }),
-        el("span", { class: "basis", text: "Linked in " + r.title + "'s page" })]);
+        el("span", { class: "basis", text: t("Linked in {name}'s page", { name: r.title }) })]);
     }
   }
   return null;
@@ -3157,10 +3414,10 @@ function changeCard(claim) {
   const r = byPath(claim.record);
   if (!r) return null;
   const card = el("article", { class: "claim-card" }, [
-    el("span", { class: "claim-kind", text: claim.kind === "newly recorded" ? "Newly recorded · supported" : "Revised in memory · supported" }),
+    el("span", { class: "claim-kind", text: claim.kind === "newly recorded" ? t("Newly recorded · supported") : t("Revised in memory · supported") }),
     el("h3", {}, [el("a", { href: href(r), text: r.title }), " / " + claim.field]),
-    claim.before ? el("p", { class: "before", text: "Before: " + claim.before }) : null,
-    el("p", { class: "after", text: "Now: " + claim.after }),
+    claim.before ? el("p", { class: "before", text: t("Before: ") + claim.before }) : null,
+    el("p", { class: "after", text: t("Now: ") + claim.after }),
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
       text: t("Open the page and source →") })]);
   return card;
@@ -3172,17 +3429,17 @@ function firstMapBrief() {
   if (lastPass() || !mapped || written) return null;
   const people = inCategory("people").length;
   const { held, service } = peopleExclusions();
-  const preview = el("button", { type: "button", text: "Copy investigation preview" });
-  preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, "Copied — paste it in a terminal");
-  const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
+  const preview = el("button", { type: "button", text: t("Copy investigation preview") });
+  preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, t("Copied — paste it in a terminal"));
+  const brief = el("section", { class: "morning first-map", "aria-label": t("Source map and next step") }, [
     el("div", { class: "morning-top" }, [el("div", {}, [
-      el("span", { class: "morning-kicker", text: "Source map" }),
-      el("h2", { text: mapped + " records mapped" })]),
-      el("span", { class: "morning-time", text: "0 memories written" })]),
-    el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
-    el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
+      el("span", { class: "morning-kicker", text: t("Source map") }),
+      el("h2", { text: t("{n} records mapped", { n: mapped }) })]),
+      el("span", { class: "morning-time", text: t("0 memories written") })]),
+    el("p", { class: "memory-empty", text: t("People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings.") }),
+    el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: t("Browse {n} people →", { n: people }) }), preview])]);
   if (held || service) brief.appendChild(el("p", { class: "first-map-held", text:
-    (held ? held + " possible contacts are held for review and excluded from the People count." : "") +
+    (held ? t("{n} possible contacts are held for review and excluded from the People count.", { n: held }) : "") +
     (service ? (held ? " " : "") + t("{n} service or institutional senders are excluded from People.", { n: service }) : "") }));
   return brief;
 }
@@ -3192,11 +3449,11 @@ function morningBrief() {
   if (claims.length) brief.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
   else {
     const n = pass?.changed?.length || 0;
-    brief.appendChild(el("p", { class: "quiet-line", text: "Nothing about your people or projects changed last night." +
-      (n ? " " + n + (n === 1 ? " page was" : " pages were") + " reworded; nothing new." : "") }));
+    brief.appendChild(el("p", { class: "quiet-line", text: t("Nothing about your people or projects changed last night.") +
+      (n ? t(n === 1 ? " {n} page was reworded; nothing new." : " {n} pages were reworded; nothing new.", { n }) : "") }));
   }
   if (pass?.failed?.length) brief.append(failureSummary(pass), el("div", { class: "first-map-actions" }, [
-    el("a", { href: "#view=activity", text: "Review failed runs →" })]));
+    el("a", { href: "#view=activity", text: t("Review failed runs →") })]));
   return brief;
 }
 function failureSummary(pass) {
@@ -3206,7 +3463,7 @@ function failureSummary(pass) {
   if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
   if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
   if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
-  return el("p", { class: "quiet-line", text: pass.failed.length + " investigation" + (pass.failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") });
+  return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
 }
 // Quotes stay verbatim; a summary never acquires someone's quotation marks.
 function morningWords(text, r) {
@@ -3284,7 +3541,7 @@ function taskView(kind) {
     const claims = pass?.claims || [];
     if (claims.length) main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
     else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No verified claim change in this pass") }),
-      "The pass may have refreshed pages; that alone is not a new memory."]));
+      t("The pass may have refreshed pages; that alone is not a new memory.")]));
     if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
       el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
     return;
@@ -3293,17 +3550,17 @@ function taskView(kind) {
   const entries = threadEntries(), counts = threadCounts();
   if (!entries.length) {
     main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing open") }),
-      "No supported open loop is in this snapshot."]));
+      t("No supported open loop is in this snapshot.")]));
     return;
   }
   const summary = [[counts.mine, "waiting on you"], [counts.theirs, "on someone else"], [counts.other, "other open context"]]
-    .filter(([count]) => count).map(([count, text]) => count + " " + text).join(", ");
-  if (summary) main.appendChild(el("p", { class: "lede", text: summary + ". Newest and due first." }));
+    .filter(([count]) => count).map(([count, text]) => t("{n} " + text, { n: count })).join(uiLanguage === "zh" ? "，" : ", ");
+  if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true, row.also)))]));
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true, row.also, true)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);
@@ -3317,9 +3574,9 @@ function recallPrompt() {
   if (!r) return null;
   const relationship = section(r, "our relationship");
   const answerText = plainLine(relationship?.text || known(r).summary);
-  const card = el("section", { class: "recall", "aria-label": "Recall a memory" });
+  const card = el("section", { class: "recall", "aria-label": t("Recall a memory") });
   const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
-    el("p", { text: answerText }), el("a", { href: href(r), text: "Open " + r.title + " and its sources →" })]);
+    el("p", { text: answerText }), el("a", { href: href(r), text: t("Open {name} and its sources →", { name: r.title }) })]);
   const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: t("Reveal the context") });
   button.onclick = () => {
     answer.hidden = !answer.hidden;
@@ -3334,7 +3591,7 @@ function recallPrompt() {
 function connectionReview() {
   const candidate = (REM.reviews || []).find(row => row.status === "pending" && row.kind === "link");
   if (!candidate) return null;
-  return el("section", { class: "connection-review", "aria-label": "Connection awaiting review" }, [
+  return el("section", { class: "connection-review", "aria-label": t("Connection awaiting review") }, [
     el("span", { class: "label", text: t("A possible connection · Your judgment needed") }),
     el("h2", { text: candidate.question }),
     el("p", { text: candidate.basis }),
@@ -3377,7 +3634,7 @@ function overview() {
   // This week: what the nightly passes rewrote, newest first, each with its one line.
   const week = weekChanges();
   if (week.length) {
-    main.appendChild(sectionHead("This week", week.length + (week.length === 1 ? " page" : " pages") + " rewritten in 7 days"));
+    main.appendChild(sectionHead("This week", t(week.length === 1 ? "{n} page rewritten in 7 days" : "{n} pages rewritten in 7 days", { n: week.length })));
     main.appendChild(el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
       el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
       el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
@@ -3396,10 +3653,10 @@ function overview() {
 
   const categories = memoryCategories().map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
   if (categories.length) {
-    main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
+    main.appendChild(sectionHead("Explore the memory", t("{n} pages", { n }) + (mapped ? t(" · {n} mapped only", { n: mapped }) : "")));
     main.appendChild(el("div", { class: "category-cards" }, categories.map(({ c, count }) =>
       el("a", { class: "category-card", href: "#c=" + c }, [el("strong", { text: label(c) }),
-        el("span", { text: count + (count === 1 ? " record" : " records") })]))));
+        el("span", { text: t(count === 1 ? "{n} record" : "{n} records", { n: count }) })]))));
   }
   main.appendChild(processing);
   main.appendChild(maintenance(s));
@@ -3408,11 +3665,11 @@ function overview() {
 function maintenance(s) {
   const maint = el("details", { class: "maint" });
   const state = scheduleState(s);
-  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: state ? plainLine(state).slice(0, 80) : "" })]));
+  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: t("Maintenance") })]), el("span", { class: "n", text: state ? plainLine(state).slice(0, 80) : "" })]));
   maint.appendChild(el("p", { class: "state", html: inline(state, "") }));
   const usage = s.usage_today || {};
   const cells = el("div", { class: "row" });
-  const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
+  const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: t(k) }), el("div", { class: "v", text: v })]));
   cell("Batches today", String(s.batches_today ?? "—"));
   cell("Model turns today", String(s.runner_attempts_today ?? "—"));
   cell("Input tokens today", num(usage.input_tokens));
@@ -3421,16 +3678,16 @@ function maintenance(s) {
   maint.appendChild(cells);
   const subs = Object.entries(REM.subscriptions || {});
   if (subs.length) {
-    const line = el("p", { class: "state" }, ["Sources: "]);
+    const line = el("p", { class: "state" }, [t("Sources: ")]);
     subs.forEach(([name, sub]) => {
       const state = !sub.enabled ? "off" : sub.adapter === "available" ? (sub.consented ? "reading" : "waiting for start") : (sub.adapter || "");
-      line.append(el("span", { class: "pill" + (state === "reading" ? "" : " quiet"), text: name + " · " + state }), " ");
+      line.append(el("span", { class: "pill" + (state === "reading" ? "" : " quiet"), text: name + " · " + t(state) }), " ");
     });
     maint.appendChild(line);
   }
   const latest = (REM.logs || [])[0];
-  if (latest) maint.appendChild(el("p", { class: "state" }, ["Latest run " + fmtTime(latest.started_at) + " · " + (latest.outcome || "") + " · "
-    + (latest.changed || []).length + " pages changed · ", el("a", { href: "#view=activity", text: "Activity →" })]));
+  if (latest) maint.appendChild(el("p", { class: "state" }, [t("Latest run ") + fmtTime(latest.started_at) + " · " + t(latest.outcome || "") + " · "
+    + t("{n} pages changed · ", { n: (latest.changed || []).length }), el("a", { href: "#view=activity", text: t("Activity →") })]));
   return maint;
 }
 
@@ -3439,12 +3696,18 @@ function pageLink(path) {
   return el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path });
 }
 // Pages a run looked at and did not write, each with the reason it gave.
+function refusalReason(reason) {
+  const fact = /^Fact without a citation: (.+); cite the message it came from, or write Unknown$/.exec(reason);
+  if (fact) return t("Fact without a citation: {detail}; cite the message it came from, or write Unknown", { detail: fact[1] });
+  const match = /^(Cited local file needs a file: source ID and SHA-256|[^:]+): (.+)$/.exec(reason);
+  return match ? t(match[1] + ": {detail}", { detail: match[2] }) : t(reason);
+}
 function unwritten(run) {
-  const refused = (run.refusals || []).map(x => ({ k: "Refused", page: x.record, why: (x.errors || []).join("; ") }));
+  const refused = (run.refusals || []).map(x => ({ k: "Refused", page: x.record, why: (x.errors || []).map(refusalReason).join(uiLanguage === "zh" ? "；" : "; ") }));
   const skipped = (Array.isArray(run.pages) ? run.pages : []).filter(page => page.outcome && page.outcome !== "accepted")
     .map(page => ({ k: "Not written", page: page.page || page.record, why: page.why || page.outcome }));
   // The kept candidate's path is the runner's business, not the reason.
-  return [...refused, ...skipped].map(x => ({ ...x, why: String(x.why).replace(/^Candidate rejected, kept at .*?: |^Not written: /, "") }));
+  return [...refused, ...skipped].map(x => ({ ...x, why: refusalReason(String(x.why).replace(/^Candidate rejected, kept at .*?: |^Not written: /, "")) }));
 }
 function runTrace(run) {
   const pages = run.pages?.length ? run.pages : [run];
@@ -3461,8 +3724,8 @@ function runTrace(run) {
       if (!page.evidence?.length) continue;
       trace.appendChild(el("h3", { text: t("Inputs supplied to this run (including context; not proof of inspection)") }));
       trace.appendChild(el("ul", {}, page.evidence.map(item => el("li", { text: [
-        item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
-        item.captured_at && "captured: " + item.captured_at,
+        item.source, item.file || item.origin, item.timestamp && t("source: ") + item.timestamp,
+        item.captured_at && t("captured: ") + item.captured_at,
         item.paths?.join(", ")].filter(Boolean).join(" · ") }))));
     }
   });
@@ -3497,7 +3760,7 @@ function activityView() {
   const runs = REM.logs || [];
   main.appendChild(sectionHead("Runs", runs.length ? t("latest {n}", { n: runs.length }) : t("none yet")));
   main.appendChild(runs.length ? el("ol", { class: "activity-runs" }, runs.map(runItem))
-    : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No runs yet") }), "Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
+    : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No runs yet") }), t("Run "), el("code", { text: "co rem sync" }), t(" to do one pass now.")]));
   const notes = activityShelf("AI notes", REM.records.filter(r => r.category === "notes"));
   if (notes) main.appendChild(notes);
   const maps = activityShelf("Maps", REM.records.filter(r => r.category === "logs" && !skillReport(r)));
@@ -3513,15 +3776,15 @@ function contactDirectory() {
   details.appendChild(el("summary", { text: t("{n} other contacts found in mail", { n: candidates.length }) }));
   const body = el("div", { class: "directory-body" });
   body.appendChild(el("p", { class: "directory-note", text:
-    "Found in " + (coverage.scope || "mail") + ". These headers have not established a person or a memory page. Search here before deciding whom REM should investigate." }));
+    t("Found in {scope}. These headers have not established a person or a memory page. Search here before deciding whom REM should investigate.", { scope: t(coverage.scope || "mail") }) }));
   if (coverage.incomplete) body.appendChild(el("p", { class: "directory-note warn", text:
-    "Coverage is incomplete: " + coverage.mailbox_errors + " mailbox scan error(s). Retry init before treating this as every contact." }));
+    t("Coverage is incomplete: {n} mailbox scan error(s). Retry init before treating this as every contact.", { n: coverage.mailbox_errors }) }));
   const find = el("input", { type: "search", class: "directory-find", "aria-label": t("Search other contacts"), placeholder: t("Find a name or email…") });
   const count = el("span", { class: "mono", "aria-live": "polite" });
   const table = el("table");
   table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: t(name) })))]));
   const tbody = el("tbody"); table.appendChild(tbody);
-  const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": "Other contacts table" }, [table]);
+  const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": t("Other contacts table") }, [table]);
   const action = el("tr", { class: "directory-action" }, [el("td", { colspan: "5" })]);
   const more = el("button", { type: "button", class: "directory-more", text: t("Show more contacts") });
   let limit = 100;
@@ -3531,14 +3794,14 @@ function contactDirectory() {
     tbody.textContent = "";
     for (const row of matched.slice(0, limit)) {
       const name = row.name || row.email;
-      const prepare = el("button", { type: "button", text: t("Prepare in terminal"), "aria-label": "Show the command to prepare a memory for " + name });
+      const prepare = el("button", { type: "button", text: t("Prepare in terminal"), "aria-label": t("Show the command to prepare a memory for {name}", { name }) });
       prepare.onclick = () => {
         const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
           + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
         const cell = action.firstChild;
-        cell.textContent = "Run this in a terminal, then follow the next investigation command:";
-        const copy = el("button", { type: "button", text: "Copy command" });
-        copy.onclick = () => copyToClipboard(command, copy, "Copied — paste in a terminal");
+        cell.textContent = t("Run this in a terminal, then follow the next investigation command:");
+        const copy = el("button", { type: "button", text: t("Copy command") });
+        copy.onclick = () => copyToClipboard(command, copy, t("Copied — paste in a terminal"));
         cell.appendChild(copy);
         cell.appendChild(el("code", { text: command }));
         const selected = prepare.closest("tr");
@@ -3551,7 +3814,7 @@ function contactDirectory() {
         el("td", { text: String(row.mails) }), el("td", {}, [prepare])]));
     }
     if (!matched.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: "5", text: t("No contact matches this search.") })]));
-    count.textContent = " · " + matched.length + " found";
+    count.textContent = t(" · {n} found", { n: matched.length });
     more.hidden = matched.length <= limit;
   };
   find.addEventListener("input", () => { limit = 100; draw(); });
@@ -3561,6 +3824,10 @@ function contactDirectory() {
   return details;
 }
 
+function categoryCount(c, counts, total) {
+  const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
+  return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
+}
 function category(c) {
   if (c === "sessions") { sessionsView(); return; }
   const main = document.getElementById("main");
@@ -3571,8 +3838,8 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
-  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? (uiLanguage === "zh" ? " " : /[?.]$/.test(lede) ? " " : ". ") : ""),
-    items.length || other ? el("span", { class: "mono", text: (counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped }) : t("{n} pages", { n: items.length }))
+  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? (uiLanguage === "zh" ? " · " : /[?.]$/.test(lede) ? " " : ". ") : ""),
+    items.length || other ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
       + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
@@ -3581,15 +3848,15 @@ function category(c) {
       (service ? (held ? " " : "") + t("{n} service or institutional senders are excluded from People.", { n: service }) : "") })]);
     if (held) {
       const review = el("button", { type: "button", text: t("Copy review list command") });
-      review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
+      review.onclick = () => copyToClipboard(remCommand("list people --review"), review, t("Copied — paste it in a terminal"));
       note.appendChild(review);
     }
     main.appendChild(note);
   }
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
-      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not mapped yet") }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
-      : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing here yet") }), "Nothing here yet. The notebook fills what the sources support."]));
+      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not mapped yet") }), t("No people mapped yet. Run "), el("code", { text: initCommand() }), t(" (or select gmail) to read correspondent metadata.")])
+      : el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing here yet") }), t("Nothing here yet. The notebook fills what the sources support.")]));
     return;
   }
   if (c === "people") {
@@ -3669,7 +3936,7 @@ function sessionExcerpt(r, terms) {
       const positions = terms.map(term => text[key].toLowerCase().indexOf(term)).filter(at => at >= 0);
       if (!positions.length) continue;
       const start = Math.max(0, Math.min(...positions) - 50), end = start + 160;
-      return { speaker: key === "you" ? "You:" : key === "agent" ? "Agent:" : "", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
+      return { speaker: key === "you" ? t("You:") : key === "agent" ? t("Agent:") : "", text: (start ? "…" : "") + text[key].slice(start, end) + (end < text[key].length ? "…" : "") };
     }
   }
   return { speaker: "", text: text.summary || text.agent };
@@ -3807,15 +4074,14 @@ function sessionResults(records, total, state, terms, change) {
   results.appendChild(line);
   if (records.length) results.appendChild(sessionGroups(records, state, terms));
   else results.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("No session matches") }),
-    el("p", { text: active.length ? sessionFilterNames(state) : "Import conversations you typed in with " + remCommand("import sessions") + "." })]));
+    el("p", { text: active.length ? sessionFilterNames(state) : t("Import conversations you typed in with {command}.", { command: remCommand("import sessions") }) })]));
   return results;
 }
 function sessionsView() {
   const main = document.getElementById("main"), records = inCategory("sessions").sort(sessionOrder);
   if (!records.length) {
     main.replaceChildren(el("h1", { text: label("sessions") }), el("section", { class: "empty sessions-empty" }, [
-      el("h2", { text: t("No agent sessions yet") }),
-      el("p", { text: t("See what you worked on with your coding agents, including decisions and follow-ups.") }),
+      el("p", { text: t("No agent sessions yet.") + (uiLanguage === "zh" ? "" : " ") + t("See what you worked on with your coding agents, including decisions and follow-ups.") }),
       commandChip(remCommand("sources")), commandChip(remCommand("import sessions"))]));
     return;
   }
@@ -3952,7 +4218,7 @@ function sessionMarkText(quote, text, needle) {
   quote.replaceChildren(...nodes);
 }
 function sessionFind(attachment, body, initial) {
-  const input = el("input", { type: "search", placeholder: "Find in this conversation", "aria-label": "Find in this conversation" });
+  const input = el("input", { type: "search", placeholder: t("Find in this conversation"), "aria-label": t("Find in this conversation") });
   const status = el("span", { class: "session-find-status", role: "status", "aria-live": "polite" });
   const previous = sessionButton("↑", () => move(-1), { "aria-label": t("Previous match") });
   const next = sessionButton("↓", () => move(1), { "aria-label": t("Next match") });
@@ -3990,7 +4256,7 @@ function sessionFind(attachment, body, initial) {
 function sessionAttachment(r, messages) {
   const reply = sessionFinalReply(r);
   const attachment = el("details", { class: "session-attachment", id: "original-conversation" }, [el("summary", {
-    text: "Original conversation · " + messages.length + " messages" + (reply ? " · final reply" : "") })]);
+    text: t("Original conversation · {n} messages", { n: messages.length }) + (reply ? t(" · final reply") : "") })]);
   const outline = el("nav", { class: "session-outline", "aria-label": t("Conversation outline") }, [
     el("span", { text: t("Messages") }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
       message.time + " · " + message.text.replace(/\s+/g, " ").slice(0, 60))])))]);
@@ -4039,8 +4305,8 @@ function sessionArtifacts(r) {
 function sessionNeighbours(r) {
   const sessions = inCategory("sessions").filter(s => !r.session_project || s.session_project === r.session_project).sort(sessionOrder);
   const index = sessions.findIndex(s => s.path === r.path), older = sessions[index + 1], newer = sessions[index - 1];
-  return el("nav", { class: "session-neighbours", "aria-label": "Neighbouring sessions" }, [
-    older ? el("a", { href: href(older), text: "← Older: " + older.title }) : el("span"),
+  return el("nav", { class: "session-neighbours", "aria-label": t("Neighbouring sessions") }, [
+    older ? el("a", { href: href(older), text: "← " + t("Older") + ": " + older.title }) : el("span"),
     newer ? el("a", { href: href(newer), text: t("Newer") + ": " + newer.title + " →" }) : null]);
 }
 function sessionFactsLine(r) {
@@ -4149,7 +4415,7 @@ function sectionBody(r, s) {
         const chip = el("span", { html: citeChip(src.n, r.path) }).firstChild;
         chip.classList.add("n", "source-open");
         return el("li", { id: "src-" + src.n.toLowerCase() }, [chip,
-          el("span", {}, [id ? el("span", { class: "id", text: shortHash(id), title: id }) : null, id ? " " : "", rest])]);
+          el("span", {}, [id ? el("span", { class: "id", text: sourceLabel(id), title: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
   }
@@ -4182,7 +4448,7 @@ function factValue(item, from) {
   const html = day ? esc(fmtDate(item.value)) : email ? '<a href="mailto:' + esc(item.value) + '">' + esc(item.value) + "</a>"
     : url ? '<a href="' + esc(item.value) + '" target="_blank" rel="noopener noreferrer">' + esc(item.value.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"
     : inline(item.value, from);
-  return el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? "read from the page's prose, not its Facts" : "" }, [
+  return el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
     item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
 }
@@ -4212,16 +4478,16 @@ function factList(r) {
       ? "— map date shown above" : "— not found";
     const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
-      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
-      btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
+      const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
+      btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, t("Copied"));
       dd.appendChild(btn);
     }
     dl.append(el("dt", { text: t(label) }), softBreaks(dd));
   }
   if (r.category === "people" && r.mail) {
-    dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
+    dl.append(el("dt", { text: t("Mail") }), el("dd", {}, [el("span", { class: "val mono", text: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }) })]));
   }
-  return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
+  return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length }) }), dl]);
 }
 function daysSince(day) {
   const today = calendarDay(REM.as_of || new Date().toISOString());
@@ -4233,9 +4499,9 @@ function age(day) {
   return n == null ? "" : n === 0 ? t("today") : n === 1 ? t("1 day") : t("{n} days", { n });
 }
 // Tag only explicit blocking language; age alone does not imply urgency.
-function blockerTag(t) {
-  return /\b(?:blocks|blocked|blocking)\b|\bbefore\b[^.!?\n]*\bcan\b/i.test(t.text)
-    ? el("small", { class: "blocker-tag", text: "blocker" }) : null;
+function blockerTag(thread) {
+  return /\b(?:blocks|blocked|blocking)\b|\bbefore\b[^.!?\n]*\bcan\b/i.test(thread.text)
+    ? el("small", { class: "blocker-tag", text: t("blocker") }) : null;
 }
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
@@ -4248,12 +4514,12 @@ function threadPreview(text) {
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
   const k = known(r), thread = threads(r), row = el("div", { class: "leadrow" });
-  if (thread.items.length && !["projects", "orgs"].includes(r.category)) {
+  if (thread.items.length && !["projects", "orgs", "skills"].includes(r.category)) {
     const first = thread.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
       el("span", { class: "dir", text: t(DIRECTION_LABEL[first.dir]) }), el("span", { class: "txt", text: threadPreview(first.text) }),
       threadAge(first) ? el("span", { class: "age mono" + ((!first.due && daysSince(first.since) === 0) ? " today" : ""), text: threadAge(first) }) : null,
-      thread.items.length > 1 ? el("span", { class: "more mono", text: "+" + (thread.items.length - 1) + " more" }) : null]));
+      thread.items.length > 1 ? el("span", { class: "more mono", text: t("+{n} more", { n: thread.items.length - 1 }) }) : null]));
   } else if (thread.calm && r.category !== "orgs") row.appendChild(el("span", { class: "lead-calm", text: t("Nothing open") }));
   const hasProjectFinding = r.category === "projects" && !/^\s*-?\s*Unknown\b/i.test(section(r, "insight")?.text.trim() || "Unknown");
   const purpose = r.category === "projects" && k.status !== "Mapped" && hasProjectFinding ? section(r, "what it is") : null;
@@ -4267,7 +4533,7 @@ function leadRow(r) {
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
-    el("span", { class: "lead-meta usage-scope", text: "Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome." }));
+    el("span", { class: "lead-meta usage-scope", text: t("Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome.") }));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: t("Not confirmed by the sources") }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "◌" }), el("span", { text: t("Uncertain points") })]));
   return row;
 }
@@ -4282,13 +4548,13 @@ function sidePanels(r, k) {
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
-  if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
+  if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: t("Sessions in the mapping window; archived input coverage can differ."), text: sessions[1] + (first ? t(" since ") + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
     if (r.installation) {
       const file = el("dl", {});
-      file.append(el("dt", { text: "File" }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
+      file.append(el("dt", { text: t("File") }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
       const disc = /^- Discovery:\s*(.+)$/m.exec(r.text);
-      if (disc) file.append(el("dt", { text: "Found by" }), el("dd", { class: "mono", text: disc[1] }));
+      if (disc) file.append(el("dt", { text: t("Found by") }), el("dd", { class: "mono", text: disc[1] }));
       panels.push(panel("Source", [file]));
     }
   }
@@ -4392,8 +4658,8 @@ function contactStrip(r) {
     const dd = el("dd", {}, [changedValue(el("span", { html: inline(v, r.path) }), r, label)]);
     if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
     if (copyable) {
-      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
-      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
+      const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
+      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, t("Copied"));
       dd.appendChild(btn);
     }
     return el("div", { class: "focus-fact" }, [el("dt", { text: t(label) }), softBreaks(dd)]);
@@ -4405,8 +4671,8 @@ function mappedProjectLine(r) {
   const paths = section(r, "paths")?.text || "";
   const sessions = (/^-\s*Sessions:\s*(\d+)/m.exec(paths) || [])[1];
   const last = (/^-\s*Last seen:\s*([0-9-]+)/m.exec(paths) || [])[1];
-  return "Not written yet" + (sessions ? ": " + sessions + " session" + (sessions === "1" ? "" : "s") +
-    (last ? ", last on " + last : "") : "") + ".";
+  return t("Not written yet") + (sessions ? t(sessions === "1" ? ": {n} session" : ": {n} sessions", { n: sessions }) +
+    (last ? t(", last on {day}", { day: last }) : "") : "") + (uiLanguage === "zh" ? "。" : ".");
 }
 function personLead(r) {
   const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^Now:/i.test(t));
@@ -4487,16 +4753,16 @@ function recordFocus(r) {
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
   const finding = plainLine(findingLine);
-  const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+  const statement = privateMapped ? t("Automatic investigations skip this private project. Name this page to request a write.")
     : projectMapped ? mappedProjectLine(r)
-    : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
+    : projectNeedsContext ? projectDescription || t("Current project work is unconfirmed in the supplied evidence.")
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
   const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : ""), ...(projectNeedsContext ? { id: "what-it-is" } : {}) }, [el("span", { class: "focus-kicker", text: t(question) })]);
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
-    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
+    ? t("Mapped from source metadata. REM has not investigated this record yet.") : t("No supported summary yet.")), r.path) }));
   focusHead.appendChild(statementNode);
   if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
     const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
@@ -4543,7 +4809,7 @@ function recordFocus(r) {
   out.appendChild(focusHead);
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
-    el("h2", { text: t("Open threads") }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
+    el("h2", { text: t("Open threads") }), el("ul", { class: "threads", "aria-label": t("Open threads on this record") },
       open.slice(0, 3).map(t => threadRow(r, t, false)))]));
   if (r.category === "projects") {
     const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
@@ -4579,7 +4845,7 @@ function recordContext(r) {
   const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
     .filter(([, c]) => c?.source === "attachment" && c.file);
   if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
-    el("h2", { text: "Documents" }),
+    el("h2", { text: t("Documents") }),
     el("ul", { class: "document-list" }, documents.map(([source, c]) => el("li", {}, [
       el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
       el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
@@ -4592,7 +4858,7 @@ function recordContext(r) {
     el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
       const button = el("button", { type: "button", class: "conversation-open" }, [
         el("strong", { text: byPath(value.subject)?.title || value.subject }),
-        el("span", { text: value.total + " " + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+        el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
       button.onclick = () => openConversation(id, button);
       return button;
     })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
@@ -4600,7 +4866,7 @@ function recordContext(r) {
       el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
         const button = el("button", { type: "button", class: "conversation-open" }, [
           el("strong", { text: byPath(value.subject)?.title || value.subject }),
-          el("span", { text: value.total + " " + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+          el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
         button.onclick = () => openConversation(id, button);
         return button;
       }))]) : null]));
@@ -4610,10 +4876,10 @@ function recordContext(r) {
 }
 
 function inputScopeText(scope) {
-  if (/^Historical citation recovery/.test(scope)) return "Recovered later. Original retrieval time unknown; Archived marks retention, not original investigation coverage. Initial window unchanged; provider thread unknown.";
-  if (/voice transcription/i.test(scope)) return "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.";
-  if (/Older native Codex Desktop turn/.test(scope)) return "Older Desktop input. The app did not record how this input was supplied.";
-  if (/^Skill instructions;/.test(scope)) return "Instructions describe intended behavior, not a verified result." + (/Recovered from/.test(scope) ? " This excerpt was recovered from matching file content." : "");
+  if (/^Historical citation recovery/.test(scope)) return t("Recovered later. Original retrieval time unknown; Archived marks retention, not original investigation coverage. Initial window unchanged; provider thread unknown.");
+  if (/voice transcription/i.test(scope)) return t("Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.");
+  if (/Older native Codex Desktop turn/.test(scope)) return t("Older Desktop input. The app did not record how this input was supplied.");
+  if (/^Skill instructions;/.test(scope)) return t("Instructions describe intended behavior, not a verified result.") + (/Recovered from/.test(scope) ? t(" This excerpt was recovered from matching file content.") : "");
   return scope;
 }
 function openConversation(id, trigger) {
@@ -4622,14 +4888,14 @@ function openConversation(id, trigger) {
   let dialog = document.getElementById("conversation-dialog");
   if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": t("Conversation") }); document.body.appendChild(dialog); }
   dialog.textContent = "";
-  const close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": "Close conversation" });
+  const close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close conversation") });
   close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "Archived conversation" }), close]),
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: t("Archived conversation") }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
-    el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
+    el("p", { class: "evidence-summary", text: t("Latest {n} of {m} archived messages in this cited thread. Some messages may not have an archived body.", { n: conversation.messages.length, m: conversation.total }) }));
   const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
   if (commonScope) dialog.appendChild(el("p", { class: "evidence-input-scope private", text: inputScopeText(commonScope) }));
-  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
+  dialog.appendChild(el("p", { class: "private-hidden-notice", text: t("Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them.") }));
   for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
     el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
     ...(message.input_scope && message.input_scope !== commonScope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
@@ -4647,7 +4913,7 @@ function historyRowContent(text, from) {
 }
 function privateHistoryNotice(rows) {
   const count = rows.filter(row => row.classList.contains("private-entry")).length;
-  return count ? el("p", { class: "private-history-notice", text: count + " private " + (count === 1 ? "entry" : "entries") + " hidden" }) : null;
+  return count ? el("p", { class: "private-history-notice", text: t(count === 1 ? "{n} private entry hidden" : "{n} private entries hidden", { n: count }) }) : null;
 }
 function activityType(text) {
   if (/\b(decid|agreed|chose|approved|rejected)\w*/i.test(text)) return "Decision";
@@ -4678,10 +4944,10 @@ function activityPanel(r, recent = false) {
   if (!history) return null;
   const items = historyItems(history.text).filter(item => item.day);
   if (!items.length) return null;
-  const box = el("section", { class: "focus-section activity-view" + (recent ? " recent-activity" : ""), "aria-label": recent ? "Recently" : "Activity" });
+  const box = el("section", { class: "focus-section activity-view" + (recent ? " recent-activity" : ""), "aria-label": t(recent ? "Recently" : "Activity") });
   box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: t(recent ? "Recently" : "Activity") }),
     recent ? el("a", { href: href(r) + "&h=history", text: t("All history →") }) : el("span", { class: "activity-note", text: t("From this page's dated history") })]));
-  const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
+  const filters = el("div", { class: "activity-filters", role: "group", "aria-label": t("Filter activity") });
   const list = el("ol", { class: "activity-list" });
   const sorted = items.map(item => ({ ...item, content: historyRowContent(item.text, r.path) }))
     .filter(item => item.content).sort((a, b) => b.day.localeCompare(a.day));
@@ -4718,14 +4984,14 @@ function record(path, heading) {
   const main = document.getElementById("main");
   main.textContent = "";
   if (!r) {
-    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not in this snapshot") }), "No such page in this snapshot: " + path]));
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Not in this snapshot") }), t("No such page in this snapshot: ") + path]));
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
-  const disclosed = person || r.category === "projects" || r.category === "orgs" || r.category === "skills";
+  const disclosed = person || ["projects", "orgs", "skills", "decisions"].includes(r.category);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
@@ -4748,7 +5014,7 @@ function record(path, heading) {
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
-    const copies = el("details", { class: "copies" }, [el("summary", { text: catalog.installations.length + " installed copies (may differ)" })]);
+    const copies = el("details", { class: "copies" }, [el("summary", { text: t("{n} installed copies (may differ)", { n: catalog.installations.length }) })]);
     for (const copy of catalog.installations) copies.appendChild(el("p", {}, [el("a", { href: "#r=" + encodeURIComponent(copy.path), text: copy.source })]));
     main.appendChild(copies);
   }
@@ -4784,17 +5050,17 @@ function record(path, heading) {
     while (ids.has(id)) id = base + "-" + n++;
     ids.add(id); h.id = id;
     if (h.tagName === "H2") toc.push({ title: h.textContent.trim(), id });
-    h.appendChild(el("a", { class: "heading-anchor", href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(id), "aria-label": "Direct link to section", text: "#" }));
+    h.appendChild(el("a", { class: "heading-anchor", href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(id), "aria-label": t("Direct link to section"), text: "#" }));
   }
   for (const block of note.querySelectorAll(".code-block")) {
     const btn = block.querySelector(".code-copy");
-    btn.onclick = () => copyToClipboard(block.querySelector("code").textContent, btn, "Copied");
+    btn.onclick = () => copyToClipboard(block.querySelector("code").textContent, btn, t("Copied"));
   }
 
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null, person ? languages : null]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null, person ? languages : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
   const sections = toc.length + (note.firstElementChild && note.firstElementChild.tagName !== "H2" ? 1 : 0)
     + grid.querySelectorAll(".deep-context .focus-section, .side .panel:not(.toc-panel)").length
     + Number(!!parts.related) + Number(!!parts.sources);
@@ -4810,7 +5076,7 @@ function record(path, heading) {
   if (parts.related || parts.sources) {
     const aside = el("div", { class: "aside" });
     if (parts.related) {
-      aside.appendChild(el("div", { class: "k", text: "Related" }));
+      aside.appendChild(el("div", { class: "k", text: t("Related") }));
       const links = [...parts.related.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)];
       const box = el("div", { class: "related" });
       if (links.length) {
@@ -4833,11 +5099,11 @@ function record(path, heading) {
     const command = investigateCommand(r);
     const mapped = k.status === "Mapped";
     const copyCmd = el("button", { class: "btn-action", type: "button", text: t("Copy"), "aria-label": t("Copy the command") });
-    copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
+    copyCmd.onclick = () => copyToClipboard(command, copyCmd, t("Copied — paste it in a terminal"));
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: mapped ? t("Only mapped so far") : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
+      el("span", { class: "lead", text: mapped ? t("Only mapped so far") : t(k.missing.length === 1 ? "{n} unresolved section" : "{n} unresolved sections", { n: k.missing.length }) }),
       mapped ? el("p", { class: "why", text: t(r.private_project
         ? "Automatic investigation skips this private project. To request a write, run the command for this page."
         : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.") }) : null,
@@ -4848,10 +5114,10 @@ function record(path, heading) {
   }
 
   const foot = el("div", { class: "page-foot" });
-  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Copy the file path" });
-  pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, "Path copied");
-  const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: "Copy the page as written, unknowns included" });
-  copyMd.onclick = () => copyToClipboard(r.text, copyMd, "Markdown copied");
+  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, t("Path copied"));
+  const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
+  copyMd.onclick = () => copyToClipboard(r.text, copyMd, t("Markdown copied"));
   foot.append(pathBtn, copyMd, el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
   (deep.parentNode ? column : main).appendChild(foot);
 
@@ -4974,38 +5240,40 @@ function bestMatch(r) {
 function reviewPage() {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: "Review" })]));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Review") })]));
   main.appendChild(el("h1", { text: t("Questions & connections") }));
-  main.appendChild(el("p", { class: "lede", text: "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again." }));
+  main.appendChild(el("p", { class: "lede", text: t("Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again.") }));
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
   for (const row of REM.reviews || []) {
     const box = el("section", { class: "review" });
-    box.appendChild(el("div", { class: "eyebrow" }, [el("span", { class: "pill" + (row.status === "pending" ? " warn" : " quiet"), text: row.status }), el("span", { text: row.kind || "" })]));
+    box.appendChild(el("div", { class: "eyebrow" }, [el("span", { class: "pill" + (row.status === "pending" ? " warn" : " quiet"), text: t(row.status) }), el("span", { text: t(row.kind || "") })]));
     box.appendChild(el("h2", { text: row.question }));
-    box.appendChild(el("p", { class: "basis", text: row.status + " · " + row.basis }));
+    box.appendChild(el("p", { class: "basis", text: t(row.status) + " · " + row.basis }));
     box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path }))));
     if (row.response) box.appendChild(el("p", { class: "response", text: row.author + ": " + row.response }));
     if (row.status === "pending") {
       const command = "co rem --root " + quote(REM.root) + " review " + quote(row.id);
       for (const verdict of row.kind === "link" ? ["yes", "no"] : ["answer"]) {
         const text = command + " --verdict " + verdict + " --author 'your name' --response 'your reason or answer'";
-        const button = el("button", { type: "button", text: "Copy " + verdict + " command" });
+        const button = el("button", { type: "button", text: t("Copy {verdict} command", { verdict: t(verdict) }) });
         button.addEventListener("click", async () => {
-          try { await navigator.clipboard.writeText(text); button.textContent = "Copied — edit your name and response"; }
-          catch (_) { button.textContent = "Select and copy the command below"; }
+          try { await navigator.clipboard.writeText(text); button.textContent = t("Copied — edit your name and response"); }
+          catch (_) { button.textContent = t("Select and copy the command below"); }
         });
         box.appendChild(el("div", { class: "note" }, [button, el("div", { class: "code-block" }, [el("pre", {}, [el("code", { text })])])]));
       }
     }
     main.appendChild(box);
   }
-  if (!(REM.reviews || []).length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing to review" }), "No review candidates yet. No new connection is better than an invented one."]));
+  if (!(REM.reviews || []).length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: t("Nothing to review") }), t("No review candidates yet. No new connection is better than an invented one.")]));
 }
 
+let entranceView = "";
 function render() {
   if (!REM) return;
   memoryPass = lastPass();
   document.documentElement.lang = uiLanguage;
+  document.getElementById("nav").setAttribute("aria-label", t("Categories"));
   document.getElementById("q").placeholder = t("Search");
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".nav-toggle").textContent = t("Browse notebook");
@@ -5023,9 +5291,12 @@ function render() {
   else if (view === "activity") activityView();
   else if (c) category(c);
   else overview();
-  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query :
-    view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : view === "activity" ? "Activity" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
+  document.title = (reviews ? t("Questions & connections") : r ? (byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
+    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
+  const viewKey = r || c || view || (reviews ? "reviews" : query ? "search" : "today");
+  if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
+  entranceView = viewKey;
   refreshFocusExpansion();
 }
 
@@ -5090,7 +5361,7 @@ function avatar(name) {
 }
 function personChip(text) {
   const who = mailbox(text), page = personByAddress(who.address);
-  const name = page && page.path === REM.owner ? "you" : page ? page.title : who.name;
+  const name = page && page.path === REM.owner ? t("you") : page ? page.title : who.name;
   return el(page ? "a" : "span", { class: "msg-person", title: who.address, ...(page ? { href: href(page) } : {}) },
     [avatar(name), el("span", { text: name })]);
 }
@@ -5402,14 +5673,14 @@ function languageBar(r) {
 async function readIn(r, tag, status, select) {
   if (!tag || r.translations?.[tag]) return showLanguage(r, tag);
   select.disabled = true;
-  status.textContent = "Translating with co ai… this takes a minute or two.";
+  status.textContent = t("Translating with co ai… this takes a minute or two.");
   let answer = await askHost({ page: r.path, language: tag });
   while (answer.state === "running") {
     await new Promise(done => setTimeout(done, 2000));
     answer = await askHost({ page: r.path, language: tag });
   }
   select.disabled = false;
-  if (answer.state === "failed") { status.textContent = "Not translated: " + answer.error; return; }
+  if (answer.state === "failed") { status.textContent = t("Not translated: ") + answer.error; return; }
   (r.translations ||= {})[tag] = answer.text;
   showLanguage(r, tag);
 }

@@ -118,3 +118,25 @@ def test_an_accepted_page_keeps_its_refused_rounds_in_the_daily_row(root, monkey
         "changed": [record], "refused_rounds": ["Candidate rejected: Missing or duplicate citation: 22"]})
     result = daily.run_daily(root, maintain=no_change)
     assert result["run"]["pages"][0]["refused_rounds"] == ["Candidate rejected: Missing or duplicate citation: 22"]
+
+
+def test_partial_maintenance_still_saves_the_owners_detected_languages(root):
+    import json
+    import sqlite3
+    from connectonion.rem.files import read_json, write_json
+    from connectonion.rem.store_build import SCHEMA, SCHEMA_VERSION
+
+    owner = {"record": "people/avery-lin.md", "addresses": ["avery@example.test"]}
+    (root / owner["record"]).write_text("# Avery Lin\n\n## Facts\n- Language: Unknown\n")
+    write_json(root / ".state" / "map.json", {"owner": owner})
+    body = root / ".state" / "mail/messages/gmail/avery.json"
+    body.parent.mkdir(parents=True)
+    body.write_text(json.dumps({"body": "我们明天再讨论一下这个项目的进展吧"}))
+    with sqlite3.connect(root / ".state" / "rem.db") as db:
+        db.executescript(SCHEMA)
+        db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
+        db.execute("insert into messages values (?, 'gmail', 't', ?, '[]', '', '', ?, null)",
+                   ("gmail:avery", "avery@example.test", "mail/messages/gmail/avery.json"))
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"})
+    assert result["outcome"] == "partial" and result["investigation"] is None
+    assert read_json(root / ".state" / "map.json", {})["owner"]["languages"]["languages"] == ["zh"]

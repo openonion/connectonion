@@ -302,9 +302,13 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs", "Avery Lin"}  # runs, and stamps of the night
     # The full ledger keeps both directions, yours first.
     page.locator('.waiting-more a').click()
-    directions = [d.upper() for d in page.locator("ul.threads .dir").all_inner_texts()]
-    assert directions[0] == "YOU OWE" and "THEY OWE" in directions
-    assert directions == sorted(directions, key=["YOU OWE", "THEY OWE", "OPEN"].index)
+    bands = page.locator(".task-band")
+    headings = bands.locator("h2 > span:first-child").all_inner_texts()
+    order = ["Waiting on you", "Waiting on others", "Other open context"]
+    assert headings[:2] == order[:2]
+    assert headings == sorted(headings, key=order.index)
+    for band in bands.all():
+        assert band.locator("ul.threads > li").count() > 0
 
 
 def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
@@ -3293,15 +3297,20 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
 
 
 @pytest.mark.parametrize('width', [1440, 390])
-def test_empty_sessions_offer_small_copyable_commands_without_filters(reader, width):
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_empty_sessions_offer_small_copyable_commands_without_filters(reader, width, language):
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 844})
     page.goto(uri + '#c=sessions')
-    page.evaluate(r'''() => { REM.default_root = true; render(); }''', isolated_context=False)
-    assert page.locator('.sessions-empty h2').inner_text() == 'No agent sessions yet'
+    page.evaluate(r'''language => { REM.default_root = true; setInterfaceLanguage(language); }''', language, isolated_context=False)
+    assert page.locator('h1').inner_text() == ('智能体会话' if language == 'zh' else 'Agent sessions')
+    assert page.locator('.sessions-empty h2').count() == 0
+    assert page.locator('.sessions-empty p').inner_text().startswith(
+        '还没有智能体会话。' if language == 'zh' else 'No agent sessions yet. ')
+    assert page.locator('.sessions-empty').evaluate(r"node => getComputedStyle(node).borderTopWidth === '0px'")
     assert page.locator('.session-filter-panel, #session-search').count() == 0
     assert page.locator('.sessions-empty code').all_inner_texts() == ['co rem sources', 'co rem import sessions']
-    assert page.locator('.sessions-empty button[aria-label="Copy the command"]').count() == 2
+    assert page.locator('.sessions-empty button[aria-label="' + ('复制命令' if language == 'zh' else 'Copy the command') + '"]').count() == 2
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
     page.evaluate(r'''() => { REM.default_root = false; REM.root = '/tmp/avery notebook'; render(); }''', isolated_context=False)
     assert "--root '/tmp/avery notebook'" in page.locator('.sessions-empty code').first.inner_text()
@@ -3447,3 +3456,111 @@ def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, wi
     assert entries.first.bounding_box()['height'] < entries.nth(1).bounding_box()['height']
     assert page.locator('.relation-list').first.evaluate(r'''node => getComputedStyle(node).alignItems''') == 'start'
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, language):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#c=skills')
+    original = page.evaluate(r'''language => {
+      setInterfaceLanguage(language);
+      return byPath('skills/catalog/weekly-brief.md').text;
+    }''', language, isolated_context=False)
+    assert page.locator('.lede').inner_text().startswith(
+        '可复用的操作流程，仅记录，未安装 · ' if language == 'zh' else 'Repeatable procedures, recorded not installed. ')
+    assert re.fullmatch(r'已撰写 \d+ / \d+ 项' if language == 'zh' else r'\d+ written of \d+',
+                        page.locator('.lede .mono').inner_text())
+    assert page.locator('.hits .bar').count() == 0
+    assert page.locator('.hits .usage').first.inner_text().endswith(
+        '最近 9月30日' if language == 'zh' else 'last Sep 30')
+    assert page.evaluate(r"byPath('skills/catalog/weekly-brief.md').text", isolated_context=False) == original
+    page.evaluate(r"""() => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text += '\n## Open threads\n- You owe Avery Lin a revised weekly brief. [1]\n';
+      KNOWN.delete(r.path);
+    }""", isolated_context=False)
+    for path in ['skills/catalog/weekly-brief.md', 'projects/harbour.md']:
+        page.goto(uri + '#r=' + path.replace('/', '%2F'))
+        assert page.locator('.leadrow .lead-open').count() == 0
+        assert page.locator('.next-exchanges').is_visible()
+    assert page.locator('.next-exchanges .dir').count() > 0  # mixed directions retain their tags
+    page.goto(uri + '#view=open')
+    assert page.locator('.task-band .thread .dir').count() == 0
+    assert page.locator('.task-band .thread .when').count() > 0
+    if language == 'zh':
+        assert '等你处理' in page.locator('.lede').inner_text()
+        assert 'Newest' not in page.locator('.lede').inner_text()
+        assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
+    assert page.locator('.task-band .thread').first.evaluate(r'''node => {
+      const body = node.querySelector('.what').getBoundingClientRect();
+      const date = node.querySelector('.when').getBoundingClientRect();
+      return body.right <= date.left && getComputedStyle(node.querySelector('.when')).order === '0';
+    }''')
+    page.goto(uri + '#q=pilot')
+    assert page.locator('.search-group h2').first.evaluate(r'''node => {
+      const title = node.firstElementChild.getBoundingClientRect(), count = node.lastElementChild.getBoundingClientRect();
+      return Math.abs(title.top - count.top) < 12 && count.left > title.right;
+    }''')
+    page.goto(uri + '#view=changes')
+    page.evaluate(r'''() => { for (const run of REM.logs) run.claim_changes = []; render(); }''', isolated_context=False)
+    assert page.locator('.empty').inner_text().endswith(
+        '本次可能更新了页面措辞，这不代表新增了记忆。' if language == 'zh'
+        else 'The pass may have refreshed pages; that alone is not a new memory.')
+    assert page.locator('.changed-pages .section .n').inner_text() == ('当前背景' if language == 'zh' else 'Current context')
+    page.goto(uri + '#view=activity')
+    page.evaluate(r'''() => {
+      REM.logs[0].phase = 'daily-update';
+      REM.logs[0].refusals = [{record: 'decisions/notebook-format.md', errors: ['Changed page has no numbered evidence references', 'Missing section: Facts']}];
+      render();
+    }''', isolated_context=False)
+    assert page.locator('.run-head').first.inner_text().find('每日更新' if language == 'zh' else 'daily-update') >= 0
+    assert page.locator('.why').first.inner_text() == (
+        '改动的页面缺少编号来源引用；缺少章节：Facts' if language == 'zh'
+        else 'Changed page has no numbered evidence references; Missing section: Facts')
+    links = page.locator('.night .changes .page-names a')
+    assert links.count() > 1
+    assert links.first.evaluate(r"node => getComputedStyle(node).textDecorationLine === 'none'")
+    assert page.locator('.night .changes .page-names').inner_text().count('、' if language == 'zh' else ', ') > 0
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_decision_memory_starts_collapsed_and_sources_use_readable_ids(reader, language):
+    page, uri = reader
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(uri + '#r=decisions%2Fnotebook-format.md')
+    source = 'claude-code:12345678-1234-1234-1234-123456789abc:295937556'
+    page.evaluate(r'''({language, source}) => {
+      const r = byPath('decisions/notebook-format.md');
+      r.text = '# Notebook format\n\n## Decision\nKeep Markdown. [1]\n\n## Sources\n- [1] ' + source + ' — fixture decision.\n';
+      REM.source_context[source] = {source: 'claude-code', time: '2026-09-03T12:00:00Z'};
+      KNOWN.delete(r.path); setInterfaceLanguage(language);
+    }''', {'language': language, 'source': source}, isolated_context=False)
+    assert page.locator('details.deep-note').get_attribute('open') is None
+    page.locator('details.deep-note > summary').click()
+    chip = page.locator('.block-sources .id')
+    assert chip.inner_text() == ('Claude Code 会话 · 9月3日' if language == 'zh' else 'Claude Code session · 3 Sep')
+    assert chip.get_attribute('title') == source
+    page.evaluate(r'''source => { delete REM.source_context[source]; render(); }''', source, isolated_context=False)
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.block-sources .id').inner_text() == 'claude-code:12345678…:295937556'
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('motion', ['reduce', 'no-preference'])
+def test_memory_markers_enter_once_per_page_view_and_respect_reduced_motion(reader, motion):
+    page, uri = reader
+    page.emulate_media(reduced_motion=motion)
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    field = page.locator('.page-head .changed-value, .contact-strip .changed-value').filter(has_text='Head of Partnerships')
+    assert field.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-underline')
+    assert page.locator('.eyebrow .updated-label').evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
+    page.evaluate(r'() => render()', isolated_context=False)
+    assert field.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
+    page.goto(uri + '#c=people')
+    marker = page.locator('.fresh-label').first
+    assert marker.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
+    page.locator('.sheet-find').fill('Mara')
+    assert page.locator('.fresh-label').first.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
