@@ -79,6 +79,7 @@ You owe Mara the signed data-sharing addendum — 9 days [4]. She runs partnersh
 
 ## Uncertainties
 - Whether the fourth seat is budgeted or a wish.
+- The fourth seat budget is unknown [6].
 
 ## Sources
 - [1] outlook:5c1e0a9b72d4 — address and signature; confidence high; observed {d(40)}.

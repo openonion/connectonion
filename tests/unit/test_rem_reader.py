@@ -40,6 +40,7 @@ def test_this_week_project_rows_strip_the_now_label():
         'const singular = () => "project", sectionHead = text => ({text});',
         'let r; const weekChanges = () => [{r, day: "2026-10-16"}];',
         'const rows = [], main = {appendChild: node => rows.push(node)};',
+        'const updatedMarker = () => null;',
         'for (const [i, line] of ["Now: waiting on review", "**Now:** waiting on review"].entries()) {',
         'r = {path: `projects/pilot-${i}.md`, title: "Pilot", category: "projects",',
         'text: "# Pilot\\n\\n## Insight\\n- " + line};',
@@ -47,7 +48,8 @@ def test_this_week_project_rows_strip_the_now_label():
     ])
     rows = _run_reader_js(script)
     for week_list in rows[1::2]:
-        summary = week_list["children"][0]["children"][2]["children"][2]["text"]
+        summary = next(child["text"] for child in week_list["children"][0]["children"][2]["children"]
+                       if child and child.get("class") == "s")
         assert summary == "waiting on review"
 
 
@@ -447,7 +449,8 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
     assert [bool(row["tag"]) for row in result] == [False, True, True, True, True, False, False]
 
 
-def test_interface_language_uses_owner_order_and_leaves_record_prose_alone(tmp_path, monkeypatch):
+@pytest.mark.parametrize('languages', [['zh', 'en'], ['en', 'zh']])
+def test_interface_language_prefers_supported_non_english_and_leaves_record_prose_alone(tmp_path, monkeypatch, languages):
     import sys
     from datetime import datetime, timezone
     from pathlib import Path
@@ -455,7 +458,7 @@ def test_interface_language_uses_owner_order_and_leaves_record_prose_alone(tmp_p
     from rem_reader_notebook import build
 
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en']})
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': languages})
     page = render(build(tmp_path / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc)), local=True)
     data = json.loads(re.search(r'const REM = (.*);', page).group(1))
     interface = page[page.index('let uiLanguage ='):page.index('function setInterfaceLanguage(')]
@@ -567,3 +570,96 @@ def test_reader_browser_evaluate_strings_compile():
         'console.log(JSON.stringify(scripts.length));',
     ])
     assert _run_reader_js(script) == len(scripts)
+
+
+@pytest.mark.parametrize('languages,browser,expected', [
+    (['en', 'zh'], 'en-AU', 'zh'), (['ja', 'en', 'zh'], 'en-AU', 'zh'),
+    (['en'], 'zh-CN', 'zh'), ([], 'zh-TW', 'zh'),
+    (['ja', 'en'], 'ja-JP', 'en'), ([], 'en-AU', 'en'),
+])
+def test_reader_interface_language_default(languages, browser, expected):
+    page = TEMPLATE.read_text()
+    default = page[page.index('let uiLanguage ='):page.index('let morePeopleColumns =')]
+    result = _run_reader_js('\n'.join([
+        '(() => { const REM = {your_languages: ' + json.dumps(languages) + '};',
+        'const navigator = {language: ' + json.dumps(browser) + '};', default,
+        'console.log(JSON.stringify(uiLanguage)); })();',
+    ]))
+    assert result == expected
+
+
+def test_changed_field_matches_raw_facts_before_display_formatting():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['changedValue', 'plainLine'])
+    script = '\n'.join([
+        '(() => {', functions, 'const youify = value => value;',
+        'const r = {path: "people/avery-lin.md"};',
+        'let items; const parseFacts = () => new Map([["First contact", items]]);',
+        'let memoryPass = {claims: [{record: r.path, field: "first contact",',
+        'before: "2026-09-01", after: "2026-10-01"}]};',
+        'const check = () => { const classes = [];',
+        'const node = {textContent: "1 Oct 2026", classList: {add: value => classes.push(value)}};',
+        'changedValue(node, r, "First contact"); return {classes, title: node.title}; };',
+        'items = [{value: "2026-10-01", qualifier: ""}]; const date = check();',
+        'items = [{value: "2026-10-02", qualifier: ""}]; const superseded = check();',
+        'items = [{value: "https://example.com", qualifier: "work"}, {value: "https://example.com/pilot", qualifier: ""}];',
+        'memoryPass.claims[0].after = "https://example.com (work); https://example.com/pilot";',
+        'const multiple = check(); memoryPass.claims = []; const older = check();',
+        'console.log(JSON.stringify({date, superseded, multiple, older})); })();',
+    ])
+    result = _run_reader_js(script)
+    assert result['date'] == {'classes': ['changed-value'], 'title': 'Changed last night: 2026-09-01 → 2026-10-01'}
+    assert result['multiple']['classes'] == ['changed-value']
+    assert result['superseded'] == result['older'] == {'classes': []}
+
+
+def test_update_markers_follow_latest_pass_in_the_invented_notebook(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from connectonion.rem.reader import snapshot
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    data = snapshot(build(tmp_path / 'rem', datetime(2026, 10, 1, 12, tzinfo=timezone.utc)))
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['lastPass', 'runTime', 'sameClaim', 'updatedMarker'])
+    result = _run_reader_js('\n'.join([
+        '(() => { const REM = ' + json.dumps(data) + ';', functions,
+        'const HOUR = 3600e3, FAILED = /^(failed|abandoned|error|refused|timeout)/i;',
+        re.search(r'^const STAMP = .*$', page, re.M).group(0),
+        'const byPath = path => REM.records.find(r => r.path === path);',
+        'const listedRecords = () => REM.records, byActivity = () => 0, sourceName = value => value;',
+        'const el = (tag, attrs, children) => ({...attrs, children});',
+        'const memoryPass = lastPass();',
+        'console.log(JSON.stringify({changed: memoryPass.changed.map(r => r.path).sort(),',
+        'mara: updatedMarker(byPath("people/mara-ostrowski.md")),',
+        'eyebrow: updatedMarker(byPath("people/mara-ostrowski.md"), true),',
+        'tomas: updatedMarker(byPath("people/tomas-reyes.md"))})); })();',
+    ]))
+    assert result['changed'] == ['orgs/fernhill-labs.md', 'people/avery-lin.md',
+                                 'people/mara-ostrowski.md', 'projects/harbour.md']
+    assert result['mara'] == {'class': 'fresh-label', 'text': 'last night',
+                              'title': "Updated in last night's pass"}
+    assert result['eyebrow']['children'][0]['text'] == '●'
+    assert result['eyebrow']['children'][1] == 'updated last night'
+    assert result['tomas'] is None
+
+
+def test_record_freshness_labels_translate_without_changing_english():
+    page = TEMPLATE.read_text()
+    interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
+    labels = ['last activity', 'file updated', 'last mapped session', 'last name match',
+              'archived messages', 'last night', "Updated in last night's pass"]
+    result = _run_reader_js('\n'.join([
+        '(() => { let uiLanguage = "en";', interface,
+        'const labels = ' + json.dumps(labels) + ';',
+        'const en = labels.map(label => t(label)); uiLanguage = "zh";',
+        'console.log(JSON.stringify({en, zh: labels.map(label => t(label))})); })();',
+    ]))
+    assert result['en'] == labels
+    assert result['zh'] == ['最近动态', '文件更新于', '最近映射的会话', '最近名称匹配',
+                            '条存档消息', '昨夜', '昨夜整理时更新']

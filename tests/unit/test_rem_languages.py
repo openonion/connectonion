@@ -19,9 +19,11 @@ NOW = datetime.now(timezone.utc)
 
 def mail(root, rows):
     """rem.db messages with archived bodies, as the index holds them."""
+    from connectonion.rem.store_build import SCHEMA, SCHEMA_VERSION
+
     db = sqlite3.connect(root / ".state" / "rem.db")
-    db.execute("create table messages (id text primary key, source text, thread text, sender text, recipients text,"
-               " time text, subject text, body_path text, body_line integer)")
+    db.executescript(SCHEMA)
+    db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
     for n, (sender, body) in enumerate(rows):
         path = f"mail/messages/gmail/{n:04d}.json"
         (root / ".state" / path).parent.mkdir(parents=True, exist_ok=True)
@@ -144,3 +146,34 @@ def test_the_reader_offers_your_languages_first_then_theirs_then_other():
     bar = page[page.index("function languageBar"):page.index("async function readIn")]
     assert bar.index("yours.map") < bar.index("theirs.map") < bar.index('"Other…"')
     assert "tag !== r.written_in" in bar
+
+
+def test_existing_notebook_detects_owner_languages_without_writing(tmp_path, monkeypatch):
+    from connectonion.rem.reader import snapshot
+
+    root = tmp_path / "rem"
+    prepare(root)
+    owner = root / "people" / "avery-lin.md"
+    owner.write_text("# Avery Lin\n\n## Facts\n- Language: Unknown\n")
+    path = root / ".state" / "map.json"
+    write_json(path, {"owner": {"record": "people/avery-lin.md", "addresses": ["avery@example.com"]}})
+    mail(root, [("avery@example.com", "Please send the revised pilot proposal tomorrow.")] * 3
+         + [("AVERY@example.com", "我们明天再讨论一下这个项目的进展吧"),
+            ("mara@example.com", "今日はいい天気ですね、散歩に行きましょう")])
+    original = {file: file.read_bytes() for file in root.rglob("*") if file.is_file()}
+    detected = languages.owner_languages(root)
+    assert detected == {"languages": ["en", "zh"], "shares": {"en": 0.75, "zh": 0.25},
+                        "from": "detected from your own mail and sessions"}
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    assert snapshot(root)["your_languages"] == ["en", "zh"]
+    assert {file: file.read_bytes() for file in root.rglob("*") if file.is_file()} == original
+    set_config(root, ["languages", "ja,en"])
+    monkeypatch.setattr(languages, "detect", lambda *args: pytest.fail("Configured languages must come first"))
+    assert languages.owner_languages(root)["languages"] == ["ja", "en"]
+
+
+def test_saved_empty_detection_is_not_repeated(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    write_json(tmp_path / ".state" / "map.json", {"owner": {"languages": {"languages": [], "shares": {}}}})
+    monkeypatch.setattr(languages, "detect", lambda *args: pytest.fail("Saved detection should be reused"))
+    assert languages.owner_languages(tmp_path)["languages"] == []
