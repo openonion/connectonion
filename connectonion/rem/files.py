@@ -249,6 +249,25 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+def _latest_passes(parts: list[str]) -> str:
+    """Compact only dated pass segments; leave unfamiliar footer metadata intact."""
+    kept, slots, dates = [], {}, {}
+    for part in parts:
+        if not part or part in ("not investigated yet", "Requested investigation window") or part.startswith("Requested investigation window:"):
+            continue
+        match = re.fullmatch(r"(mapped|written|investigated|enriched) (\d{4}-\d{2}-\d{2})(?: \(.*\))?", part)
+        if not match:
+            kept.append(part)
+            continue
+        verb, day = match.groups()
+        if verb not in slots:
+            slots[verb] = len(kept)
+            kept.append(part)
+        if day >= dates.get(verb, ""):
+            kept[slots[verb]], dates[verb] = part, day
+    return " · ".join(kept)
+
+
 class Notebook:
     """Small file API: semantic choices belong to the maintainer, not this class."""
 
@@ -429,11 +448,10 @@ class Notebook:
         return self.write(record, "\n".join(lines))
 
     def unfinished(self, category: str = "") -> list[dict]:
-        """Pages still carrying an Unknown section, least-investigated first.
+        """Pages carrying Unknowns, uninvestigated first, then most Unknowns.
 
-        The page is its own work list: nothing else has to remember what is
-        left to find out. Ordered so the next daily run picks the page that has
-        had the least attention, not the one that happens to sort first.
+        The footer is a status summary. Its investigated_passes value counts
+        visible stamps, not lifetime runs; the queue uses the latest pass date.
         """
         found = []
         for record in self.list(category):
@@ -448,23 +466,22 @@ class Notebook:
         return sorted(found, key=lambda entry: (entry["investigated_passes"], -entry["unknown"], entry["path"]))
 
     def note_pass(self, record: str, verb: str, what: str) -> None:
-        """Append one pass to the page's own status line: `<verb> <date> (<what>)`.
+        """Keep the latest dated pass of each kind in the runner-owned footer.
 
-        Investigation and enrichment are separate passes with separate verbs --
-        `investigated 2026-09-13 (outlook, gmail, codex)` then `enriched
-        2026-09-13 (web)` -- so the line reads as the page's history and the
-        daily run can see which stage a page has not had yet.
+        This is a status summary, not a lifetime pass count or run history.
+        Full run records remain separate from the page's sourced content.
         """
         text = self.read(record)
         lines = text.splitlines()
         stamp = f"{verb} {_today()} ({what})"
         for i, line in enumerate(lines):
             if line.startswith("Investigation:"):
-                lines[i] = line.replace(" · not investigated yet", "") + f" · {stamp}"
+                parts = line.removeprefix("Investigation:").strip().split(" · ")
+                lines[i] = "Investigation: " + _latest_passes([*parts, stamp])
                 break
         else:
             lines += ["", f"Investigation: {stamp}"]
-        self.write(record, "\n".join(lines) + ("\n" if not text.endswith("\n") else ""))
+        self.write(record, "\n".join(lines) + "\n")
 
     def note_investigation(self, record: str, what: str) -> None:
         self.note_pass(record, "investigated", what)
