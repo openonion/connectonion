@@ -291,6 +291,7 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 add(row)
         contact = [item for item in mail if _contact(item, addresses, names, domains, merged_subjects)]
         if contact:
+            add(_row("First contact", _date(contact[0], zone), contact[0], zone, "earliest mail found"))
             add(_row("Last contact", _date(contact[-1], zone), contact[-1], zone))
     return rows
 
@@ -317,7 +318,7 @@ def _others_phones(mail: list[dict], addresses: set, names: list[str], zone: Zon
     return rows
 
 
-ORDER = ("Email", "Phone", "Links", "Last contact", "Company domain", "Signature", "Calendar", OTHERS_PHONE)
+ORDER = ("Email", "Phone", "Links", "First contact", "Last contact", "Company domain", "Signature", "Calendar", OTHERS_PHONE)
 
 
 def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
@@ -334,6 +335,7 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "After the turn code takes off any phone or address that no mail the person sent shows as "
                     "theirs, and puts back a link or last-contact date left off the page. "
                     f"\"{OTHERS_PHONE}\" is a number in another person's own signature, named beside it: it "
-                    f"is never this person's. Dates use {timezone}; event dates are separate. The earliest "
-                    "retained mail does not establish first contact.\n"
+                    f"is never this person's. Dates use {timezone}; event dates are separate. "
+                    "First contact is the earliest mail found in this material; keep a page's earlier First contact, "
+                    "and write an earlier start a message states (hired, met, introduced) instead when there is one.\n"
                     + "\n".join(lines)}

@@ -1269,7 +1269,8 @@ ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {
               "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
               "corrects; delete what it supersedes, repeats or settles. Keep what earlier rounds established from "
               "sources this round does not hold: a decision quoted from an earlier part is still a decision. "
-              "The page should get better, not only longer. Then follow the leads it raises.")
+              "The page should get better, not only longer. Quote what you add: an ask, offer, term, refusal or "
+              "decision goes on the page in the speaker's exact words with its date. Then follow the leads it raises.")
 # A person page's editor shapes the lead and who owes whom; a project's keeps its own shape.
 PERSON_SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
@@ -1277,8 +1278,12 @@ PERSON_SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have be
                   "owes whom, the ask quoted, its date and any due date) and the user's next step. Open threads "
                   "keeps only what is still owed, each line starting with who owes whom, the user's debts first; "
                   "a thread that was answered, delivered, past its event date or quiet for 60 days moves to "
-                  "History. History has one line per thread -- date, what it was about, how it ended. Insight "
-                  "says what no other section does. Then delete: repetition across sections, superseded "
+                  "History. An ask closes only on a reply about that ask: a later message on another topic closes "
+                  "nothing, and an ask nobody agreed to is 'The user asked', never '<Name> owes'. History has one "
+                  "line per thread, newest first -- date, what it was about, how it ended. Insight says what no "
+                  "other section does, from two or more messages. Uncertainties are questions ending '?'. Keep "
+                  "every quote: compress by quoting, not retelling. Every 'he' or 'his' that means the user becomes "
+                  "'the user'. Then delete: repetition across sections, superseded "
                   "statements, and every 'not established', 'unconfirmed' or 'in the supplied mail' clause -- "
                   "state the dated fact instead, or move a doubt that changes the next step to Uncertainties "
                   "(at most five). For a thread whose outcome you have not seen, request a mail search for the "
@@ -1705,8 +1710,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Ody's phone sat in a signature it never opened (#2068). A mail the
     # page already cites still has its signature. On a page investigated
-    # before, the window is not the whole history. Even a first full window's
-    # earliest retained mail cannot establish when this relationship began.
+    # before, the window is not the whole history: its earliest mail is not
+    # the relationship's first contact.
     from . import facts
     from .fact_extract import extract, facts_item, mail_merge_subjects
     from .mail_archive import mail_metadata
@@ -1719,7 +1724,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     fact_rows = [] if record.startswith("projects/") else [
         row for row in extract([item for item in items if not item.get("relationship_scope")], [*handles, *own_domains],
                                owner=sent_only, timezone=config["schedule"]["timezone"], merged_subjects=merged_subjects)
-        if not (related["candidates"] and row["field"] == "Last contact")]
+        if not (last and row["field"] == "First contact")
+        and not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another

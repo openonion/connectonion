@@ -126,6 +126,22 @@ def test_people_audit_leaves_identity_fields_and_quote_style_to_code(tmp_path):
     assert "judge only whether the words are the original's" in seen[0]
 
 
+def test_project_audit_counts_the_users_session_inputs_as_the_users_work(tmp_path):
+    """A first-run trial page lost People, Status and its open threads to "only a request" findings."""
+    seen = []
+    candidate = '# Atlas\n\n## Facts\n- People: the user (owner, sessions in these folders) [1]\n\n## Sources\n- [1] codex:s:1\n'
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+                                record='projects/atlas.md', items=[{'source': 'codex:s:1', 'text': 'Ship the export'}])
+    assert "every session input is the user's own message in this project's folders" in seen[0]
+    assert "its past date alone does not close it" in seen[0]
+    assert "Who did something is the sender" not in seen[0]
+
+
 @pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
 def test_only_uncited_field_audit_findings_accept_the_page_unchanged(tmp_path, monkeypatch, field):
     """Vern Chan's own address must not buy repair turns or become Unknown (2026-10-16)."""

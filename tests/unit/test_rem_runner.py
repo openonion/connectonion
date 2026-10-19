@@ -104,7 +104,8 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     assert 'Start from the current line' in prompts[0]
     assert 'git log' in prompts[0] and 'git show' in prompts[0]
-    assert 'alone is not an insight. None' in prompts[0]
+    assert 'alone is not an insight. Each is about the project' in prompts[0]
+    assert 'None: `- Unknown`.' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
@@ -567,6 +568,24 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
                               [{"source": "gmail:m:1"}], tmp_path, None)
     thread.join()
     assert "Leads the data team." in notebook.read("people/mia.md")
+
+
+def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record)
+    older = '- 2026-09-01: introduction — agreed to a call. [1]'
+    newer = '- 2026-10-01: proposal — declined. [2]'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## History\n- Unknown — not investigated yet',
+                                          f'## History\n{older}\n{newer}')
+                         .replace('- (none yet)', '- [1] gmail:m:1\n- [2] gmail:m:2')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    runner._promote_candidate(notebook, record, candidate, original,
+                              [{'source': 'gmail:m:1'}, {'source': 'gmail:m:2'}], tmp_path, None)
+    page = notebook.read(record)
+    assert f'## History\n{newer}\n{older}\n' in page
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
 def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):
@@ -1204,6 +1223,40 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     assert not refusals
     assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
     assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved
+
+
+def test_a_refuted_first_contact_is_replaced_with_the_extracted_date_on_last_resort(notebook, tmp_path):
+    """2026-10-20: dropping an audited contact date must restore the extracted row."""
+    from connectonion.rem import facts
+    from connectonion.rem.files import write_json
+
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record)
+    claim = 'First contact: 2025-08-26 (earliest mail found) [2]'
+    extracted = {'field': 'First contact', 'value': '2026-08-11', 'qualifier': 'earliest mail found',
+                 'source': 'gmail:avery-first', 'date': '2026-08-11'}
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## Who they are\n- Unknown — not investigated yet',
+                                          '## Who they are\n- Avery Lin leads the pilot. [1]')
+                         .replace('- First contact: Unknown', '- ' + claim)
+                         .replace('- (none yet)', '- [1] gmail:avery-latest\n- [2] gmail:avery-cc')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    write_json(tmp_path / 'claim-review.json', {'verdict': 'fail', 'findings': [
+        {'claim': claim, 'issue': 'Avery was only cc’d on this mail; it was not direct contact.'}]})
+    items = [{'source': 'gmail:avery-latest'}, {'source': 'gmail:avery-cc'},
+             {'role': 'facts', 'facts': [extracted]}]
+
+    runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None, last_resort=True)
+
+    page = notebook.read(record)
+    assert facts.parse(page, record)['First contact'] == [
+        {'value': '2026-08-11', 'qualifier': 'earliest mail found', 'citations': ['2']}]
+    assert '- [2] gmail:avery-first — 2026-08-11\n' in page
+    assert '2025-08-26' not in page and '- First contact: Unknown' not in page
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted']
+    assert {'field': 'First contact', 'source': 'gmail:avery-first'} in review['facts_restored']
 
 
 def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():

@@ -30,6 +30,33 @@ def test_a_value_its_qualifier_and_its_citations_are_read_apart():
     assert list(parsed)[:4] == ["Email", "Phone", "Company", "Role"]
 
 
+def test_unknown_first_contact_is_restored_with_its_qualifier_even_when_last_contact_has_the_same_date():
+    from connectonion.rem.fact_extract import extract
+
+    item = {"role": "other", "speaker": "Avery Lin <avery@example.com>", "timestamp": "2025-08-04T01:00:00Z",
+            "subject": "Pilot", "text": "Hello", "source": "gmail:avery-first"}
+    rows = extract([item], ["avery@example.com", "Avery Lin"])
+    first = next(row for row in rows if row["field"] == "First contact")
+    page = ("# Avery Lin\n\n## Facts\n- First contact: Unknown\n- Last contact: 2025-08-04 [1]\n\n"
+            "## Sources\n- [1] gmail:avery-first — 2025-08-04\n")
+    kept, restored = facts.keep_extracted("people/avery.md", page, rows)
+    raw = "2025-08-04 (earliest mail found) [1]"
+    assert f"- First contact: {raw}\n" in kept
+    assert restored == [first]
+    assert facts.values(raw) == [{"value": "2025-08-04", "qualifier": "earliest mail found", "citations": ["1"]}]
+    assert facts.keep_extracted("people/avery.md", kept, rows) == (kept, [])
+
+
+@pytest.mark.parametrize("current", ["2024-03-01 [2]", "2024-03-01 (introduced) [1]",
+                                     "2025-08-03 (earliest mail found) [1]"])
+def test_an_earlier_first_contact_is_preserved(current):
+    row = {"field": "First contact", "value": "2025-08-04", "qualifier": "earliest mail found",
+           "source": "gmail:avery-first", "date": "2025-08-04"}
+    page = (f"# Avery Lin\n\n## Facts\n- First contact: {current}\n\n"
+            "## Sources\n- [1] gmail:avery-first — 2025-08-04\n- [2] gmail:introduction — 2024-03-01\n")
+    assert facts.keep_extracted("people/avery.md", page, [row]) == (page, [])
+
+
 def test_a_citation_covers_the_uncited_values_before_it():
     """A real candidate wrote `Company: UNSW Founders; [UNSW](…) [12]` and was refused for it."""
     parsed = facts.parse("## Facts\n- Company: UNSW Founders; [UNSW](../orgs/unsw.md) [12]\n", "people/t.md")

@@ -925,6 +925,38 @@ def _with_history(lines: int) -> str:
     return f'# P\n\n## History\n{rows}\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
 
 
+@pytest.mark.parametrize('heading', ['History', 'Key decisions'])
+def test_dated_history_and_decisions_are_sorted_newest_first(heading):
+    from connectonion.rem.page_review import sort_history
+    oldest = '- 2024: Avery Lin proposed a call. [1]'
+    middle = '- **2026-09** — Avery Lin agreed. [2]'
+    newest = '- 2026-10-20: Avery Lin declined. [3]'
+    page = (f'# Avery Lin\n\n## {heading}\n{oldest}\n{newest}\n{middle}\n\n'
+            '## Sources\n- [1] gmail:m:1\n- [2] gmail:m:2\n- [3] gmail:m:3\n')
+    expected = page.replace(f'{oldest}\n{newest}\n{middle}', f'{newest}\n{middle}\n{oldest}')
+    assert sort_history(page) == expected
+    assert sort_history(expected) == expected
+
+
+@pytest.mark.parametrize('heading', ['History', 'Key decisions'])
+def test_undated_lines_keep_their_place_after_dated_history_and_decisions(heading):
+    from connectonion.rem.page_review import sort_history
+    older = '- 2026-09-01: Avery Lin agreed. [1]'
+    newer = '- 2026-10-01: Avery Lin declined. [2]'
+    page = (f'# Avery Lin\n\n## {heading}\n{older}\n{newer}\n\n'
+            '- Earlier introduction, date unknown. [3]\n- Follow-up date unknown. [3]\n\n'
+            '## Sources\n- [1] gmail:m:1\n- [2] gmail:m:2\n- [3] gmail:m:3\n')
+    assert sort_history(page) == page.replace(f'{older}\n{newer}', f'{newer}\n{older}')
+
+
+@pytest.mark.parametrize('heading', ['History', 'Key decisions'])
+def test_one_dated_history_or_decision_line_is_untouched(heading):
+    from connectonion.rem.page_review import sort_history
+    page = (f'# Avery Lin\n\n## {heading}\n- 2026-10-20: agreed to a call. [1]\n\n'
+            '- Earlier introduction, date unknown. [1]\n\n## Sources\n- [1] gmail:m:1\n')
+    assert sort_history(page) == page
+
+
 def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
     """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
     eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
@@ -1329,3 +1361,15 @@ def test_legacy_contact_anchor_keeps_extracted_date_recovery_on_a_title_upgrade(
     ]
     _promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
     assert "- Last contact: 2026-09-01 [1]" in notebook.read(record)
+
+
+def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
+    """2026-10-20 trial: `People: the user [4]` cited investigation:page; the line went and the
+    whole first-run page was refused for a missing Facts field."""
+    from connectonion.rem.page_review import repair_run_citations
+    page = ("# Atlas\n\n## Facts\n- Repository: example/atlas [1]\n- People: the user [2]\n\n"
+            "## What it is\nAn export tool [1].\n\n## Sources\n- [1] codex:s:1 — 2026-10-01\n"
+            "- [2] investigation:page — 2026-10-20\n")
+    fixed = repair_run_citations("projects/atlas.md", page, "")
+    assert "- People: Unknown\n" in fixed and "- Repository: example/atlas [1]" in fixed
+    assert "investigation:page" not in fixed

@@ -391,6 +391,10 @@ def repair_run_citations(record: str, text: str, original: str) -> str:
         for line in head.splitlines(keepends=True):
             cites = re.findall(r'\[(W?\d+)\](?!\()', line)
             if cites and set(cites) <= run:
+                # A Facts field keeps its label: "People: the user [4]" citing
+                # investigation:page refused a whole first-run page (2026-10-20 trial).
+                if CONTACT_LINE.match(line):
+                    lines.append(CONTACT_LINE.match(line).group(0) + ' Unknown\n')
                 continue
             lines.append(re.sub(r'\[(W?\d+)\](?!\()', lambda m: '' if m[1] in run else m[0], line))
         head = ''.join(lines)
@@ -938,6 +942,27 @@ def history_note(page: str) -> str:
 
 
 DATED = re.compile(r'^- \**(\d{4})(?:-\d{2}){0,2}\**[ \t]*[:—–-][ \t]*(.*)$')
+
+
+def sort_history(text: str) -> str:
+    """History and Key decisions newest first, in code: a dated story read out of order misleads.
+
+    2026-10-20 trial: three of five first-run person pages put one line out of
+    order although the Skill says newest first. Undated lines keep their place
+    after the dated ones; lines of one date keep the turn's order.
+    """
+    for heading in ('History', 'Key decisions'):
+        span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+        if not span:
+            continue
+        lines = span[1].split('\n')
+        dated = [line for line in lines if DATED.match(line)]
+        if len(dated) < 2:
+            continue
+        ordered = iter(sorted(dated, key=lambda line: re.match(r'^- \**([\d-]+)', line)[1], reverse=True))
+        lines = [next(ordered) if DATED.match(line) else line for line in lines]
+        text = text[:span.start(1)] + '\n'.join(lines) + text[span.end(1):]
+    return text
 
 
 def fold_history(text: str) -> str:
