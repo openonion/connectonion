@@ -427,7 +427,10 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   work) and `blocked`. The lead list is printed and kept in the run record.
   Project history is studied oldest first, one period per turn in the same
   thread before other leads, with the full GitHub listing up to 5,000 issues
-  and 5,000 pull requests per repository.
+  and 5,000 pull requests per repository. For each period's most important
+  decision, it quotes your own words exactly, in their original language,
+  from a session message or mail you wrote and cites it; if none exists,
+  it says so in its reply.
 - **muse** is one conversation of seven turns in the same Codex or Claude Code
   thread (`co ai --json --resume <session>`): turn 1 writes at least twenty
   questions and picks five; turns 2–6 study one question each and edit the
@@ -463,22 +466,26 @@ One round on one page is **enrich, then muse**, about 25 minutes. Round N reads
 round N-1's open leads and open questions through the latest completed run
 reports. Muse still runs when enrich fails or is refused, using what is there.
 
-Candidates include every notebook page under `people/` and `projects/`, excluding
+Candidates include every notebook page under `people/`, `projects/` and `orgs/`, excluding
 the owner and mapped automated accounts; map rows supply activity, while unmapped
-projects use Sessions under Paths (0 if absent) and Last seen, and unmapped people
-have value 0.
+projects use Sessions under Paths (0 if absent) and Last seen. Orgs sum their
+mapped people's mails and use those people's newest Last seen; unmapped people
+and orgs have value 0.
 The highest priority goes first, ties by record:
 
 ```text
 priority = log2(2 + value) × recent × thin / (1 + rounds)
-value = mails for people, sessions for projects
+value = mails for people, sessions for projects, its people's mails for orgs
 recent = 2 for activity within 30 days, otherwise 1
 thin = 1 / (1 + quotes/3 + sources/10)
 ```
 
 Quotes and sources count distinct entries on the current page. A page rests
 for 30 days when its last round changed neither characters, quotes nor sources
-and found no insights. Each round appends its metrics, outcomes, lost quotes,
+and found no insights, or when each of its last two rounds gained little:
+`gain = (quotes after - before) + (sources after - before) + insights` is at most 1
+and the absolute character change is less than 600 in each round. Rest starts
+at the last round. Each round appends its metrics, outcomes, lost quotes,
 insights and token-based points to `.state/depth.json`, keyed by record.
 
 `limits.depth_quota_points` defaults to **30 points of the Codex week**,
@@ -486,6 +493,9 @@ separate from investigation's 35; `limits.depth_pages_per_slot` defaults to 2.
 The shared `limits.quota_floor_percent` (90) also stops new pages. Both bounds
 are checked before each page. Usage counts enrich and muse run logs within
 the reported quota window, or the last seven days when the meter is unknown.
+Each picked page gets a line with its value, recent multiplier, quotes, sources
+and next round number. `--json` includes these selection metrics and priority
+under `picked` (`rounds` is the number of previous rounds).
 The round table shows before/after characters, quotes and sources, insights,
 lost quotes, both outcomes and points; it also reports why it stopped and how
 many candidates remain.

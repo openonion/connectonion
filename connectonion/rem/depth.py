@@ -27,17 +27,27 @@ def _stamp(value) -> datetime:
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
 
 
+def _gain(row) -> int:
+    return sum(row[key][1] - row[key][0] for key in ("quotes", "sources")) + row["insights"]
+
+
 def _resting(rounds, today) -> bool:
+    """2026-10-20: four handoff rounds added 350–600 chars and only 0–2 quotes each."""
     if not rounds:
         return False
     last = rounds[-1]
-    return (today - _stamp(last["at"]) < timedelta(days=REST_DAYS)
-            and all(last[key][0] == last[key][1] for key in ("chars", "quotes", "sources"))
-            and last["insights"] == 0)
+    unchanged = all(last[key][0] == last[key][1] for key in ("chars", "quotes", "sources")) and last["insights"] == 0
+    plateau = len(rounds) >= 2 and all(_gain(row) <= 1 and abs(row["chars"][1] - row["chars"][0]) < 600
+                                       for row in rounds[-2:])
+    return today - _stamp(last["at"]) < timedelta(days=REST_DAYS) and (unchanged or plateau)
 
 
-def _value_last(record, row, text) -> tuple[int, str | None]:
+def _value_last(record, row, text, mapped_rows) -> tuple[int, str | None]:
     project = record.startswith("projects/")
+    if record.startswith("orgs/") and row is not None:
+        people = [mapped_rows[person] for person in row["people"] if person in mapped_rows]
+        last = max((person["last"] for person in people if person.get("last")), key=_stamp, default=None)
+        return sum(person.get("mails") or 0 for person in people), last
     if row is not None:
         return row.get("sessions" if project else "mails") or 0, row.get("last")
     if not project:
@@ -48,29 +58,38 @@ def _value_last(record, row, text) -> tuple[int, str | None]:
     return int(sessions[1]) if sessions else 0, last[1] if last else None
 
 
+def _mapped_rows(mapped) -> dict:
+    return {row["record"]: row for kind in ("people", "projects", "orgs")
+            for row in mapped.get(kind, []) if row.get("record")}
+
+
+def _candidate(notebook, record, mapped_rows, rounds, today) -> dict:
+    text = notebook.read(record)
+    value, last = _value_last(record, mapped_rows.get(record), text, mapped_rows)
+    metrics = page_metrics(text)
+    recent = 2 if last and today - _stamp(last) <= timedelta(days=30) else 1
+    thin = 1 / (1 + metrics["quotes"] / 3 + metrics["sources"] / 10)
+    priority = log2(2 + value) * recent * thin / (1 + len(rounds))
+    return {"record": record, "priority": priority, "value": value, "recent": recent,
+            "rounds": len(rounds), **metrics}
+
+
 def candidates(root) -> list[dict]:
     mapped = read_json(state_path(root, "map.json"), {})
     history = read_json(state_path(root, "depth.json"), {})
     owner = mapped.get("owner")
     owner = owner.get("record") if isinstance(owner, dict) else owner
-    mapped_rows = {row["record"]: row for kind in ("people", "projects")
-                   for row in mapped.get(kind, []) if row.get("record")}
+    mapped_rows = _mapped_rows(mapped)
     notebook, today, rows = Notebook(root), service.now(), []
     for record in notebook.list():
         row = mapped_rows.get(record, {})
-        if (not record.startswith(("people/", "projects/")) or record == owner
+        if (not record.startswith(("people/", "projects/", "orgs/")) or record == owner
                 or row.get("classification") == "account owner" or row.get("automated_hint")):
             continue
         rounds = history.get(record, [])
         if _resting(rounds, today):
             continue
-        text = notebook.read(record)
-        value, last = _value_last(record, mapped_rows.get(record), text)
-        metrics = page_metrics(text)
-        recent = 2 if last and today - _stamp(last) <= timedelta(days=30) else 1
-        thin = 1 / (1 + metrics["quotes"] / 3 + metrics["sources"] / 10)
-        priority = log2(2 + value) * recent * thin / (1 + len(rounds))
-        rows.append({"record": record, "priority": priority, "rounds": len(rounds), **metrics})
+        rows.append(_candidate(notebook, record, mapped_rows, rounds, today))
     return sorted(rows, key=lambda row: (-row["priority"], row["record"]))
 
 
@@ -130,12 +149,14 @@ def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
     else:
         history = read_json(state_path(root, "depth.json"), {})
-        choices = [{"record": record, "rounds": len(history.get(record, []))} for record in records]
+        mapped_rows = _mapped_rows(read_json(state_path(root, "map.json"), {}))
+        notebook, today = Notebook(root), service.now()
+        choices = [_candidate(notebook, record, mapped_rows, history.get(record, []), today) for record in records]
         pages = len(choices)
     problem, _ = runner.ready(config)
     if problem:
-        return {"rounds": [], "stopped": problem, "left": len(choices)}
-    rounds, reason = [], ""
+        return {"rounds": [], "picked": [], "stopped": problem, "left": len(choices)}
+    rounds, picked, reason = [], [], ""
     for choice in choices[:pages]:
         reason = stop_reason(root, config)
         if reason:
@@ -144,4 +165,5 @@ def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
         if say:
             say(f"Deepening {record} (round {choice['rounds'] + 1})…")
         rounds.append(deepen(root, record, stage=stage))
-    return {"rounds": rounds, "stopped": reason, "left": len(choices) - len(rounds)}
+        picked.append({key: choice[key] for key in ("record", "priority", "value", "recent", "quotes", "sources", "rounds")})
+    return {"rounds": rounds, "picked": picked, "stopped": reason, "left": len(choices) - len(rounds)}

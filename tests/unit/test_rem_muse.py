@@ -802,6 +802,11 @@ def test_enrich_passes_period_turns_only_for_long_project_history(notebook, monk
         assert "Do not follow other leads yet" in turns[0]
         assert "Period 2 of 2: 2025-02–2025-02" in turns[1]
         assert "do not repeat lines already on the page" in turns[1]
+        for turn in turns[:-1]:
+            assert "for the period's most important decision, quote the user's own words from that period" in turn
+            assert "if a session message or mail the user wrote says it" in turn
+            assert "copy it exactly, in its language, and cite it" in turn
+            assert "if none exists, say so in your reply" in turn
         assert "follow the remaining leads" in turns[-1] and "final reply" in turns[-1]
 
 
