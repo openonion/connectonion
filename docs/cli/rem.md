@@ -114,7 +114,8 @@ person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
 120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
 interrupted, so these rates do not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
-full turn and selected pages share up to 16 workers. The estimate simulates
+full turn and selected pages share `limits.workers` workers (default 16),
+the same setting as `co rem investigate CATEGORY`. The estimate simulates
 that queue so a slow last page is not hidden by an average. Init starts every
 selected page and keeps going after individual refusals; there is no REM quota
 gate on this foreground run. A model provider may still refuse new turns at its
@@ -773,13 +774,20 @@ below is good to about one point.
 - **Every run records the meter before and after** (`quota` in the run log,
   shown by `co rem logs`). The difference is what that run cost in points of
   your week, measured rather than estimated from tokens.
-- **A run the meter cannot see is counted from its tokens** (#1990). Codex
-  reports whole percents, and on the 1.9.0a7 acceptance notebook the week read
-  29% before and after every run, 3.4M input tokens in all, so the budget said
-  "0 of 10 points" all week. A run whose reading did not move (or could not be
-  read) now counts `(input − cached input + output) / 1,000,000` points, to one
-  decimal: about a million tokens the model had to read fresh or write is one
-  point. A run that did move the meter counts what the meter says.
+- **Runs that overlap share one meter reading.** Init and CATEGORY runs write
+  many pages at once, and each page's before/after spans every other page's
+  spend. Summing them counted the same movement up to sixteen times: on real
+  first runs the meter moved 3-10 points while the per-run sum said 75-154. Runs
+  whose times overlap are now one group, and a group costs what the meter moved
+  from its first reading to its last. Gaps between groups are not counted, so
+  your own coding between runs stays yours.
+- **A group the meter cannot see is counted from its tokens** (#1990). Codex
+  reports whole percents, so a small group can read the same before and after.
+  It then counts `(input − cached input + output)` divided by 12,000,000 at
+  standard speed or 6,000,000 at fast speed (fast bills twice). Seven large
+  first runs at standard speed moved the meter one point per 11.6M-13.6M fresh
+  tokens. This fallback only applies when the meter stayed flat, so its error
+  is under one point per group.
 - **Scheduled investigation has a weekly budget**, `limits.investigation_quota_points`,
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
@@ -791,7 +799,9 @@ below is good to about one point.
   estimate; the CLI cannot claim to have measured their plan usage.
 - **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
   `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
-  by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.
+  by default, using `limits.workers` (default 16), as init does. Set it with
+  `co rem config set limits.workers 8`; `--workers N` overrides one run (1–32).
+  `--limit N` or `--budget N` alone uses one worker.
   It stops starting pages when its explicit `--budget N` is spent or at the
   safety floor. Pages already in flight finish.
 - **After init**, `co rem investigate all --budget 10` works whatever init left:

@@ -34,7 +34,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root), *_archive(value, spell), ""]
-    lines += [*_budget(value, verbose), *_last_runs(root)]
+    lines += [*_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
@@ -49,7 +49,7 @@ def _waiting(root, found: dict) -> list[str]:
             ""]
 
 
-def _budget(value: dict, verbose: bool) -> list[str]:
+def _budget(root, value: dict, verbose: bool) -> list[str]:
     """The week's investigation points and the Codex week, two lines; what a point is only with --verbose.
 
     "0 of 10 points" beside 3.0M tokens today read as a contradiction (#2008):
@@ -69,10 +69,12 @@ def _budget(value: dict, verbose: bool) -> list[str]:
                               + rem_look.meter(budget["spent_points"], budget["budget_points"])),
              rem_look.follow(highlight(week[0]), glyph="")]
     if verbose:
+        from ...rem.config import read_config
+        tokens = TOKENS_PER_POINT[read_config(root)["speed"]]
         lines += [*(rem_look.follow(highlight(part), glyph="") for part in week[1:]),
                   rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
                                   glyph=""),
-                  rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {TOKENS_PER_POINT:,} "
+                  rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {tokens:,} "
                                               "tokens a point"), glyph="")]
     return [*lines, ""]
 

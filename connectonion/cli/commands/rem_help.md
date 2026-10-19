@@ -151,7 +151,7 @@ Usage:
   co rem investigate PAGE                     Investigate one page.
   co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
   co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
-                                               most useful first, up to 10 at once.
+                                               most useful first, using limits.workers (default 16).
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
@@ -189,7 +189,8 @@ Options:
   --days N       How far back to read (default 150; 30 for me)
   --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default all)
-  --workers N    With CATEGORY: concurrent pages (default 10; 1-32)
+  --workers N    With CATEGORY: concurrent pages (default limits.workers, 16; 1-32;
+                 1 with --limit/--budget)
   --list         With CATEGORY: print the order and stop; no model
   --recent-days N  With people: people written to in the last N days first (default 14)
   --budget N     With CATEGORY: stop starting pages once this run has used N points of
@@ -533,6 +534,7 @@ Keys:     model                          gpt-6-luna (default); a new one is chec
                                          sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
+          limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
           limits.<name>                  the other limits co rem config shows
