@@ -729,7 +729,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, normalize_numbered_sources,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
-                              single_title, unresolved_findings, validate, verify_contacts)
+                              single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -769,6 +769,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # A phone, address, link or contact date our code read from the material
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
+    if record.startswith(("people/", "orgs/")) and subject_scope_changed(record, original, text):
+        # The pack was gathered for the previous subject, not the corrected title.
+        extracted = []
     text, restored = facts.keep_extracted(record, text, extracted)
     text, company = company_from_domain(notebook, record, text, extracted)
     unverified = []
