@@ -1813,3 +1813,15 @@ def owner_pronouns(text: str) -> tuple[str, int]:
             parts[n] = "".join(sentences)
         lines.append("".join(parts))
     return "\n".join(lines) + marker + tail, total
+
+
+def unquoted_decisions(text: str) -> list[str]:
+    """Key decisions lines that retell the owner instead of quoting them.
+
+    2026-10-20 reruns: four of five handoff decisions were paraphrased though
+    rem-page-project asks each to quote the sentence that carries the choice.
+    """
+    span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
+    lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
+    return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "
+            "copied from the message the line cites" for line in lines]

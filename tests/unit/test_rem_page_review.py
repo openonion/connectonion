@@ -1632,3 +1632,13 @@ def test_a_pronoun_that_stands_for_the_owner_becomes_the_user(line, fixed):
     text, count = owner_pronouns(page)
     assert text == page.replace(line, fixed)
     assert count == (line != fixed) * (2 if "his side" in line else 1 if line != fixed else 0)
+
+
+def test_a_key_decision_that_retells_the_owner_is_named_for_repair():
+    from connectonion.rem.page_review import unquoted_decisions
+    from connectonion.rem.runner import SALVAGEABLE
+    page = ("# Atlas\n\n## Key decisions\n- 2026-10-19 — Share it as a tool: the user suggested a direct message [1]\n"
+            "- 2026-10-14 — Lead with context: “Don't send the result, send the context” [2]\n\n## Paths\n- /atlas\n")
+    errors = unquoted_decisions(page)
+    assert len(errors) == 1 and "2026-10-19" in errors[0]
+    assert errors[0].startswith(SALVAGEABLE)   # repaired if it can be, never a refusal

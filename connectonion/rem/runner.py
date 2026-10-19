@@ -613,6 +613,7 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 # A misquote or a claim the audit refuted goes with its line at the end, like a
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
+               "Key decision without the owner's words:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
 # Skill pages describe installed files and their runs, read from code; the
@@ -760,7 +761,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        investigation=True, claim_config=None, last_resort=False, carried=""):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
-                              drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, normalize_numbered_sources,
+                              drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
@@ -860,6 +861,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                                          root=notebook.root)
     if carried:
         errors += dropped_content(carried, text)
+    if investigation and not last_resort and record.startswith("projects/"):
+        # Asked for a repair, never a refusal: the last resort keeps the page.
+        errors += unquoted_decisions(text)
     if last_resort and record.startswith("people/") and not _lead(text):
         # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
