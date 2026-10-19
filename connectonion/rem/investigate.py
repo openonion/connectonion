@@ -387,9 +387,12 @@ def _walk_project_documents(root: Path):
                 yield path
 
 
+SCRUBBED = "[secret-shaped text removed by co rem]"
+
+
 def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
     """Keep the lines around a client's name, rather than sending their whole project file."""
-    text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", text)
+    text = SECRET_SHAPES.sub(SCRUBBED, text)
     lines = text.splitlines()
     hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
     selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
@@ -432,7 +435,13 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
             if path in seen or not real[path.parent] or path.is_symlink() or not path.is_file():
                 continue
             seen.add(path)
-            count, text = _mention_excerpt(_project_text(path), pattern, chars)
+            text = _project_text(path)
+            # One pass of the name pattern over the raw note first: the secret scrub and
+            # line split ran on all 17.7M characters of notes for every person, 11.8 s
+            # a page; skipping notes that never name them made it 2.0 s (2026-10-20).
+            if not pattern.search(text) and not pattern.search(SCRUBBED):
+                continue
+            count, text = _mention_excerpt(text, pattern, chars)
             if count:
                 found.append((count, path, text))
     items = []
@@ -986,6 +995,24 @@ def _migrate_session_window(saved: dict, kind: str) -> dict:
             dropped.add(reference)
     return {**saved, "version": SESSION_WINDOW_VERSION,
             "items": [item for item in saved["items"] if item["reference"] not in dropped]}
+
+
+def warm_session_windows(root: Path, subscriptions: dict) -> None:
+    """Scan the session stores once, before page workers start.
+
+    Every worker's first gather waited on _WINDOWS_LOCK behind this scan, and
+    each page counted the wait as its own gathering (2026-10-20). Run alone first,
+    the scan has the interpreter to itself and the pages find it in memory.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=SESSION_WIDEST_DAYS)).isoformat()
+    for name, sub in subscriptions.items():
+        if sub.get("kind") not in KINDS or sub.get("enabled") is False or not Path(sub.get("root", "")).is_dir():
+            continue
+        scoped = {**sub, "enabled": True, "consented": True, "since": since}
+        try:
+            _window_items(collect, scoped, f"{name} sessions", None, root)
+        except RemError:
+            continue   # each page's gather reports an unreadable store in its coverage
 
 
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
