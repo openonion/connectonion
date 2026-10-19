@@ -1427,13 +1427,14 @@ def falls_short(page: str) -> tuple[int, int, int] | None:
             if date:
                 dates.add(date[0])
     quotes, insight = _quote_counts(page)
-    if len(mails) > 3 and (quotes < 6 or insight < 2 and len(dates) >= 2):
+    floor = 10 if len(mails) > 5 else 6
+    if len(mails) > 3 and (quotes < floor or insight < 2 and len(dates) >= 2):
         return quotes, len(mails), insight
     return None
 
 
 def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]], counts: tuple[int, int, int],
-               config: dict, stage_progress=None):
+               config: dict, stage_progress=None, context=()):
     """One edit with only the page's cited originals, so exact words can replace paraphrases."""
     from .page_review import prose
     from .reader_model import SOURCE
@@ -1448,6 +1449,9 @@ def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]]
                       f"note:\n\n{page}"},
              {"role": "round", "source": "investigation:round",
               "text": QUOTE_NOTE.format(quotes=quotes, messages=messages, insight=insight)},
+             # The facts item too: without it the audit refuted the computed First
+             # contact and promotion could not put it back (2026-10-20, 3 of 5 pages).
+             *[item for item in context if item.get("role") == "facts"],
              *[item for part in rounds for item in part if item.get('source') in cited]]
     if stage_progress:
         stage_progress("quote round")
@@ -1458,7 +1462,7 @@ def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]]
 
 
 def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]], config: dict,
-               stage_progress=None) -> dict | None:
+               stage_progress=None, context=()) -> dict | None:
     """The quote turn when a person page falls short, kept only if it lost nothing; None when not due.
 
     Both a one-turn investigation and a run of rounds end here: the 2026-10-20
@@ -1468,7 +1472,7 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
     if counts is None:
         return None
     page = notebook.read(record)
-    out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress)
+    out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress, context)
     reason = _keep_unless_lost(notebook, record, page, out.get("refuted_claims", []))
     refused = [out["refused"]] if out.get("refused") else []
     if reason:
@@ -1614,7 +1618,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             changed = sorted({*changed, *edit.get("changed", [])})
             if edit.get("report"):
                 ledgers.append(f"Editing round: {str(edit['report']).strip()}")
-    quote = quote_pass(runner, notebook, record, rounds, config, stage_progress)
+    quote = quote_pass(runner, notebook, record, rounds, config, stage_progress, context)
     if quote:
         for key, value in (quote.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
@@ -2175,7 +2179,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")
-            quote = quote_pass(runner, notebook, record, [items], config, stage_progress)
+            quote = quote_pass(runner, notebook, record, [items], config, stage_progress, prompt_items)
             if quote:
                 from .runner import _add_usage
                 result = {**result, "usage": _add_usage(result.get("usage"), quote.get("usage")),
