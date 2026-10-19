@@ -760,7 +760,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        investigation=True, claim_config=None, last_resort=False, carried=""):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
-                              drop_others_phones, fold_history, link_company, sort_history, normalize_numbered_sources,
+                              drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, normalize_numbered_sources,
                               sources_before_footer,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
@@ -833,6 +833,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Repair them first; the next promotion still runs the complete validator.
     from .page_review import drop_claims, merge_duplicate_sections, misquoted
     text = fold_history(sort_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record")))))
+    text, pronouns = owner_pronouns(text)
     if investigation:
         text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
     refuted, unlocated, restored_lines = [], [], 0
@@ -902,7 +903,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "restored_lines": restored_lines,
-                   "overview_replaced": overview_replaced,
+                   "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                    "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "contacts_unverified": unverified, "company_from_domain": company,
@@ -942,7 +943,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, sort_history, headings, normalize_numbered_sources,
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, sort_history, headings, normalize_numbered_sources,
                               repair_project_overview, resolve_sources, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
@@ -963,12 +964,12 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
         text, overview_replaced = repair_project_overview(record, text)
         text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
-        text = fold_history(sort_history(single_title(text)))
+        text, pronouns = owner_pronouns(fold_history(sort_history(single_title(text))))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
                            "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
-                           "overview_replaced": overview_replaced}
+                           "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = (validate(record, text, before.get(record, ''), items, pages=set(before), root=notebook.root)
                   if headings(record) else [])

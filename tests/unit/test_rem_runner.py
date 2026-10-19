@@ -588,6 +588,40 @@ def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
     assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
+@pytest.mark.parametrize('promotion', ['candidate', 'maintenance'])
+def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record)
+    line = 'The user said he would send the deck [1].'
+    repaired = 'The user said the user would send the deck [1].'
+    text = (original.replace('## Who they are\n- Unknown — not investigated yet',
+                             '## Who they are\n- ' + line)
+            .replace('- (none yet)', '- [1] gmail:avery-deck')
+            .replace('- Unknown — not investigated yet', '- Unknown'))
+    items = [{'source': 'gmail:avery-deck', 'role': 'user',
+              'speaker': 'user@example.com', 'text': 'I will send the deck.'}]
+    if promotion == 'candidate':
+        candidate = tmp_path / 'candidate.md'
+        candidate.write_text(text)
+        runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
+        review = json.loads((tmp_path / 'review.json').read_text())
+        assert review['accepted']
+        assert review['owner_pronouns_replaced'] == 1
+    else:
+        before = {r: notebook.read(r) for r in notebook.list()}
+        working = Notebook(tmp_path / 'working')
+        for r, page in before.items():
+            working.write(r, page)
+        working.write(record, text)
+        assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+        review = json.loads((tmp_path / 'review.json').read_text())
+        assert record in review['accepted']
+        assert review['repairs'][record]['owner_pronouns_replaced'] == 1
+    assert repaired in notebook.read(record)
+    assert line not in notebook.read(record)
+
+
 def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):
     """2026-10-16: first-run backfill made the audit's zero-wait lock lose paid-for pages."""
     from connectonion.rem import page_review, project_claim_review

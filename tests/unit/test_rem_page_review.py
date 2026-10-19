@@ -1613,3 +1613,22 @@ def test_restore_cannot_lose_an_earlier_quote_when_another_quote_is_retained_els
     assert first + '\n' + second in result
     assert dropped(before, result) == []
     assert restore_dropped(before, result) == result
+
+
+@pytest.mark.parametrize("line, fixed", [
+    ("The user said it was still open on his side and he would complete it [1].",
+     "The user said it was still open on the user's side and the user would complete it [1]."),
+    ("Avery said she would reply; the user said he would wait for her reply [3].",
+     "Avery said she would reply; the user said the user would wait for her reply [3]."),
+    ("The user thanked Jordan and he said the demo was done [2].",
+     "The user thanked Jordan and he said the demo was done [2]."),
+    ("The user wrote “he is ready” to Avery [1].", "The user wrote “he is ready” to Avery [1]."),
+    ("Avery said she is away from her desk [1].", "Avery said she is away from her desk [1]."),
+])
+def test_a_pronoun_that_stands_for_the_owner_becomes_the_user(line, fixed):
+    """The owner's rule is never guess a pronoun; reruns still wrote "the user said he" 1-14 times a page."""
+    from connectonion.rem.page_review import owner_pronouns
+    page = f"# Avery Lin\n\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01 he\n"
+    text, count = owner_pronouns(page)
+    assert text == page.replace(line, fixed)
+    assert count == (line != fixed) * (2 if "his side" in line else 1 if line != fixed else 0)

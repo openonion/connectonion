@@ -1397,6 +1397,86 @@ EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There
                 "or move the doubt under Uncertainties if it would change the user's next step (five there at "
                 "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
                 "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
+QUOTE_NOTE = ("Quote round: an edit, not an investigation. The page has {quotes} quotes from {messages} cited "
+              "messages and {insight} Insight bullets. For each cited message that holds an ask, offer, term, "
+              "decision, refusal or how someone asks to be reached, put the speaker's exact words on the line "
+              "that uses it as “…” (YYYY-MM-DD) [n], replacing the paraphrase. Copy character for character "
+              "from the originals below, in the original language. Bring Insight to 2–4 bullets, each a finding "
+              "resting on two or more cited messages. Add no new claim, no new source. Delete nothing cited. Then end.")
+
+
+def _quote_counts(page: str) -> tuple[int, int]:
+    """Prose quotes and Insight bullets, excluding sources and fenced examples."""
+    from .page_review import QUOTE, prose
+    body = prose(page).partition('\n## Sources\n')[0]
+    insight = body.partition('\n## Insight\n')[2].split('\n## ', 1)[0]
+    return len(QUOTE.findall(body)), len(re.findall(r'(?m)^[-*] +\S', insight))
+
+
+def falls_short(page: str) -> tuple[int, int, int] | None:
+    """Quote, cited-mail and Insight counts when a person page needs one edit."""
+    from .page_review import prose
+    from .reader_model import SOURCE
+    sources = prose(page).partition('\n## Sources\n')[2].split('\n## ', 1)[0]
+    mails, dates = set(), set()
+    for match in SOURCE.finditer(sources):
+        if match[2].startswith(('gmail:', 'outlook:')):
+            mails.add(match[2])
+            metadata = sources[match.end():].split('\n', 1)[0]
+            date = re.search(r'\b\d{4}-\d{2}-\d{2}\b', metadata)
+            if date:
+                dates.add(date[0])
+    quotes, insight = _quote_counts(page)
+    if len(mails) > 3 and (quotes < 6 or insight < 2 and len(dates) >= 2):
+        return quotes, len(mails), insight
+    return None
+
+
+def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]], counts: tuple[int, int, int],
+               config: dict, stage_progress=None):
+    """One edit with only the page's cited originals, so exact words can replace paraphrases."""
+    from .page_review import prose
+    from .reader_model import SOURCE
+    from .runner import RunFailed
+    page = notebook.read(record)
+    cited = {source for _, source in SOURCE.findall(
+        prose(page).partition('\n## Sources\n')[2].split('\n## ', 1)[0])}
+    quotes, messages, insight = counts
+    items = [{"role": "page", "record": record, "source": "investigation:page",
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
+                      f"note:\n\n{page}"},
+             {"role": "round", "source": "investigation:round",
+              "text": QUOTE_NOTE.format(quotes=quotes, messages=messages, insight=insight)},
+             *[item for part in rounds for item in part if item.get('source') in cited]]
+    if stage_progress:
+        stage_progress("quote round")
+    try:
+        return runner(notebook, items, config, stage="investigate")
+    except RunFailed as error:
+        return {"usage": error.usage, "refused": str(error), "changed": []}
+
+
+def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]], config: dict,
+               stage_progress=None) -> dict | None:
+    """The quote turn when a person page falls short, kept only if it lost nothing; None when not due.
+
+    Both a one-turn investigation and a run of rounds end here: the 2026-10-20
+    reruns' thinnest page (3 quotes) was a one-turn page.
+    """
+    counts = falls_short(notebook.read(record)) if record.startswith('people/') else None
+    if counts is None:
+        return None
+    page = notebook.read(record)
+    out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress)
+    reason = _keep_unless_lost(notebook, record, page, out.get("refuted_claims", []))
+    refused = [out["refused"]] if out.get("refused") else []
+    if reason:
+        refused.append(f"Quote round rejected: {reason}")
+    quotes_after, insight_after = _quote_counts(notebook.read(record))
+    return {**out, "refused": refused, "changed": [] if reason else out.get("changed", []),
+            "report": "" if reason else out.get("report", ""),
+            "counts": {"quotes": [counts[0], quotes_after], "insight": [counts[2], insight_after]}}
 
 
 def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
@@ -1534,9 +1614,18 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             changed = sorted({*changed, *edit.get("changed", [])})
             if edit.get("report"):
                 ledgers.append(f"Editing round: {str(edit['report']).strip()}")
+    quote = quote_pass(runner, notebook, record, rounds, config, stage_progress)
+    if quote:
+        for key, value in (quote.get("usage") or {}).items():
+            usage[key] = usage.get(key, 0) + value
+        refused += quote["refused"]
+        threads += quote.get("threads", [])
+        changed = sorted({*changed, *quote["changed"]})
+        if quote.get("report"):
+            ledgers.append(f"Quote round: {str(quote['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
             "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
-            "hedged_lines": [len(before), len(after)]}
+            "hedged_lines": [len(before), len(after)], "quote_turn": quote and quote["counts"]}
 
 
 def searched_sources(coverage: list[str]) -> list[str]:
@@ -2086,6 +2175,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")
+            quote = quote_pass(runner, notebook, record, [items], config, stage_progress)
+            if quote:
+                from .runner import _add_usage
+                result = {**result, "usage": _add_usage(result.get("usage"), quote.get("usage")),
+                          "changed": sorted({*result.get("changed", []), *quote["changed"]}),
+                          "quote_turn": quote["counts"]}
     except RemError as error:
         if "rejected" in str(error):
             remember_refusal(root, record, list(gathered_sources), str(error), stage="investigate")
@@ -2139,7 +2234,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""), "threads": result.get("threads", []),
-            "hedged_lines": result.get("hedged_lines"), "rounds": result.get("rounds"),
+            "hedged_lines": result.get("hedged_lines"), "quote_turn": result.get("quote_turn"),
+            "rounds": result.get("rounds"),
             "refused_rounds": result.get("refused_rounds"),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
