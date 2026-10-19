@@ -1,6 +1,6 @@
 # The footer became a log
 
-Candidate implementation; not yet published in a preview.
+This implementation is included in the 1.9.3rc8 candidate. Its [release notes](../releases/1.9.3rc8.md) distinguish publication and remaining acceptance work.
 
 One REM page ended with the same investigation status, again and again. A pass had finished, so the runner appended another date. The next pass did the same. The line meant to answer “has this page been investigated?” was accumulating the history of every attempt.
 

@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc7
+## Current Version: 1.9.3rc8
+
+1.9.3rc8 is a REM correction-maintenance candidate; stable remains 1.9.2.
+Subject changes without retained routing continuity no longer regain the prior
+subject's contact dates during promotion. Successful page passes keep the
+latest status of each known kind. Neither fix rewrites old saved claims or
+establishes visual/product maturity. See [1.9.3rc8 notes](docs/releases/1.9.3rc8.md).
+
+- 1.9.3rc8 (subject corrections survive restoration; status footers stay bounded).
+
+## Previous preview: 1.9.3rc7
 
 1.9.3rc7 is a maintenance candidate; stable remains 1.9.2. REM excludes its own
 Windows drive/UNC task sessions from newly imported context, skill invocation

@@ -25,6 +25,16 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc8**: a changed person or organisation without retained
+routing continuity no longer regains the old subject's contact dates. The next
+successful pass compacts the Investigation footer to the latest of each known
+kind. These fixes do not repair old claims or establish reader maturity.
+See [1.9.3rc8 notes](releases/1.9.3rc8.md). After publication:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc8'
+```
+
 Release candidate **1.9.3rc7**: REM excludes internal Windows task sessions from new
 context imports, skill invocation counts and cached evidence samples. This prevents
 model probes and repair instructions from being treated as the owner's words. It does
