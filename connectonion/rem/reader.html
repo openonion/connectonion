@@ -32,6 +32,7 @@
     --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
     --lamp: #9c5800; --lamp-soft: #fbefd9; --lamp-line: #ecc88e;
     --dawn: #4450c4; --dawn-soft: #eaecfb; --dawn-line: #c5caf2;
+    --fresh: #6871b5; --fresh-soft: #dde0f4; --unsure: var(--ink-3);
     --said: #674624; --said-soft: #f8f0e4;
     --mark: #fde7b0; --quiet: #80869c;
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
@@ -51,6 +52,7 @@
       --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
       --lamp: #efb25e; --lamp-soft: #2b2314; --lamp-line: #5b4520;
       --dawn: #a3acff; --dawn-soft: #1d2348; --dawn-line: #343f80;
+      --fresh: #a3abdf; --fresh-soft: #343c60; --unsure: var(--ink-3);
       --said: #efd6b0; --said-soft: rgba(239,214,176,.06);
       --mark: #4d3c12; --quiet: #7d849f;
       --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
@@ -65,6 +67,7 @@
     --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
     --lamp: #efb25e; --lamp-soft: #2b2314; --lamp-line: #5b4520;
     --dawn: #a3acff; --dawn-soft: #1d2348; --dawn-line: #343f80;
+    --fresh: #a3abdf; --fresh-soft: #343c60; --unsure: var(--ink-3);
     --said: #efd6b0; --said-soft: rgba(239,214,176,.06);
     --mark: #4d3c12; --quiet: #7d849f;
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
@@ -675,7 +678,15 @@
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--ink-3); }
-  .unsure { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+  .fresh-dot { color: var(--fresh); font: 10px var(--ui); margin-left: 6px; vertical-align: middle; }
+  .fresh-label { color: var(--dawn); font: 11px var(--ui); margin-left: 6px; white-space: nowrap; }
+  .updated-label { color: var(--ink-3); font: 12px var(--ui); }
+  .updated-label .fresh-dot { margin: 0 5px 0 0; }
+  .changed-value { text-decoration: underline; text-decoration-color: var(--fresh-soft); text-decoration-thickness: 3px; text-underline-offset: 4px; }
+  .uncertain-marker { color: var(--unsure); font: 11px var(--ui); }
+  .uncertain-marker + .cite { color: var(--unsure); margin-left: 0; }
+  .memory-legend { color: var(--ink-3); font: 12px/1.6 var(--ui); }
+  .unsure { font-size: 12.5px; color: var(--unsure); display: inline-flex; align-items: center; gap: 6px; }
   .unsure-icon { font: 700 11px var(--ui); }
   .unsure { border: 1px dashed var(--line); border-radius: 999px; padding: 1px 9px; }
 
@@ -766,7 +777,7 @@
   .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 0; overflow-wrap: anywhere; }
   .relation-provenance .cite { margin-left: 4px; }
   .relation-provenance > span:first-child .cite:first-child { margin-left: 0; }
-  .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
+  .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; align-items: start; }
   .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; text-decoration: none !important; transition: border-color .16s ease, transform .16s ease; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .relation-card:hover, .relation-card:focus-visible { border-color: var(--blue); transform: none; }
   .relation-card strong { font: 600 14px var(--ui); color: var(--ink); }
@@ -1289,6 +1300,17 @@
   .people-sheet .sheet :is(.c-email, .c-phone) { width: 10%; min-width: 0; }
   .people-sheet .sheet .c-last { width: 8%; }
   .people-sheet .sheet .c-mails { width: 4%; }
+  .people-sheet .sheet td { padding-top: 14px; padding-bottom: 14px; }
+  .more-columns { background: none; border: 1px solid var(--line); border-radius: 5px; color: var(--ink-2); padding: 5px 8px; font: 12px var(--ui); cursor: pointer; }
+  @media (min-width: 601px) {
+    .people-sheet .name-cell .sum { display: block; white-space: nowrap; text-overflow: ellipsis; }
+    .people-sheet:not(.more-columns-shown) .sheet { min-width: 640px; }
+    .people-sheet:not(.more-columns-shown) .sheet .name { width: 32%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-open { width: 40%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-company { width: 16%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-last { width: 12%; }
+    .people-sheet:not(.more-columns-shown) .extra-column { display: none; }
+  }
   .people-sort, .people-card-meta { display: none; }
   .people-emails, .people-phones { display: flex; gap: 6px; min-width: 0; max-width: 100%; }
   .contact-first { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1297,7 +1319,7 @@
     .people-sort { display: flex; align-items: center; gap: 8px; font: 13px var(--ui); }
     .people-sort select { min-height: 44px; max-width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--ink); font: inherit; }
     .people-sheet .sheet-scroll { max-height: none; overflow: visible; border: 0; }
-    .people-sheet::after, .people-sheet .sheet thead { display: none; }
+    .people-sheet::after, .people-sheet .sheet thead, .more-columns { display: none; }
     .people-sheet .sheet, .people-sheet .sheet tbody { display: block; min-width: 0; }
     .people-sheet .sheet tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; border-top: 1px solid var(--line); }
     .people-sheet .sheet td { position: static; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; box-shadow: none; background: transparent; font-size: 12px; }
@@ -1352,10 +1374,25 @@ function readerStorage(key, value) {
     return value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value);
   }).then(result => result, () => null);
 }
-let uiLanguage = /^zh(?:-|$)/i.test(REM?.your_languages?.[0] || navigator.language || "") ? "zh" : "en";
+let uiLanguage = (REM?.your_languages || []).find(tag => tag === "zh")
+  || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
+let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "More columns": "更多列",
+    "Fewer columns": "收起更多列",
+    "updated last night": "昨夜更新",
+    "last night": "昨夜",
+    "Updated in last night's pass": "昨夜整理时更新",
+    "last activity": "最近动态",
+    "file updated": "文件更新于",
+    "last mapped session": "最近映射的会话",
+    "last name match": "最近名称匹配",
+    "archived messages": "条存档消息",
+    "Changed last night: {before} → {now}": "昨夜变更：{before} → {now}",
+    "Not confirmed by the sources": "来源未确认",
+    "not confirmed by sources": "来源未确认",
     "Your day": "你的一天",
     "Today": "今天",
     "Waiting on you": "等你回复",
@@ -2003,7 +2040,37 @@ function inline(text, from) {
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
     : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
-  return tetherCitations(quoteSpans(s));
+  return tetherCitations(uncertainCitations(quoteSpans(s)));
+}
+function uncertainCitations(html) {
+  if (!html.includes('class="cite')) return html;
+  const box = el("span", { html });
+  let previous = null;
+  for (const cite of box.querySelectorAll("a.cite")) {
+    const range = document.createRange();
+    if (previous) range.setStartAfter(previous); else range.setStart(box, 0);
+    range.setEndBefore(cite);
+    const fragment = el("span", {}, [range.cloneContents()]);
+    fragment.querySelectorAll("code, .privacy-tag").forEach(node => node.remove());
+    const sentence = fragment.textContent.trim().replace(/[.!?。！？]+$/, "").split(/[.!?。！？]\s*/).pop();
+    if (/\b(?:unknown|not established|unconfirmed|not supplied)\b|\bwhether\b[^.!?。]*\bis\b|未知|尚未确认|未确认|未提供/i.test(sentence)) {
+      moveCitationEnding(box, cite);
+      cite.before(document.createTextNode(" "), el("span", { class: "uncertain-marker", text: "◌", title: t("Not confirmed by the sources"), "aria-label": t("Not confirmed by the sources") }), document.createTextNode("\u200a"));
+    }
+    previous = cite;
+  }
+  return box.innerHTML;
+}
+function moveCitationEnding(box, cite) {
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  let end = null;
+  while (walker.nextNode() && !cite.contains(walker.currentNode)) {
+    if (walker.currentNode.textContent.trim() && !walker.currentNode.parentElement.closest("code, .privacy-tag, .cite, .uncertain-marker")) end = walker.currentNode;
+  }
+  const punctuation = end && /([.!?。！？])\s*$/.exec(end.textContent);
+  if (!punctuation) return;
+  end.textContent = end.textContent.slice(0, punctuation.index);
+  cite.after(document.createTextNode(punctuation[1]));
 }
 // Keep a word and marker together; an oversized word can still wrap inside the tether.
 function tetherCitations(html) {
@@ -2013,7 +2080,7 @@ function tetherCitations(html) {
     const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
     let before = null;
     while (walker.nextNode() && !cite.contains(walker.currentNode)) {
-      if (walker.currentNode.textContent.replace(/\u2060/g, "").trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) before = walker.currentNode;
+      if (walker.currentNode.textContent.replace(/\u2060/g, "").trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite, .uncertain-marker")) before = walker.currentNode;
     }
     if (!before) continue;
     const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(before.textContent);
@@ -2637,7 +2704,7 @@ function peopleContact(values, kind) {
 }
 function nameCell(r, f, withSummary) {
   const k = known(r);
-  return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
+  return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
     r.category === "projects" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
     withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null,
     r.category === "people" ? peopleCardMeta(r, f) : null]);
@@ -2676,6 +2743,7 @@ const FILTERS = [
   ["mine", "Yours to answer", (r, f) => f.open.some(t => t.dir === "mine")],
   ["written", "Written", r => known(r).status !== "Mapped"], ["mapped", "Mapped only", r => known(r).status === "Mapped"]];
 const SHEET = {};
+const EXTRA_PEOPLE_COLUMNS = new Set(["role", "email", "phone", "mails"]);
 function sheet(c, items) {
   const cols = COLUMNS[c];
   const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
@@ -2689,12 +2757,17 @@ function sheet(c, items) {
   const phoneSort = el("label", { class: "people-sort" }, [t("Sort by") + " ", sortSelect]);
   bar.append(find, chips, count);
   if (c === "people") bar.appendChild(phoneSort);
+  const more = el("button", { type: "button", class: "more-columns" });
+  if (c === "people") bar.appendChild(more);
   const table = el("table", { class: "sheet" });
   const thead = el("thead"), tbody = el("tbody");
   table.append(thead, tbody);
   const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": label(c) + " table" }, [table]);
   wrap.append(bar, scroller);
   const draw = () => {
+    wrap.classList.toggle("more-columns-shown", morePeopleColumns);
+    more.textContent = t(morePeopleColumns ? "Fewer columns" : "More columns");
+    more.setAttribute("aria-expanded", String(morePeopleColumns));
     chips.textContent = "";
     for (const [key, name, test] of FILTERS) {
       const n = items.filter(r => test(r, facts(r))).length;
@@ -2717,7 +2790,7 @@ function sheet(c, items) {
     const tr = el("tr");
     for (const col of visibleCols) {
       const sorted = state.sort === col.key;
-      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
+      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(col.key) ? " extra-column" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
       const btn = el("button", { type: "button" }, [t(col.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
       btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
       th.appendChild(btn); tr.appendChild(th);
@@ -2726,11 +2799,16 @@ function sheet(c, items) {
     tbody.textContent = "";
     for (const r of rows) {
       const row = el("tr", { "data-href": href(r) });
-      for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
+      for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(c2.key) ? " extra-column" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
     if (!rows.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: String(cols.length), class: "none", text: t("Nothing matches. Clear the filter to see every page.") })]));
     count.textContent = t("{n} of {m}", { n: rows.length, m: items.length });
+  };
+  more.onclick = () => {
+    morePeopleColumns = !morePeopleColumns;
+    readerStorage("co-rem-people-columns", morePeopleColumns ? "more" : "less");
+    draw();
   };
   sortSelect.onchange = () => {
     state.sort = sortSelect.value || null;
@@ -2794,6 +2872,25 @@ function lastPass() {
   const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
     .filter(claim => byPath(claim.record) && (claim.sources || []).length && !sameClaim(claim.before || "", claim.after || ""));
   return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items, claims };
+}
+let memoryPass = null;
+function updatedMarker(r, withLabel = false) {
+  if (!memoryPass?.changed.some(page => page.path === r.path)) return null;
+  if (!withLabel) return el("span", { class: "fresh-label", text: t("last night"), title: t("Updated in last night's pass") });
+  const dot = el("span", { class: "fresh-dot", text: "●", title: t("updated last night"), "aria-label": t("updated last night") });
+  return el("span", { class: "updated-label" }, [dot, t("updated last night")]);
+}
+function changedValue(node, r, label) {
+  const items = [...parseFacts(r)].find(([key]) => key.toLowerCase() === label.toLowerCase())?.[1] || [];
+  const current = items.map(item => item.value + (item.qualifier ? " (" + item.qualifier + ")" : "")).join("; ");
+  const change = memoryPass?.claims.find(claim => claim.record === r.path
+    && (claim.field || "").toLowerCase() === label.toLowerCase()
+    && plainLine(current) === plainLine(claim.after));
+  if (change) {
+    node.classList.add("changed-value");
+    node.title = t("Changed last night: {before} → {now}", { before: change.before, now: change.after });
+  }
+  return node;
 }
 function weekChanges() {
   const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
@@ -2973,6 +3070,8 @@ function renderRail(active) {
     : t(scheduleState(s) || "No pass scheduled");
   settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "") }));
   settings.appendChild(el("code", { text: location.protocol === "about:" ? t("Reload for latest") : remCommand("open") + " " + t("re-renders") }));
+  settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", text: "●" }), " " + t("updated last night") + "  ",
+    el("span", { class: "uncertain-marker", text: "◌" }), t("not confirmed by sources")]));
   foot.appendChild(settings);
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
@@ -2983,7 +3082,7 @@ function row(r, opts) {
   const meta = (opts && opts.kind) ? singular(r.category) : r.category === "people" ? company(r) : "";
   const li = el("li", {}, [
     el("div", { class: "t" }, [
-      el("span", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
+      el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
   const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
   if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
@@ -3281,7 +3380,7 @@ function overview() {
     main.appendChild(sectionHead("This week", week.length + (week.length === 1 ? " page" : " pages") + " rewritten in 7 days"));
     main.appendChild(el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
       el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
-      el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), el("span", { class: "meta", text: singular(r.category) }),
+      el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
         known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?Now:(?:\*\*)?\s*/i, "") }) : null])]))));
   }
 
@@ -4111,7 +4210,7 @@ function factList(r) {
     if (items.length) filled++;
     const missing = label === "Last contact" && mappedContact(r) && known(r).last
       ? "— map date shown above" : "— not found";
-    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: missing })]);
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
@@ -4169,7 +4268,7 @@ function leadRow(r) {
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
     el("span", { class: "lead-meta usage-scope", text: "Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome." }));
-  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "?" }), el("span", { text: t("Uncertain points") })]));
+  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: t("Not confirmed by the sources") }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "◌" }), el("span", { text: t("Uncertain points") })]));
   return row;
 }
 function tocPanel(children) { const p = panel("On this page", children); p.classList.add("toc-panel"); return p; }
@@ -4213,7 +4312,7 @@ function relationCard(link, currentPath = "") {
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
-      el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis ?? "Notebook link") })])]);
+      link.basis ? el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis) }) : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
@@ -4290,7 +4389,7 @@ function contactStrip(r) {
     ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => knownValue(v));
   if (!rows.length) return null;
   return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
-    const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
+    const dd = el("dd", {}, [changedValue(el("span", { html: inline(v, r.path) }), r, label)]);
     if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
     if (copyable) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: t("Copy") });
@@ -4318,9 +4417,14 @@ function personLead(r) {
 }
 function contactLine(r) {
   const f = facts(r);
-  const fields = [f.role, f.company].filter(v => v && !/^Unknown\b/i.test(String(v)));
-  return el("p", { class: "contact-line leadrow" }, [privateFallback(el("span", { class: "lead-meta", html: inline(
-    [f.last ? t(mappedContact(r) ? "Last contact in map" : "Last contact") + " " + threadDate(f.last) : "", ...fields].filter(Boolean).join(" · "), r.path) }))]);
+  const fields = [["Role", f.role], ["Company", f.company]].filter(([, v]) => v && !/^Unknown\b/i.test(String(v)));
+  const meta = el("span", { class: "lead-meta" });
+  if (f.last) meta.appendChild(changedValue(el("span", { text: t(mappedContact(r) ? "Last contact in map" : "Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
+  for (const [label, value] of fields) {
+    if (meta.childNodes.length) meta.append(" · ");
+    meta.appendChild(changedValue(el("span", { html: inline(String(value), r.path) }), r, label));
+  }
+  return el("p", { class: "contact-line leadrow" }, [privateFallback(meta)]);
 }
 // Remove a structured label for display; direction still comes from threads().
 function threadWords(text, r) {
@@ -4459,7 +4563,7 @@ function recordFocus(r) {
       : [];
   const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
-    el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }), el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) })]))));
+    el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }), changedValue(el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) }), r, key)]))));
   out.append(...recordContext(r).childNodes);
   const activity = activityPanel(r);
   if (activity) out.appendChild(activity);
@@ -4488,7 +4592,7 @@ function recordContext(r) {
     el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
       const button = el("button", { type: "button", class: "conversation-open" }, [
         el("strong", { text: byPath(value.subject)?.title || value.subject }),
-        el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+        el("span", { text: value.total + " " + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
       button.onclick = () => openConversation(id, button);
       return button;
     })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
@@ -4496,7 +4600,7 @@ function recordContext(r) {
       el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
         const button = el("button", { type: "button", class: "conversation-open" }, [
           el("strong", { text: byPath(value.subject)?.title || value.subject }),
-          el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+          el("span", { text: value.total + " " + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
         button.onclick = () => openConversation(id, button);
         return button;
       }))]) : null]));
@@ -4625,7 +4729,8 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
-    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? (r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
+    updatedMarker(r, true),
+    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? t(r.category === "projects" ? "last mapped session" : "last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
@@ -4899,6 +5004,7 @@ function reviewPage() {
 
 function render() {
   if (!REM) return;
+  memoryPass = lastPass();
   document.documentElement.lang = uiLanguage;
   document.getElementById("q").placeholder = t("Search");
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
@@ -5322,8 +5428,9 @@ function showLanguage(r, tag) {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
-Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private")]).then(([language, theme, privacy]) => {
+Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns")]).then(([language, theme, privacy, columns]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
+  morePeopleColumns = columns === "more";
   if (location.protocol === "file:" && (theme === "light" || theme === "dark")) document.documentElement.dataset.theme = theme;
   if (REM?.shared || location.protocol === "file:" && privacy === "hidden") document.documentElement.classList.add("hide-private");
   render();

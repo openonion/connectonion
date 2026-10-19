@@ -142,10 +142,13 @@ def owner_languages(root: Path) -> dict:
     """What the reader offers first: the configured list, else the detected one."""
     from .config import read_config
     configured = read_config(root, validated=False).get("languages") or []
-    detected = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("languages") or {}
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    detected = owner.get("languages") or {}
     if configured:
         return {"languages": list(configured), "from": "set (co rem config set languages)",
                 "detected": detected.get("languages", [])}
+    if "languages" not in owner:
+        detected = detect(root, owner.get("addresses") or [])
     return {"languages": detected.get("languages", []),
             "from": "detected from your own mail and sessions" if detected else "not detected yet",
             "shares": detected.get("shares", {})}

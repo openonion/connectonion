@@ -310,6 +310,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
 def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
+    page.get_by_role("button", name="More columns", exact=True).click()
     sheet = page.locator("table.sheet")
     assert sheet.locator("tbody tr").count() == 6
     assert "mara@fernhill.example" in sheet.inner_text()
@@ -350,11 +351,12 @@ def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
     scroller = page.locator(".sheet-scroll")
-    # Every column is visible at 1440, What's open included; nothing waits to the right.
+    # The default columns fit at 1440, including what is open.
     assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
     assert page.locator("th.c-open").evaluate("e => e.getBoundingClientRect().right <= innerWidth")
     assert "clip-right" not in page.locator(".sheet-box").get_attribute("class")
-    # Narrower, the sheet scrolls inside itself, the cut edge shades, the name stays put.
+    page.get_by_role("button", name="More columns", exact=True).click()
+    # Narrower, the expanded sheet scrolls inside itself; the name stays put.
     page.set_viewport_size({"width": 900, "height": 900})
     page.wait_for_function("document.querySelector('.sheet-box').classList.contains('clip-right')")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -367,7 +369,8 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
     page, uri = reader
     page.set_viewport_size({'width': 1440, 'height': 1000})
     page.goto(uri + '#c=people')
-    page.evaluate('''() => {
+    page.get_by_role('button', name='More columns', exact=True).click()
+    page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index,
         emails: ['jerryl_shijie.seow@some-long-domain.example', 'second@example.test', 'third@example.test'],
@@ -3105,7 +3108,7 @@ def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
     }''', isolated_context=False)
     cite = page.locator('.relation-provenance .cite').first
     assert abs(cite.bounding_box()['x'] - page.locator('.relation-card strong').first.bounding_box()['x']) <= 1
-    assert page.locator('.unsure-icon').inner_text() == '?'
+    assert page.locator('.unsure-icon').inner_text() == '◌'
     assert page.locator('.unsure').evaluate('node => parseFloat(getComputedStyle(node).columnGap)') >= 4
 
 
@@ -3233,7 +3236,7 @@ def test_cjk_citation_tethers_do_not_bind_a_whole_sentence(reader):
 
 
 @pytest.mark.parametrize('width', [1440, 390])
-@pytest.mark.parametrize('notebook_languages, browser_language', [(['zh', 'en'], 'en-AU'), ([], 'zh-CN')])
+@pytest.mark.parametrize('notebook_languages, browser_language', [(['zh', 'en'], 'en-AU'), (['en', 'zh'], 'en-AU'), ([], 'zh-CN')])
 def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, browser_language):
     from connectonion.rem import reader as rem_reader
     page, _ = reader
@@ -3326,4 +3329,121 @@ def test_hidden_excerpt_keeps_identity_claim_and_inline_reveal(reader, width):
     panel.get_by_role('button', name='Show labelled passages', exact=True).click()
     assert panel.locator('.evidence-original').is_visible()
     assert not panel.locator('.private-hidden-notice').is_visible()
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_people_columns_disclose_sort_and_remember_without_changing_phone_cards(reader):
+    page, uri = reader
+    page.goto(uri + '#c=people')
+    assert page.locator('.sheet th:visible').all_text_contents() == [
+        'Name↕', "What's open↕", 'Company↕', 'Last contact↕']
+    assert page.locator('.sheet td.c-email').first.is_hidden()
+    page.get_by_role('button', name='More columns', exact=True).click()
+    assert page.locator('.sheet th.c-role').is_visible()
+    page.locator('.sheet th.c-mails button').click()
+    assert page.locator('.sheet th.c-mails').get_attribute('aria-sort') == 'descending'
+    page.reload()
+    assert page.get_by_role('button', name='Fewer columns', exact=True).get_attribute('aria-expanded') == 'true'
+    page.get_by_role('button', name='Fewer columns', exact=True).click()
+    page.reload()
+    assert page.locator('.sheet th.c-role').is_hidden()
+    page.set_viewport_size({'width': 375, 'height': 844})
+    assert page.locator('.sheet tbody .c-email').first.is_visible()
+    assert page.get_by_role('button', name='More columns', exact=True).is_hidden()
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1440, 375])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, width, language):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''language => setInterfaceLanguage(language)''', language, isolated_context=False)
+    label = '昨夜更新' if language == 'zh' else 'updated last night'
+    assert page.locator('.eyebrow .updated-label').inner_text() == '●' + label
+    role = page.locator('.page-head .changed-value, .contact-strip .changed-value').filter(has_text='Head of Partnerships')
+    assert 'Head of Partnerships' in role.inner_text()
+    assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
+                                         else 'Changed last night: Partnerships lead → Head of Partnerships')
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.factlist .changed-value').filter(has_text='Head of Partnerships').is_visible()
+    marker = page.locator('.note .uncertain-marker')
+    assert marker.count() == 1
+    assert marker.inner_text() == '◌'
+    assert marker.get_attribute('title') == ('来源未确认' if language == 'zh' else 'Not confirmed by the sources')
+    assert marker.evaluate(r'''node => node.nextElementSibling.matches('a.cite')''')
+    assert marker.evaluate(r'''node => node.nextSibling.textContent === '\u200a' ''')
+    assert marker.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
+    page.goto(uri + '#r=people%2Ftomas-reyes.md')
+    assert page.locator('.eyebrow .updated-label, .changed-value').count() == 0
+    page.goto(uri + '#c=people')
+    fresh = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.fresh-label')
+    assert fresh.is_visible()
+    assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
+    assert fresh.get_attribute('title') == ('昨夜整理时更新' if language == 'zh' else "Updated in last night's pass")
+    assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
+    assert page.locator('.sheet tbody .fresh-dot').count() == 0
+    assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
+    page.goto(uri + '#c=orgs')
+    assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
+    page.goto(uri)
+    assert page.locator('.week li').filter(has_text='Mara Ostrowski').locator('.fresh-label').is_visible()
+    assert page.locator('.week li').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_uncertainty_is_sentence_specific_and_does_not_mark_uncited_prose(reader):
+    page, _ = reader
+    result = page.evaluate(r'''() => {
+      const render = text => {
+        const box = document.createElement('div');
+        box.innerHTML = inline(text, 'people/mara-ostrowski.md');
+        return [...box.querySelectorAll('.uncertain-marker')].map(marker => marker.nextElementSibling.dataset.sources);
+      };
+      return [render('The budget is unknown [1]. The pilot is agreed [2].'),
+        render('The budget is unknown. The pilot is agreed [2].'),
+        render('The budget is unknown.'), render('Timing is not established [1][2].'),
+        render('Whether funding is approved remains unclear [1].')];
+    }''', isolated_context=False)
+    assert result == [['1'], [], [], ['1 2'], ['1']]
+
+
+@pytest.mark.parametrize('text,ending', [
+    ('The budget is unknown [1].', '.'), ('The budget is **unknown.** [1]', '.'),
+    ('The budget is unknown. [1][2]', '.'), ('预算未知。[1]', '。'),
+])
+def test_uncertainty_precedes_the_citation_group_and_sentence_ending(reader, text, ending):
+    page, _ = reader
+    result = page.evaluate(r'''text => {
+      const box = el('p', {html: inline(text, 'people/mara-ostrowski.md')});
+      const marker = box.querySelector('.uncertain-marker'), cite = box.querySelector('a.cite');
+      const before = document.createRange(); before.setStart(box, 0); before.setEndBefore(marker);
+      return {before: before.toString().trim(), gap: marker.nextSibling.textContent,
+        ending: cite.nextSibling.textContent, sources: cite.dataset.sources};
+    }''', text, isolated_context=False)
+    assert not result['before'].endswith(('.', '。'))
+    assert result['gap'].replace('\u2060', '') == '\u200a'
+    assert result['ending'].replace('\u2060', '') == ending
+    assert result['sources'] == ('1 2' if '[2]' in text else '1')
+
+
+@pytest.mark.parametrize('width', [1440, 375])
+def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate(r'''() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      r.relations = [
+        {path: 'people/mara-ostrowski.md', kind: 'linked', via: r.path, basis: '', sources: ['1']},
+        {path: 'projects/harbour.md', kind: 'linked', via: r.path,
+          basis: 'The pilot renewal needs a decision before the next proposal is sent.', sources: ['2']}];
+      render();
+    }''', isolated_context=False)
+    entries = page.locator('.relation-list').first.locator('.relation-entry')
+    assert entries.first.locator('.relation-basis').count() == 0
+    assert entries.first.locator('.relation-provenance .cite').is_visible()
+    assert entries.first.bounding_box()['height'] < entries.nth(1).bounding_box()['height']
+    assert page.locator('.relation-list').first.evaluate(r'''node => getComputedStyle(node).alignItems''') == 'start'
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')

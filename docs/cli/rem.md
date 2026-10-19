@@ -502,8 +502,11 @@ says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
 Status, theme and privacy controls live in the sidebar’s **Reader settings**
 disclosure. **EN | 中文** beside the theme controls switches interface labels
-and dates; it starts in Chinese when Chinese is your first detected language
-and remembers your choice. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
+and dates. Your saved choice comes first; otherwise Chinese is preferred when
+it is among your languages, then a Chinese browser language, then English.
+Older notebooks without saved language detection read your own sent mail and
+typed sessions on opening, without writing to the notebook. Configured
+languages still take precedence. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
   their statements as current context. A changed Project card shows its purpose
@@ -516,9 +519,10 @@ and remembers your choice. Page prose stays as written. On phones, a compact bra
   shelves. The last pass's counts and hypnogram are available in **How REM
   processed the last pass**. The owner's page is pinned as **You**.
 - **People, Organisations and Projects** open as a sheet: one row per page,
-  the facts in columns (people: what's open next to the name, then company,
-  role, email, phone, last contact, mails; status is the moon beside the
-  name), a sticky header, sort on any column, filters (*Something open*,
+  the facts in columns (People starts with name and summary, what's open,
+  company and last contact; **More columns** reveals role, email, phone and
+  mails, remembering your choice in this browser; status is the moon beside
+  the name), a sticky header, sort on any shown column, filters (*Something open*,
   *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
   the page. It fits 1440 px; narrower, it scrolls inside itself with the cut
   edge shaded and the name column held. On phones, People become cards with
@@ -529,6 +533,11 @@ and remembers your choice. Page prose stays as written. On phones, a compact bra
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.
+- **Memory markers**: a dawn dot means **updated last night**, for pages
+  rewritten in the latest pass. A faint underline marks a recorded field
+  change, with before/after values on hover. A hollow circle beside a citation
+  means the sentence explicitly says its claim is unconfirmed; uncited prose
+  gets no marker. A short legend lives in **Reader settings**.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
   recorded decision when supported. A project opens on its current supported
