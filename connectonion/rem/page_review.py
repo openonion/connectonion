@@ -943,7 +943,32 @@ def history_note(page: str) -> str:
             + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
 
 
-DATED = re.compile(r'^- \**(\d{4})(?:-\d{2}){0,2}\**[ \t]*[:—–-][ \t]*(.*)$')
+DATED = re.compile(r'^- \**(?P<date>(?P<year>\d{4})(?:-\d{2}){0,2})\**[ \t]*[:—–-][ \t]*(?P<text>.*)$')
+
+
+def _dedupe_history(lines: list[str]) -> list[str]:
+    """2026-10-20: one date's near-duplicate decisions survived four deepening rounds.
+
+    Keep the longer same-date line, with the shorter one's citations.
+    """
+    clean = {i: re.sub(r'\[W?\d+\](?!\()', '', line).strip()
+             for i, line in enumerate(lines) if DATED.match(line)}
+    kept, removed = {}, set()
+    for i in sorted(clean, key=lambda i: len(clean[i]), reverse=True):
+        date = DATED.match(lines[i])['date']
+        # A line with a quote the longer one lacks stays: glued on, a quote reads as nonsense.
+        same = next((j for j in kept if DATED.match(lines[j])['date'] == date
+                     and _contained(clean[i], clean[j]) >= 0.8
+                     and quotes(lines[i]) <= quotes(kept[j])), None)
+        if same is None:
+            kept[i] = lines[i]
+            continue
+        markers = re.findall(r'\[W?\d+\](?!\()', lines[i])
+        missing = [marker for marker in dict.fromkeys(markers)
+                   if marker not in re.findall(r'\[W?\d+\](?!\()', kept[same])]
+        kept[same] += (' ' + ''.join(missing)) if missing else ''
+        removed.add(i)
+    return [kept.get(i, line) for i, line in enumerate(lines) if i not in removed]
 
 
 def sort_history(text: str) -> str:
@@ -951,19 +976,19 @@ def sort_history(text: str) -> str:
 
     2026-10-20 trial: three of five first-run person pages put one line out of
     order although the Skill says newest first. Undated lines keep their place
-    after the dated ones; lines of one date keep the turn's order.
+    after the dated ones; distinct lines of one date keep the turn's order.
+    Same-date duplicates merge citations, and blank lines cannot split the list.
     """
     for heading in ('History', 'Key decisions'):
         span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
         if not span:
             continue
-        lines = span[1].split('\n')
+        lines = _dedupe_history(span[1].split('\n'))
         dated = [line for line in lines if DATED.match(line)]
-        if len(dated) < 2:
-            continue
-        ordered = iter(sorted(dated, key=lambda line: re.match(r'^- \**([\d-]+)', line)[1], reverse=True))
+        ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
         lines = [next(ordered) if DATED.match(line) else line for line in lines]
-        text = text[:span.start(1)] + '\n'.join(lines) + text[span.end(1):]
+        body = re.sub(r'(?m)(^- [^\n]+)\n(?:[ \t]*\n)+(?=- )', r'\1\n', '\n'.join(lines))
+        text = text[:span.start(1)] + body + text[span.end(1):]
     return text
 
 
@@ -979,13 +1004,13 @@ def fold_history(text: str) -> str:
         return text
     lines = span[1].split('\n')
     excess = len(_history(text)) - HISTORY_LIMIT
-    for year in sorted({m[1] for line in lines if (m := DATED.match(line))})[:-1]:
-        dated = [line for line in lines if (m := DATED.match(line)) and m[1] == year]
+    for year in sorted({m['year'] for line in lines if (m := DATED.match(line))})[:-1]:
+        dated = [line for line in lines if (m := DATED.match(line)) and m['year'] == year]
         if excess <= 0:
             break
         if len(dated) < 2:
             continue
-        folded = f'- {year}: ' + '; '.join(DATED.match(line)[2].rstrip(' .') for line in dated) + '.'
+        folded = f'- {year}: ' + '; '.join(DATED.match(line)['text'].rstrip(' .') for line in dated) + '.'
         at = lines.index(dated[0])
         lines = [line for line in lines if line not in dated]
         lines.insert(at, folded)
@@ -1612,9 +1637,12 @@ def dropped(before: str, after: str) -> list[str]:
 
 
 def restore_dropped(before: str, after: str) -> str:
-    """Put carried lines back in their sections, using the candidate's source numbers."""
-    lost_quotes = quotes(before) - quotes(after)
-    lost_sources = _listed_sources(before) - _listed_sources(after)
+    """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
+
+    Never replace a line carrying a new source or quote. Insert the original immediately after
+    that rewrite only while its lost items are still absent elsewhere on the page.
+    2026-10-20: restoring a cut-down line replaced the writer's new work.
+    """
     sources = dict(re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)',
                               before.partition('\n## Sources\n')[2]))
     section, seen = '', set()
@@ -1624,23 +1652,24 @@ def restore_dropped(before: str, after: str) -> str:
             continue
         if section == 'Sources' or line in seen:
             continue
+        lost_quotes = quotes(before) - quotes(after)
+        lost_sources = _listed_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)
         if restored and restored not in after.splitlines():
-            after = _insert_restored_line(after, section, restored)
+            after = _insert_restored_line(after, section, restored, lost_quotes, lost_sources)
     return after
 
 
 def _shorter_version(text: str, line: str) -> str:
-    """The candidate's cut-down copy of a restored line: mostly inside it, and citing nothing it does not.
-    Inserted beside it, the 2026-10-20 trial page said its Who-they-are sentence twice."""
-    cited = set(re.findall(r'\[(W?\d+)\]', line))
+    """Find the candidate's rewrite by its words, independent of citation numbering."""
+    clean = re.sub(r'\[W?\d+\](?!\()', '', line)
     return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
-                 and set(re.findall(r'\[(W?\d+)\]', row)) <= cited
-                 and _contained(row, line) >= 0.8), '')
+                 and (words := re.sub(r'\[W?\d+\](?!\()', '', row).strip())
+                 and _contained(words, clean) >= 0.8), '')
 
 
 def _contained(row: str, line: str) -> float:
@@ -1649,9 +1678,16 @@ def _contained(row: str, line: str) -> float:
     return sum(block.size for block in blocks) / len(row)
 
 
-def _insert_restored_line(text: str, section: str, line: str) -> str:
+def _insert_restored_line(text: str, section: str, line: str, lost_quotes: set[str], lost_sources: set[str]) -> str:
     shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
     if shorter:
+        sources = dict(re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)',
+                                  text.partition('\n## Sources\n')[2]))
+        cited = lambda row: {sources.get(n) for n in re.findall(r'\[(W?\d+)\](?!\()', row)}  # noqa: E731
+        old, new = cited(line), cited(shorter)
+        if (new - old or quotes(shorter) - quotes(line)
+                or (quotes(line) - lost_quotes <= quotes(shorter) and old - lost_sources <= new)):
+            return text.replace(shorter, shorter + '\n' + line, 1)
         return text.replace(shorter, line, 1)
     visible = prose(text)
     heading = re.search(r'^## ' + re.escape(section) + r'$', visible, re.M) if section else None

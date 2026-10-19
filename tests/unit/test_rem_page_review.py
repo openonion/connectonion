@@ -946,15 +946,16 @@ def test_undated_lines_keep_their_place_after_dated_history_and_decisions(headin
     page = (f'# Avery Lin\n\n## {heading}\n{older}\n{newer}\n\n'
             '- Earlier introduction, date unknown. [3]\n- Follow-up date unknown. [3]\n\n'
             '## Sources\n- [1] gmail:m:1\n- [2] gmail:m:2\n- [3] gmail:m:3\n')
-    assert sort_history(page) == page.replace(f'{older}\n{newer}', f'{newer}\n{older}')
+    assert sort_history(page) == page.replace(f'{older}\n{newer}', f'{newer}\n{older}').replace(
+        '\n\n- Earlier', '\n- Earlier')
 
 
 @pytest.mark.parametrize('heading', ['History', 'Key decisions'])
-def test_one_dated_history_or_decision_line_is_untouched(heading):
+def test_one_dated_history_or_decision_line_removes_blank_between_items(heading):
     from connectonion.rem.page_review import sort_history
     page = (f'# Avery Lin\n\n## {heading}\n- 2026-10-20: agreed to a call. [1]\n\n'
             '- Earlier introduction, date unknown. [1]\n\n## Sources\n- [1] gmail:m:1\n')
-    assert sort_history(page) == page
+    assert sort_history(page) == page.replace('\n\n- Earlier', '\n- Earlier')
 
 
 def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
@@ -1458,11 +1459,106 @@ def test_project_timeline_is_not_a_citable_original():
     assert 'Project timeline is a reading guide, not a citable original: 1' in errors
 
 
-def test_a_restored_line_replaces_its_cut_down_copy_instead_of_repeating_it():
+def test_a_restored_line_keeps_the_writer_rewrite_and_adds_missing_evidence_beside_it():
     from connectonion.rem.page_review import dropped, restore_dropped
     before = ('# Avery Lin\n\n## Who they are\nAvery leads Lantern [1]. Her profile says “building in Sydney,” [2]\n\n'
               '## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] https://example.com/avery\n')
     after = '# Avery Lin\n\n## Who they are\nAvery leads Lantern [1].\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n'
     restored = restore_dropped(before, after)
     assert dropped(before, restored) == []
-    assert restored.count('Avery leads Lantern') == 1
+    assert ('Avery leads Lantern [1].\n'
+            'Avery leads Lantern [1]. Her profile says “building in Sydney,” [2]') in restored
+
+
+@pytest.mark.parametrize('heading', ['History', 'Key decisions'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_same_date_history_duplicates_keep_longer_line_and_merge_all_citations(heading, reverse):
+    from connectonion.rem.page_review import sort_history
+    short = '- 2026-10-20: Avery Lin shipped Lantern. [1][W1]'
+    long = '- **2026-10-20** — Avery Lin shipped Lantern with a smaller interface. [2]'
+    lines = [short, long, short] if not reverse else [long, short, short]
+    other = '- 2026-10-19: Avery Lin shipped Lantern. [3]'
+    page = (f'# Lantern\n\n## {heading}\n' + '\n\n'.join([*lines, other])
+            + '\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n'
+            '- [3] github:acme/lantern#13\n- [W1] https://example.com/lantern\n')
+    result = sort_history(page)
+    assert long + ' [1][W1]\n' + other in result
+    assert result.count('Avery Lin shipped Lantern') == 2
+    assert not re.search(r'^- [^\n]+\n(?:[ \t]*\n)+- ', result.partition('\n## Sources')[0], re.M)
+    assert sort_history(result) == result
+
+
+def test_exact_history_duplicates_collapse_but_distinct_same_date_decisions_remain():
+    from connectonion.rem.page_review import sort_history
+    first = '- 2026-10-20: Ship the smaller Lantern interface. [1]'
+    second = '- 2026-10-20: Archive the abandoned database migration. [2]'
+    page = f'# Lantern\n\n## Key decisions\n{first}\n{first}\n{second}\n'
+    assert sort_history(page) == page.replace(f'{first}\n{first}', first)
+
+
+def test_restore_keeps_rewrite_with_new_sources_and_restores_lost_evidence():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Who they are\n'
+              'Avery leads Lantern. “Keep small tools” [7]. Her profile says “building in Sydney” [8].\n\n'
+              '## Sources\n- [7] gmail:aaaaaaaaaaaa\n- [8] https://example.com/avery\n')
+    rewrite = 'Avery leads Lantern. “Keep small tools” [1][3].'
+    after = (f'# Avery Lin\n\n## Who they are\n{rewrite}\n\n## Sources\n'
+             '- [1] gmail:aaaaaaaaaaaa\n- [3] github:acme/lantern#12\n')
+    result = restore_dropped(before, after)
+    assert rewrite + '\nAvery leads Lantern.' in result
+    assert 'Her profile says “building in Sydney” [4].' in result
+    assert '- [3] github:acme/lantern#12' in result
+    assert dropped(before, result) == []
+    assert restore_dropped(before, result) == result
+
+
+def test_restore_checks_loss_again_after_each_line_to_avoid_repeating_shared_quote():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Insight\n- First: “Keep small tools”. [7]\n'
+              '- Second: “Keep small tools”. [7]\n\n## Sources\n- [7] gmail:aaaaaaaaaaaa\n')
+    after = '# Avery Lin\n\n## Insight\nNew work. [1]\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    result = restore_dropped(before, after)
+    assert result.count('“Keep small tools”') == 1
+    assert dropped(before, result) == []
+
+
+@pytest.mark.parametrize('wording,count', [('“Keep small tools”', 1), ('Keep small tools', 2)])
+def test_history_dedupe_merges_only_a_line_whose_quotes_the_longer_keeps(wording, count):
+    from connectonion.rem.page_review import dropped, restore_dropped, sort_history
+    short = '- 2026-10-20: Avery Lin said “Keep small tools” for Lantern. [1]'
+    long = f'- 2026-10-20: Avery Lin said {wording} for Lantern and shipped the smaller interface. [2]'
+    page = (f'# Lantern\n\n## Key decisions\n{short}\n{long}\n\n## Sources\n'
+            '- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n')
+    result = sort_history(page)
+    assert result.count('- 2026-10-20:') == count
+    assert '“Keep small tools”' in result
+    assert dropped(page, result) == []
+    assert restore_dropped(page, result) == result
+    assert sort_history(result) == result
+
+
+def test_restore_never_replaces_rewrite_citing_new_id_even_when_number_was_reused():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Insight\nAvery leads Lantern. “Keep small tools”. [1]\n\n'
+              '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    rewrite = 'Avery leads Lantern. [1]'
+    after = f'# Avery Lin\n\n## Insight\n{rewrite}\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    result = restore_dropped(before, after)
+    assert rewrite + '\nAvery leads Lantern. “Keep small tools”. [2]' in result
+    assert '- [1] github:acme/lantern#12' in result
+    assert dropped(before, result) == []
+
+
+def test_restore_cannot_lose_an_earlier_quote_when_another_quote_is_retained_elsewhere():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    prefix = 'Avery Lin leads Lantern in Sydney and keeps its tools small. '
+    first = prefix + '“Stay calm”. [1]'
+    second = prefix + '“Keep small tools” and file the request. [1][2]'
+    before = (f'# Avery Lin\n\n## Insight\n{first}\n{second}\n\n## Sources\n'
+              '- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n')
+    after = (f'# Avery Lin\n\n## Insight\n{first}\nThey said “Keep small tools”. [1]\n\n'
+             '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    result = restore_dropped(before, after)
+    assert first + '\n' + second in result
+    assert dropped(before, result) == []
+    assert restore_dropped(before, result) == result

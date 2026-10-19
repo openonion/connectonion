@@ -371,11 +371,12 @@ def project(notebook, monkeypatch):
 
     def run(argv, **kw):
         calls.append(argv)
-        assert kw == {"capture_output": True, "text": True, "timeout": 120}
+        timeout = 600 if argv[:1] == ["gh"] and argv[1] != "search" else 120
+        assert kw == {"capture_output": True, "text": True, "timeout": timeout}
         if argv[0] == "gh":
             if argv[1] == "search":
                 return SimpleNamespace(returncode=0, stdout="[]", stderr="")
-            assert argv[2:9] == ["list", "-R", "owner/atlas", "--state", "all", "--limit", "400"]
+            assert argv[2:9] == ["list", "-R", "owner/atlas", "--state", "all", "--limit", "5000"]
             assert argv[9:] == ["--json", "number,title,body,author,createdAt,state,url,comments"]
             number = 41 if argv[1] == "issue" else 42
             output = json.dumps([{
@@ -744,3 +745,106 @@ def test_carried_losses_are_repaired_or_restored_after_two_repairs(notebook, mon
         assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
         review = json.loads((directory / 'review.json').read_text())
         assert review['accepted'] and review['restored_lines'] == 1
+
+
+def test_periods_budget_whole_months_oldest_first():
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "pr", "line": "x" * size}
+            for month, size in ((4, 100), (3, 16_000), (2, 8_000), (1, 8_000))]
+    assert feature._periods(rows) == [("2025-01", "2025-01"), ("2025-02", "2025-02"),
+                                      ("2025-03", "2025-03"), ("2025-04", "2025-04")]
+    for first, last in feature._periods(rows):
+        entries = [row for row in rows if first <= row["date"][:7] <= last]
+        assert first == last or len(feature._timeline_text(entries)) <= feature.PERIOD_CHARS
+    assert feature._periods([]) == []
+    assert feature._periods([dict(row, line="Small step") for row in rows]) == [("2025-01", "2025-04")]
+
+
+def test_periods_merge_smallest_neighbours_to_six_deterministically():
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "pr", "line": "x" * 8_000}
+            for month in range(12, 0, -1)]
+    expected = [(f"2025-{month:02d}", f"2025-{month + 1:02d}") for month in range(1, 13, 2)]
+    assert len(expected) == feature.MAX_PERIODS
+    assert feature._periods(rows) == expected
+    assert feature._periods(list(reversed(rows))) == expected
+
+
+@pytest.mark.parametrize("record,months,size,expected", [
+    ("projects/lantern.md", 0, 100, 0),
+    ("projects/lantern.md", 2, 100, 1),
+    ("projects/lantern.md", 2, 8_000, 2),
+    ("people/avery-lin.md", 2, 8_000, 0),
+    ("orgs/acme.md", 2, 8_000, 0)])
+def test_enrich_passes_period_turns_only_for_long_project_history(notebook, monkeypatch, record, months, size, expected):
+    notebook.write(record, "# Lantern\n")
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "pr", "line": "x" * size}
+            for month in range(1, months + 1)]
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
+    monkeypatch.setattr(feature, "_mapped_sessions", lambda *a: [])
+    monkeypatch.setattr(feature, "_github_items", lambda *a: ([], []))
+    monkeypatch.setattr(feature, "_git_log_items", lambda *a: [])
+    monkeypatch.setattr(feature, "_history_rows", lambda *a: rows)
+    calls = []
+
+    def run(book, items, config, **kw):
+        calls.append(kw)
+        return {"usage": {"input_tokens": 123}, "threads": ["one-thread"]}
+
+    outcome = feature.enrich(notebook.root, record, runner=run)
+    assert len(calls) == 1
+    assert outcome["periods"] == expected
+    assert outcome["usage"] == {"input_tokens": 123} and outcome["threads"] == ["one-thread"]
+    if expected < 2:
+        assert "turns" not in calls[0]
+    else:
+        turns = calls[0]["turns"]
+        assert len(turns) == expected + 1
+        assert "period 1 of 2" in turns[0] and "2025-01–2025-01" in turns[0]
+        assert "Do not follow other leads yet" in turns[0]
+        assert "Period 2 of 2: 2025-02–2025-02" in turns[1]
+        assert "do not repeat lines already on the page" in turns[1]
+        assert "follow the remaining leads" in turns[-1] and "final reply" in turns[-1]
+
+
+def test_github_listing_paginates_up_to_5000_with_ten_minute_timeout(monkeypatch):
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [("/work/lantern", "acme/lantern")])
+    monkeypatch.setattr(feature.shutil, "which", lambda command: "/mock/gh")
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        assert argv[argv.index("--limit") + 1] == str(feature.GITHUB_LIST_LIMIT) == "5000"
+        assert kw == {"capture_output": True, "text": True, "timeout": 600}
+        return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(feature.subprocess, "run", run)
+    assert feature._github_items("# Lantern\n") == ([], ["github acme/lantern: 0 issues, 0 pull requests"])
+    assert [argv[1] for argv in calls] == ["issue", "pr"]
+
+
+@pytest.mark.parametrize("harness,expected_input", [("codex", 3), ("claude-code", 6)])
+def test_enrich_period_turns_resume_one_thread_and_keep_usage(notebook, monkeypatch, harness, expected_input):
+    record = "projects/lantern.md"
+    notebook.write(record, "# Lantern\n")
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "pr", "line": "x" * 8_000} for month in (1, 2)]
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
+    monkeypatch.setattr(feature, "_mapped_sessions", lambda *a: [])
+    monkeypatch.setattr(feature, "_github_items", lambda *a: ([], []))
+    monkeypatch.setattr(feature, "_git_log_items", lambda *a: [])
+    monkeypatch.setattr(feature, "_history_rows", lambda *a: rows)
+    monkeypatch.setattr(feature, "read_config", lambda root: {**read_config(root), "runner": harness})
+    calls = []
+
+    def run(workdir, prompt, config, stage, **kw):
+        assert stage == "enrich"
+        calls.append((workdir, prompt, kw))
+        return {"result": "No new finding", "session_id": "first-thread" if len(calls) == 1 else "same-thread",
+                "usage": {"input_tokens": len(calls)}}
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "promote_with_repairs", lambda *a, **kw: pytest.fail("unchanged page reviewed"))
+    result = feature.enrich(notebook.root, record, runner=runner.run_stage)
+    assert result["periods"] == 2 and result["usage"] == {"input_tokens": expected_input}
+    assert len(calls) == 3
+    assert "2025-01–2025-01" in calls[0][1] and "2025-02–2025-02" in calls[1][1]
+    assert [kw for _, _, kw in calls] == [{}, {"session": "first-thread"}, {"session": "first-thread"}]
+    assert len({workdir for workdir, _, _ in calls}) == 1

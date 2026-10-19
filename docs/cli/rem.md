@@ -425,6 +425,9 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   unread attachments, names, older threads and other channels, adds what they
   establish, and replies with a lead list: `followed`, `open` (the next run's
   work) and `blocked`. The lead list is printed and kept in the run record.
+  Project history is studied oldest first, one period per turn in the same
+  thread before other leads, with the full GitHub listing up to 5,000 issues
+  and 5,000 pull requests per repository.
 - **muse** is one conversation of seven turns in the same Codex or Claude Code
   thread (`co ai --json --resume <session>`): turn 1 writes at least twenty
   questions and picks five; turns 2–6 study one question each and edit the

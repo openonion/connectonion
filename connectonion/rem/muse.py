@@ -17,6 +17,10 @@ from .project_material import stored
 from .service import now, run_logs, subscriptions
 
 ENRICH_DAYS = 3650
+# 2026-10-20: gh paginated 1,346 PRs with comments in 36 s; 400 hid older history.
+GITHUB_LIST_LIMIT = 5000
+PERIOD_CHARS = 15_000
+MAX_PERIODS = 6
 INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
@@ -126,9 +130,9 @@ def _github_items(page, title="") -> tuple[list[dict], list[str]]:
             continue
         rows = []
         for kind in ("issue", "pr"):
-            result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", "400",
+            result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", str(GITHUB_LIST_LIMIT),
                                      "--json", "number,title,body,author,createdAt,state,url,comments"],
-                                    capture_output=True, text=True, timeout=120)
+                                    capture_output=True, text=True, timeout=600)
             if result.returncode:
                 coverage.append(f"github {repo}: not read ({result.stderr.strip()[:200]})")
                 break
@@ -213,17 +217,54 @@ def _history_rows(page, github, title="") -> list[dict]:
     return list({(row["date"], row["line"]): row for row in rows}.values())
 
 
-def _timeline_text(rows) -> str:
-    """Keep every period visible even when a busy history needs fewer examples."""
+def _history_months(rows) -> list[tuple[str, list[dict]]]:
     months = defaultdict(list)
     for row in rows:
         months[row["date"][:7]].append(row)
+    return sorted(months.items())
+
+
+def _periods(rows) -> list[tuple[str, str]]:
+    """2026-10-20: four enrich rounds found only October decisions in a history since 2025-08.
+
+    Budget consecutive months, leaving a busy month whole; beyond six periods,
+    merge the smallest neighbours, allowing the merged periods to exceed the budget.
+    """
+    periods = []
+    for month, entries in _history_months(rows):
+        size = len(_timeline_text(entries))
+        if periods and periods[-1][2] + size <= PERIOD_CHARS:
+            first, _, previous_size = periods.pop()
+            periods.append((first, month, previous_size + size))
+        else:
+            periods.append((month, month, size))
+    while len(periods) > MAX_PERIODS:
+        at = min(range(len(periods) - 1), key=lambda i: periods[i][2] + periods[i + 1][2])
+        first, last = periods[at:at + 2]
+        periods[at:at + 2] = [(first[0], last[1], first[2] + last[2])]
+    return [(first, last) for first, last, _ in periods]
+
+
+def _enrich_turns(periods) -> tuple[str, ...]:
+    first, last = periods[0]
+    return (f"Read the page, the coverage and ledger items, and the skill; then study period 1 of "
+            f"{len(periods)}: {first}–{last}. Read only this period of the timeline: read the originals its lines point to "
+            "and add that period's turning points as dated, cited Key decisions lines. "
+            "Do not follow other leads yet.",
+            *(f"Period {k} of {len(periods)}: {first}–{last}. Same as before; "
+              "do not repeat lines already on the page." for k, (first, last) in enumerate(periods[1:], 2)),
+            "Now follow the remaining leads as the skill says, check what you must not drop, and give the final reply.")
+
+
+def _timeline_text(rows) -> str:
+    """Keep every period visible even when a busy history needs fewer examples."""
+    months = _history_months(rows)
     header = ("Project history, oldest first. Reading guide only: cite the `github:` ids; "
               "cite a commit as `git:<full sha>` (look it up with `git -C <path> show`).")
     # Every line while the whole history fits: a 6.5k timeline cut October's 40 handoff PRs to 12.
     for count in (None, 30, 12, 8, 5, 3, 1):
         lines = [header]
-        for month, entries in sorted(months.items()):
+        for month, entries in months:
             commits = sum(row["kind"] == "commit" for row in entries)
             prs = sum(row["kind"] == "pr" for row in entries)
             issues = sum(row["kind"] == "issue" for row in entries)
@@ -259,13 +300,15 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
         title, handles, days=ENRICH_DAYS, clients={}, subscriptions=subscriptions(root), attachments_dir=None,
         mail_skipped="live mail is not searched by enrich; the saved mail archive was read",
         stage_progress=stage_progress, archive_root=root, record=record)
-    timeline = []
+    timeline, periods = [], []
     if record.startswith("projects/"):
         sessions = _mapped_sessions(root, record)
         github, github_coverage = _github_items(page, title)
         logs = _git_log_items(page)
+        rows = _history_rows(page, github, title)
+        periods = _periods(rows)
         timeline = [{"role": "timeline", "source": "investigation:timeline", "timestamp": now().isoformat(),
-                     "text": _timeline_text(_history_rows(page, github, title))}]
+                     "text": _timeline_text(rows)}]
         gathered = list({item["source"]: item for item in [*gathered, *sessions, *github, *logs]}.values())
         coverage += [f"mapped sessions: {len(sessions)} owner messages", *github_coverage,
                      f"git log: {len(logs)} checkouts read (reading guide only)"]
@@ -280,9 +323,11 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
              *_cited_originals(root, page, set(ledger[0]["sources"])), *_prior_runs(root, record)]
     if stage_progress:
         stage_progress("following leads")
-    result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
+    turns = {"turns": _enrich_turns(periods)} if len(periods) > 1 else {}
+    result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress, **turns)
     restored = _restore(notebook, record, page, stage="Enrich")
-    return {**_outcome(notebook, record, page, result, items=len(gathered), coverage=coverage), "restored": restored}
+    return {**_outcome(notebook, record, page, result, items=len(gathered), coverage=coverage),
+            "restored": restored, "periods": len(periods)}
 
 
 def _prior_runs(root: Path, record: str) -> list[dict]:
