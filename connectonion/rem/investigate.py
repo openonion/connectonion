@@ -1483,7 +1483,7 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
             "counts": {"quotes": [counts[0], quotes_after], "insight": [counts[2], insight_after]}}
 
 
-def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None):
+def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None, context=()):
     """One turn that edits the hedged lines the final round left, if any (#2343).
 
     The final round answered NO CHANGE on 6 of 17 pages in the 2026-10-10 trial
@@ -1503,7 +1503,9 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
               "timestamp": datetime.now(timezone.utc).isoformat(),
               "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
                       f"note:\n\n{notebook.read(record)}"},
-             {"role": "round", "source": "investigation:round", "text": note}]
+             {"role": "round", "source": "investigation:round", "text": note},
+             # The facts the audit judges contact dates against (see quote_turn).
+             *[item for item in context if item.get("role") == "facts"]]
     if stage_progress:
         stage_progress("editing round")
     page = notebook.read(record)
@@ -1602,7 +1604,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
     page = notebook.read(record)
-    before, after, edit = editing_turn(runner, notebook, record, config, stage_progress)
+    before, after, edit = editing_turn(runner, notebook, record, config, stage_progress, context)
     if edit is not None:
         reason = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():

@@ -2941,3 +2941,27 @@ def test_a_quote_turn_that_loses_carried_quotes_is_undone(tmp_path):
     assert out['changed'] == [] and 'Must not be accepted.' not in out['report']
     assert out['refused_rounds'] == [
         "Quote round rejected: Turn kept 0 of the page's 5 quotes; restored the prior page"]
+
+
+def test_the_editing_and_quote_turns_carry_the_facts_item(tmp_path):
+    """2026-10-20 reruns: a turn without the facts item let the audit refute the computed
+    First contact ("runner_facts: []"), and promotion had nothing to put back."""
+    notebook = inv.Notebook(tmp_path)
+    record = "people/avery-lin.md"
+    page = ("# Avery Lin\n\nAvery is a tester [1].\n\n## Facts\n"
+            "- First contact: 2026-08-10 (earliest mail found) [1]\n\n## Insight\n- Unknown\n\n"
+            "## History\n- 2026-08-12: Trial — completion is not established [2]\n\n## Uncertainties\n- Unknown\n\n"
+            "## Sources\n"
+            + "".join(f"- [{n}] gmail:{n:012x} — 2026-08-1{n}\n" for n in range(1, 6)))
+    notebook.write(record, page)
+    facts = {"role": "facts", "source": "investigation:facts", "text": "- First contact: 2026-08-10", "facts": []}
+    seen = []
+
+    def runner(_notebook, items, _config, stage):
+        seen.append(items)
+        return {"changed": [], "usage": {}}
+
+    inv.editing_turn(runner, notebook, record, {}, context=[facts, {"role": "coverage", "text": "x"}])
+    inv.quote_turn(runner, notebook, record, [[]], (0, 5, 0), {}, context=[facts])
+    assert all(facts in items for items in seen) and len(seen) == 2
+    assert not any(item.get("role") == "coverage" for item in seen[0])
