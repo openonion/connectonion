@@ -664,7 +664,7 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
-                   "investigation:original-evidence",
+                   "investigation:original-evidence", "investigation:timeline",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
@@ -1084,6 +1084,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
             errors.append(f'Project input scope is not a citable original: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:timeline'):
+            errors.append(f'Project timeline is a reading guide, not a citable original: {key}')
         if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
             errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
@@ -1593,6 +1595,18 @@ SHRINK_FLOOR = 1000
 
 def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
+
+
+def quotes(text: str) -> set[str]:
+    """Links may change layout without changing the words the page kept."""
+    return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
+
+
+def dropped(before: str, after: str) -> list[str]:
+    """Name each loss so a resumed writer can restore it exactly."""
+    return ([f'Dropped quote the page had: “{quote}”' for quote in sorted(quotes(before) - quotes(after))]
+            + [f'Dropped source id the page had: {source}'
+               for source in sorted(_listed_sources(before) - _listed_sources(after))])
 
 
 def enumeration_only(text: str) -> bool:

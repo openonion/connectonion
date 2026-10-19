@@ -665,6 +665,8 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
         text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
                  "clauses beside it; the audit is a correction guide, not a source.")
+    if any(error.startswith("Dropped") for error in errors):
+        text += " Put each named quote and source back where it was, unchanged, unless an original contradicts it."
     if record.startswith("projects/"):
         text += (" Replace invented `git:` or `file:` citations with supplied source ids, or with pinned ones: "
                  "a `file:` id needs a file under mapped Paths and its current SHA-256, a `git:` id a full "
@@ -759,7 +761,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, sort_history, normalize_numbered_sources,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
-                              single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts)
+                              single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
+                              dropped as dropped_content)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -845,6 +848,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
+    if carried:
+        errors += dropped_content(carried, text)
     if last_resort and record.startswith("people/") and not _lead(text):
         # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
@@ -1218,7 +1223,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    'A connection is only a candidate; do not establish it before user review. Do not repeat rejected proposals. ')
     if candidate and record.startswith("projects/"):
         prompt += (" Before saving the Project page, check every Sources entry: "
-                   "investigation:coverage, investigation:project-scope, "
+                   "investigation:coverage, investigation:project-scope, investigation:timeline, "
                    "investigation:project-inventory, investigation:project-repositories and "
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "

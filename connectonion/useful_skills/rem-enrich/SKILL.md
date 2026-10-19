@@ -22,13 +22,14 @@ do not repeat a lead already followed.
 
 ## A project's history
 
-On a project page, the ledger's `github:` items (its own repository and the
-search of the owner's other repositories by its name) and the git log are how
-it was built. A page with no `Key decisions` older than its latest weeks has
-not read them: read the issues and pull requests that name the project, oldest
-first, and add the turning points (when it started, what was merged, what was
-decided and why) as dated, cited `Key decisions` lines. The latest message is
-rarely the lead to follow first on a thin project page.
+The timeline item is the project's whole history, oldest first, month by month.
+Walk it from the first month and read the originals at its `github:` ids;
+look up commits for their full `git:` ids. The timeline itself is a reading guide.
+Add the turning points — the start, what was merged, what was decided and why —
+as dated, cited `Key decisions` lines spread across the whole history, not only
+the latest weeks. For a monorepo sub-project, its history is the pull requests
+in the timeline whose titles name it. Follow those through the older months
+before following the latest session.
 
 ## 1. Find the leads
 
@@ -105,6 +106,7 @@ other findings go in your reply as followed leads, so muse can use them.
 Before you finish, compare your page with the page you were given: every
 `“…”` quote and every `Sources` id it had must still be on the page, and every
 `[n]` in the text must be defined under `Sources`. Restore any you dropped.
+A dropped quote or source id is refused and sent back for repair.
 
 ## Final reply
 

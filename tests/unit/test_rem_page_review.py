@@ -1373,3 +1373,24 @@ def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
     fixed = repair_run_citations("projects/atlas.md", page, "")
     assert "- People: Unknown\n" in fixed and "- Repository: example/atlas [1]" in fixed
     assert "investigation:page" not in fixed
+
+
+def test_dropped_reports_exact_quote_and_source_losses():
+    from connectonion.rem.page_review import dropped, quotes
+    before = ('# Avery Lin\n\n“Keep [these words](https://example.com) unchanged”. [7]\n'
+              '\n```text\n“Ignore this example”\n```\n'
+              '\n## Sources\n- [7] gmail:aaaaaaaaaaaa — 2025-03-04\n')
+    after = '# Avery Lin\n\nA paraphrase. [1]\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    assert quotes(before) == {'Keep these words unchanged'}
+    assert dropped(before, after) == [
+        'Dropped quote the page had: “Keep these words unchanged”',
+        'Dropped source id the page had: gmail:aaaaaaaaaaaa']
+    renumbered = before.replace('[7]', '[1]').replace('[these words](https://example.com)', 'these words')
+    assert dropped(before, renumbered) == []
+
+
+def test_project_timeline_is_not_a_citable_original():
+    candidate = '# Lantern\n\nStarted in March. [1]\n\n## Sources\n- [1] investigation:timeline\n'
+    errors = validate('projects/lantern.md', candidate, '# Lantern\n', [
+        {'role': 'timeline', 'source': 'investigation:timeline', 'text': 'Project history'}])
+    assert 'Project timeline is a reading guide, not a citable original: 1' in errors
