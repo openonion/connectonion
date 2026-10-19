@@ -78,8 +78,8 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch)
     assert "within the daily call cap" in text
 
 
-def _run(started, before, after, phase="daily-investigation"):
-    return {"started_at": started, "phase": phase,
+def _run(started, before, after, phase="daily-investigation", finished=None):
+    return {"started_at": started, "finished_at": finished or started, "phase": phase,
             "quota": {"before": {"used_percent": before, "resets_at": RESETS, "window_minutes": WEEK},
                       "after": {"used_percent": after, "resets_at": RESETS, "window_minutes": WEEK}}}
 
@@ -180,11 +180,15 @@ def test_runs_the_whole_percent_meter_cannot_see_are_counted_from_their_tokens()
                 "usage": {"input_tokens": 100_000}}   # the meter moved: it, not the tokens, counts
     maintenance = {**_run("2026-09-30T04:00:00+00:00", 29, 29, phase=None),
                    "usage": {"input_tokens": 9_000_000}}
-    assert quota.points_spent([unmoved, unread, measured, maintenance], now) == 3.5
+    assert quota.points_spent([unmoved, unread, measured, maintenance], now) == 2.1
 
 
-def test_status_says_what_a_point_is(tmp_path, monkeypatch):
+@pytest.mark.parametrize("speed, tokens", [("standard", "12,000,000"), ("fast", "6,000,000")])
+def test_status_says_what_a_point_is(tmp_path, monkeypatch, speed, tokens):
     from connectonion.cli.commands import rem_status
+    from connectonion.rem.config import prepare, set_config
+    prepare(tmp_path)
+    set_config(tmp_path, ["speed", speed])
     for name in ("_notebook", "_today", "_mailboxes", "_archive"):
         monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
     monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem"])
@@ -197,7 +201,7 @@ def test_status_says_what_a_point_is(tmp_path, monkeypatch):
     text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
                                                  verbose=True)).plain
     assert "0.6 of 10 investigation points" in text
-    assert "1% of your Codex week" in text and "1,000,000 tokens" in text
+    assert "1% of your Codex week" in text and f"{tokens} tokens a point" in text
 
 
 def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_flat():
@@ -207,7 +211,7 @@ def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_
     began = "2026-09-30T00:00:00+00:00"
     earlier = {**_run("2026-09-29T23:00:00+00:00", 29, 29, phase="investigate"), "usage": {"input_tokens": 9_000_000}}
     mine = [{**_run(f"2026-09-30T0{n}:00:00+00:00", 29, 29, phase="investigate"),
-             "usage": {"input_tokens": 1_200_000, "cached_input_tokens": 200_000}} for n in (1, 2)]
+             "usage": {"input_tokens": 14_400_000, "cached_input_tokens": 2_400_000}} for n in (1, 2)]
     assert quota.run_spent(start, now, [earlier, *mine], began) == 2
     assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 5   # the meter, when it says more
 
@@ -219,7 +223,7 @@ def test_depth_points_only_counts_enrich_and_muse_in_its_week(monkeypatch, known
     today = datetime(2026, 10, 20, tzinfo=timezone.utc)
     monkeypatch.setattr(service, "now", lambda: today)
     meter = {"resets_at": int(today.timestamp()), "window_minutes": WEEK} if known else {"unknown": "fixture"}
-    logs = [{"phase": phase, "started_at": date + "T00:00:00+00:00", "usage": {"input_tokens": 1_000_000}}
+    logs = [{"phase": phase, "started_at": date + "T00:00:00+00:00", "usage": {"input_tokens": 12_000_000}}
             for phase, date in [("enrich", "2026-10-19"), ("muse", "2026-10-18"),
                                 ("investigate", "2026-10-19"), ("enrich", "2026-10-12")]]
     assert quota.depth_points(logs, meter) == 2
@@ -232,3 +236,65 @@ def test_points_spent_accepts_a_phase_filter():
     logs = [_run("2026-09-28T01:00:00+00:00", 5, 8, phase="enrich"),
             _run("2026-09-28T02:00:00+00:00", 8, 10)]
     assert quota.points_spent(logs, now, phases=quota.DEPTH_PHASES) == 3
+
+
+def test_overlapping_runs_count_the_batchs_meter_movement_once():
+    began = "2026-09-30T01:00:00+00:00"
+    runs = [_run(began, 40, 50, finished="2026-09-30T02:00:00+00:00") for _ in range(16)]
+    now = {"used_percent": 50, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent(runs, now) == 10
+    assert quota.run_spent({**now, "used_percent": 40}, now, runs, began) == 10
+
+
+def test_separate_overlapping_groups_leave_out_the_owners_coding_between_them():
+    runs = [_run("2026-09-30T01:00:00+00:00", 40, 42, finished="2026-09-30T02:00:00+00:00"),
+            _run("2026-09-30T01:30:00+00:00", 40, 42, finished="2026-09-30T02:30:00+00:00"),
+            _run("2026-09-30T03:00:00+00:00", 45, 47, finished="2026-09-30T04:00:00+00:00"),
+            _run("2026-09-30T03:30:00+00:00", 45, 47, finished="2026-09-30T04:30:00+00:00")]
+    now = {"used_percent": 47, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent(list(reversed(runs)), now) == 4
+
+
+def test_groups_join_transitively_and_running_runs_only_join_at_their_start():
+    first = _run("2026-09-30T01:00:00+00:00", 40, 41, finished="2026-09-30T02:00:00+00:00")
+    middle = _run("2026-09-30T01:30:00+00:00", 40, 42, finished="2026-09-30T03:00:00+00:00")
+    last = _run("2026-09-30T02:30:00+00:00", 41, 43, finished="2026-09-30T04:00:00+00:00")
+    inside = _run("2026-09-30T01:45:00+00:00", 40, 40)
+    outside = _run("2026-09-30T05:00:00+00:00", 43, 43)
+    for run in (inside, outside):
+        run.pop("finished_at")
+    assert list(quota._groups([outside, last, inside, middle, first])) == [[first, middle, inside, last], [outside]]
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_a_flat_or_unknown_overlapping_group_counts_fresh_tokens_at_each_runs_speed(unknown):
+    standard = {**_run("2026-09-30T01:00:00+00:00", 40, 40, finished="2026-09-30T02:00:00+00:00"),
+                "usage": {"input_tokens": 15_000_000, "cached_input_tokens": 4_000_000,
+                          "output_tokens": 1_000_000}}
+    if unknown:
+        standard["quota"] = {"before": {"unknown": "unavailable"}, "after": {"unknown": "unavailable"}}
+    fast = {**standard, "speed": "fast"}
+    assert quota.run_points(standard) == 1
+    assert quota.run_points({**standard, "speed": "standard"}) == 1
+    assert quota.run_points(fast) == 2
+    now = {"used_percent": 40, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent([standard, fast], now) == 3
+    assert quota.run_spent(now, now, [standard, fast], standard["started_at"]) == 3
+
+
+@pytest.mark.parametrize("after", [2, 95])
+def test_a_group_crossing_a_weekly_reset_counts_tokens_even_if_the_meter_ends_higher(after):
+    run = {**_run("2026-09-30T01:00:00+00:00", 90, after, finished="2026-09-30T02:00:00+00:00"),
+           "usage": {"input_tokens": 12_000_000}}
+    run["quota"]["after"]["resets_at"] += WEEK * 60
+    assert quota.run_points(run) == 1
+    assert quota.group_points([run, run]) == 2
+
+
+def test_group_readings_allow_reset_timestamp_jitter_but_not_drift():
+    runs = [_run("2026-09-30T01:00:00+00:00", 40, 42, finished="2026-09-30T02:00:00+00:00")
+            for _ in range(2)]
+    runs[1]["quota"]["after"]["resets_at"] += 1
+    assert quota.group_points(runs) == 2
+    runs[1]["quota"]["after"]["resets_at"] += 3600
+    assert quota.group_points(runs) == 0
