@@ -472,6 +472,22 @@ def test_timeline_cap_reduces_examples_without_hiding_months():
     assert len(re.findall(r"^- ", text, re.M)) == 12 * 5
 
 
+def test_timeline_lists_every_line_while_the_history_fits():
+    rows = [{"date": "2025-03-01", "kind": "pr", "line": f"github:acme/lantern#{n} PR merged: Step {n}"}
+            for n in range(40)]
+    assert len(re.findall(r"^- ", feature._timeline_text(rows), re.M)) == 40
+
+
+def test_history_keeps_own_repository_items_and_others_that_name_the_project(monkeypatch):
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [("/x", "acme/lantern")])
+    item = lambda source, subject: {"source": source, "subject": subject, "kind": "pr", "state": "MERGED",
+                                    "timestamp": "2025-03-01T00:00:00Z"}
+    rows = feature._history_rows("# Lantern\n", [item("github:acme/lantern#1", "Fix README"),
+                                                 item("github:acme/core#9", "lantern: send a task"),
+                                                 item("github:acme/core#10", "Unrelated release")], "Lantern")
+    assert [row["line"].split()[0] for row in rows] == ["github:acme/lantern#1", "github:acme/core#9"]
+
+
 def test_timeline_caps_even_one_long_subject_per_month():
     rows = [{"date": f"2025-{month:02d}-01", "kind": "commit", "line": "commit 1a2b3c4: " + "x" * 10_000}
             for month in range(1, 13)]
@@ -494,6 +510,7 @@ def test_history_reads_each_mapped_directory_and_falls_back_to_head(tmp_path, mo
                                stdout="1a2b3c4 2025-03-05 Start Lantern\n", stderr="")
 
     monkeypatch.setattr(feature.subprocess, "run", run)
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [])
     rows = feature._history_rows(f"# Lantern\n\n## Paths\n- {checkout}\n", [])
     assert rows == [{"date": "2025-03-05", "kind": "commit", "line": "commit 1a2b3c4: Start Lantern"}]
     assert [call[4] for call in calls] == ["origin/HEAD", "HEAD"]

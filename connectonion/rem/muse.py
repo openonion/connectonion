@@ -182,11 +182,20 @@ def _git_log_items(page) -> list[dict]:
     return items
 
 
-def _history_rows(page, github) -> list[dict]:
+def _about(item, title, repos) -> bool:
+    """Its own repository's items, or another's that name it: best-match search hits
+    on a word in a body filled the 2026-10-20 handoff timeline with unrelated work."""
+    repo = item["source"].removeprefix("github:").partition("#")[0]
+    return repo in repos or title.casefold() in item["subject"].casefold()
+
+
+def _history_rows(page, github, title="") -> list[dict]:
     """A sub-project's commits must touch its mapped directory, not just its repository."""
+    repos = {repo for _, repo in _github_checkouts(page)}
     rows = [{"date": item["timestamp"][:10], "kind": item["kind"],
              "line": f"{item['source']} {'PR' if item['kind'] == 'pr' else 'issue'} "
-                     f"{item['state'].lower()}: {item['subject']}"} for item in github]
+                     f"{item['state'].lower()}: {item['subject']}"}
+            for item in github if _about(item, title, repos)]
     for path in dict.fromkeys(project_paths(page)):
         if not Path(path).is_dir():
             continue
@@ -200,7 +209,8 @@ def _history_rows(page, github) -> list[dict]:
             for line in result.stdout.splitlines():
                 sha, date, subject = line.split(" ", 2)
                 rows.append({"date": date, "kind": "commit", "line": f"commit {sha}: {subject}"})
-    return rows
+    # Two mapped folders of one checkout list the same commits.
+    return list({(row["date"], row["line"]): row for row in rows}.values())
 
 
 def _timeline_text(rows) -> str:
@@ -210,7 +220,8 @@ def _timeline_text(rows) -> str:
         months[row["date"][:7]].append(row)
     header = ("Project history, oldest first. Reading guide only: cite the `github:` ids; "
               "cite a commit as `git:<full sha>` (look it up with `git -C <path> show`).")
-    for count in (12, 8, 5, 3, 1):
+    # Every line while the whole history fits: a 6.5k timeline cut October's 40 handoff PRs to 12.
+    for count in (None, 30, 12, 8, 5, 3, 1):
         lines = [header]
         for month, entries in sorted(months.items()):
             commits = sum(row["kind"] == "commit" for row in entries)
@@ -254,7 +265,7 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
         github, github_coverage = _github_items(page, title)
         logs = _git_log_items(page)
         timeline = [{"role": "timeline", "source": "investigation:timeline", "timestamp": now().isoformat(),
-                     "text": _timeline_text(_history_rows(page, github))}]
+                     "text": _timeline_text(_history_rows(page, github, title))}]
         gathered = list({item["source"]: item for item in [*gathered, *sessions, *github, *logs]}.values())
         coverage += [f"mapped sessions: {len(sessions)} owner messages", *github_coverage,
                      f"git log: {len(logs)} checkouts read (reading guide only)"]
