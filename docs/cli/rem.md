@@ -410,6 +410,7 @@ on one page that is already written, each through the same `co ai` runner and
 the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
 claims pass the audit; review names problems back to the writer twice at most).
+The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
 
 ```bash
 co rem enrich projects/aurora.md   # discovery: follow what the page has not followed

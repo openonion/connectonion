@@ -106,6 +106,7 @@ def deepen(root, record, *, stage=None) -> dict:
     text = notebook.read(record)
     before, quotes = page_metrics(text), muse._quotes(text)
     enrich = _run(root, record, "enrich", stage or _stage)
+    after_enrich = page_metrics(notebook.read(record))
     thought = _run(root, record, "muse", stage or _stage)
     text = notebook.read(record)
     after = page_metrics(text)
@@ -113,6 +114,7 @@ def deepen(root, record, *, stage=None) -> dict:
     rounds = history.setdefault(record, [])
     row = {"round": len(rounds) + 1, "at": service.now().isoformat(),
            **{key: [before[key], after[key]] for key in before},
+           "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - muse._quotes(text)),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            "points": sum(quota._token_points(result.get("usage")) for result in (enrich, thought))}

@@ -177,6 +177,63 @@ def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
     assert report['verdict'] == 'fail' and report['findings'] == [findings[1]]
 
 
+@pytest.mark.parametrize('claim,carried_claim', [
+    ('Last contact: 2026-10-17', 'Last contact: 2026-10-17 [3]'),
+    ('Avery [3] leads\n the lab.', 'Avery\t leads [W2] the lab.'),
+])
+def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, carried_claim):
+    finding = {'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
+
+    def audited(*_args):
+        return {'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})}
+
+    candidate = '# Avery\n\n' + claim + '\n\n## Sources\n- [1] gmail:invented\n'
+    report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+        carried='# Avery\n\n' + carried_claim, items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+    assert report['findings'] == [] and report['verdict'] == 'pass'
+    assert report['carried_findings'] == [finding]
+
+
+def test_carried_findings_do_not_hide_a_new_claim(tmp_path):
+    claims = ['Avery leads the lab.', 'Avery approved the launch.']
+    findings = [{'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
+                for claim in claims]
+
+    def audited(*_args):
+        return {'result': json.dumps({'verdict': 'FAIL', 'findings': findings})}
+
+    candidate = '# Avery\n\n' + '\n'.join(claims) + '\n\n## Sources\n- [1] gmail:invented\n'
+    report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+        carried=claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+    assert report['verdict'] == 'fail' and report['findings'] == findings[1:]
+    assert report['carried_findings'] == findings[:1]
+
+
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+def test_last_resort_keeps_carried_claim_and_drops_only_new_claim(tmp_path, monkeypatch, stage):
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## What it is\n- Unknown', '## What it is\nA local demo. [1]')
+                .replace('- (none yet)', '- [1] codex:invented — 2026-10-01'))
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('A local demo. [1]', 'A local demo. [1]\nLaunch is approved. [1]'))
+    findings = [{'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
+                for claim in ['A local demo.', 'Launch is approved.']]
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {
+        'result': json.dumps({'verdict': 'FAIL', 'findings': findings})})
+    result = {}
+    runner.promote_with_repairs(notebook, record, candidate, original,
+        [{'source': 'codex:invented', 'text': 'What should we build?'}], tmp_path, result,
+        workdir=tmp_path, config={}, stage=stage, run=lambda *args: {})
+    assert result['repairs'] == 2 and result['refuted_claims'] == ['Launch is approved.']
+    assert 'A local demo.' in notebook.read(record) and 'Launch is approved.' not in notebook.read(record)
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['carried_findings'] == findings[:1] and report['findings'] == findings[1:]
+
+
 def test_audit_sees_session_folder_without_promoting_it_to_subfolder_purpose(tmp_path, monkeypatch):
     record, source = 'projects/work.md', 'codex:session:5121301'
     folder = tmp_path / 'work'

@@ -683,10 +683,14 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     """
     run = run or run_task
     result.update(repairs=0, repair_usage={})
+    # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
+    # not written; a person page lost a quarter of its text in one round.
+    carried = original if stage in ("enrich", "muse") else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                                       lock_held=lock_held, investigation=investigation, claim_config=config)
+                                       lock_held=lock_held, investigation=investigation, claim_config=config,
+                                       carried=carried)
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -714,7 +718,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                       lock_held=lock_held, investigation=investigation, last_resort=True)
+                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried)
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -750,7 +754,7 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None, last_resort=False):
+                       investigation=True, claim_config=None, last_resort=False, carried=""):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, normalize_numbered_sources,
@@ -859,7 +863,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         with _promotion_lock(notebook.root, candidate, usage, lock_held):
             retain_cited_originals(notebook, text, items)
         report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
-                                            record=record, items=items)
+                                            record=record, items=items, carried=carried)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])

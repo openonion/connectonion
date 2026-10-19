@@ -104,18 +104,19 @@ def test_priority_ties_sort_by_record(root):
 
 def test_deepen_records_metrics_insights_losses_and_points(root):
     calls = []
+    enriched = PAGE + '\n“Enrich quote” [2]\n- [2] gmail:cccccccccccc\n'
     after = PAGE.replace('“Keep the original words”', 'New finding') + '\n“Another quote” [2]\n- [2] gmail:bbbbbbbbbbbb\n'
 
     def stage(path, record, name):
         calls.append(name)
-        if name == "muse":
-            Notebook(path).write(record, after)
+        Notebook(path).write(record, enriched if name == "enrich" else after)
         return {"insights": 2, "usage": {"input_tokens": 1_500_000, "cached_input_tokens": 500_000}}
 
     row = depth.deepen(root, RECORD, stage=stage)
     assert calls == ["enrich", "muse"]
     assert row == {"record": RECORD, "round": 1, "at": TODAY.isoformat(), "chars": [len(PAGE), len(after)],
                    "quotes": [1, 1], "sources": [1, 2], "insights": 2, "lost_quotes": 1,
+                   "after_enrich": {"chars": len(enriched), "quotes": 2, "sources": 2},
                    "enrich": "completed", "muse": "completed", "points": 2}
     assert read_json(state_path(root, "depth.json"), {})[RECORD] == [{k: v for k, v in row.items() if k != "record"}]
     assert depth.deepen(root, RECORD, stage=stage)["round"] == 2
@@ -134,6 +135,7 @@ def test_failed_enrich_still_runs_muse_and_counts_failed_usage(root, message, ou
     row = depth.deepen(root, RECORD, stage=stage)
     assert calls == ["enrich", "muse"]
     assert row["enrich"] == outcome and row["muse"] == "no_change" and row["points"] == 0.5
+    assert row["after_enrich"] == depth.page_metrics(PAGE)
 
 
 def test_failed_muse_is_recorded_without_usage(root):
