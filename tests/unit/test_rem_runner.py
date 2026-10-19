@@ -104,7 +104,8 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     assert 'Start from the current line' in prompts[0]
     assert 'git log' in prompts[0] and 'git show' in prompts[0]
-    assert 'alone is not an insight. None' in prompts[0]
+    assert 'alone is not an insight. Each is about the project' in prompts[0]
+    assert 'None: `- Unknown`.' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
@@ -567,6 +568,24 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
                               [{"source": "gmail:m:1"}], tmp_path, None)
     thread.join()
     assert "Leads the data team." in notebook.read("people/mia.md")
+
+
+def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record)
+    older = '- 2026-09-01: introduction — agreed to a call. [1]'
+    newer = '- 2026-10-01: proposal — declined. [2]'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## History\n- Unknown — not investigated yet',
+                                          f'## History\n{older}\n{newer}')
+                         .replace('- (none yet)', '- [1] gmail:m:1\n- [2] gmail:m:2')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    runner._promote_candidate(notebook, record, candidate, original,
+                              [{'source': 'gmail:m:1'}, {'source': 'gmail:m:2'}], tmp_path, None)
+    page = notebook.read(record)
+    assert f'## History\n{newer}\n{older}\n' in page
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
 def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):

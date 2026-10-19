@@ -115,9 +115,9 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
         assert "## Improve, do not append" in text
 
 
-# 15k until 1.9.3: the quote rule (decision 076) paid for itself in accuracy --
-# 45% of sampled claims misled where the page retold instead of quoting.
-INSTRUCTION_BUDGET = 16_500
+# 16.5k until 1.9.3rc7: quote-first page rules (2026-10-20 trial: quotes per
+# first-run person page 6.8 -> 17, First contact filled 0/5 -> 5/5).
+INSTRUCTION_BUDGET = 18_500
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
@@ -259,8 +259,17 @@ def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():
     person = instructions("investigate", page_kind="person")
     assert "booking's displayed time zone belongs to the event display" in person
     assert "unless the source explicitly labels" in person
-    assert "`Now` sentence names the source-backed reason for closure" in person
+    for rule in ("Quote first, paraphrase last", "(earliest mail found)",
+                 "each ending `?`", "At most one `Now:`",
+                 "A company's main or reception line"):
+        assert rule in person, rule
     assert len(person) <= INSTRUCTION_BUDGET
+
+
+@pytest.mark.parametrize("stage", ["maintain", "investigate"])
+@pytest.mark.parametrize("kind", ["person", "project"])
+def test_both_page_writers_carry_the_quote_first_page_rule(stage, kind):
+    assert "Quote first, paraphrase last" in instructions(stage, page_kind=kind)
 
 
 def test_every_pass_may_delete_not_only_add():
@@ -279,5 +288,6 @@ def test_shared_history_rule_only_applies_to_shapes_with_history():
     """connectonion's project page gained a History outside its shape (2026-10-15)."""
     for kind in ('person', 'org', 'project'):
         text = instructions('investigate', page_kind=kind)
-        assert '`History`, on a page whose shape has one:' in text
+        assert ('`History`, on a page whose shape has one: one dated line per thread, '
+                'how it ended; at most sixteen.') in text
         assert len(text) <= INSTRUCTION_BUDGET

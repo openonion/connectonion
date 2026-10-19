@@ -47,6 +47,6 @@ Follow `rem-page-person` exactly, the lead above `Facts` included:
 is mandatory**: who owes what, since when.
 
 **Insight, three shapes** (never copy these facts):
-- `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`
+- `At stake: the revised SOW Mia requested on 2026-09-21 is due 2026-10-03, at the A$15k she rejected in August [5][9]`
 - `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
 - `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`
