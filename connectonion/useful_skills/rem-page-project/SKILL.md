@@ -71,8 +71,9 @@ Keep this order for those shown:
 - `Started`: the history packet's `First commit` line (`2026-10-14 — first
   commit ee2ca3d [n]`) or the owner's words that began it; the first observed
   session is not a start.
-- `People`: `the user (owner, sessions in these folders)` and anyone the
-  messages or commits name working on it, cited; `Unknown` only with neither.
+- `People`: `the user (sessions in these folders)`, cited to one of the
+  user's messages (never `investigation:page`), and anyone the messages or
+  commits name working on it; `Unknown` only with neither.
 
 **Insight**: 2–4 cited bullets of at most 30 words, starting `Now:`,
 `Changed:`, `At stake:` or `Pattern:`: what changes a teammate's next
