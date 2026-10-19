@@ -12,14 +12,14 @@ from math import log2
 from . import muse, quota, runner, service
 from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
-from .page_review import _listed_sources
+from .page_review import _listed_sources, quotes as page_quotes
 
 REST_DAYS = 30
 DEPTH_PHASES = quota.DEPTH_PHASES
 
 
 def page_metrics(text) -> dict:
-    return {"chars": len(text), "quotes": len(muse._quotes(text)), "sources": len(_listed_sources(text))}
+    return {"chars": len(text), "quotes": len(page_quotes(text)), "sources": len(_listed_sources(text))}
 
 
 def _stamp(value) -> datetime:
@@ -104,7 +104,7 @@ def _run(root, record, name, stage) -> dict:
 def deepen(root, record, *, stage=None) -> dict:
     notebook = Notebook(root)
     text = notebook.read(record)
-    before, quotes = page_metrics(text), muse._quotes(text)
+    before, quotes = page_metrics(text), page_quotes(text)
     enrich = _run(root, record, "enrich", stage or _stage)
     after_enrich = page_metrics(notebook.read(record))
     thought = _run(root, record, "muse", stage or _stage)
@@ -115,7 +115,7 @@ def deepen(root, record, *, stage=None) -> dict:
     row = {"round": len(rounds) + 1, "at": service.now().isoformat(),
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
-           "insights": thought.get("insights", 0), "lost_quotes": len(quotes - muse._quotes(text)),
+           "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
     rounds.append(row)

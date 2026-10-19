@@ -1373,3 +1373,96 @@ def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
     fixed = repair_run_citations("projects/atlas.md", page, "")
     assert "- People: Unknown\n" in fixed and "- Repository: example/atlas [1]" in fixed
     assert "investigation:page" not in fixed
+
+
+def test_dropped_reports_exact_quote_and_source_losses():
+    from connectonion.rem.page_review import dropped, quotes
+    before = ('# Avery Lin\n\n“Keep [these words](https://example.com) unchanged”. [7]\n'
+              '\n```text\n“Ignore this example”\n```\n'
+              '\n## Sources\n- [7] gmail:aaaaaaaaaaaa — 2025-03-04\n')
+    after = '# Avery Lin\n\nA paraphrase. [1]\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    assert quotes(before) == {'Keep these words unchanged'}
+    assert dropped(before, after) == [
+        'Dropped quote the page had: “Keep these words unchanged”',
+        'Dropped source id the page had: gmail:aaaaaaaaaaaa']
+    renumbered = before.replace('[7]', '[1]').replace('[these words](https://example.com)', 'these words')
+    assert dropped(before, renumbered) == []
+
+
+def test_restore_dropped_uses_current_numbers_and_keeps_before_order():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery\n\n## Who they are\n'
+              '- “Small tools travel far”. [56][W2]\n- “Keep the interface quiet”. [56]\n\n'
+              '## Sources\n- [56] https://profile.example.test — profile\n'
+              '- [W2] gmail:avery — 2026-10-01\n')
+    after = ('# Avery\n\n## Who they are\nNew work. [1]\n\n## Insight\nA useful connection. [3]\n\n'
+             '## Sources\n- [1] codex:new\n- [3] https://profile.example.test — existing\n'
+             '- [W1] gmail:avery — 2026-10-01\n')
+    restored = restore_dropped(before, after)
+    assert ('New work. [1]\n- “Small tools travel far”. [3][W1]\n'
+            '- “Keep the interface quiet”. [3]\n\n## Insight') in restored
+    assert restored.count('https://profile.example.test') == 1
+    assert dropped(before, restored) == []
+    assert restore_dropped(before, restored) == restored
+
+
+@pytest.mark.parametrize('separator', [' ', ': ', ':'])
+def test_restore_dropped_appends_full_source_definition_for_a_lost_id(separator):
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery\n\n## Insight\nA profile detail. [56][57]\n\n## Sources\n'
+              f'  - [56]{separator}https://profile.example.test — profile captured 2026-10-01\n'
+              '- [57] gmail:avery — original message\n')
+    after = '# Avery\n\n## Insight\nNew work. [2]\n\n## Sources\n- [2] gmail:avery — kept\n'
+    restored = restore_dropped(before, after)
+    assert 'A profile detail. [3][2]' in restored
+    assert f'  - [3]{separator}https://profile.example.test — profile captured 2026-10-01\n' in restored
+    assert dropped(before, restored) == []
+    assert restore_dropped(before, restored) == restored
+
+
+def test_restore_dropped_places_missing_section_lines_before_sources_once():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery\n\n## Old section\n- “Keep useful details”. [7]\n'
+              '- “Keep useful details”. [7]\n\n## Another old section\nA second detail. [8]\n\n'
+              '## Sources\n- [7] gmail:avery\n- [8] https://other.example.test\n')
+    after = '# Avery\n\n## Insight\nNew work. [1]\n\n## Sources\n- [1] codex:new\n'
+    restored = restore_dropped(before, after)
+    assert ('- “Keep useful details”. [2]\nA second detail. [3]\n\n## Sources') in restored
+    assert restored.count('Keep useful details') == 1
+    assert '## Old section' not in restored
+    assert dropped(before, restored) == []
+
+
+def test_restore_dropped_adds_sources_when_candidate_has_none():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = '# Avery\n\n“Keep useful details”. [W3]\n\n## Sources\n- [W3] https://profile.example.test — profile\n'
+    restored = restore_dropped(before, '# Avery\n\nNew work.\n')
+    assert '“Keep useful details”. [1]\n\n## Sources\n- [1] https://profile.example.test — profile' in restored
+    assert dropped(before, restored) == []
+
+
+def test_restore_dropped_keeps_numeric_markdown_links():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery\n\n## Insight\n- “Use [1](https://example.test) simple tool”. [7]\n\n'
+              '## Sources\n- [7] gmail:avery\n')
+    after = '# Avery\n\n## Insight\nNew work. [1]\n\n## Sources\n- [1] codex:new\n'
+    restored = restore_dropped(before, after)
+    assert '- “Use [1](https://example.test) simple tool”. [2]' in restored
+    assert dropped(before, restored) == []
+
+
+def test_project_timeline_is_not_a_citable_original():
+    candidate = '# Lantern\n\nStarted in March. [1]\n\n## Sources\n- [1] investigation:timeline\n'
+    errors = validate('projects/lantern.md', candidate, '# Lantern\n', [
+        {'role': 'timeline', 'source': 'investigation:timeline', 'text': 'Project history'}])
+    assert 'Project timeline is a reading guide, not a citable original: 1' in errors
+
+
+def test_a_restored_line_replaces_its_cut_down_copy_instead_of_repeating_it():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Who they are\nAvery leads Lantern [1]. Her profile says “building in Sydney,” [2]\n\n'
+              '## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] https://example.com/avery\n')
+    after = '# Avery Lin\n\n## Who they are\nAvery leads Lantern [1].\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n'
+    restored = restore_dropped(before, after)
+    assert dropped(before, restored) == []
+    assert restored.count('Avery leads Lantern') == 1

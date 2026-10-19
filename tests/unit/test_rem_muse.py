@@ -108,8 +108,10 @@ def test_stage_instructions_compose_core_and_page_kind(stage):
     assert (directory / "rem-correspondent/SKILL.md").read_text() not in text
 
 
+@pytest.mark.parametrize("stage", ["enrich", "muse"])
 @pytest.mark.parametrize("loss", ["quote", "source", "none"])
-def test_muse_restores_lost_quotes_and_sources(notebook, loss):
+def test_deepening_restores_lost_quotes_and_sources(notebook, monkeypatch, loss, stage):
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
     updated = PAGE + "\nAn insight.\n"
     if loss == "quote":
         updated = updated.replace("“Keep the original words”", "A paraphrase")
@@ -117,16 +119,19 @@ def test_muse_restores_lost_quotes_and_sources(notebook, loss):
         updated = updated.replace("- [1] gmail:aaaaaaaaaaaa", "- [1] gmail:bbbbbbbbbbbb")
 
     def fake(book, items, config, **kw):
-        assert kw["stage"] == "muse" and kw["turns"] == feature.MUSE_TURNS
+        assert kw["stage"] == stage
+        if stage == "muse":
+            assert kw["turns"] == feature.MUSE_TURNS
         book.write(RECORD, updated)
         return {"changed": [RECORD], "report": "An insight"}
 
-    result = feature.muse(notebook.root, RECORD, runner=fake)
+    result = getattr(feature, stage)(notebook.root, RECORD, runner=fake)
     assert notebook.read(RECORD) == (updated if loss == "none" else PAGE)
     assert bool(result["restored"]) == (loss != "none")
     assert result["changed"] == ([RECORD] if loss == "none" else [])
     assert result["page_chars"] == [len(PAGE), len(notebook.read(RECORD))]
-    assert result["turns"] == 7
+    if stage == "muse":
+        assert result["turns"] == 7
 
 
 def test_enrich_keeps_and_replaces_its_ledger(notebook, monkeypatch):
@@ -382,8 +387,14 @@ def project(notebook, monkeypatch):
         elif argv[3:] == ["remote", "get-url", "origin"]:
             output = "git@github.com:owner/atlas.git\n"
         else:
-            assert argv[3:] == ["log", "origin/HEAD", "--date=short", "--format=%h %ad %an %s"]
-            output = "abc123 2026-10-02 Owner Ship atlas\n"
+            assert argv[-2:] == ["--", "."]
+            if "--first-parent" in argv:
+                assert argv[3:-2] == ["log", "origin/HEAD", "--first-parent", "--reverse",
+                                      "--date=short", "--format=%h %ad %s"]
+                output = "abc123 2026-10-02 Ship atlas\n"
+            else:
+                assert argv[3:-2] == ["log", "origin/HEAD", "--date=short", "--format=%h %ad %an %s"]
+                output = "abc123 2026-10-02 Owner Ship atlas\n"
         return SimpleNamespace(returncode=0, stdout=output, stderr="")
 
     monkeypatch.setattr(feature.subprocess, "run", run)
@@ -396,6 +407,12 @@ def test_project_enrich_retains_all_originals_and_review_can_open_them(project):
 
     def review(book, items, config, **kw):
         stages.append(kw["stage"])
+        if kw["stage"] == "enrich":
+            assert [item["role"] for item in items[:4]] == ["page", "coverage", "timeline", "evidence-index"]
+            assert items[2]["source"] == "investigation:timeline"
+            assert "## 2026-10 — 1 commits, 1 pull requests, 1 issues" in items[2]["text"]
+            assert "github:owner/atlas#42 PR open: Discussion 42" in items[2]["text"]
+            assert "commit abc123: Ship atlas" in items[2]["text"]
         ledger = next(item for item in items if item["role"] == "evidence-index")
         originals = next(item for item in items if item["role"] == "original_evidence")
         gathered = json.loads(Path(originals["file"]).read_text())
@@ -433,6 +450,72 @@ def test_project_enrich_retains_all_originals_and_review_can_open_them(project):
     assert stages == ["enrich", "muse"]
 
 
+def test_timeline_walks_months_oldest_first_and_lists_discussions_before_commits():
+    rows = [
+        {"date": "2025-04-01", "kind": "issue", "line": "github:acme/lantern#14 issue open: Next step"},
+        {"date": "2025-03-01", "kind": "commit", "line": "commit 1a2b3c4: Start Lantern"},
+        {"date": "2025-03-04", "kind": "pr", "line": "github:acme/lantern#12 PR merged: Ship Lantern"},
+        {"date": "2025-03-05", "kind": "issue", "line": "github:acme/lantern#13 issue closed: Pick a name"}]
+    text = feature._timeline_text(rows)
+    assert text.index("## 2025-03 — 1 commits, 1 pull requests, 1 issues") < text.index("## 2025-04")
+    assert text.index("#12 PR merged") < text.index("#13 issue closed") < text.index("commit 1a2b3c4")
+    assert "## 2025-04 — 0 commits, 0 pull requests, 1 issues" in text
+    assert "`git:<full sha>`" in text and "`git -C <path> show`" in text
+
+
+def test_timeline_cap_reduces_examples_without_hiding_months():
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "commit", "line": f"commit {n:07x}: " + "x" * 900}
+            for month in range(1, 13) for n in range(41)]
+    text = feature._timeline_text(rows)
+    assert len(text) <= 60_000
+    assert len(re.findall(r"^## 2025-\d\d — 41 commits, 0 pull requests, 0 issues$", text, re.M)) == 12
+    assert len(re.findall(r"^- ", text, re.M)) == 12 * 5
+
+
+def test_timeline_lists_every_line_while_the_history_fits():
+    rows = [{"date": "2025-03-01", "kind": "pr", "line": f"github:acme/lantern#{n} PR merged: Step {n}"}
+            for n in range(40)]
+    assert len(re.findall(r"^- ", feature._timeline_text(rows), re.M)) == 40
+
+
+def test_history_keeps_own_repository_items_and_others_that_name_the_project(monkeypatch):
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [("/x", "acme/lantern")])
+    item = lambda source, subject: {"source": source, "subject": subject, "kind": "pr", "state": "MERGED",
+                                    "timestamp": "2025-03-01T00:00:00Z"}
+    rows = feature._history_rows("# Lantern\n", [item("github:acme/lantern#1", "Fix README"),
+                                                 item("github:acme/core#9", "lantern: send a task"),
+                                                 item("github:acme/core#10", "Unrelated release")], "Lantern")
+    assert [row["line"].split()[0] for row in rows] == ["github:acme/lantern#1", "github:acme/core#9"]
+
+
+def test_timeline_caps_even_one_long_subject_per_month():
+    rows = [{"date": f"2025-{month:02d}-01", "kind": "commit", "line": "commit 1a2b3c4: " + "x" * 10_000}
+            for month in range(1, 13)]
+    text = feature._timeline_text(rows)
+    assert len(text) <= 60_000
+    assert len(re.findall(r"^## 2025-\d\d — 1 commits, 0 pull requests, 0 issues$", text, re.M)) == 12
+    assert len(re.findall(r"^- 2025-\d\d-01 commit 1a2b3c4:", text, re.M)) == 12
+
+
+def test_history_reads_each_mapped_directory_and_falls_back_to_head(tmp_path, monkeypatch):
+    checkout = tmp_path / "lantern"
+    checkout.mkdir()
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(list(argv))
+        assert argv[:4] == ["git", "-C", str(checkout), "log"]
+        assert argv[5:] == ["--first-parent", "--reverse", "--date=short", "--format=%h %ad %s", "--", "."]
+        return SimpleNamespace(returncode=1 if argv[4] == "origin/HEAD" else 0,
+                               stdout="1a2b3c4 2025-03-05 Start Lantern\n", stderr="")
+
+    monkeypatch.setattr(feature.subprocess, "run", run)
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [])
+    rows = feature._history_rows(f"# Lantern\n\n## Paths\n- {checkout}\n", [])
+    assert rows == [{"date": "2025-03-05", "kind": "commit", "line": "commit 1a2b3c4: Start Lantern"}]
+    assert [call[4] for call in calls] == ["origin/HEAD", "HEAD"]
+
+
 @pytest.mark.parametrize("failed_kind", ["issue", "pr"])
 def test_failed_github_read_is_covered_and_enrich_runs(project, monkeypatch, failed_kind):
     run = feature.subprocess.run
@@ -448,7 +531,8 @@ def test_failed_github_read_is_covered_and_enrich_runs(project, monkeypatch, fai
                             runner=lambda book, items, config, **kw: seen.extend(items) or {})
     assert "github owner/atlas: not read (" + ("Not logged in " + "x" * 300)[:200] + ")" in result["coverage"]
     assert result["items"] == 3
-    assert not any(source.startswith("github:") for source in seen[2]["sources"])
+    ledger = next(item for item in seen if item["role"] == "evidence-index")
+    assert not any(source.startswith("github:") for source in ledger["sources"])
 
 
 @pytest.mark.parametrize("remote", ["https://github.com/owner/atlas.git", "ssh://git@github.com/owner/atlas.git",
@@ -487,7 +571,7 @@ def test_git_log_falls_back_to_head(project, monkeypatch):
 def test_github_item_preserves_long_discussion_up_to_40000_characters():
     item = feature._github_item("owner/atlas", {
         "number": 99, "author": None, "title": "Deleted author", "url": "url",
-        "state": "OPEN", "createdAt": "date", "body": "x" * 50_000})
+        "state": "OPEN", "createdAt": "date", "body": "x" * 50_000}, "issue")
     assert len(item["text"]) == 40_000 and item["speaker"] == ""
 
 
@@ -580,9 +664,14 @@ def test_github_owner_search_reaches_other_repos_and_keeps_richer_duplicates(mon
     def run(argv, **kw):
         calls.append(argv)
         if argv[1] == "search":
-            assert argv[3:] == ["Atlas", "--owner", "avery", "--limit", "100", "--json",
+            history = argv[3] == "Atlas in:title"
+            order = ["--sort", "created", "--order", "asc"] if history else []
+            assert argv[3:] == ["Atlas in:title" if history else "Atlas", "--owner", "avery", *order,
+                                "--limit", "300" if history else "100", "--json",
                                 "number,title,body,author,createdAt,state,url,repository"]
             rows = [row("avery/monorepo", 1), row("avery/sibling", 9)] if argv[2] == "issues" else []
+            if history and argv[2] == "prs":
+                rows = [dict(row("avery/sibling", 10), state="MERGED")]
         else:
             rows = [dict(row("avery/monorepo", 1), comments=[
                 {"createdAt": "2026-10-02", "body": "Full comment", "author": {"login": "avery"}}])]
@@ -592,10 +681,13 @@ def test_github_owner_search_reaches_other_repos_and_keeps_richer_duplicates(mon
 
     monkeypatch.setattr(feature.subprocess, "run", run)
     items, coverage = feature._github_items("# Atlas", "Atlas")
-    assert [item["source"] for item in items] == ["github:avery/monorepo#1", "github:avery/sibling#9"]
+    assert [item["source"] for item in items] == ["github:avery/monorepo#1", "github:avery/sibling#9",
+                                                 "github:avery/sibling#10"]
     assert "Full comment" in items[0]["text"]
     assert 'github search avery "Atlas": 2 issues, 0 pull requests' in coverage
-    assert len([argv for argv in calls if argv[1] == "search"]) == 2
+    assert [item["kind"] for item in items] == ["issue", "issue", "pr"]
+    assert items[-1]["state"] == "MERGED"
+    assert len([argv for argv in calls if argv[1] == "search"]) == 4
     calls.clear()
     feature._github_items("# Ax", "Ax")
     assert not any(argv[1] == "search" for argv in calls)
@@ -613,3 +705,42 @@ def test_failed_github_search_records_coverage(project, monkeypatch):
     items, coverage = feature._github_items(project.book.read(project.record), "Atlas")
     assert len(items) == 2
     assert 'github search owner "Atlas": not read (Not signed in)' in coverage
+
+
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+@pytest.mark.parametrize('repair', [True, False])
+def test_carried_losses_are_repaired_or_restored_after_two_repairs(notebook, monkeypatch, stage, repair):
+    # Isolate retention from page shape and source audits; promotion still runs its transformations.
+    monkeypatch.setattr(page_review, 'validate', lambda *a, **kw: [])
+    monkeypatch.setattr(page_review, 'misquoted', lambda *a, **kw: [])
+    monkeypatch.setattr(runner, 'AUDIT', SimpleNamespace(get=lambda: False))
+    directory = notebook.root / 'review'
+    directory.mkdir()
+    candidate = directory / 'candidate.md'
+    candidate.write_text(PAGE.replace('“Keep the original words”', 'A paraphrase')
+                         .replace('gmail:aaaaaaaaaaaa', 'gmail:bbbbbbbbbbbb'))
+    calls = []
+
+    def run(workdir, prompt, config, phase):
+        calls.append(prompt)
+        assert phase == stage
+        assert 'Dropped quote the page had: “Keep the original words”' in prompt
+        assert 'Dropped source id the page had: gmail:aaaaaaaaaaaa' in prompt
+        assert 'Put each named quote and source back where it was, unchanged, unless an original contradicts it.' in prompt
+        if repair:
+            candidate.write_text(PAGE + '\nA new finding.\n')
+        return {}
+
+    args = (notebook, RECORD, candidate, PAGE, [{'source': 'gmail:bbbbbbbbbbbb'}], directory, {})
+    kwargs = dict(workdir=notebook.root, config={}, stage=stage, run=run)
+    if repair:
+        runner.promote_with_repairs(*args, **kwargs)
+        assert len(calls) == 1
+        assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
+    else:
+        runner.promote_with_repairs(*args, **kwargs)
+        assert len(calls) == 2
+        assert 'They said A paraphrase. [1]' in notebook.read(RECORD)
+        assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
+        review = json.loads((directory / 'review.json').read_text())
+        assert review['accepted'] and review['restored_lines'] == 1

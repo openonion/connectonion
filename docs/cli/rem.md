@@ -432,9 +432,12 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   the last turn looks back, brings the lead and the page's shape in line with
   what changed, and lists the questions left open. Its material is the page,
   its cited originals, and the latest enrich lead list and muse open questions
-  for that page. After the review gate, a page that lost any `“…”` quote or
-  any `Sources` id it had at the start is put back as it was, and the result
-  says so.
+  for that page.
+
+Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
+if two repairs cannot restore them, the lost lines are put back as they were,
+with citations renumbered, so the page keeps its new work. A post-run guard
+also restores any remaining loss and reports it in the result.
 
 Both print whether the page changed and its size before and after, record a
 run in `co rem logs` (with usage, counted in the separate deepening budget),

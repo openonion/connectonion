@@ -1,5 +1,6 @@
 """Normalize page shapes and check a candidate before replacing an existing page."""
 
+import difflib
 import re
 from collections import Counter
 from pathlib import Path
@@ -195,22 +196,23 @@ def _carried_over(value: str, old_sources: str) -> bool:
 def _restore_citations(line: str, candidate: str, original: str) -> tuple[str, str]:
     """Carry a restored line's source ids into the candidate's numbering."""
     section = r'(?ms)^## Sources\n(.*?)(?=^## |^Investigation:|\Z)'
-    entry = r'^[ \t]*- \[(W?\d+)\][ \t]+([a-z][\w-]*:\S+)([^\n]*)$'
+    entry = r'^([ \t]*- \[(W?\d+)\][ \t]*:?[ \t]*)(\S+)([^\n]*)$'
     before, after = re.search(section, original), re.search(section, candidate)
-    old = {number: (source, suffix) for number, source, suffix in
+    old = {number: (prefix, source, suffix) for prefix, number, source, suffix in
            re.findall(entry, before[1] if before else '', re.M)}
-    citations = re.findall(r'\[(W?\d+)\]', line)
+    citations = re.findall(r'\[(W?\d+)\](?!\()', line)
     if any(number not in old for number in citations):
         return '', candidate
     rows = re.findall(entry, after[1] if after else '', re.M)
-    numbers = {source: number for number, source, _ in rows}
-    next_number = max((int(number) for number, _, _ in rows if number.isdigit()), default=0) + 1
+    numbers = {source: number for _, number, source, _ in rows}
+    next_number = max((int(number) for _, number, _, _ in rows if number.isdigit()), default=0) + 1
     mapping, added = {}, []
     for number in citations:
-        source, suffix = old[number]
+        prefix, source, suffix = old[number]
         if source not in numbers:
             numbers[source] = str(next_number)
-            added.append(f'- [{next_number}] {source}{suffix}')
+            prefix = prefix.replace(f'[{number}]', f'[{next_number}]', 1)
+            added.append(f'{prefix}{source}{suffix}')
             next_number += 1
         mapping[number] = numbers[source]
     if added:
@@ -221,7 +223,7 @@ def _restore_citations(line: str, candidate: str, original: str) -> tuple[str, s
             status = re.search(r'^Investigation:', candidate, re.M)
             at = status.start() if status else len(candidate)
             candidate = candidate[:at].rstrip('\n') + '\n\n## Sources\n' + '\n'.join(added) + '\n\n' + candidate[at:]
-    return re.sub(r'\[(W?\d+)\]', lambda m: f'[{mapping[m[1]]}]', line), candidate
+    return re.sub(r'\[(W?\d+)\](?!\()', lambda m: f'[{mapping[m[1]]}]', line), candidate
 
 
 def _subject_handles(record: str, page: str) -> set[str]:
@@ -664,7 +666,7 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
-                   "investigation:original-evidence",
+                   "investigation:original-evidence", "investigation:timeline",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
@@ -1084,6 +1086,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
             errors.append(f'Project input scope is not a citable original: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:timeline'):
+            errors.append(f'Project timeline is a reading guide, not a citable original: {key}')
         if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
             errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
@@ -1593,6 +1597,70 @@ SHRINK_FLOOR = 1000
 
 def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
+
+
+def quotes(text: str) -> set[str]:
+    """Links may change layout without changing the words the page kept."""
+    return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
+
+
+def dropped(before: str, after: str) -> list[str]:
+    """Name each loss so a resumed writer can restore it exactly."""
+    return ([f'Dropped quote the page had: “{quote}”' for quote in sorted(quotes(before) - quotes(after))]
+            + [f'Dropped source id the page had: {source}'
+               for source in sorted(_listed_sources(before) - _listed_sources(after))])
+
+
+def restore_dropped(before: str, after: str) -> str:
+    """Put carried lines back in their sections, using the candidate's source numbers."""
+    lost_quotes = quotes(before) - quotes(after)
+    lost_sources = _listed_sources(before) - _listed_sources(after)
+    sources = dict(re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)',
+                              before.partition('\n## Sources\n')[2]))
+    section, seen = '', set()
+    for line, visible in zip(before.splitlines(), prose(before).splitlines()):
+        if visible.startswith('## '):
+            section = visible[3:]
+            continue
+        if section == 'Sources' or line in seen:
+            continue
+        cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
+        if not (quotes(visible) & lost_quotes or cited & lost_sources):
+            continue
+        seen.add(line)
+        restored, after = _restore_citations(line, after, before)
+        if restored and restored not in after.splitlines():
+            after = _insert_restored_line(after, section, restored)
+    return after
+
+
+def _shorter_version(text: str, line: str) -> str:
+    """The candidate's cut-down copy of a restored line: mostly inside it, and citing nothing it does not.
+    Inserted beside it, the 2026-10-20 trial page said its Who-they-are sentence twice."""
+    cited = set(re.findall(r'\[(W?\d+)\]', line))
+    return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
+                 and set(re.findall(r'\[(W?\d+)\]', row)) <= cited
+                 and _contained(row, line) >= 0.8), '')
+
+
+def _contained(row: str, line: str) -> float:
+    """How much of the shorter row is in the line."""
+    blocks = difflib.SequenceMatcher(None, row, line, autojunk=False).get_matching_blocks()
+    return sum(block.size for block in blocks) / len(row)
+
+
+def _insert_restored_line(text: str, section: str, line: str) -> str:
+    shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
+    if shorter:
+        return text.replace(shorter, line, 1)
+    visible = prose(text)
+    heading = re.search(r'^## ' + re.escape(section) + r'$', visible, re.M) if section else None
+    following = re.search(r'^## ', visible[heading.end():], re.M) if heading else None
+    sources = re.search(r'^## Sources$', visible, re.M)
+    at = heading.end() + following.start() if following else len(text)
+    if not heading:
+        at = sources.start() if sources else len(text)
+    return text[:at].rstrip('\n') + '\n' + line + '\n\n' + text[at:]
 
 
 def enumeration_only(text: str) -> bool:
