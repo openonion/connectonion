@@ -179,6 +179,57 @@ def test_indexed_evidence_is_explicitly_readable_in_inline_and_file_tasks(tmp_pa
         assert 'Read all source material at' in prompt
 
 
+@pytest.mark.parametrize('sources', ['', '## Sources\n- [1] codex:old\n\n'])
+def test_sources_after_footer_move_to_end_of_sources_section(sources):
+    from connectonion.rem.page_review import sources_before_footer
+    head = '# Lantern\n\nA change. [82][W3]\n\n'
+    footer = 'Investigation: mapped 2026-10-20\n'
+    numeric = '- [82] github:acme/lantern#170 — 2026-07-01\n'
+    web = '- [W3] https://example.com\n'
+    text = head + sources + footer + numeric + 'Keep this note.\n' + web
+    section = sources.rstrip('\n') + '\n' if sources else '## Sources\n'
+    expected = head + section + numeric + web + '\n' + footer + 'Keep this note.\n'
+    assert sources_before_footer(text) == expected
+    assert sources_before_footer(expected) == expected
+
+
+@pytest.mark.parametrize('text', [
+    '# Lantern\n\n## Sources\n- [1] codex:old\n\nInvestigation: mapped today\n',
+    '# Lantern\n\nInvestigation: mapped today\nKeep this note.\n',
+    '# Lantern\n\n## Sources\n- [1] codex:old\n',
+])
+def test_sources_before_footer_leaves_pages_without_misplaced_sources_unchanged(text):
+    from connectonion.rem.page_review import sources_before_footer
+    assert sources_before_footer(text) == text
+
+
+@pytest.mark.parametrize('last_resort', [False, True])
+def test_project_promotion_keeps_history_and_drops_unused_sources_appended_after_footer(tmp_path, last_resort):
+    from connectonion.rem.runner import _promote_candidate
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'projects/lantern.md'
+    notebook.stub_project(record, 'Lantern')
+    original = notebook.read(record)
+    history = '- 2026-07-01: Added the export command. [82]'
+    text = original.replace('## What it is\n- Unknown — not investigated yet',
+                            '## What it is\nA local export tool. [82]')
+    text = text.replace('## Sources\n', f'## History\n{history}\n\n## Sources\n')
+    text += '\n- [82] github:acme/lantern#170 — 2026-07-01\n- [83] github:acme/lantern#171 — 2026-07-02\n'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(text)
+    items = [{'source': 'github:acme/lantern#170'}, {'source': 'github:acme/lantern#171'}]
+    assert 'Unused citation: 83' in validate(record, text, original, items)
+
+    _promote_candidate(notebook, record, candidate, original, items, tmp_path, None, last_resort=last_resort)
+
+    page = notebook.read(record)
+    assert history.replace('[82]', '[1]') in page and 'A local export tool. [1]' in page
+    assert page.index('- [1] github:acme/lantern#170') < page.index('Investigation:')
+    assert 'github:acme/lantern#171' not in page
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted']
+
+
 def test_numbered_source_list_is_normalized_without_changing_claims():
     text = ('# Aurora\n\nThe date is open. [1]\n\n## Sources\n'
             '1. `codex:synthetic:1` — user correction\n'

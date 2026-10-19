@@ -761,6 +761,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, sort_history, normalize_numbered_sources,
+                              sources_before_footer,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content)
@@ -768,9 +769,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
     from .fact_extract import OTHERS_PHONE
+    text = sources_before_footer(candidate.read_text(encoding="utf-8"))
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
-    text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
+    text = facts.upgrade(record, restore_runner_fields(record, text, original))
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
