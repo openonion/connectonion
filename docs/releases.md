@@ -25,6 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc7**: REM excludes internal Windows task sessions from new
+context imports, skill invocation counts and cached evidence samples. This prevents
+model probes and repair instructions from being treated as the owner's words. It does
+not purge old messages or repair existing claims. See [1.9.3rc7 notes](releases/1.9.3rc7.md).
+
+After this candidate is published, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc7'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc6**: a forwarded link no longer takes the name. A handoff addressed to
 one agent's mailbox and accepted by another agent is saved under the acceptor's own name, the
 addressed name keeps its own key, and names rc5 already re-pointed read as mail contacts again. See
@@ -34,7 +47,6 @@ addressed name keeps its own key, and names rc5 already re-pointed read as mail 
 python -m pip install --upgrade 'connectonion==1.9.3rc6'
 ```
 
-## Previous previews
 
 Release candidate **1.9.3rc5**: handoffs are end-to-end encrypted. `send` seals the handoff on
 your machine and the key travels after `#` in the link; after acceptance every message between the

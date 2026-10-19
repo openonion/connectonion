@@ -10,4 +10,4 @@ The failure was observable without asking a model or opening a private session: 
 
 The focused suites now pass 56 tests. This is source-level evidence on macOS, with Windows-shaped paths, rather than a native Windows onboarding trial. It does not prove the quality of generated pages. Nor does it quietly remove old memories: any earlier imported prompt and claims based on it need a separate review.
 
-For a memory product, identifying the speaker starts before summarization. A convincing sentence with a citation can still be wrong if the cited speaker was the notebook talking to itself. This patch is proposed for the next preview after review and CI; it is not a published release.
+For a memory product, identifying the speaker starts before summarization. A convincing sentence with a citation can still be wrong if the cited speaker was the notebook talking to itself. The fix has merged after review and CI. Candidate 1.9.3rc7 carries it; availability depends on the immutable-tag release workflow completing. The candidate does not claim a mature memory product.
