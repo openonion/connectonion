@@ -392,3 +392,18 @@ def test_native_accepted_no_change_recovers_before_sync_callback(tmp_path, monke
     monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("Accepted turn rebought"))
     assert service.run_sync(tmp_path)["outcome"] == "no_change"
     assert service.run_sync(tmp_path)["outcome"] == "no_change"
+
+
+def test_strict_custom_runner_keeps_its_existing_keyword_contract(tmp_path, monkeypatch):
+    book = _ready(tmp_path)
+    page = "people/alice.md"
+    book.stub_person(page, "Alice", [], email="alice@example.test")
+    reflections.add(tmp_path, page, "Assertion", author="Synthetic auditor", basis="Original")
+    calls = []
+    def maintain(notebook, items, config, kind):
+        assert items[-1]["role"] == "page" and items[-1]["record"] == page
+        calls.append(1)
+        return {"changed": []}
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda _config: None)
+    assert service.run_sync(tmp_path, runner=maintain)["outcome"] == "completed"
+    assert calls == [1]

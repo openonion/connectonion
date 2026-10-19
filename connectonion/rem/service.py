@@ -738,7 +738,8 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             # Trusted custom callbacks keep their material-first convention;
             # each call still names one explicit target page.
             supplied = page_items if execute is run_stage else [*material, page_items[0]]
-            result = execute(notebook, supplied, config, kind=kind, stage="maintain", maintenance_lock_held=True)
+            options = {"stage": "maintain", "maintenance_lock_held": True} if execute is run_stage else {}
+            result = execute(notebook, supplied, config, kind=kind, **options)
         except RunFailed as error:
             result = {"usage": error.usage, "refused": str(error)}
         shrunk = shrinkage(before, notebook.read(record)) if record in result.get("changed", []) else ""

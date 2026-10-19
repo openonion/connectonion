@@ -62,7 +62,9 @@ python -m pytest tests/ -n 4 --dist loadfile \
 ```
 
 Independent AI source/test review approved PR preparation after the initial
-blockers were repaired. No human founder review, fresh real init, real mailbox
+blockers were repaired. A final documentation/source cross-check then caught two
+native-only keywords leaking into strict custom callbacks. A strict-signature
+regression failed first; those keywords now remain native-only. No human founder review, fresh real init, real mailbox
 collection, scheduler execution or active process restart. Existing local preview
 security restriction remains; no screenshot workaround or current visual acceptance.
 Reader markup/styles/layout unchanged. Raw run outcomes and future page contents
