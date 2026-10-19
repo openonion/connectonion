@@ -117,7 +117,7 @@ def deepen(root, record, *, stage=None) -> dict:
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - muse._quotes(text)),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
-           "points": sum(quota._token_points(result.get("usage")) for result in (enrich, thought))}
+           "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
     rounds.append(row)
     write_json(state_path(root, "depth.json"), history)
     return {"record": record, **row}

@@ -110,7 +110,7 @@ def test_deepen_records_metrics_insights_losses_and_points(root):
     def stage(path, record, name):
         calls.append(name)
         Notebook(path).write(record, enriched if name == "enrich" else after)
-        return {"insights": 2, "usage": {"input_tokens": 1_500_000, "cached_input_tokens": 500_000}}
+        return {"insights": 2, "usage": {"input_tokens": 6_500_000, "cached_input_tokens": 500_000}}
 
     row = depth.deepen(root, RECORD, stage=stage)
     assert calls == ["enrich", "muse"]
@@ -129,7 +129,7 @@ def test_failed_enrich_still_runs_muse_and_counts_failed_usage(root, message, ou
     def stage(path, record, name):
         calls.append(name)
         if name == "enrich":
-            raise runner.RunFailed(message, {"output_tokens": 500_000})
+            raise runner.RunFailed(message, {"output_tokens": 3_000_000})
         return {"outcome": "no_change", "insights": 0}
 
     row = depth.deepen(root, RECORD, stage=stage)
@@ -173,8 +173,8 @@ def test_slot_checks_budget_before_each_page(root, monkeypatch, explicit):
     monkeypatch.setattr(service, "run_logs", lambda root: logs)
 
     def stage(path, record, name):
-        logs.append({"phase": name, "started_at": TODAY.isoformat(), "usage": {"input_tokens": 15_000_000}})
-        return {"usage": {"input_tokens": 15_000_000}}
+        logs.append({"phase": name, "started_at": TODAY.isoformat(), "usage": {"input_tokens": 180_000_000}})
+        return {"usage": {"input_tokens": 180_000_000}}
 
     result = depth.slot(root, records=[RECORD, "projects/atlas.md"] if explicit else None, stage=stage)
     assert len(result["rounds"]) == 1 and result["left"] == 1
@@ -209,7 +209,7 @@ def test_slot_stops_before_starting(root, monkeypatch, blocked):
         monkeypatch.setattr(quota, "read", lambda config: {"used_percent": 90})
     else:
         monkeypatch.setattr(service, "run_logs", lambda root: [
-            {"phase": "muse", "started_at": TODAY.isoformat(), "usage": {"input_tokens": 30_000_000}}])
+            {"phase": "muse", "started_at": TODAY.isoformat(), "usage": {"input_tokens": 360_000_000}}])
     result = depth.slot(root, stage=lambda *a: pytest.fail("started while blocked"))
     assert result["rounds"] == [] and result["left"] == 1 and result["stopped"]
 
