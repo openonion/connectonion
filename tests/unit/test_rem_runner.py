@@ -646,6 +646,42 @@ def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, 
     assert result['repairs'] == 1
 
 
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+def test_runner_restores_dropped_line_after_two_unsuccessful_repairs(notebook, tmp_path, stage):
+    from connectonion.rem.page_review import dropped
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery')
+    lost = '- Profile says “Small tools travel far” and “Keep the interface quiet”. [56][57]\n'
+    original = notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+    original = original.replace('## Who they are\n- Unknown', '## Who they are\n' + lost.rstrip())
+    original = original.replace('- (none yet)', '- [56] https://profile.example.test\n'
+                                '- [57] https://work.example.test')
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace(lost, '- Builds small research tools. [1]\n')
+                         .replace('- [56] https://profile.example.test\n- [57] https://work.example.test',
+                                  '- [1] codex:invented'))
+    prompts = []
+
+    def run(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        return {'usage': {'input_tokens': 1}, 'result': 'done'}
+
+    result = {}
+    runner.promote_with_repairs(notebook, record, candidate, original,
+        [{'source': 'codex:invented', 'text': 'Builds small research tools.'}], tmp_path, result,
+        workdir=tmp_path, config={}, stage=stage, run=run)
+    saved = notebook.read(record)
+    assert result['repairs'] == len(prompts) == 2
+    assert all('Dropped quote the page had:' in prompt and 'https://profile.example.test' in prompt
+               for prompt in prompts)
+    assert 'Builds small research tools. [1]' in saved
+    assert lost.replace('[56][57]', '[2][3]') in saved
+    assert dropped(original, saved) == []
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted'] and review['restored_lines'] == 1
+
+
 def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
     """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
     unresolved [7] was dropped, the half it supported was left uncited, and the

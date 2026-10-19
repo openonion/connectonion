@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import Counter
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
@@ -612,7 +613,7 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 # A misquote or a claim the audit refuted goes with its line at the end, like a
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
-               "Finding has unresolved citations")
+               "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
 # Skill pages describe installed files and their runs, read from code; the
 # pages about people and work are where a wrong claim is acted on.
@@ -762,7 +763,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               drop_others_phones, fold_history, link_company, sort_history, normalize_numbered_sources,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
-                              dropped as dropped_content)
+                              restore_dropped, dropped as dropped_content)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -832,7 +833,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = fold_history(sort_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record")))))
     if investigation:
         text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
-    refuted, unlocated = [], []
+    refuted, unlocated, restored_lines = [], [], 0
     if last_resort:
         # What review and audit refuted goes with its line; the rest of the page is kept.
         refuted = [finding.get("claim") or "" for finding in
@@ -846,6 +847,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, again = facts.keep_extracted(record, text, extracted)
         restored = [*restored, *again]
         text = drop_uncited_sources(text)
+    if last_resort and carried:
+        before_restore = text
+        text = restore_dropped(carried, text)
+        added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
+            before_restore.partition('\n## Sources\n')[0].splitlines())
+        restored_lines = sum(count for line, count in added.items() if line.strip())
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
@@ -892,6 +899,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
+                   "restored_lines": restored_lines,
                    "overview_replaced": overview_replaced,
                    "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],

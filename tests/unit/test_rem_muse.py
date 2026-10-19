@@ -709,7 +709,7 @@ def test_failed_github_search_records_coverage(project, monkeypatch):
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
 @pytest.mark.parametrize('repair', [True, False])
-def test_carried_losses_are_repaired_or_refused_without_salvage(notebook, monkeypatch, stage, repair):
+def test_carried_losses_are_repaired_or_restored_after_two_repairs(notebook, monkeypatch, stage, repair):
     # Isolate retention from page shape and source audits; promotion still runs its transformations.
     monkeypatch.setattr(page_review, 'validate', lambda *a, **kw: [])
     monkeypatch.setattr(page_review, 'misquoted', lambda *a, **kw: [])
@@ -731,17 +731,16 @@ def test_carried_losses_are_repaired_or_refused_without_salvage(notebook, monkey
             candidate.write_text(PAGE + '\nA new finding.\n')
         return {}
 
-    args = (notebook, RECORD, candidate, PAGE, [], directory, {})
+    args = (notebook, RECORD, candidate, PAGE, [{'source': 'gmail:bbbbbbbbbbbb'}], directory, {})
     kwargs = dict(workdir=notebook.root, config={}, stage=stage, run=run)
     if repair:
         runner.promote_with_repairs(*args, **kwargs)
         assert len(calls) == 1
         assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
     else:
-        with pytest.raises(runner.RunFailed, match='Dropped quote the page had'):
-            runner.promote_with_repairs(*args, **kwargs)
+        runner.promote_with_repairs(*args, **kwargs)
         assert len(calls) == 2
-        assert notebook.read(RECORD) == PAGE
-        errors = json.loads((directory / 'review.json').read_text())['errors']
-        assert any(error.startswith('Dropped source') for error in errors)
-        assert not all(error.startswith(runner.SALVAGEABLE) for error in errors)
+        assert 'They said A paraphrase. [1]' in notebook.read(RECORD)
+        assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
+        review = json.loads((directory / 'review.json').read_text())
+        assert review['accepted'] and review['restored_lines'] == 1
