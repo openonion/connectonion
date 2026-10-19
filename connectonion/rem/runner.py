@@ -1029,6 +1029,9 @@ def scrub_task(directory: Path) -> None:
 # longest run (three routed turns at the largest timeout) is well inside it.
 ABANDONED_TASK_SECONDS = 6 * 3600
 FINISHED_TASK_GRACE_SECONDS = 60
+# 2026-10-20: re-scrubbing ~650 old folders cost ~1.4 s plus lock waits per
+# model stage. Callers hold _TASK_CLEANUP_LOCK while checking and adding folders.
+_SCRUBBED_TASKS = set()
 
 
 def scrub_finished_tasks(workdir: Path) -> None:
@@ -1037,11 +1040,12 @@ def scrub_finished_tasks(workdir: Path) -> None:
     stale = time.time() - ABANDONED_TASK_SECONDS
     finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
-        if not folder.is_dir() or folder.is_symlink():
+        if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
         if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
             scrub_task(folder)
+            _SCRUBBED_TASKS.add(folder)
 
 
 _TASK_MASK_LOCK = threading.Lock()

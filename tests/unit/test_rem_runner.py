@@ -753,6 +753,28 @@ def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alon
 # ------------------------------------------------ #1974: private copies, one env
 
 
+def test_finished_tasks_are_scrubbed_once_per_process(tmp_path, monkeypatch):
+    calls = []
+    scrub = runner.scrub_task
+
+    def scrubbing(folder):
+        calls.append(folder)
+        scrub(folder)
+
+    monkeypatch.setattr(runner, 'scrub_task', scrubbing)
+    old = time.time() - runner.FINISHED_TASK_GRACE_SECONDS - 1
+    for name in ('investigate-a', 'investigate-b'):
+        folder = tmp_path / name
+        folder.mkdir()
+        result = folder / 'result.json'
+        result.write_text('{}')
+        os.utime(result, (old, old))
+        with runner._TASK_CLEANUP_LOCK:
+            runner.scrub_finished_tasks(tmp_path)
+            runner.scrub_finished_tasks(tmp_path)
+    assert calls == [tmp_path / 'investigate-a', tmp_path / 'investigate-b']
+
+
 def test_task_files_are_owner_only_even_those_the_model_writes(notebook, monkeypatch):
     """.state/tasks held full mail bodies as 0644 files inside a 0700 folder."""
     import os

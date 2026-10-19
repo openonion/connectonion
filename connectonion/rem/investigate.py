@@ -322,7 +322,42 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
     return items
 
 
+# 2026-10-20: walking and reading up to 400 documents per mapped folder cost
+# ~8 s per person at one worker; 16 workers repeat that CPU work under one GIL.
+_PROJECT_DOCUMENTS = {}
+_PROJECT_TEXT = {}
+_PROJECT_MEMO_LOCK = threading.Lock()
+_PROJECT_TEXT_LOCK = threading.Lock()   # separate: a text lookup must not wait for a walk
+
+
 def _project_documents(root: Path):
+    if not root.is_dir() or root.is_symlink():
+        return ()
+    root = root.resolve()
+    # Walked under the lock: sixteen pages starting together each walked every folder.
+    with _PROJECT_MEMO_LOCK:
+        kept = _PROJECT_DOCUMENTS.get(root)
+        if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS:
+            return kept[1]
+        documents = tuple(_walk_project_documents(root))
+        _PROJECT_DOCUMENTS[root] = (time.monotonic(), documents)
+        return documents
+
+
+def _project_text(path: Path) -> str:
+    stat = path.stat()
+    key = (stat.st_size, stat.st_mtime_ns)
+    with _PROJECT_TEXT_LOCK:
+        kept = _PROJECT_TEXT.get(path)
+    if kept and kept[0] == key:
+        return kept[1]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    with _PROJECT_TEXT_LOCK:
+        _PROJECT_TEXT[path] = (key, text)
+    return text
+
+
+def _walk_project_documents(root: Path):
     """Bound the client-note search to documents in mapped folders, not code or secrets.
 
     A client's people appeared in the owner's project notes, while their Feishu
@@ -386,13 +421,18 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
     roots = {Path(path).expanduser().resolve() for record in notebook.list("projects")
              for path in project_paths(collapse_worktree_paths(notebook.read(record)))
              if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()}
-    found, seen = [], set()
+    found, seen, real = [], set(), {}
     for root in sorted(roots):
         for path in _project_documents(root):
-            if path in seen:
+            # Cached names can be deleted or replaced by links while other pages run.
+            # A folder resolved once per call: resolving every document was most of
+            # this function at 16 workers (2026-10-20).
+            if path.parent not in real:
+                real[path.parent] = path.parent.resolve() == path.parent
+            if path in seen or not real[path.parent] or path.is_symlink() or not path.is_file():
                 continue
             seen.add(path)
-            count, text = _mention_excerpt(path.read_text(encoding="utf-8", errors="replace"), pattern, chars)
+            count, text = _mention_excerpt(_project_text(path), pattern, chars)
             if count:
                 found.append((count, path, text))
     items = []
@@ -929,6 +969,25 @@ SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it
 SESSION_MEMO_SECONDS = 1800
 
 
+def _migrate_session_window(saved: dict, kind: str) -> dict:
+    """v1 -> v2 excludes Codex exec prompts as subagent messages; checkpoints stay valid."""
+    from urllib.parse import unquote, urlsplit
+
+    # 2026-10-20: a full session-window rebuild took ~42 s even at one worker.
+    # Only each referenced file's metadata changed how its cached items are accepted.
+    dropped = set()
+    for reference in dict.fromkeys(item["reference"] for item in saved["items"]):
+        path = Path(unquote(urlsplit(reference).path))
+        if not path.is_file():
+            continue
+        with path.open("rb") as source:
+            meta = KINDS[kind]["meta"](json.loads(source.readline(1_000_000)))
+        if meta.get("subagent") or meta.get("skip"):
+            dropped.add(reference)
+    return {**saved, "version": SESSION_WINDOW_VERSION,
+            "items": [item for item in saved["items"] if item["reference"] not in dropped]}
+
+
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
     """Reuse typed session messages across CLI runs; collect reads only changed files.
 
@@ -953,11 +1012,14 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
-    if (saved.get("version") != SESSION_WINDOW_VERSION or saved.get("subscription") != identity
+    if (saved.get("version") not in (1, SESSION_WINDOW_VERSION) or saved.get("subscription") != identity
             or timestamp(saved["since"]) > since
             or any(not (Path(scoped["root"]) / name).is_file() for name in saved["progress"])):
         saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
                  "items": [], "progress": {}, "unfamiliar": 0}
+    if saved["version"] == 1:
+        saved = _migrate_session_window(saved, scoped.get("kind", "codex"))
+        write_json(cache_path, saved)
     items, cursor = saved["items"], saved["progress"]
     unfamiliar, told = saved["unfamiliar"], len(items)
     while True:

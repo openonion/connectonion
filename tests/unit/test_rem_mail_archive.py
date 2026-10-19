@@ -11,6 +11,63 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_mail_metadata_memo_tracks_observations_and_inventory(tmp_path, monkeypatch):
+    from connectonion.rem import mail_archive as archive
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    observed = state_path(tmp_path, 'mail/observed-metadata/gmail/one.json')
+    observed.parent.mkdir(parents=True)
+    row = {'type': 'mail', 'source': 'gmail', 'id': 'one', 'subject': 'Observed'}
+    write_json(observed, row)
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text(json.dumps({**row, 'subject': 'Initial'}) + '\n')
+    reads = []
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        reads.append(path)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_text', read)
+    first = archive.mail_metadata(tmp_path)
+    second = archive.mail_metadata(tmp_path)
+    assert reads == [observed, inventory]
+    assert first == second == [{**row, 'subject': 'Initial'}]
+    assert first is not second and first[0] is second[0]
+    first.clear()
+    assert archive.mail_metadata(tmp_path) == second
+
+    stat = observed.stat()
+    os.utime(observed, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+    assert archive.mail_metadata(tmp_path) == second
+    assert reads == [observed, inventory] * 2
+
+    added = observed.with_name('two.json')
+    write_json(added, {**row, 'id': 'two'})
+    assert len(archive.mail_metadata(tmp_path)) == 2
+    assert reads[-3:] == [observed, added, inventory]
+
+    with inventory.open('a') as output:
+        output.write(json.dumps({**row, 'id': 'three'}) + '\n')
+    assert len(archive.mail_metadata(tmp_path)) == 3
+    assert reads[-3:] == [observed, added, inventory]
+    assert len(reads) == 10
+
+
+def test_mail_metadata_memo_tracks_missing_inventory(tmp_path):
+    from connectonion.rem.mail_archive import mail_metadata
+    from connectonion.rem.files import state_path
+
+    prepare(tmp_path)
+    assert mail_metadata(tmp_path) == []
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text(json.dumps({'type': 'mail', 'source': 'gmail', 'id': 'one'}) + '\n')
+    assert len(mail_metadata(tmp_path)) == 1
+    inventory.unlink()
+    assert mail_metadata(tmp_path) == []
+
+
 def test_retained_domain_and_shared_contact_mail_reach_org_gather_without_extending_init(tmp_path):
     import hashlib
     from connectonion.rem.files import read_json, state_path, write_json

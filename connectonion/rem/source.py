@@ -1,8 +1,10 @@
 """Incremental read-only importers for local session transcripts (Codex, Claude Code)."""
 
 import copy
+import fnmatch
 import hashlib
 import json
+import os
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -333,8 +335,20 @@ def source_files(subscription: dict) -> list[Path]:
     if root.is_symlink():
         raise RemError("Session source root cannot be a symlink")
     pattern = KINDS[subscription.get("kind", "codex")]["glob"]
-    paths = sorted(root.rglob(pattern))
-    return [safe_path(root, path.relative_to(root).as_posix()) for path in paths]
+    # os.walk does not descend into linked folders, so only each file needs the
+    # link check; safe_path checked every folder of every file, 41 s of an
+    # 80-second scan over 15,000 rollouts (2026-10-20).
+    paths = []
+    for current, dirs, files in os.walk(root):
+        folder = Path(current)
+        inside = folder.relative_to(root).parts
+        for name in files:
+            if fnmatch.fnmatchcase(name, pattern):
+                path = folder / name
+                if any(part.startswith(".") for part in (*inside, name)) or path.is_symlink():
+                    safe_path(root, "/".join((*inside, name)))  # raises the same error it always did
+                paths.append(path)
+    return sorted(paths)
 
 
 def pending_metadata(subscription: dict, progress: dict) -> dict:
@@ -420,10 +434,19 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     # lookback and walks forward is also the only way to exercise, in a test, what a
     # year of maintenance does to the pages. Progress is per file; order changes
     # nothing else. (`sync --all` is what makes a long backfill finish in one go.)
-    for path in sorted(source_files(subscription), key=lambda p: p.stat().st_mtime_ns):
-        name = path.relative_to(root).as_posix()
-        old, stat = progress.get(name, {}), path.stat()
+    # One stat per file, and names cut from the root's prefix: Path.relative_to on
+    # 15,000 rollouts was half of a warm scan (2026-10-20).
+    prefix = len(str(root).rstrip("/")) + 1
+    for path, stat in sorted(((path, path.stat()) for path in source_files(subscription)),
+                             key=lambda pair: pair[1].st_mtime_ns):
+        name = str(path)[prefix:].replace("\\", "/")
+        old = progress.get(name, {})
         if stat.st_size == old.get("offset") and stat.st_mtime_ns == old.get("mtime_ns"):
+            continue
+        if old.get("skipped"):
+            # Whether a session is read is decided by its first line, which an append
+            # cannot change: a grown skipped session stays skipped, unopened. Its entry
+            # is left as it was, so a running REM turn never reads as new progress.
             continue
         # Messages are appended with their own time, so a file last written before the
         # lookback cannot hold one inside it. On first start this is most of the store.
@@ -433,9 +456,11 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
             if source is None:
                 changed_files.append(name)
                 continue
-            if meta.get("skip"):
-                continue
-            if subscription.get("project") and kind == "codex" and meta.get("cwd") != subscription["project"]:
+            if meta.get("skip") or (subscription.get("project") and kind == "codex"
+                                    and meta.get("cwd") != subscription["project"]):
+                # Recorded, or every scan reopened it: 11,473 of REM's own Codex turns
+                # were reopened on each 80-second scan of one machine (2026-10-20).
+                updated[name] = {"offset": stat.st_size, "mtime_ns": stat.st_mtime_ns, "skipped": True}
                 continue
             # A subject scope keeps whole sessions, so its items are held until the
             # session says whether it is about that subject. Grouping by directory

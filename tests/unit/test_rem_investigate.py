@@ -310,6 +310,65 @@ def test_project_mentions_reads_document_excerpts_and_redacts_secrets(project_do
     assert '1 file(s)' in coverage and '1 project folder(s)' in coverage and 'excerpts read' in coverage
 
 
+def test_project_mentions_reuse_documents_across_people_and_reread_edits(project_documents, monkeypatch):
+    from pathlib import Path
+    import os
+
+    book, folder = project_documents
+    note = folder / 'notes/a.md'
+    note.write_text('Avery Lin and Morgan Reed agreed on delivery.')
+    walks, reads = [], []
+    walk, read = inv.os.walk, Path.read_text
+
+    def walking(root, **kwargs):
+        walks.append(root)
+        return walk(root, **kwargs)
+
+    def reading(path, *args, **kwargs):
+        if path == note:
+            reads.append(path)
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(inv.os, 'walk', walking)
+    monkeypatch.setattr(Path, 'read_text', reading)
+    inv.project_mentions(book, ['Avery Lin'])
+    items, _ = inv.project_mentions(book, ['Morgan Reed'])
+    assert len(items) == 1
+    assert walks == [folder] and reads == [note]
+
+    stat = note.stat()
+    note.write_text('Avery Lin and Morgan Reed changed the date.')
+    os.utime(note, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+    items, _ = inv.project_mentions(book, ['Morgan Reed'])
+    assert 'changed the date' in items[0]['text']
+    assert walks == [folder] and reads == [note, note]
+
+    (folder / 'new.md').write_text('Morgan Reed added a note.')
+    monkeypatch.setattr(inv.time, 'monotonic', lambda: inv.SESSION_MEMO_SECONDS + 10**12)
+    items, _ = inv.project_mentions(book, ['Morgan Reed'])
+    assert len(items) == 2 and walks == [folder, folder]
+
+
+@pytest.mark.parametrize('replacement', ['deleted', 'linked', 'linked-directory'])
+def test_project_mentions_recheck_cached_documents(project_documents, replacement):
+    book, folder = project_documents
+    note = folder / 'notes/a.md'
+    note.write_text('Avery Lin agreed on delivery.')
+    assert len(inv.project_mentions(book, ['Avery Lin'])[0]) == 1
+    note.unlink()
+    if replacement == 'linked':
+        outside = folder.parent / 'outside.md'
+        outside.write_text('Avery Lin must not be read through a link.')
+        note.symlink_to(outside)
+    if replacement == 'linked-directory':
+        outside = folder.parent / 'outside'
+        outside.mkdir()
+        (outside / 'a.md').write_text('Avery Lin must not be read through a linked directory.')
+        note.parent.rmdir()
+        note.parent.symlink_to(outside, target_is_directory=True)
+    assert inv.project_mentions(book, ['Avery Lin'])[0] == []
+
+
 @pytest.mark.parametrize('handle', ['Al', 'Tom', '宋', 'lead@example.org'])
 def test_project_mentions_ignores_generic_names_and_addresses(project_documents, handle):
     book, folder = project_documents

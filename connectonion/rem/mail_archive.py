@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -269,16 +270,44 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
 # is read for what it holds, and the mailbox is asked for the rest (#2042).
 READABLE = ("complete", "partial", "running", "paused")
 
+# 2026-10-20: parsing 1,209 observations and a 2.1 MB inventory cost ~4 s per
+# page at one worker; repeated parsing competes for the GIL at 16 workers.
+_MAIL_METADATA = {}
+_MAIL_METADATA_LOCK = threading.Lock()
+
 
 def mail_metadata(root: Path) -> list[dict]:
     """Retained observations plus initial metadata, with the initial row taking precedence."""
+    # The folder is checked once; a link check per file (state_path) cost more than
+    # the parse it saved. read_json still refuses a linked file when it is parsed.
+    paths = sorted(state_path(root, "mail/observed-metadata").glob("*/*.json"))
+    for folder in {path.parent for path in paths}:
+        state_path(root, str(folder.relative_to(root / ".state")))   # refuses a linked provider folder
+    observed = []
+    for path in paths:
+        stat = path.lstat()
+        observed.append((path.parent.name, path.name, stat.st_size, stat.st_mtime_ns))
+    inventory = state_path(root, "source-inventory.jsonl")
+    stat = inventory.stat() if inventory.is_file() else None
+    key = (tuple(observed), (stat.st_size, stat.st_mtime_ns) if stat else None)
+    resolved = root.resolve()
+    # Parsed under the lock: pages starting together each parsed the same files.
+    with _MAIL_METADATA_LOCK:
+        kept = _MAIL_METADATA.get(resolved)
+        if not kept or kept[0] != key:
+            kept = key, _parse_metadata(paths, inventory if stat else None)
+            _MAIL_METADATA[resolved] = kept
+    # person/domain material, investigation, store and review only read row dicts.
+    return list(kept[1])
+
+
+def _parse_metadata(paths: list[Path], inventory: Path | None) -> list[dict]:
     found = {}
-    for path in sorted(state_path(root, "mail/observed-metadata").glob("*/*.json")):
-        row = read_json(state_path(root, str(path.relative_to(root / ".state"))), {})
+    for path in paths:
+        row = read_json(path, {})
         if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
             found[(row["source"], row["id"])] = row
-    inventory = state_path(root, "source-inventory.jsonl")
-    for line in inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []:
+    for line in inventory.read_text(encoding="utf-8").splitlines() if inventory else []:
         row = json.loads(line) if line.strip() else {}
         if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
             found[(row["source"], row["id"])] = row

@@ -12,8 +12,11 @@ text; the operator's store is never read.
 """
 
 import json
+import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from connectonion.rem.source import SKIPPED, UNFAMILIAR, _codex_message, _codex_meta, collect
 
@@ -152,7 +155,8 @@ def test_exec_prompts_do_not_vote_for_the_owners_languages_even_when_cached(tmp_
     saved = json.loads(cache.read_text())
     saved["version"] = 1
     saved["items"].append({"role": "user", "text": "请调查这个人的工作经历和项目进展。",
-                           "source": "codex:exec:1", "timestamp": ago(1)})
+                           "source": "codex:exec:1", "timestamp": ago(1),
+                           "reference": (sessions / "rollout-exec.jsonl").as_uri()})
     cache.write_text(json.dumps(saved))
     assert detect(root, [])["messages"] == 0
     monkeypatch.setattr(investigate, "_WINDOWS", {})
@@ -160,6 +164,58 @@ def test_exec_prompts_do_not_vote_for_the_owners_languages_even_when_cached(tmp_
 
     assert [item["text"] for item in items] == ["Ask Vern about the placement."]
     assert detect(root, []) == {"languages": ["en"], "shares": {"en": 1.0}, "messages": 1}
+
+
+@pytest.mark.parametrize('version,missing_progress', [(1, False), (0, False), (1, True)])
+def test_session_window_migrates_v1_without_recollecting_unchanged_files(
+        tmp_path, monkeypatch, version, missing_progress):
+    from connectonion.rem import investigate, source
+    from connectonion.rem.files import state_path, write_json
+
+    sessions, root = tmp_path / 'session files', tmp_path / 'rem'
+    interactive = rollout(sessions / 'rollout-cli.jsonl', [bare('Ask Avery Lin about delivery.')],
+                          meta={'originator': 'codex-tui', 'source': 'cli'})
+    executable = rollout(sessions / 'rollout-exec.jsonl', [bare('Program-written prompt.')],
+                         meta={'originator': 'codex_exec', 'source': 'exec'})
+    scoped = subscription(sessions)
+    batch = collect({**scoped, 'since': ago(800)}, {}, 20, 100_000)
+    gone = sessions / 'rollout-gone.jsonl'
+    cached = [*batch.items,
+              {**batch.items[0], 'text': 'Program-written prompt.', 'reference': executable.as_uri()},
+              {**batch.items[0], 'text': 'Previously retained message.', 'reference': gone.as_uri()}]
+    if missing_progress:
+        batch.progress['rollout-gone.jsonl'] = {'offset': 1}
+    identity = json.dumps({key: value for key, value in scoped.items() if key != 'since'},
+                          sort_keys=True, default=str)
+    cache = state_path(root, f'session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json')
+    write_json(cache, {'version': version, 'subscription': identity, 'since': ago(800),
+                       'items': cached, 'progress': batch.progress, 'unfamiliar': 0})
+    calls, metadata_reads = [], []
+    original_meta = source.KINDS['codex']['meta']
+
+    def meta(first):
+        metadata_reads.append(first['payload']['id'])
+        return original_meta(first)
+
+    def collecting(subscription, progress, *limits):
+        calls.append(progress)
+        return collect(subscription, progress, *limits)
+
+    monkeypatch.setitem(source.KINDS['codex'], 'meta', meta)
+    monkeypatch.setattr(investigate, '_WINDOWS', {})
+    monkeypatch.setattr(investigate, 'collect', collecting)
+    items, _ = investigate._session_window(scoped, 'sessions', None, root)
+    saved = json.loads(cache.read_text())
+    assert saved['version'] == 2
+    if version == 1 and not missing_progress:
+        assert calls == [batch.progress]
+        assert saved['progress'] == batch.progress
+        assert [item['text'] for item in items] == [
+            'Ask Avery Lin about delivery.', 'Previously retained message.']
+        assert metadata_reads == [interactive.stem, executable.stem]
+    else:
+        assert calls[0] == {}
+        assert [item['text'] for item in items] == ['Ask Avery Lin about delivery.']
 
 
 def test_project_discovery_turns_exclude_exec_and_subagent_sessions(tmp_path):
