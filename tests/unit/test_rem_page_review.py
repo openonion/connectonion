@@ -1198,3 +1198,134 @@ def test_a_source_id_cited_inline_becomes_a_numbered_citation():
     out = normalize_numbered_sources(page)
     assert "Asked [2]; replied [1] [1]." in out
     assert "- [2] outlook:ac8a0c940197" in out and out.rstrip().endswith("Investigation: x")
+
+
+@pytest.mark.parametrize("record", ["people/alex.md", "orgs/old-brand.md"])
+@pytest.mark.parametrize("label", ["First contact", "Last contact"])
+def test_contact_date_from_previous_subject_is_not_restored_after_title_correction(record, label):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = (f"# Alex Previous\n\n## Facts\n- {label}: 2026-09-01 [4]\n\n"
+                "## Sources\n- [4] gmail:previous-person\n\nInvestigation: mapped 2026-09-01\n")
+    candidate = (f"# Alex Corrected\n\n## Facts\n- {label}: Unknown\n\n"
+                 "## Uncertainties\n- The previous messages concern a different subject. [1]\n\n"
+                 "## Sources\n- [1] codex:correction\n\nInvestigation: mapped 2026-09-01\n")
+    fixed = restore_runner_fields(record, candidate, original)
+    assert fixed == candidate
+    assert "gmail:previous-person" not in fixed
+
+
+def test_contact_date_candidate_is_kept_after_subject_title_changes():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Old Brand\n\n## Facts\n- Last contact: 2026-09-01 [4]\n"
+    candidate = "# New Brand\n\n## Facts\n- Last contact: 2026-10-01 [1]\n"
+    assert restore_runner_fields("orgs/brand.md", candidate, original) == candidate
+
+
+def test_contact_date_is_still_restored_for_title_case_changes():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = "# Alex Person\n\n## Facts\n- Last contact: 2026-09-01 [4]\n\n## Sources\n- [4] gmail:alex\n"
+    candidate = original.replace("Alex Person", "ALEX PERSON").replace("2026-09-01 [4]", "Unknown")
+    fixed = restore_runner_fields("people/alex.md", candidate, original)
+    assert "- Last contact: 2026-09-01 [4]" in fixed
+
+
+def test_subject_correction_does_not_restore_previous_subject_extracted_contacts(tmp_path):
+    from connectonion.rem.runner import _promote_candidate
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    record = "people/alex.md"
+    notebook.stub_person(record, "Alex Previous", handles=["previous@example.test"])
+    original = notebook.read(record).replace("- Last contact: Unknown", "- Last contact: 2026-09-01 [4]")
+    original = original.replace("- (none yet)", "- [4] gmail:previous-person")
+    notebook.write(record, original)
+    text = original.replace("# Alex Previous", "# Alex Corrected")
+    text = re.sub(r"(?m)^- Email:.*$", "- Email: Unknown", text)
+    text = text.replace("- Last contact: 2026-09-01 [4]", "- Last contact: Unknown")
+    text = text.replace("Unknown — not investigated yet. Last contact: Unknown.", "Corrected subject. [1]")
+    text = text.replace("- Unknown — not investigated yet", "- Unknown")
+    text = text.replace("- [4] gmail:previous-person", "- [1] codex:correction:0")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(text)
+    items = [
+        {"role": "user", "source": "codex:correction:0", "text": "The subject is Alex Corrected, not Alex Previous."},
+        {"role": "facts", "source": "investigation:facts", "facts": [
+            {"field": "Last contact", "value": "2026-09-01", "source": "gmail:previous-person", "date": "2026-09-01"},
+            {"field": "Email", "value": "previous@example.test", "source": "gmail:previous-person", "date": "2026-09-01", "own": True},
+        ]},
+    ]
+    _promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
+    saved = notebook.read(record)
+    assert "- Email: Unknown" in saved
+    assert "- Last contact: Unknown" in saved
+    assert "gmail:previous-person" not in saved
+
+
+@pytest.mark.parametrize("record,old_title,new_title,anchor", [
+    ("people/alex.md", "alex@example.test", "Alex Person", "## Facts\n- Email: alex@example.test\n"),
+    ("orgs/example.md", "example.test", "Example Company", "## Domains\n- example.test\n\n## Facts\n"),
+])
+def test_title_rename_with_preserved_identity_anchor_keeps_contact_recovery(record, old_title, new_title, anchor):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = f"# {old_title}\n\n{anchor}- Last contact: 2026-09-01 [4]\n\n## Sources\n- [4] gmail:known\n"
+    candidate = original.replace(f"# {old_title}", f"# {new_title}").replace("2026-09-01 [4]", "Unknown")
+    fixed = restore_runner_fields(record, candidate, original)
+    assert "- Last contact: 2026-09-01 [4]" in fixed
+
+
+@pytest.mark.parametrize("email", ["corrected@example.test", "Unknown"])
+def test_same_domain_and_incidental_old_address_do_not_restore_prior_contact_date(email):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = ("# Previous Person\n\n## Facts\n- Email: previous@example.test\n"
+                "- Last contact: 2026-09-01 [4]\n\n## Sources\n- [4] gmail:previous\n")
+    candidate = (f"# Corrected Person\n\n## Facts\n- Email: {email}\n- Last contact: Unknown\n\n"
+                 "## Uncertainties\n- previous@example.test belongs to the previous subject.\n")
+    assert restore_runner_fields("people/alex.md", candidate, original) == candidate
+
+
+@pytest.mark.parametrize("rejected", [
+    "Unknown (previous@example.test belonged to the previous subject)",
+    "previous@example.test (wrong person)",
+    "Unknown; previous@example.test",
+])
+def test_rejected_email_value_does_not_prove_subject_continuity(rejected):
+    from connectonion.rem.page_review import restore_runner_fields
+    original = ("# Previous Person\n\n## Facts\n- Email: previous@example.test\n"
+                "- Last contact: 2026-09-01 [4]\n\n## Sources\n- [4] gmail:previous\n")
+    candidate = f"# Corrected Person\n\n## Facts\n- Email: {rejected}\n- Last contact: Unknown\n"
+    assert restore_runner_fields("people/alex.md", candidate, original) == candidate
+
+
+def test_rejected_domain_annotation_does_not_prove_org_continuity():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = ("# Old Company\n\n## Domains\n- previous.example\n\n## Facts\n"
+                "- Last contact: 2026-09-01 [4]\n\n## Sources\n- [4] gmail:previous\n")
+    candidate = ("# Correct Company\n\n## Domains\n- previous.example — belongs to the old subject\n\n"
+                 "## Facts\n- Last contact: Unknown\n")
+    assert restore_runner_fields("orgs/company.md", candidate, original) == candidate
+
+
+def test_legacy_contact_anchor_keeps_extracted_date_recovery_on_a_title_upgrade(tmp_path):
+    from connectonion.rem.runner import _promote_candidate
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    record = "people/alex.md"
+    notebook.stub_person(record, "alex@example.test", handles=["alex@example.test"])
+    original = notebook.read(record).replace("## Facts", "## Contact")
+    original = re.sub(r"(?m)^- Email:.*$", "- Email: alex@example.test", original)
+    notebook.write(record, original)
+    text = original.replace("# alex@example.test", "# Alex Person").replace("## Contact", "## Facts")
+    text = text.replace("Unknown — not investigated yet. Last contact: Unknown.", "Alex introduced the project. [1]")
+    text = text.replace("- Unknown — not investigated yet", "- Unknown")
+    text = text.replace("- (none yet)", "- [1] gmail:alex")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(text)
+    items = [
+        {"role": "other", "speaker": "alex@example.test", "source": "gmail:alex", "text": "I am Alex Person."},
+        {"role": "facts", "source": "investigation:facts", "facts": [
+            {"field": "Last contact", "value": "2026-09-01", "source": "gmail:alex", "date": "2026-09-01"},
+        ]},
+    ]
+    _promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
+    assert "- Last contact: 2026-09-01 [1]" in notebook.read(record)

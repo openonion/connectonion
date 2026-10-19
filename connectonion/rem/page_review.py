@@ -224,6 +224,30 @@ def _restore_citations(line: str, candidate: str, original: str) -> tuple[str, s
     return re.sub(r'\[(W?\d+)\]', lambda m: f'[{mapping[m[1]]}]', line), candidate
 
 
+def _subject_handles(record: str, page: str) -> set[str]:
+    """Only unqualified structured values establish continuity, never commentary."""
+    if record.startswith("people/"):
+        from .files import EMAIL
+        section = r"(?ms)^## {}\n(.*?)(?=^## |^Investigation:|\Z)"
+        facts = re.search(section.format("Facts"), page) or re.search(section.format("Contact"), page)
+        line = re.search(r"(?m)^- Email:[ \t]*(.*)$", facts[1]) if facts else None
+        value = re.sub(r"\[W?\d+\]", "", line[1]).strip() if line else ""
+        parts = [part.strip() for part in re.split(r"[;,]", value)]
+        return {part.casefold() for part in parts} if all(EMAIL.fullmatch(part) for part in parts) else set()
+    domains = re.search(r"(?ms)^## Domains\n(.*?)(?=^## |^Investigation:|\Z)", page)
+    lines = [re.sub(r"\[W?\d+\]", "", line[2:]).strip()
+             for line in domains[1].splitlines() if line.startswith("- ")] if domains else []
+    return {line.casefold() for line in lines
+            if re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", line)}
+
+
+def subject_scope_changed(record: str, original: str, candidate: str) -> bool:
+    """A new title without a retained routing anchor cannot inherit old facts."""
+    titles = [re.search(r"^# (.+)$", page, re.M) for page in (original, candidate)]
+    renamed = all(titles) and titles[0][1].strip().casefold() != titles[1][1].strip().casefold()
+    return bool(renamed and not (_subject_handles(record, original) & _subject_handles(record, candidate)))
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
@@ -234,7 +258,8 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """
     if not original:
         return candidate
-    if record.startswith(('people/', 'orgs/')):
+    if record.startswith(('people/', 'orgs/')) and not subject_scope_changed(record, original, candidate):
+        # A correction may change who this file describes; keep its Unknowns.
         # 2026-10-16 trial: a later round erased Ying Tan's extracted Last contact.
         section = r'(?ms)^## Facts\n(.*?)(?=^## |\Z)'
         before, after = re.search(section, original), re.search(section, candidate)
