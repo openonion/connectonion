@@ -319,6 +319,14 @@ def test_cited_originals_skip_gathered_ids_and_keep_private_context(notebook, mo
                       "speaker": "avery@example.com", "subject": "", "text": "Original"}]
 
 
+def test_cited_attachment_without_time_or_sender_is_still_an_original(notebook, monkeypatch):
+    monkeypatch.setattr(feature, "cited_context", lambda root, records, **kw: {
+        "attachment:aaaaaaaaaaaa": {"excerpt": "Invoice INV-7", "truncated": False}})
+    assert feature._cited_originals(notebook.root, PAGE) == [
+        {"role": "cited-original", "source": "attachment:aaaaaaaaaaaa", "timestamp": "", "speaker": "",
+         "subject": "", "text": "Invoice INV-7"}]
+
+
 @pytest.mark.parametrize("stage", ["enrich", "muse"])
 def test_skill_is_checked_before_reading_sources(notebook, monkeypatch, stage):
     def check(root, requested):

@@ -52,8 +52,9 @@ def _page_item(root: Path, record: str, page: str) -> dict:
 
 
 def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
-    return [{"role": "cited-original", "source": source, "timestamp": context["time"],
-             "speaker": context["sender"], "subject": context.get("subject", ""), "text": context["excerpt"]}
+    # An attachment's or a GitHub item's context has no time or sender; only mail rows do.
+    return [{"role": "cited-original", "source": source, "timestamp": context.get("time", ""),
+             "speaker": context.get("sender", ""), "subject": context.get("subject", ""), "text": context["excerpt"]}
             for source, context in cited_context(root, [{"text": page}], private=True).items()
             if source not in supplied]
 
