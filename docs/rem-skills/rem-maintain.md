@@ -175,3 +175,10 @@ largest page a person had grown by hand-read material was 18.9k; both growths
 above end over 20k. A page already over the limit is not stuck: a candidate
 that shrinks it is accepted, so it can come down across runs. Every run's
 outcome already carries `page_chars` (before, after) for the page it wrote.
+
+## Carry the notes' quotes (2026-10-20)
+
+A one-page upkeep turn puts each `Quote:` the notes hold for its subject on the
+line that uses it and keeps every quote already on the page. Before this, the
+quote-first rule reached upkeep only through the page skills, and the notes
+rarely had words to quote.

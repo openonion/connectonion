@@ -134,7 +134,7 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
                        "timestamp": timestamp(item["timestamp"]).isoformat(),
                        "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
                        **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}
-            if why == CONTAINER:
+            if why == CONTAINER or (why == "temporary execution directory" and owner.worktree(cwd)):
                 held.append((at, message))
             elif why:
                 counts["excluded"][why] = counts["excluded"].get(why, 0) + 1
@@ -237,13 +237,16 @@ def _paths(text: str, here: str) -> set[str]:
 
 
 class _Owners:
-    """A path's deepest project folder inside a workspace: a page's folder, or one with its own `.git`."""
+    """A path's project folder, following worktrees home or to a page named by their work."""
 
     def __init__(self, folders: dict, rem_root: Path | None):
-        self.folders, self.cache = folders, {}
+        self.folders, self.cache, self.worktrees = folders, {}, {}
         self.rem = str(rem_root.resolve()) if rem_root else ""
 
     def __call__(self, path: str, container: str) -> str | None:
+        worktree = self.worktree(path)
+        if worktree:
+            return worktree
         if not path.startswith(container.rstrip("/") + "/"):
             return None  # the workspace itself, or outside it: no evidence
         if path not in self.cache:
@@ -252,6 +255,45 @@ class _Owners:
             else:
                 self.cache[path] = self(os.path.dirname(path), container)
         return self.cache[path]
+
+    def worktree(self, path: str) -> str | None:
+        if path not in self.worktrees:
+            self.worktrees[path] = self._worktree(Path(path))
+        return self.worktrees[path]
+
+    def _worktree(self, path: Path) -> str | None:
+        for folder in (path, *path.parents):
+            git = folder / ".git"
+            if git.is_file():
+                match = re.fullmatch(r"gitdir:\s*(.+?)\s*", git.read_text(errors="replace"))
+                gitdir = Path(os.path.normpath(folder / match[1])) if match else git
+                if gitdir.parent.name != "worktrees" or gitdir.parent.parent.name != ".git":
+                    return None
+                repo = gitdir.parent.parent.parent
+                head = gitdir / "HEAD"
+                ref = head.read_text(errors="replace").strip() if head.is_file() else ""
+                branch = ref.removeprefix("ref: refs/heads/") if ref.startswith("ref: refs/heads/") else ""
+                named = self._named_owner([folder.name, branch], repo.name)
+                return named or (str(repo) if repo.is_dir() and self._usable(str(repo))
+                                 and (str(repo) in self.folders or (repo / ".git").exists()) else None)
+            if git.exists():
+                return None
+        temporary = re.match(r"^/(?:private/)?(?:tmp/|var/folders/)(.*)", str(path))
+        if temporary and not path.exists():
+            # 2026-10-20: pruned worktrees leave their task name in recorded paths.
+            return self._named_owner(Path(temporary[1]).parts)
+        return None
+
+    def _named_owner(self, names, repo_name="") -> str | None:
+        for folder in sorted(self.folders):
+            name = Path(folder).name
+            if len(name) < 4 or name.casefold() == repo_name.casefold():
+                continue
+            token = rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])"
+            if any(re.search(token, value, re.IGNORECASE) for value in names):
+                if Path(folder).is_dir() and self._usable(folder):
+                    return folder
+        return None
 
     def _usable(self, folder: str) -> bool:
         inside_rem = self.rem and (folder == self.rem or folder.startswith(self.rem + "/"))

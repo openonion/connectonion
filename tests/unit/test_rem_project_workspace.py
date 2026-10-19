@@ -219,11 +219,9 @@ def test_the_deepest_project_folder_wins(ws):
     ])
     extract(ws.root, ws.subs)
     assert texts(ws.root, "projects/alpha-docs.md") == ["tidy the docs"]
-    # A linked worktree is a project folder of its own; with no page listing it,
-    # the page of the repository that holds it is the deepest listed folder.
     kept = stored(ws.root, "projects/alpha.md")
     assert [m["text"] for m in kept] == ["work in the worktree"]
-    assert kept[0]["cwd"] == ws.p("alpha/.claude/worktrees/fix")
+    assert kept[0]["cwd"] == ws.p("alpha")
 
 
 def test_a_recent_folder_with_no_page_gets_the_maps_page_and_an_older_one_is_listed(ws):

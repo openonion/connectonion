@@ -2772,3 +2772,196 @@ def test_warm_session_windows_scans_each_enabled_store_once(tmp_path, monkeypatc
         'gone': {'kind': 'codex', 'root': str(tmp_path / 'missing')},
         'gmail': {'kind': 'gmail'}})
     assert scanned == ['codex sessions']
+
+
+def _avery_page(quotes=2, insight=1, mails=4, dates=2):
+    return ('# Avery Lin\n\nAvery discusses the pilot with the user. [1]\n\n## History\n'
+            + ''.join(f'- “Please send draft {n}” (2026-10-01) [1]\n' for n in range(quotes))
+            + '\n## Insight\n'
+            + ''.join(f'- Pilot finding {n}. [1] [2]\n' for n in range(insight))
+            + '\n## Uncertainties\n\n## Sources\n'
+            + ''.join(f'- [{n + 1}] {"gmail" if n % 2 else "outlook"}:avery-{n} '
+                      f'— 2026-10-{n % dates + 1:02d}, Avery Lin <avery@example.com>\n'
+                      for n in range(mails)))
+
+
+@pytest.mark.parametrize('quotes,insight,mails,dates,expected', [
+    (2, 1, 4, 2, (2, 4, 1)),
+    (8, 3, 4, 2, None),
+    (8, 1, 4, 2, (8, 4, 1)),
+    (8, 1, 4, 1, None),
+    (2, 1, 3, 2, None),
+    (6, 2, 4, 2, None),
+    (5, 2, 4, 1, (5, 4, 2)),
+])
+def test_person_quote_floor(quotes, insight, mails, dates, expected):
+    assert inv.falls_short(_avery_page(quotes, insight, mails, dates)) == expected
+
+
+def test_person_quote_floor_ignores_fenced_examples_and_source_descriptions():
+    page = _avery_page()
+    page = page.replace('## History\n', '## History\n```\n' + '“Example quote”\n' * 6 + '```\n')
+    page = page.replace('## Insight\n', '## Insight\n```\n- Example finding.\n```\n')
+    page += '- [5] outlook:avery-0 — 2026-10-01, “Quoted subject”\n'
+    assert inv.falls_short(page) == (2, 4, 1)
+
+
+def test_person_insight_floor_counts_mail_dates_without_incidental_dates():
+    page = _avery_page(quotes=8, dates=1)
+    page = page.replace('avery-0', 'avery-2026-09-30', 1)
+    page = page.replace('Avery Lin <avery@example.com>',
+                        'Avery Lin <avery@example.com>, pilot due 2026-10-03', 1)
+    page += '- [5] codex:avery:1 — 2026-10-04\n'
+    assert inv.falls_short(page) is None
+
+
+@pytest.mark.parametrize('quotes,insight,calls', [(2, 1, 2), (8, 2, 1)])
+def test_one_turn_person_investigation_adds_quote_round_only_when_needed(tmp_path, monkeypatch,
+                                                                       quotes, insight, calls):
+    root, record = tmp_path / 'rem', 'people/avery.md'
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    originals = [{'source': f'{"gmail" if n % 2 else "outlook"}:avery-{n}', 'role': 'other',
+                  'timestamp': f'2026-10-{n % 2 + 1:02d}', 'speaker': 'Avery Lin <avery@example.com>',
+                  'text': f'Please send draft {n}\nI can review draft {n}'} for n in range(4)]
+    uncited = {'source': 'gmail:avery-uncited', 'role': 'other', 'text': 'Unrelated mail.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([*originals, uncited], ['mail: 5 bodies read']))
+    turns = []
+
+    def runner(book, items, config, stage):
+        assert stage == 'investigate'
+        turns.append(items)
+        book.write(record, _avery_page(quotes, insight) if len(turns) == 1 else _avery_page(8, 2))
+        return {'changed': [record]}
+
+    out = inv.investigate(root, record, 'Avery Lin', ['avery@example.com'], days=30,
+                          clients={}, subscriptions={}, runner=runner)
+
+    assert out['rounds'] is None
+    assert not any(i['role'] in ('round', 'evidence-index') for i in turns[0])
+    expected = sorted((o['source'], o['text']) for o in originals)
+    assert sorted((i['source'], i['text']) for i in turns[0] if i.get('source') in
+                  {o['source'] for o in originals}) == expected
+    assert len(turns) == calls
+    if calls == 2:
+        quote_items = turns[1]
+        assert quote_items[0]['record'] == record
+        assert _avery_page(quotes, insight) in quote_items[0]['text']
+        assert quote_items[1]['role'] == 'round' and quote_items[1]['text'].startswith('Quote round')
+        assert sorted((i['source'], i['text']) for i in quote_items[2:]) == expected
+        assert out['quote_turn'] == {'quotes': [2, 8], 'insight': [1, 2]}
+    else:
+        assert out['quote_turn'] is None
+
+
+def test_a_short_person_page_gets_one_quote_turn_with_only_its_cited_originals(tmp_path):
+    notebook, record = inv.Notebook(tmp_path), 'people/avery.md'
+    page = _avery_page()
+    notebook.write(record, page)
+    originals = [{'source': f'{"gmail" if n % 2 else "outlook"}:avery-{n}', 'role': 'other',
+                  'timestamp': f'2026-10-{n % 2 + 1:02d}', 'speaker': 'Avery Lin <avery@example.com>',
+                  'text': f'Please send draft {n}\nI can review draft {n}'} for n in range(4)]
+    # Every matching item travels, including multiple parts of one original and a non-mail source.
+    continuation = {**originals[0], 'text': '请直接回复这封邮件。'}
+    cited = {'source': 'codex:avery:1', 'role': 'user', 'text': 'Avery offered a pilot.'}
+    page += '- [5] codex:avery:1 — 2026-10-02\n'
+    hedged = page.replace('Avery discusses the pilot', 'The outcome is not established; Avery discusses the pilot')
+    notebook.write(record, hedged)
+    uncited = {'source': 'gmail:avery-uncited', 'role': 'other', 'text': 'Unrelated.'}
+    parts = [[originals[0], uncited, originals[1]], [originals[2], continuation, originals[3], cited]]
+    turns, progress = [], []
+    improved = page.replace('## History\n', '## History\n' + ''.join(
+        f'- “{words} {n}” (2026-10-{n % 2 + 1:02d}) [{n + 1}]\n'
+        for n in (2, 3) for words in ('Please send draft', 'I can review draft')))
+    improved = improved.replace('## Insight\n', '## Insight\n- Another pilot finding. [3] [4]\n')
+
+    def runner(notebook, items, config, stage):
+        turns.append(items)
+        note = next(i['text'] for i in items if i['role'] == 'round')
+        if note.startswith('Editing round'):
+            notebook.write(record, page)
+        if note.startswith('Quote round'):
+            notebook.write(record, improved)
+            return {'changed': [record], 'usage': {'input_tokens': 7}, 'threads': ['quotes'],
+                    'report': 'Quoted the asks.'}
+        return {'changed': [], 'usage': {'input_tokens': 2}, 'threads': ['earlier']}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text},
+                         [{'role': 'context', 'text': 'Excluded from the quote turn.'}], parts, {}, progress.append)
+    quote_items = turns[-1]
+    assert len(turns) == 5 and progress[-2:] == ['editing round', 'quote round']
+    assert out['hedged_lines'] == [1, 0]
+    assert [i['role'] for i in quote_items[:2]] == ['page', 'round']
+    assert quote_items[0]['record'] == record and page in quote_items[0]['text']
+    assert quote_items[2:] == [originals[0], originals[1], originals[2], continuation, originals[3], cited]
+    assert '2 quotes from 4 cited messages and 1 Insight bullets' in quote_items[1]['text']
+    assert out['quote_turn'] == {'quotes': [2, 6], 'insight': [1, 2]}
+    assert out['usage'] == {'input_tokens': 15} and out['threads'] == ['earlier'] * 4 + ['quotes']
+    assert out['changed'] == [record] and 'Quote round: Quoted the asks.' in out['report']
+    assert out['refused_rounds'] == [] and notebook.read(record) == improved
+
+
+@pytest.mark.parametrize('record,quotes,insight', [
+    ('people/avery.md', 8, 3), ('projects/avery.md', 2, 1),
+])
+def test_a_sufficient_person_page_or_a_project_gets_no_quote_turn(tmp_path, record, quotes, insight):
+    notebook, turns = inv.Notebook(tmp_path), []
+    notebook.write(record, _avery_page(quotes, insight))
+
+    def runner(notebook, items, config, stage):
+        turns.append(items)
+        return {'changed': []}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
+                         [[{'source': 'gmail:avery-0', 'text': 'Please send the draft.'}]], {})
+    assert len(turns) == 2 and out['quote_turn'] is None
+
+
+def test_a_quote_turn_that_loses_carried_quotes_is_undone(tmp_path):
+    notebook, record = inv.Notebook(tmp_path), 'people/avery.md'
+    page = _avery_page(quotes=5)
+    notebook.write(record, page)
+    turns = []
+
+    def runner(notebook, items, config, stage):
+        note = next(i['text'] for i in items if i['role'] == 'round')
+        turns.append(note)
+        if note.startswith('Quote round'):
+            notebook.write(record, page.replace('“', '').replace('”', ''))
+            return {'changed': [record], 'usage': {'input_tokens': 7}, 'threads': ['lost-quotes'],
+                    'report': 'Must not be accepted.'}
+        return {'changed': []}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
+                         [[{'source': 'outlook:avery-0', 'text': 'Please send draft 0'}]], {})
+    assert len(turns) == 3 and notebook.read(record) == page
+    assert out['quote_turn'] == {'quotes': [5, 5], 'insight': [1, 1]}
+    assert out['usage'] == {'input_tokens': 7} and out['threads'] == ['lost-quotes']
+    assert out['changed'] == [] and 'Must not be accepted.' not in out['report']
+    assert out['refused_rounds'] == [
+        "Quote round rejected: Turn kept 0 of the page's 5 quotes; restored the prior page"]
+
+
+def test_the_editing_and_quote_turns_carry_the_facts_item(tmp_path):
+    """2026-10-20 reruns: a turn without the facts item let the audit refute the computed
+    First contact ("runner_facts: []"), and promotion had nothing to put back."""
+    notebook = inv.Notebook(tmp_path)
+    record = "people/avery-lin.md"
+    page = ("# Avery Lin\n\nAvery is a tester [1].\n\n## Facts\n"
+            "- First contact: 2026-08-10 (earliest mail found) [1]\n\n## Insight\n- Unknown\n\n"
+            "## History\n- 2026-08-12: Trial — completion is not established [2]\n\n## Uncertainties\n- Unknown\n\n"
+            "## Sources\n"
+            + "".join(f"- [{n}] gmail:{n:012x} — 2026-08-1{n}\n" for n in range(1, 6)))
+    notebook.write(record, page)
+    facts = {"role": "facts", "source": "investigation:facts", "text": "- First contact: 2026-08-10", "facts": []}
+    seen = []
+
+    def runner(_notebook, items, _config, stage):
+        seen.append(items)
+        return {"changed": [], "usage": {}}
+
+    inv.editing_turn(runner, notebook, record, {}, context=[facts, {"role": "coverage", "text": "x"}])
+    inv.quote_turn(runner, notebook, record, [[]], (0, 5, 0), {}, context=[facts])
+    assert all(facts in items for items in seen) and len(seen) == 2
+    assert not any(item.get("role") == "coverage" for item in seen[0])

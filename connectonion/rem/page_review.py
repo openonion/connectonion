@@ -1740,3 +1740,88 @@ def shrinkage(before: str, after: str) -> str:
     if old and len(kept) < len(old) * KEEP_SHARE:
         return f'Maintenance kept {len(kept)} of the page\'s {len(old)} cited sources; kept the old page'
     return ''
+
+
+# The owner's rule: never guess a pronoun. A page calls the owner "the user";
+# 1.9.3 trial pages still wrote "the user said he would" on 1 to 14 lines a page.
+OWNER = re.compile(r"\bthe user(?:['’]s)?\b", re.I)
+PRONOUN = re.compile(r"\b(he|him|his|she|her|hers|himself|herself)\b", re.I)
+NAMED = re.compile(r"\b[A-Z][\w'’-]*[a-z][\w'’-]*\b")
+SENTENCE_START = {"the", "a", "an", "on", "in", "at", "by", "after", "before", "when", "since", "from", "for",
+                  "with", "during", "until", "then", "and", "but", "also", "both", "each", "this", "that",
+                  "changed", "now", "pattern", "at stake", "insight", "inference", "unknown", "nothing"}
+FOLLOWS_NOUN = re.compile(r"\s+(?!(?:to|for|about|on|at|in|that|and|or|but|again|back|up|down|out|a|an|the)\b)[a-z]")
+
+
+def _user_form(word: str, after: str) -> str:
+    low = word.lower()
+    if low in ("his", "hers") or (low == "her" and FOLLOWS_NOUN.match(after)):
+        form = "the user's"
+    elif low in ("himself", "herself"):
+        form = "the user"
+    else:
+        form = "the user"
+    return form[0].upper() + form[1:] if word[0].isupper() else form
+
+
+def _family(word: str) -> str:
+    return "m" if word.lower() in ("he", "him", "his", "himself") else "f"
+
+
+def _owner_pronouns(sentence: str) -> tuple[str, int]:
+    """A he/his/she/her whose nearest named actor before it is the user becomes "the user".
+
+    The first such pronoun fixes the user's form for the sentence; a pronoun of
+    the other form is someone else's ("the user said he would wait for her reply").
+    """
+    out, last, family, changed, at = [], "", "", 0, 0
+    events = sorted([(m.start(), m.end(), "user") for m in OWNER.finditer(sentence)]
+                    + [(m.start(), m.end(), "pronoun") for m in PRONOUN.finditer(sentence)]
+                    + [(m.start(), m.end(), "name") for m in NAMED.finditer(sentence)
+                       if m.start() > 0 and m.group(0).lower() not in SENTENCE_START])
+    for start, end, kind in events:
+        if start < at:
+            continue
+        word = sentence[start:end]
+        if kind == "pronoun" and last == "user" and family in ("", _family(word)):
+            family = _family(word)
+            out.append(sentence[at:start] + _user_form(word, sentence[end:]))
+            at, changed = end, changed + 1
+            continue
+        if kind == "pronoun" and family and _family(word) != family:
+            last = "other"
+        elif kind != "pronoun":
+            last = kind
+    out.append(sentence[at:])
+    return "".join(out), changed
+
+
+def owner_pronouns(text: str) -> tuple[str, int]:
+    """Replace pronouns that stand for the owner with "the user", outside quotes and Sources."""
+    head, marker, tail = text.partition("\n## Sources\n")
+    total, lines = 0, []
+    for line in head.split("\n"):
+        if line.startswith(("#", "```")) or not OWNER.search(line):
+            lines.append(line)
+            continue
+        parts = re.split(r"(“[^”]*”|`[^`]*`)", line)
+        for n in range(0, len(parts), 2):
+            sentences = re.split(r"(?<=[.!?;])(\s+)", parts[n])
+            for s in range(0, len(sentences), 2):
+                sentences[s], changed = _owner_pronouns(sentences[s])
+                total += changed
+            parts[n] = "".join(sentences)
+        lines.append("".join(parts))
+    return "\n".join(lines) + marker + tail, total
+
+
+def unquoted_decisions(text: str) -> list[str]:
+    """Key decisions lines that retell the owner instead of quoting them.
+
+    2026-10-20 reruns: four of five handoff decisions were paraphrased though
+    rem-page-project asks each to quote the sentence that carries the choice.
+    """
+    span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
+    lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
+    return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "
+            "copied from the message the line cites" for line in lines]

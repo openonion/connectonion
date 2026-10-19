@@ -154,3 +154,12 @@ sentence later. Hence `Quote: “…”` beside every such bullet, in the origin
 language; the note around it stays English. On the 1.9.2b3 notebook a fee was
 quoted as “8% of gross revenue” where the owner wrote "8% of net booking
 revenue", and Chinese instructions were put into English inside quotation marks.
+
+## The notes carry the words (2026-10-20)
+
+Daily upkeep writes pages from these notes, never from the messages. Twenty
+recent extraction notes on a real notebook held no `Quote:` line at all, so
+the upkeep that followed could only retell. The rule sat at the end of the
+skill; it now sits in "How to write a note" with a `Quote:` line in both
+examples. On a fixed 30-mail batch, `Quote:` lines went from 2 and 0 to 15 and
+15 over two runs each.

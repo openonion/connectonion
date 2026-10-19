@@ -53,8 +53,8 @@ Rules:
   relationship`, each `History` line whose thread turned on an ask, offer,
   refusal or decision, and `How they communicate` / `How the user writes to
   them` carry the speaker's exact words, `“<words>” (YYYY-MM-DD) [n]`.
-  Retell only routine sequence and Facts. With more than three messages,
-  fewer than six quotes means you retold: go back to the originals.
+  Retell only routine sequence and Facts. Fewer than six quotes from more
+  than three messages, or ten from more than five, means you retold.
 - **Lead: three cited sentences, then `Last contact: <date>, <channel>.`**
   (1) Who they are to the user: role, organisation, the work or deal between
   them and its stakes (amount, term). (2) What is live: the most consequential
