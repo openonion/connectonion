@@ -22,6 +22,8 @@ do not repeat a lead already followed.
 
 ## A project's history
 
+A long history arrives one period per turn: add only that period's turning
+points in each turn, then follow the other leads in the last turn.
 The timeline item is the project's whole history, oldest first, month by month.
 Walk it from the first month and read the originals at its `github:` ids;
 look up commits for their full `git:` ids. The timeline itself is a reading guide.
