@@ -95,24 +95,62 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    assert 'Snapshot ' in page.locator('#mobile-status').inner_text()
-    assert 'Background updates off' in page.locator('#mobile-status').inner_text()
-    assert 'Not started' not in page.locator('#mobile-status').inner_text()
-    assert page.locator('#mobile-status').is_visible()
-    for selector in ('#q', '.nav-toggle', '.mobile-back a'):
+    assert page.locator('h1').bounding_box()['y'] <= 140
+    assert page.locator('#mobile-status').count() == 0
+    for selector in ('#q', '.nav-toggle'):
         assert page.locator(selector).bounding_box()['height'] >= 44
+    assert page.locator('.eyebrow a').first.is_visible()
     assert page.get_by_role('heading', name='Full memory and sources').is_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
     assert page.locator('.deep-note .note').is_visible()
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
-    assert 'co\u00a0rem\u00a0start' in page.locator('#mobile-status').text_content()
+    page.locator('.nav-toggle').click()
+    page.locator('.reader-settings > summary').click()
+    assert 'Snapshot ' in page.locator('#foot').inner_text()
+    assert 'co rem start' in page.locator('.reader-settings').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
+    page.locator('.reader-settings > summary').click()
     assert 'Background updates off' in page.locator('#foot').inner_text()
     assert 'Not started' not in page.locator('#foot').inner_text()
     assert '`' not in page.locator('#foot').inner_text()
+
+
+@pytest.mark.parametrize('settings_open', [False, True])
+def test_short_desktop_scrolls_the_whole_rail_without_clipping_links(reader, settings_open):
+    page, uri = reader
+    page.set_viewport_size({'width': 960, 'height': 540})
+    page.goto(uri)
+    if settings_open:
+        page.locator('.reader-settings > summary').click()
+    assert page.locator('.rail').evaluate("""rail => {
+      const style = getComputedStyle(rail);
+      const nav = rail.querySelector('#nav');
+      const footerTop = rail.querySelector('.foot').getBoundingClientRect().top;
+      const railTop = rail.getBoundingClientRect().top;
+      const scrollable = style.overflowY === 'auto' && rail.scrollHeight > rail.clientHeight;
+      return style.position === 'sticky' && style.top === '0px' && rail.clientHeight === 540
+        && scrollable && getComputedStyle(nav).overflowY === 'visible'
+        && [...nav.querySelectorAll('a')].every(link => {
+          const box = link.getBoundingClientRect();
+          return (box.bottom <= footerTop || scrollable)
+            && box.bottom - railTop + rail.scrollTop <= rail.scrollHeight;
+        });
+    }""")
+    for link in page.locator('#nav a').all():
+        link.scroll_into_view_if_needed()
+        assert link.evaluate("""link => {
+          const box = link.getBoundingClientRect();
+          const rail = link.closest('.rail').getBoundingClientRect();
+          const footer = document.querySelector('.rail .foot').getBoundingClientRect();
+          return box.top >= rail.top && box.bottom <= rail.bottom && box.bottom <= footer.top;
+        }""")
+    page.locator('.rail').evaluate('rail => rail.scrollTop = rail.scrollHeight')
+    footer = page.locator('.rail .foot').bounding_box()
+    assert footer['y'] + footer['height'] <= 540
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
@@ -120,6 +158,8 @@ def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.locator('.nav-toggle').click()
+    page.locator('.reader-settings > summary').click()
+    page.locator('#privacy-toggle').scroll_into_view_if_needed()
     privacy = page.get_by_role('button', name='Hide labelled passages')
     box = privacy.bounding_box()
     assert box['height'] >= 44 and box['width'] >= 44
@@ -424,7 +464,10 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert page.locator(".first-map-actions a").inner_text() == f"Browse {visible_people} people →"
     assert page.locator(".first-map-actions a").is_visible()
     assert page.locator(".first-map-actions button").evaluate("e => e.getBoundingClientRect().bottom <= innerHeight")
-    assert "Background updates off" in page.locator("#mobile-status").inner_text()
+    page.locator(".nav-toggle").click()
+    page.locator(".reader-settings > summary").click()
+    assert "Background updates off" in page.locator(".reader-settings").inner_text()
+    page.locator(".nav-toggle").click()
     page.locator(".first-map-actions a").click()
     assert "1 possible contact" in page.locator(".held-note").inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -1439,15 +1482,17 @@ def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(rea
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=skills%2Fcatalog%2Ftalk-outline.md')
-    assert 'Skill-name matches\n0' in page.locator('.focus-facts').inner_text()
-    assert 'Last active' not in page.locator('.focus-facts').inner_text()
-    assert 'Last name match' not in page.locator('.focus-facts').inner_text()
+    assert page.locator('.focus-facts').count() == 0
+    assert '0 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
     assert 'last activity' not in page.locator('.eyebrow').inner_text()
     assert 'last name match' not in page.locator('.eyebrow').inner_text()
+    page.set_viewport_size({'width': 1440, 'height': 1000})
     assert 'file updated' in page.locator('.eyebrow').inner_text()
     page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
-    assert 'Last name match' in page.locator('.focus-facts').inner_text()
-    assert 'last name match' in page.locator('.eyebrow').inner_text()
+    assert page.locator('.focus-facts').count() == 0
+    assert '14 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
+    assert 'last name match' not in page.locator('.eyebrow').inner_text()
+    assert 'file updated' in page.locator('.eyebrow').inner_text()
     assert page.evaluate('known(byPath("skills/catalog/weekly-brief.md")).last === skillUsage(byPath("skills/catalog/weekly-brief.md")).last', isolated_context=False)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1464,22 +1509,24 @@ def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
           KNOWN.delete(r.path);
           render();
         }""", isolated_context=False)
-        assert 'Skill-name matches\n3' in page.locator('.focus-facts').inner_text()
+        assert page.locator('.focus-facts').count() == 0
         assert '3 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
         assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
-        usage = page.locator('.panel').filter(has_text='Matched by skill name in coding sessions and co ai runs')
-        assert usage.is_visible()
-        assert 'Neither confirms this installed version or task outcome' in usage.inner_text()
-        assert '3 matches in Claude Code' in usage.inner_text()
+        assert 'Neither confirms this installed version or task outcome' in page.locator('.usage-scope').inner_text()
+        assert page.locator('.panel h3:text-is("Usage")').count() == 0
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        page.locator('details.deep-note > summary').click()
         assert 'Claude Code 3' not in page.locator('.leadrow').inner_text()
         assert 'Retained evaluation attempts: 0' in page.locator('.deep-note').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=skills%2Fcatalog%2Finvoice-check.md')
-    action = page.get_by_role('button', name='Copy investigation command')
-    assert action.bounding_box()['y'] + action.bounding_box()['height'] <= 812
-    assert page.locator('.missing.primary button').count() == 0
+    action = page.get_by_role('button', name='Copy the command')
+    action.scroll_into_view_if_needed()
+    assert action.bounding_box()['height'] >= 44
+    assert page.locator('.missing.primary button').count() == 1
+    assert page.locator('.focus-command').count() == 0
 
 
 def test_skill_roster_links_are_touch_sized_on_phone(reader):
@@ -1504,6 +1551,7 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
       KNOWN.delete(r.path);
       render();
     }""", isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     assert page.locator('.missing .names').inner_text() == 'Still unknown: Current status.'
     assert 'unresolved section' in page.locator('.missing .lead').inner_text().lower()
     page.goto(uri + '#r=people%2Fquinn-alder.md')
@@ -1520,13 +1568,11 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
         assert 'Last contact in map' in page.locator('.leadrow').inner_text()
         assert page.locator('.focus-facts').count() == 0
-        page.locator('details.deep-note > summary').click()
-        assert '— map date shown above' in page.locator(
-            '.factlist dt:text-is("Last contact") + dd').inner_text()
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('.deep-note .factlist').count() == 1
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         if width == 375:
-            page.locator('details.deep-note > summary').click()
-            button = page.locator('.missing.primary .btn-primary').bounding_box()
+            button = page.locator('.missing.primary .btn-action').bounding_box()
             assert button['height'] >= 44
             assert button['y'] + button['height'] <= 812
 
@@ -1642,6 +1688,7 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
       r.text = r.text.replace('## Who they are', paragraph + '## Who they are');
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     for selector in ('.focus-statement', '.deep-note'):
         area = page.locator(selector)
         assert area.locator('.private').count() == 3
@@ -2567,3 +2614,442 @@ def test_session_source_deep_link_reveals_details(session_reader):
     expect(page.locator("#src-1")).to_be_in_viewport()
     assert page.locator(".session-details").evaluate("node => node.open")
     assert not page.locator(".session-attachment").evaluate("node => node.open")
+
+
+def test_inline_quotes_keep_marks_sources_and_private_words(reader):
+    page, _ = reader
+    result = page.evaluate('''() => {
+      const node = el('p', {html: inline('She said “send **the export** [1] today” [2]. Then "review this". `"leave code alone"`', 'people/mara-ostrowski.md')});
+      document.getElementById('main').appendChild(node);
+      const said = node.querySelector('.said');
+      said.querySelector('strong').innerHTML = '<mark>the</mark> export';
+      const prose = said.cloneNode(true); prose.querySelectorAll('.cite').forEach(c => c.remove());
+      return [node.querySelectorAll('.said').length, prose.textContent, said.querySelectorAll('.cite').length,
+        node.querySelectorAll('a.cite').length, said.querySelector('mark').textContent, node.querySelector('code .said') === null,
+        supportingSpan('She said “send the signed form”.', 'Please send the signed form today.')];
+    }''', isolated_context=False)
+    assert result[:6] == [2, '“send the export today”', 1, 2, 'the', True]
+    assert result[6] == {'claim': [10, 30], 'source': [7, 27]}
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_reader_settings_disclose_private_controls_and_wrap_command(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=people%2Favery-lin.md')
+    page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
+    if width == 390:
+        assert page.locator('h1').bounding_box()['y'] <= 140
+        page.locator('.nav-toggle').click()
+    settings = page.locator('.reader-settings')
+    assert not settings.evaluate('node => node.open')
+    assert not page.locator('#privacy-toggle').is_visible()
+    assert 'Snapshot ' in page.locator('#foot').inner_text()
+    assert 'Background updates off' not in page.locator('#foot').inner_text()
+    settings.locator('summary').click()
+    assert page.locator('#privacy-toggle').is_visible()
+    assert 'Background updates off' in settings.inner_text()
+    page.evaluate("document.querySelector('.reader-settings code').textContent = 'co rem --root /' + 'longpath'.repeat(60) + ' open'")
+    assert settings.locator('code').evaluate('node => node.scrollWidth <= node.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('labelled', ['Private conversation. [personal] [1]', 'Private conversation [personal]. [1]'])
+def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labelled):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''labelled => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = '# Mara Ostrowski\n\nA fixture contact.\n\n## Facts\n- Phone: Unknown\n- Role: —\n- Location: unknown\n'
+        + '\n## Open threads\nNothing open as of 2026-10-01.\n'
+        + '\n## Insight\n- Now: Confidential status. [sensitive] [1]\n'
+        + '\n## History\n- 2026-09-25: ' + labelled + '\n- 2026-09-26: [1]\n'
+        + '\n## Sources\n- [1] test:fixture\n';
+      KNOWN.clear(); FACTS.clear(); render();
+      document.documentElement.classList.add('hide-private');
+    }''', labelled, isolated_context=False)
+    assert page.locator('.between-you').count() == 0
+    assert page.locator('.activity-list > li:visible').count() == 0
+    assert page.locator('.recent-activity .private-history-notice').inner_text() == '1 private entry hidden'
+    assert page.locator('.contact-strip dt').filter(has_text='Phone').count() == 0
+    assert page.locator('.contact-strip dt').filter(has_text='Role').count() == 0
+    hidden = page.locator('.person-insight dd.privacy-only')
+    assert hidden.inner_text() == 'Hidden labelled passage'
+    assert hidden.evaluate('node => parseFloat(getComputedStyle(node).fontSize) <= 13')
+    page.locator('details.deep-note > summary').click()
+    assert 'Unknown' in page.locator('.factlist').inner_text() or 'not found' in page.locator('.factlist').inner_text()
+    assert page.locator('.timeline > li:visible').count() == 0
+    assert page.locator('.block-history .private-history-notice').inner_text() == '1 private entry hidden'
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert page.locator('.activity-list > li:visible').count() == 1
+    assert not page.locator('.recent-activity .private-history-notice').is_visible()
+
+
+def test_org_collapses_full_memory_and_omits_self_provenance(reader):
+    page, uri = reader
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate('''() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      r.relations = [{path: 'people/mara-ostrowski.md', via: r.path, kind: 'linked', basis: 'Pilot contact', sources: ['1']}];
+      render();
+    }''', isolated_context=False)
+    assert not page.locator('details.deep-note').evaluate('node => node.open')
+    assert re.search(r'\d+ sections · \d+ sources', page.locator('.deep-hint').inner_text())
+    provenance = page.locator('.relation-provenance')
+    assert provenance.locator('a:not(.cite)').count() == 0
+    assert provenance.locator('a.cite').count() == 1
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.deep-note .note').is_visible()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_last_pass_band_has_equal_insets_and_complete_trace_in_both_views(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    # More than 2,400 path units: the old fixed dash pattern cut off later runs.
+    page.evaluate('''() => {
+      REM.as_of = '2026-10-01T12:00:00Z';
+      REM.logs = Array.from({length: 16}, (_, i) => ({
+        run_id: 'fixture-' + i, started_at: new Date(Date.UTC(2026, 9, 1, 0, i * 30)).toISOString(),
+        seconds: 60, outcome: 'done', items: 100, changed: ['people/avery-lin.md']
+      })); render();
+    }''', isolated_context=False)
+    for fragment in ('', '#view=activity'):
+        page.evaluate('fragment => { location.hash = fragment; render(); }', fragment, isolated_context=False)
+        band = page.locator('.night').first
+        main_box, box = page.locator('#main').bounding_box(), band.bounding_box()
+        assert abs((box['x'] - main_box['x']) - (main_box['x'] + main_box['width'] - box['x'] - box['width'])) <= 1
+        assert band.locator('.night-head a').count() == (0 if fragment else 1)
+        trace = band.locator('.trace')
+        assert trace.evaluate('node => node.getTotalLength()') > 2400
+        assert trace.get_attribute('pathLength') == '1'
+        assert trace.get_attribute('d').endswith('L996,14')
+        # Finish its animation; normalised dashes must cover every path segment.
+        trace.evaluate("node => node.getAnimations().forEach(a => a.finish())")
+        assert trace.evaluate("node => getComputedStyle(node).strokeDashoffset") == '0px'
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_search_marks_do_not_split_words_and_counts_align(reader, theme):
+    page, uri = reader
+    page.goto(uri + '#q=pilot')
+    page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
+    mark = page.locator('mark').first
+    assert mark.evaluate('node => getComputedStyle(node).paddingLeft') == '0px'
+    assert mark.evaluate('node => getComputedStyle(node).paddingRight') == '0px'
+    for group in page.locator('.search-group').all():
+        heading, results = group.locator('h2').bounding_box(), group.locator('.hits').bounding_box()
+        assert abs(heading['x'] + heading['width'] - results['x'] - results['width']) <= 1
+
+
+def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate(r"""() => { const r = byPath('projects/harbour.md'); r.text += '\n\n## Uncertainties\n- Pilot size is not confirmed. [1]'; KNOWN.clear(); render(); }""", isolated_context=False)
+    assert page.locator('.record-focus.projects .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
+    for node in page.locator('.record-focus.projects .focus-facts, .record-focus.projects .thread:last-child').all():
+        assert node.evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
+    sources = page.locator('.project-purpose-cites')
+    assert sources.locator('.unsure').count() == 1
+    chip = sources.locator('a.cite').first
+    assert chip.evaluate('node => getComputedStyle(node).paddingTop') == '3px'
+    assert chip.bounding_box()['height'] < 30
+
+
+def test_long_source_citation_tip_stays_inside_375px_viewport(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate('''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text += '\\n\\n## Long source\\n- [99] ' + 'unbroken'.repeat(80) + ':fixture';
+      CITES.sources['99'] = 'unbroken'.repeat(80) + ':fixture';
+      document.getElementById('main').prepend(el('p', {id: 'long-source', html: inline('A fixture citation [99].', r.path)}));
+    }''', isolated_context=False)
+    cite = page.locator('#long-source .cite')
+    cite.focus()
+    tip = page.locator('#citation-tip')
+    assert tip.is_visible()
+    box = tip.bounding_box()
+    assert box['x'] >= 12 and box['x'] + box['width'] <= 363
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    cite.click()
+    assert page.locator('#evidence-panel').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_source_context_focus_loop_skips_disabled_hidden_and_negative_tabindex(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('.person-insight .cite').first.click()
+    page.evaluate('''() => {
+      const panel = document.getElementById('evidence-panel');
+      panel.insertAdjacentHTML('beforeend', '<button id="enabled-last">Enabled last</button>' +
+        '<button disabled>Disabled</button><button tabindex="-1">Programmatic</button>' +
+        '<button aria-hidden="true">Aria hidden</button><div aria-hidden="true"><button>Hidden ancestor</button></div>' +
+        '<button hidden>Hidden</button><a>No href</a><input type="hidden"><button style="visibility:hidden">Invisible</button>');
+    }''', isolated_context=False)
+    close = page.get_by_role('button', name='Close source context')
+    close.focus()
+    page.keyboard.press('Shift+Tab')
+    assert page.locator('#enabled-last').evaluate('node => node === document.activeElement')
+    page.keyboard.press('Tab')
+    assert close.evaluate('node => node === document.activeElement')
+
+
+@pytest.mark.parametrize('path', ['people/avery-lin.md', 'people/mara-ostrowski.md', 'orgs/fernhill-labs.md', 'projects/harbour.md'])
+@pytest.mark.parametrize('width', [375, 390])
+def test_record_heading_is_visible_within_compact_mobile_chrome(reader, path, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=' + path.replace('/', '%2F'))
+    assert page.locator('h1').bounding_box()['y'] <= 140
+    assert page.locator('.nav-toggle').is_visible()
+    assert page.locator('#q').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_quote_styling_preserves_private_boundaries_and_existing_marks(reader):
+    page, _ = reader
+    page.evaluate('''() => {
+      const path = 'people/mara-ostrowski.md';
+      const node = el('section', {id: 'quote-privacy-check'}, [
+        el('p', {html: inline('She said “keep this confidential [1] please”. [personal] [2] Public follow-up.', path)}),
+        el('p', {html: quoteSpans('“keep <mark>these</mark> original words”')}),
+        el('p', {html: quoteSpans('<span class="private">“Private opening. </span>Public ending.”')})]);
+      document.getElementById('main').appendChild(node);
+    }''', isolated_context=False)
+    quotes = page.locator('#quote-privacy-check')
+    assert quotes.locator('.said mark').inner_text() == 'these'
+    assert quotes.locator('p').first.locator('.said .cite').count() == 1
+    page.evaluate("document.documentElement.classList.add('hide-private')")
+    assert 'keep this confidential' not in quotes.inner_text()
+    assert 'Public follow-up.' in quotes.inner_text()
+    assert 'Public ending.' in quotes.inner_text()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert 'keep this confidential' in quotes.inner_text()
+
+
+@pytest.mark.parametrize('motion', ['no-preference', 'reduce'])
+def test_activity_chart_line_is_complete_within_300ms(reader, motion):
+    page, uri = reader
+    page.emulate_media(reduced_motion=motion)
+    page.goto(uri + '#view=activity', wait_until='domcontentloaded')
+    page.wait_for_function('''() => {
+      const path = document.querySelector('.hypno .trace');
+      if (!path) return false;
+      const style = getComputedStyle(path);
+      return parseFloat(style.strokeDashoffset) === 0 && style.strokeDasharray === 'none';
+    }''', timeout=300)
+    assert page.locator('.hypno .trace').first.evaluate(
+        "node => getComputedStyle(node).animationName") == 'none'
+
+
+@pytest.mark.parametrize('path', ['orgs/fernhill-labs.md', 'projects/harbour.md'])
+@pytest.mark.parametrize('width', [1440, 390])
+def test_activity_discloses_five_complete_rows_and_filters(reader, path, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=' + path.replace('/', '%2F'))
+    page.evaluate(r'''path => {
+      const r = byPath(path);
+      r.text = r.text.replace(/\n## History\n[\s\S]*?(?=\n## |\nInvestigation:|$)/, '');
+      r.text += '\n## History\n' + Array.from({length: 8}, (_, i) =>
+        '- 2026-09-' + String(i + 1).padStart(2, '0') + ': ' +
+        (i < 6 ? 'Agreed the plan. ' : 'Discussed the plan. ') + 'Complete history text. '.repeat(8)).join('\n');
+      KNOWN.clear(); render();
+    }''', path, isolated_context=False)
+    activity = page.locator('.activity-view')
+    rows = activity.locator('.activity-list > li:visible')
+    assert rows.count() == 5
+    assert activity.locator('.activity-list').evaluate('node => node.scrollHeight <= node.clientHeight')
+    assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
+    activity.get_by_role('button', name='Show all 8', exact=True).click()
+    assert rows.count() == 8
+    activity.get_by_role('button', name='Show less', exact=True).click()
+    assert rows.count() == 5
+    activity.get_by_role('button', name='Decision 6', exact=True).click()
+    assert rows.count() == 5
+    activity.get_by_role('button', name='Show all 6', exact=True).click()
+    assert rows.count() == 6
+    activity.get_by_role('button', name='Conversation 2', exact=True).click()
+    assert rows.count() == 2
+    assert not activity.locator('.activity-more').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_project_threads_only_label_explicit_direction_and_deduplicate_date(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate(r'''() => {
+      const r = byPath('projects/harbour.md');
+      r.text = r.text.replace(/\n## Open threads\n[\s\S]*?(?=\n## )/,
+        '\n## Open threads\n- 2026-09-13: You asked to revisit a title. [1]\n' +
+        '- 2026-09-14: Avery promised to send the draft. [1]\n' +
+        '- 2026-09-15: Mara owes you feedback. [1]\n');
+      KNOWN.clear(); render();
+    }''', isolated_context=False)
+    rows = page.locator('.next-exchanges .thread')
+    assert rows.locator('.dir').all_inner_texts() == ['Open', 'You owe', 'They owe']
+    assert rows.first.locator('.what').inner_text().startswith('You asked to revisit')
+    assert '2026-09-13' not in rows.first.locator('.what').inner_text()
+    assert 'since 13 Sep' in rows.first.locator('.when').get_attribute('title')
+
+
+@pytest.mark.parametrize('path', ['people/quinn-alder.md', 'skills/catalog/weekly-brief.md'])
+@pytest.mark.parametrize('width', [1440, 390])
+def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, path, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=' + path.replace('/', '%2F'))
+    box = page.locator('.missing.primary')
+    assert box.locator(':scope > *').evaluate_all('nodes => nodes.map(n => n.className)') == [
+        'lead', 'why', 'cmd', 'names']
+    assert box.locator('.why').inner_text() == (
+        "co rem has this page from your sources' metadata, not from reading them. "
+        'One investigation reads the material and fills it in.')
+    copy = box.get_by_role('button', name='Copy the command', exact=True)
+    assert 'btn-primary' not in copy.get_attribute('class')
+    assert copy.bounding_box()['height'] >= 40
+    command = box.locator('code').bounding_box()
+    button = copy.bounding_box()
+    if width == 390:
+        assert button['y'] >= command['y'] + command['height']
+    else:
+        assert button['x'] >= command['x'] + command['width']
+    assert not page.locator('.focus-command').count()
+    if path.startswith('people/'):
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('.deep-note .factlist').count() == 1
+    else:
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('.focus-facts').count() == 0
+        assert page.locator('.lead-meta.usage').count() == 1
+        assert page.locator('.panel h3:text-is("Usage")').count() == 0
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_quotes_are_visually_distinct_from_search_marks(reader, theme):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate('''theme => {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById('main').appendChild(el('p', {id: 'quote-colour',
+        html: quoteSpans('“These are <mark>original</mark> words”')}));
+    }''', theme, isolated_context=False)
+    quote = page.locator('#quote-colour .said')
+    mark = quote.locator('mark')
+    quote_background = quote.evaluate('node => getComputedStyle(node).backgroundColor')
+    assert quote_background != mark.evaluate('node => getComputedStyle(node).backgroundColor')
+    if theme == 'dark':
+        assert float(quote_background.removesuffix(')').split(',')[-1]) <= .08
+        assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'underline'
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_project_path_wraps_at_slashes_and_keeps_segments_readable(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate('''() => {
+      const r = byPath('projects/harbour.md');
+      r.text = r.text.replace('/home/user/code/harbour', '/Users/avery/landpages/LayeredVisions');
+      FACTS.clear(); render();
+    }''', isolated_context=False)
+    path = page.locator('.focus-facts .local-path')
+    assert path.inner_text() == '/Users/avery/landpages/LayeredVisions'
+    assert path.locator('wbr').count() == 4
+    segment = path.locator('.path-segment').last
+    assert segment.evaluate('node => { const r = document.createRange(); r.selectNodeContents(node); return r.getClientRects().length; }') == 1
+    page.evaluate("document.querySelector('.path-segment:last-child').textContent = 'folder'.repeat(100)")
+    assert path.evaluate('node => node.scrollWidth <= node.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
+    page, uri = reader
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate(r'''() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      r.relations = [{path: 'people/mara-ostrowski.md', kind: 'linked', via: r.path, sources: ['1']}];
+      r.text += '\n## Uncertainties\n- Timing is unconfirmed. [1]\n';
+      KNOWN.clear(); render();
+    }''', isolated_context=False)
+    cite = page.locator('.relation-provenance .cite').first
+    assert abs(cite.bounding_box()['x'] - page.locator('.relation-card strong').first.bounding_box()['x']) <= 1
+    assert page.locator('.unsure-icon').inner_text() == '?'
+    assert page.locator('.unsure').evaluate('node => parseFloat(getComputedStyle(node).columnGap)') >= 4
+
+
+def test_mobile_header_focus_and_touch_targets_on_every_view(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 390, 'height': 844})
+    for view in VIEWS:
+        page.goto(uri + (view or '#'))
+        for selector in ('#q', '.nav-toggle', '.brand'):
+            target = page.locator(selector)
+            assert target.is_visible(), (view, selector)
+            assert target.bounding_box()['height'] >= 40, (view, selector)
+            target.focus()
+            page.keyboard.press('Tab')
+            page.keyboard.press('Shift+Tab')
+            assert target.evaluate('node => getComputedStyle(node).outlineStyle') != 'none', (view, selector)
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), view
+
+
+@pytest.mark.parametrize('body', [
+    'Unheaded prose remains in the full memory.',
+    '```markdown\nSources: literal metadata\n[Read the draft](/tmp/draft.md)\n```',
+    '[Read the draft](/tmp/draft.md)',
+])
+def test_full_memory_keeps_unheaded_content_and_counts_it(reader, body):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''body => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.relations = [];
+      r.text = '# Mara Ostrowski\n\n' + body;
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', body, isolated_context=False)
+    assert page.locator('.deep-hint').inner_text() == '2 sections · 0 sources'  # body and Facts
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.deep-note .note').inner_text().strip()
+    assert page.locator('.deep-note .factlist').is_visible()
+
+
+def test_full_memory_counts_content_without_counting_toc_navigation(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.relations = [];
+      r.text = '# Mara Ostrowski\n\n' + Array.from({length: 4}, (_, i) =>
+        '## Topic ' + i + '\nUseful content.').join('\n\n');
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    assert page.locator('.deep-hint').inner_text() == '5 sections · 0 sources'  # four topics and Facts
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.deep-note .toc-panel').is_visible()
+
+
+def test_partial_project_status_explains_the_uninvestigated_sections(reader):
+    page, uri = reader
+    page.goto(uri + '#c=projects')
+    page.evaluate(r'''() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\n\nInvestigation: not investigated yet.\n\n'
+        + '## Insight\n- Now: awaiting review.\n\n## Current status\nUnknown — not investigated yet.';
+      r.written = true;
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    tooltip = 'Some sections are filled from sources; the rest are not investigated yet.'
+    row = page.locator('.sheet tbody tr').filter(has_text='Harbour')
+    assert row.locator('.pill.status').inner_text() == 'Partly investigated'
+    assert row.locator('.pill.status').get_attribute('title') == tooltip
+    row.get_by_role('link', name='Harbour', exact=True).click()
+    assert page.locator('.eyebrow .pill.status').inner_text() == 'Partly investigated'
+    assert page.locator('.eyebrow .pill.status').get_attribute('title') == tooltip
