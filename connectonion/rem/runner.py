@@ -838,6 +838,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, unlocated = drop_claims(record, text, [*refuted, *(
             error.split("“", 1)[1].rstrip("”") for error in misquoted(notebook.root, record, text, items))])
         text = _keep_identity(record, before_drop, text)
+        # 2026-10-20 trial: the audit refuted a First contact the turn took from a
+        # cc'd mail; dropped, the field stayed Unknown beside the computed one.
+        text, again = facts.keep_extracted(record, text, extracted)
+        restored = [*restored, *again]
         text = drop_uncited_sources(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)

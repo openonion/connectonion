@@ -1225,6 +1225,40 @@ def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address
     assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved
 
 
+def test_a_refuted_first_contact_is_replaced_with_the_extracted_date_on_last_resort(notebook, tmp_path):
+    """2026-10-20: dropping an audited contact date must restore the extracted row."""
+    from connectonion.rem import facts
+    from connectonion.rem.files import write_json
+
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record)
+    claim = 'First contact: 2025-08-26 (earliest mail found) [2]'
+    extracted = {'field': 'First contact', 'value': '2026-08-11', 'qualifier': 'earliest mail found',
+                 'source': 'gmail:avery-first', 'date': '2026-08-11'}
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## Who they are\n- Unknown — not investigated yet',
+                                          '## Who they are\n- Avery Lin leads the pilot. [1]')
+                         .replace('- First contact: Unknown', '- ' + claim)
+                         .replace('- (none yet)', '- [1] gmail:avery-latest\n- [2] gmail:avery-cc')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    write_json(tmp_path / 'claim-review.json', {'verdict': 'fail', 'findings': [
+        {'claim': claim, 'issue': 'Avery was only cc’d on this mail; it was not direct contact.'}]})
+    items = [{'source': 'gmail:avery-latest'}, {'source': 'gmail:avery-cc'},
+             {'role': 'facts', 'facts': [extracted]}]
+
+    runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None, last_resort=True)
+
+    page = notebook.read(record)
+    assert facts.parse(page, record)['First contact'] == [
+        {'value': '2026-08-11', 'qualifier': 'earliest mail found', 'citations': ['2']}]
+    assert '- [2] gmail:avery-first — 2026-08-11\n' in page
+    assert '2025-08-26' not in page and '- First contact: Unknown' not in page
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted']
+    assert {'field': 'First contact', 'source': 'gmail:avery-first'} in review['facts_restored']
+
+
 def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():
     """Ody Zhou (2026-10-15) was kept with no lead: the audit refuted a claim in
     each sentence. `_lead` is what the last resort checks before keeping a page."""
