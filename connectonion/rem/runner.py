@@ -694,7 +694,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
-                                       carried=carried)
+                                       carried=carried, ask_quotes=attempt < repairs and stage == "investigate")
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -758,7 +758,7 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None, last_resort=False, carried=""):
+                       investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
@@ -861,8 +861,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                                          root=notebook.root)
     if carried:
         errors += dropped_content(carried, text)
-    if investigation and not last_resort and record.startswith("projects/"):
-        # Asked for a repair, never a refusal: the last resort keeps the page.
+    if ask_quotes and record.startswith("projects/"):
+        # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
     if last_resort and record.startswith("people/") and not _lead(text):
         # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
