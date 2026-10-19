@@ -75,9 +75,10 @@ def default_config() -> dict:
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
-                       # --workers overrides one run. Codex turns stayed flat at 1–16,
-                       # then slowed 2.5x at 48 with no more pages/hour than 16:
-                       # more workers only added lock waits and timeouts.
+                       # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
+                       # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
+                       # failures and no 429s; a model round slowed only 430s -> 530s.
+                       # 48 (2026-10-09) slowed each turn 2.5x for no more pages than 16.
                        "workers": 16,
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
