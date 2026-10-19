@@ -734,6 +734,10 @@ were excluded is migrated in place: only the items from such sessions are
 dropped, and nothing is read again. Within one run, the mail metadata and the
 project notes that every page searches are parsed once and then reused until a
 file changes.
+Before page workers start, init and `co rem investigate CATEGORY` scan the
+session stores once, so no page waits on that scan or counts it as its own
+gathering. A person's search of the project notes first checks each note for
+the name in one pass and excerpts only the notes that contain it.
 
 What counts as a message you typed to Codex (#1978). Codex Desktop puts every
 message in the user slot under a metadata block, typed or injected, and says

@@ -666,6 +666,10 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
             return [_deepen_job(root, row, backfill[row["record"]], before)]
         return []
 
+    from ...rem.investigate import warm_session_windows
+    from ...rem.service import subscriptions
+    if jobs:
+        warm_session_windows(root, subscriptions(root))
     try:
         outcomes, stopped = _in_parallel(jobs, workers=workers, gate=gate, done=done)
     finally:
@@ -1306,6 +1310,9 @@ def make_rem_app(factory):
                     outcome = "nothing_new" if isinstance(error, NothingNew) else "failed"
                     return {"page": record, "outcome": outcome, "why": str(error)}
 
+            if chosen:
+                from ...rem.investigate import warm_session_windows
+                warm_session_windows(root, subscriptions(root))
             pending, running = iter(chosen), {}
             with ThreadPoolExecutor(max_workers=effective_workers) as pool:
                 while True:

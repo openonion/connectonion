@@ -2746,3 +2746,29 @@ def test_a_restore_never_brings_back_quotes_the_turns_audit_refuted(tmp_path, pa
     reason = inv._keep_unless_lost(notebook, record, before, ['“quote 0”', '“quote 1”'])
     assert bool(reason) == paraphrase
     assert notebook.read(record) == sound
+
+
+def test_project_mentions_excerpts_only_notes_that_name_the_subject(project_documents, monkeypatch):
+    """2026-10-20: scrubbing and splitting every note for every person was 11.8 s a page."""
+    book, folder = project_documents
+    (folder / 'notes/a.md').write_text('Avery Lin agreed on delivery.')
+    (folder / 'notes/b.md').write_text('Nothing about anyone here.\n' * 50)
+    excerpted = []
+    real = inv._mention_excerpt
+    monkeypatch.setattr(inv, '_mention_excerpt', lambda text, *a: excerpted.append(text) or real(text, *a))
+    items, _ = inv.project_mentions(book, ['Avery Lin'])
+    assert [item['file'] for item in items] == [str(folder / 'notes/a.md')]
+    assert excerpted == ['Avery Lin agreed on delivery.']
+
+
+def test_warm_session_windows_scans_each_enabled_store_once(tmp_path, monkeypatch):
+    scanned = []
+    monkeypatch.setattr(inv, '_window_items', lambda read, scoped, label, progress, root: scanned.append(label))
+    store = tmp_path / 'sessions'
+    store.mkdir()
+    inv.warm_session_windows(tmp_path / 'rem', {
+        'codex': {'kind': 'codex', 'root': str(store)},
+        'claude-code': {'kind': 'claude-code', 'root': str(store), 'enabled': False},
+        'gone': {'kind': 'codex', 'root': str(tmp_path / 'missing')},
+        'gmail': {'kind': 'gmail'}})
+    assert scanned == ['codex sessions']

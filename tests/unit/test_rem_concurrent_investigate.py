@@ -191,3 +191,33 @@ def test_terminal_batch_summary_stays_short_and_empty_queue_is_clear(tmp_path, m
     assert empty.exit_code == 0, empty.output
     assert "All pending pages in orgs are current." in empty.output
     assert "Pages: None" not in empty.output and empty.output.strip().endswith("list orgs")
+
+
+@pytest.mark.parametrize("category", ["people", "orgs"])
+def test_session_stores_are_scanned_once_before_any_page_starts(tmp_path, monkeypatch, category):
+    """2026-10-20: every worker's first gather waited behind the scan and counted it."""
+    root = tmp_path / "rem"
+    prepare(root)
+    events = []
+    monkeypatch.setattr("connectonion.rem.investigate.warm_session_windows",
+                        lambda root, subscriptions: events.append("warm"))
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "no meter"})
+    if category == "people":
+        rows = [{"record": f"people/p{n}.md", "mode": "full", "days": 30,
+                 "last_activity": "2026-09-30T00:00:00Z", "mails": 1, "recent": True,
+                 "sent": 1, "received": 1, "last_investigated": None} for n in range(3)]
+        monkeypatch.setattr("connectonion.rem.people_pages.queue", lambda root, **kw: rows)
+        monkeypatch.setattr("connectonion.cli.commands.rem_commands._mail_clients", lambda root: {})
+        monkeypatch.setattr("connectonion.rem.service.subscriptions", lambda root: {})
+        monkeypatch.setattr("connectonion.cli.commands.rem_commands._logged",
+                            lambda root, record, phase, call: call(lambda *args: None))
+        monkeypatch.setattr("connectonion.rem.people_pages.investigate_person",
+                            lambda root, row, **kw: events.append(row["record"]) or {"record": row["record"]})
+    else:
+        rows = [{"path": f"orgs/o{n}.md", "recent": False, "last_investigated": None} for n in range(3)]
+        monkeypatch.setattr("connectonion.rem.queue.order", lambda root, category: rows)
+        monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_page",
+                            lambda root, notebook, record, **kw: events.append(record) or {"record": record})
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "--json", "investigate", category])
+    assert result.exit_code == 0, result.output
+    assert events[0] == "warm" and events.count("warm") == 1 and len(events) == 4
