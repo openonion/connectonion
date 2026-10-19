@@ -19,7 +19,8 @@ def _run_reader_js(script):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -165,7 +166,8 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
     assert json.loads(result.stdout) == {
