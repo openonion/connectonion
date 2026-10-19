@@ -290,6 +290,8 @@ The reader calls these **skill-name matches**: invocation attempts in coding
 sessions matched by name. `Run evidence` counts retained evaluation attempts
 separately; it may show zero even when coding sessions contain name matches.
 Neither count proves that this installed version ran or that the task succeeded.
+The Skills list uses a compact usage count and last date; the skill page keeps
+the match details, scope explanation and usage bar.
 
 Rerunning the map (`init`, `sync`'s map, or `map-skills`) moves an older
 notebook to this shape. Pages made one per copy are merged into the name's page:
@@ -537,7 +539,10 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   rewritten in the latest pass. A faint underline marks a recorded field
   change, with before/after values on hover. A hollow circle beside a citation
   means the sentence explicitly says its claim is unconfirmed; uncited prose
-  gets no marker. A short legend lives in **Reader settings**.
+  gets no marker. On entering a page, these update markers fade in once and the
+  changed-field underline draws in about 600 ms. Filtering or rerendering the
+  same view does not replay them; reduced motion shows the final state immediately.
+  A short legend lives in **Reader settings**.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
   recorded decision when supported. A project opens on its current supported
@@ -547,7 +552,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
   Insight, History and Sources stay under the always-visible **Full memory and
-  sources** section. A claim
+  sources** disclosure; decision pages also start with it collapsed. A claim
   number `[n]` opens its source description and, when locally archived, an
   original excerpt. Prose uses quiet raised date markers, kept beside the
   preceding word; hover or focus reveals the full source label. Adjacent
@@ -568,7 +573,9 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
 - **Open threads** shows all supported obligations with direct record links.
-  **Memory changes** keeps cited field changes separate from page rewrites.
+  Within each direction section, rows keep their date without repeating the
+  direction tag. **Memory changes** keeps cited field changes separate from
+  page rewrites.
   Older run logs have no claim-level comparison; they show an empty state.
 - **Search** routes common requests such as “who do I owe?”, “what changed?”
   and “connected to Mara Ostrowski” to task views. Literal search also answers
@@ -862,7 +869,9 @@ bounded by the call cap. Its cost now shows in points, so a cap can follow
 from real numbers. This supersedes the earlier unimplemented 2% initialization
 / 1% daily targets, which needed exactly this meter.
 
-The scheduled daily round maintains first. The first run of the local day then
+The scheduled daily round maintains first. It saves detected owner languages after
+maintenance, including a partial maintenance result, before deciding whether to
+investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since

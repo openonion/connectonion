@@ -527,14 +527,14 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
         'const labels = () => [age("10"), age("1"), age("0"), citationDate({}, "99"),',
         'dueLabel({due: "2026-10-19"}), dueLabel({due: "2026-10-21"}),',
         't("Read {n} items", {n: 240}), t("Rewrote {n} pages", {n: 7}),',
-        't("{n} runs", {n: 10}), t("{n} written of {m}", {n: 3, m: 6})];',
+        't("{n} runs", {n: 10}), t("{n} written of {m}", {n: 3, m: 6, unit: " 人"})];',
         'const en = labels(); uiLanguage = "zh"; const zh = labels();',
         'console.log(JSON.stringify({en, zh})); })();',
     ]))
     assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · 19 Oct', 'due 21 Oct',
                             'Read 240 items', 'Rewrote 7 pages', '10 runs', '3 written of 6']
     assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 10月19日', '到期 10月21日',
-                            '阅读了 240 项', '改写了 7 页', '10 次运行', '6 人中已撰写 3 人']
+                            '阅读了 240 项', '改写了 7 页', '10 次运行', '已撰写 3 / 6 人']
 
 
 @pytest.mark.parametrize('source', ['unbroken' * 80 + ':fixture', 'gmail:fixture', ''],
@@ -663,3 +663,78 @@ def test_record_freshness_labels_translate_without_changing_english():
     assert result['en'] == labels
     assert result['zh'] == ['最近动态', '文件更新于', '最近映射的会话', '最近名称匹配',
                             '条存档消息', '昨夜', '昨夜整理时更新']
+
+
+def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
+    page = TEMPLATE.read_text()
+    interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['categoryCount', 'usageCaption', 'refusalReason', 'sourceLabel', 'threadDate'])
+    result = _run_reader_js('\n'.join([
+        '(() => { let uiLanguage = "zh";', interface, functions,
+        'const REM = {source_context: {"claude-code:12345678-1234-1234-1234-123456789abc:1": {time: "2026-09-03T12:00:00Z"}}};',
+        'const fmtDate = () => "10月10日";',
+        'const categories = ["people", "orgs", "projects", "skills", "decisions", "principles"];',
+        'const zh = categories.map(c => categoryCount(c, {written: 3, mapped: 6}, 6));',
+        'const emptyCounts = categories.map(c => categoryCount(c, null, 3));',
+        'const labels = [t("Waiting on you"), t("Current context"), t("daily-update"),',
+        'usageCaption({count: 2, last: "2026-10-10"}),',
+        'refusalReason("Changed page has no numbered evidence references"),',
+        'refusalReason("Missing or duplicate citation: 22"),',
+        'sourceLabel("claude-code:12345678-1234-1234-1234-123456789abc:1"), sourceLabel("claude-code:" + "a".repeat(50))];',
+        'uiLanguage = "en";',
+        'const en = categories.map(c => categoryCount(c, {written: 3, mapped: 6}, 6));',
+        'console.log(JSON.stringify({zh, emptyCounts, labels, en, englishReason: refusalReason("Missing or duplicate citation: 22")})); })();',
+    ]))
+    units = ['人', '个组织', '个项目', '项', '项', '条']
+    assert result['zh'] == [f'已撰写 3 / 6 {unit}' for unit in units]
+    assert result['emptyCounts'] == [f'3 {unit}' for unit in units]
+    assert result['en'] == ['3 written of 6'] * 6
+    assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 10月10日 · 版本未验证',
+                                '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 9月3日', 'claude-code:aaaaaaaa…']
+    assert result['englishReason'] == 'Missing or duplicate citation: 22'
+
+
+def test_activity_translates_known_refusals_before_joining_separate_errors():
+    page = TEMPLATE.read_text()
+    interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['refusalReason', 'unwritten'])
+    errors = ['Missing section: Facts', 'Cited local file needs a file: source ID and SHA-256: 22',
+              'Fact without a citation: Role; cite the message it came from, or write Unknown',
+              'Page cites only the page itself and the coverage note; nothing about the subject was read']
+    result = _run_reader_js('\n'.join([
+        '(() => { let uiLanguage = "zh";', interface, functions,
+        'const run = {refusals: [{record: "people/avery-lin.md", errors: ' + json.dumps(errors) + '}]};',
+        'const zh = unwritten(run)[0].why; uiLanguage = "en";',
+        'console.log(JSON.stringify({zh, en: unwritten(run)[0].why})); })();',
+    ]))
+    assert result['en'] == '; '.join(errors)
+    assert result['zh'] == ('缺少章节：Facts；引用本地文件须有 file: 来源 ID 与 SHA-256：22；'
+                            '事实缺少引用：Role；请引用原消息，或填写 Unknown；'
+                            '页面仅引用自身与覆盖记录，未阅读主题相关材料')
+
+
+@pytest.mark.parametrize('source,dated,expected', [
+    ('outlook:123456789abc:Returned client agreement.pdf', True,
+     'outlook:123456789abc:Returned client agreement.pdf'),
+    ('outlook:' + 'a' * 40 + ':Returned client agreement.pdf', False,
+     'outlook:' + 'a' * 40 + ':Returned client agreement.pdf'),
+    ('gmail:123456789abc', True, 'gmail:123456789abc'),
+    ('claude-code:human-readable-session-name:1', True, 'claude-code:human-readable-session-name:1'),
+    ('codex:12345678-1234-1234-1234-123456789abc:2', True, 'Codex session · 3 Sep'),
+    ('claude-code:12345678-1234-1234-1234-123456789abc:2', True, 'Claude Code session · 3 Sep'),
+    ('codex:12345678-1234-1234-1234-123456789abc:2', False, 'codex:12345678…:2'),
+    ('file:' + 'b' * 32, True, 'file:bbbbbbbb…'),
+    ('gmail:' + 'c' * 31, False, 'gmail:' + 'c' * 31),
+])
+def test_source_labels_only_shorten_opaque_segments(source, dated, expected):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['sourceLabel', 'threadDate'])
+    context = {source: {'time': '2026-09-03T12:00:00Z'}} if dated else {}
+    result = _run_reader_js('\n'.join([
+        functions, 'const REM = {source_context: ' + json.dumps(context) + '};',
+        'console.log(JSON.stringify(sourceLabel(' + json.dumps(source) + ')));',
+    ]))
+    assert result == expected

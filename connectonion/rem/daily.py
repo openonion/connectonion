@@ -165,13 +165,14 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if not ready(config)[0]:
         maintenance["sessions_summary"] = summarise_sessions(root, limit=40, say=say)
         say(summarise_line(maintenance["sessions_summary"]))
-    if maintenance['outcome'] not in ('completed', 'no_change'):
-        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
-                                                'investigation': None}, scheduled)
     with maintenance_lock(root):
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+    if maintenance['outcome'] not in ('completed', 'no_change'):
+        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
+                                                'investigation': None}, scheduled)
+    with maintenance_lock(root):
         state = status(root)
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         logs = run_logs(root)
