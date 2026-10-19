@@ -298,3 +298,37 @@ display name and its host copy handed his page another man's mobile. A spelling
 the person rejected leaves `Also known as` (Ody wrote "我中文名字是周泽凯 不是周泽楷",
 and 周泽楷 stayed beside it). Pronouns appear only where their own words show
 them.
+
+## Quote first, paraphrase last; First contact is the earliest found (2026-10-20)
+
+A spot check of a real notebook found 93 of 141 pages with no quote at all. The
+pages had been written before the quote rule and kept by daily upkeep, whose
+skill never carried it. The rule now lives in this page skill, so every stage
+that writes a person page (first investigation, upkeep, enrich, muse) gets it:
+the lead's live ask, each open thread, each relationship term and the
+communication sections carry the speaker's words, and a person with more than
+three messages and fewer than six quotes has been retold.
+
+`First contact` was `Unknown` on every first-run page of a five-person trial,
+although cited mail went back a year. The old rule ("the earliest retained mail
+does not establish first contact") was honest but useless; the claim audit then
+refuted any date the writer did give, because code computed only `Last
+contact`. Code now computes `First contact` from the earliest direct mail it
+read, written `YYYY-MM-DD (earliest mail found)`, and puts it back when the
+audit removes a different date. An earlier start a message states (hired,
+introduced) still wins.
+
+Also from the same trial: `Insight` rests on two or more messages and holds at
+most one `Now:` (two `Now:` bullets restated one message); it is a finding,
+never advice or a hedge. `Uncertainties` are questions. The owner is never
+`he`/`his`. A phone is labelled by kind and where it was seen, and a
+company's main line, a footer or a dial-in is not the person's. History is
+sorted newest first in code (`page_review.sort_history`): three of five pages
+put one line out of order.
+
+| 5 first-run pages, gpt-6-luna | before (rc7) | after, four reruns |
+|---|---|---|
+| quotes per page (mean) | 6.8 | 17.2, 14.2, 16.8, 9.8 |
+| First contact filled | 1/5 | 1/5, 4/5, 5/5, 5/5 (code-computed from the second rerun) |
+| Uncertainties all questions | 2/5 | 4/5, 5/5, 5/5, 5/5 |
+| History newest first | 4/5 | 2/5, 5/5, 5/5, 5/5 (sorted in code from the third) |

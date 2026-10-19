@@ -186,6 +186,9 @@ def _digits(value: str) -> str:
 
 
 def _on_page(row: dict, text: str) -> bool:
+    # 2026-10-20 trial: the same date in Last contact must not leave First contact Unknown.
+    if row["field"] in ("First contact", "Last contact"):
+        return any(v["value"] == row["value"] for v in values(_lines(text).get(row["field"], "")))
     text = text.partition("\n## Sources\n")[0]   # a source's date is not a contact date
     if row["field"] == "Phone":
         return _digits(row["value"]) in {_digits(m) for m in re.findall(r"\+?\d[\d\s().-]{6,}\d", text)}

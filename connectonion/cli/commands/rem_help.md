@@ -15,6 +15,7 @@ Build (once)
 Deepen one page
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Think one page through: ask many questions, study the five best, write only on insight.
+  deepen        Deepen valuable thin pages over time, one enrich then muse round each.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
@@ -150,7 +151,7 @@ Usage:
   co rem investigate PAGE                     Investigate one page.
   co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
   co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
-                                               most useful first, up to 10 at once.
+                                               most useful first, using limits.workers (default 16).
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
@@ -188,7 +189,8 @@ Options:
   --days N       How far back to read (default 150; 30 for me)
   --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default all)
-  --workers N    With CATEGORY: concurrent pages (default 10; 1-32)
+  --workers N    With CATEGORY: concurrent pages (default limits.workers, 16; 1-32;
+                 1 with --limit/--budget)
   --list         With CATEGORY: print the order and stop; no model
   --recent-days N  With people: people written to in the last N days first (default 14)
   --budget N     With CATEGORY: stop starting pages once this run has used N points of
@@ -249,6 +251,40 @@ Output:   Whether the page changed, its size before and after, and the lead list
 Effects:  Uses the configured model; only the selected page can change.
 
 Next:     co rem show people/avery-lin.md
+Back:     co rem --help
+```
+
+## co rem deepen
+
+```
+co rem deepen — deepen valuable thin pages over time, one enrich then muse round each.
+
+Choose notebook people and projects by value times thinness, with recent activity
+first and each previous round reducing priority. An unchanged round with no
+insights rests for 30 days. Each round reads earlier open leads and questions.
+Unmapped projects use Sessions under Paths and Last seen; other missing activity is zero.
+
+Usage:    co rem deepen [PAGE...] [--pages N]
+Example:  co rem deepen --pages 1
+          co rem deepen projects/lantern-skills.md avery-lin
+
+Arguments:
+  PAGE...       Resolve like enrich/muse; deepen each once in order, checking budget before each.
+                Explicit pages bypass automatic selection and its resting period.
+
+Options:
+  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 2)
+
+Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
+          from investigation's 35. The shared 90% floor also stops new pages.
+          Without a meter, the budget counts the last seven days of run usage.
+Output:   Rounds with before/after metrics, insights, lost quotes, outcomes and
+          points; the stop reason and candidates left. State: .state/depth.json.
+Effects:  Uses the configured model. A round is about 25 minutes.
+          Scheduled sync runs a slot after a due, non-partial daily round.
+          Manual sync never deepens.
+
+Next:     co rem logs
 Back:     co rem --help
 ```
 
@@ -438,7 +474,9 @@ Example:  co rem sync --dry-run
           --all       keep going until nothing is waiting or the day's runner
                       attempts are spent; one line per batch on stderr. To go
                       further today, raise limits.runner_calls_per_day
-          --scheduled what the schedule passes: run only if a scheduled time is due
+          --scheduled what the schedule passes: run only if a scheduled time is due;
+                      after a non-partial daily round, deepen up to two pages within
+                      the separate deepening budget. Manual sync never deepens.
 
 Effects:  Reads message bodies, calls the model, updates pages. A run the daily
           cap refuses is kept in co rem logs. Ctrl-C keeps finished batches and
@@ -496,6 +534,7 @@ Keys:     model                          gpt-6-luna (default); a new one is chec
                                          sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
+          limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
           limits.<name>                  the other limits co rem config shows

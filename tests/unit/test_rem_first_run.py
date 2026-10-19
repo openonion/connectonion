@@ -715,6 +715,27 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
 
+def test_init_uses_the_notebooks_workers_for_the_page_queue(people, monkeypatch):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem.config import set_config
+
+    root, init, calls, people_written, projects_written = people
+    set_config(root, ["limits.workers", "3"])
+    parallel = rem_commands._in_parallel
+    seen = []
+
+    def run(jobs, *, workers, gate, done):
+        seen.append(workers)
+        return parallel(jobs, workers=workers, gate=gate, done=done)
+
+    monkeypatch.setattr(rem_commands, "_in_parallel", run)
+    result = init("--no-start")
+    assert result.exit_code == 0, result.output
+    assert seen == [3]
+    assert len(people_written) == 5 and len(projects_written) == 3
+    assert "up to 3 at a time" in result.output and "with up to 3 workers" in result.output
+
+
 def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
     """The configured target is advisory; the cohort finishes below the safety floor."""
     from connectonion.rem.config import default_config
@@ -817,9 +838,9 @@ def test_all_history_estimate_marks_a_failed_mailbox_as_a_lower_bound(first_run,
 
 def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     from connectonion.rem import first_run as fr
-    from connectonion.cli.commands.rem_commands import FIRST_RUN_WORKERS
+    from connectonion.rem.config import default_config
 
-    assert fr.WORKERS == FIRST_RUN_WORKERS == 16
+    assert default_config()["limits"]["workers"] == 16
 
     def run(phase, record, tokens, seconds, outcome="completed"):
         return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,
@@ -840,7 +861,8 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
-    mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1), "on your Codex plan")
+    mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1,
+                                workers=default_config()["limits"]["workers"]), "on your Codex plan")
     assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
 
 
@@ -854,7 +876,8 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     from connectonion.rem import first_run as fr
 
     b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
-    total = fr.plan([], **b1)
+    from connectonion.rem.config import default_config
+    total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
     assert 120 <= total["minutes"] <= 140
     assert 400_000_000 <= total["input_tokens"] <= 480_000_000
     assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]

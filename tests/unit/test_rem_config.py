@@ -127,3 +127,37 @@ def test_cli_can_set_speed_without_a_model_check(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["data"]["config"]["speed"] == "standard"
     assert read_config(tmp_path)["speed"] == "standard"
+
+
+def test_workers_must_be_between_one_and_32():
+    import pytest
+    from connectonion.rem.config import default_config, validate
+    from connectonion.rem.files import RemError
+
+    config = default_config()
+    for workers in (0, 33):
+        config["limits"]["workers"] = workers
+        with pytest.raises(RemError):
+            validate(config)
+    for workers in (1, 32):
+        config["limits"]["workers"] = workers
+        assert validate(config)["limits"]["workers"] == workers
+
+
+def test_cli_shows_and_sets_workers(tmp_path):
+    import json
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import read_config
+
+    runner = CliRunner()
+    command = ["rem", "--root", str(tmp_path), "--json", "config"]
+    initial = runner.invoke(app, command)
+    assert initial.exit_code == 0, initial.output
+    assert json.loads(initial.stdout)["data"]["config"]["limits"]["workers"] == 16
+    changed = runner.invoke(app, [*command, "set", "limits.workers", "8"])
+    assert changed.exit_code == 0, changed.output
+    assert read_config(tmp_path)["limits"]["workers"] == 8
+    shown = runner.invoke(app, command)
+    assert shown.exit_code == 0, shown.output
+    assert json.loads(shown.stdout)["data"]["config"]["limits"]["workers"] == 8

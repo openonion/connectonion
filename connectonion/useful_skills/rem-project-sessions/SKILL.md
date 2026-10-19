@@ -39,8 +39,7 @@ history says what was committed and when. Join them:
   this project only when it names a distinctive project, package, file,
   version or behaviour here; generic "release it", "fix the tests" or a
   complaint about an unnamed service is not this project's issue or progress.
-- Assistant replies and tool output are absent; say that boundary once in
-  `Uncertainties`.
+- Assistant replies and tool output are absent: a request is not a result.
 - Session input may be dictated: keep `input_scope` and recognition doubt; a
   voice workspace can hold unrelated requests. A misheard name ("WTF engine")
   is corrected only when the material shows the right term; cite that too.
@@ -53,6 +52,10 @@ Follow the project page skill. From this material, usually:
 
 - `Why it exists`: the owner's earliest words about the whole project, quoted.
 - `Where it stands`: the newest commits and messages, dated; branches in flight.
+  Read every commit subject: the milestones (releases, features shipped,
+  reversals) go in `Where it stands` or `Key decisions` with date and sha.
+- `What it is`: when the README says the product ships in another package or
+  repository (`pip install …`), say where the code lives.
 - `Open threads`: each ask with no later message or commit that closes it,
   only when recent. An old request with no outcome is background, not a task.
 - `Key decisions`: a choice with its reason, quoted, dated.
@@ -78,7 +81,11 @@ Keys in the usual shapes are already replaced with
 When the coverage note says this is an update, the messages are only those
 since the page was last written. Keep what still holds; move closed threads
 out of `Open threads`; move `Where it stands` to the newest evidence. Keep
-existing citations and their Sources lines; number new ones after them.
+`What it is`, `Why it exists`, `Key decisions`, `Insight` and every quote
+unless the new messages change them: a burst of messages about one task
+(a post's wording, a video) is one line in `Where it stands`, not the
+project's status or its `Insight`. Keep existing citations and their Sources
+lines; number new ones after them.
 
 ## Write once and stop
 
