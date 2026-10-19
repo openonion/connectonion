@@ -74,6 +74,11 @@ def default_config() -> dict:
             "limits": {"runner_calls_per_day": 50, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Pages at once for init's first run and investigate CATEGORY;
+                       # --workers overrides one run. Codex turns stayed flat at 1–16,
+                       # then slowed 2.5x at 48 with no more pages/hour than 16:
+                       # more workers only added lock waits and timeouts.
+                       "workers": 16,
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
@@ -119,6 +124,8 @@ def validate(config: dict) -> dict:
         raise RemError("Invalid limit keys")
     if any(type(value) is not int or value < 1 for value in limits.values()):
         raise RemError("Limits must be positive integers")
+    if limits["workers"] > 32:
+        raise RemError("workers must be 1 to 32")
     if any(limits[key] > 100 for key in ("quota_floor_percent", "investigation_quota_points", "depth_quota_points")):
         raise RemError("quota_floor_percent, investigation_quota_points and depth_quota_points are percents: 1 to 100")
     return config

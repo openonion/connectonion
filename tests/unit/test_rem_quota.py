@@ -112,10 +112,13 @@ def test_old_notebooks_get_the_new_limits_without_rewriting_config(tmp_path):
     prepare(root)
     text = (root / "config.yaml").read_text()
     stripped = "\n".join(line for line in text.splitlines()
-                         if "investigation_quota_points" not in line and "quota_floor_percent" not in line)
+                         if not any(key in line for key in ("investigation_quota_points", "quota_floor_percent", "workers")))
     (root / "config.yaml").write_text(stripped + "\n")
+    prepare(root)
     limits = read_config(root)["limits"]
     assert limits["investigation_quota_points"] == 35 and limits["quota_floor_percent"] == 90
+    assert limits["workers"] == 16
+    assert (root / "config.yaml").read_text() == stripped + "\n"
 
 
 def test_old_saved_defaults_upgrade_but_explicit_quota_choices_stay(tmp_path):

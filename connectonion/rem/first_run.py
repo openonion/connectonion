@@ -16,7 +16,6 @@ from statistics import median
 FIRST_PEOPLE = None    # None: every eligible page of the kind; init's flags cap it
 FIRST_PROJECTS = None
 FIRST_ORGS = None
-WORKERS = 16           # pages investigated at once after the owner's page
 
 # Planning rates from the 1.9.2b1 first run on a real 180-day notebook
 # (2026-10-09, 16 workers, Codex): each kind's total work over its pages, so a
@@ -60,7 +59,7 @@ def per_page(runs: list[dict], kind: str) -> dict:
 
 
 def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0, skills: int = 0,
-         workers: int = WORKERS) -> dict:
+         workers: int) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
 
     The owner's quick turn runs alone, then its full turn shares workers with

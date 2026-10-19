@@ -114,7 +114,8 @@ person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
 120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
 interrupted, so these rates do not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
-full turn and selected pages share up to 16 workers. The estimate simulates
+full turn and selected pages share `limits.workers` workers (default 16),
+the same setting as `co rem investigate CATEGORY`. The estimate simulates
 that queue so a slow last page is not hidden by an average. Init starts every
 selected page and keeps going after individual refusals; there is no REM quota
 gate on this foreground run. A model provider may still refuse new turns at its
@@ -788,7 +789,9 @@ below is good to about one point.
   estimate; the CLI cannot claim to have measured their plan usage.
 - **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
   `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
-  by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.
+  by default, using `limits.workers` (default 16), as init does. Set it with
+  `co rem config set limits.workers 8`; `--workers N` overrides one run (1–32).
+  `--limit N` or `--budget N` alone uses one worker.
   It stops starting pages when its explicit `--budget N` is spent or at the
   safety floor. Pages already in flight finish.
 - **After init**, `co rem investigate all --budget 10` works whatever init left:

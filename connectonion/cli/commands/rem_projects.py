@@ -128,7 +128,8 @@ def add_projects_app(rem, factory, handle, logged) -> None:
             config = read_config(root)
             from ...rem import first_run
             from ...rem.runner import PLAN
-            total = first_run.plan(run_logs(root), owner=False, people=0, projects=len(chosen))
+            total = first_run.plan(run_logs(root), owner=False, people=0, projects=len(chosen),
+                                   workers=1)
             rem_look.line(f"Writing {len(chosen)} of {_count(len(rows), 'project page')}. "
                           + first_run.announce(total, PLAN.get(config["runner"], "on the configured runner"))
                           + " " + _cost_line(estimate(chosen), quota.read(config)), err=True)

@@ -476,11 +476,7 @@ def _depth_stage(root, record, name):
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
-# Measured on real first runs (2026-10-09): 48 workers wrote the same work in the
-# first 66 minutes as 16 (161 runs against 167), each turn three times slower;
-# the model provider's throughput is the limit, not the queue. 48 only added
-# routing timeouts and lock waits. Three rounds per page is what saved: $11.37 to $8.87.
-FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
+# Three rounds per page saved $11.37 to $8.87 in real first runs (2026-10-09).
 FIRST_RUN_ROUNDS = 3    # parts read in full per page; the rest stay searchable in files
 
 
@@ -624,7 +620,7 @@ LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": 
 
 
 def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills=(), me_days=None, owner_full=False) -> dict:
-    """After your own page: your whole page, people, projects and organisations, FIRST_RUN_WORKERS at a time.
+    """After your own page: your whole page, people, projects and organisations, sharing limits.workers.
 
     One line per page as it finishes. Returns owner_full, people_pages,
     project_pages and org_pages, each in the shape its own command reports.
@@ -635,6 +631,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     # their first page is written -- not after every other page (rc1 waited 80 minutes).
     from datetime import date, timedelta
     from ...rem.files import MAP_DAYS
+    workers = config["limits"]["workers"]
     deep = [row for row in people if row.get("mode") == "full" and (row.get("days") or 0) > MAP_DAYS]
     # Attachments too: a fresh notebook asked the provider once per archived mail.
     first = [{**row, "rounds": FIRST_RUN_ROUNDS, **({"days": MAP_DAYS, "attachments": False} if row in deep else {})}
@@ -654,7 +651,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
                                                         kinds["orgs"], kinds["skills"]) for job in group if job)]
     progress = FirstRunProgress({kind: len(rows) for kind, rows in kinds.items()}, quiet=ctx.obj["json"])
     if jobs:
-        say(f"Investigating 0/{len(jobs)} pages with up to {FIRST_RUN_WORKERS} workers…")
+        say(f"Investigating 0/{len(jobs)} pages with up to {workers} workers…")
 
     def done(job, outcome):
         if job["kind"] == "deepen":
@@ -670,7 +667,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
         return []
 
     try:
-        outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
+        outcomes, stopped = _in_parallel(jobs, workers=workers, gate=gate, done=done)
     finally:
         progress.close()
     if stopped:
@@ -1080,7 +1077,7 @@ def make_rem_app(factory):
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
                                    projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
-                                   workers=FIRST_RUN_WORKERS)
+                                   workers=config["limits"]["workers"])
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
                                    "projects": [row["record"] for row in project_rows],
                                    "orgs": [row["path"] for row in org_rows],
@@ -1101,7 +1098,7 @@ def make_rem_app(factory):
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
-                    + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
+                    + ", ".join(steps) + f"; up to {config['limits']['workers']} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
                     + "Input estimate includes cached tokens; it is not weekly quota points.\n"
                     + "No REM page or weekly quota cap stops this first run; the selected queue "
@@ -1224,7 +1221,7 @@ def make_rem_app(factory):
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
                          limit: Optional[int] = typer.Option(None, "--limit", min=0),
                          workers: Optional[int] = typer.Option(None, "--workers", "-w", min=1, max=32,
-                                                               help="Number of concurrent investigation workers (default: 10 for full runs, 1 with limit/budget)"),
+                                                               help="Number of concurrent investigation workers (default: limits.workers, 16; 1 with --limit/--budget)"),
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
@@ -1237,8 +1234,8 @@ def make_rem_app(factory):
         runnable = (*CATEGORIES, "all")
         from ...rem.runner import RunFailed
         from ...rem.service import subscriptions
+        from ...rem.config import read_config
         clients_for, progress = _mail_clients, _mail_progress
-        effective_workers = workers if workers is not None else (1 if (limit or budget) else 10)
 
         def one(root, notebook, record):
             return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
@@ -1278,7 +1275,7 @@ def make_rem_app(factory):
             return rows, (["investigate", "me"] if pending
                           else ["investigate", first] if first else ["list"])
 
-        def by_category(root, category):
+        def by_category(root, category, effective_workers):
             ranked = (lambda: rem_queue.order_all(root)) if category == "all" else (lambda: order(root, category))
             queue = [row for row in ranked() if not row["recent"]]
             chosen = queue if pages_limit == 0 else queue[:pages_limit]
@@ -1360,6 +1357,8 @@ def make_rem_app(factory):
             return result, ["show", record]
 
         def run(root):
+            config = read_config(root)
+            effective_workers = workers if workers is not None else (1 if (limit or budget) else config["limits"]["workers"])
             if quick and target != "me":
                 raise RemError("--quick is for `co rem investigate me` only")
             if retry_refused and (not target or target in runnable or target == "me"):
@@ -1383,7 +1382,7 @@ def make_rem_app(factory):
             if target == "me":
                 return me(root)
             if target in runnable:
-                return by_category(root, target)
+                return by_category(root, target, effective_workers)
             notebook = Notebook(root)
             record = _resolve_page(notebook, target)
             from ...rem.investigate import NothingNew
