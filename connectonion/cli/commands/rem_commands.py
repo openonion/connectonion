@@ -875,7 +875,7 @@ def _map_session_consent(ctx, waiting, *, yes: bool) -> bool:
     """Ask before `build_map` reads local Codex / Claude Code session folders (#2443)."""
     import sys
 
-    lines = ["co rem will read local coding session folders to map projects:"]
+    lines = ["Reading local coding session folders to map projects:"]
     for name, source in waiting:
         root = source.get("root") or "(no path)"
         lines.append(f"  - {name}: {root}  (turn off: co rem sources remove {name})")
