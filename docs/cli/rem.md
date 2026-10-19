@@ -716,6 +716,16 @@ within the requested page window. The cache contains message text and source
 IDs, but not whole tool-output transcripts. It is not included in reader
 exports. Deleting that directory forces the next investigation to rebuild it.
 
+A session REM does not read, such as one of REM's own turns or a program's
+prompt, is recorded as skipped the first time it is seen and is never opened
+again, even while it grows. On the owner's machine 11,473 of 15,000 Codex
+rollouts were REM's own turns. Every scan reopened them, and a warm scan took
+80 seconds; it now takes about 6. A cache from before Codex `exec` sessions
+were excluded is migrated in place: only the items from such sessions are
+dropped, and nothing is read again. Within one run, the mail metadata and the
+project notes that every page searches are parsed once and then reused until a
+file changes.
+
 What counts as a message you typed to Codex (#1978). Codex Desktop puts every
 message in the user slot under a metadata block, typed or injected, and says
 in `content_item_kinds` what each part is. A message whose parts are all
