@@ -395,8 +395,8 @@ browser's address as an admin of the Host: `co trust admin add <address>`.
 
 The page reads each record for what it knows (#1836). A page carries one of
 three tags: **Mapped** (an outline from your sources; its status line still says
-"not investigated yet"), **Some findings** (written content, no investigation
-pass yet) and **Investigated**. "Unknown" lines and placeholders are not shown;
+"not investigated yet"), **Partly investigated** (some sections filled from sources; the rest
+not investigated yet) and **Investigated**. "Unknown" lines and placeholders are not shown;
 the headings still empty are named once at the foot of the page with the
 `co rem investigate '<page>'` command that fills them. Lists put pages with
 findings first, then newest last contact. The Markdown file is unchanged, and
@@ -445,6 +445,8 @@ older page before showing its answer. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
+Status, theme and privacy controls live in the sidebar’s **Reader settings**
+disclosure. On phones, a compact brand and search header keeps Browse within reach.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
   their statements as current context. A changed Project card shows its purpose
@@ -508,8 +510,9 @@ amber kept for what is owed; a dark palette of its own; Optima for titles,
 Charter for prose, the system face for chrome and the mono face for every
 date, count and id. Fonts are local faces, so the page makes no network
 request. Every view fits a 390 px phone without sideways scrolling, keyboard
-focus is visible, and the only motion (the hypnogram drawing in) is off under
-`prefers-reduced-motion`.
+focus is visible, and the hypnogram line is visible immediately. Quotes use a
+warm tint in light mode and warm text with a faint underline in dark mode;
+search matches keep their distinct highlight. Motion respects `prefers-reduced-motion`.
 
 To see every view on an invented notebook, light and dark, desktop and phone:
 `python scripts/capture_rem_reader.py OUT_DIR` (the fixture is

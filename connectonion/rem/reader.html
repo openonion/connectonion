@@ -32,6 +32,7 @@
     --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
     --lamp: #9c5800; --lamp-soft: #fbefd9; --lamp-line: #ecc88e;
     --dawn: #4450c4; --dawn-soft: #eaecfb; --dawn-line: #c5caf2;
+    --said: #674624; --said-soft: #f8f0e4;
     --mark: #fde7b0; --quiet: #80869c;
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
     --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
@@ -50,6 +51,7 @@
       --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
       --lamp: #efb25e; --lamp-soft: #2b2314; --lamp-line: #5b4520;
       --dawn: #a3acff; --dawn-soft: #1d2348; --dawn-line: #343f80;
+      --said: #efd6b0; --said-soft: rgba(239,214,176,.06);
       --mark: #4d3c12; --quiet: #7d849f;
       --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
       --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
@@ -63,6 +65,7 @@
     --night: #151a33; --night-2: #222a4e; --night-ink: #e6e8f3; --night-dim: #9097bb;
     --lamp: #efb25e; --lamp-soft: #2b2314; --lamp-line: #5b4520;
     --dawn: #a3acff; --dawn-soft: #1d2348; --dawn-line: #343f80;
+    --said: #efd6b0; --said-soft: rgba(239,214,176,.06);
     --mark: #4d3c12; --quiet: #7d849f;
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
     --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
@@ -81,7 +84,7 @@
   .app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
 
   /* ---- rail: quiet chrome, the notebook's spine ---- */
-  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 22px 16px 18px 20px; border-right: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; gap: 18px; }
+  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; padding: 22px 16px 18px 20px; border-right: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; gap: 18px; }
   .brand { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: center; color: var(--ink); text-decoration: none !important; }
   .brand svg { grid-row: span 2; width: 34px; height: 18px; }
   .brand .name { letter-spacing: 0; font: 600 17px/1 var(--display); }
@@ -94,6 +97,7 @@
   .search input::-webkit-search-results-button,
   .search input::-webkit-search-results-decoration { display: none; -webkit-appearance: none; }
   .search input:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px var(--blue-soft); }
+  .search input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .search input::placeholder { color: var(--ink-3); }
   .search .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: none; stroke: var(--ink-3); stroke-width: 2; pointer-events: none; }
   .search .kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font: 11px var(--ui); color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; pointer-events: none; }
@@ -112,17 +116,28 @@
   nav a .n.open { color: var(--lamp); }
   nav .gap { height: 10px; }
 
+  .rail > * { flex-shrink: 0; }
   .rail .foot { margin-top: auto; color: var(--ink-3); display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); font: 13px/1.5 var(--ui); }
+  .reader-settings { min-width: 0; overflow-wrap: anywhere; }
+  .reader-settings summary { cursor: pointer; padding: 4px 0; }
+  .reader-settings > :not(summary) { margin-top: 8px; }
+  .reader-settings code { display: block; white-space: normal; }
+  .reader-settings .theme-btn { min-height: 44px; text-align: left; }
   .theme-switch { display: inline-flex; background: var(--well); border-radius: 6px; padding: 2px; gap: 2px; align-self: flex-start; }
   .theme-btn { background: none; border: none; padding: 3px 9px; font: 11.5px var(--ui); color: var(--ink-2); border-radius: 4px; cursor: pointer; min-height: 24px; }
   .rail .foot > .theme-btn { min-height: 44px; text-align: left; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+  .rail .foot :is(button, summary):focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .privacy-tag { font: 10px var(--ui); letter-spacing: 0; text-transform: none; padding: 0 5px; margin: 0 2px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-3); background: var(--well); white-space: nowrap; }
   .privacy-tag.sensitive { border-color: var(--ink-3); color: var(--ink); font-weight: 600; }
   :root.hide-private .private, :root.hide-private li.private-item { display: none; }
   :root.hide-private .privacy-only .privacy-content { display: none; }
-  .private-hidden-notice { display: none; }
+  .private-hidden-notice, .private-history-notice { display: none; }
+  :root.hide-private .private-entry { display: none; }
+  :root.hide-private :is(.timeline, .activity-list):not(:has(> li:not(.private-entry))) + .private-history-notice { display: block; }
+  .private-history-notice, :root.hide-private .person-insight dd.privacy-only { color: var(--ink-3); font: 12px/1.5 var(--ui); }
+  :root.hide-private .person-insight dd.privacy-only .private-hidden-notice { margin: 0; }
   :root.hide-private .private-hidden-notice { display: block; }
 
   /* ---- main ---- */
@@ -161,7 +176,7 @@
   .hypno { position: relative; height: 100px; margin: 12px 0 8px; }
   .hypno svg { display: block; width: 100%; height: 84px; overflow: visible; }
   .hypno .grid { stroke: var(--night-line); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 2 4; }
-  .hypno .trace { fill: none; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke: #c9cff5; stroke-width: 1.6; stroke-linecap: round; }
+  .hypno .trace { fill: none; stroke-dashoffset: 0; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke: #c9cff5; stroke-width: 1.6; stroke-linecap: round; }
   .hypno .area { fill: #c9d0f5; opacity: 0.13; }
   .hypno .day { position: absolute; top: 88px; padding-left: 4px; color: var(--night-dim); white-space: nowrap; font: 11px var(--ui); }
   .hypno .dot { position: absolute; border-radius: 50%; background: #fff; box-shadow: none; width: 6px; height: 6px; margin: -3px 0 0 -3px; }
@@ -311,7 +326,7 @@
   .usage { display: flex; align-items: center; gap: 10px; margin-top: 6px; font: 11.5px var(--ui); color: var(--ink-3); }
   .usage .bar { width: 120px; height: 4px; border-radius: 2px; background: var(--well); overflow: hidden; flex-shrink: 0; }
   .usage .bar i { display: block; height: 100%; background: var(--ink-3); border-radius: 2px; }
-  mark { background: var(--mark); color: var(--mark-ink); padding: 0 2px; border-radius: 2px; }
+  mark { background: var(--mark); color: var(--mark-ink); padding: 0; border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 
   /* the home's quick entry: one shelf per kind of page */
   .shelves { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 28px 40px; margin-top: 14px; }
@@ -394,7 +409,8 @@
   .note li.unknown-item, .note p.unknown-item { color: var(--ink-3); font-style: italic; font-size: 15px; }
   .note strong { font-weight: 700; }
   .note code { background: var(--well); padding: 1px 5px; border-radius: 3px; font-size: 0.82em; }
-  .note blockquote { margin: 0 0 1em; padding: 2px 18px; border-left: 2px solid var(--blue-line); color: var(--ink-2); font-style: italic; }
+  .said { font-family: var(--text); font-style: normal; color: var(--said); background: var(--said-soft); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--said) 25%, transparent); text-underline-offset: .16em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .note blockquote, .session-quote, .session-page .session-quote { margin: 0 0 1em; padding: 10px 18px; border-left: 4px solid var(--said); color: var(--said); background: var(--said-soft); font: 18px/1.6 var(--text); }
   .note hr { border: 0; border-top: 1px solid var(--line); margin: 1.8em 0; }
   .note table { border-collapse: collapse; font: 14px/1.45 var(--ui); }
   .note th, .note td { border-bottom: 1px solid var(--line); padding: 7px 14px 7px 0; text-align: left; vertical-align: top; }
@@ -408,13 +424,16 @@
   .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--blue-line); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: 500 12.5px/16px var(--ui); color: var(--ink-2); background: var(--line-2); border-color: var(--line); border-radius: 999px; }
   /* Grow the tap target without opening a gap in the prose. */
   .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
+  .citation-tip { position: fixed; z-index: 30; width: max-content; max-width: calc(100vw - 24px); overflow-wrap: anywhere; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink-2); box-shadow: var(--shadow); font: 12px/1.5 var(--ui); pointer-events: none; }
   .cite.missing { border-style: dashed; color: var(--ink-3); }
   .cite:hover, .cite:focus-visible { background: var(--mark); color: var(--ink); border-color: var(--lamp-line); }
+  .cite:focus-visible { outline: 2px solid var(--dawn); outline-offset: 2px; }
 
   /* open threads on a page: the visual centre */
   .block-threads { margin: 0 0 8px; }
   .note .threads, .note .timeline, .note .block-sources ol { padding-left: 0; }
   .thread .when:empty { display: none; }
+  .blocker-tag { display: inline-block; margin-left: 6px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink-3); font: 400 10px/1.4 var(--ui); }
   .block-threads .threads { margin-bottom: 1em; }
   .calm { display: flex; gap: 10px; align-items: baseline; padding: 11px 16px; border-radius: 8px; background: var(--well); color: var(--ink-2); font-size: 15px; margin-bottom: 1em; }
   .calm .dir { color: var(--ink-3); }
@@ -426,7 +445,7 @@
   .timeline li::after { content: ""; position: absolute; left: 104px; top: 20px; bottom: -2px; width: 1px; background: var(--line); }
   .timeline li:last-child::after { display: none; }
   .timeline .d { font: 12px/1.9 var(--ui); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: pre-line; }
-  .timeline .e { padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
+  .timeline .e { max-width: 72ch; padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
   .timeline li.undated .d { visibility: hidden; }
   .timeline li.undated::before { box-shadow: 0 0 0 1.5px var(--line); }
 
@@ -463,13 +482,16 @@
   .missing:not(.primary) .names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
   .missing:not(.primary) .cmd { margin-top: 6px; }
   .missing.primary { margin: 0 0 24px; border-top: 1px solid var(--line); background: transparent; padding: 16px 0; }
-  .missing.primary .lead { font-size: 11px; }
+  .missing.primary .lead { font-size: 11px; color: var(--ink-3); }
   .missing.primary .why { margin: 4px 0 8px; font: 16px/1.5 var(--text); color: var(--ink); }
-  .missing.primary .names { color: var(--ink-2); font-size: 13px; }
+  .missing.primary .names { color: var(--ink-3); font-size: 13px; }
   .btn-primary { min-height: 44px; font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
   .btn-primary:hover { filter: brightness(1.1); }
   .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
-  .missing.primary .cmd { margin-top: 0; }
+  .missing.primary .cmd { margin: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .missing.primary .cmd code { white-space: pre-wrap; }
+  .missing .cmd button, .activity-more { min-height: 44px; }
+  @media (max-width: 600px) { .missing.primary .cmd { grid-template-columns: minmax(0, 1fr); justify-items: start; } }
   .missing code, .empty code { font: 12.5px var(--ui); color: var(--ink); background: var(--well); border-radius: 4px; padding: 3px 8px; overflow-wrap: anywhere; }
   .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
   .aside .k { font: 10.5px var(--ui); letter-spacing: 0; text-transform: none; color: var(--ink-3); padding-top: 4px; }
@@ -478,6 +500,7 @@
   .chip { font: 11.5px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--ink-3); margin-left: 6px; }
   .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .page-foot .when { color: var(--ink-2); font: 11.5px/1.5 var(--ui); }
   .btn-action, .eyebrow-path { font: 12px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
   .eyebrow-path { font: 11.5px var(--ui); }
   .btn-action:hover, .eyebrow-path:hover { color: var(--blue); border-color: var(--blue-line); }
@@ -497,6 +520,7 @@
   .best-facts dd.none { color: var(--ink-3); font-family: var(--ui); }
   .best-open { margin-top: 12px; display: flex; gap: 8px; align-items: baseline; font: 14.5px var(--text); }
   .best-open .dir { flex-shrink: 0; color: var(--ink-2); }
+  .search-group { max-width: 80ch; }
   h2.section.group { font-size: 17px; margin: 28px 0 8px; }
   nav a.you { margin-bottom: 10px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; color: var(--ink); }
   nav a.you > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
@@ -513,7 +537,6 @@
   .review button { font: 12px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; margin-bottom: 6px; }
 
   .nav-toggle { display: none; }
-  .mobile-status { display: none; }
   .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--sheet); padding: 10px; }
   .skip:focus { top: 8px; }
   .mobile-back { display: none; margin-bottom: 14px; }
@@ -645,15 +668,15 @@
   .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
   .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
   /* Standalone source controls need a full touch target. */
-  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--ink-2); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--mark); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--ink-3); }
-  .unsure { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 2px; }
-  .unsure::first-letter { font: 700 11px var(--ui); }
+  .unsure { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+  .unsure-icon { font: 700 11px var(--ui); }
   .unsure { border: 1px dashed var(--line); border-radius: 999px; padding: 1px 9px; }
 
   /* ---- insight: the lines your inbox could not tell you ---- */
@@ -691,7 +714,7 @@
 
   /* The memory surface: answer, connections, and activity before the full note. */
   .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 1px solid var(--line); }
+  .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 0; }
 
   .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: 400 13px/1.4 var(--ui); color: var(--ink-3); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 20px/1.5 var(--text); margin: 8px 0 0; }
@@ -710,7 +733,7 @@
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace.single { grid-template-columns: 1fr; }
   .project-workspace .focus-section { min-width: 0; }
-  .project-workspace p, .project-workspace li { font: 15px/1.5 var(--text); }
+  .project-workspace p, .project-workspace li { max-width: 72ch; font: 15px/1.5 var(--text); }
   .project-workspace p { margin: 0; }
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -720,11 +743,19 @@
   .project-sessions li { margin: 7px 0; overflow-wrap: anywhere; }
   .focus-section { min-width: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 18px/1.3 var(--display); }
-  .focus-section .threads { margin: 0; padding: 0; }
+  .focus-section .threads { margin: 0; padding: 0; border-top: 0; }
   .focus-section .thread { margin: 0 0 8px; }
-  .focus-section .thread:last-child { margin-bottom: 0; }
-  .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
+  .focus-section .thread:last-child { margin-bottom: 0; border-bottom: 0; }
+  @media (min-width: 821px) {
+    .next-exchanges .thread { font: 16px/1.55 var(--text); grid-template-columns: 112px minmax(0, 72ch) auto; justify-content: start; }
+    .next-exchanges .when { text-align: right; }
+  }
+  .record-focus.skills:has(~ .missing.primary) { margin-bottom: 0; }
+  .record-focus.skills:has(~ .missing.primary) .focus-head { padding-bottom: 16px; }
+  .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .focus-fact { min-width: 0; }
+  .focus-facts dd.local-path { display: block; overflow: visible; overflow-wrap: anywhere; word-break: normal; }
+  .local-path .path-segment { display: inline-block; max-width: 100%; vertical-align: top; }
   .focus-facts dt { font: 600 10px var(--ui); text-transform: none; letter-spacing: 0; color: var(--ink-3); }
   .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .contact-strip dd { display: block; }
@@ -732,8 +763,9 @@
   .contact-strip .copy { margin-left: 8px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
   .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
   .relation-entry { min-width: 0; }
-  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 3px; overflow-wrap: anywhere; }
+  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 0; overflow-wrap: anywhere; }
   .relation-provenance .cite { margin-left: 4px; }
+  .relation-provenance > span:first-child .cite:first-child { margin-left: 0; }
   .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
   .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; text-decoration: none !important; transition: border-color .16s ease, transform .16s ease; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .relation-card:hover, .relation-card:focus-visible { border-color: var(--blue); transform: none; }
@@ -744,6 +776,11 @@
   .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
   .more-relations .relation-list { margin-top: 10px; }
   .related-records { grid-column: 1 / -1; }
+  .related-records > .more-relations { margin-top: 8px; }
+  .related-records > .more-relations > summary { min-height: 0; padding: 0; font-weight: 400; }
+  @media (pointer: coarse) {
+    .related-records > .more-relations > summary { min-height: 44px; padding: 11px 0; }
+  }
   .conversation-view, .documents { grid-column: 1 / -1; }
   .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
   .conversation-open { flex: 1 1 210px; text-align: left; color: var(--ink); cursor: pointer; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
@@ -758,15 +795,15 @@
   .activity-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .activity-filters button { font: 12px var(--ui); padding: 6px 10px; background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
   .activity-filters button.active { background: var(--sheet); color: var(--ink); border-color: var(--ink-3); }
-  .activity-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow: auto; }
+  .activity-list { list-style: none; margin: 0; padding: 0; max-height: none; overflow: visible; }
   .activity-list li { display: grid; grid-template-columns: 105px 105px minmax(0, 1fr); gap: 12px; padding: 11px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
   .activity-list li[hidden] { display: none; }
   .activity-day { font: 11px var(--ui); color: var(--ink-3); }
   .activity-type { font: 400 12px var(--ui); color: var(--ink-3); }
-  .activity-text { font: 14px/1.5 var(--text); }
+  .activity-text { max-width: 72ch; font: 14px/1.5 var(--text); }
   .deep-note { max-width: 1120px; border-top: 1px solid var(--line); margin-top: 18px; }
   .deep-head { display: flex; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
-  .deep-head h2 { margin: 0; font: 600 17px var(--display); color: var(--ink); }
+  .deep-head h2 { margin: 0; font: 600 18px/1.3 var(--display); color: var(--ink); }
   .deep-hint { font: 11px var(--ui); color: var(--ink-3); }
   .deep-note .page-grid { padding-top: 22px; }
   /* A person's first screen is a ledger; the full note waits below it. */
@@ -776,7 +813,7 @@
   .contact-line.leadrow { margin: 0; color: var(--ink-2); }
   .contact-line .lead-meta { display: block; font: 13px/1.5 var(--ui); overflow-wrap: anywhere; }
   .person-focus { max-width: 1120px; }
-  .person-focus h2 { margin: 24px 0 12px; font: 600 22px/1.25 var(--display); }
+  .person-focus h2 { margin: 24px 0 12px; font: 600 18px/1.3 var(--display); }
   .between-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
   .ledger-column { min-width: 0; border-top: 2px solid var(--ink); }
   .ledger-column.mine { border-color: var(--wait); }
@@ -794,7 +831,7 @@
   .person-insight dt { color: var(--ink); font: 600 13px/1.5 var(--ui); }
   .person-insight dt.at-stake { color: var(--wait); }
   .person-insight dt.changed { color: var(--dawn); }
-  .person-insight dd { margin: 0; font: 15px/1.5 var(--text); overflow-wrap: anywhere; }
+  .person-insight dd { max-width: 72ch; margin: 0; font: 15px/1.5 var(--text); overflow-wrap: anywhere; }
   .person-focus .recent-activity { padding: 0; border: 0; background: transparent; margin-top: 24px; }
   .recent-activity .activity-list { max-height: none; overflow: visible; }
   .recent-activity .activity-head h2 { margin-top: 0; }
@@ -912,7 +949,7 @@
   @media (max-width: 1100px) { .hits.cols { grid-template-columns: 1fr; } }
   @media (max-width: 820px) {
     .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
-    .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 1px solid var(--line); }
+    .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 0; }
     .focus-statement { font-size: 22px; }
     .focus-source { display: flex; }
     .focus-more { margin-left: 0; }
@@ -933,17 +970,21 @@
     .deep-hint { display: block; margin-top: 3px; }
     .evidence-dialog { padding: 18px; }
     .app { grid-template-columns: 1fr; align-content: start; }
-    .rail { padding: 14px 16px; gap: 10px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .rail { display: grid; grid-template-columns: 108px minmax(0, 1fr); padding: 6px 16px; gap: 4px 12px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .brand { min-height: 44px; }
     .brand svg { width: 22px; height: 22px; }
+    .brand .sub { display: none; }
+    .brand svg { grid-row: auto; }
+    .nav-toggle, #nav, .rail .foot { grid-column: 1 / -1; }
+    main:has(.page-head) > .mobile-back { display: none; }
     .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
     .rail[data-open="true"] .foot { display: flex; padding: 0 0 12px; }
     .rail[data-open="true"] .foot > .theme-btn { min-height: 44px; text-align: left; }
-    .rail[data-open="true"] #nav { padding-bottom: 64px; }
-    .rail[data-open="true"] #privacy-toggle { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
-      min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet);
-      box-shadow: var(--shadow); text-align: center; }
+    .rail[data-open="true"] #nav { padding-bottom: 0; }
+    .rail[data-open="true"] .reader-settings summary { min-height: 44px; }
+    .rail[data-open="true"] #privacy-toggle { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); text-align: center; }
     .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
     .nav-toggle::after { content: "▾"; color: var(--ink-3); }
     .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
@@ -952,7 +993,6 @@
     nav a { min-height: 44px; align-items: center; }
     .search input { font-size: 16px; min-height: 44px; padding-right: 44px; }
     .search-clear { right: 0; min-width: 44px; min-height: 44px; }
-    .mobile-status { display: block; font: 11px/1.4 var(--ui); color: var(--ink-3); }
     h1 { font-size: 30px; }
     .standfirst { font-size: 18px; }
     h2.section { display: block; }
@@ -974,7 +1014,7 @@
     .timeline li::before { left: 77px; }
     .timeline li::after { left: 80px; }
     .timeline .d { font-size: 11px; padding-right: 16px; }
-    .timeline .e { padding-left: 14px; font-size: 15px; }
+    .timeline .e { max-width: 72ch; padding-left: 14px; font-size: 15px; }
     .mobile-back { display: block; }
     .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
@@ -1005,7 +1045,7 @@
     .lead-meta.usage { display: block; width: 100%; }
     .lead-meta.usage .bar { display: none; }
     .record-focus, .record-focus.people { margin-top: 4px; }
-    .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 1px solid var(--line); }
+    .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 0; }
     .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
     .focus-head.purpose-lead .focus-more:not([hidden]) { display: inline-block; vertical-align: middle; margin-right: 14px; }
     .focus-head.purpose-lead .project-purpose-cites { display: inline-flex; width: auto; vertical-align: middle; margin-top: 4px; }
@@ -1021,8 +1061,6 @@
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
-    .hypno .trace { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.4s ease-out 120ms forwards; }
-    @keyframes draw { to { stroke-dashoffset: 0; } }
   }
   /* Languages: read a page in another language (languageBar below). */
   .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font: 13px var(--ui); color: var(--ink-2); }
@@ -1043,8 +1081,8 @@
   .lede + .night, .night-details .night { margin-top: 0; }
   .night-details .night { margin-left: 0; margin-right: 0; }
   @media (prefers-reduced-motion: no-preference) {
-    .hypno .dawn { opacity: 0; animation: dawn .5s ease-out 1.5s forwards; }
-    @keyframes dawn { to { opacity: 1; } }
+    .hypno .dawn { animation: dawn .15s ease-out; }
+    @keyframes dawn { from { opacity: 0; } to { opacity: 1; } }
   }
   .night .stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 24px; margin-top: 12px; color: var(--night-dim); font: 13px/1.5 var(--ui); }
   .night .stages b { display: block; color: var(--night-ink); font-weight: 600; font-size: 14px; }
@@ -1070,9 +1108,10 @@
   }
   @media (max-width: 600px) {
     /* Leave room for the complete source action, even with a long purpose. */
-    main { padding-top: 16px; }
+    main { padding-top: 8px; }
     .night, .night-strip { margin-top: -16px; }
     .eyebrow { margin-bottom: 4px; font-size: 12px; }
+    main:has(.page-head) > .eyebrow .when { display: none; }
     h1 { margin-bottom: 4px; line-height: 1.15; }
     .mobile-back { margin-bottom: 0; }
     .page-head { margin-bottom: 0; }
@@ -1174,7 +1213,7 @@
   .session-outline a { display: block; padding: 5px 0; font: inherit; }
   .session-messages { min-width: 0; }
   .session-message, .session-final { scroll-margin-top: 20px; padding: 4px 0 16px; border-top: 1px solid var(--line); }
-  .session-page .session-quote { margin: 0; padding: 0; border: 0; background: none; font: 17px/1.65 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-page .session-quote { margin: 0; padding: 10px 18px; border-left: 4px solid var(--said); background: var(--said-soft); font: 18px/1.6 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
   .session-page mark { background: var(--mark); color: inherit; }
   .session-page mark.current { outline: 2px solid var(--dawn); outline-offset: 2px; }
   .session-show-all { margin-top: 12px; }
@@ -1212,8 +1251,13 @@
     .session-context-rows .session-context-row { grid-template-columns: minmax(0, 1fr) auto; }
     .session-context-summary { grid-column: 1 / -1; grid-row: 2; }
     .session-outline a, .session-neighbours a { min-height: 40px; }
-    .session-page .session-quote { font-size: 16px; }
+    .session-page .session-quote { font-size: 17px; }
   }
+  /* Keep the last-pass band equally inset in every view and at every width. */
+  main:has(> .night) { max-width: none; }
+  .night, .night-strip { margin: 0 0 24px; border-radius: 8px; }
+  .project-purpose-cites a.cite, .project-purpose-cites .unsure { font: 500 12.5px/16px var(--ui); padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--line-2); color: var(--ink-2); }
+  .record-focus.projects .focus-head, .record-focus.projects .focus-facts, .record-focus.projects .thread:last-child { border-bottom: 0; }
 </style>
 </head>
 <body>
@@ -1230,7 +1274,6 @@
       <span class="kbd" aria-hidden="true">/</span>
     </div>
     <button class="nav-toggle" aria-expanded="false" aria-controls="nav" type="button">Browse notebook</button>
-    <div class="mobile-status" id="mobile-status"></div>
     <nav id="nav" aria-label="Categories"></nav>
     <div class="foot" id="foot"></div>
   </aside>
@@ -1253,6 +1296,7 @@ window.REM = REM;
 
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
+  document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
   try {
     if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
   } catch (_) { /* choice lasts this view only */ }
@@ -1392,7 +1436,7 @@ function copyToClipboard(text, btn, successMsg) {
 // Status as a moon phase: full when investigated, half with some findings, new when only mapped.
 const MOON = {
   "Investigated": '<circle cx="6" cy="6" r="5" fill="currentColor"/>',
-  "Some findings": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/>',
+  "Partly investigated": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/>',
   "Mapped": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/>'
 };
 function moon(status) {
@@ -1509,7 +1553,38 @@ function inline(text, from) {
   s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => shortHash(codes[i]) === codes[i] ? "<code>" + codes[i] + "</code>"
     : '<code title="' + codes[i] + '">' + shortHash(codes[i]) + "</code>");
-  return s;
+  return quoteSpans(s);
+}
+// Walk rendered prose so quotation marks in attributes and code stay untouched.
+// Ranges retain links, citation chips and privacy spans inside a quotation.
+function quoteSpans(html) {
+  // Attribute quotes are markup; escaped straight quotes can be prose.
+  if (!/“|&quot;|"/.test(html.replace(/<[^>]*>/g, ""))) return html;
+  const body = document.createElement("span");
+  body.innerHTML = html;
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT), nodes = [];
+  let text = "";
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentElement.closest("code")) { text += "\n"; continue; }
+    if (node.parentElement.closest(".cite, .privacy-tag")) continue;
+    nodes.push({ node, start: text.length, end: text.length + node.length });
+    text += node.data;
+  }
+  const quotes = [...text.matchAll(/“[^”\n]{6,}”|"[^"\n]{6,}"/g)];
+  for (const quote of quotes.reverse()) {
+    const start = quote.index, end = start + quote[0].length;
+    const first = nodes.find(n => n.start <= start && n.end > start);
+    const last = nodes.find(n => n.start < end && n.end >= end);
+    if (first.node.parentElement.closest(".private") !== last.node.parentElement.closest(".private")) continue;
+    const range = document.createRange();
+    range.setStart(first.node, start - first.start);
+    range.setEnd(last.node, end - last.start);
+    const said = el("span", { class: "said" });
+    said.appendChild(range.extractContents());
+    range.insertNode(said);
+  }
+  return body.innerHTML;
 }
 // A 40+ character digest is an id to copy, not to read: show its first 12 characters.
 function shortHash(text) {
@@ -1708,8 +1783,8 @@ function known(r) {
   // Written or not is the census's answer (census.py), the one co rem status
   // counts with: a mapped skill's description or a project's paths read here
   // as findings, and "174 with findings" meant three written pages (#2008).
-  const status = r.category === "sessions" ? "" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
-    : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
+  const status = r.category === "sessions" ? "" : r.written === undefined ? (investigated ? "Investigated" : learned ? "Partly investigated" : "Mapped")
+    : !r.written ? "Mapped" : investigated ? "Investigated" : "Partly investigated";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
   const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
@@ -1734,14 +1809,14 @@ function byActivity(a, b) {
   const auto = r => /\(automated candidate\)$/.test(r.title) ? 1 : 0;
   // Pages with findings before outlines: a mapped page's date is when the
   // mapper wrote it, which would otherwise outrank a real last contact.
-  const rank = r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2;
+  const rank = r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2;
   return auto(a) - auto(b) || rank(a) - rank(b) || known(b).last.localeCompare(known(a).last) || a.title.localeCompare(b.title);
 }
 function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? "Some sections are filled from sources; the rest are not investigated yet." : known(r).stamp || label }, [moon(st), label]);
 }
 
 // ---------- reading a page's parts ----------
@@ -1780,6 +1855,16 @@ function direction(text) {
   const a = text.search(mine), b = text.search(theirs);
   return a < 0 && b < 0 ? "plain" : a < 0 ? "theirs" : b < 0 ? "mine" : a <= b ? "mine" : "theirs";
 }
+// Project requests can be about work to revisit, without naming a debtor.
+function projectDirection(text) {
+  const dir = direction(text);
+  const first = (REM.owner && byPath(REM.owner)?.title.split(/\s+/)[0] || "").toLowerCase();
+  const ownerNamed = first && text.toLowerCase().split(/\W+/).includes(first);
+  if (dir === "mine" && (ownerNamed || /\b(?:you|your|user)\b/i.test(text))) return dir;
+  if (dir === "third") return dir;
+  const explicit = /\bowes? (?:you|the user)\b|\b(?:he|she|they) (?:promised|agreed|owe|has not|have not)\b|\b[A-Z][\w-]+ (?:promised|agreed to|owes)\b|\b[Ww]aiting (?:on|for) [A-Z][\w-]+\b/;
+  return dir === "theirs" && explicit.test(text) ? dir : "plain";
+}
 const DIRECTION_LABEL = { mine: "You owe", theirs: "They owe", plain: "Open", third: "Between others" };
 function listItems(text) {
   const items = [];
@@ -1811,7 +1896,7 @@ function threads(r) {
     const moved = /\blast moved(?:\s+on)?\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
     const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
     const quiet = !!since && daysSince(since) > 60 && (!due || due <= today);
-    return { text, dir: direction(text), since, due, quiet };
+    return { text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
   return { items, calm };
 }
@@ -2035,7 +2120,7 @@ function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono",
   text: shortDate(day) + (fromMap ? " · map" : "") }) : el("span", { class: "unk", text: "—" }); }
 function privateFallback(node) {
   const visible = node.cloneNode(true);
-  visible.querySelectorAll(".private").forEach(span => span.remove());
+  visible.querySelectorAll(".private, .cite, .privacy-tag").forEach(span => span.remove());
   if (node.querySelector(".private") && !/[\p{L}\p{N}]/u.test(visible.textContent)) {
     const content = el("span", { class: "privacy-content" });
     while (node.firstChild) content.appendChild(node.firstChild);
@@ -2073,14 +2158,14 @@ const COLUMNS = {
     { key: "people", label: "People", num: true, sort: (r, f) => f.people, cell: (r, f) => el("span", { class: "mono", text: f.people ? String(f.people) : "—" }), desc: true },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
-    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
+    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
   projects: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
     { key: "last", label: "Last mapped session", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
     { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
-    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
+    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
 };
 const FILTERS = [
   ["all", "All", () => true], ["open", "Something open", (r, f) => f.open.length > 0],
@@ -2262,11 +2347,11 @@ function hypnogram(asOf) {
     if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + segment.runs + " runs · " + segment.changed + " pages changed" });
   }
   path += " L" + (W - 4) + "," + TOP;
-  svg.push('<path class="trace" d="' + path + '"/>', "</svg>");
+  svg.push('<path class="trace" pathLength="1" d="' + path + '"/>', "</svg>");
   if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="Last run ended ' + esc(fmtTime(new Date(finished).toISOString())) + '"></span>');
   return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in ' + segments.length + ' stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
-function nightBand() {
+function nightBand(showActivityLink = true) {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": "The last pass" });
   if (!pass) {
     band.appendChild(el("h2", { class: "night-title", text: "No pass yet" }));
@@ -2278,7 +2363,7 @@ function nightBand() {
   band.appendChild(el("div", { class: "night-head" }, [
     el("h2", { class: "night-title", text: ago < 24 ? "Last night" : "The last pass" }),
     el("span", { class: "when", text: fmtTime(new Date(pass.latest).toISOString()) }),
-    el("a", { href: "#view=activity", text: "See all activity" })]));
+    showActivityLink ? el("a", { href: "#view=activity", text: "See all activity" }) : null]));
   band.insertAdjacentHTML("beforeend", hypnogram(asOf));
   const stages = el("div", { class: "stages stats" });
   const stage = (heading, detail) => stages.appendChild(el("div", { class: "stat" }, [el("b", { class: "v", text: heading }), el("span", { class: "k", text: detail })]));
@@ -2355,16 +2440,15 @@ function renderRail(active) {
     "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
-  foot.appendChild(privacy);
-  foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
+  const settings = el("details", { class: "reader-settings" }, [el("summary", { text: "Reader settings" }), privacy,
+    el("div", { text: "Also hides raw excerpts; other details stay visible." })]);
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? "Next pass " + fmtTime(s.next_run)
     : (scheduleState(s) || "No pass scheduled");
-  foot.appendChild(el("div", { text: plainLine(schedule) }));
-  foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : remCommand("open") + " re-renders" }));
-  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of) + " · " + schedule)
-    .replace(/`([^`]+)`/g, (_, command) => command.replaceAll(" ", "\u00a0"));
+  settings.appendChild(el("div", { text: plainLine(schedule) }));
+  settings.appendChild(el("code", { text: location.protocol === "about:" ? "Reload for latest" : remCommand("open") + " re-renders" }));
+  foot.appendChild(settings);
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
 
@@ -2391,12 +2475,13 @@ function alsoOn(records = []) {
     [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
 }
 function threadRow(r, t, withPage, also = []) {
+  const text = t.text.replace(/^(\d{4}-\d{2}-\d{2}):\s+/, (prefix, day) => day === t.since ? "" : prefix);
   return el("li", { class: "thread " + t.dir }, [
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
-    el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
+    el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null]),
-    el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : ""), text: threadAge(t) })]);
+    el("span", { class: "when" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : threadAge(t).endsWith("today") ? " today" : ""), title: (t.since ? "since " + threadDate(t.since) : "") + (t.due ? " · due " + threadDate(t.due) : "") }, [threadAge(t), blockerTag(t)])]);
 }
 
 function sectionHead(title, note) {
@@ -2545,7 +2630,7 @@ function morningThread({ r, t, also }) {
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
       privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also)]),
     el("div", { class: "waiting-age" + (t.due && t.due < calendarDay(REM.as_of) ? " overdue" : "") },
-      [el("b", { text: t.due ? dueLabel(t) : age(t.since) }), el("span", { text: label })])]);
+      [el("b", {}, [threadAge(t), blockerTag(t)]), el("span", { text: label })])]);
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
@@ -2783,7 +2868,7 @@ function activityView() {
   main.appendChild(el("div", { class: "eyebrow", text: "Activity" }));
   main.appendChild(el("h1", { text: "Activity" }));
   main.appendChild(el("p", { class: "lede", text: "What co rem did on each run: what it read, the pages it changed, and the ones it would not write." }));
-  main.appendChild(nightBand());
+  main.appendChild(nightBand(false));
   const runs = REM.logs || [];
   main.appendChild(sectionHead("Runs", runs.length ? "latest " + runs.length : "none yet"));
   main.appendChild(runs.length ? el("ol", { class: "activity-runs" }, runs.map(runItem))
@@ -3414,8 +3499,12 @@ function sectionBody(r, s) {
   if (name === "history") {
     const items = historyItems(s.text);
     if (items.some(i => i.day)) {
-      return el("div", { class: "block-history" }, [el("ol", { class: "timeline" }, items.map(i => el("li", { class: i.day ? "" : "undated" }, [
-        el("span", { class: "d", text: i.day ? dayLabel(i) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
+      const rows = items.map(i => {
+        const content = historyRowContent(i.text, r.path);
+        return content ? el("li", { class: (i.day ? "" : "undated ") + (content.classList.contains("privacy-only") ? "private-entry" : "") }, [
+          el("span", { class: "d", text: i.day ? dayLabel(i) : "·" }), el("div", { class: "e" }, [content])]) : null;
+      }).filter(Boolean);
+      return el("div", { class: "block-history" }, [el("ol", { class: "timeline" }, rows), privateHistoryNotice(rows)]);
     }
   }
   if (name === "sources") {
@@ -3510,6 +3599,11 @@ function age(day) {
   const n = daysSince(day);
   return n == null ? "" : n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
 }
+// Tag only explicit blocking language; age alone does not imply urgency.
+function blockerTag(t) {
+  return /\b(?:blocks|blocked|blocking)\b|\bbefore\b[^.!?\n]*\bcan\b/i.test(t.text)
+    ? el("small", { class: "blocker-tag", text: "blocker" }) : null;
+}
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
   return t.due ? dueLabel(t) : age(t.since);
@@ -3540,8 +3634,8 @@ function leadRow(r) {
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
-    el("span", { class: "lead-meta usage-scope", text: "Coding-session name matches; retained eval attempts are counted separately." }));
-  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
+    el("span", { class: "lead-meta usage-scope", text: "Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome." }));
+  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, [el("span", { class: "unsure-icon", "aria-hidden": "true", text: "?" }), el("span", { text: "Uncertain points" })]));
   return row;
 }
 function tocPanel(children) { const p = panel("On this page", children); p.classList.add("toc-panel"); return p; }
@@ -3551,17 +3645,12 @@ function sidePanels(r, k) {
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
-  if (k.last) add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "skills" ? "Last name match" : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  if (k.last && r.category !== "skills") add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
   if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
-    const u = skillUsage(r);
-    if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: "name " + (u.count === 1 ? "match" : "matches") + " in " + u.days + " days" })]),
-      el("div", { class: "usage" }, [usageBar(u)]),
-      el("p", { text: "Matched by skill name in coding sessions and co ai runs; the co ai runs are the ones listed under Run evidence. Neither confirms this installed version or task outcome." }),
-      el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no name match found" })]));
     if (r.installation) {
       const file = el("dl", {});
       file.append(el("dt", { text: "File" }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
@@ -3582,7 +3671,7 @@ function refreshFocusExpansion() {
   if (!statement || !more) return;
   more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
 }
-function relationCard(link) {
+function relationCard(link, currentPath = "") {
   const other = byPath(link.path), origin = byPath(link.via);
   const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
     "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
@@ -3592,13 +3681,13 @@ function relationCard(link) {
       el("strong", { text: other.title }),
       el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Notebook link") })])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
-    el("span", { text: "On " }), el("a", { href: href(origin), text: origin.title }),
+    origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
   return entry;
 }
-function relationDisclosure(links, label, className = "") {
+function relationDisclosure(links, label, className = "", currentPath = "") {
   return links.length ? el("details", { class: "more-relations " + className }, [
-    el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(relationCard))]) : null;
+    el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(link => relationCard(link, currentPath)))]) : null;
 }
 function connectedContext(r) {
   const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
@@ -3613,19 +3702,23 @@ function connectedContext(r) {
   return el("div", { class: "focus-section related-records" }, [
     el("h2", { text: "Connected context" }),
     links.length ? el("p", { class: "relation-description", text: "Explicit links between notebook pages." }) : null,
-    links.length ? el("div", { class: "relation-list" }, links.slice(0, 6).map(relationCard)) : null,
-    relationDisclosure(links.slice(6), "Show " + (links.length - 6) + " more notebook links"),
-    relationDisclosure(notes, "Other notebook links · " + notes.length, "notebook-links"),
+    links.length ? el("div", { class: "relation-list" }, links.slice(0, 6).map(link => relationCard(link, r.path))) : null,
+    relationDisclosure(links.slice(6), "Show " + (links.length - 6) + " more notebook links", "", r.path),
+    relationDisclosure(notes, "Other notebook links · " + notes.length, "notebook-links", r.path),
     mentions.length ? el("details", { class: "more-relations mention-hints" }, [
       el("summary", { text: "Text mentions · " + mentions.length }),
       el("p", { class: "relation-description", text: "Name matches help navigate the notebook. A mention alone does not establish a relationship." }),
-      el("div", { class: "relation-list" }, mentions.map(relationCard))]) : null]);
+      el("div", { class: "relation-list" }, mentions.map(link => relationCard(link, r.path)))]) : null]);
 }
 function investigateCommand(r) {
   return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
 }
 // Who they are and how to reach them, first on a person (#2104): the owner
 // asked to see email, phone, what to call them and the company at a glance.
+function knownValue(value) {
+  const text = plainLine(String(value ?? "")).trim();
+  return !/^(?:unknown[.!]?|—|\s*)$/i.test(text) && !UNFILLED_LINE.test(text);
+}
 function contactStrip(r) {
   const parsed = parseFacts(r);
   // The parts of one field, put back together: "OpenOnion (internship; 2026)" is one value.
@@ -3637,7 +3730,7 @@ function contactStrip(r) {
   const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
   const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
   const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
-    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => v);
+    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => knownValue(v));
   if (!rows.length) return null;
   return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
     const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
@@ -3697,10 +3790,9 @@ function ledgerColumn(r, items, dir) {
 }
 function betweenYou(r) {
   const t = threads(r), mine = t.items.filter(t => t.dir === "mine"), theirs = t.items.filter(t => t.dir === "theirs");
-  const calmDate = /\d{4}-\d{2}-\d{2}/.exec(t.calm)?.[0];
+  if (!mine.length && !theirs.length) return null;
   return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: "Between you" }),
-    mine.length || theirs.length ? el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")])
-      : el("p", { class: "quiet-line", text: "Nothing open between you" + (calmDate ? " · " + threadDate(calmDate) : "") })]);
+    el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")])]);
 }
 function personInsight(r) {
   const items = listItems(section(r, "insight")?.text || "").slice(0, 4);
@@ -3714,6 +3806,9 @@ function personInsight(r) {
 }
 function personFocus(r) {
   return el("section", { class: "person-focus", "aria-label": "What is between you now" }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
+}
+function localPath(value) {
+  return String(value).split("/").map(part => '<span class="path-segment">' + esc(part) + "</span>").join("/<wbr>");
 }
 function recordFocus(r) {
   if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
@@ -3753,11 +3848,6 @@ function recordFocus(r) {
       refreshFocusExpansion();
     };
     focusHead.appendChild(more);
-  }
-  if (r.category === "skills" && k.status === "Mapped") {
-    const copy = el("button", { type: "button", class: "focus-source focus-command", text: "Copy investigation command" });
-    copy.onclick = () => copyToClipboard(investigateCommand(r), copy, "Copied — paste it in a terminal");
-    focusHead.appendChild(copy);
   }
   if (finding) {
     const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
@@ -3809,10 +3899,10 @@ function recordFocus(r) {
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
     : r.category === "projects" ? [["Last mapped session", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
-      : r.category === "skills" ? [["Skill-name matches", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last name match", f.last]] : [];
-  const shown = labels.filter(([, value]) => value).slice(0, 3);
+      : [];
+  const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
-    el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+    el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) })]))));
   out.append(...recordContext(r).childNodes);
   const activity = activityPanel(r);
   if (activity) out.appendChild(activity);
@@ -3887,10 +3977,40 @@ function openConversation(id, trigger) {
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
   close.focus();
 }
+// Dates and citation labels alone are not history. Keep private rows reversible.
+function historyRowContent(text, from) {
+  const content = privateFallback(el("span", { html: inline(text, from) }));
+  const prose = content.cloneNode(true);
+  prose.querySelectorAll(".cite, .privacy-tag").forEach(node => node.remove());
+  return /[\p{L}\p{N}]/u.test(prose.textContent) ? content : null;
+}
+function privateHistoryNotice(rows) {
+  const count = rows.filter(row => row.classList.contains("private-entry")).length;
+  return count ? el("p", { class: "private-history-notice", text: count + " private " + (count === 1 ? "entry" : "entries") + " hidden" }) : null;
+}
 function activityType(text) {
   if (/\b(decid|agreed|chose|approved|rejected)\w*/i.test(text)) return "Decision";
   if (/\b(promis|owe|waiting|due)\w*/i.test(text)) return "Commitment";
   return "Conversation";
+}
+function activityDisclosure(list, rows, recent) {
+  let selected = "All", expanded = false;
+  const more = el("button", { class: "btn-action activity-more", type: "button", "aria-expanded": "false" });
+  const update = () => {
+    const privateHidden = document.documentElement.classList.contains("hide-private");
+    const matching = rows.filter(row => (selected === "All" || row.dataset.type === selected)
+      && !(privateHidden && row.classList.contains("private-entry")));
+    const visible = new Set(expanded ? matching : matching.slice(0, 5));
+    for (const row of rows) row.hidden = !visible.has(row);
+    more.hidden = recent || matching.length <= 5;
+    more.textContent = expanded ? "Show less" : "Show all " + matching.length;
+    more.setAttribute("aria-expanded", String(expanded));
+  };
+  more.onclick = () => { expanded = !expanded; update(); };
+  list.filterActivity = name => { selected = name; expanded = false; update(); };
+  list.refreshActivity = update;
+  update();
+  return more;
 }
 function activityPanel(r, recent = false) {
   const history = section(r, "history");
@@ -3902,15 +4022,17 @@ function activityPanel(r, recent = false) {
     recent ? el("a", { href: href(r) + "&h=history", text: "All history →" }) : el("span", { class: "activity-note", text: "From this page's dated history" })]));
   const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
   const list = el("ol", { class: "activity-list" });
-  const sorted = items.slice().sort((a, b) => b.day.localeCompare(a.day));
+  const sorted = items.map(item => ({ ...item, content: historyRowContent(item.text, r.path) }))
+    .filter(item => item.content).sort((a, b) => b.day.localeCompare(a.day));
   const rows = (recent ? sorted.slice(0, 5) : sorted).map(item => {
     const type = activityType(item.text);
-    const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day.length === 7 ? dayLabel(item) : threadDate(item.day) }),
+    const row = el("li", { "data-type": type, class: item.content.classList.contains("privacy-only") ? "private-entry" : "" }, [el("span", { class: "activity-day", text: item.day.length === 7 ? dayLabel(item) : threadDate(item.day) }),
       el("span", { class: "activity-type", text: type }),
-      el("span", { class: "activity-text", html: inline(item.text, r.path) })]);
+      el("span", { class: "activity-text" }, [item.content])]);
     list.appendChild(row);
     return row;
   });
+  const more = activityDisclosure(list, rows, recent);
   for (const name of ["All", "Conversation", "Commitment", "Decision"]) {
     const count = name === "All" ? rows.length : rows.filter(row => row.dataset.type === name).length;
     if (!count) continue;
@@ -3918,13 +4040,16 @@ function activityPanel(r, recent = false) {
       "aria-pressed": String(name === "All"), text: name + " " + count });
     button.onclick = () => {
       for (const b of filters.querySelectorAll("button")) { b.classList.toggle("active", b === button); b.setAttribute("aria-pressed", String(b === button)); }
-      for (const row of rows) row.hidden = name !== "All" && row.dataset.type !== name;
+      list.filterActivity(name);
     };
     filters.appendChild(button);
   }
   if (!recent) box.appendChild(filters);
   box.appendChild(list);
-  return box;
+  const notice = privateHistoryNotice(rows);
+  if (notice) box.appendChild(notice);
+  box.appendChild(more);
+  return rows.length ? box : null;
 }
 
 function record(path, heading) {
@@ -3939,11 +4064,11 @@ function record(path, heading) {
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
-  const disclosed = person || r.category === "projects";
+  const disclosed = person || r.category === "projects" || r.category === "orgs" || r.category === "skills";
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
-    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last name match " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
+    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? (r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
@@ -3954,6 +4079,10 @@ function record(path, heading) {
   if (languages && !person) head.appendChild(languages);
   main.appendChild(head);
   main.appendChild(recordFocus(r));
+  if (r.category === "projects") {
+    const cites = main.querySelector(".project-purpose-cites"), unsure = head.querySelector(".unsure");
+    if (cites && unsure) cites.appendChild(unsure);
+  }
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
@@ -4004,10 +4133,16 @@ function record(path, heading) {
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
   const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null, person ? languages : null]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
+  const sections = toc.length + (note.firstElementChild && note.firstElementChild.tagName !== "H2" ? 1 : 0)
+    + grid.querySelectorAll(".deep-context .focus-section, .side .panel:not(.toc-panel)").length
+    + Number(!!parts.related) + Number(!!parts.sources);
+  const sources = sourceList(r).length;
+  const hasMemory = note.childElementCount > 0 || !!grid.querySelector(".factlist, .deep-context h2, .side .panel:not(.toc-panel) a")
+    || !!parts.related || !!parts.sources || sources > 0;
   const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
     el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: "Full memory and sources" }),
-      el("span", { class: "deep-hint", text: disclosed ? toc.length + " sections · " + sourceList(r).length + " sources" : "Original note · all fields · citations" })]), grid]);
-  main.appendChild(deep);
+      el("span", { class: "deep-hint", text: disclosed ? sections + (sections === 1 ? " section · " : " sections · ") + sources + " sources" : "Original note · all fields · citations" })]), grid]);
+  if (hasMemory) main.appendChild(deep);
   const column = grid.firstChild;
 
   if (parts.related || parts.sources) {
@@ -4035,19 +4170,19 @@ function record(path, heading) {
   if (k.missing.length) {
     const command = investigateCommand(r);
     const mapped = k.status === "Mapped";
-    const copyCmd = el("button", { class: mapped ? "btn-primary" : "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
+    const copyCmd = el("button", { class: "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
     copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
-      mapped ? el("div", { class: "cmd" }, [el("code", { text: command }), r.category === "skills" ? null : copyCmd]) : null,
       mapped ? el("p", { class: "why", text: r.private_project
         ? "Automatic investigation skips this private project. To request a write, run the command for this page."
         : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
+      mapped ? el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd]) : null,
       el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
       mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
-    if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
+    if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
@@ -4055,8 +4190,8 @@ function record(path, heading) {
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, "Path copied");
   const copyMd = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, "Markdown copied");
-  foot.append(pathBtn, copyMd);
-  column.appendChild(foot);
+  foot.append(pathBtn, copyMd, el("span", { class: "when", text: "File updated " + fmtDate(r.updated) }));
+  (deep.parentNode ? column : main).appendChild(foot);
 
   if (heading) {
     const target = document.getElementById(heading) || document.getElementById(heading.toLowerCase()) || headings.find(h => h.id === heading.toLowerCase());
@@ -4142,7 +4277,9 @@ function search(q) {
   }
   const isPath = l => /^(?:\/|~\/|[A-Z]:\\)\S+/.test(l) || /^(?:File|Path):\s*[/~]/.test(l);
   for (const [c, list] of groups) {
-    main.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
+    const group = el("section", { class: "search-group" });
+    main.appendChild(group);
+    group.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
     const ul = el("ul", { class: "hits" });
     for (const { r, lines } of (c === "sessions" ? list.slice(0, 8) : list)) {
       const li = el("li", {}, [
@@ -4152,8 +4289,8 @@ function search(q) {
       if (line) li.appendChild(el("div", { class: "hit", html: highlight(line.replace(/\s*\[W?\d{1,3}\]/g, ""), needle) }));
       ul.appendChild(li);
     }
-    main.appendChild(ul);
-    if (c === "sessions") main.appendChild(el("a", { href: sessionHash({ find: q }),
+    group.appendChild(ul);
+    if (c === "sessions") group.appendChild(el("a", { href: sessionHash({ find: q }),
       text: list.length === 1 ? "Open in " + label("sessions") + " →" : "All " + list.length + " matching sessions →" }));
   }
 }
@@ -4168,7 +4305,7 @@ function bestMatch(r) {
   const open = f.open[0];
   return el("section", { class: "best" }, [
     el("div", { class: "best-head" }, [el("span", { class: "lead", text: "Best match" }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
-    el("dl", { class: "best-facts" }, cells.flatMap(([name, v]) => [el("dt", { text: name }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
+    el("dl", { class: "best-facts" }, cells.filter(([, v]) => knownValue(v)).flatMap(([name, v]) => [el("dt", { text: name }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
     open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]) : null]);
 }
 
@@ -4474,18 +4611,44 @@ function openEvidence(r, number, trigger) {
   scrollEvidenceSpan(panel);
   return true;
 }
+function evidenceControls(panel) {
+  return [...panel.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter(node =>
+    !node.matches(":disabled, [aria-disabled='true']") && node.tabIndex >= 0 &&
+    !node.closest("[hidden], [inert], [aria-hidden='true']") && node.getClientRects().length && getComputedStyle(node).visibility === "visible");
+}
 document.addEventListener("keydown", event => {
   const panel = document.getElementById("evidence-panel");
   if (!panel || panel.parentElement.hidden) return;
   if (event.key === "Escape") { event.preventDefault(); closeEvidence(); }
   if (event.key !== "Tab" || innerWidth >= 1100) return;
-  const controls = [...panel.querySelectorAll('a, button, input, select, summary')].filter(node => node.getClientRects().length);
+  const controls = evidenceControls(panel);
+  if (!controls.length) { event.preventDefault(); panel.focus(); return; }
   const first = controls[0], last = controls.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 });
 window.addEventListener("hashchange", closeEvidence);
 window.addEventListener("resize", evidenceLayout);
+// Fixed positioning and measured bounds keep even an unbroken source id on a phone.
+function hideCitationTip() { document.getElementById("citation-tip")?.remove(); }
+function showCitationTip(event) {
+  const cite = event.target.closest("a.cite");
+  if (!cite || !cite.title) return;
+  hideCitationTip();
+  const tip = el("div", { id: "citation-tip", class: "citation-tip", role: "tooltip", text: cite.title });
+  document.body.appendChild(tip);
+  const bounds = cite.getBoundingClientRect();
+  tip.style.left = Math.max(12, Math.min(bounds.left, innerWidth - tip.offsetWidth - 12)) + "px";
+  tip.style.top = Math.max(12, Math.min(bounds.bottom + 8, innerHeight - tip.offsetHeight - 12)) + "px";
+}
+document.addEventListener("pointerover", showCitationTip);
+document.addEventListener("focusin", showCitationTip);
+document.addEventListener("pointerout", hideCitationTip);
+document.addEventListener("focusout", hideCitationTip);
+document.addEventListener("click", hideCitationTip);
+window.addEventListener("resize", hideCitationTip);
+window.addEventListener("scroll", hideCitationTip, true);
+window.addEventListener("hashchange", hideCitationTip);
 document.addEventListener("click", e => {
   const citation = e.target.closest("a.cite");
   if (!citation) return;
