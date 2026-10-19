@@ -74,6 +74,7 @@ def test_muse_turns_resume_one_thread_and_count_usage(notebook, monkeypatch, har
     assert progress == [f"turn {n} of 7" for n in range(1, 8)]
     assert result["usage"] == expected
     assert result["changed"] == []
+    assert result["turn_replies"] == ["No insight"] * 7
 
 
 def test_missing_session_cannot_resume(notebook, monkeypatch):
@@ -255,7 +256,9 @@ def test_failed_later_turn_reports_all_usage_without_promotion(notebook, monkeyp
     assert notebook.read(RECORD) == PAGE
 
 
-def test_muse_reads_latest_completed_reports_for_this_page(notebook):
+@pytest.mark.parametrize("stage", ["enrich", "muse"])
+def test_muse_reads_latest_completed_reports_for_this_page(notebook, monkeypatch, stage):
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
     for n, (phase, record, outcome, report) in enumerate([
             ("enrich", RECORD, "completed", "Old lead"),
             ("enrich", RECORD, "completed", "Newest lead"),
@@ -273,7 +276,7 @@ def test_muse_reads_latest_completed_reports_for_this_page(notebook):
         assert all(text not in prior["text"] for text in ("Old lead", "Failed lead", "Other person's"))
         return {"report": "No insight"}
 
-    feature.muse(notebook.root, RECORD, runner=fake)
+    getattr(feature, stage)(notebook.root, RECORD, runner=fake)
 
 
 def test_muse_preserves_quotes_when_markdown_link_markup_changes(notebook):
@@ -357,6 +360,8 @@ def project(notebook, monkeypatch):
         calls.append(argv)
         assert kw == {"capture_output": True, "text": True, "timeout": 120}
         if argv[0] == "gh":
+            if argv[1] == "search":
+                return SimpleNamespace(returncode=0, stdout="[]", stderr="")
             assert argv[2:9] == ["list", "-R", "owner/atlas", "--state", "all", "--limit", "400"]
             assert argv[9:] == ["--json", "number,title,body,author,createdAt,state,url,comments"]
             number = 41 if argv[1] == "issue" else 42
@@ -484,3 +489,119 @@ def test_missing_gh_is_covered_and_enrich_runs(project, monkeypatch):
     assert "github owner/atlas: not read (gh is not installed)" in result["coverage"]
     assert result["items"] == 3
     assert not any(call[0] == "gh" for call in project.calls)
+
+
+def test_muse_counts_only_insight_verdicts_in_study_turns(notebook):
+    replies = ["verdict: insight", "verdict: insight", "verdict: no insight", "verdict: **Insight**",
+               "Verdict: open", "VERDICT: insight", "verdict: insight"]
+    result = feature.muse(notebook.root, RECORD, runner=lambda *a, **kw: {"turn_replies": replies})
+    assert result["insights"] == 3
+
+
+@pytest.mark.parametrize("stage", ["enrich", "muse"])
+@pytest.mark.parametrize("harness", ["codex", "claude-code"])
+def test_audit_repairs_resume_last_thread_and_charge_only_their_usage(notebook, monkeypatch, stage, harness):
+    calls, promotions = [], []
+    turns = feature.MUSE_TURNS if stage == "muse" else ()
+    initial = len(turns) or 1
+
+    def run(workdir, prompt, config, phase, **kw):
+        calls.append(kw)
+        next(workdir.glob(f"{stage}-*/candidate.md")).write_text(PAGE + "\nNew finding.\n")
+        n = len(calls)
+        usage = {"input_tokens": 100 * n, "cached_input_tokens": 80 * n, "output_tokens": n}
+        return {"result": "verdict: insight", "session_id": f"thread-{n}", "usage": usage}
+
+    def promote(book, record, candidate, original, items, directory, usage, **kw):
+        promotions.append(usage)
+        if len(promotions) <= 2:
+            write_json(directory / "review.json", {"errors": ["Quote is not in its cited source: 1"]})
+            raise runner.RunFailed("Candidate rejected", usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "_promote_candidate", promote)
+    result = runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
+                              {**read_config(notebook.root), "runner": harness}, stage=stage, turns=turns)
+    assert calls[-2:] == [{"session": f"thread-{initial}"}] * 2
+    expected = 200 if harness == "codex" else 100 * (initial + 1 + initial + 2)
+    assert result["repairs"] == 2 and result["repair_usage"]["input_tokens"] == expected
+    total = (initial + 2) * 100 if harness == "codex" else sum(100 * n for n in range(1, initial + 3))
+    assert result["usage"]["input_tokens"] == total
+    metrics = json.loads(next((notebook.root / ".state").rglob("result.json")).read_text())
+    assert metrics["repairs"] == 2 and metrics["repair_usage"] == result["repair_usage"]
+    if turns:
+        assert len(result["turn_replies"]) == 7
+
+
+def test_failed_resumed_repair_charges_delta_and_keeps_metrics(notebook, monkeypatch):
+    calls = []
+
+    def run(workdir, *a, **kw):
+        calls.append(kw)
+        if len(calls) == 2:
+            raise runner.RunFailed("repair stopped", {"input_tokens": 150})
+        next(workdir.glob("enrich-*/candidate.md")).write_text(PAGE + "\nNew finding.\n")
+        return {"session_id": "thread", "usage": {"input_tokens": 100}}
+
+    def reject(*args, **kw):
+        write_json(args[5] / "review.json", {"errors": ["Quote is not in its cited source: 1"]})
+        raise runner.RunFailed("Candidate rejected", args[6])
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "_promote_candidate", reject)
+    with pytest.raises(runner.RunFailed, match="repair stopped") as caught:
+        runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
+                         {**read_config(notebook.root), "runner": "codex"}, stage="enrich")
+    assert caught.value.usage == {"input_tokens": 150}
+    metrics = json.loads(next((notebook.root / ".state").rglob("result.json")).read_text())
+    assert metrics["repairs"] == 1 and metrics["repair_usage"] == {"input_tokens": 50}
+
+
+def test_github_owner_search_reaches_other_repos_and_keeps_richer_duplicates(monkeypatch):
+    monkeypatch.setattr(feature, "_github_checkouts", lambda page: [("/work/atlas", "avery/monorepo"),
+                                                                 ("/work/other", "avery/other")])
+    monkeypatch.setattr(feature.shutil, "which", lambda command: "/mock/gh")
+    calls = []
+
+    def row(repo, number):
+        return {"repository": {"nameWithOwner": repo}, "number": number, "title": "Atlas finding",
+                "createdAt": "2026-10-01T00:00:00Z", "state": "OPEN", "url": "https://example.com/issue",
+                "body": "Original", "author": {"login": "avery"}}
+
+    def run(argv, **kw):
+        calls.append(argv)
+        if argv[1] == "search":
+            assert argv[3:] == ["Atlas", "--owner", "avery", "--limit", "100", "--json",
+                                "number,title,body,author,createdAt,state,url,repository"]
+            rows = [row("avery/monorepo", 1), row("avery/sibling", 9)] if argv[2] == "issues" else []
+        else:
+            rows = [dict(row("avery/monorepo", 1), comments=[
+                {"createdAt": "2026-10-02", "body": "Full comment", "author": {"login": "avery"}}])]
+            if argv[1] != "issue" or argv[4] != "avery/monorepo":
+                rows = []
+        return SimpleNamespace(returncode=0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(feature.subprocess, "run", run)
+    items, coverage = feature._github_items("# Atlas", "Atlas")
+    assert [item["source"] for item in items] == ["github:avery/monorepo#1", "github:avery/sibling#9"]
+    assert "Full comment" in items[0]["text"]
+    assert 'github search avery "Atlas": 2 issues, 0 pull requests' in coverage
+    assert len([argv for argv in calls if argv[1] == "search"]) == 2
+    calls.clear()
+    feature._github_items("# Ax", "Ax")
+    assert not any(argv[1] == "search" for argv in calls)
+
+
+def test_failed_github_search_records_coverage(project, monkeypatch):
+    run = feature.subprocess.run
+
+    def fail(argv, **kw):
+        if argv[:2] == ["gh", "search"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="Not signed in")
+        return run(argv, **kw)
+
+    monkeypatch.setattr(feature.subprocess, "run", fail)
+    items, coverage = feature._github_items(project.book.read(project.record), "Atlas")
+    assert len(items) == 2
+    assert 'github search owner "Atlas": not read (Not signed in)' in coverage

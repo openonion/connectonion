@@ -7,6 +7,7 @@ from datetime import datetime
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from .. import style
@@ -415,6 +416,24 @@ def _pages_line(pages: list, left) -> str:
     return " · ".join(words) + (f" · {left} left" if left is not None else "")
 
 
+def depth_summary(value):
+    """Keep a deepening round's gains and losses visible beside its cost."""
+    columns = ("record", "round", "chars", "quotes", "sources", "insights", "lost quotes", "outcomes", "points")
+    rows = [" | ".join(columns)]
+    for row in value["rounds"]:
+        cells = [row["record"], str(row["round"])]
+        cells += [f"{row[key][0]} -> {row[key][1]}" for key in ("chars", "quotes", "sources")]
+        cells += [str(row["insights"]), str(row["lost_quotes"]),
+                  f"{row['enrich']} / {row['muse']}", f"{row['points']:g}"]
+        rows.append(" | ".join(cells))
+    if not value["rounds"]:
+        rows.append("No pages deepened.")
+    if value["stopped"]:
+        rows.append(f"Stopped: {value['stopped']}")
+    rows.append(f"Left: {value['left']}")
+    return escape("\n".join(rows))
+
+
 def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments)):
     """What `co rem sync` ends on (#2044): a few lines, not the run record.
 
@@ -461,6 +480,12 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
             why = value.get('reason') or run.get('reason') or ''
             pages = f"none started; {NO_PAGE.get(why, why or 'see the log')}"
         lines.append(rem_look.section('Pages', said(pages)))
+    if 'depth' in value:
+        depth = value['depth']
+        detail = f"Deepened {len(depth['rounds'])} pages"
+        if depth.get('stopped'):
+            detail += f"; stopped: {depth['stopped']}"
+        lines.append(rem_look.section('Deepening', said(detail)))
     archive = _archive_line(batch.get('mail_archive'))
     if archive:
         lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))

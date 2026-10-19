@@ -15,6 +15,7 @@ from pathlib import Path
 # Runs whose points count against the investigation budget. Maintenance is the
 # incremental daily pass and is bounded by the call cap instead.
 INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write")
+DEPTH_PHASES = ("enrich", "muse")
 
 
 def _codex_auth() -> Path:
@@ -94,7 +95,7 @@ def run_points(run: dict) -> float:
     return _token_points(run.get("usage"))
 
 
-def points_spent(logs: list[dict], now: dict) -> float:
+def points_spent(logs: list[dict], now: dict, phases=INVESTIGATION_PHASES) -> float:
     """Points this window's investigation runs cost, summed per run, to one decimal.
 
     Summed per run, not "now minus the first reading", because the owner's own
@@ -105,13 +106,21 @@ def points_spent(logs: list[dict], now: dict) -> float:
     window_start = now["resets_at"] - now["window_minutes"] * 60
     spent = 0.0
     for run in logs:
-        if run.get("phase") not in INVESTIGATION_PHASES:
+        if run.get("phase") not in phases:
             continue
         if datetime.fromisoformat(run["started_at"]).timestamp() < window_start:
             continue
         spent += run_points(run)
     spent = round(spent, 1)
     return int(spent) if spent == int(spent) else spent
+
+
+def depth_points(logs: list[dict], now: dict) -> float:
+    """Deepening keeps its own weekly bound even without a readable meter."""
+    if "resets_at" not in now:
+        from . import service
+        now = {"resets_at": service.now().timestamp(), "window_minutes": 7 * 24 * 60}
+    return points_spent(logs, now, phases=DEPTH_PHASES)
 
 
 def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:

@@ -467,6 +467,12 @@ def _deepen_page(ctx, page, stage):
     _handle(ctx, operation, retry, retry=retry, resume=retry)
 
 
+def _depth_stage(root, record, name):
+    from ...rem import muse as muse_module
+    function = muse_module.enrich if name == "enrich" else muse_module.muse
+    return _logged(root, record, name, lambda update: function(root, record, stage_progress=update), quiet=True)
+
+
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
@@ -1408,6 +1414,20 @@ def make_rem_app(factory):
     def muse_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
         _deepen_page(ctx, page, "muse")
 
+    @rem.command("deepen", cls=V("co rem deepen"))
+    def deepen_pages(ctx: typer.Context,
+                     page: Optional[List[str]] = typer.Argument(None, metavar="PAGE..."),
+                     pages: int = typer.Option(None, "--pages", min=1)):
+        from ...rem import depth
+        from ...rem.files import Notebook
+        from .rem_output import depth_summary
+
+        def operation(root):
+            notebook = Notebook(root)
+            records = [_resolve_page(notebook, selector) for selector in page] if page else None
+            return depth.slot(root, records=records, pages=pages, stage=_depth_stage, say=rem_look.step), ["logs"]
+        _handle(ctx, operation, ["deepen"], draw=depth_summary)
+
     # ------------------------------------------------------------------- Read
 
     @rem.command("open", cls=V("co rem open"))
@@ -1665,6 +1685,9 @@ def make_rem_app(factory):
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":
                 _emit(ctx, result, ["logs"], failed=True, draw=draw)
+            elif scheduled:
+                from ...rem import depth
+                result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
             return result, ["logs"]
         from .rem_output import sync_summary
 
@@ -2103,7 +2126,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse open list show search translate start stop status sync sources config logs doctor "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync sources config logs doctor "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

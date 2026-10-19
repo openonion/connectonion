@@ -16,6 +16,7 @@ from .project_material import stored
 from .service import now, run_logs, subscriptions
 
 ENRICH_DAYS = 3650
+INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
                 "Follow the skill's Turns 2–6 rules." for n in range(2, 7)),
@@ -113,9 +114,10 @@ def _github_item(repo, row) -> dict:
             "timestamp": row["createdAt"], "subject": row["title"], "text": text[:40_000]}
 
 
-def _github_items(page) -> tuple[list[dict], list[str]]:
+def _github_items(page, title="") -> tuple[list[dict], list[str]]:
     items, coverage = [], []
-    for repo in dict.fromkeys(repo for _, repo in _github_checkouts(page)):
+    repos = list(dict.fromkeys(repo for _, repo in _github_checkouts(page)))
+    for repo in repos:
         if shutil.which("gh") is None:
             coverage.append(f"github {repo}: not read (gh is not installed)")
             continue
@@ -131,7 +133,31 @@ def _github_items(page) -> tuple[list[dict], list[str]]:
         else:
             items.extend(_github_item(repo, row) for group in rows for row in group)
             coverage.append(f"github {repo}: {len(rows[0])} issues, {len(rows[1])} pull requests")
-    return items, coverage
+    if len(title) >= 4:
+        for owner in dict.fromkeys(repo.split("/")[0] for repo in repos):
+            found, note = _github_search(owner, title)
+            items.extend(found)
+            coverage.append(note)
+    unique = {}
+    for item in items:
+        unique.setdefault(item["source"], item)
+    return list(unique.values()), coverage
+
+
+def _github_search(owner, title) -> tuple[list[dict], str]:
+    label = f'github search {owner} "{title}"'
+    if shutil.which("gh") is None:
+        return [], f"{label}: not read (gh is not installed)"
+    rows = []
+    for kind in ("issues", "prs"):
+        result = subprocess.run(["gh", "search", kind, title, "--owner", owner, "--limit", "100", "--json",
+                                 "number,title,body,author,createdAt,state,url,repository"],
+                                capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            return [], f"{label}: not read ({result.stderr.strip()[:200]})"
+        rows.append(json.loads(result.stdout))
+    return ([_github_item(row["repository"]["nameWithOwner"], row) for group in rows for row in group],
+            f"{label}: {len(rows[0])} issues, {len(rows[1])} pull requests")
 
 
 def _git_log_items(page) -> list[dict]:
@@ -153,6 +179,7 @@ def _outcome(notebook, record, before, result, *, items=0, coverage=()) -> dict:
     return {"record": record, "changed": [record] if after != before else [],
             "page_chars": [len(before), len(after)], "report": result.get("report", ""),
             "usage": result.get("usage"), "threads": result.get("threads", []),
+            "repairs": result.get("repairs", 0), "repair_usage": result.get("repair_usage", {}),
             "items": items, "coverage": list(coverage)}
 
 
@@ -167,7 +194,7 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
         stage_progress=stage_progress, archive_root=root, record=record)
     if record.startswith("projects/"):
         sessions = _mapped_sessions(root, record)
-        github, github_coverage = _github_items(page)
+        github, github_coverage = _github_items(page, title)
         logs = _git_log_items(page)
         gathered = list({item["source"]: item for item in [*gathered, *sessions, *github, *logs]}.values())
         coverage += [f"mapped sessions: {len(sessions)} owner messages", *github_coverage,
@@ -180,7 +207,7 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
     coverage_item = {"role": "coverage", "source": "investigation:coverage", "timestamp": now().isoformat(),
                      "text": "\n".join(coverage) + "\n" + _archive_note(root)}
     items = [_page_item(root, record, page), coverage_item, *ledger,
-             *_cited_originals(root, page, set(ledger[0]["sources"]))]
+             *_cited_originals(root, page, set(ledger[0]["sources"])), *_prior_runs(root, record)]
     if stage_progress:
         stage_progress("following leads")
     result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
@@ -225,4 +252,5 @@ def muse(root, record, *, runner=None, stage_progress=None) -> dict:
     result = runner(notebook, items, read_config(root), stage="muse", turns=MUSE_TURNS, stage_progress=stage_progress)
     restored = _restore(notebook, record, page)
     return {**_outcome(notebook, record, page, result, items=len(originals)),
-            "restored": restored, "turns": len(MUSE_TURNS)}
+            "restored": restored, "turns": len(MUSE_TURNS),
+            "insights": sum(bool(INSIGHT.search(reply)) for reply in result.get("turn_replies", [])[1:-1])}

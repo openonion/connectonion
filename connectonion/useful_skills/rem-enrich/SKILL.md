@@ -14,6 +14,12 @@ Enrich is discovery. The page was written from what init happened to read;
 your job is to find **what else exists** and where it points. Finding a
 direction to investigate is worth more than polishing a sentence.
 
+## Leads from the last round
+
+The prior-runs item holds the last enrich's open leads and the last muse's
+open questions. Follow those first. Mark each followed, open or blocked again;
+do not repeat a lead already followed.
+
 ## 1. Find the leads
 
 Read every cited original whole, then list what it points to that the page has
