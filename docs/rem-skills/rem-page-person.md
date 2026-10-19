@@ -326,7 +326,9 @@ company's main line, a footer or a dial-in is not the person's. History is
 sorted newest first in code (`page_review.sort_history`): three of five pages
 put one line out of order.
 
-| 5 first-run pages | before | after |
+| 5 first-run pages, gpt-6-luna | before (rc7) | after, four reruns |
 |---|---|---|
-| quotes per page (mean) | 6.8 | 14.2 (r2) |
-| First contact filled | 0/5 | 4/5 (r2) |
+| quotes per page (mean) | 6.8 | 17.2, 14.2, 16.8, 9.8 |
+| First contact filled | 1/5 | 1/5, 4/5, 5/5, 5/5 (code-computed from the second rerun) |
+| Uncertainties all questions | 2/5 | 4/5, 5/5, 5/5, 5/5 |
+| History newest first | 4/5 | 2/5, 5/5, 5/5, 5/5 (sorted in code from the third) |
