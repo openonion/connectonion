@@ -532,3 +532,14 @@ def test_skipped_files_are_checkpointed_without_reopening_and_changes_restart(tm
     assert reads == [{}, {}]
     assert [item['text'] for item in third.items] == ['Start Lantern', 'Ship the first Lantern release']
     assert 'skipped' not in third.progress[file.name] and 'digest' in third.progress[file.name]
+
+
+def test_a_skipped_file_still_being_written_does_not_move_progress(tmp_path):
+    """A gather loops until progress stops; re-marking a live skipped file spun it forever."""
+    file = tmp_path / 'rollout-lantern.jsonl'
+    sub = subscription(tmp_path, project='/work/lantern')
+    rollout(file, [('user', 'Start Lantern')], project='/work/other')
+    first = collect(sub, {}, 20, 10000)
+    rollout(file, [('user', 'Start Lantern'), ('user', 'Still writing')], project='/work/other')
+    second = collect(sub, first.progress, 20, 10000)
+    assert second.progress == first.progress and second.items == []

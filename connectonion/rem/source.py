@@ -429,7 +429,8 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
         # lookback cannot hold one inside it. On first start this is most of the store.
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
             continue
-        if old.get("skipped"):
+        marked = old.get("skipped")
+        if marked:
             old = {}  # A metadata skip has no consumed prefix to verify.
         with _read_rollout(path, old, kind) as (source, meta, offset, digest):
             if source is None:
@@ -438,7 +439,11 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
             if meta.get("skip") or (subscription.get("project") and kind == "codex"
                                     and meta.get("cwd") != subscription["project"]):
                 # 2026-10-20: reopening 22k skipped files cost 60 of 128 seconds per scan.
-                updated[name] = {"offset": stat.st_size, "mtime_ns": stat.st_mtime_ns, "skipped": True}
+                # Marked once: re-marking a skipped file still being written moved the
+                # progress on every call, and the callers' "until progress stops" loops
+                # never ended (a person's gather spun for 27 minutes).
+                if not marked:
+                    updated[name] = {"offset": stat.st_size, "mtime_ns": stat.st_mtime_ns, "skipped": True}
                 continue
             # A subject scope keeps whole sessions, so its items are held until the
             # session says whether it is about that subject. Grouping by directory
