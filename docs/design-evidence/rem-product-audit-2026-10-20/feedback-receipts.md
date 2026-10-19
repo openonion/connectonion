@@ -49,6 +49,9 @@ newly discovered failures. Tests isolate HOME and network; no real model or prov
 Full offline suite: **16,093 passed, 160 skipped, 7 warnings in 125.21s** with
 four workers, `TERM=xterm-256color`, and the CI-only dummy `OPENONION_API_KEY=test-key`.
 Existing platform/browser/provider opt-ins remain skipped; no marker waiver.
+That full run predates the final strict-signature compatibility fix. After that
+fix, the related suite passed **359 tests in 15.96s** on implementation head
+`661f8de6ad561f6aea0ddbf5e904bcdd5f478184`; fresh PR CI remains required.
 
 Commands:
 
