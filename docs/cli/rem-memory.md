@@ -23,6 +23,42 @@ view only when it reconstructs the retained records exactly and reduces serializ
 context size; stale or altered views fall back to the originals. A task stops if
 the resulting context still exceeds the budget.
 
+### When feedback is processed
+
+In the next preview candidate, normal `sync` selects attributed reflection
+records and review decisions by their explicit target pages. It keeps raw
+records in the maintenance input; changing the compact view is not a new event.
+Fresh feedback bypasses an older page cooldown or ordinary source-current check.
+Each target receives its own relevant feedback. A feedback batch is bounded by
+the maintenance input allowance, page count and daily call allowance; oversized
+feedback stays pending while ordinary captured material can continue.
+
+An accepted page update or an explicitly accepted no-change turn records an
+operational receipt under `.state/progress.json`, keyed by event content revision
+and target page. A decision with two subjects is finished only after both targets
+have accepted processing. A receipt does **not** establish that an assertion is
+true. Refused, missing, over-budget and unattempted targets remain pending; inspect
+`co rem logs` for `feedback_deferred` reasons. A zero-progress feedback batch reports
+`deferred`, so `sync --all` stops instead of immediately buying the same work again.
+The existing refusal interval and retry cap also apply to this path. New content
+revisions are assessed separately from older consumed or refused revisions.
+
+The native runner retains a small promotion proof before replacing an accepted
+page, and after an accepted no-change turn. Recovery requires both the exact saved
+page hash and the retained feedback revision before acknowledging the interrupted
+turn. Daily maintenance retries use the same per-target receipts. Trusted custom
+runner callbacks retain their existing interface, but cannot recover a crash
+between their own page write and return without a native promotion proof.
+
+Legacy consumed raw IDs remain an operational compatibility boundary, not proof
+of correct application. A retained exact compressed summary can identify its raw
+members. If an older consumed summary was overwritten, membership cannot be
+reconstructed: affected unreceipted reflections are explicitly deferred for source
+inspection, including newer records on that subject. The code does not guess which
+old assertions were applied or silently replay the whole history. No automatic
+legacy reconciliation command is included. No existing real notebook is migrated
+or rewritten by installation.
+
 ## Investigate questions with explicit stage models
 
 ```bash
@@ -92,7 +128,8 @@ if extraction needs more calls. Reservations are conservative and survive crashe
 This is a call budget, **not a verified percentage of a subscription or dollar cap**.
 Existing background schedules continue to run `sync`; `daily` is explicitly invoked.
 
-Normal sync still requires recorded source consent. Captured material and reflections
-are drained only after a successful run; failed runs preserve the queue. This preview
+Normal sync still requires recorded source consent. Captured material retains its
+existing batch checkpoints; feedback uses the per-target processing receipts above.
+An accepted target stays acknowledged if a later target fails. This preview
 does not implement cross-machine locking, external sharing permissions or automatic
 factual adjudication. The underlying Markdown pages remain local.

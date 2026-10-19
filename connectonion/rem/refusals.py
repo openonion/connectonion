@@ -55,9 +55,12 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
     entry = ledger.get(record) or {}
     held = {item.get("source"): item for item in [*(entry.get("material") or []), *(material or [])]}
     new = set(sources) - set(entry.get("sources", []))
+    revisions = {row.get("source"): row.get("feedback_revision") for row in entry.get("material", [])}
+    revised = any(row.get("feedback_revision") and
+                  revisions.get(row.get("source")) != row["feedback_revision"] for row in material or [])
     ledger[record] = {"sources": sorted({*entry.get("sources", []), *sources}),
                       "at": datetime.now(timezone.utc).isoformat(), "why": why[:300], "stage": stage,
-                      "retries": 0 if new else entry.get("retries", 0),
+                      "retries": 0 if new or revised else entry.get("retries", 0),
                       **({"material": list(held.values())} if held else {})}
     write_json(state_path(root, REFUSED), ledger)
 

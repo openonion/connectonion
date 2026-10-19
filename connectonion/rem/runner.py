@@ -878,8 +878,10 @@ def _write_page(notebook, record, text, items):
     from .service import notebook_zone
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    notebook.write(record, collapse_repeated_markers(
-        renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates))))
+    saved = collapse_repeated_markers(renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+    from .feedback import prepare_promotion
+    prepare_promotion(notebook.root, record, saved, items)
+    notebook.write(record, saved)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -1314,6 +1316,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
+    if candidate and no_change:
+        from .feedback import prepare_promotion
+        prepare_promotion(notebook.root, record, notebook.read(record), items, changed=False)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})

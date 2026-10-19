@@ -495,9 +495,9 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
         return {'usage': {'input_tokens': 9}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     result = run_sync(tmp_path)
-    # A malformed page no longer refuses the batch (#1670): it is kept as it
-    # was, and the correction to it stays pending for the next pass.
-    assert result['outcome'] == 'completed' and result['refused'] == 1
+    # With no accepted feedback target, report deferral and stop all-pending;
+    # preserve the page and correction for a later eligible retry.
+    assert result['outcome'] == 'deferred' and result['refused'] == 1
     assert result['refusals'][0]['record'] == 'projects/atlas.md'
     # The first turn and its repair turns are all paid for.
     assert result['usage']['input_tokens'] == 9 * (1 + MAX_REPAIRS)

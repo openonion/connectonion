@@ -504,7 +504,36 @@ def _maintain_again(root, record, entry, config) -> dict:
     material = entry['material']
     kind = str(material[0].get('source', '')).split(':', 1)[0]
     with maintenance_lock(root):
-        result = _maintain_pages(root, material, config, kind if kind in READABLE else '', [record])
+        from . import feedback
+        progress = read_json(state_path(root, 'progress.json'), {})
+        feedback.recover(root, progress, feedback._items(root))
+        managed = [item for item in material if item.get('feedback_revision')]
+        if managed:
+            # The retained retry may predate an imported revision or another
+            # accepted target. Re-read immutable records; never replay stale text.
+            current = {item['source']: item for item in feedback._items(root)}
+            refreshed = []
+            import hashlib
+            import json
+            for old in managed:
+                item = current.get(old['source'])
+                if not item:
+                    continue
+                item = {**item, 'feedback_revision': hashlib.sha256(item['text'].encode()).hexdigest()}
+                if record in feedback._remaining(progress, item):
+                    refreshed.append({**item, 'feedback_pending_targets': [record]})
+            material = [item for item in material if not item.get('feedback_revision')] + refreshed
+            from .runner import maintenance_instructions
+            size = len(json.dumps(material, ensure_ascii=False)) + len(Notebook(root).read(record))
+            if size > config['limits']['input_chars_per_batch'] - len(maintenance_instructions('')) - 1000:
+                raise RunFailed('Feedback retry exceeds input budget; material remains pending')
+            if not material:
+                forget_refusal(root, record, [item['source'] for item in managed])
+                return {'changed': [], 'refused': 0, 'report': 'Feedback targets already processed or unavailable'}
+        def finished(page, result):
+            feedback.finish(root, progress, material, page, result)
+        result = _maintain_pages(root, material, config, kind if kind in READABLE else '', [record],
+                                 **({'on_page': finished} if managed else {}))
         _hold_for_refused(root, result, material)
         if result['refused']:
             raise RunFailed(result['refusals'][0]['errors'][0], result.get('usage'))
