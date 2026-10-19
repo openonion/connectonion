@@ -412,6 +412,31 @@ def repair_run_citations(record: str, text: str, original: str) -> str:
     return text
 
 
+def sources_before_footer(text: str) -> str:
+    """Move source definitions appended after the runner's Investigation footer.
+
+    Measured 2026-10-20: one project-enrich turn per history period appended
+    Sources after the footer. Section readers missed them but validate saw
+    them, refusing even the last resort for unused 82–90 and duplicate 102,
+    and losing the round's 6k characters of history.
+    """
+    footer = re.search(r'^Investigation:', text, re.M)
+    if not footer:
+        return text
+    head, tail = text[:footer.start()], text[footer.start():]
+    entry = re.compile(r'(?m)^[ \t]*- \[W?\d+\][ \t]+[^\n]+(?:\n|\Z)')
+    added = entry.findall(tail)
+    if not added:
+        return text
+    tail = entry.sub('', tail)
+    section = re.search(r'(?ms)^## Sources[ \t]*\n.*?(?=^## |\Z)', head)
+    at = section.end() if section else len(head)
+    before = head[:at].rstrip('\n')
+    if not section:
+        before += '\n\n## Sources'
+    return before + '\n' + '\n'.join(line.rstrip('\n') for line in added) + '\n\n' + head[at:] + tail
+
+
 def normalize_numbered_sources(text: str) -> str:
     """Accept Markdown's numbered-list spelling for an otherwise valid citation.
 
