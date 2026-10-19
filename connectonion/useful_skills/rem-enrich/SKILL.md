@@ -24,6 +24,9 @@ do not repeat a lead already followed.
 
 A long history arrives one period per turn: add only that period's turning
 points in each turn, then follow the other leads in the last turn.
+For the period's most important decision, quote the user's own words from that
+period if a session message or mail the user wrote says it (copy it exactly,
+in its language, and cite it); if none exists, say so in your reply.
 The timeline item is the project's whole history, oldest first, month by month.
 Walk it from the first month and read the originals at its `github:` ids;
 look up commits for their full `git:` ids. The timeline itself is a reading guide.

@@ -246,13 +246,18 @@ def _periods(rows) -> list[tuple[str, str]]:
 
 
 def _enrich_turns(periods) -> tuple[str, ...]:
+    """2026-10-20: a 15k-character page had 12 quotes; its history never quoted the owner."""
     first, last = periods[0]
+    own_words = ("for the period's most important decision, quote the user's own words from that period "
+                 "if a session message or mail the user wrote says it (copy it exactly, in its language, "
+                 "and cite it); if none exists, say so in your reply.")
     return (f"Read the page, the coverage and ledger items, and the skill; then study period 1 of "
             f"{len(periods)}: {first}–{last}. Read only this period of the timeline: read the originals its lines point to "
             "and add that period's turning points as dated, cited Key decisions lines. "
-            "Do not follow other leads yet.",
+            f"Do not follow other leads yet. Also, {own_words}",
             *(f"Period {k} of {len(periods)}: {first}–{last}. Same as before; "
-              "do not repeat lines already on the page." for k, (first, last) in enumerate(periods[1:], 2)),
+              f"do not repeat lines already on the page. Also, {own_words}"
+              for k, (first, last) in enumerate(periods[1:], 2)),
             "Now follow the remaining leads as the skill says, check what you must not drop, and give the final reply.")
 
 

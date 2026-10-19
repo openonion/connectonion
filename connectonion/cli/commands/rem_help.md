@@ -259,10 +259,13 @@ Back:     co rem --help
 ```
 co rem deepen — deepen valuable thin pages over time, one enrich then muse round each.
 
-Choose notebook people and projects by value times thinness, with recent activity
+Choose notebook people, projects and orgs by value times thinness, with recent activity
 first and each previous round reducing priority. An unchanged round with no
-insights rests for 30 days. Each round reads earlier open leads and questions.
+insights rests for 30 days; so do two consecutive rounds each gaining at most 1
+(new quotes + new sources + insights) and changing fewer than 600 characters
+in absolute terms. Rest starts at the last round. Each round reads earlier open leads and questions.
 Unmapped projects use Sessions under Paths and Last seen; other missing activity is zero.
+Org value sums its mapped people's mails; recency uses their newest Last seen.
 
 Usage:    co rem deepen [PAGE...] [--pages N]
 Example:  co rem deepen --pages 1
@@ -278,7 +281,9 @@ Options:
 Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
           from investigation's 35. The shared 90% floor also stops new pages.
           Without a meter, the budget counts the last seven days of run usage.
-Output:   Rounds with before/after metrics, insights, lost quotes, outcomes and
+Output:   A picked line per page: value, recent multiplier, quotes, sources and round.
+          JSON includes picked rows with priority and the number of previous rounds.
+          Rounds with before/after metrics, insights, lost quotes, outcomes and
           points; the stop reason and candidates left. State: .state/depth.json.
 Effects:  Uses the configured model. A round is about 25 minutes.
           Scheduled sync runs a slot after a due, non-partial daily round.
