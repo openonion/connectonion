@@ -1,0 +1,2 @@
+version: v1.9.3rc7
+no_visual_change: "Backend-only maintenance over rc6: Windows REM task provenance filtering in collectors, invocation counts and cached evidence samples; no reader/layout changes or CLI workflow redesign; the handoff install pin advances with release metadata. The modal UI fix remains outside this release."

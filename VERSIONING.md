@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc6
+## Current Version: 1.9.3rc7
+
+1.9.3rc7 is a maintenance candidate; stable remains 1.9.2. REM excludes its own
+Windows drive/UNC task sessions from newly imported context, skill invocation
+counts and cached evidence samples (#2318, #2548). It does not repair memories
+already derived from internal prompts. See [1.9.3rc7 notes](docs/releases/1.9.3rc7.md).
+
+- 1.9.3rc7 (REM internal Windows tasks stay out of user context).
+
+## Previous preview: 1.9.3rc6
 
 1.9.3rc6 is the sixth 1.9.3 release candidate; stable remains 1.9.2. A handoff addressed to one
 agent's mailbox and accepted by another agent (a forwarded link) no longer re-points that name to the
