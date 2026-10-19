@@ -321,7 +321,7 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     assert sheet.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
     page.locator(".sheet-find").fill("ledgerline")
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Inès Halvorsen"]
-    sheet.locator("tbody tr").first.locator("td").nth(5).click()
+    sheet.locator("tbody tr").first.locator("td.c-last").click()
     page.get_by_role("heading", name="Inès Halvorsen", exact=True).wait_for()
 
 
@@ -363,33 +363,131 @@ def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     assert page.locator("td.name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
 
 
-def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(reader):
+def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader):
     page, uri = reader
-    page.set_viewport_size({"width": 375, "height": 812})
+    page.set_viewport_size({'width': 1440, 'height': 1000})
+    page.goto(uri + '#c=people')
+    page.evaluate('''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.index = {...r.index,
+        emails: ['jerryl_shijie.seow@some-long-domain.example', 'second@example.test', 'third@example.test'],
+        phone: '+61 0493941028 (mobile); +61 0493941029 (work)'};
+      FACTS.delete(r.path); render();
+    }''', isolated_context=False)
+    row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
+    for kind, first, count, title in [
+        ('email', 'jerryl_shijie.seow@some-long-domain.example', '+2',
+         'jerryl_shijie.seow@some-long-domain.example; second@example.test; third@example.test'),
+        ('phone', '+61 0493941028 (mobile)', '+1',
+         '+61 0493941028 (mobile); +61 0493941029 (work)'),
+    ]:
+        cell = row.locator('.c-' + kind)
+        assert cell.locator('.' + kind + '-first').inner_text() == first
+        assert cell.locator('.' + kind + '-more').inner_text() == count
+        assert cell.locator('.people-' + kind + 's').get_attribute('title') == title
+        assert cell.locator('.contact-first').evaluate('''node => {
+          const style = getComputedStyle(node);
+          return style.textOverflow === 'ellipsis' && style.overflowX === 'hidden'
+            && style.whiteSpace === 'nowrap' && node.scrollWidth > node.clientWidth;
+        }''')
+    # Range reports even text hidden by ellipsis. Intersect with actual clipping
+    # ancestors so this compares painted text, without concealing visible overflow.
+    overlaps = page.locator('.sheet tbody').evaluate('''body => {
+      const textBounds = cell => {
+        const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT), boxes = [];
+        while (walker.nextNode()) {
+          const text = walker.currentNode;
+          if (!text.textContent.trim() || !text.parentElement.checkVisibility()) continue;
+          const range = document.createRange(); range.selectNodeContents(text);
+          const rect = range.getBoundingClientRect();
+          let left = rect.left, right = rect.right;
+          for (let node = text.parentElement; node && node !== cell; node = node.parentElement) {
+            if (getComputedStyle(node).overflowX !== 'visible') {
+              const clip = node.getBoundingClientRect();
+              left = Math.max(left, clip.left); right = Math.min(right, clip.right);
+            }
+          }
+          if (right > left && rect.height) boxes.push({left, right});
+        }
+        return boxes.length ? {left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right))} : null;
+      };
+      return [...body.rows].flatMap(row => {
+        const cells = [...row.cells], bounds = cells.map(textBounds);
+        return bounds.flatMap((box, i) => {
+          if (!box) return [];
+          const cell = cells[i].getBoundingClientRect(), next = bounds[i + 1];
+          return box.left < cell.left - 0.5 || box.right > cell.right + 0.5
+            || (next && box.right > next.left + 0.5)
+            ? [row.cells[0].innerText + ': ' + cells[i].className] : [];
+        });
+      });
+    }''')
+    assert overlaps == []
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [375, 390])
+def test_people_mobile_phone_preview_wraps_with_its_label(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#c=people')
+    page.evaluate('''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.index = {...r.index, phone: '+61 0493941028 (mobile); +61 0493941029 (work)'};
+      FACTS.delete(r.path); render();
+    }''', isolated_context=False)
+    phone = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.c-phone')
+    assert phone.is_visible()
+    assert phone.locator('.phone-more').inner_text() == '+1'
+    assert phone.evaluate('''cell => {
+      const preview = cell.querySelector('.phone-first'), values = cell.querySelector('.people-phones');
+      const range = document.createRange(); range.selectNodeContents(preview);
+      return getComputedStyle(values).display === 'inline'
+        && getComputedStyle(preview).whiteSpace === 'normal'
+        && Math.abs(range.getBoundingClientRect().top - cell.getBoundingClientRect().top)
+          < parseFloat(getComputedStyle(cell).lineHeight);
+    }''')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize("width", [375, 390])
+def test_people_phone_cards_keep_contact_metadata_and_sorting(reader, width):
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#c=people")
-    scroller = page.locator(".sheet-scroll")
-    assert page.locator(".sheet th.c-last button").text_content().startswith("Last contact")
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.index = {...r.index, emails: ['long-address'.repeat(20) + '@fernhill.example', 'second@fernhill.example', 'third@fernhill.example']};
+      FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
+    assert row.locator('.name .nm a').is_visible()
+    assert row.locator('.email-first').is_visible()
+    assert row.locator('.email-more').inner_text() == '+2'
+    assert row.locator('.people-emails a').count() == 1
+    assert row.locator('.name .sum').is_visible()
+    assert 'Fernhill' in row.locator('.people-card-meta').inner_text()
+    assert row.locator('.name a').all_inner_texts() == ['Mara Ostrowski']
+    meta = row.locator('.people-card-meta')
+    assert meta.get_attribute('title') == meta.inner_text()
+    assert meta.evaluate("e => getComputedStyle(e).webkitLineClamp") == '2'
+    assert meta.evaluate("e => getComputedStyle(e).marginTop") == '14px'
+    assert row.locator('.c-email').evaluate(r'''e => {
+      const label = getComputedStyle(e, '::before');
+      return !label.content.includes(':') && label.fontSize === '11px'
+        && getComputedStyle(e.querySelector('.people-emails')).display === 'inline'
+        && getComputedStyle(e.querySelector('.email-first')).display === 'inline';
+    }''')
+    assert row.locator('.people-card-meta .mono').is_visible()
+    assert row.locator('.c-open').is_visible()
+    assert not row.locator('.c-phone').is_visible()
+    assert row.locator('.c-open').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
+    assert row.locator('.people-card-meta').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
     assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
-    header_positions = """() => {
-      const button = document.querySelector('.sheet th.c-last button');
-      const firstLetter = document.createRange();
-      firstLetter.setStart(button.firstChild, 0);
-      firstLetter.setEnd(button.firstChild, 1);
-      const letter = firstLetter.getBoundingClientRect();
-      const name = document.querySelector('.sheet th.name').getBoundingClientRect();
-      const edge = document.querySelector('.sheet-scroll').getBoundingClientRect();
-      return { letterLeft: letter.left, nameLeft: name.left, nameRight: name.right,
-        headingRight: button.getBoundingClientRect().right, edgeLeft: edge.left, edgeRight: edge.right };
-    }"""
-    for without_map_suffix in (False, True):
-        if without_map_suffix:
-            page.locator(".sheet td.c-last .mono").evaluate_all(
-                "cells => cells.forEach(cell => cell.textContent = cell.textContent.replace(' · map', ''))")
-        scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
-        positions = page.evaluate(header_positions)
-        assert positions["nameLeft"] >= positions["edgeLeft"] - 1, positions
-        assert positions["letterLeft"] >= positions["nameRight"], positions
-        assert positions["headingRight"] <= positions["edgeRight"], positions
+    page.get_by_role('combobox', name='Sort by').select_option('last')
+    assert page.locator('.sheet th.c-last').get_attribute('aria-sort') == 'descending'
+    assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
+    assert page.evaluate(r"document.documentElement.scrollWidth <= innerWidth")
 
 
 def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, monkeypatch):
@@ -419,21 +517,11 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     assert page.locator(".contact-directory tbody tr").count() == 1
     for _ in range(2):
         sheet.evaluate("e => e.scrollLeft = e.scrollWidth")
-        positions = page.evaluate("""() => {
-          const button = document.querySelector('.sheet th.c-last button');
-          const letter = document.createRange();
-          letter.setStart(button.firstChild, 0);
-          letter.setEnd(button.firstChild, 1);
-          return { first: letter.getBoundingClientRect().left,
-            name: document.querySelector('.sheet th.name').getBoundingClientRect().right,
-            right: button.getBoundingClientRect().right,
-            edge: document.querySelector('.sheet-scroll').getBoundingClientRect().right };
-        }""")
-        assert positions["first"] >= positions["name"], positions
-        assert positions["right"] <= positions["edge"], positions
+        assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
+        assert page.get_by_role('combobox', name='Sort by').is_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert any("· map" in text for text in page.locator(".sheet td.c-last .mono").all_inner_texts())
-        page.locator(".sheet th.c-last button").click()
+        page.get_by_role('combobox', name='Sort by').select_option('last')
         assert page.locator(".sheet th.c-last").get_attribute("aria-sort") in ("ascending", "descending")
 
 
@@ -489,7 +577,7 @@ def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
     assert "Head of Partnerships" in value("Role").inner_text()
     assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
     role_source = value('Role').locator('.cite')
-    assert role_source.inner_text() == 'Outlook, 22 Aug'
+    assert role_source.inner_text() == '22 Aug'
     assert role_source.get_attribute('aria-label') == 'Source: Outlook, 22 Aug, original not in this snapshot'
     assert 'title and company in signature' in page.locator('#src-2').inner_text()
     role_source.click()
@@ -498,7 +586,7 @@ def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
     assert role_source.evaluate('e => e === document.activeElement')
     assert value("Email").locator(".qual").all_inner_texts() == ["work", "personal"]
     assert [b.upper() for b in page.locator(".person-insight dt").all_inner_texts()] == ["NOW", "AT STAKE", "CHANGED", "PATTERN"]
-    assert page.locator(".person-insight .cite.run").count() == 1  # [4][5][6] share one labelled chip
+    assert page.locator(".person-insight .cite.run").count() == 3  # Each adjacent pair or longer run shares one marker
     assert page.locator(".ledger-column.mine .ledger-row").count() == 1
     assert page.locator(".deep-note .block-threads, .deep-note .block-insight").count() == 0
     assert page.locator(".timeline li").count() == 5
@@ -509,7 +597,7 @@ def test_grouped_citation_sources_are_each_openable_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    assert page.locator(".person-insight .cite.run").count() == 1
+    assert page.locator(".person-insight .cite.run").count() == 3
     page.goto(uri + "#r=people%2Fmara-ostrowski.md&h=src-6")
     assert page.locator("details.deep-note").get_attribute("open") is not None
     page.locator("#src-6 .source-open").click()
@@ -530,14 +618,14 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
               "(2026-10-14)")
     page.set_viewport_size({"width": width, "height": 1000})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    page.evaluate("""text => {
+    page.evaluate(r"""text => {
       const r = byPath('people/mara-ostrowski.md');
-      r.text = '# Mara Ostrowski\\n\\n' + text + '\\n\\n## Facts' + r.text.split('## Facts')[1];
+      r.text = '# Mara Ostrowski\n\n' + text + '\n\n## Facts' + r.text.split('## Facts')[1];
       KNOWN.clear(); FACTS.clear(); render();
     }""", first + " [2][6]. " + second + " [4].", isolated_context=False)
     chips = page.locator(".person-lead .cite")
-    assert chips.count() == 3
-    for index, expected, other in ((1, first, second), (2, second, first)):
+    assert chips.count() == 2
+    for index, expected, other in ((0, first, second), (1, second, first)):
         chips.nth(index).click()
         claim = page.locator(".evidence-claim > div").inner_text()
         assert claim == expected
@@ -1712,13 +1800,13 @@ def test_connected_context_hides_private_bases_including_expanded_connections(re
       const r = byPath('people/mara-ostrowski.md');
       r.relations = Array.from({length: 7}, (_, n) => ({path: 'projects/harbour.md',
         kind: n === 6 ? 'mentioned by' : 'linked', private: n === 0 || n === 6,
-        basis: n === 0 || n === 6 ? 'Confidential background' : 'Public pilot context'}));
+        basis: n === 6 ? 'Private expanded context' : n === 0 ? 'Confidential background' : 'Public pilot context'}));
       render();
     }""", isolated_context=False)
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
     page.locator('.more-relations > summary').first.click()
-    bases = page.locator('.relation-basis').filter(has_text='Confidential background')
+    bases = page.locator('.relation-basis.private')
     assert bases.count() == 2
     assert all(bases.nth(n).is_visible() for n in range(2))
     page.evaluate('togglePrivate()', isolated_context=False)
@@ -1917,11 +2005,15 @@ def test_citations_name_the_source_and_open_marked_margin_or_sheet(reader):
           KNOWN.clear(); FACTS.clear(); render();
         }""", isolated_context=False)
         chip = page.locator('.person-insight a.cite[href$="src-5"]').first
-        assert chip.inner_text() == 'Mara, Outlook, 14 Oct'
+        assert chip.inner_text() == '14 Oct'
+        assert 'Mara, Outlook, 14 Oct' in chip.get_attribute('title')
         assert 'subject “Harbour renewal”' in chip.get_attribute('aria-label')
         assert 'data-tip' not in chip.evaluate('e => e.outerHTML')
         box = chip.bounding_box()
-        assert box['height'] >= 24 and box['width'] >= 24
+        assert chip.evaluate(r'''e => {
+          const hit = getComputedStyle(e, '::before');
+          return parseFloat(hit.minHeight) >= 24 && parseFloat(hit.minWidth) >= 24;
+        }''')
         chip.click()
         panel = page.locator('#evidence-panel')
         assert panel.is_visible()
@@ -1980,7 +2072,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
     panel = page.locator('#evidence-panel')
     assert panel.locator('.evidence-unavailable').inner_text() == "The original isn't in this snapshot."
     page.get_by_role('button', name='Close source context').click()
-    grouped = page.locator('.person-insight .cite.run')
+    grouped = page.locator('.person-insight .cite.run[data-sources="4 5 6"]')
     assert grouped.inner_text().endswith(' +2')
     grouped.click()
     assert 'Source 1 of 3 for this line' in panel.locator('.evidence-top').inner_text()
@@ -2562,7 +2654,7 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     expect(group).to_be_visible()
     expect(group.locator(".n")).to_have_text("10")
     expect(page.locator(".hits li")).to_have_count(8)
-    all_hits = page.get_by_role("link", name="All 10 matching sessions →", exact=True)
+    all_hits = page.get_by_role("link", name="10 matching sessions →", exact=True)
     expect(all_hits).to_have_attribute("href", "#c=sessions&find=seventhneedle")
     expect(page.locator(".hits .t a").first).to_have_attribute("href", re.compile(r"&find=seventhneedle$"))
     all_hits.click()
@@ -2618,13 +2710,13 @@ def test_session_source_deep_link_reveals_details(session_reader):
 
 def test_inline_quotes_keep_marks_sources_and_private_words(reader):
     page, _ = reader
-    result = page.evaluate('''() => {
+    result = page.evaluate(r'''() => {
       const node = el('p', {html: inline('She said “send **the export** [1] today” [2]. Then "review this". `"leave code alone"`', 'people/mara-ostrowski.md')});
       document.getElementById('main').appendChild(node);
       const said = node.querySelector('.said');
       said.querySelector('strong').innerHTML = '<mark>the</mark> export';
       const prose = said.cloneNode(true); prose.querySelectorAll('.cite').forEach(c => c.remove());
-      return [node.querySelectorAll('.said').length, prose.textContent, said.querySelectorAll('.cite').length,
+      return [node.querySelectorAll('.said').length, prose.textContent.replace(/\u2060/g, ''), said.querySelectorAll('.cite').length,
         node.querySelectorAll('a.cite').length, said.querySelector('mark').textContent, node.querySelector('code .said') === null,
         supportingSpan('She said “send the signed form”.', 'Please send the signed form today.')];
     }''', isolated_context=False)
@@ -2648,6 +2740,8 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
     assert 'Snapshot ' in page.locator('#foot').inner_text()
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     settings.locator('summary').click()
+    assert settings.locator('code').count() == 1
+    assert ' open re-renders' in settings.locator('code').inner_text()
     assert page.locator('#privacy-toggle').is_visible()
     assert 'Background updates off' in settings.inner_text()
     page.evaluate("document.querySelector('.reader-settings code').textContent = 'co rem --root /' + 'longpath'.repeat(60) + ' open'")
@@ -2754,26 +2848,58 @@ def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
     sources = page.locator('.project-purpose-cites')
     assert sources.locator('.unsure').count() == 1
     chip = sources.locator('a.cite').first
-    assert chip.evaluate('node => getComputedStyle(node).paddingTop') == '3px'
+    assert chip.evaluate('node => getComputedStyle(node).fontSize') == '11px'
+    assert chip.evaluate('node => getComputedStyle(node).fontVariantCaps') == 'normal'
     assert chip.bounding_box()['height'] < 30
 
 
-def test_long_source_citation_tip_stays_inside_375px_viewport(reader):
+@pytest.mark.parametrize('last_word', ['citation', 'longword' * 80], ids=['ordinary-word', 'long-word'])
+@pytest.mark.parametrize('context', ['prose', 'timeline', 'activity-list'])
+def test_long_source_citation_tip_stays_inside_375px_viewport(reader, last_word, context):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 844})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    page.evaluate('''() => {
+    page.evaluate('''lastWord => {
       const r = byPath('people/mara-ostrowski.md');
       r.text += '\\n\\n## Long source\\n- [99] ' + 'unbroken'.repeat(80) + ':fixture';
       CITES.sources['99'] = 'unbroken'.repeat(80) + ':fixture';
-      document.getElementById('main').prepend(el('p', {id: 'long-source', html: inline('A fixture citation [99].', r.path)}));
-    }''', isolated_context=False)
+      document.getElementById('main').prepend(el('p', {id: 'long-source', html: inline('A fixture ' + lastWord + ' [99].', r.path)}));
+    }''', last_word, isolated_context=False)
+    if context != 'prose':
+        page.locator('#long-source').evaluate('(node, context) => node.className = context', context)
     cite = page.locator('#long-source .cite')
+    assert cite.inner_text() == 'source 99'
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     cite.focus()
     tip = page.locator('#citation-tip')
     assert tip.is_visible()
     box = tip.bounding_box()
     assert box['x'] >= 12 and box['x'] + box['width'] <= 363
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    cite.click()
+    assert page.locator('#evidence-panel').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('context', ['timeline', 'activity-list'])
+def test_long_dated_source_label_can_wrap_beside_its_word(reader, context):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate('''context => {
+      const r = byPath('people/mara-ostrowski.md');
+      const source = 'gmail:long-sender-fixture';
+      CITES.sources['99'] = source;
+      REM.source_context[source] = {source: 'gmail', time: '2026-10-01',
+        sender: 'Longname'.repeat(80) + ' <fixture@example.test>'};
+      document.getElementById('main').prepend(el('div', {id: 'long-dated-source', class: context}, [
+        el('p', {html: inline('A fixture citation [99].', r.path)})]));
+    }''', context, isolated_context=False)
+    cite = page.locator('#long-dated-source .cite')
+    assert len(cite.inner_text()) > 600  # Keep exercising a full dated label.
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    cite.focus()
+    assert page.locator('#citation-tip').is_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     cite.click()
     assert page.locator('#evidence-panel').is_visible()
@@ -2913,13 +3039,11 @@ def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, pat
         'One investigation reads the material and fills it in.')
     copy = box.get_by_role('button', name='Copy the command', exact=True)
     assert 'btn-primary' not in copy.get_attribute('class')
-    assert copy.bounding_box()['height'] >= 40
+    assert copy.bounding_box()['height'] >= 32
     command = box.locator('code').bounding_box()
     button = copy.bounding_box()
-    if width == 390:
-        assert button['y'] >= command['y'] + command['height']
-    else:
-        assert button['x'] >= command['x'] + command['width']
+    assert button['x'] >= command['x'] + command['width']
+    assert abs((button['y'] + button['height'] / 2) - (command['y'] + command['height'] / 2)) < 2
     assert not page.locator('.focus-command').count()
     if path.startswith('people/'):
         assert page.locator('details.deep-note').get_attribute('open') is None
@@ -3053,3 +3177,153 @@ def test_partial_project_status_explains_the_uninvestigated_sections(reader):
     row.get_by_role('link', name='Harbour', exact=True).click()
     assert page.locator('.eyebrow .pill.status').inner_text() == 'Partly investigated'
     assert page.locator('.eyebrow .pill.status').get_attribute('title') == tooltip
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_quiet_lead_citations_stay_with_words_and_reveal_sources(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    lead = page.locator('.person-lead')
+    assert lead.locator('.cite').count() > 0
+    assert lead.evaluate(r'''node => {
+      for (const cite of node.querySelectorAll('.cite')) {
+        const tether = cite.closest('.cite-tether');
+        if (!tether || tether.getClientRects().length !== 1) return false;
+        const walker = document.createTreeWalker(tether, NodeFilter.SHOW_TEXT);
+        let previous;
+        while (walker.nextNode() && !cite.contains(walker.currentNode)) previous = walker.currentNode;
+        if (!previous || !previous.textContent.trim()) return false;
+        const word = document.createRange(); word.selectNodeContents(previous);
+        const text = word.getBoundingClientRect(), marker = cite.getBoundingClientRect();
+        // Both occupy the same prose line box, despite the marker's smaller raised font.
+        if (marker.top >= text.bottom || marker.bottom <= text.top) return false;
+        const next = cite.nextSibling;
+        if (next?.nodeType === Node.TEXT_NODE && next.textContent.startsWith('.')) {
+          const dot = document.createRange(); dot.setStart(next, 0); dot.setEnd(next, 1);
+          if (Math.abs(dot.getBoundingClientRect().top - text.top) > 1) return false;
+        }
+      }
+      return !/\s+\./.test(node.textContent);
+    }''')
+    marker = lead.locator('.cite').last
+    label = marker.get_attribute('title')
+    assert 'Source:' in label
+    assert marker.inner_text() != label
+    marker.hover()
+    assert page.get_by_role('tooltip').inner_text() == label
+    marker.focus()
+    assert page.get_by_role('tooltip').inner_text() == label
+    marker.click()
+    assert page.locator('#evidence-panel').is_visible()
+    page.get_by_role('button', name='Close source context').click()
+    assert marker.evaluate(r'e => e === document.activeElement')
+
+
+def test_cjk_citation_tethers_do_not_bind_a_whole_sentence(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''() => {
+      const node = document.querySelector('.person-lead');
+      node.innerHTML = inline('这是一句较长的中文记录，用来检查引用标记始终与前面的文字在一起，同时允许句子在手机上自然换行而不会撑开整个页面 [5] .', 'people/mara-ostrowski.md');
+    }''', isolated_context=False)
+    assert page.locator('.person-lead .cite-tether').inner_text().startswith('面')
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('notebook_languages, browser_language', [(['zh', 'en'], 'en-AU'), ([], 'zh-CN')])
+def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, browser_language):
+    from connectonion.rem import reader as rem_reader
+    page, _ = reader
+    data = rem_reader.snapshot(tmp_path / 'rem', local=True)
+    data['your_languages'] = notebook_languages
+    page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False: data)
+    path = tmp_path / 'chinese-reader.html'
+    path.write_text(rem_reader.render(tmp_path / 'rem', local=True), encoding='utf-8')
+    page.evaluate(r'''() => localStorage.removeItem('co-rem-ui-language')''')
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
+    page.wait_for_function(r'document.documentElement.lang === "zh"')
+    if width < 600:
+        page.get_by_role('button', name='浏览笔记库').click()
+    assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('人物')
+    prose = r'''node => {
+      const copy = node.cloneNode(true); copy.querySelectorAll('.cite').forEach(n => n.remove());
+      return copy.textContent;
+    }'''
+    original = page.locator('.person-lead').evaluate(prose)
+    assert page.locator('.between-you h2').inner_text() == '我们之间'
+    page.locator('.language-switch').get_by_role('button', name='EN', exact=True).click()
+    assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('People')
+    assert page.locator('.person-lead').inner_text() != ''
+    assert page.locator('.person-lead').evaluate(prose) == original
+    page.reload()
+    page.wait_for_function(r'document.documentElement.lang === "en"')
+    if width < 600:
+        page.get_by_role('button', name='Browse notebook').click()
+    page.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+    page.locator('#nav a[href="#c=people"]').click()
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+    # Avoid sharing this deliberate preference with another file:// fixture test.
+    page.evaluate(r'''() => localStorage.removeItem('co-rem-ui-language')''')
+
+
+def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
+    page, uri = reader
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate(r'''() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      r.relations = ['people/mara-ostrowski.md', 'people/quinn-alder.md', 'people/tomas-reyes.md'].map(path => ({
+        path, kind: 'linked', basis: 'Your contacts: Mara, Quinn and Tomás.', via: r.path, sources: ['1']
+      }));
+      render();
+    }''', isolated_context=False)
+    assert page.locator('.leadrow .lead-open').count() == 0
+    assert page.locator('.record-focus .next-exchanges').is_visible()
+    snippets = [value.strip().lower() for value in page.locator('.relation-basis').all_inner_texts() if value.strip()]
+    assert len(snippets) == len(set(snippets))
+    assert snippets.count('your contacts: mara, quinn and tomás.') == 1
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_empty_sessions_offer_small_copyable_commands_without_filters(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#c=sessions')
+    page.evaluate(r'''() => { REM.default_root = true; render(); }''', isolated_context=False)
+    assert page.locator('.sessions-empty h2').inner_text() == 'No agent sessions yet'
+    assert page.locator('.session-filter-panel, #session-search').count() == 0
+    assert page.locator('.sessions-empty code').all_inner_texts() == ['co rem sources', 'co rem import sessions']
+    assert page.locator('.sessions-empty button[aria-label="Copy the command"]').count() == 2
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+    page.evaluate(r'''() => { REM.default_root = false; REM.root = '/tmp/avery notebook'; render(); }''', isolated_context=False)
+    assert "--root '/tmp/avery notebook'" in page.locator('.sessions-empty code').first.inner_text()
+    page.evaluate(r"""() => { REM.root = '/tmp/' + 'long notebook path/'.repeat(12); render(); }""", isolated_context=False)
+    command = page.locator('.sessions-empty code').last
+    assert command.inner_text().endswith('import sessions')
+    assert command.evaluate('node => node.scrollWidth <= node.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_hidden_excerpt_keeps_identity_claim_and_inline_reveal(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''() => document.documentElement.classList.add('hide-private')''')
+    page.locator('.person-insight a.cite[href$="src-4"]').first.click()
+    panel = page.locator('#evidence-panel')
+    assert panel.locator('.evidence-claim').is_visible()
+    assert panel.locator('.evidence-identity').is_visible()
+    identity = panel.locator('.evidence-identity').inner_text()
+    assert 'Outlook' in identity
+    assert 'Mara' in identity
+    assert not panel.locator('.evidence-original').is_visible()
+    panel.get_by_role('button', name='Show labelled passages', exact=True).click()
+    assert panel.locator('.evidence-original').is_visible()
+    assert not panel.locator('.private-hidden-notice').is_visible()
+    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')

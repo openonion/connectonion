@@ -216,7 +216,8 @@ def snapshot(root: Path, local: bool = False) -> dict:
     candidates, contact_coverage = contact_candidates(root)
     return {"language": read_config(root, validated=False).get("language") or "en",
             "your_languages": owner_languages(root)["languages"], "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "root": str(root), "categories": list(CATEGORIES), "records": records,
+            "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
+            "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,

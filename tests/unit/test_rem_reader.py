@@ -20,6 +20,7 @@ def _run_reader_js(script):
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -153,7 +154,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     # Execute the generated handlers with only the clipboard and footer DOM stubbed.
     command = re.search(r"function remCommand\(args\).*", page).group(0)
     copy = re.search(r"pathBtn.onclick = .*", page).group(0)
-    footer = next(line for line in page.splitlines() if "re-renders" in line)
+    footer = next(line for line in page.splitlines() if "settings.appendChild" in line and "re-renders" in line)
     script = "\n".join([
         "const REM = " + json.dumps(data) + "; const r = " + json.dumps(record) + ";",
         "const location = {protocol: " + json.dumps(protocol) + "};",
@@ -167,6 +168,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
@@ -443,3 +445,125 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
     ]))
     assert [row["age"] for row in result] == ["3 days"] * 5 + ["due 23 Oct", "overdue · 10 Sep"]
     assert [bool(row["tag"]) for row in result] == [False, True, True, True, True, False, False]
+
+
+def test_interface_language_uses_owner_order_and_leaves_record_prose_alone(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en']})
+    page = render(build(tmp_path / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc)), local=True)
+    data = json.loads(re.search(r'const REM = (.*);', page).group(1))
+    interface = page[page.index('let uiLanguage ='):page.index('function setInterfaceLanguage(')]
+    script = '\n'.join([
+        '(function() {', 'const REM = ' + json.dumps(data) + ';', interface,
+        'const original = REM.records.find(r => r.path === "people/mara-ostrowski.md").text;',
+        'const labels = [t("People"), t("Between you")];',
+        'uiLanguage = "en"; labels.push(t("People"));',
+        'REM.your_languages = ["en", "zh"];',
+        'console.log(JSON.stringify({labels, original}));', '})();',
+    ])
+    result = _run_reader_js(script)
+    assert result['labels'] == ['人物', '我们之间', 'People']
+    assert result['original'] == next(r['text'] for r in data['records'] if r['path'] == 'people/mara-ostrowski.md')
+
+
+@pytest.mark.parametrize('storage', [
+    "Object.defineProperty(globalThis, 'localStorage', {get() { throw Error('blocked'); }});",
+    "globalThis.localStorage = {getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); }};",
+    "delete globalThis.localStorage;",
+])
+def test_reader_preferences_survive_unavailable_or_throwing_storage(storage):
+    function = re.search(r'function readerStorage\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js('\n'.join([
+        function, storage,
+        '(async () => { console.log(JSON.stringify([await readerStorage("co-rem-ui-language"),',
+        'await readerStorage("co-rem-ui-language", "zh")])); })();',
+    ]))
+    assert result == [None, None]
+
+
+def test_display_commands_use_short_form_only_for_the_default_notebook(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from connectonion.rem.reader import snapshot
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    root = build(tmp_path / '.co' / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc))
+    data = snapshot(root)
+    assert data['default_root'] is True
+    function = re.search(r'function remCommand\(args\).*', TEMPLATE.read_text()).group(0)
+    result = _run_reader_js('\n'.join([
+        'const REM = ' + json.dumps(data) + ';', function,
+        'const commands = [remCommand("sources"), remCommand("import sessions")];',
+        'REM.default_root = false; REM.root = "/tmp/avery\'s notebook";',
+        'commands.push(remCommand("import sessions")); console.log(JSON.stringify(commands));',
+    ]))
+    assert result[:2] == ['co rem sources', 'co rem import sessions']
+    assert result[2] == "co rem --root '/tmp/avery'\\''s notebook' import sessions"
+
+
+def test_dynamic_reader_chrome_translates_without_changing_english():
+    page = TEMPLATE.read_text()
+    interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['age', 'dueLabel', 'threadDate', 'citationDate', 'chipLabel'])
+    result = _run_reader_js('\n'.join([
+        '(() => { let uiLanguage = "en";', interface, functions,
+        'const REM = {as_of: "2026-10-20"}, calendarDay = day => day;',
+        'const daysSince = day => Number(day), citationSource = () => "", sourceId = () => "";',
+        'const sourceChannel = () => "";',
+        'const labels = () => [age("10"), age("1"), age("0"), citationDate({}, "99"),',
+        'dueLabel({due: "2026-10-19"}), dueLabel({due: "2026-10-21"}),',
+        't("Read {n} items", {n: 240}), t("Rewrote {n} pages", {n: 7}),',
+        't("{n} runs", {n: 10}), t("{n} written of {m}", {n: 3, m: 6})];',
+        'const en = labels(); uiLanguage = "zh"; const zh = labels();',
+        'console.log(JSON.stringify({en, zh})); })();',
+    ]))
+    assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · 19 Oct', 'due 21 Oct',
+                            'Read 240 items', 'Rewrote 7 pages', '10 runs', '3 written of 6']
+    assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 10月19日', '到期 10月21日',
+                            '阅读了 240 项', '改写了 7 页', '10 次运行', '6 人中已撰写 3 人']
+
+
+@pytest.mark.parametrize('source', ['unbroken' * 80 + ':fixture', 'gmail:fixture', ''],
+                         ids=['long-source', 'undated-mail', 'missing'])
+def test_undated_quiet_citation_uses_number_instead_of_source_label(source):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['citationDay', 'citationDate'])
+    result = _run_reader_js('\n'.join([
+        functions, 'const REM = {source_context: {}};',
+        'const citationSource = () => ' + json.dumps(source) + ', sourceId = text => text;',
+        'const chipLabel = () => ' + json.dumps(source) + ';',
+        'const labels = [citationDate({}, "99")];',
+        'REM.source_context[' + json.dumps(source) + '] = {time: "2026-10-20"};',
+        'labels.push(citationDate({}, "99")); console.log(JSON.stringify(labels));',
+    ]))
+    assert result == ['source 99', '20 Oct']
+
+
+def test_reader_browser_evaluate_strings_compile():
+    import ast
+    scripts = []
+    for path in sorted((TEMPLATE.parents[2] / 'tests/e2e/cli').glob('test_rem*reader*browser.py')):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'evaluate' and node.args
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                scripts.append({'file': path.name, 'line': node.lineno, 'source': node.args[0].value})
+    assert scripts
+    script = '\n'.join([
+        'const vm = require("node:vm"), scripts = ' + json.dumps(scripts) + ';',
+        'for (const script of scripts) new vm.Script(script.source, {filename: script.file + ":" + script.line});',
+        'console.log(JSON.stringify(scripts.length));',
+    ])
+    assert _run_reader_js(script) == len(scripts)
