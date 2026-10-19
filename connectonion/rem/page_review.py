@@ -1635,12 +1635,18 @@ def restore_dropped(before: str, after: str) -> str:
 
 
 def _shorter_version(text: str, line: str) -> str:
-    """The candidate's cut-down copy of a restored line: similar, and citing nothing the line does not.
+    """The candidate's cut-down copy of a restored line: mostly inside it, and citing nothing it does not.
     Inserted beside it, the 2026-10-20 trial page said its Who-they-are sentence twice."""
     cited = set(re.findall(r'\[(W?\d+)\]', line))
     return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
                  and set(re.findall(r'\[(W?\d+)\]', row)) <= cited
-                 and difflib.SequenceMatcher(None, row, line).ratio() >= 0.6), '')
+                 and _contained(row, line) >= 0.8), '')
+
+
+def _contained(row: str, line: str) -> float:
+    """How much of the shorter row is in the line."""
+    blocks = difflib.SequenceMatcher(None, row, line, autojunk=False).get_matching_blocks()
+    return sum(block.size for block in blocks) / len(row)
 
 
 def _insert_restored_line(text: str, section: str, line: str) -> str:
