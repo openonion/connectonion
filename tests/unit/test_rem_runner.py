@@ -673,7 +673,8 @@ def test_runner_restores_dropped_line_after_two_unsuccessful_repairs(notebook, t
         workdir=tmp_path, config={}, stage=stage, run=run)
     saved = notebook.read(record)
     assert result['repairs'] == len(prompts) == 2
-    assert all('Dropped quote the page had:' in prompt and 'https://profile.example.test' in prompt
+    assert all('Dropped quote the page had:' in prompt
+               and 'Dropped source id the page had: https://profile.example.test' in prompt
                for prompt in prompts)
     assert 'Builds small research tools. [1]' in saved
     assert lost.replace('[56][57]', '[2][3]') in saved
