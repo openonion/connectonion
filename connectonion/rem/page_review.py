@@ -391,6 +391,10 @@ def repair_run_citations(record: str, text: str, original: str) -> str:
         for line in head.splitlines(keepends=True):
             cites = re.findall(r'\[(W?\d+)\](?!\()', line)
             if cites and set(cites) <= run:
+                # A Facts field keeps its label: "People: the user [4]" citing
+                # investigation:page refused a whole first-run page (2026-10-20 trial).
+                if CONTACT_LINE.match(line):
+                    lines.append(CONTACT_LINE.match(line).group(0) + ' Unknown\n')
                 continue
             lines.append(re.sub(r'\[(W?\d+)\](?!\()', lambda m: '' if m[1] in run else m[0], line))
         head = ''.join(lines)

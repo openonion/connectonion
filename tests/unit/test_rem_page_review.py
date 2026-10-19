@@ -1361,3 +1361,15 @@ def test_legacy_contact_anchor_keeps_extracted_date_recovery_on_a_title_upgrade(
     ]
     _promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
     assert "- Last contact: 2026-09-01 [1]" in notebook.read(record)
+
+
+def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
+    """2026-10-20 trial: `People: the user [4]` cited investigation:page; the line went and the
+    whole first-run page was refused for a missing Facts field."""
+    from connectonion.rem.page_review import repair_run_citations
+    page = ("# Atlas\n\n## Facts\n- Repository: example/atlas [1]\n- People: the user [2]\n\n"
+            "## What it is\nAn export tool [1].\n\n## Sources\n- [1] codex:s:1 — 2026-10-01\n"
+            "- [2] investigation:page — 2026-10-20\n")
+    fixed = repair_run_citations("projects/atlas.md", page, "")
+    assert "- People: Unknown\n" in fixed and "- Repository: example/atlas [1]" in fixed
+    assert "investigation:page" not in fixed
