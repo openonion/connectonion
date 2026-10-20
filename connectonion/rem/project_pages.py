@@ -661,7 +661,7 @@ def project_falls_short(page: str, messages: int) -> tuple[int, int] | None:
 def _project_quote_turn(notebook, record, page, items, counts, config, run, workdir, turn, progress):
     """Edit the saved page with at most one repair, then remove the task's private material."""
     from .investigate import _keep_unless_lost
-    from .page_review import quotes
+    from .page_review import quotes, restore_dropped
     from .runner import language_note, promote_with_repairs, scrub_task, today_note
     directory = Path(tempfile.mkdtemp(prefix="projects-quotes-", dir=workdir))
     try:
@@ -679,6 +679,10 @@ def _project_quote_turn(notebook, record, page, items, counts, config, run, work
         turn.update(run(workdir, text, config, "investigate"))
         promote_with_repairs(notebook, record, candidate, page, quote_items, directory, turn,
                              workdir=workdir, config=config, stage="investigate", run=run, repairs=1)
+        # A quote the edit dropped is put back beside its rewrite, as upkeep does;
+        # discarding the whole edit threw away four of six (2026-10-20).
+        edited = restore_dropped(page, notebook.read(record))
+        notebook.write(record, edited)
         reason = _keep_unless_lost(notebook, record, page)
         # A quote edit must keep even the small losses the general maintenance guard tolerates.
         lost = bool(reason or quotes(page) - quotes(notebook.read(record)))

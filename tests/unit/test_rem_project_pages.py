@@ -503,7 +503,7 @@ def test_project_quote_round_can_repair_a_rejected_edit_once(atlas):
     assert out["usage"]["input_tokens"] == 21
 
 
-def test_project_quote_round_that_drops_one_quote_restores_the_first_page(atlas):
+def test_project_quote_round_restores_dropped_quote_and_keeps_new_quotes(atlas):
     saved = []
 
     def page_from(prompt):
@@ -516,8 +516,9 @@ def test_project_quote_round_that_drops_one_quote_restores_the_first_page(atlas)
     run = _fake_runner(page_from)
     out = write_page(atlas.root, atlas.record, config=atlas.config, run=run)
     assert len(run.calls) == 2
-    assert atlas.notebook.read(atlas.record).split("\nInvestigation:")[0].rstrip() == saved[1].split("\nInvestigation:")[0].rstrip()
-    assert out["quote_round"] == {"quotes": [3, 3], "unquoted_decisions": [0, 0]}
+    edited = atlas.notebook.read(atlas.record)
+    assert all(f'“{message["text"]}”' in edited for message in atlas.messages[:9])
+    assert out["quote_round"] == {"quotes": [3, 9], "unquoted_decisions": [0, 0]}
     assert page_state(atlas.root, atlas.record)["written_through"] == out["through"]
 
 
@@ -569,13 +570,20 @@ def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypat
             raise RunFailed("Atlas quote repair failed", {"input_tokens": 7})
         candidate = Path(re.search(r"(?:NEW file|existing page at) (\S+candidate\.md)", prompt)[1])
         page = _atlas_page(atlas.messages, 9)
-        if failure in ("promotion", "repair", "repair_none"):
+        if failure == "promotion":
+            # A misquote is salvageable; a missing title actually refuses promotion.
+            page = page.removeprefix("# Atlas\n")
+        if failure in ("repair", "repair_none"):
             page = page.replace(atlas.messages[0]["text"], "Invented Atlas purpose.")
         candidate.write_text(page)
         return {"usage": {"input_tokens": 7}}
 
     out = write_page(atlas.root, atlas.record, config=atlas.config, run=run)
     assert len(calls) == expected_calls
+    if failure == "promotion":
+        review = json.loads(next((atlas.root / ".state/tasks").glob("projects-quotes-*/review.json")).read_text())
+        assert not review["accepted"]
+        assert "Expected exactly one page title" in review["errors"]
     assert atlas.notebook.read(atlas.record).split("\nInvestigation:")[0].rstrip() == saved[0].split("\nInvestigation:")[0].rstrip()
     assert out["changed"] == [atlas.record]
     assert out["quote_round"] == {"quotes": [3, 3], "unquoted_decisions": [0, 0]}
