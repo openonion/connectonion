@@ -1190,7 +1190,13 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert page.locator('.waiting-ledger li').count() == mine
     heading = page.locator('.brief-header h1').inner_text()
     assert (f'{mine} waiting on you' in heading) == bool(mine)
-    assert primary.locator('.waiting-more').inner_text() == f'{mine} waiting on you · {theirs} on others →'
+    assert ' 0 ' not in primary.inner_text()
+    if mine or theirs:
+        parts = [f'{mine} waiting on you' if mine else '', f'{theirs} on others' if theirs else '']
+        assert primary.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
+    else:
+        assert primary.locator('.waiting-more').count() == 0
+        assert primary.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if mine or theirs:
         primary.locator('.waiting-more a').click()
