@@ -19,6 +19,9 @@ def _run_reader_js(script):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
+    privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+                        for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
@@ -169,6 +172,9 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
+    privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+                        for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
@@ -738,3 +744,353 @@ def test_source_labels_only_shorten_opaque_segments(source, dated, expected):
         'console.log(JSON.stringify(sourceLabel(' + json.dumps(source) + ')));',
     ]))
     assert result == expected
+
+
+def test_reader_near_duplicate_obligations_keep_direction_dates_and_sources():
+    page = TEMPLATE.read_text()
+    functions = page[page.index('function obligationWords('):page.index('function threadCounterpart(')]
+    raw = re.search(r'function rawSection\(.*?\n\}', page, re.S).group(0)
+    script = r'''
+      const REM = {source_context: {}}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
+    ''' + raw + functions + r'''
+      const entry = (name, text, source = 'gmail:letter', day = '2026-09-30', dir = 'mine') => ({
+        r: {path: 'people/' + name + '.md', text: '# ' + name + '\n\n## Sources\n- [1] ' + source},
+        t: {text, since: day, dir}
+      });
+      const a = entry('mara', 'You owe a Letter of Support draft with contribution questions [1].');
+      const b = entry('tomas', 'Please send a support letter draft with contribution questions [1].', 'gmail:other', '2026-10-01');
+      const c = entry('ines', 'A completely reworded request [1].');
+      const groups = threadGroups([a, b, c]);
+      const bridge = threadGroups([a, {...a, t: {...a.t, since: '2026-10-06'}},
+        {...a, t: {...a.t, since: '2026-10-12'}}]);
+      REM.source_context = {'gmail:one': {source: 'gmail', thread: 'fixture-thread'},
+        'gmail:two': {source: 'gmail', thread: 'fixture-thread'}};
+      const evidence = item => obligationEvidence(item);
+      console.log(JSON.stringify({
+        grouped: groups.map(group => group.map(entry => entry.r.path)),
+        bridge: bridge.map(group => group.length),
+        sharedThread: sameObligation(evidence(entry('mara', 'Travel itinerary [1].', 'gmail:one')),
+          evidence(entry('ines', 'Please check invoices [1].', 'gmail:two'))),
+        opposite: sameObligation(evidence(a), evidence({...b, t: {...b.t, dir: 'theirs'}})),
+        older: sameObligation(evidence(a), evidence({...b, t: {...b.t, since: '2026-10-08'}})),
+        quoteOnly: sameObligation(evidence(entry('mara', 'Invoice audit “send the details” [1].')),
+          evidence(entry('tomas', 'Travel itinerary “send the details” [1].', 'gmail:travel'))),
+        unresolved: sameObligation(evidence(entry('mara', 'First request [9].')),
+          evidence(entry('tomas', 'Unrelated invoice [9].')))
+      }));
+    '''
+    result = _run_reader_js(script)
+    assert result == {'grouped': [['people/mara.md', 'people/tomas.md', 'people/ines.md']],
+                      'bridge': [2, 1], 'sharedThread': True,
+                      'opposite': False, 'older': False, 'quoteOnly': False, 'unresolved': False}
+
+
+def test_reader_language_swap_reuses_parsing_and_restores_original():
+    page = TEMPLATE.read_text()
+    swap = re.search(r'function swapLanguage\(.*?\n\}', page, re.S).group(0)
+    parsing = page[page.index('const UNKNOWN_LINE ='):page.index('function mappedContact(')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['splitTrailers', 'plainLine'])
+    script = parsing + functions + swap + r'''
+      const FACTS = new Map(), SESSION_TEXT = new Map(), youify = text => text;
+      const r = {path: 'people/avery-lin.md', category: 'people', title: 'Avery Lin',
+        text: '# Avery Lin\n\nAn original lead [1].',
+        translations: {zh: '# Avery Lin\n\n中文摘要 [1].'}};
+      const summaries = [known(r).summary];
+      swapLanguage(r, 'zh'); summaries.push(known(r).summary);
+      swapLanguage(r, ''); summaries.push(known(r).summary);
+      swapLanguage(r, 'ja'); summaries.push(known(r).summary);
+      console.log(JSON.stringify(summaries));
+    '''
+    assert _run_reader_js(script) == ['An original lead.', '中文摘要.', 'An original lead.', 'An original lead.']
+
+
+def test_reader_skills_group_and_search_reveals_rare_matches():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['skillGroups', 'skillUsage'])
+    script = r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, value: "", ...attrs, children,
+        appendChild(child) { this.children.push(child); },
+        append(...nodes) { this.children.push(...nodes); },
+        set textContent(value) { this.children = []; }
+      });
+      const label = () => 'Skills', row = r => ({text: r.title});
+      const daysSince = day => (new Date('2026-10-01') - new Date(day)) / 86400000;
+    ''' + functions + r'''
+      const names = ['weekly-brief', 'invoice-check', 'lark-mail', 'lark-doc', 'lark-calendar', 'talk-outline'];
+      const items = names.map((title, i) => ({title, path: 'skills/catalog/' + title + '.md',
+        text: 'Invoked 3 times in the last 180 days; last on ' + (i < 2 ? '2026-09-30' : i < 5 ? '2026-08-15' : '2026-01-01')}));
+      const box = skillGroups(items), find = box.children[0], content = box.children[1];
+      const groups = content.children.map(n => n.tag === 'details' ? [n.children[0].text, !!n.open] :
+        [n.children[0].children[0], n.children[1].children.map(row => row.text)]);
+      find.value = 'talk-outline'; find.oninput();
+      const searched = content.children[0];
+      console.log(JSON.stringify({groups, searched: [searched.children[0].text, searched.open,
+        searched.children[1].children.map(row => row.text)]}));
+    '''
+    assert _run_reader_js(script) == {
+        'groups': [['Used in the last 30 days', ['weekly-brief', 'invoice-check']],
+                   ['lark', ['lark-calendar', 'lark-doc', 'lark-mail']], ['Rarely used (1)', False]],
+        'searched': ['Rarely used (1)', True, ['talk-outline']]}
+
+
+def test_reader_translated_relationship_takes_precedence_over_index_prose():
+    page = TEMPLATE.read_text()
+    parsing = page[page.index('const UNKNOWN_LINE ='):page.index('// ---------- the sheet:')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['splitTrailers', 'swapLanguage'])
+    script = parsing + functions + r'''
+      const REM = {}, SESSION_TEXT = new Map(), youify = text => text;
+      const r = {path: 'people/avery-lin.md', title: 'Avery Lin', category: 'people',
+        index: {how_known: 'Original indexed relationship'},
+        text: '# Avery Lin\n\n## Our relationship\n- An original relationship [1].',
+        translations: {zh: '# Avery Lin\n\n## Our relationship\n- 中文相识经过 [1].'}};
+      const values = [facts(r).how];
+      swapLanguage(r, 'zh'); values.push(facts(r).how);
+      swapLanguage(r, ''); values.push(facts(r).how);
+      console.log(JSON.stringify(values));
+    '''
+    assert _run_reader_js(script) == ['Original indexed relationship', '中文相识经过.', 'Original indexed relationship']
+
+
+
+def test_reader_history_accepts_chinese_colon_and_preserves_citations():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['listItems', 'historyItems'])
+    result = _run_reader_js(functions + r'''
+      console.log(JSON.stringify(historyItems('- 2026-10-15：Arthur Chen 发来合同 [3].\n- 2026-10-14: 已确认 [2].')));
+    ''')
+    assert result == [{'day': '2026-10-15', 'end': '', 'text': 'Arthur Chen 发来合同 [3].'},
+                      {'day': '2026-10-14', 'end': '', 'text': '已确认 [2].'}]
+
+
+def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['threadEntries', 'threadGroups', 'obligationEvidence', 'obligationWords',
+                                       'sameObligation', 'plainLine', 'threadWords', 'rawSection'])
+    result = _run_reader_js(functions + r'''
+      const REM = {owner: 'people/aaron.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
+      const youify = text => text;
+      const records = [
+        {path: REM.owner, title: 'Aaron Xie', category: 'people'},
+        {path: 'people/ody.md', title: 'Ody Zhou', category: 'people'},
+        {path: 'people/ody-alias.md', title: 'Ody Zhou', category: 'people'},
+        {path: 'people/jerryl.md', title: 'Jerryl Seow', category: 'people'}
+      ];
+      const inCategory = () => records, listedRecords = () => records;
+      const threads = r => ({items: r.items});
+      for (const r of records) {
+        r.text = '# ' + r.title + '\n\n## Sources\n- [1] gmail:shared';
+        r.items = [{text: 'You owe Ody Zhou a signed agreement [1].', dir: 'mine', since: '2026-10-15'}];
+      }
+      records[0].items = [{text: ' ', originalText: 'You owe Ody Zhou a signed agreement [1].', dir: 'mine', since: '2026-10-16'},
+        {text: 'You owe Jerryl Seow [1]', dir: 'mine', since: '2026-10-15'},
+        {text: '[1].', dir: 'mine', since: '2026-10-16'}];
+      records[1].items.push({...records[1].items[0]});
+      const merged = threadEntries();
+      console.log(JSON.stringify(merged.map(({r, t, also}) => ({person: r.title, text: t.text,
+        also: also.map(person => person.title)}))));
+    ''')
+    assert result == [{'person': 'Ody Zhou', 'text': 'You owe Ody Zhou a signed agreement [1].',
+                       'also': ['Jerryl Seow']}]
+
+
+def test_reader_recent_skills_are_capped_and_overflow_keeps_family_groups():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['skillGroups', 'skillUsage'])
+    result = _run_reader_js(r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, value: '', ...attrs, children,
+        appendChild(child) { this.children.push(child); }, append(...nodes) { this.children.push(...nodes); },
+        set textContent(value) { this.children = []; }
+      });
+      const label = () => 'Skills', row = r => ({text: r.title});
+      const daysSince = day => (new Date('2026-10-20') - new Date(day)) / 86400000;
+    ''' + functions + r'''
+      const items = Array.from({length: 16}, (_, i) => ({title: (i < 3 ? 'misc' : 'lark-') + i,
+        path: 'skills/catalog/skill-' + i + '.md',
+        text: 'Invoked 3 times in the last 180 days; last on 2026-10-' + String(i+1).padStart(2, '0')}));
+      const content = skillGroups(items).children[1];
+      console.log(JSON.stringify(content.children.map(group => [group.children[0].children[0],
+        group.children[1].children.map(row => row.text)])));
+    ''')
+    assert result == [['Used in the last 30 days', ['lark-15', 'lark-14', 'lark-13', 'lark-12', 'lark-11',
+                                                  'lark-10', 'lark-9', 'lark-8', 'lark-7', 'lark-6']],
+                      ['lark', ['lark-3', 'lark-4', 'lark-5']], ['Other', ['misc0', 'misc1', 'misc2']]]
+
+
+@pytest.mark.parametrize('marker', ['Now:', 'Now：', '现在：'])
+def test_reader_insight_labels_tolerate_chinese_punctuation(marker):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['memoryStatement', 'newestStanding', 'plainLine', 'listItems', 'capFirst'])
+    result = _run_reader_js(functions + r'''
+      const REM = {}, youify = text => text;
+      const section = (r, name) => name === 'insight' ? {text: '- ' + r.marker + ' 已完成交付 [1].'} : null;
+      const known = () => ({summary: ''});
+      console.log(JSON.stringify(memoryStatement({path: 'people/arthur.md', category: 'people',
+        marker: ''' + json.dumps(marker) + r'''})));
+    ''')
+    assert result == '已完成交付.'
+
+
+@pytest.mark.parametrize('separator', [': ', '：', '： ', ' — '])
+def test_reader_project_standing_tolerates_date_colon_without_space(separator):
+    page = TEMPLATE.read_text()
+    function = re.search(r'function newestStanding\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {}, section = () => ({text: ''' + json.dumps('- 2026-10-15' + separator + '已经交付 [1].') + r'''});
+      console.log(JSON.stringify(newestStanding({path: 'projects/launch.md', category: 'projects'})));
+    ''')
+    assert result == '已经交付 [1].'
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Earlier finding! Dr. Mara gives examples, e.g. support letters',
+     'Dr. Mara gives examples, e.g. support letters'),
+    ('Earlier question? You owe Mara a draft: “I will send it. Please wait!” (2026-10-14)',
+     'You owe Mara a draft: “I will send it. Please wait!” (2026-10-14)'),
+    ('Earlier finding; A separate supported clause', 'A separate supported clause'),
+    ('Version 3.5 uses example.test: keep this, and that.',
+     'Version 3.5 uses example.test: keep this, and that.'),
+    ('前文。需要草稿：保留说明，及细节', '需要草稿：保留说明，及细节'),
+    ('前文！「请等待。稍后答复！」（日期）需要草稿', '「请等待。稍后答复！」（日期）需要草稿'),
+    ('前文？需要草稿', '需要草稿'),
+    ('前文；需要草稿', '需要草稿'),
+])
+def test_reader_evidence_boundaries_preserve_english_and_add_cjk(text, expected):
+    function = re.search(r'function sentenceEnds\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + '\nconst text = ' + json.dumps(text) + r''';
+      console.log(JSON.stringify(text.slice(sentenceEnds(text).at(-1)).trim()));
+    ''')
+    assert result == expected
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Mara gives examples, e.g.support letters. Send the draft: include details, please. Third sentence.',
+     'Mara gives examples, e.g.support letters. Send the draft: include details, please. Third sentence.'),
+    ('Version 3.5 uses example.test. Next sentence. Third sentence.',
+     'Version 3.5 uses example.test. Next sentence. Third sentence.'),
+    ('前文。需要草稿：保留说明，及细节！第三句。', '前文。 需要草稿：保留说明，及细节！'),
+    ('公开介绍。秘密信息[personal]。公开结尾。', '公开介绍。 秘密信息[personal]。公开结尾。'),
+])
+def test_reader_person_lead_keeps_english_punctuation_and_private_passages(text, expected):
+    function = re.search(r'function personLead\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const section = () => null, listItems = () => [], known = () => ({intro: ''' + json.dumps(text) + r'''});
+      const el = (tag, attrs) => attrs.html, privateFallback = node => node, inline = text => text;
+      console.log(JSON.stringify(personLead({path: 'people/mara.md'})));
+    ''')
+    assert result == expected
+
+
+@pytest.mark.parametrize('punctuation', ['.', '!', '?', ';', ':', ',', '。', '！', '？', '；', '：', '，'])
+@pytest.mark.parametrize('brackets,space', [('[]', ' '), ('[]', ''), ('［］', ' '), ('［］', '')])
+def test_reader_privacy_passages_keep_chinese_tags_with_their_words(punctuation, brackets, space):
+    label = brackets[0] + 'personal' + brackets[1]
+    secret = '私密日期' + space + label + ' [13]' + punctuation
+    text = '公开介绍。' + secret + '用户还需进行秘密后续联系' + space + label + '。公开结尾。'
+    result = _run_reader_js('const text = ' + json.dumps(text) + r''';
+      const passages = [];
+      const publicText = privatePassages(text, (passage, level) => { passages.push([passage, level]); return ''; });
+      console.log(JSON.stringify({passages, publicText, labelled: hasPrivacy(text)}));
+    ''')
+    assert result['publicText'] == '公开介绍。公开结尾。'
+    assert len(result['passages']) == 2
+    assert all(level == 'personal' for passage, level in result['passages'])
+    assert result['labelled']
+
+
+def test_reader_privacy_plain_summaries_preserve_public_words_links_and_inline_code():
+    page = TEMPLATE.read_text()
+    plain = re.search(r'function plainLine\(.*?\n\}', page, re.S).group(0)
+    text = ('公开介绍。秘密文件 `case.txt` 和 [同事](people/secret.name.md)[sensitive] [1]。'
+            '秘密日期。 [personal] [13]用户秘密后续联系[personal]。公开结尾。')
+    result = _run_reader_js(plain + '\nconst youify = text => text;\nconst text = ' + json.dumps(text) + r''';
+      console.log(JSON.stringify({plain: plainLine(text), original: plainLine(text, true),
+        stripped: unlabelled(text)}));
+    ''')
+    assert result['plain'] == result['stripped'] == '公开介绍。公开结尾。'
+    assert '[personal]' in result['original'] and '秘密文件' in result['original']
+
+
+@pytest.mark.parametrize('secret', [
+    '秘密的报价是3.5万元[personal]。',
+    '“秘密一。秘密二”[personal]。',
+    '「秘密一！秘密二？」［sensitive］。',
+    '"秘密一。秘密二"[personal]。',
+    '秘密网址https://secret.example/path[personal]。',
+    '秘密地址secret@example.test[sensitive]。',
+    '秘密资料 [同事](people/secret.name.md) 和 `case.txt`[personal]。',
+])
+def test_reader_privacy_does_not_split_quotes_decimals_or_addresses(secret):
+    text = '公开介绍。' + secret + '公开结尾。'
+    result = _run_reader_js('const text = ' + json.dumps(text) + r''';
+      const passages = [];
+      const publicText = privatePassages(text, passage => { passages.push(passage); return ''; });
+      console.log(JSON.stringify({publicText, passages}));
+    ''')
+    assert result['publicText'] == '公开介绍。公开结尾。'
+    assert result['passages'] == [secret]
+
+
+def test_reader_session_search_removes_labelled_passages_before_indexing_and_truncating():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['sessionText', 'sessionExcerpt'])
+    result = _run_reader_js(functions + r'''
+      const SESSION_TEXT = new Map();
+      const r = {path: 'sessions/fixture.md', title: 'Public session',
+        session_summary: '公开摘要。秘密摘要[personal]。',
+        text: '## What you typed\n公开问题。秘密问题［personal］。\n## Final reply\n秘密答复[sensitive]。公开答复。'};
+      console.log(JSON.stringify({text: sessionText(r), excerpt: sessionExcerpt(r, ['秘密'])}));
+    ''')
+    assert '秘密' not in json.dumps(result, ensure_ascii=False)
+    assert result['text']['you'] == '公开问题。'
+    assert result['text']['agent'] == '公开答复。'
+
+
+@pytest.mark.parametrize('secret', [
+    '"秘密引语。秘密后半句"[personal]。',
+    '“秘密引语！秘密后半句”［sensitive］。',
+    '秘密的报价是3.5万元[personal]。',
+    '秘密地址secret@example.test[sensitive]。',
+    '秘密条件 & 更多条件[personal]。',
+])
+def test_reader_inline_privacy_wraps_the_full_passage_after_html_escaping(secret):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['esc', 'inline'])
+    html = _run_reader_js(functions + r'''
+      const youify = text => text, quoteSpans = text => text,
+        uncertainCitations = text => text, tetherCitations = text => text;
+      console.log(JSON.stringify(inline('公开介绍。' + ''' + json.dumps(secret) + r''' + '公开结尾。', 'fixture.md')));
+    ''')
+    assert html.count('class="private"') == 1
+    assert html.startswith('公开介绍。<span class="private"')
+    assert html.endswith('</span>公开结尾。')
+    assert not re.search(r'[\[［](personal|sensitive)[\]］]', html)
+    from xml.etree.ElementTree import fromstring
+    root = fromstring('<p>' + html + '</p>')
+    assert len(root) == 1 and root[0].get('class') == 'private'
+    assert root.text + root[0].tail == '公开介绍。公开结尾。'
+
+
+def test_reader_classifies_a_full_session_reply_before_truncating_its_preview():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['sessionFinalReply', 'sessionQuote'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, appendChild() {}});
+      const sessionUnquote = text => text, sessionSection = r => r;
+      const sessionButton = () => ({});
+      const full = '秘密'.repeat(700) + '［personal］。';
+      const result = sessionFinalReply(full);
+      console.log(JSON.stringify(result.children[1]));
+    ''')
+    assert result['class'] == 'session-quote private'
+    assert len(result['textContent']) == 601
+    assert result['sessionFullText'].endswith('［personal］。')

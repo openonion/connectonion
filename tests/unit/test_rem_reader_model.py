@@ -116,8 +116,9 @@ def test_mapped_stubs_keep_explicit_links_without_inventing_prose_relationships(
     assert {link["path"] for link in relationships(records)["people/mara.md"]} == {"orgs/fernhill.md"}
 
 
-def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
-    text = 'Mara Ostrowski discussed confidential background ' + 'detail ' * 40 + '[sensitive] [1].'
+@pytest.mark.parametrize("label", ["[sensitive]", "［sensitive］", "[personal]", "［personal］"])
+def test_relationship_basis_keeps_privacy_after_its_text_is_clipped(label):
+    text = 'Mara Ostrowski discussed confidential background ' + 'detail ' * 40 + label + ' [1].'
     records = [
         {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski", "text": "# Mara"},
         {"path": "projects/harbour.md", "category": "projects", "title": "Harbour", "text": text},
@@ -125,7 +126,7 @@ def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
     links = relationships(records)
     forward = links['projects/harbour.md'][0]
     reverse = links['people/mara.md'][0]
-    assert '[sensitive]' not in forward['basis']
+    assert label not in forward['basis']
     assert forward['private'] and reverse['private']
     records[1]['text'] = 'Mara Ostrowski discussed the public pilot [1].'
     assert not relationships(records)['projects/harbour.md'][0]['private']
