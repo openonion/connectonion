@@ -1730,9 +1730,12 @@ def _shorter_version(text: str, line: str) -> str:
         emptied = next((row for row in text.splitlines() if row.strip() == label[0] + ' Unknown'), '')
         if emptied:
             return emptied
-    return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
+    # Only prose rows at least a third of the line's length: on 2026-10-20 a diagram's one-character
+    # row inside a code fence matched, the lost quote replaced it there, and the page was refused.
+    return next((row for row, visible in zip(text.splitlines(), prose(text).splitlines())
+                 if visible.strip() and not row.startswith('#')
                  and (not label and not CONTACT_LINE.match(row) or label and row.startswith(label[0]))
-                 and (words := re.sub(r'\[W?\d+\](?!\()', '', row).strip())
+                 and len(words := re.sub(r'\[W?\d+\](?!\()', '', row).strip()) * 3 >= len(clean)
                  and _contained(words, clean) >= 0.8), '')
 
 

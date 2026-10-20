@@ -1690,3 +1690,13 @@ def test_a_restored_facts_line_takes_its_own_emptied_field_never_another():
               "- Last contact: 2026-08-12 [1]\n\n## Sources\n- [1] gmail:a — 2026-08-12\n- [2] gmail:b — 2026-08-11\n")
     after = before.replace("2026-08-11 (earliest mail found) [2]", "Unknown").replace("- [2] gmail:b — 2026-08-11\n", "")
     assert restore_dropped(before, after) == before
+
+
+def test_a_restored_line_does_not_replace_a_short_row_inside_a_code_fence():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    diagram = '## Overview\n```text\nUser\n  v\nLantern\n```\n'
+    before = (f'# Lantern\n\n{diagram}\n## Uncertainties\n- A request to delete “zero-risk things” names no subject [1].\n\n'
+              '## Sources\n- [1] codex:s:1 — 2026-10-12\n')
+    after = f'# Lantern\n\n{diagram}\n## Uncertainties\nUnknown\n\n## Sources\n- [1] codex:s:1 — 2026-10-12\n'
+    restored = restore_dropped(before, after)
+    assert dropped(before, restored) == [] and '  v\n' in restored

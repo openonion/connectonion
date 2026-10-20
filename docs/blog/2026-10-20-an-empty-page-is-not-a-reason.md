@@ -7,3 +7,5 @@ The picker multiplies how much activity there is behind a page by how thin the p
 The first organisation it had picked was an event platform. Its only "person" was a one-way stream of registrations. An organisation whose people are all automated or one-way is now not a candidate. Its page still exists, because initialisation wrote it, but deepening won't spend a round on it.
 
 A slot also stops starting new pages after an hour. One round on a long project history took about an hour by itself. Two such rounds in one slot would run into the next scheduled slot.
+
+The rerun turned up one more bug, in the line restorer. A project page had a diagram in a code block, and one of its rows was just a down arrow, the letter "v". When the restorer looked for the writer's shortened copy of a lost line, it measured how much of each row appears in the lost line. A lone "v" appears in almost anything, so it scored a perfect match, and the lost quote was written into the diagram. There the page's quote check could not see it, so the page was refused. Now the restorer only matches rows outside code blocks, at least a third as long as the line it restores.
