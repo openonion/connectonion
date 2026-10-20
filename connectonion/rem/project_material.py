@@ -106,8 +106,10 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
             meta = read_meta(json.loads(first))
         except (ValueError, UnicodeError, AttributeError, RemError):
             return []
-        if meta.get("skip"):
-            return []  # the notebook's own model runs
+        if meta.get("skip") or meta.get("subagent"):
+            # The notebook's own model runs, and exec/subagent threads whose user slot is a
+            # program's: their messages are never the owner's (2,561 files read in full, 2026-10-20).
+            return []
         offset = len(first)
         for line in source:
             at, offset = offset, offset + len(line)
@@ -240,7 +242,7 @@ class _Owners:
     """A path's project folder, following worktrees home or to a page named by their work."""
 
     def __init__(self, folders: dict, rem_root: Path | None):
-        self.folders, self.cache, self.worktrees = folders, {}, {}
+        self.folders, self.cache, self.worktrees, self.markers = folders, {}, {}, {}
         self.rem = str(rem_root.resolve()) if rem_root else ""
 
     def __call__(self, path: str, container: str) -> str | None:
@@ -264,7 +266,7 @@ class _Owners:
     def _worktree(self, path: Path) -> str | None:
         for folder in (path, *path.parents):
             git = folder / ".git"
-            if git.is_file():
+            if self._marker(folder) == "file":
                 match = re.fullmatch(r"gitdir:\s*(.+?)\s*", git.read_text(errors="replace"))
                 gitdir = Path(os.path.normpath(folder / match[1])) if match else git
                 if gitdir.parent.name != "worktrees" or gitdir.parent.parent.name != ".git":
@@ -276,13 +278,24 @@ class _Owners:
                 named = self._named_owner([folder.name, branch], repo.name)
                 return named or (str(repo) if repo.is_dir() and self._usable(str(repo))
                                  and (str(repo) in self.folders or (repo / ".git").exists()) else None)
-            if git.exists():
+            if self._marker(folder) == "dir":
                 return None
         temporary = re.match(r"^/(?:private/)?(?:tmp/|var/folders/)(.*)", str(path))
         if temporary and not path.exists():
             # 2026-10-20: pruned worktrees leave their task name in recorded paths.
             return self._named_owner(Path(temporary[1]).parts)
         return None
+
+    def _marker(self, folder: Path) -> str:
+        """Whether a folder holds a .git file, a .git folder, or neither; asked once per folder.
+
+        Every path a session named walked its parents with two stats each: 450 s of a
+        20-minute fresh-map extract on 37,742 paths that share a few hundred folders (2026-10-20).
+        """
+        if folder not in self.markers:
+            git = folder / ".git"
+            self.markers[folder] = "file" if git.is_file() else "dir" if git.exists() else ""
+        return self.markers[folder]
 
     def _named_owner(self, names, repo_name="") -> str | None:
         for folder in sorted(self.folders):
