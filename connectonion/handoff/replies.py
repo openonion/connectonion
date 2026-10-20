@@ -163,8 +163,8 @@ def _install() -> str:
 
 
 def _then(sender: str) -> str:
-    """Pasted into a conversation that was about something else, the work used to land there (Aaron pasted
-    Ody's pricing handoff into his marketing session, 2026-10-19): a handoff gets a conversation of its own."""
+    """Pasted into a conversation that was about something else, the work used to land there (a pricing
+    handoff pasted into a marketing session, 2026-10-19): a handoff gets a conversation of its own."""
     return (f"This needs a conversation of its own: if this conversation had other work in it before my message, do not "
             f"start here; tell me to paste the line into a new Codex or Claude Code conversation, in the project folder "
             f"if there is one, and stop. Otherwise do that here, in this folder, without waiting for me: the work, "
