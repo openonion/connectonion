@@ -10,7 +10,7 @@ domain. For a university that works: people there write to the owner. For the
 owner's own company it does not. Mail to the company's addresses is mostly
 receipts: package publishes, security alerts, billing. Last week's fix left
 those out, and the page was left with nothing. Its best attempt also listed
-the owner's own agent address as a colleague called "Aaron, a sender".
+the owner's own agent address as a colleague of the owner.
 
 The company is the one organisation the owner writes about more than anyone
 writes to them. So its page now comes from the owner's side. Once the owner's
