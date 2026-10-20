@@ -459,13 +459,14 @@ def test_audit_repairs_resume_last_thread_and_charge_only_their_usage(notebook, 
     monkeypatch.setattr(runner, "_promote_candidate", promote)
     result = runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
                               {**read_config(notebook.root), "runner": harness}, stage=stage, turns=turns)
-    assert calls[-2:] == [{"session": f"thread-{initial}"}] * 2
-    expected = 200 if harness == "codex" else 100 * (initial + 1 + initial + 2)
-    assert result["repairs"] == 2 and result["repair_usage"]["input_tokens"] == expected
-    total = (initial + 2) * 100 if harness == "codex" else sum(100 * n for n in range(1, initial + 3))
+    assert len(calls) == initial + 1
+    assert calls[-1] == {"session": f"thread-{initial}"}
+    expected = 100 if harness == "codex" else 100 * (initial + 1)
+    assert result["repairs"] == 1 and result["repair_usage"]["input_tokens"] == expected
+    total = (initial + 1) * 100 if harness == "codex" else sum(100 * n for n in range(1, initial + 2))
     assert result["usage"]["input_tokens"] == total
     metrics = json.loads(next((notebook.root / ".state").rglob("result.json")).read_text())
-    assert metrics["repairs"] == 2 and metrics["repair_usage"] == result["repair_usage"]
+    assert metrics["repairs"] == 1 and metrics["repair_usage"] == result["repair_usage"]
     if turns:
         assert len(result["turn_replies"]) == 7
 
@@ -553,7 +554,7 @@ def test_failed_github_search_records_coverage(project, monkeypatch):
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
 @pytest.mark.parametrize('repair', [True, False])
-def test_carried_losses_are_repaired_or_restored_after_two_repairs(notebook, monkeypatch, stage, repair):
+def test_carried_losses_are_repaired_or_restored_after_one_repair(notebook, monkeypatch, stage, repair):
     # Isolate retention from page shape and source audits; promotion still runs its transformations.
     monkeypatch.setattr(page_review, 'validate', lambda *a, **kw: [])
     monkeypatch.setattr(page_review, 'misquoted', lambda *a, **kw: [])
@@ -576,14 +577,14 @@ def test_carried_losses_are_repaired_or_restored_after_two_repairs(notebook, mon
         return {}
 
     args = (notebook, RECORD, candidate, PAGE, [{'source': 'gmail:bbbbbbbbbbbb'}], directory, {})
-    kwargs = dict(workdir=notebook.root, config={}, stage=stage, run=run)
+    kwargs = dict(workdir=notebook.root, config={}, stage=stage, run=run, repairs=runner.DEEPEN_REPAIRS)
     if repair:
         runner.promote_with_repairs(*args, **kwargs)
         assert len(calls) == 1
         assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
     else:
         runner.promote_with_repairs(*args, **kwargs)
-        assert len(calls) == 2
+        assert len(calls) == 1
         assert 'They said A paraphrase. [1]' in notebook.read(RECORD)
         assert page_review.dropped(PAGE, notebook.read(RECORD)) == []
         review = json.loads((directory / 'review.json').read_text())

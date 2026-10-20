@@ -190,6 +190,33 @@ def test_review_and_audit_progress_separate_one_repair_from_model_turns(notebook
     assert calls == [{}, {'session': 'avery-thread'}]
 
 
+@pytest.mark.parametrize(('stage', 'repairs'), [('enrich', 1), ('muse', 1), ('investigate', 2)])
+def test_stage_stops_repairs_at_its_limit_before_last_resort(notebook, monkeypatch, stage, repairs):
+    from connectonion.rem.files import write_json
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery')
+    calls, promotions = [], []
+
+    def run(workdir, prompt, config, phase):
+        calls.append(prompt)
+        next(workdir.glob(f'{stage}-*/candidate.md')).write_text('# Avery\nA new finding.\n')
+        return {'usage': {'input_tokens': 1}}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(options.get('last_resort', False))
+        if not options.get('last_resort'):
+            write_json(directory / 'review.json', {'errors': ['Cited-claim audit did not pass']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage=stage)
+    assert result['repairs'] == repairs
+    assert len(calls) == 1 + repairs
+    assert promotions == [False] * (1 + repairs) + [True]
+
+
 def test_model_access_probes_without_sources(tmp_path, monkeypatch):
     from connectonion.rem import runner as rem_runner
     prompts = []
@@ -877,7 +904,7 @@ def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, 
 
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
-def test_runner_restores_dropped_line_after_two_unsuccessful_repairs(notebook, tmp_path, stage):
+def test_runner_restores_dropped_line_after_one_unsuccessful_repair(notebook, tmp_path, stage):
     from connectonion.rem.page_review import dropped
     record = 'people/avery.md'
     notebook.stub_person(record, 'Avery')
@@ -900,9 +927,9 @@ def test_runner_restores_dropped_line_after_two_unsuccessful_repairs(notebook, t
     result = {}
     runner.promote_with_repairs(notebook, record, candidate, original,
         [{'source': 'codex:invented', 'text': 'Builds small research tools.'}], tmp_path, result,
-        workdir=tmp_path, config={}, stage=stage, run=run)
+        workdir=tmp_path, config={}, stage=stage, run=run, repairs=runner.DEEPEN_REPAIRS)
     saved = notebook.read(record)
-    assert result['repairs'] == len(prompts) == 2
+    assert result['repairs'] == len(prompts) == 1
     assert all('Dropped quote the page had:' in prompt
                and 'Dropped source id the page had: https://profile.example.test' in prompt
                for prompt in prompts)

@@ -419,7 +419,7 @@ findings first, then newest last contact. The Markdown file is unchanged, and
 on one page that is already written, each through the same `co ai` runner and
 the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
-claims pass the audit; review names problems back to the writer twice at most).
+claims pass the audit; review names problems back to the writer once at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
 A model turn that times out is retried once in the same thread when available, and usage from the failed attempt is counted.
 
@@ -451,7 +451,7 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   for that page.
 
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
-if two repairs cannot restore them, the lost lines are put back as they were,
+if one repair cannot restore them, the lost lines are put back as they were,
 with citations renumbered, so the page keeps its new work. A quote the page
 had that is not in its cited source is not guarded.
 
@@ -1259,9 +1259,10 @@ before it refuses anything.
   First and Last contact code computed from the whole archive: the packet's
   date range is not the relationship's. A claim a truncated excerpt neither
   supports nor contradicts is left out, not failed.
-- **Two repair turns for every page type.** What review names goes back to the
-  writer with where to read the originals. Only project pages had repairs
-  before; hamish-mcfarlane and two skill pages stayed unwritten after 1.9.2b3's
+- **Up to two repair turns for every page type; one for enrich and muse.**
+  What review names goes back to the writer with where to read the originals.
+  Only project pages had repairs before; hamish-mcfarlane and two skill pages
+  stayed unwritten after 1.9.2b3's
   first run for one section or one citation. A page someone changed meanwhile
   gets no repair: it is theirs.
 - **Last resort removes only what is refuted.** If, after the repairs, every

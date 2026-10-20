@@ -616,6 +616,10 @@ SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim
                "Key decision without the owner's words:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
+# 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
+# 40–55 min enrich/muse stages. Last resort restores drops and removes refuted
+# claims mechanically, so a second deepening repair buys little.
+DEEPEN_REPAIRS = 1
 # Skill pages describe installed files and their runs, read from code; the
 # pages about people and work are where a wrong claim is acted on.
 AUDITED = ("people/", "orgs/", "projects/")
@@ -706,7 +710,7 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
                          stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
                          stage_progress=None):
-    """Review the page; let its writer fix what review names, twice; then keep what is sound.
+    """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
     section or one citation was lost whole: hamish-mcfarlane and two skill
@@ -1414,7 +1418,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                  # A model that only replies, or never wrote the page, will not edit
                                  # the file a repair names.
                                  repairs=0 if summary or not candidate.is_file()
-                                 or candidate.read_text(encoding="utf-8") == before[record] else MAX_REPAIRS)
+                                 or candidate.read_text(encoding="utf-8") == before[record]
+                                 else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS)
             metrics["render_usage"] = result.get("usage")
         elif stage in ("maintain", "abstract") and not candidate:
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
