@@ -2290,7 +2290,7 @@ def test_hedged_lines_left_after_the_final_round_get_one_editing_turn_that_names
     out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                           extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
 
-    assert notes[-2].startswith("Final round") and notes[-1].startswith("Editing round")
+    assert not notes[-2].startswith("Final round") and notes[-1].startswith("Editing round")  # idle rounds: no synthesis
     assert "not established" in notes[-1] and "History" in notes[-1]
     assert carried[-1] == ["page", "round"]  # the page and the list, no evidence, no coverage
     assert out["hedged_lines"] == [1, 0]
@@ -2312,7 +2312,7 @@ def test_a_page_with_no_hedged_lines_gets_no_editing_turn(tmp_path, monkeypatch)
     out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                           extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
 
-    assert notes[-1].startswith("Final round") and out["hedged_lines"] == [0, 0]
+    assert not any(n.startswith("Final round") for n in notes) and out["hedged_lines"] == [0, 0]
 
 
 def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
@@ -2890,14 +2890,14 @@ def test_a_short_person_page_gets_one_quote_turn_with_only_its_cited_originals(t
     out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text},
                          [{'role': 'context', 'text': 'Excluded from the quote turn.'}], parts, {}, progress.append)
     quote_items = turns[-1]
-    assert len(turns) == 5 and progress[-2:] == ['editing round', 'quote round']
+    assert len(turns) == 4 and progress[-2:] == ['editing round', 'quote round']  # no synthesis: no round changed the page
     assert out['hedged_lines'] == [1, 0]
     assert [i['role'] for i in quote_items[:2]] == ['page', 'round']
     assert quote_items[0]['record'] == record and page in quote_items[0]['text']
     assert quote_items[2:] == [originals[0], originals[1], originals[2], continuation, originals[3], cited]
     assert '2 quotes from 4 cited messages and 1 Insight bullets' in quote_items[1]['text']
     assert out['quote_turn'] == {'quotes': [2, 6], 'insight': [1, 2]}
-    assert out['usage'] == {'input_tokens': 15} and out['threads'] == ['earlier'] * 4 + ['quotes']
+    assert out['usage'] == {'input_tokens': 13} and out['threads'] == ['earlier'] * 3 + ['quotes']
     assert out['changed'] == [record] and 'Quote round: Quoted the asks.' in out['report']
     assert out['refused_rounds'] == [] and notebook.read(record) == improved
 
@@ -2915,7 +2915,7 @@ def test_a_sufficient_person_page_or_a_project_gets_no_quote_turn(tmp_path, reco
 
     out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
                          [[{'source': 'gmail:avery-0', 'text': 'Please send the draft.'}]], {})
-    assert len(turns) == 2 and out['quote_turn'] is None
+    assert len(turns) == 1 and out['quote_turn'] is None  # one idle part, no synthesis
 
 
 def test_a_quote_turn_that_loses_carried_quotes_is_undone(tmp_path):
@@ -2935,7 +2935,7 @@ def test_a_quote_turn_that_loses_carried_quotes_is_undone(tmp_path):
 
     out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
                          [[{'source': 'outlook:avery-0', 'text': 'Please send draft 0'}]], {})
-    assert len(turns) == 3 and notebook.read(record) == page
+    assert len(turns) == 2 and notebook.read(record) == page  # part, quote; no synthesis of an idle round
     assert out['quote_turn'] == {'quotes': [5, 5], 'insight': [1, 1]}
     assert out['usage'] == {'input_tokens': 7} and out['threads'] == ['lost-quotes']
     assert out['changed'] == [] and 'Must not be accepted.' not in out['report']
@@ -2965,3 +2965,22 @@ def test_the_editing_and_quote_turns_carry_the_facts_item(tmp_path):
     inv.quote_turn(runner, notebook, record, [[]], (0, 5, 0), {}, context=[facts])
     assert all(facts in items for items in seen) and len(seen) == 2
     assert not any(item.get("role") == "coverage" for item in seen[0])
+
+
+def test_no_synthesis_turn_when_no_part_round_changed_the_page(tmp_path):
+    """2026-10-20: the owner's full page spent 415 s synthesising rounds that changed nothing."""
+    root = _notebook(tmp_path, "codex")
+    notebook = inv.Notebook(root)
+    notebook.path("people/vern.md").write_text("# Vern\n")
+    notes = []
+
+    def idle(notebook, material, config, **kw):
+        note = next(i for i in material if i["role"] == "round")["text"]
+        notes.append(note)
+        return {"changed": [], "usage": {"input_tokens": 5}, "report": "NO CHANGE"}
+
+    parts = [[{"source": f"outlook:{n}", "text": "x", "timestamp": f"2026-09-0{n + 1}T00:00:00Z"}] for n in range(3)]
+    out = inv.run_rounds(idle, notebook, "people/vern.md", lambda text: {"role": "page", "text": text}, [],
+                         parts, {"limits": {}}, None)
+    assert len(notes) == 3 and not any(note.startswith("Final round") for note in notes)
+    assert "skipped; no earlier round changed the page" in out["report"]

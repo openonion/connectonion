@@ -1569,8 +1569,14 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     from .refusals import material_sources
     from .runner import RunFailed
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
-    total = len(rounds)
+    total, edited = len(rounds), False
     for number, part in enumerate([*rounds, []], 1):
+        if not part and not edited:
+            # Nothing to bring together: every part round answered NO CHANGE or was
+            # refused. The owner's full page spent a 415-second synthesis turn on
+            # an unchanged page after four such rounds (2026-10-20).
+            ledgers.append(f"Round {number}: skipped; no earlier round changed the page.")
+            break
         dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
                  for i in part if i.get("local_time") or i.get("timestamp")]
         note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
@@ -1599,6 +1605,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             unread += material_sources(part)
             continue
         changed = sorted({*changed, *out.get("changed", [])})
+        edited = edited or notebook.read(record) != before
         if out.get("report"):
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
     if refused and not changed:
