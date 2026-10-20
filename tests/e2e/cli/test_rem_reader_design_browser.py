@@ -3610,6 +3610,75 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+@pytest.mark.parametrize('separator', ['；', ';', '：', ':', '—'])
+def test_chinese_waiting_summary_splits_and_trims_detail(reader, separator):
+    page, _ = reader
+    result = page.evaluate(r'''separator => {
+      setInterfaceLanguage('zh');
+      return morningWords('请签署试点协议' + separator + ' ，、；：— 后续安排明天讨论 [4]', byPath('people/mara-ostrowski.md'));
+    }''', separator, isolated_context=False)
+    assert result == {'words': '请签署试点协议', 'context': '后续安排明天讨论 [4]'}
+    assert page.evaluate(r'''() => {
+      setInterfaceLanguage('en');
+      return morningWords('Review the draft: keep this clause — and this one; discuss tomorrow [4]', byPath('people/mara-ostrowski.md'));
+    }''', isolated_context=False) == {
+        'words': 'Review the draft: keep this clause — and this one', 'context': 'discuss tomorrow [4]'}
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
+    page, _ = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.evaluate(r'''() => {
+      setInterfaceLanguage('en');
+      const r = byPath('people/mara-ostrowski.md'), org = byPath('orgs/fernhill-labs.md');
+      r.index = {...r.index, role: 'Indexed English role', company: 'Indexed English company'};
+      r.translations = {zh: r.text
+        .replace('Head of Partnerships', '理学院教授')
+        .replace(/(- Company: )[^\n]+/, '$1[Fernhill Labs 科研团队](../orgs/fernhill-labs.md) [2]')
+        .replace(/- \*\*Data-sharing addendum\*\*[^\n]*/, '- 你需要签署试点协议；后续安排明天讨论 [4]')};
+      org.translations = {zh: org.text + '\n## Facts\n- What they do: 研究气候数据 [1]\n'};
+      org.relations = [{path: r.path, via: r.path, kind: 'linked from', basis: 'Company: Fernhill Labs', sources: ['2']}];
+      setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    waiting = page.locator('.waiting-ledger > li').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
+    assert '理学院教授' in waiting.locator('.waiting-person .meta').inner_text()
+    assert 'Fernhill Labs 科研团队' in waiting.locator('.waiting-person .meta').inner_text()
+    assert waiting.locator('.waiting-ask .words').inner_text() == '你需要签署试点协议'
+    assert waiting.locator('.waiting-ask .context').inner_text().startswith('后续安排明天讨论')
+    page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
+    row = page.locator('.people-sheet tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
+    if width > 600:
+        page.locator('.more-columns').click()
+        assert row.locator('.c-role').inner_text() == '理学院教授'
+        assert row.locator('.c-company').inner_text() == 'Fernhill Labs 科研团队'
+    else:
+        assert '理学院教授' in row.locator('.people-card-meta').inner_text()
+        assert 'Fernhill Labs 科研团队' in row.locator('.people-card-meta').inner_text()
+    page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
+    org = page.locator('.sheet tbody tr').filter(has=page.get_by_role('link', name='Fernhill Labs', exact=True))
+    assert org.locator('.c-what').inner_text() == '研究气候数据'
+    page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
+    assert '理学院教授' in page.locator('.contact-line').inner_text()
+    assert 'Fernhill Labs 科研团队' in page.locator('.contact-line').inner_text()
+    assert page.evaluate(r'''() => {
+      const r = byPath('people/mara-ostrowski.md'), first = parseFacts(r);
+      if (parseFacts(r) !== first) return false;
+      setInterfaceLanguage('en');
+      const original = parseFacts(r);
+      setInterfaceLanguage('zh');
+      return parseFacts(r) === first && original !== first && original.get('Role')[0].value === 'Head of Partnerships';
+    }''', isolated_context=False)
+    page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
+    assert 'Fernhill Labs 科研团队' in page.locator('.relation-basis').inner_text()
+    assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
+    page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
+    assert page.locator('.relation-basis').inner_text() == 'Company: Fernhill Labs'
+    page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
+    assert 'Head of Partnerships' in page.locator('.contact-line').inner_text()
+    assert '理学院教授' not in page.locator('.contact-line').inner_text()
+
+
 @pytest.mark.parametrize('width', [375, 1440])
 def test_skills_group_recent_families_and_collapse_rare_search_matches(reader, width):
     page, uri = reader

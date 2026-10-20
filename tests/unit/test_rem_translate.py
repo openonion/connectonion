@@ -188,6 +188,23 @@ def test_translate_prompt_lists_each_quote_to_keep():
     assert 'must appear unchanged' not in tr.prompt('zh')
 
 
+def test_translate_prompt_adds_only_the_derived_glossary():
+    assert 'Keep these terms in English, as the owner writes them: capstone, pr, repo.' in \
+        tr.prompt('zh', terms=['capstone', 'pr', 'repo'])
+    assert 'Keep these terms in English' not in tr.prompt('zh')
+    assert 'capstone' not in tr.prompt('zh')
+    assert 'Names stay as written' in tr.prompt('zh')
+
+
+@pytest.mark.parametrize('language', ['zh', 'zh-TW', 'en', 'ja'])
+def test_translate_passes_owner_glossary_only_for_chinese(notebook, monkeypatch, language):
+    calls = []
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'english_terms': ['capstone', 'pr']})
+    monkeypatch.setattr('connectonion.rem.runner.run_task', model(CHINESE, calls))
+    tr.translate(notebook, 'people/alice-chen.md', language)
+    assert ('as the owner writes them: capstone, pr.' in calls[0]['prompt']) == language.startswith('zh')
+
+
 
 def test_translate_prompt_keeps_date_prefix_punctuation():
     assert 'keep the ASCII colon after a leading date like `2026-10-15:`' in tr.prompt('zh')

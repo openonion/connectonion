@@ -854,6 +854,49 @@ def test_reader_translated_relationship_takes_precedence_over_index_prose():
     assert _run_reader_js(script) == ['Original indexed relationship', '中文相识经过.', 'Original indexed relationship']
 
 
+@pytest.mark.parametrize('separator', ['；', ';', '：', ':', '—'])
+def test_reader_waiting_summary_trims_chinese_separators(separator):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['morningWords', 'plainLine', 'capFirst', 'threadWords'])
+    result = _run_reader_js(functions + r'''
+      const inCategory = () => [], youify = text => text;
+      const r = {title: 'Avery Lin'}, separator = ''' + json.dumps(separator) + r''';
+      uiLanguage = 'zh';
+      const chinese = morningWords('请签署试点协议' + separator + ' ，、；：— 后续安排明天讨论 [4]', r);
+      uiLanguage = 'en';
+      console.log(JSON.stringify([chinese,
+        morningWords('Review the draft: keep this clause — and this one; discuss tomorrow [4]', r)]));
+    ''')
+    assert result == [{'words': '请签署试点协议', 'context': '后续安排明天讨论 [4]'},
+                      {'words': 'Review the draft: keep this clause — and this one', 'context': 'discuss tomorrow [4]'}]
+
+
+def test_reader_parsed_facts_cache_follows_language_override_and_text_changes():
+    page = TEMPLATE.read_text()
+    parsing = page[page.index('const UNKNOWN_LINE ='):page.index('// ---------- the sheet:')]
+    result = _run_reader_js(parsing + r'''
+      const r = {path: 'people/avery.md', text: '# Avery\n\n## Facts\n- Role: Professor [1]\n- Company: Example Lab [1]\n',
+        translations: {zh: '# Avery\n\n## Facts\n- Role: 理学院教授 [1]\n- Company: 示例实验室（历史任职） [1]\n'}};
+      uiLanguage = 'zh';
+      const chinese = parseFacts(r), reused = parseFacts(r) === chinese;
+      uiLanguage = 'en';
+      const english = parseFacts(r);
+      uiLanguage = 'zh';
+      const restored = parseFacts(r) === chinese;
+      r.readLanguage = '';
+      const override = parseFacts(r) === english;
+      delete r.readLanguage;
+      r.translations.zh = r.translations.zh.replace('理学院教授', '副教授');
+      console.log(JSON.stringify({role: chinese.get('Role'), company: chinese.get('Company'),
+        english: english.get('Role')[0].value, reused, restored, override,
+        updated: parseFacts(r).get('Role')[0].value}));
+    ''')
+    assert result == {'role': [{'value': '理学院教授', 'qualifier': '', 'citations': ['1']}],
+                      'company': [{'value': '示例实验室', 'qualifier': '历史任职', 'citations': ['1']}],
+                      'english': 'Professor', 'reused': True, 'restored': True, 'override': True, 'updated': '副教授'}
+
+
 
 def test_reader_history_accepts_chinese_colon_and_preserves_citations():
     page = TEMPLATE.read_text()
