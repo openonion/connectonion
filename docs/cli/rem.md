@@ -537,8 +537,10 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   on you"); a quiet line under it summarises the last pass, with its
   hypnogram one click away in **How co rem processed the last pass**.
   **Overnight** lists only verified field changes from the run log (old and
-  new value, with a link to the source). A page rewrite alone is not a
-  change, and a quiet night says so. **Today** lists open threads, in either
+  new value, with a link to the source). In 中文 mode the new value comes
+  from the page's cached translation when it matches; a value with no
+  translation is shown as written with a small 原文 mark. A page rewrite
+  alone is not a change, and a quiet night says so. **Today** lists open threads, in either
   direction, that are overdue, due within three days, or new today.
   **Open threads** shows the three most important things waiting on you that
   Today did not already show. **Find** is a search field with task entry

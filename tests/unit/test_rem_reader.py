@@ -33,7 +33,7 @@ def test_this_week_project_rows_strip_the_now_label():
     page = TEMPLATE.read_text(encoding="utf-8")
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["splitTrailers", "plainLine"])
+                          for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine"])
     week = page[page.index("  // This week: what"):page.index('  const processing = el("details"')]
     script = "\n".join([
         parsing, functions,
@@ -598,7 +598,7 @@ def test_reader_interface_language_default(languages, browser, expected):
 def test_changed_field_matches_raw_facts_before_display_formatting():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['changedValue', 'plainLine'])
+                          for name in ['changedValue', 'factText', 'plainLine'])
     script = '\n'.join([
         '(() => {', functions, 'const youify = value => value;',
         'const r = {path: "people/avery-lin.md"};',
@@ -1324,3 +1324,160 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     assert result['quoted']['children'][1]['text'] == '“Please include the contribution details.”'
     assert 'Letter of Support draft' in result['quoted']['children'][2]['html']
     assert '[4]' in result['quoted']['children'][2]['html']
+
+
+def test_claim_values_use_only_current_cached_facts_for_chinese_after():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['parseFacts', 'rawSection', 'factText', 'plainLine',
+                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard'])
+    result = _run_reader_js(functions + r'''
+      UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
+      const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, youify = text => text;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const r = {path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', readLanguage: '',
+        text: '# Mara Ostrowski\n\n## Facts\n- Role: **Head of Partnerships** (work); Pilot lead [2]\n',
+        translations: {zh: '# Mara Ostrowski\n\n## Facts\n- Role: 合作负责人（工作）; 试点负责人 [2]\n'}};
+      const byPath = () => r, href = r => '#r=' + r.path;
+      const claim = {record: r.path, field: 'role', before: 'Partnerships lead',
+        after: 'Head of Partnerships (work); Pilot lead', sources: ['2']};
+      uiLanguage = 'zh';
+      const translated = overnightChange(claim), card = changeCard(claim);
+      const stale = claimValue({...claim, after: 'Old role'}, r, true);
+      const absent = claimValue(claim, {...r, translations: {}}, true);
+      const missingField = claimValue(claim, {...r, translations: {zh: '## Facts\n- Email: mara@fernhill.example'}}, true);
+      uiLanguage = 'en';
+      const english = overnightChange(claim);
+      console.log(JSON.stringify({translated, card, stale, absent, missingField, english}));
+    ''')
+    before, _, after = result['translated']['children'][2]['children']
+    # The 原文 mark sits beside the struck value, not inside the strike-through.
+    assert before['children'][0] == {'tag': 'del', 'text': 'Partnerships lead', 'children': []}
+    assert before['children'][1] == {'tag': 'span', 'class': 'lang-status', 'text': '原文',
+                                      'title': '尚无中文译文，显示原文', 'children': []}
+    assert after['children'] == [{'tag': 'span', 'text': '合作负责人 (工作); 试点负责人', 'children': []}, None]
+    assert result['translated']['children'][1]['text'] == ' · 职位'
+    assert result['card']['children'][2]['children'][1] == before
+    assert result['card']['children'][3]['children'][1] == after
+    for key in ['stale', 'absent', 'missingField']:
+        assert result[key]['children'][1]['text'] == '原文'
+    assert result['stale']['children'][0]['text'] == 'Old role'
+    assert result['absent']['children'][0]['text'] == 'Head of Partnerships (work); Pilot lead'
+    en_before, _, en_after = result['english']['children'][2]['children']
+    assert en_before['children'] == [{'tag': 'del', 'text': 'Partnerships lead', 'children': []}, None]
+    assert en_after['children'] == [{'tag': 'span', 'text': 'Head of Partnerships (work); Pilot lead', 'children': []}, None]
+    assert '原文' not in json.dumps(result['english'], ensure_ascii=False)
+
+
+def test_unknown_is_localised_only_on_display_paths():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'rawSection'])
+    result = _run_reader_js(functions + r'''
+      UI.zh = {Unknown: '未知'};
+      const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
+      const youify = text => text, quoteSpans = text => text,
+        uncertainCitations = text => text, tetherCitations = text => text, shortHash = text => text;
+      const text = '审阅结果：Unknown。是否已回复仍为 Unknown。';
+      const r = {path: 'people/mara-ostrowski.md', text: '## Facts\n- Phone: Unknown\n'};
+      uiLanguage = 'zh';
+      const zh = {inline: inline(text), plain: displayLine(text), parsed: parseFacts(r).get('Phone'),
+        raw: plainLine(text), code: inline('`Unknown`')};
+      uiLanguage = 'en';
+      console.log(JSON.stringify({zh, en: [inline(text), displayLine(text)], text, markdown: r.text}));
+    ''')
+    original = '审阅结果：Unknown。是否已回复仍为 Unknown。'
+    assert result['zh'] == {'inline': '审阅结果：未知。是否已回复仍为 未知。',
+                            'plain': '审阅结果：未知。是否已回复仍为 未知。',
+                            'parsed': [], 'raw': original, 'code': '<code>Unknown</code>'}
+    assert result['en'] == [original, original] and result['text'] == original
+    assert result['markdown'] == '## Facts\n- Phone: Unknown\n'
+
+
+def test_summary_line_strips_only_leading_insight_labels():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['plainLine', 'displayLine', 'summaryLine'])
+    result = _run_reader_js(functions + r'''
+      const youify = text => text;
+      const labels = ['Now:', '**Now:**', '**Pattern**:', 'At stake:', 'Changed:', '现在：', '规律：', '关键所在：', '变化：'];
+      console.log(JSON.stringify({stripped: labels.map(label => summaryLine('- ' + label + ' waiting on review [2]')),
+        kept: summaryLine('Discuss the Pattern: now'), raw: plainLine('Now: waiting on review')}));
+    ''')
+    assert result['stripped'] == ['waiting on review'] * 9
+    assert result['kept'] == 'Discuss the Pattern: now'
+    assert result['raw'] == 'Now: waiting on review'
+
+
+def test_role_summary_shows_first_and_count_with_full_title():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['roleSummary', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const youify = text => text, inline = text => text, privateFallback = node => node;
+      const roles = 'Head of Partnerships; Pilot lead; Research liaison';
+      console.log(JSON.stringify([roleSummary(roles, ''), roleSummary('Pilot lead', ''),
+        roleSummary('Public role; Secret role [sensitive]', '')]));
+    ''')
+    assert result[0]['title'] == 'Head of Partnerships; Pilot lead; Research liaison'
+    assert result[0]['children'][0]['html'] == 'Head of Partnerships'
+    assert result[0]['children'][1]['text'] == ' +2'
+    assert result[0]['children'][1]['class'] == 'role-more'
+    assert result[1]['children'][1] is None
+    assert result[2]['title'] == ''  # No private words in a tooltip.
+    assert '[sensitive]' in result[2]['children'][0]['html']
+
+
+def test_category_lede_joins_counts_after_translated_punctuation():
+    page = TEMPLATE.read_text()
+    function = re.search(r'function ledeSeparator\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const lines = ['这是谁？上次聊到哪了？', '已完成。', '怎么做！', 'Who is this?', 'Written.', 'Ready!', '人物'];
+      uiLanguage = 'zh'; const zh = lines.map(text => text + ledeSeparator(text) + '已撰写 84 / 84 人');
+      uiLanguage = 'en'; const en = ['Who is this?', 'People'].map(text => text + ledeSeparator(text) + '84 written');
+      console.log(JSON.stringify({zh, en}));
+    ''')
+    assert result['zh'][0] == '这是谁？上次聊到哪了？ 已撰写 84 / 84 人'
+    assert all(' · ' not in line for line in result['zh'][:-1])
+    assert result['zh'][-1] == '人物 · 已撰写 84 / 84 人'
+    assert result['en'] == ['Who is this? 84 written', 'People. 84 written']
+
+
+def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
+    page = TEMPLATE.read_text()
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    labels = re.search(r'const FACT_LABELS = (\{.*?\n\});', page, re.S).group(1)
+    columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(1)
+    # Column rendering closures are defined but never called here.
+    result = _run_reader_js('UI.zh = ' + ui + '; const FACT_LABELS = ' + labels + '; const COLUMNS = ' + columns + r''';
+      const labels = [...new Set([...Object.values(FACT_LABELS).flat(),
+        ...Object.values(COLUMNS).flat().map(column => column.label), 'Facts', '— not found'])];
+      uiLanguage = 'zh';
+      console.log(JSON.stringify(labels.filter(label => /[A-Za-z]/.test(t(label)))));
+    ''')
+    assert result == []
+
+
+def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['contactLine', 'roleSummary', 'changedValue', 'factText', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
+      const r = {path: 'people/mara-ostrowski.md'};
+      const facts = () => ({role}), mappedContact = () => false;
+      const youify = text => text, inline = text => text, privateFallback = node => node;
+      const parseFacts = () => new Map([['Role', original.split('; ').map(value => ({value, qualifier: ''}))]]);
+      const memoryPass = {claims: [{record: r.path, field: 'role', before: 'Partnerships lead', after: original}]};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        childNodes: children, classList: {add() {}},
+        appendChild(node) { this.children.push(node); }, append(text) { this.children.push(text); }});
+      console.log(JSON.stringify(contactLine(r)));
+    ''')
+    changed = result['children'][0]['children'][0]
+    compact_role = changed['children'][0]
+    assert changed['title'].startswith('Changed last night:')
+    assert compact_role['title'] == '合作负责人; 试点负责人; 研究联络人'
+    assert compact_role['children'][0]['html'] == '合作负责人'
+    assert compact_role['children'][1]['text'] == ' +2'
