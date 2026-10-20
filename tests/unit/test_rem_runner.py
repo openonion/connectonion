@@ -1598,3 +1598,32 @@ def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
     assert _keep_identity("people/greta.md", before, before) == before
     emptied = _keep_identity("people/greta.md", before, "# Greta Holloway\n\n\n" + facts)
     assert emptied.startswith("# Greta Holloway\n\nGreta Holloway is Events Coordinator") and "\n\n## Facts" in emptied
+
+
+    assert _keep_identity("people/tamara.md", before, before) == before
+    emptied = _keep_identity("people/tamara.md", before, "# Tamara Berryman\n\n\n" + facts)
+    assert emptied.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator") and "\n\n## Facts" in emptied
+
+
+@pytest.mark.parametrize('footer, carried', [('investigated 2026-10-08 (outlook)', True), ('not investigated yet', False)])
+def test_an_update_of_an_investigated_page_carries_the_page_it_replaces(notebook, monkeypatch, tmp_path, footer, carried):
+    """2026-10-20: 15 people-page updates on real mail lost 22 quotes and 40-70 sources."""
+    from connectonion.rem import project_claim_review
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record).replace('not investigated yet', footer)
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Unknown — not investigated yet', '- Unknown')
+                         .replace('## Who they are\n- Unknown', '## Who they are\nAvery tests pilots. [1]')
+                         .replace('- (none yet)', '- [1] gmail:invented — 2026-10-01'))
+    seen = []
+
+    def review(*args, **kwargs):
+        seen.append(kwargs['carried'])
+        return {'verdict': 'pass', 'findings': []}, {}
+
+    monkeypatch.setattr(project_claim_review, 'review', review)
+    runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:invented', 'text': 'x'}],
+                                tmp_path, {}, workdir=tmp_path, config={}, stage='investigate', run=lambda *a: {})
+    assert seen == [original if carried else '']

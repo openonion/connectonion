@@ -722,7 +722,10 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
     # not written; a person page lost a quarter of its text in one round.
     # Upkeep too: one-page upkeep rewrote a page with twelve quotes into one with none (2026-10-20 A/B).
-    carried = original if stage in ("enrich", "muse", "maintain") else ""
+    # An update of a page already investigated keeps what it had too: people-page upkeep on
+    # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
+    updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
+    carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
