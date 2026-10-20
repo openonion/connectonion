@@ -109,8 +109,8 @@ Rules:
   threads fold into one line a year, at the bottom; a thread that
   stopped says `no reply after <date>`. Not a send or a newsletter.
 - **`Open threads` lists only what the user and this person still owe each
-  other** (another person's thread goes on their page), the user's debts
-  first, then by due date. Four shapes, by who asked and whether they agreed:
+  other**, the user's debts
+  first, by due date. Four shapes:
   `- The user owes <Name>: <what> — “<the user's yes>” (YYYY-MM-DD) [n] — due <date>`,
   `- <Name> owes the user: …` (they agreed), `- <Name> asked the user: …` (no
   yes from the user) and `- The user asked <Name>: …` (no answer), ending
@@ -119,7 +119,7 @@ Rules:
   passing closes it too, but a promise's due date passing does not: it is
   `— due <date>, overdue`. A later message on another topic closes nothing. An ask with no movement
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its
-  people and object finds nothing later (an access grant came in another thread). Reports, optional offers,
+  people and object finds nothing later. Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
   due date and any permission to proceed without a reply. Every ask or
   promise under 60 days old with no reply about it and no delivery is a line
