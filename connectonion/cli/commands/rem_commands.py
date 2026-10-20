@@ -737,6 +737,25 @@ def _first_tidy(root, say) -> dict:
     return {"companies": companies, "pairs": likely_pairs(Notebook(root))}
 
 
+def _first_translation(root, config, say, *, language="", reason="") -> dict:
+    """Init's final stage has its own worker lanes and no daily translation cap."""
+    from uuid import uuid4
+    from ...rem.files import state_path, write_json
+    from ...rem.service import now
+    from ...rem.translate import translate_pages, written_pages
+    if reason:
+        return {"started": False, "reason": reason}
+    records = written_pages(root)
+    say(f"Translating {len(records)} pages into {language}…")
+    started = now().isoformat()
+    report = translate_pages(root, language, records, workers=config["limits"]["workers"],
+                             say=lambda line: say(line) if ": failed:" in line else None)
+    write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
+        "started_at": started, "finished_at": now().isoformat(), "phase": "init-translation",
+        "outcome": "partial" if report["failed"] else "completed", **report})
+    return {"started": True, **report}
+
+
 def _first_abstract(root, config, say, result) -> dict:
     """Decisions, then principles, from the pages the first run just wrote.
 
@@ -816,8 +835,20 @@ def _init_done(ctx, result) -> str:
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
         *([summary(result["sessions"])] if result.get("sessions") else []),
+        *_translation_line(ctx, result.get("translation") or {}),
         *pairs,
         *([f"Your page: {owner}"] if owner else [])])
+
+
+def _translation_line(ctx, report: dict) -> list[str]:
+    """How many written pages can now be read in the owner's other language, and how to retry the rest."""
+    if not report.get("started"):
+        return []
+    done = report["translated"] + report["cached"]
+    line = f"Translated into {report['language']}: {done} of {len(report['pages'])} pages."
+    if report["failed"]:
+        line += f" {report['failed']} failed; retry with {_next(ctx, ['translate', '--all'])}."
+    return [line]
 
 
 def _start_consent(ctx, summary, *, yes: bool) -> bool:
@@ -901,6 +932,8 @@ def make_rem_app(factory):
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail"),
                   name: str = typer.Option("", "--name"),
+                  languages: Optional[str] = typer.Option(None, "--languages", help="Owner language tags, such as zh,en"),
+                  no_translate: bool = typer.Option(False, "--no-translate", help="Skip first-run page translations"),
                   archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive"),
                   write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate"),
                   all_history: bool = typer.Option(False, "--all-history", help="Map every available mail year; archive only recent bodies"),
@@ -912,7 +945,8 @@ def make_rem_app(factory):
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
                   first_skills: Optional[int] = typer.Option(None, "--first-skills", min=0)):
-        from ...rem.config import prepare, read_config
+        from ...rem.config import prepare, read_config, set_config
+        from ...rem.languages import native_name, owner_languages
         from ...rem.files import Notebook, state_path
         from ...rem.map import build_map, owner_summary
         from ...rem import runner as rem_runner
@@ -926,6 +960,8 @@ def make_rem_app(factory):
 
         def run(root):
             prepare(root)
+            if languages is not None:
+                set_config(root, ["languages", languages])
             # Before the ten-minute map, not after it: a missing or signed-out
             # runner used to surface only when the first model turn failed.
             config = read_config(root)
@@ -1040,6 +1076,16 @@ def make_rem_app(factory):
                 result["owner_page"] = summary
             if not selected:
                 result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
+            result["languages"] = owner_languages(root)
+            language = next((tag for tag in result["languages"]["languages"]
+                             if tag.split("-")[0].lower() != "en"), "")
+            translation_skip = ("Skipped by --no-translate." if no_translate else
+                                "Skipped by --no-investigate." if write_mine is False else
+                                "Runner not ready: " + problem if problem else
+                                "English-only owner languages (or none detected)." if not language else "")
+            result["translation"] = {"started": False, "reason": translation_skip or
+                                     ("Estimate only; no translations started." if estimate_only else
+                                      "First run has not reached translation yet.")}
             if result.get("errors"):
                 retry = ["init", *init_window]
                 if mail:
@@ -1063,6 +1109,17 @@ def make_rem_app(factory):
                 typer.echo()
             say = ((lambda text: None) if ctx.obj["json"] else
                    lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
+            names = ", ".join(native_name(tag) for tag in result["languages"]["languages"]) or "not detected yet"
+            origin = ("set with co rem config set languages" if result["languages"]["from"].startswith("set")
+                      else "detected from your sent mail and typed sessions")
+            writing = "Pages are written in English" + (f" and translated into {native_name(language)}"
+                                                       if language and not translation_skip else "")
+            basis = f" ({origin})" if result["languages"]["languages"] else ""
+            say(f"Languages: {names}{basis}. {writing}. To change: "
+                + _next(ctx, ["config", "set", "languages", "en"]))
+            if translation_skip:
+                say("Translation: Runner not ready." if translation_skip.startswith("Runner not ready:")
+                    else "Translation: " + translation_skip)
             plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
             from ...rem.files import RemError
             skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
@@ -1089,7 +1146,8 @@ def make_rem_app(factory):
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
                                    projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
-                                   workers=config["limits"]["workers"])
+                                   workers=config["limits"]["workers"],
+                                   translation=language if not translation_skip else "")
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
                                    "projects": [row["record"] for row in project_rows],
                                    "orgs": [row["path"] for row in org_rows],
@@ -1107,6 +1165,8 @@ def make_rem_app(factory):
                       if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
+            if not translation_skip:
+                steps.append(f"translation of the written pages into {native_name(language)}/{language}")
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
@@ -1177,6 +1237,7 @@ def make_rem_app(factory):
                     say(result[key]["reason"])
             result["tidy"] = _first_tidy(root, say)
             result["abstract"] = _first_abstract(root, config, say, result)
+            result["translation"] = _first_translation(root, config, say, language=language, reason=translation_skip)
             if result.get("investigation") == "failed":
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
@@ -1477,7 +1538,7 @@ def make_rem_app(factory):
         from ...rem.census import listed, pages
         from ...rem.files import Notebook, RemError
         from ...rem.languages import owner_languages
-        from ...rem.translate import cached, checked_language, translate
+        from ...rem.translate import checked_language, translate, translate_pages
 
         def operation(root):
             if bool(page) == all_pages or (category and not all_pages):
@@ -1493,29 +1554,16 @@ def make_rem_app(factory):
             categories = ("people", "orgs", "projects", "decisions", "principles", "skills")
             if category and category not in categories:
                 raise RemError("--category must be one of " + ", ".join(categories))
-            rows, counts = [], {"translated": 0, "cached": 0, "failed": 0}
             found = pages(root)
-            for record in Notebook(root).list():
-                kind = record.split("/")[0]
-                if kind not in ((category,) if category else categories):
-                    continue
-                if record == "skills/catalog/index.md" or (record in found and not listed(found[record])):
-                    continue
-                row = {"page": record, "outcome": "cached"}
-                if cached(root, record, language) is None:
-                    try:
-                        translate(root, record, language)
-                    except RemError as error:
-                        row.update(outcome="failed", error=str(error))
-                    else:
-                        row["outcome"] = "translated"
-                counts[row["outcome"]] += 1
-                rows.append(row)
-                if not ctx.obj["json"]:
-                    typer.echo(f"{record}: {row['outcome']}" + (f": {row['error']}" if "error" in row else ""))
-            result = {"language": language, "pages": rows, **counts}
-            summary = ", ".join(f"{count} {outcome}" for outcome, count in counts.items())
-            return result if ctx.obj["json"] else summary, ["open"], bool(counts["failed"])
+            records = [record for record in Notebook(root).list()
+                       if record.split("/")[0] in ((category,) if category else categories)
+                       and record != "skills/catalog/index.md"
+                       and (record not in found or listed(found[record]))]
+            from ...rem.config import read_config
+            result = translate_pages(root, language, records, say=None if ctx.obj["json"] else typer.echo,
+                                     workers=read_config(root)["limits"]["workers"])
+            summary = ", ".join(f"{result[outcome]} {outcome}" for outcome in ("translated", "cached", "failed"))
+            return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
         _handle(ctx, operation, ["list"])
 
     @rem.command("list", cls=V("co rem list"))

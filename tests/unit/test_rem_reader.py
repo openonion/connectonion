@@ -533,7 +533,7 @@ def test_interface_language_prefers_supported_non_english_and_leaves_record_pros
     from rem_reader_notebook import build
 
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': languages})
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': languages, 'from': 'detected from your own mail and sessions'})
     page = render(build(tmp_path / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc)), local=True)
     data = json.loads(re.search(r'const REM = (.*);', page).group(1))
     interface = page[page.index('let uiLanguage ='):page.index('function setInterfaceLanguage(')]
@@ -582,7 +582,7 @@ def test_display_commands_use_short_form_only_for_the_default_notebook(tmp_path,
     result = _run_reader_js('\n'.join([
         'const REM = ' + json.dumps(data) + ';', function,
         'const commands = [remCommand("sources"), remCommand("import sessions")];',
-        'REM.default_root = false; REM.root = "/tmp/avery\'s notebook";',
+        'REM.default_root = false; REM.root = REM.root_display = "/tmp/avery\'s notebook";',
         'commands.push(remCommand("import sessions")); console.log(JSON.stringify(commands));',
     ]))
     assert result[:2] == ['co rem sources', 'co rem import sessions']
@@ -1903,3 +1903,133 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
         assert rows['open']['children'][1]['children'][1]['children'][0]['text'] == who
     assert result['counterpart']['waiting']['children'][0]['children'][1]['children'][0]['text'] == 'Mia Chen'
     assert result['counterpart']['waiting']['children'][0]['children'][1]['children'][1]['title'] == 'Northgate University · Pilot lead'
+
+
+@pytest.mark.parametrize('root,default,expected', [
+    ('~/.co/rem', True, 'co rem start'),
+    ('~/.co/rem-trials/x/rem', False, 'co rem --root ~/.co/rem-trials/x/rem start'),
+    ('~/.co/owner notebook/rem', False, "co rem --root ~/'.co/owner notebook/rem' start"),
+    ("~/.co/owner's $notebook/rem", False, "co rem --root ~/'.co/owner'\\''s $notebook/rem' start"),
+    ('/var/folders/trial/rem', False, "co rem --root '/var/folders/trial/rem' start")])
+def test_rem_commands_use_expandable_home_roots(root, default, expected):
+    import shlex
+    command = re.search(r'function remCommand\(args\).*', TEMPLATE.read_text()).group(0)
+    actual = _run_reader_js('const REM = ' + json.dumps({'root_display': root, 'default_root': default}) + ';\n'
+                            + command + '\nconsole.log(JSON.stringify(remCommand("start")));')
+    assert actual == expected
+    if not default:
+        assert shlex.split(actual)[3] == root
+
+
+@pytest.mark.parametrize('configured', [True, False])
+def test_reader_exposes_language_origin_and_home_display_root(tmp_path, monkeypatch, configured):
+    from pathlib import Path
+    from connectonion.rem.config import set_config
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.reader import snapshot
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path))
+    root = tmp_path / '.co/owner notebook/rem'
+    prepare(root)
+    write_json(state_path(root, 'map.json'), {'owner': {'languages': {'languages': ['zh', 'en']}}})
+    if configured:
+        set_config(root, ['languages', 'zh,en'])
+    data = snapshot(root)
+    assert data['root_display'] == '~/.co/owner notebook/rem' and not data['default_root']
+    assert data['your_languages'] == ['zh', 'en']
+    assert data['languages_from'] == ('set' if configured else 'detected')
+    outside = tmp_path / 'outside'
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: outside))
+    assert snapshot(root)['root_display'] == str(root)
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: root.parents[1]))
+    # Default root uses the plain command, independent of the display path.
+    default_root = Path.home() / '.co/rem'
+    prepare(default_root)
+    assert snapshot(default_root)['default_root']
+
+
+@pytest.mark.parametrize('origin', ['detected', 'set'])
+def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(origin):
+    page = TEMPLATE.read_text()
+    function = re.search(r'function notebookLanguages\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js('const REM = ' + json.dumps({'your_languages': ['zh', 'en'], 'languages_from': origin}) + ';\n'
+        + function + r'''
+        const nativeName = tag => ({zh: '中文', en: 'English'})[tag];
+        const el = (tag, attrs, children) => ({tag, ...attrs, children});
+        const remCommand = args => 'co rem ' + args, copyToClipboard = () => {};
+        console.log(JSON.stringify(notebookLanguages()));
+    ''')
+    assert result['children'][0]['text'] == 'Notebook languages: 中文 · English — ' + origin
+    # The narrow sidebar copies the command from a button; the full command is its title.
+    assert result['children'][1]['title'] == 'co rem config set languages zh,en'
+    assert 'settings.appendChild(notebookLanguages())' in page
+
+
+def test_translation_fallback_counts_only_written_pages_and_reports_last_failures():
+    function = re.search(r'function translationNotice\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      UI.zh = {};
+      const REM = {logs: [], records: [
+        {path: 'people/avery-lin.md', category: 'people', written: true, translations: {zh: '译文'}},
+        ...Array.from({length: 20}, (_, n) => ({path: 'projects/mapped-' + n + '.md', category: 'projects', written: false}))]};
+      const listedRecords = () => REM.records, remCommand = args => 'co rem ' + args;
+      const commandChip = command => ({command}), el = (tag, attrs, children) => ({...attrs, children});
+      uiLanguage = 'zh';
+      const mapped = translationNotice();
+      delete REM.records[0].translations;
+      const missing = translationNotice();
+      REM.logs = [{phase: 'daily-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed', error: 'fixture refusal'}]}];
+      const failed = translationNotice();
+      REM.logs.unshift({phase: 'init-translation', pages: []});
+      const last = translationNotice();
+      uiLanguage = 'en';
+      console.log(JSON.stringify({mapped, missing, failed, last, english: translationNotice()}));
+    ''')
+    assert result['mapped'] is None and result['english'] is None
+    assert result['missing']['children'][0].startswith('Most pages have no Chinese version')
+    assert result['failed']['children'][0] == '1 page could not be translated.'
+    assert result['failed']['children'][1]['command'] == 'co rem translate --all'
+    assert result['last']['children'][0].startswith('Most pages have no Chinese version')
+
+
+def test_reader_keeps_latest_translation_summary_after_many_page_runs(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.reader import snapshot
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'runs/run_summary.json'), {
+        'started_at': '2026-10-21T00:00:00+00:00', 'phase': 'init-translation', 'pages': [
+            {'page': 'people/avery-lin.md', 'outcome': 'failed'}]})
+    for n in range(25):
+        write_json(state_path(tmp_path, f'runs/run_page{n}.json'), {
+            'started_at': f'2026-10-21T00:01:{n:02d}+00:00', 'phase': 'translate', 'outcome': 'completed'})
+    assert any(log['phase'] == 'init-translation' for log in snapshot(tmp_path)['logs'])
+
+
+@pytest.mark.parametrize('tag', ['zh-TW', 'zh-CN'])
+def test_chinese_interface_uses_the_owners_regional_cached_prose(tag):
+    page = TEMPLATE.read_text()
+    cache = re.search(r'function cacheChineseInterface\(.*?\n\}', page, re.S).group(0)
+    notice = re.search(r'function translationNotice\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js('const REM = ' + json.dumps({'your_languages': ['en', tag], 'logs': [], 'records': [
+        {'path': 'people/avery-lin.md', 'category': 'people', 'written': True, 'translations': {tag: '草稿。'}}]}) + ';\n'
+        + cache + '\n' + notice + r'''
+        const listedRecords = () => REM.records;
+        cacheChineseInterface(); uiLanguage = 'zh';
+        console.log(JSON.stringify({translated: REM.records[0].translations.zh, notice: translationNotice()}));
+    ''')
+    assert result == {'translated': '草稿。', 'notice': None}
+
+
+def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
+    page = TEMPLATE.read_text()
+    command = re.search(r'function remCommand\(args\).*', page).group(0)
+    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'Background updates off' in line)
+    result = _run_reader_js('const REM = ' + json.dumps({'root_display': '~/.co/$&`book`/rem', 'default_root': False}) + ';\n'
+        + command + r'''
+        const s = {}, schedule = '', plainLine = value => value;
+        const scheduleState = () => 'Background updates off — run `co rem start` to enable';
+        const el = (tag, attrs) => attrs.text;
+        const settings = {appendChild: value => console.log(JSON.stringify(value))};
+    ''' + guidance)
+    assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"

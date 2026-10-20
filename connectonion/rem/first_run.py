@@ -35,7 +35,9 @@ DEFAULTS = {"owner": {"input_tokens": 6_500_000, "seconds": 2105},
             "person": {"input_tokens": 2_850_000, "seconds": 658},
             "project": {"input_tokens": 630_000, "seconds": 133},
             "org": {"input_tokens": 2_030_000, "seconds": 510},
-            "skill": {"input_tokens": 800_000, "seconds": 205}}
+            "skill": {"input_tokens": 800_000, "seconds": 205},
+            # 2026-10-21: Codex gpt-6-luna, 74k–80k input and 22–40 s per page.
+            "translation": {"input_tokens": 80_000, "seconds": 35}}
 # More workers than this did not finish sooner: 48 wrote what 16 wrote in the
 # same 66 minutes (1.9.2b3), each turn three times slower. The model's own
 # throughput is the limit, so the estimate never divides by more.
@@ -44,7 +46,7 @@ PACE = 16
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
            "project": ("projects write", "projects/"), "org": ("investigate", "orgs/"),
-           "skill": ("investigate", "skills/catalog/")}
+           "skill": ("investigate", "skills/catalog/"), "translation": ("translate", "")}
 
 
 def per_page(runs: list[dict], kind: str) -> dict:
@@ -74,7 +76,7 @@ def page_costs(rate: dict, kind: str, count: int) -> list[dict]:
 
 
 def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0, skills: int = 0,
-         workers: int) -> dict:
+         workers: int, translation: str = "", abstract_pages: int = 0) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
 
     The owner's quick turn runs alone, then its full turn shares workers with
@@ -92,10 +94,14 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
     for seconds in queue:
         lane = min(range(len(lanes)), key=lanes.__getitem__)
         lanes[lane] += seconds
+    translated = sum(counts.values()) + abstract_pages if translation else 0
+    rate = per_page(runs, "translation")
+    translation_seconds = ceil(translated / max(workers, 1)) * rate["seconds"]
     return {"pages": sum(counts.values()), "counts": counts,
-            "input_tokens": (2 * counts["owner"] * rates["owner"]["input_tokens"]
+            "translation": {"language": translation, "pages": translated, **rate},
+            "input_tokens": (translated * rate["input_tokens"] + 2 * counts["owner"] * rates["owner"]["input_tokens"]
                              + sum(page["input_tokens"] for kind in pages for page in pages[kind])),
-            "minutes": ceil((counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
+            "minutes": ceil((translation_seconds + counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 
 
@@ -114,12 +120,17 @@ def _pages(counts: dict) -> str:
 
 def announce(total: dict, where: str) -> str:
     """The one line said before the first page: pages, billed input, minutes, and how it was estimated."""
-    measured = total["measured"]
+    measured = dict(total["measured"])
+    translation = total.get("translation") or {}
+    if translation.get("language"):
+        measured["translation"] = translation["measured"]
     basis = ("from this notebook's own runs" if measured and all(measured.values()) else
              "from runs measured on a real notebook" if not any(measured.values()) else
              "from this notebook's runs where it has them, measured defaults otherwise")
     if total['counts'].get('skill') and not measured.get('skill'):
         basis += "; skill time and tokens are planning estimates from sampled runs"
+    translated = (f" Includes {translation['pages']} translations into {translation['language']} after the page queue."
+                  if translation.get("language") else "")
     return (f"About {total['pages']} page{'s' if total['pages'] != 1 else ''} ({_pages(total['counts'])}), "
             f"~{tokens(total['input_tokens'])} billed input tokens {where}, ~{total['minutes']} minutes "
-            f"(an estimate {basis}).")
+            f"(an estimate {basis})." + translated)

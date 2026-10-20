@@ -162,7 +162,7 @@ def test_existing_notebook_detects_owner_languages_without_writing(tmp_path, mon
             ("mara@example.com", "今日はいい天気ですね、散歩に行きましょう")])
     original = {file: file.read_bytes() for file in root.rglob("*") if file.is_file()}
     detected = languages.owner_languages(root)
-    assert detected == {"languages": ["en", "zh"], "shares": {"en": 0.75, "zh": 0.25},
+    assert detected == {"languages": ["en", "zh"], "detected": ["en", "zh"], "shares": {"en": 0.75, "zh": 0.25},
                         "from": "detected from your own mail and sessions", "english_terms": []}
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     assert snapshot(root)["your_languages"] == ["en", "zh"]
