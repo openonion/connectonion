@@ -108,7 +108,7 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page.locator('.nav-toggle').click()
     page.locator('.reader-settings > summary').click()
     assert 'Snapshot ' in page.locator('#foot').inner_text()
-    assert 'co rem start' in page.locator('.reader-settings').inner_text()
+    assert 'start to enable' in page.locator('.reader-settings').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
@@ -3376,7 +3376,7 @@ def test_empty_sessions_offer_one_copy_action_without_filters(reader, width, lan
     assert page.locator('.empty h2, .session-filter-panel, #session-search').count() == 0
     page.locator('.empty a').click()
     assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem import sessions'
-    page.evaluate(r'''() => { REM.default_root = false; REM.root = '/tmp/theo notebook'; render(); }''', isolated_context=False)
+    page.evaluate(r'''() => { REM.default_root = false; REM.root_display = '/tmp/theo notebook'; render(); }''', isolated_context=False)
     page.locator('.empty a').click()
     assert "--root '/tmp/theo notebook'" in page.evaluate('window.copiedCommand', isolated_context=False)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -3900,7 +3900,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
     atomic_write(translation_path(root, path, 'zh'),
                  f'<!-- co rem translation of {path} sha256:{digest(original)} -->\n' + checked(original, translated))
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en']})
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en'], 'from': 'detected'})
     snapshot = rem_reader.snapshot
 
     def frozen_snapshot(root, local=False):
@@ -4448,7 +4448,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert page.locator('#main > .translation-note').count() == 0
     page.set_viewport_size({'width': 390, 'height': 844})
     page.evaluate(r'''() => {
-      REM.default_root = false; REM.root = '/tmp/' + 'invented notebook/'.repeat(12);
+      REM.default_root = false; REM.root = REM.root_display = '/tmp/' + 'invented notebook/'.repeat(12);
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
@@ -4618,3 +4618,51 @@ def test_round10_mapped_page_missing_sections_use_a_count(reader, language):
     assert page.locator('.missing .names').inner_text() == (
         f'调查后会写出 {count} 个章节。' if language == 'zh'
         else f'{count} sections will be written when it is investigated.')
+
+
+@pytest.mark.parametrize('width', [1440, 375])
+def test_round11_reader_languages_and_written_page_translation_fallback(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri)
+    page.evaluate(r'''() => {
+      REM.your_languages = ['zh', 'en']; REM.languages_from = 'detected';
+      REM.default_root = false; REM.root_display = '~/.co/invented notebook/rem';
+      copyToClipboard = command => { window.copiedCommand = command; };
+      setInterfaceLanguage('en');
+    }''', isolated_context=False)
+    if width < 600:
+        page.locator('.nav-toggle').click()
+    settings = page.locator('.reader-settings')
+    assert not settings.locator('.notebook-languages').is_visible()
+    settings.locator('summary').click()
+    assert settings.locator('.notebook-languages').inner_text().startswith('Notebook languages: 中文 · English — detected')
+    settings.locator('.notebook-languages button').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' config set languages zh,en"
+    assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+    if width < 600:
+        page.locator('.nav-toggle').click()
+    page.evaluate(r'''() => {
+      REM.records = [
+        {path: 'people/avery-lin.md', title: 'Avery Lin', category: 'people', written: true,
+          text: '# Avery Lin\n\n## Facts\nA draft.\n', translations: {zh: '# Avery Lin\n\n## Facts\n草稿。\n'}},
+        ...Array.from({length: 20}, (_, n) => ({path: 'projects/mapped-' + n + '.md',
+          title: 'Mapped ' + n, category: 'projects', written: false, text: '# Mapped\n'}))];
+      REM.logs = []; setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    notice = page.locator('#main > .translation-note')
+    assert notice.count() == 0  # Mapped-only stubs do not trigger the fallback.
+    page.evaluate(r'''() => {
+      delete REM.records[0].translations;
+      render();
+    }''', isolated_context=False)
+    assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+    page.evaluate(r'''() => {
+      REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
+      render();
+    }''', isolated_context=False)
+    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    notice.locator('button').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' translate --all"
+    assert notice.locator('code').evaluate(r'''node => node.scrollWidth <= node.clientWidth''')
+    assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')

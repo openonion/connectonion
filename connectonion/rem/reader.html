@@ -1462,7 +1462,7 @@ function readerStorage(key, value) {
     return value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value);
   }).then(result => result, () => null);
 }
-let uiLanguage = (REM?.your_languages || []).find(tag => tag === "zh")
+let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)) && "zh"
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
@@ -1484,7 +1484,7 @@ const UI = {
     "Copy update command": "复制更新命令",
     "Built today: read {n} items · wrote {m} pages · ": "今天建立：读取 {n} 条内容 · 撰写 {m} 页 · ",
     "Your notebook was just built. Overnight changes appear here after the next update.": "笔记本刚刚建立。下次更新后，这里会显示夜间变化。",
-    "Nightly updates are off — `co rem start` turns them on.": "夜间更新已关闭 — 运行 `co rem start` 即可开启。",
+    "Nightly updates are off.": "夜间更新已关闭。",
     "No changes yet — this is the first build.": "暂无变化 — 这是首次建立。",
     "Most pages have no Chinese version yet; showing the English originals.": "大部分页面还没有中文版本，目前显示英文原文。",
     "{n} sections will be written when it is investigated.": "调查后会写出 {n} 个章节。",
@@ -1596,6 +1596,12 @@ const UI = {
     "Clear search": "清除搜索",
     "You": "你",
     "Reader settings": "阅读设置",
+    "Notebook languages": "笔记语言",
+    "Copy the command to change them": "复制修改命令",
+    "detected": "自动检测",
+    "set": "已设置",
+    "{n} page could not be translated.": "{n} 个页面未能翻译。",
+    "{n} pages could not be translated.": "{n} 个页面未能翻译。",
     "Theme": "主题",
     "Auto": "自动",
     "Light": "浅色",
@@ -2299,7 +2305,8 @@ function peopleExclusions() {
   return { held: people.filter(r => r.needs_review).length,
     service: people.filter(r => r.service && !r.needs_review).length };
 }
-function remCommand(args) { return "co rem" + (REM.default_root ? " " + args : " --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args); }
+// The default notebook needs no --root; another shows `~/` for home, which only expands unquoted.
+function remCommand(args) { if (REM.default_root) return "co rem " + args; const root = String(REM.root_display || REM.root), quote = value => "'" + value.replace(/'/g, "'\\''") + "'", rest = root.slice(2); const shown = root === "~" ? "~" : root.startsWith("~/") ? "~/" + (/^[a-zA-Z0-9_@%+=:,./-]+$/.test(rest) ? rest : quote(rest)) : quote(root); return "co rem --root " + shown + " " + args; }
 function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function calendarDay(iso) {
@@ -3489,7 +3496,8 @@ function lastPass() {
     if (m && m[1] >= day) changed.add(r.path);
   }
   const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
-  const failed = runs.filter(run => FAILED.test(String(run.outcome || "")));
+  // A failed translation is not a failed investigation; the translation notice reports it.
+  const failed = runs.filter(run => FAILED.test(String(run.outcome || "")) && !/translat/.test(run.phase || ""));
   const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
   const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
     .filter(claim => byPath(claim.record) && (claim.sources || []).length && !sameClaim(claim.before || "", claim.after || ""));
@@ -3526,7 +3534,7 @@ function changedValue(node, r, label) {
 function weekChanges() {
   const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
   for (const run of REM.logs || []) {
-    if (runTime(run) < since) continue;
+    if (!(runTime(run) >= since)) continue;
     const day = new Date(runTime(run)).toISOString().slice(0, 10);
     for (const path of run.changed || []) { const r = byPath(path); if (r && (!seen.has(path) || seen.get(path).day < day)) seen.set(path, { r, day }); }
   }
@@ -3602,7 +3610,7 @@ function nightBand(showActivityLink = true) {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": t("The last pass") });
   if (!pass) {
     band.appendChild(el("h2", { class: "night-title", text: t("No pass yet") }));
-    band.appendChild(el("p", {}, [t("Each night co rem reads what came in and rewrites the pages it touches. Run "), el("code", { text: "co rem sync" }), t(" to do one pass now.")]));
+    band.appendChild(el("p", {}, [t("Each night co rem reads what came in and rewrites the pages it touches. Run "), el("code", { text: remCommand("sync") }), t(" to do one pass now.")]));
     return band;
   }
   const asOf = new Date(REM.as_of).getTime() || Date.now();
@@ -3701,11 +3709,12 @@ function renderRail(active) {
   privacy.onclick = togglePrivate;
   const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
     el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
+  settings.appendChild(notebookLanguages());
   foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
     : t(scheduleState(s) || "No pass scheduled");
-  settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "") }));
+  settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "").replace("co rem start", () => remCommand("start")) }));
   settings.appendChild(el("code", { text: location.protocol === "about:" ? t("Reload for latest") : remCommand("open") + " " + t("re-renders") }));
   settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
     el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
@@ -3864,7 +3873,7 @@ function morningBrief() {
   if (first) {
     if (pass.changed.length) brief.appendChild(el("p", { class: "quiet-line", text: t("Your notebook was just built. Overnight changes appear here after the next update.") }));
     if (!pass.failed.length && nightlyUpdatesOff()) brief.appendChild(el("div", { class: "translation-note" }, [
-      el("p", { html: inline(t("Nightly updates are off — `co rem start` turns them on."), "") }), commandChip(remCommand("start"))]));
+      el("p", { text: t("Nightly updates are off.") }), commandChip(remCommand("start"))]));
   } else if (claims.length) {
     brief.appendChild(el("ul", { class: "overnight-changes" }, claims.slice(0, 3).map(overnightChange).filter(Boolean)));
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
@@ -4085,11 +4094,24 @@ function homeFind() {
   return el("section", { class: "home-find" }, [sectionHead("Find"), find,
     el("div", { class: "task-links" }, links.filter(([, , count]) => count).map(([title, href]) => el("a", { href, text: t(title) })))]);
 }
+function notebookLanguages() {
+  const languages = REM.your_languages || [];
+  // The sidebar is narrow: a button copies the whole command instead of showing a wrapped path.
+  const command = remCommand("config set languages " + (languages.join(",") || "en"));
+  const changeLanguages = el("button", { type: "button", class: "theme-btn", title: command, text: t("Copy the command to change them") });
+  changeLanguages.onclick = () => copyToClipboard(command, changeLanguages, t("Copied — paste it in a terminal"));
+  return el("div", { class: "notebook-languages" }, [
+    el("div", { text: t("Notebook languages") + (uiLanguage === "zh" ? "：" : ": ") + (languages.map(nativeName).join(" · ") || t("Unknown")) + " — " + t(REM.languages_from || "detected") }),
+    changeLanguages]);
+}
 function translationNotice() {
   if (uiLanguage !== "zh") return null;
-  const pages = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category));
-  if (!pages.length || pages.filter(r => r.translations?.zh).length >= pages.length / 2) return null;
-  return el("div", { class: "translation-note" }, [t("Most pages have no Chinese version yet; showing the English originals."),
+  const pages = listedRecords().filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "skills"].includes(r.category));
+  const last = (REM.logs || []).find(log => ["init-translation", "daily-translation"].includes(log.phase));
+  const failed = (last?.pages || []).filter(row => row.outcome === "failed" && pages.some(r => r.path === row.page && !r.translations?.zh)).length;
+  if (!pages.length || (!failed && pages.filter(r => r.translations?.zh).length >= pages.length / 2)) return null;
+  return el("div", { class: "translation-note" }, [
+    failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) : t("Most pages have no Chinese version yet; showing the English originals."),
     commandChip(remCommand("translate --all"))]);
 }
 function overview() {
@@ -4265,8 +4287,8 @@ function contactDirectory() {
       const name = row.name || row.email;
       const prepare = el("button", { type: "button", text: t("Prepare in terminal"), "aria-label": t("Show the command to prepare a memory for {name}", { name }) });
       prepare.onclick = () => {
-        const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
-          + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
+        const command = remCommand("stub person " + shellArg(name)
+          + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email));
         const cell = action.firstChild;
         cell.textContent = t("Run this in a terminal, then follow the next investigation command:");
         const copy = el("button", { type: "button", text: t("Copy command") });
@@ -5840,7 +5862,7 @@ function reviewPage() {
   main.textContent = "";
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Review") })]));
   main.appendChild(el("h1", { text: t("Questions & connections") }));
-  main.appendChild(el("p", { class: "lede", text: t("Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again.") }));
+  main.appendChild(el("p", { class: "lede", text: t("Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again.").replace("co rem open", () => remCommand("open")) }));
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
   for (const row of REM.reviews || []) {
     const box = el("section", { class: "review" });
@@ -5850,7 +5872,7 @@ function reviewPage() {
     box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path }))));
     if (row.response) box.appendChild(el("p", { class: "response", text: row.author + ": " + row.response }));
     if (row.status === "pending") {
-      const command = "co rem --root " + quote(REM.root) + " review " + quote(row.id);
+      const command = remCommand("review " + quote(row.id));
       for (const verdict of row.kind === "link" ? ["yes", "no"] : ["answer"]) {
         const text = command + " --verdict " + verdict + " --author 'your name' --response 'your reason or answer'";
         const button = el("button", { type: "button", text: t("Copy {verdict} command", { verdict: t(verdict) }) });
@@ -5866,9 +5888,17 @@ function reviewPage() {
   if (!(REM.reviews || []).length) main.appendChild(emptyState("Nothing to review"));
 }
 
+function cacheChineseInterface() {
+  for (const r of REM.records) {
+    if (r.translations?.zh) continue;
+    const tag = (REM.your_languages || []).find(tag => /^zh-/i.test(tag) && r.translations?.[tag]);
+    if (tag) r.translations.zh = r.translations[tag];
+  }
+}
 let entranceView = "";
 function render() {
   if (!REM) return;
+  cacheChineseInterface();
   for (const r of REM.records) swapLanguage(r, r.readLanguage ?? (uiLanguage === "en" ? "" : uiLanguage));
   memoryPass = lastPass();
   document.documentElement.lang = uiLanguage;
@@ -6286,8 +6316,8 @@ async function readIn(r, tag, status, select) {
 }
 function askHost(body) {
   return fetch("/rem/translate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
-    .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run co rem open again" } : response.json())
-    .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run co rem open again" }));
+    .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run " + remCommand("open") + " again" } : response.json())
+    .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run " + remCommand("open") + " again" }));
 }
 function swapLanguage(r, tag) {
   const shown = tag && r.translations?.[tag] ? tag : "";
