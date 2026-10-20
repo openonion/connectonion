@@ -1,6 +1,7 @@
 """Map observed mail domains into unverified organization candidates; no model."""
 
 import re
+from urllib.parse import urlsplit
 
 from .scan import personal_mailbox
 
@@ -34,21 +35,25 @@ def organisation(domain: str) -> str:
 LEGAL_SUFFIX = re.compile(r'\b(?:pty|ltd|limited|inc|llc|corp|co|gmbh)\b\.?', re.I)
 
 
-def own_domain(domain: str, owner: dict | None, owner_page: str) -> bool:
-    """Is this the owner's own organisation? Never a counterparty.
-
-    The 2026-10-10 notebook made orgs/openonion-ai from the owner's colleagues
-    writing from the owner's own domain, and orgs/connectonion-com from
-    pypi@connectonion.com -- CONNECTONION PTY LTD is the owner's signing entity.
-    Own is a domain the owner writes from, or one named like the Company or
-    Signing entity on the owner's page."""
-    mine = {organisation(d) for d in map(_domain, (owner or {}).get('addresses', [])) if d}
+def own_company(domain: str, owner_page: str, project_pages: list[str]) -> bool:
+    """Ownership needs a named company or an owned project, never just a sending address."""
+    org = organisation(domain.casefold().rstrip('.'))
+    # University and mailbox addresses cannot establish company ownership, even in a mistaken page field.
+    if personal_mailbox(org) or {'edu', 'ac'}.intersection(org.split('.')):
+        return False
+    lines = re.findall(r'^- (?:Company|Signing entity): (.+)$', owner_page, re.M)
+    for page in project_pages:
+        lines += re.findall(r'^- Organisation: (.+)$', page, re.M)
+        for website in re.findall(r'^- Website: (.+)$', page, re.M):
+            website = re.sub(r'\[([^\]]+)\]\(([^)]*)\)', r'\2', website).strip(' `').split()[0]
+            host = urlsplit(website if '://' in website else '//' + website).hostname
+            if host and organisation(host.rstrip('.')) == org:
+                return True
     names = set()
-    for line in re.findall(r'^- (?:Company|Signing entity): (.+)$', owner_page, re.M):
+    for line in lines:
         line = re.sub(r'\[(\d+)\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', line))
         names |= {re.sub(r'[^a-z0-9]', '', LEGAL_SUFFIX.sub('', part).casefold()) for part in re.split(r'[;,/]', line)}
-    org = organisation(domain)
-    return org in mine or org.split('.')[0] in names - {'', 'unknown'}
+    return org.split('.')[0] in names - {'', 'unknown'}
 
 
 def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
@@ -77,19 +82,20 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
                 group['contacts'].add(person['record'])
                 group['talks'] |= not (person.get('automated_hint') or person.get('one_way'))
     owner_page = notebook.read(owner['record']) if owner and notebook.path(owner['record']).is_file() else ''
+    project_pages = [notebook.read(p) for p in notebook.list('projects')]
     for domain in map(_domain, (owner or {}).get('addresses', [])):
         if domain:
             group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set(), 'talks': False})
             group['domains'].add(domain)
     groups = {key: group for key, group in groups.items()
-              if own_domain(key, owner, owner_page) or (group['contacts'] and group['talks'])}
+              if own_company(key, owner_page, project_pages) or (group['contacts'] and group['talks'])}
     rows, created = [], []
     for domain, group in sorted(groups.items()):
         contacts, domains = group['contacts'], sorted(group['domains'] | {domain})
         record = next((existing[d] for d in [domain, *domains] if d in existing), None) \
             or record_for('orgs', domain, domain)
         rows.append({'domain': domain, 'record': record, 'people': sorted(contacts), 'domains': domains,
-                     **({'own': True} if own_domain(domain, owner, owner_page) else {}),
+                     **({'own': True} if own_company(domain, owner_page, project_pages) else {}),
                      'classification': 'domain candidate; organization identity unverified'})
         if not notebook.stub_org(record, domain, domains, sorted(contacts)):
             continue
