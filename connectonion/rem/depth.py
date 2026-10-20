@@ -6,6 +6,7 @@ its own share of the Codex week, 30 points by default (the owner's #2533 decisio
 """
 
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from math import log2
 
@@ -63,13 +64,25 @@ def _mapped_rows(mapped) -> dict:
             for row in mapped.get(kind, []) if row.get("record")}
 
 
+def _notification_org(record, mapped_rows) -> bool:
+    """2026-10-20: the first org picked was an event domain with one one-way person."""
+    row = mapped_rows.get(record)
+    if not record.startswith("orgs/") or row is None:
+        return False
+    people = [mapped_rows.get(person, {}) for person in row["people"]]
+    return all(person.get("automated_hint") or person.get("one_way") for person in people)
+
+
 def _candidate(notebook, record, mapped_rows, rounds, today) -> dict:
     text = notebook.read(record)
     value, last = _value_last(record, mapped_rows.get(record), text, mapped_rows)
     metrics = page_metrics(text)
     recent = 2 if last and today - _stamp(last) <= timedelta(days=30) else 1
     thin = 1 / (1 + metrics["quotes"] / 3 + metrics["sources"] / 10)
-    priority = log2(2 + value) * recent * thin / (1 + len(rounds))
+    # 2026-10-20, fresh notebook copy, two-slot picker: 5 mails on an almost empty
+    # page (priority 4.3) beat 30–55 mails; the round gained one quote, 2,669 ->
+    # 2,660 chars. Square log-value so thinness does not outweigh useful activity.
+    priority = log2(2 + value) ** 2 * recent * thin / (1 + len(rounds))
     return {"record": record, "priority": priority, "value": value, "recent": recent,
             "rounds": len(rounds), **metrics}
 
@@ -84,7 +97,8 @@ def candidates(root) -> list[dict]:
     for record in notebook.list():
         row = mapped_rows.get(record, {})
         if (not record.startswith(("people/", "projects/", "orgs/")) or record == owner
-                or row.get("classification") == "account owner" or row.get("automated_hint")):
+                or row.get("classification") == "account owner" or row.get("automated_hint")
+                or _notification_org(record, mapped_rows)):
             continue
         rounds = history.get(record, [])
         if _resting(rounds, today):
@@ -143,7 +157,9 @@ def deepen(root, record, *, stage=None) -> dict:
 
 
 def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
+    started = time.monotonic()
     config = read_config(root)
+    limit = config["limits"]["depth_slot_minutes"]
     if records is None:
         choices = candidates(root)
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
@@ -158,6 +174,11 @@ def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
         return {"rounds": [], "picked": [], "stopped": problem, "left": len(choices)}
     rounds, picked, reason = [], [], ""
     for choice in choices[:pages]:
+        if rounds:
+            minutes = (time.monotonic() - started) / 60
+            if minutes > limit:
+                reason = f"the slot has run {int(minutes)} of its {limit} minutes"
+                break
         reason = stop_reason(root, config)
         if reason:
             break

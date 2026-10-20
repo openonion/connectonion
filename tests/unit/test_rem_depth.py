@@ -42,17 +42,29 @@ def test_candidates_rank_value_thinness_recency_and_rounds(root):
     Notebook(root).write(thick, PAGE + '\n'.join(f'“Quote {n}”' for n in range(30)))
     Notebook(root).write(project, "# Atlas\n")
     mapped(root, people=[{"record": thick, "mails": 100}, {"record": RECORD, "mails": 100}],
-           projects=[{"record": project, "sessions": 10, "last": "2026-10-15"}])
+           projects=[{"record": project, "sessions": 20, "last": "2026-10-15"}])
     rows = depth.candidates(root)
     assert [r["record"] for r in rows] == [project, RECORD, thick]
-    expected = log2(102) / (1 + 1 / 3 + 1 / 10)
+    expected = log2(102) ** 2 / (1 + 1 / 3 + 1 / 10)
     assert rows[1]["priority"] == pytest.approx(expected)
-    assert rows[0]["value"] == 10 and rows[0]["recent"] == 2
+    assert rows[0]["value"] == 20 and rows[0]["recent"] == 2
     assert rows[1]["value"] == 100 and rows[1]["recent"] == 1
     write_json(state_path(root, "depth.json"), {RECORD: [round_row(quotes=[1, 3])] * 2})
     row = next(r for r in depth.candidates(root) if r["record"] == RECORD)
     assert row["rounds"] == 2 and row["priority"] == pytest.approx(expected / 3)
     assert depth.page_metrics(PAGE) == {"chars": len(PAGE), "quotes": 1, "sources": 1}
+
+
+def test_more_mail_outweighs_an_empty_page(root):
+    """2026-10-20: 5 mails beat 30–55; the round gained one quote, 2,669 -> 2,660 chars."""
+    empty = "people/robin.md"
+    Notebook(root).write(empty, "# Robin\n")
+    Notebook(root).write(RECORD, PAGE + '\n“Second quote” [2]\n“Third quote” [3]\n'
+                         '- [2] gmail:bbbbbbbbbbbb\n- [3] gmail:cccccccccccc\n')
+    mapped(root, people=[{"record": RECORD, "mails": 30}, {"record": empty, "mails": 5}])
+    rows = depth.candidates(root)
+    assert [row["record"] for row in rows] == [RECORD, empty]
+    assert rows[0]["quotes"] == 3 and rows[0]["sources"] == 3
 
 
 @pytest.mark.parametrize("owner", [RECORD, {"record": RECORD}])
@@ -76,12 +88,12 @@ def test_candidates_include_unmapped_pages_with_project_activity(root):
     rows = {row["record"]: row for row in depth.candidates(root)}
     assert set(rows) == {RECORD, project, "projects/quiet.md", "orgs/lantern.md"}
     assert rows["orgs/lantern.md"]["value"] == 0 and rows["orgs/lantern.md"]["recent"] == 1
-    assert rows[project]["priority"] == pytest.approx(log2(16) * 2)
+    assert rows[project]["priority"] == pytest.approx(log2(16) ** 2 * 2)
     assert rows["projects/quiet.md"]["priority"] == 1
     assert rows[RECORD]["priority"] == pytest.approx(1 / (1 + 1 / 3 + 1 / 10))
     mapped(root, projects=[{"record": project, "sessions": 2, "last": "2026-08-01"}])
     rows = {row["record"]: row for row in depth.candidates(root)}
-    assert rows[project]["priority"] == log2(4)
+    assert rows[project]["priority"] == log2(4) ** 2
 
 
 def test_unmapped_project_sessions_come_only_from_paths(root):
@@ -101,15 +113,21 @@ def test_org_value_and_recency_come_from_its_people(root, last, recent):
            orgs=[{"record": org, "people": ["people/other.md", RECORD], "mails": 999, "last": "2026-10-20"}])
     row = next(row for row in depth.candidates(root) if row["record"] == org)
     assert row["value"] == 18 and row["recent"] == recent
-    assert row["priority"] == pytest.approx(log2(20) * recent)
+    assert row["priority"] == pytest.approx(log2(20) ** 2 * recent)
 
 
-def test_org_with_no_people_has_zero_value(root):
-    org = "orgs/acme.md"
-    Notebook(root).write(org, "# Acme\n")
-    mapped(root, orgs=[{"record": org, "people": []}])
-    row = next(row for row in depth.candidates(root) if row["record"] == org)
-    assert row["value"] == 0 and row["recent"] == 1 and row["priority"] == 1
+def test_notification_only_and_empty_orgs_are_skipped_but_mixed_org_is_kept(root):
+    """2026-10-20: the first org picked was an event domain with one one-way person."""
+    orgs = {"one-way": ["people/notice.md"], "automated": ["people/bot.md"], "empty": [],
+            "notifications": ["people/notice.md", "people/bot.md"],
+            "mixed": ["people/notice.md", RECORD]}
+    for name in orgs:
+        Notebook(root).write(f"orgs/{name}.md", f"# {name}\n")
+    mapped(root, people=[{"record": RECORD, "automated_hint": False, "one_way": False},
+                         {"record": "people/notice.md", "automated_hint": False, "one_way": True},
+                         {"record": "people/bot.md", "automated_hint": True, "one_way": False}],
+           orgs=[{"record": f"orgs/{name}.md", "people": people} for name, people in orgs.items()])
+    assert {row["record"] for row in depth.candidates(root)} == {RECORD, "orgs/mixed.md"}
 
 
 @pytest.mark.parametrize("age,changed,insights,rests", [
@@ -231,6 +249,26 @@ def test_slot_checks_budget_before_each_page(root, monkeypatch, explicit):
     assert result["stopped"] == "deepening has used 30 of its 30-point weekly budget"
 
 
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("limit", [5, 60])
+@pytest.mark.parametrize("offset,completed", [(-1, 2), (0, 2), (1, 1)])
+def test_slot_checks_wall_time_before_starting_another_page(root, monkeypatch, explicit, limit, offset, completed):
+    project = "projects/atlas.md"
+    Notebook(root).write(project, "# Atlas\n")
+    config = read_config(root)
+    config["limits"]["depth_slot_minutes"] = limit
+    monkeypatch.setattr(depth, "read_config", lambda root: config)
+    clock = iter([100, 100 + (limit + offset) * 60])
+    monkeypatch.setattr(depth.time, "monotonic", lambda: next(clock))
+    calls = []
+    result = depth.slot(root, records=[RECORD, project] if explicit else None,
+                        stage=lambda path, record, name: calls.append((record, name)) or {})
+    assert len(result["rounds"]) == completed and result["left"] == 2 - completed
+    assert calls == [(row["record"], name) for row in result["rounds"] for name in ("enrich", "muse")]
+    assert len(result["picked"]) == completed
+    assert result["stopped"] == (f"the slot has run {limit + offset} of its {limit} minutes" if completed == 1 else "")
+
+
 def test_slot_explicit_records_bypass_candidates_and_page_limit_in_order(root, monkeypatch):
     records = ["projects/lantern.md", RECORD, "projects/quiet.md"]
     for record in (records[0], records[2]):
@@ -271,12 +309,21 @@ def test_slot_stops_before_starting(root, monkeypatch, blocked):
 def test_depth_limits_merge_and_validate(root):
     limits = default_config()["limits"]
     assert limits["depth_quota_points"] == 30 and limits["depth_pages_per_slot"] == 2
+    assert limits["depth_slot_minutes"] == 60
     path = root / "config.yaml"
     path.write_text('\n'.join(line for line in path.read_text().splitlines() if 'depth_' not in line))
     assert read_config(root)["limits"] == limits
     config = read_config(root)
     config["limits"]["depth_quota_points"] = 101
     with pytest.raises(RemError, match="1 to 100"):
+        validate(config)
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, True, "60"])
+def test_slot_minutes_must_be_a_positive_integer(root, value):
+    config = read_config(root)
+    config["limits"]["depth_slot_minutes"] = value
+    with pytest.raises(RemError, match="positive integers"):
         validate(config)
 
 
@@ -298,7 +345,7 @@ def test_deepen_cli_json_exposes_why_each_page_was_picked(root, monkeypatch):
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "--json", "deepen"])
     assert result.exit_code == 0, result.output
     picked = json.loads(result.stdout)["data"]["picked"]
-    assert picked == [{"record": RECORD, "priority": pytest.approx(log2(9) * 2 / (1 + 1 / 3 + 1 / 10)),
+    assert picked == [{"record": RECORD, "priority": pytest.approx(log2(9) ** 2 * 2 / (1 + 1 / 3 + 1 / 10)),
                        "value": 7, "recent": 2, "quotes": 1, "sources": 1, "rounds": 0}]
 
 
