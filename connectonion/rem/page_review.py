@@ -465,6 +465,28 @@ def sources_before_footer(text: str) -> str:
     return before + '\n' + '\n'.join(line.rstrip('\n') for line in added) + '\n\n' + head[at:] + tail
 
 
+def merge_duplicate_definitions(text: str) -> str:
+    """Keep the first definition of the same citation number and source id."""
+    # 2026-10-20: one muse page defined [2] twice, dated 10-10 and 10-13;
+    # even the last resort refused the otherwise salvageable page.
+    visible = prose(text)
+    section = re.search(r'(?ms)^## Sources[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', visible)
+    if not section:
+        return text
+    seen, kept = set(), []
+    lines = text[section.start(1):section.end(1)].splitlines(keepends=True)
+    for line, shown in zip(lines, section[1].splitlines(keepends=True)):
+        match = re.match(r'^[ \t]*(?:- )?\[(W?\d+)\][ \t]*:?[ \t]+(.+)', shown)
+        if match:
+            source = re.split(r'\s+[—–]\s+', match[2].strip(), 1)[0].strip('`')
+            key = match[1], source
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(line)
+    return text[:section.start(1)] + ''.join(kept) + text[section.end(1):]
+
+
 def normalize_numbered_sources(text: str) -> str:
     """Accept Markdown's numbered-list spelling for an otherwise valid citation.
 

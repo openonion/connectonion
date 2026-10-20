@@ -230,6 +230,59 @@ def test_project_promotion_keeps_history_and_drops_unused_sources_appended_after
     assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
+@pytest.mark.parametrize('same_source', [True, False])
+@pytest.mark.parametrize('second_number', [2, 3])
+def test_duplicate_definitions_merge_only_the_same_number_and_source(same_source, second_number):
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] project-source:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = f'- [{second_number}] project-source:' + ('a1' if same_source else 'b2') * 32 + ' — 2026-10-13\n'
+    head = '# Lantern\n\nA decision. [2]\n' + first + '\n## Sources\n'
+    tail = '\n## Notes\n' + second + '\nInvestigation: mapped 2026-10-20\n'
+    text = head + first + second + tail
+    expected = head + first + ('' if same_source and second_number == 2 else second) + tail
+    assert merge_duplicate_definitions(text) == expected
+    assert merge_duplicate_definitions(expected) == expected
+    errors = validate('notes/lantern.md', expected.split('## Notes')[0], '', [])
+    assert ('Missing or duplicate citation: 2' in errors) is (not same_source and second_number == 2)
+
+
+def test_duplicate_definitions_preserve_distinct_file_paths_with_spaces():
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] file:/tmp/acme/lantern notes/a.md#sha256:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = '- [2] file:/tmp/acme/lantern notes/b.md#sha256:' + 'b2' * 32 + ' — 2026-10-13\n'
+    text = '# Lantern\n\nA decision. [2]\n\n## Sources\n' + first + second
+    assert merge_duplicate_definitions(text) == text
+
+
+def test_duplicate_definitions_ignore_fenced_examples():
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] project-source:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = first.replace('2026-10-10', '2026-10-13')
+    head = '# Lantern\n\nA decision. [2]\n\n## Sources\n```text\n' + first + '```\n'
+    assert merge_duplicate_definitions(head + first + second) == head + first
+
+
+@pytest.mark.parametrize('last_resort', [False, True])
+def test_promotion_merges_identical_source_definitions(tmp_path, last_resort):
+    from connectonion.rem.runner import _promote_candidate
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'projects/lantern.md'
+    notebook.stub_project(record, 'Lantern')
+    original = notebook.read(record)
+    source = 'project-source:' + 'a1' * 32
+    text = original.replace('## What it is\n- Unknown — not investigated yet',
+                            '## What it is\nA local export tool. [2]')
+    text = text.replace('## Sources\n', f'## Sources\n- [2] {source} — 2026-10-10\n')
+    text += f'- [2] {source} — 2026-10-13\n'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(text)
+    _promote_candidate(notebook, record, candidate, original, [{'source': source}], tmp_path, None,
+                       last_resort=last_resort)
+    page = notebook.read(record)
+    assert page.count(source) == 1 and '2026-10-10' in page and '2026-10-13' not in page
+
+
 def test_numbered_source_list_is_normalized_without_changing_claims():
     text = ('# Aurora\n\nThe date is open. [1]\n\n## Sources\n'
             '1. `codex:synthetic:1` — user correction\n'

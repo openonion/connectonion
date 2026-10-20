@@ -549,7 +549,7 @@ def _followup_prompt(prompt: str, instruction: str) -> str:
     return prompt + "\n\n## Follow-up\n" + instruction
 
 
-def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone):
+def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone, run=None):
     """Run the mail searches the model asked for, read-only, and give it one more turn with the results.
 
     The model has no network: its sandbox is the defence against mail that
@@ -579,7 +579,7 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
          + (f" ({item['local_time']})" if item.get("local_time") else "") + f"\nSubject: {item['subject']}\n"
          f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
         + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
-    again = run_task(workdir, _followup_prompt(
+    again = (run or run_task)(workdir, _followup_prompt(
         prompt, f"Your searches {json.dumps(queries, ensure_ascii=False)} found "
                 f"{len(found)} new message(s), in {results}. Update the candidate with what "
                 "they show and cite their ids; keep everything else."), config, stage)
@@ -640,19 +640,45 @@ def _usage_delta(config, before, after) -> dict | None:
     return {key: max(0, (value or 0) - (before.get(key) or 0)) for key, value in after.items()}
 
 
-def _repair_thread(session, usage):
+def _retry_timeouts(metrics):
+    """Retry a timed-out call once, preserving its usage and resumed thread."""
+    # 2026-10-20: one enrich period hit the 1,200s limit and failed the stage.
+    # Codex usage is cumulative; keep retry charges on subsequent resumed turns.
+    thread_extras = {}
+
+    def run(workdir, text, config, stage, **options):
+        failed_usage = None
+        extra = thread_extras.get(options.get("session")) if config["runner"] == "codex" else None
+        for attempt in range(2):
+            try:
+                result = run_task(workdir, text, config, stage, **options)
+            except RunFailed as error:
+                failed_usage = _add_usage(failed_usage, error.usage)
+                if "timed out" not in str(error) or attempt == 1:
+                    error.usage = _add_usage(extra, failed_usage) if failed_usage else None
+                    raise
+                metrics["timeouts_retried"] += 1
+                continue
+            result["usage"] = _add_usage(extra, failed_usage, result.get("usage"))
+            if config["runner"] == "codex" and result.get("session_id"):
+                thread_extras[result["session_id"]] = _add_usage(extra, failed_usage)
+            return result
+    return run
+
+
+def _repair_thread(session, usage, run=None):
     """Reuse the originals already read; charge only the resumed repair (#2533)."""
-    def run(workdir, text, config, stage):
+    def resume(workdir, text, config, stage):
         nonlocal usage
         try:
-            result = run_task(workdir, text, config, stage, session=session)
+            result = (run or run_task)(workdir, text, config, stage, session=session)
         except RunFailed as error:
             raise RunFailed(str(error), _usage_delta(config, usage, error.usage)) from error
         current = result.get("usage")
         result["usage"] = _usage_delta(config, usage, current)
         usage = current or usage
         return result
-    return run
+    return resume
 
 
 def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path) -> str:
@@ -678,7 +704,8 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
-                         stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS):
+                         stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
+                         stage_progress=None):
     """Review the page; let its writer fix what review names, twice; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
@@ -695,7 +722,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
-                                       carried=carried, ask_quotes=attempt < repairs and stage == "investigate")
+                                       carried=carried, ask_quotes=attempt < repairs and stage == "investigate",
+                                       stage_progress=stage_progress)
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -712,6 +740,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                 break
             try:
                 result["repairs"] += 1
+                if stage_progress:
+                    stage_progress(f"repair {result['repairs']}")
                 repair = run(workdir, f"Edit the existing page at {candidate}. "
                              + repair_instruction(record, errors, directory, workdir), config, stage)
             except RunFailed as error:
@@ -723,7 +753,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried)
+                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
+                       stage_progress=stage_progress)
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -759,19 +790,24 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False):
+                       investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
+                       stage_progress=None):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
-                              sources_before_footer,
+                              sources_before_footer, merge_duplicate_definitions,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content, unverified_quotes)
+    # 2026-10-20: last enrich turns measured 730–1,690s with review folded in.
+    if stage_progress:
+        stage_progress("reviewing")
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
     from .fact_extract import OTHERS_PHONE
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))
+    text = merge_duplicate_definitions(text)
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
     text = facts.upgrade(record, restore_missing_facts(record, restore_runner_fields(record, text, original), original))
@@ -883,6 +919,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
+        if stage_progress:
+            stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
         # First-run backfill holds the lock per saved message (2026-10-16 trial).
         with _promotion_lock(notebook.root, candidate, usage, lock_held):
@@ -1282,7 +1320,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         after = {r: notebook.read(r) for r in notebook.list()}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
-    metrics = {"stage": stage, "harness": config["runner"], "model": config["model"],
+    metrics = {"stage": stage, "harness": config["runner"], "model": config["model"], "timeouts_retried": 0,
                "speed": config["speed"],
                "tier": "summary" if summary else "agent",
                "instructions_chars": len((directory / "instructions.md").read_text()),
@@ -1307,16 +1345,18 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     started = time.monotonic()
     result = {}
     prior_turn_usage = None
+    resuming = False
     turn_replies = []
     inquiry_usage = {}
     refusals = []
+    run_turn = _retry_timeouts(metrics)
     try:
         from .inquiry import routing, stage_config
         from .inquiry import run as inquiry_run
         if stage == "investigate" and candidate and routing(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,
-                lambda _task_directory, text, route, phase: run_task(workdir, text, route, phase))
+                lambda _task_directory, text, route, phase: run_turn(workdir, text, route, phase))
             inquiry_usage = inquiry_result.get("usage") or {}
             prompt += f"\n\n## Inquiry findings\nRead {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         if "<co_rem_task>" in prompt:
@@ -1327,7 +1367,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         selected_config = stage_config(notebook.root, config, "render") if candidate and stage == "investigate" else config
         if turns and stage_progress:
             stage_progress(f"turn 1 of {len(turns)}")
-        result = run_task(workdir, prompt, selected_config, stage)
+        result = run_turn(workdir, prompt, selected_config, stage)
         if turns:
             turn_replies.append(str(result.get("result") or ""))
         session = result.get("session_id")
@@ -1337,18 +1377,24 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             if stage_progress:
                 stage_progress(f"turn {number} of {len(turns)}")
             prior_turn_usage = result.get("usage")
-            result = run_task(workdir, text, selected_config, stage, session=session)
+            resuming = True
+            result = run_turn(workdir, text, selected_config, stage, session=session)
             turn_replies.append(str(result.get("result") or ""))
             result["usage"] = _thread_usage(selected_config, prior_turn_usage, result.get("usage"))
             prior_turn_usage = None
+            resuming = False
         untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
         if candidate and not summary and (not candidate.is_file()
                                           or untouched and stage not in ("enrich", "muse")
                                           and "NO CHANGE" not in str(result.get("result") or "")):
-            result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
+            prior_turn_usage = result.get("usage")
+            result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result, run=run_turn)
+            prior_turn_usage = None
         if stage == "investigate" and candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
+            prior_turn_usage = result.get("usage")
             result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result,
-                                    notebook_zone(read_config(notebook.root, validated=False)))
+                                    notebook_zone(read_config(notebook.root, validated=False)), run=run_turn)
+            prior_turn_usage = None
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")
@@ -1359,11 +1405,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
             and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
         if candidate and not no_change:
-            repair_run = (_repair_thread(result["session_id"], result.get("usage"))
-                          if stage in ("enrich", "muse") and result.get("session_id") else None)
+            repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
+                          if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
-                                 run=repair_run,
+                                 run=repair_run, stage_progress=stage_progress,
                                  investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
                                  # A model that only replies, or never wrote the page, will not edit
                                  # the file a repair names.
@@ -1380,8 +1426,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 _verify_no_change(directory, items, result.get("usage"))
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
-        if prior_turn_usage:
-            usage = _thread_usage(selected_config, prior_turn_usage, usage)
+        if prior_turn_usage and isinstance(error, RunFailed):
+            usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
+                     else _add_usage(prior_turn_usage, usage))
         if isinstance(error, RunFailed) and inquiry_usage and not result:
             usage = {key: (usage or {}).get(key, 0) + inquiry_usage.get(key, 0)
                      for key in (usage or {}).keys() | inquiry_usage.keys()}
