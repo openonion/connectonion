@@ -420,25 +420,25 @@ def test_rem_session_init_summarises_only_when_runner_ready(first_run, monkeypat
 
 
 def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins_them(tmp_path):
-    """#2349: a real first run gave Ody two pages and Ziming Gong a second under 子明;
+    """#2349: a real first run gave Corin two pages and Zia Tanaka a second under 子亚;
     nothing said so, and `co rem merge` was there to join them."""
     from connectonion.cli.commands.rem_commands import _first_tidy, _init_done
     from connectonion.rem.config import prepare
     from connectonion.rem.files import Notebook
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/zi.md", "子明", ["ziming@openonion.ai"], email="ziming@openonion.ai")
-    notebook.stub_person("people/ziming.md", "Ziming Gong", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    notebook.stub_person("people/zi.md", "子亚", ["zia@openonion.ai"], email="zia@openonion.ai")
+    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@openonion.ai"], email="zia@openonion.ai")
     said = []
     result = _first_tidy(tmp_path, said.append)
-    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/ziming.md",
-                                "why": "both list ziming@openonion.ai"}]
+    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/zia.md",
+                                "why": "both list zia@openonion.ai"}]
 
     class Ctx:
         obj = {"root": tmp_path, "json": False}
     text = _init_done(Ctx(), {"tidy": result})
-    assert "Possibly one person (check, then merge): 子明 and Ziming Gong, both list ziming@openonion.ai" in text
-    assert f"co rem --root {tmp_path} merge people/zi.md people/ziming.md" in text
+    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@openonion.ai" in text
+    assert f"co rem --root {tmp_path} merge people/zi.md people/zia.md" in text
 
 
 def test_default_window_matches_the_old_next_command(first_run):
@@ -1210,12 +1210,12 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     tries = []
 
     def run():
-        tries.append("dora")
-        raise NothingNew("Nothing dated before 2026-04-13 for Dora. No model was called.")
+        tries.append("briar")
+        raise NothingNew("Nothing dated before 2026-04-13 for Briar. No model was called.")
 
-    outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
+    outcomes, _ = _in_parallel([{"record": "people/briar.md", "mode": "full", "run": run}], workers=1,
                                gate=lambda: "", done=lambda job, outcome: [])
-    assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"
+    assert tries == ["briar"] and outcomes[0][1]["outcome"] == "nothing_new"
 
 
 @pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),

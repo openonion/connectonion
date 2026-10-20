@@ -54,10 +54,10 @@ def test_no_file_means_the_starter_not_no_home(in_tmp):
     """Not having customised a Home is a state, not an absence. This used to
     answer None, which is why the starter had to be written to disk on first
     boot — and why every agent's Home then froze at that version."""
-    ensure_dashboard({"name": "Lisa", "skills": []})
+    ensure_dashboard({"name": "Maren", "skills": []})
 
     frame = read_dashboard_snapshot(viewer=OWNER_VIEW)
-    assert frame and "Lisa" in frame["html"]
+    assert frame and "Maren" in frame["html"]
     assert read_dashboard_snapshot("sid", viewer=OWNER_VIEW)["session_id"] == "sid"
 
 
@@ -76,13 +76,13 @@ def test_read_snapshot_stamps_session_id(in_tmp):
 
 
 def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
-    meta = {"name": "Lisa", "skills": [
+    meta = {"name": "Maren", "skills": [
         {"name": "daily-brief", "description": "d", "location": "project"},
         {"name": "meeting_prep", "description": "d", "location": "project"},
     ]}
     ensure_dashboard(meta)
     html = read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
-    assert "Lisa" in html
+    assert "Maren" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
     assert ">daily-brief<" in html        # the name you actually type
@@ -458,7 +458,7 @@ def test_starter_skill_names_match_what_the_profile_publishes():
     from connectonion.network.host.server import _build_agent_profile
 
     meta = {
-        "name": "Lisa", "tools": [], "model": "co/gemini-3.7-flash",
+        "name": "Maren", "tools": [], "model": "co/gemini-3.7-flash",
         "skills": [
             {"name": "daily-brief", "description": "d", "location": "project"},
             {"name": "my-notes", "description": "d", "location": "user"},
@@ -532,7 +532,7 @@ def test_starting_a_host_writes_no_file(in_tmp):
     """The whole point. A file written once is a fossil of the starter that
     happened to be installed that day, and nothing ever refreshes it."""
     (in_tmp / ".co").mkdir()
-    ensure_dashboard({"name": "Lisa", "skills": []})
+    ensure_dashboard({"name": "Maren", "skills": []})
 
     assert not (in_tmp / ".co" / "dashboard.html").exists()
     assert not (in_tmp / "dashboard.html").exists()
@@ -546,7 +546,7 @@ def test_the_project_is_found_from_a_subdirectory(in_tmp, monkeypatch):
     nested.mkdir(parents=True)
     monkeypatch.chdir(nested)
 
-    ensure_dashboard({"name": "Lisa", "skills": []})
+    ensure_dashboard({"name": "Maren", "skills": []})
 
     assert dashboard_module.dashboard_path() == in_tmp / ".co" / "dashboard.html"
 
@@ -557,7 +557,7 @@ def test_an_existing_root_dashboard_is_still_served(in_tmp):
     (in_tmp / ".co").mkdir()
     (in_tmp / "dashboard.html").write_text("<h1>mine</h1>", encoding="utf-8")
 
-    ensure_dashboard({"name": "Lisa", "skills": []})
+    ensure_dashboard({"name": "Maren", "skills": []})
 
     assert dashboard_module.dashboard_path() == in_tmp / "dashboard.html"
     assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>mine</h1>"

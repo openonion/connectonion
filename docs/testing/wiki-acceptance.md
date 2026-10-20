@@ -224,11 +224,11 @@ person to be filed under.
 | with a "How they communicate" section | — | 62 of 76 (the rest are one- or two-mail contacts, where the Skill says not to infer style) |
 | with a verbatim quote | — | 12 |
 
-Vern Chan's page came out of batch 1 (his five mails plus the user's replies,
+Rowan Ashdown's page came out of batch 1 (his five mails plus the user's replies,
 nothing else): full title and office, five dated exchanges both ways
 including the user moving him to BCC, two quotes, the user's own style, and an
-Open that says what the mail does not settle. Ody Zhou's page is in Chinese
-because his mail is; Karen's records the user's same-day correction of an
+Open that says what the mail does not settle. Corin Marsh's page is in Chinese
+because his mail is; Ingrid's records the user's same-day correction of an
 overcommitment. Guests still land on one rolling `agenda/airbnb-guest-inquiries.md`
 because their correspondent is the Airbnb relay address, not the guest.
 
@@ -239,7 +239,7 @@ user, not a bug in the run.
 
 ### Why the people pages were thin, and what fixed it (2026-09-08)
 
-The 60-day Outlook run's `people/vern-chan.md` was two sentences. His seven
+The 60-day Outlook run's `people/rowan-ashdown.md` was two sentences. His seven
 mails held his full title and office, his address, a dated back-and-forth
 over two weeks, fixed greeting and sign-off habits, a cc habit, "thank you for
 being frank", and the user's own "On capacity: … On timing: …" style. Reading
@@ -250,7 +250,7 @@ Three causes, each with a fix and a measurement:
 | cause | fix | measured |
 |---|---|---|
 | the extract Skill capped itself at "forty bullets" and never asked for style, quotes, contact or a timeline | People are a block per person with five sub-bullets (role/contact, dated history with both sides, how they write + quote, how the user writes to them, open); no length cap; every non-noise mail yields a bullet | notes per 40 mails: 19–20 bullets, 8–10k chars (was 18 bullets / 6.5k for 79) |
-| the maintain Skill's only people example was three sentences | a full person-page shape and example; a person's page grows and is never shrunk | Vern's page: role, address, contact, four dated exchanges, style with a quote, the user's style, open |
+| the maintain Skill's only people example was three sentences | a full person-page shape and example; a person's page grows and is never shrunk | Rowan's page: role, address, contact, four dated exchanges, style with a quote, the user's style, open |
 | Outlook flattens a mail to one line, so the quoted-thread cut (`^From: … Sent:`, `wrote:$`) never matched and every reply carried the whole thread | markers match without line anchors or word boundaries; signature links dropped | `test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line` |
 
 Cost of the richer notes: ~200k input tokens and 2.5–3 min per 40 mails

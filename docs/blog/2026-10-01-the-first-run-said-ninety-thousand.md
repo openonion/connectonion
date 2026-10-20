@@ -41,7 +41,7 @@ page ran away.
 
 The same morning showed what the money bought. Your own page had written "Role:
 Partner at OpenOnion, running marketing; Airbnb co-host" and cited a mail in
-which the owner described Ody, his partner. A list of someone else's roles,
+which the owner described Corin, his partner. A list of someone else's roles,
 written by you, had become yours. The page also followed the person template to
 the letter, down to "How the user writes to them: Not applicable", and turned a
 month of coding sessions into a count. It now has its own short spec: who you

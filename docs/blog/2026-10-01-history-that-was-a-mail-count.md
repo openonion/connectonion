@@ -7,10 +7,10 @@ were 424 History bullets, and 379 of them were the same machine-written line:
 gmail. [1]". The citation pointed at `.state/map.json`. On most pages, History
 was the only section with anything in it, and what it held was a count.
 
-The pages that had been investigated were not much better. Ody Zhou's History
+The pages that had been investigated were not much better. Corin Marsh's History
 ran to 17 bullets and 4,300 characters, in date order from July, so the reader
 had to scroll past the start of the relationship to find this week. Five of the
-17 were "Aaron sent Ody a report". Each bullet was a paragraph.
+17 were "Aaron sent Corin a report". Each bullet was a paragraph.
 
 The count was not useless. The lists in the reader sort people by last
 contact, and for a page nobody had investigated, the only date was inside that
@@ -32,4 +32,4 @@ already in the sentence that cites it.
 
 In the reader, History is now a timeline: the date in its own column, the
 newest at the top, and only the latest eight shown until you ask for more.
-Ody's page opens on 27 September instead of 5 July.
+Corin's page opens on 27 September instead of 5 July.

@@ -92,7 +92,7 @@ def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypat
         def my_addresses(self): return {"me@x.y"}
         def list_between(self, s, e, n):
             # window-aware, like a provider: one mail, in one week, not once per week
-            rows = [{"id": "m1", "from": "Emma <szh526@gmail.com>", "to": ["me@x.y"], "cc": [],
+            rows = [{"id": "m1", "from": "Elodie <elodie526@example.com>", "to": ["me@x.y"], "cc": [],
                      "date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
                      "subject": "contract v9"}]
             return [r for r in rows if s[:10] <= r["date"][:10] < e[:10]]
@@ -103,7 +103,7 @@ def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypat
             return [str(f)]
 
     monkeypatch.setattr(inv, "datetime", __import__("datetime").datetime)
-    items, coverage = inv.gather("Emma", ["szh526"], days=60, clients={"gmail": WithFiles()},
+    items, coverage = inv.gather("Elodie", ["elodie526"], days=60, clients={"gmail": WithFiles()},
                                  subscriptions={}, attachments_dir=tmp_path / "att")
     kinds = [i["role"] for i in items]
     assert kinds == ["other", "attachment"]

@@ -12,7 +12,7 @@ Support, UNSW Alumni. That was real, but six links don't make someone say
 "links don't work".
 
 The rest of the answer was what the eye sees as a link. A good person page
-ends nearly every line with `[2]` or `[7][8]`. On Jiexuan Deng's page there
+ends nearly every line with `[2]` or `[7][8]`. On Kenji Hale's page there
 are 58 of them. They are bracketed, numbered, and sit where a footnote mark
 sits, and the reader drew them as plain text. Every one of them was a
 click that went nowhere. The Sources list they point to was plain text too.

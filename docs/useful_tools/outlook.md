@@ -88,9 +88,9 @@ Your agent can now read and manage Outlook emails and contacts.
 - Find contacts by a case-insensitive display-name or email substring
 
 ```python
-outlook.add_contact("Zhou Yifei", "zhou@example.com")
+outlook.add_contact("Nadia Marsh", "marsh@example.com")
 outlook.list_contacts()
-outlook.search_contacts("yifei")
+outlook.search_contacts("nadia")
 ```
 
 If Microsoft was connected before contacts were enabled, run
@@ -189,7 +189,7 @@ agent = Agent(
     system_prompt="You help manage Outlook emails and remember important info."
 )
 
-agent.input("Save Zhou Yifei <zhou@example.com> as a contact")
+agent.input("Save Nadia Marsh <marsh@example.com> as a contact")
 agent.input("Check unread emails and save important deadlines to memory")
 agent.input("Send an email to alice@example.com about the project update")
 agent.input("Find all emails about the quarterly report")

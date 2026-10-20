@@ -53,22 +53,22 @@ def test_legacy_and_current_codex_sessions_are_read_with_honest_date_scope(tmp_p
     legacy = tmp_path / "rollout-legacy.jsonl"
     rows = [{"id": "older", "timestamp": "2025-11-04T15:24:50Z", "instructions": instructions},
             {"type": "message", "id": "u1", "role": "user",
-             "content": [{"type": "input_text", "text": "Ask Vern about the placement"}]},
+             "content": [{"type": "input_text", "text": "Ask Rowan about the placement"}]},
             {"type": "message", "id": "a1", "role": "assistant",
              "content": [{"type": "output_text", "text": "Claimed execution"}]},
             {"type": "message", "id": "u2", "role": "user",
              "content": [{"type": "input_text", "text": "<environment_context>Injected context"}]},
             {"type": "function_call_output", "call_id": "tool", "output": "Unverified output"}]
     legacy.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    rollout(tmp_path / "rollout-current.jsonl", [("user", "Vern needs the revised scope")])
+    rollout(tmp_path / "rollout-current.jsonl", [("user", "Rowan needs the revised scope")])
     batch = collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), {}, 20, 10000)
-    assert {item["text"] for item in batch.items} == {"Ask Vern about the placement", "Vern needs the revised scope"}
+    assert {item["text"] for item in batch.items} == {"Ask Rowan about the placement", "Rowan needs the revised scope"}
     old = next(item for item in batch.items if item["source"].startswith("codex:older:"))
     assert old["timestamp"] == "2025-11-04T15:24:50Z"
     assert "individual message time was not recorded" in old["timestamp_scope"]
     assert not collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), batch.progress, 20, 10000).items
     recent = collect(subscription(tmp_path), {}, 20, 10000)
-    assert [item["text"] for item in recent.items] == ["Vern needs the revised scope"]
+    assert [item["text"] for item in recent.items] == ["Rowan needs the revised scope"]
 
 
 def test_only_authorized_project_and_user_assistant_text(tmp_path):

@@ -2812,7 +2812,7 @@ function owing() {
   const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
   // "User owes pickup of the card" (1.9.2b1) names the owner without "the".
   const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
-  // The owner asking or waiting on someone is their debt: "Aaron asked Adi to arrange a call" (1.9.2b3).
+  // The owner asking or waiting on someone is their debt: "Aaron asked Anselm to arrange a call" (1.9.2b3).
   const chasing = "\\b" + me + "\\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|is waiting (?:on|for)|was waiting (?:on|for))\\s+(?!" + me + "\\b)";
   OWING = {
     // An offer of something ("offered Mara a trial") is optional; an offer to do something is owed.
@@ -5102,7 +5102,7 @@ function mappedProjectLine(r) {
 function personLead(r) {
   const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^(?:Now|现在)[:：]/i.test(t));
   const text = (known(r).intro || now?.replace(/^(?:Now|现在)[:：]\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
-  // A quotation is one unit: Tamara's lead ended at the "!" inside “That's great news, thank you! …”.
+  // A quotation is one unit: Greta's lead ended at the "!" inside “That's great news, thank you! …”.
   const passages = [];
   const protectedText = privatePassages(text, passage => { passages.push(passage); return "\u0006" + (passages.length - 1) + "\u0006"; });
   const sentences = protectedText.match(/(?:[^“「.!?。！？]|“[^”]*”|「[^」]*」)*?(?:[.!?](?:\s*[\[［]W?\d{1,3}[\]］])*(?=\s|$)|[。！？](?:\s*[\[［]W?\d{1,3}[\]］])*)|.+$/g) || [];

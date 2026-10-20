@@ -1,13 +1,13 @@
 # What the page already cites
 
-The acceptance run investigated Richard, then investigated him again straight
+The acceptance run investigated Emrys, then investigated him again straight
 away, to check that a page with nothing new costs nothing. The second run
 spent 102 thousand tokens. The model read one email and reported, correctly,
 that it was "already represented as source [21]".
 
 The rule had been written a week earlier: a page investigated before reads
 only the window since then, and an empty window makes no model call. It
-worked for Tamara, whose window really was empty. For Richard it could not,
+worked for Greta, whose window really was empty. For Emrys it could not,
 because the window is counted in whole days, and "since today" is today. The
 email that had arrived that morning was still inside it.
 

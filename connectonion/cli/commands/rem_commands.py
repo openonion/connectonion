@@ -1301,7 +1301,7 @@ def make_rem_app(factory):
             chosen = queue if pages_limit == 0 else queue[:pages_limit]
             if list_only:
                 # Heaviest evidence first (UI audit #10): five 0-session projects
-                # led the list above Ody's 274 mails, because his page was read
+                # led the list above Corin's 274 mails, because his page was read
                 # this week. A skipped page keeps its place, marked; the pages a
                 # run takes are still in the order it takes them.
                 rows = sorted(ranked(), key=lambda row: -row["weight"])

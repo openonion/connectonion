@@ -1,6 +1,6 @@
-# Twenty minutes to learn nothing about Tamara
+# Twenty minutes to learn nothing about Greta
 
-Tamara's page was already good. It had her role, her phone number and a
+Greta's page was already good. It had her role, her phone number and a
 source for each. The 1.9.0a1 acceptance run investigated her again anyway,
 on a copy of the owner's notebook, to see what the new evidence path would add.
 
@@ -16,7 +16,7 @@ lines, so that a name learned last time is searched next time. After the
 first investigation those lines read like this:
 
 ```
-- Also known as: Tamara Berryman; tamara.berryman@unsw.edu.au [2]
+- Also known as: Greta Holloway; greta.holloway@unsw.edu.au [2]
 ```
 
 That is written for a reader: a name, an address, and a citation to the mail
@@ -31,7 +31,7 @@ them would have searched this way.
 
 The fix has two parts. A handle is read without its citation and split on
 semicolons as well as commas. And only a whole, well-formed address goes to a
-mail server as an address; a name stays a name. The test is Tamara's line,
+mail server as an address; a name stays a name. The test is Greta's line,
 exactly as the model wrote it.
 
 The lesson is about where inputs come from. The page is the investigation's

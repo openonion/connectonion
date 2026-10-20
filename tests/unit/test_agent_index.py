@@ -1,7 +1,7 @@
 """The command index `co init` writes into Codex's and Claude Code's always-loaded files.
 
 Codex and Claude Code had no way to learn that `co` exists: asked to "hand
-this task to Ody", Codex went nowhere, and `co ai` with no rule opened a
+this task to Corin", Codex went nowhere, and `co ai` with no rule opened a
 browser in 3 of 3 runs instead of using `co linear` (#2113). The fix is a
 generated block between markers in ~/.codex/AGENTS.md and ~/.claude/CLAUDE.md.
 

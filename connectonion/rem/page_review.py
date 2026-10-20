@@ -288,7 +288,7 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
         return candidate
     if record.startswith(('people/', 'orgs/')) and not subject_scope_changed(record, original, candidate):
         # A correction may change who this file describes; keep its Unknowns.
-        # 2026-10-16 trial: a later round erased Ying Tan's extracted Last contact.
+        # 2026-10-16 trial: a later round erased Iris Kwok's extracted Last contact.
         section = r'(?ms)^## Facts\n(.*?)(?=^## |\Z)'
         before, after = re.search(section, original), re.search(section, candidate)
         if before and after:
@@ -333,7 +333,7 @@ def drop_uncited_sources(text: str) -> str:
     """Remove one-line Sources entries that no sentence cites.
 
     A listed source nobody cites misleads no reader, and refusing the page for
-    it threw away a real, fully cited Ian Chan page on 2026-09-23 because the
+    it threw away a real, fully cited Osric Ashdown page on 2026-09-23 because the
     old page was listed as [1]. A citation that points at nothing is still
     refused by validate; only the harmless direction is repaired.
     """
@@ -378,7 +378,7 @@ def renumber_sources(text: str) -> str:
 
 def collapse_repeated_markers(text: str) -> str:
     """Keep each numeric citation once per run, leaving code and links alone."""
-    # Dora and Jiexuan's pages repeated citations after sources merged (2026-10-16).
+    # Briar and Kenji's pages repeated citations after sources merged (2026-10-16).
     swap = lambda prose: re.sub(r'\[\d+\](?!\()(?: ?\[\d+\](?!\())*',  # noqa: E731
                                 lambda m: ''.join(dict.fromkeys(re.findall(r'\[\d+\]', m[0]))), prose)
     parts, last = [], 0
@@ -570,8 +570,8 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
     """Take the account owner's own addresses and phones off someone else's identity lines.
 
     Mail between the user and a person carries both addresses, and a real page
-    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle;
-    1.9.2b1 gave Weiwei the user's phone from his own quoted signature
+    (Briar, 2026-09-23) listed the user's own Outlook as her email and handle;
+    1.9.2b1 gave Liesel the user's phone from his own quoted signature
     (2026-10-09), though the instructions forbid it. Which values are the
     owner's is known, so they are removed mechanically; the rest of the page is kept.
     """
@@ -689,7 +689,7 @@ def _own_addresses(text: str, held: set[str]) -> tuple[str, list[str]]:
 def _own_phones(root: Path, text: str, items: list[dict], held: set[str], names: list[str]) -> tuple[str, list[str]]:
     """Phone keeps a number a mail it cites, or any mail this run gathered, shows the person giving.
 
-    Ivan's number was cited to an assistant session that quoted his Airbnb
+    Lucan's number was cited to an assistant session that quoted his Airbnb
     message; the message is in the material, so the number is still his. A
     number cited to a web page `[W…]` is a published one and is left as it was.
     """
@@ -714,8 +714,8 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
     """A Phone or Email stays only when the material shows it is this person's own (#2348).
 
     Removal was a denylist: another sender's signature number went, and anything
-    else stayed. 1.9.2b3 still put a facilities manager's mobile on Nina's page
-    from a notice she forwarded, "call Larry 0405…" on Ody's from a Luma host
+    else stayed. 1.9.2b3 still put a facilities manager's mobile on Petra's page
+    from a notice she forwarded, "call Fenwick 0405…" on Corin's from a Luma host
     copy, and Luma relays as two people's Email (contacts audit P1, P2, E1, E2).
     An Email is one the page already carried (the map's, or the user's own
     `co rem stub`), or one the person is named at in a From, To or Cc; a relay
@@ -759,7 +759,7 @@ def _known_sources(items: list[dict]) -> set:
     # remains traceable when the model omits the layout-only part suffix.
     known.update(re.sub(r':part-\d+$', '', source) for source in derived)
     # A coding session is one transcript file; citing the session rather than
-    # one line of it is coarse but traceable. Dora's page cited
+    # one line of it is coarse but traceable. Briar's page cited
     # `claude-code:<session>` for an account digested from that session.
     known.update(source.rsplit(":", 1)[0] for source in derived
                  if source.startswith(("codex:", "claude-code:")) and source.count(":") >= 2)
@@ -767,7 +767,7 @@ def _known_sources(items: list[dict]) -> set:
 
 
 # An assistant's memory and transcript folders hold its own notes, not material.
-# Ian's page cited the owner's Claude memory file, which sat beside a supplied
+# Osric's page cited the owner's Claude memory file, which sat beside a supplied
 # transcript (1.9.2b1). A session is cited by its id, `claude-code:<id>`.
 PRIVATE_STORE = re.compile(r'/\.claude/projects/|/\.codex/(?:sessions|archived_sessions|memories)/')
 
@@ -788,7 +788,7 @@ def _pinned_file(value: str) -> bool:
 def archived(root: Path, source: str) -> bool:
     """rem itself holds this message: in rem.db, or as mail kept under .state/mail.
 
-    Only the turn's own items used to count. Ody's 2.04M-token investigation
+    Only the turn's own items used to count. Corin's 2.04M-token investigation
     was refused for [27][28], real mail in .state/mail that supported the
     claim; 18 mail citations went the same way over nine pages (v192b3).
     """
@@ -943,7 +943,7 @@ PAGE_LIMIT = 20_000
 
 # How the tool ran, said on a page about someone else (#2058): "web: not
 # searched; Wiki runs are offline" sat in 5 of the owner's 7 investigated
-# person pages, and Tamara's History opened with "The current collector
+# person pages, and Greta's History opened with "The current collector
 # reports 50 matching Outlook messages with 50 bodies read".
 TOOL_TEXT = re.compile(r"\bnot searched\b|\boffline\b.{0,20}\b(?:wiki|rem|run)\b|\b(?:wiki|rem) runs?\b.{0,12}\boffline\b"
                        r"|\bcollector (?:reports|found|read)\b|\bbodies read\b", re.IGNORECASE)
@@ -968,7 +968,7 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
     return '\n'.join(kept) + marker + tail, removed
 
 
-# History is threads and how they ended (#2059, #2314): Ody Zhou's once held 17
+# History is threads and how they ended (#2059, #2314): Corin Marsh's once held 17
 # bullets, five of them "sent report X"; eight then squeezed out how threads ended.
 HISTORY_LIMIT = 16
 
@@ -978,7 +978,7 @@ HISTORY_LIMIT = 16
 HEDGE = re.compile(r"not (?:established|confirmed|documented|verified|recorded|stated)|unknown whether"
                    r"|is unknown|remains? (?:unknown|unconfirmed|unresolved)"
                    r"|no (?:outcome|reply) (?:is )?(?:documented|found|recorded)|does not say|cannot be verified"
-                   # Richard Lai, 2026-10-15: "no reply or completion is established in the supplied mail", 8 times.
+                   # Emrys Brandt, 2026-10-15: "no reply or completion is established in the supplied mail", 8 times.
                    r"|\bunconfirmed\b|is established in|do(?:es)? not establish|in the supplied (?:mail|material|messages|record)"
                    # 2026-10-20: the same hedge in other words and in Chinese pages' leads and 现状.
                    r"|(?:it is |remains? |still )?unclear (?:whether|if)|cannot (?:be )?confirm(?:ed)?"
@@ -1320,7 +1320,7 @@ def merge_duplicate_sections(record: str, text: str, owner: bool = False) -> str
     """One section per heading, settled by code instead of refusing the page.
 
     A heading glued to the end of a paragraph ("... [10]. ## Our relationship")
-    goes back on its own line: hamish-mcfarlane was refused for it on every
+    goes back on its own line: callum-reid was refused for it on every
     pass since 1.9.2b3's init. A repeated section keeps the copy with content
     and appends any second real body to the first, in place.
     """
@@ -1369,9 +1369,9 @@ def person_names(notebook, owner: str = '') -> dict:
             email = (re.search(r'^- Email: (.*)$', page, re.M) or [None, ''])[1]
             first_names.setdefault(title, []).append((person, email.split('@')[0].casefold()))
     names = {name: records[0] for name, records in seen.items() if len(records) == 1}
-    # A page titled by a first name, as the mail's display name gave it ("Ivan"): a
-    # full name in a sentence ("Ivan Zhu") is that page when it is the only "Ivan"
-    # and its address carries the surname (ivanxzhu@). Two Harrys link neither.
+    # A page titled by a first name, as the mail's display name gave it ("Lucan"): a
+    # full name in a sentence ("Lucan Novak") is that page when it is the only "Lucan"
+    # and its address carries the surname (lucannovak@). Two Harrys link neither.
     names.update({f'{first} *': pages[0] for first, pages in first_names.items() if len(pages) == 1})
     return names
 
@@ -1379,7 +1379,7 @@ def person_names(notebook, owner: str = '') -> dict:
 def link_people(record: str, text: str, names: dict) -> str:
     """The first mention of a person the notebook has a page for links to it (#2060).
 
-    Ody Zhou's page named Harry Cao, Ivan Zhu and James Guo, who all had pages,
+    Corin Marsh's page named Felix Moreau, Lucan Novak and Ethan Cole, who all had pages,
     and linked none; 2 of the owner's 381 people pages had any link at all.
     Exact full names only, outside Contact fields and Sources, so nothing is guessed."""
     head, marker, tail = text.partition('\n## Sources\n')
@@ -1495,7 +1495,7 @@ def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> t
 
     28 of 53 unknown companies on a real notebook wrote from a domain it had a
     page for. Only the address they write from now counts: falling back to older
-    domains named UNSW for Ziming, graduated and writing from Hotmail, and for
+    domains named UNSW for Zia, graduated and writing from Hotmail, and for
     Sam, writing from his own company; seven students got their university as
     employer (contacts audit C1-C3). A page still titled by its domain is the
     map's stub: its name is not known yet. Returns the page and what was filled.
@@ -1589,22 +1589,22 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
 def _claim_key(text: str) -> str:
     """A claim as the audit copies it: no citation markers, no links, no closing punctuation.
 
-    Code links names after the audit reads the page: "[Sasha Ward](../people/…)"
-    on the page was "Sasha Ward" in the finding (v193q1, 2026-10-15)."""
+    Code links names after the audit reads the page: "[Tess Ward](../people/…)"
+    on the page was "Tess Ward" in the finding (v193q1, 2026-10-15)."""
     text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', CITATION.sub('', text))
     return _plain(text).rstrip(',.;:!?，。；：！？')
 
 
 def uncited_field(line: str) -> bool:
     """Identity field lines belong to the map and contact checks, not the prose audit."""
-    # Vern Chan's own email became Unknown for lacking a citation (2026-10-16 trial).
+    # Rowan Ashdown's own email became Unknown for lacking a citation (2026-10-16 trial).
     return any(line.strip().removeprefix('- ').startswith(label + ':') for label in facts.UNCITED)
 
 
 def drop_claims(record: str, text: str, claims: list[str]) -> tuple[str, list[str]]:
     """Remove each sentence holding a refuted claim; return the claims no line holds.
 
-    Only the sentence goes when its line says more: Hamish's History line also
+    Only the sentence goes when its line says more: Callum's History line also
     held his own reply, which was true. An UNCITED identity field stays;
     another contact field keeps its label and says Unknown.
     """

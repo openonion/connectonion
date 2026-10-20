@@ -64,13 +64,13 @@ def test_investigate_counts_what_status_counts_and_not_this_weeks_pages_as_unfin
 def test_an_investigated_person_with_new_mail_is_to_refresh_not_unwritten(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody@example.org"], email="ody@example.org")
-    _stamp(notebook, "people/ody.md", (date.today() - timedelta(days=2)).isoformat())
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin@example.org"], email="corin@example.org")
+    _stamp(notebook, "people/corin.md", (date.today() - timedelta(days=2)).isoformat())
     write_json(state_path(tmp_path, "map.json"), {"orgs": [], "projects": [], "people": [
-        {"record": "people/ody.md", "address": "ody@example.org", "addresses": ["ody@example.org"],
+        {"record": "people/corin.md", "address": "corin@example.org", "addresses": ["corin@example.org"],
          "mails": 274, "sent": 9, "last": date.today().isoformat(), "classification": "unassessed"}]})
     people = json.loads(invoke(tmp_path, "--json", "investigate").stdout)["data"]["people"]
-    assert people["next"] == ["people/ody.md"]
+    assert people["next"] == ["people/corin.md"]
     assert (people["written"], people["mapped"], people["to_refresh"]) == (1, 1, 1)
 
 
@@ -100,18 +100,18 @@ def _row(name, **fields):
 def test_the_table_reads_as_words_fits_the_terminal_and_never_shows_a_relay(monkeypatch):
     from connectonion.cli.commands.rem_table import draw
     monkeypatch.setenv("COLUMNS", "100")
-    rows = [_row("Ody Zhou", company="[OpenOnion](../orgs/openonion.md)", role="Co-founder",
-                 emails=["usr-fixture0000000@user.luma-mail.com", "ody.zhou@example.com"]),
-            _row("Sohum Mogale", company="[University of New South Wales](../orgs/unsw.md)",
+    rows = [_row("Corin Marsh", company="[OpenOnion](../orgs/openonion.md)", role="Co-founder",
+                 emails=["usr-fixture0000000@user.luma-mail.com", "corin.marsh@example.com"]),
+            _row("Arjun Desai", company="[University of New South Wales](../orgs/unsw.md)",
                  role="Project owner, Group P115 of COMP3900 at UNSW", emails=["s.lee@student.unsw.edu.au"],
                  phone="0491570159 [sensitive]"),
             _row("Luma Guest", emails=["usr-abc@user.luma-mail.com"])]
     lines = Text.from_markup(draw(rows)).plain.splitlines()
     assert all(len(line) <= 100 for line in lines), lines
     assert "Status" not in lines[0] and "written" not in "\n".join(lines)   # the same on every row
-    ody = next(line for line in lines if line.startswith("Ody Zhou"))
-    assert "OpenOnion" in ody and "](" not in ody and "[" not in ody
-    assert "ody.zhou@" in ody and "luma-mail" not in "\n".join(lines)
+    corin = next(line for line in lines if line.startswith("Corin Marsh"))
+    assert "OpenOnion" in corin and "](" not in corin and "[" not in corin
+    assert "corin.marsh@" in corin and "luma-mail" not in "\n".join(lines)
 
 
 def test_the_table_hides_private_text_cells(monkeypatch):
@@ -119,7 +119,7 @@ def test_the_table_hides_private_text_cells(monkeypatch):
     monkeypatch.setenv("COLUMNS", "100")
     for field in ("name", "company", "role", "phone"):
         for label in ("sensitive", "SENSITIVE", "personal", "PeRsOnAl"):
-            row = _row("Ody Zhou")
+            row = _row("Corin Marsh")
             row[field] = f"0491570156 [{label}] [5]"
             lines = Text.from_markup(draw([row])).plain.splitlines()
             assert "(private)" in lines[1].split()
@@ -130,7 +130,7 @@ def test_the_table_hides_private_text_cells(monkeypatch):
 def test_the_table_keeps_status_when_rows_differ(monkeypatch):
     from connectonion.cli.commands.rem_table import draw
     monkeypatch.setenv("COLUMNS", "200")
-    lines = Text.from_markup(draw([_row("Ody"), _row("Tam", written=0)])).plain.splitlines()
+    lines = Text.from_markup(draw([_row("Corin"), _row("Gret", written=0)])).plain.splitlines()
     assert "Status" in lines[0] and any(line.rstrip().endswith("mapped") for line in lines)
 
 
@@ -149,8 +149,8 @@ def test_list_projects_prints_titles_with_the_path_beside_them(tmp_path):
 # ------------------------------------------------ #10: what waits on you, the budget, the last run
 
 
-THREADS = ("## Open threads\n- Aaron owes Ody the signed contract by 2026-10-20. [1]\n"
-           "- Ody promised the deck. [2]\n- Unknown — not investigated yet\n\n")
+THREADS = ("## Open threads\n- Aaron owes Corin the signed contract by 2026-10-20. [1]\n"
+           "- Corin promised the deck. [2]\n- Unknown — not investigated yet\n\n")
 
 
 def test_open_threads_are_counted_as_the_reader_counts_them(tmp_path):
@@ -158,9 +158,9 @@ def test_open_threads_are_counted_as_the_reader_counts_them(tmp_path):
     prepare(tmp_path)
     book = Notebook(tmp_path)
     book.stub_person("people/me.md", "Aaron Xie", ["me@example.org"], email="me@example.org")
-    book.stub_person("people/ody.md", "Ody Zhou", ["ody@example.org"], email="ody@example.org")
-    page = book.read("people/ody.md")
-    book.write("people/ody.md", page.replace(page[page.index("## Open threads"):page.index("## ", page.index(
+    book.stub_person("people/corin.md", "Corin Marsh", ["corin@example.org"], email="corin@example.org")
+    page = book.read("people/corin.md")
+    book.write("people/corin.md", page.replace(page[page.index("## Open threads"):page.index("## ", page.index(
         "## Open threads") + 3)], THREADS))
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md", "addresses": []}})
     assert open_threads(tmp_path) == {"open": 2, "mine": 1, "theirs": 1, "other": 0, "quiet": 0}
@@ -191,7 +191,7 @@ def test_the_last_run_is_the_last_one_that_finished(tmp_path, monkeypatch):
     prepare(tmp_path)
     write_json(state_path(tmp_path, "runs/run_" + "a" * 32 + ".json"), {
         "id": "run_" + "a" * 32, "started_at": "2026-10-15T08:01:43+00:00", "phase": "sync",
-        "outcome": "completed", "changed": ["people/ody.md"]})
+        "outcome": "completed", "changed": ["people/corin.md"]})
     write_json(state_path(tmp_path, "runs/run_" + "b" * 32 + ".json"), {
         "id": "run_" + "b" * 32, "started_at": "2026-10-15T08:05:22+00:00", "phase": "daily-update",
         "outcome": "running", "changed": [], "host": "another-machine"})

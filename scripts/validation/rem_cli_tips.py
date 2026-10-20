@@ -36,13 +36,13 @@ def main():
         capture([], 'Build the initial map.')
         capture(['investigate'], 'Build a map because no pages exist yet.')
         prepare(root)
-        Notebook(root).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+        Notebook(root).stub_person('people/corin-123.md', 'Corin', ['corin@example.org'], email='corin@example.org')
         for command, goal in [
             (['investigate'], 'Investigate the available person page.'),
             (['unfinished'], 'Investigate the unfinished page.'),
             (['list', 'people'], 'Read the listed person page.'),
-            (['search', 'Ody'], 'Read the matching page.'),
-            (['show', 'people/ody-123.md'], 'Return to the list of people.'),
+            (['search', 'Corin'], 'Read the matching page.'),
+            (['show', 'people/corin-123.md'], 'Return to the list of people.'),
             (['show', 'people/missing.md'], 'Find the actual person page path.'),
             (['investigate', 'Nobody'], 'Discover available pages without running a model.'),
             (['people'], 'List person page paths.'),

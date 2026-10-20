@@ -48,7 +48,7 @@ write, and the user's way with them appear end to end.
 This is where a thin notebook fails. A person page is the user's memory of a
 relationship, and the maintainer can only write what extraction hands it --
 including how each side communicates (openings, sign-offs, register, cc habits,
-reply speed, language, verbatim quotes), e.g. the user writing "Hi Vern," then
+reply speed, language, verbatim quotes), e.g. the user writing "Hi Rowan," then
 "On capacity: ... On timing: ...", direct, saying when something would stretch
 them.
 
@@ -81,7 +81,7 @@ usually has evidence for and a summary usually drops. "Follow-up status is not
 recorded" is a gap dressed up as a finding. `Uncertain` is how a thin person
 stays honest instead of short.
 
-The Emma example in the Skill is kept as the output-format reference, trimmed
+The Elodie example in the Skill is kept as the output-format reference, trimmed
 for runtime size in #1851.
 
 ### The full example before trimming
@@ -91,10 +91,10 @@ how much a well-evidenced block can carry:
 
 ```
 ## People
-- **Emma (飘啊飘)** — szh526@gmail.com
-  - Contact: email szh526@gmail.com; phone Unknown; signing entity ZEHAO SHEN,
+- **Elodie (云朵朵)** — elodie526@example.com
+  - Contact: email elodie526@example.com; phone Unknown; signing entity ZEHAO SHEN,
     ABN 37 387 221 177, 6007/117 Bathurst St, Sydney NSW 2000; Gmail display
-    name "飘啊飘"; Mandarin for operations, English for contract redlines.
+    name "云朵朵"; Mandarin for operations, English for contract redlines.
     (outlook:1adf5a91461b)
   - Who they are: independent Sydney Airbnb host running a multi-property
     portfolio — 7 property types across 3 buildings as of 2026-07-10.
@@ -116,10 +116,10 @@ how much a well-evidenced block can carry:
     - 2026-08-07 — the user signed; she returned the signed document 8:43 PM
       AEST. (outlook:92634a3a8c50)
   - How they write: register-switching — English for legal matters (numbered,
-    precise, "Regards, Emma"), brief practical Mandarin for operations
+    precise, "Regards, Elodie"), brief practical Mandarin for operations
     ("收到"). Itemised, fast, proposes exact contract language.
     Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Emma，你好，", signs "Aaron"; sections
+  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; sections
     long contract mails `== N. 标题 ==` and translates every clause into what
     it means for her; leads with the reassuring conclusion then the math.
   - Cadence: near-daily same-day replies through the 2026-08-05→07 sprint, on

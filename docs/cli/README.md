@@ -303,8 +303,8 @@ Hand the task you discussed with Codex or Claude Code to a colleague's coding
 agent: decisions, rejected options and the discussion itself travel with it.
 
 ```bash
-co handoff send ody "the login task"          # preview from this session; nothing sent
-co handoff send ody --draft <id> --yes        # send: the mail is one prompt to paste into Codex
+co handoff send corin "the login task"          # preview from this session; nothing sent
+co handoff send corin --draft <id> --yes        # send: the mail is one prompt to paste into Codex
 co handoff status <id>                        # accepted? questions?
 co handoff accept <code>                      # recipient's agent runs this from the prompt
 ```
@@ -561,8 +561,8 @@ co outlook read 3 --listing <listing-id>              # read #3, preserve unread
 co outlook read 3 --listing <listing-id> --mark-read  # explicitly mark it read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
-co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
-co outlook contact search yifei                       # find by name/email
+co outlook contact add "Nadia Marsh" marsh@example.com  # save contact
+co outlook contact search nadia                       # find by name/email
 ```
 
 **Subcommands:**

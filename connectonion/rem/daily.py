@@ -370,7 +370,7 @@ def _investigate_unfinished(root, route, page, *, clients, sources, days, calls,
 
 def _accepted_row(page: str, result: dict) -> dict:
     """An accepted page, with any round of it that was refused: those were dropped from
-    the daily rows, so Dora's refused round (2026-10-12) showed as plainly accepted."""
+    the daily rows, so Briar's refused round (2026-10-12) showed as plainly accepted."""
     return {'page': page, 'outcome': 'accepted', 'evidence': result.get('evidence', []),
             'report': result.get('report', ''),
             **({'refused_rounds': result['refused_rounds']} if result.get('refused_rounds') else {})}

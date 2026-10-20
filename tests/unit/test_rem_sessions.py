@@ -424,11 +424,11 @@ def test_rem_session_artifact_caps_root_commits_and_json_outputs(notebook):
 def test_rem_session_summary_and_rewrite_keep_raw_attachment(notebook):
     root, _, _ = notebook
     book = Notebook(root)
-    book.write("people/ody.md", "# Ody\n\n## Facts\n")
+    book.write("people/corin.md", "# Corin\n\n## Facts\n")
     book.stub_project("projects/demo.md", "Demo", paths=["/work/demo"])
     transcript(notebook, rows=[codex("Older turn outside window", stamp="2025-01-01T00:00:00Z"),
         codex("Keep the reader simple\nDo not change the raw attachment."),
-        codex("Ask Ody for feedback", stamp="2026-10-15T22:13:00Z"), codex("Ready.", role="assistant")])
+        codex("Ask Corin for feedback", stamp="2026-10-15T22:13:00Z"), codex("Ready.", role="assistant")])
     import_sessions(root, now=NOW)
     record, = book.list("sessions")
     raw = book.read(record).split("## What you typed")[1]
@@ -439,7 +439,7 @@ def test_rem_session_summary_and_rewrite_keep_raw_attachment(notebook):
                  {"time": "09:12", "quote": "Keep the reader simple"},
                  {"time": "09:12", "quote": "Make the reader uncomplicated"},
                  {"time": "09:13", "quote": "Do not change the raw attachment."}],
-             "followups": ["Ask Ody about Demo; avoid the melody and Demonstration."],
+             "followups": ["Ask Corin about Demo; avoid the melody and Demonstration."],
              "summarised_at": STAMP, "model": "future-model"}
     write_json(summary_path(root, key), saved)
     assert read_summary(root, key) == saved
@@ -449,7 +449,7 @@ def test_rem_session_summary_and_rewrite_keep_raw_attachment(notebook):
     assert "- Outcome: partial\n- Tags: reader, rem\n- Started with: Keep the reader simple" in page
     assert "## Decisions\n- “Keep the reader simple” (09:12)" in page
     assert "Make the reader uncomplicated" not in page and "” (09:13)" not in page
-    assert "## Follow-ups\n- Ask [Ody](../people/ody.md) about [Demo](../projects/demo.md); avoid the melody and Demonstration." in page
+    assert "## Follow-ups\n- Ask [Corin](../people/corin.md) about [Demo](../projects/demo.md); avoid the melody and Demonstration." in page
     assert page.split("## What you typed")[1] == raw
     fields = reader_fields(page)
     assert fields["session_title"] == saved["title"] and fields["session_summary"] == saved["summary"]
@@ -468,7 +468,7 @@ def test_rem_session_summary_and_rewrite_keep_raw_attachment(notebook):
 
 def test_rem_session_reader_fields(notebook):
     root, _, _ = notebook
-    transcript(notebook, rows=[codex("Ask  Ody\n  about the reader"), codex("Second message"),
+    transcript(notebook, rows=[codex("Ask  Corin\n  about the reader"), codex("Second message"),
                                codex("Ready.\n  Open the reader.", role="assistant")])
     import_sessions(root, now=NOW)
     book = Notebook(root)
@@ -476,8 +476,8 @@ def test_rem_session_reader_fields(notebook):
     fields = reader_fields(book.read(record))
     assert fields == {"session_project": "", "session_date": "2026-10-16", "session_time": "09:12",
                       "session_agent": "Codex", "session_turns": 2, "session_folder": "/work/demo",
-                      "session_first": "Ask Ody about the reader", "session_reply": "Ready. Open the reader.",
-                      "session_title": "Ask Ody", "session_started_with": "Ask Ody", "session_summary": "",
+                      "session_first": "Ask Corin about the reader", "session_reply": "Ready. Open the reader.",
+                      "session_title": "Ask Corin", "session_started_with": "Ask Corin", "session_summary": "",
                       "session_tags": [], "session_outcome": "",
                       "session_artifacts": {"prs": 0, "commits": 0, "files": 0}}
     from connectonion.rem.reader import snapshot
@@ -489,40 +489,40 @@ def test_rem_session_reader_fields(notebook):
 
 
 def test_rem_session_mentions_typed_names_aliases_and_newest_first():
-    people = [{"path": "people/ody.md", "title": "周小明", "text": "- Also known as: Ody Zhou [1]; Ody [W2], Unknown"},
+    people = [{"path": "people/corin.md", "title": "周小明", "text": "- Also known as: Corin Marsh [1]; Corin [W2], Unknown"},
               {"path": "people/will.md", "title": "Will", "text": ""},
               {"path": "people/short.md", "title": "Al", "text": ""},
-              {"path": "people/held.md", "title": "Ody", "text": "", "needs_review": True}]
+              {"path": "people/held.md", "title": "Corin", "text": "", "needs_review": True}]
     def session(path, typed, reply="", day="2026-10-16", clock="09:12"):
         return {"path": path, "session_date": day, "session_time": clock,
-                "text": "## Facts\n- Folder: /Ody\n## What you typed\n### 09:12\n> " + typed
+                "text": "## Facts\n- Folder: /Corin\n## What you typed\n### 09:12\n> " + typed
                         + "\n## Final reply\n> " + reply + "\n## Sources\n"}
-    sessions = [session("sessions/old.md", "ask Ody", day="2026-10-15"),
+    sessions = [session("sessions/old.md", "ask Corin", day="2026-10-15"),
                 session("sessions/new.md", "请找周小明来看看"),
-                session("sessions/alias.md", "ask ODY ZHOU", clock="10:00"),
-                session("sessions/tie.md", "ask Ody", clock="10:00"),
+                session("sessions/alias.md", "ask CORIN MARSH", clock="10:00"),
+                session("sessions/tie.md", "ask Corin", clock="10:00"),
                 session("sessions/will.md", "ask Will and Al"),
-                session("sessions/no.md", "the melody will play", "Ody Zhou and 周小明 and Will"),
+                session("sessions/no.md", "the melody will play", "Corin Marsh and 周小明 and Will"),
                 session("sessions/boundary.md", "xOdy Zhou2")]
     assert mentions(people, sessions) == {
-        "people/ody.md": ["sessions/alias.md", "sessions/tie.md", "sessions/new.md", "sessions/old.md"],
+        "people/corin.md": ["sessions/alias.md", "sessions/tie.md", "sessions/new.md", "sessions/old.md"],
         "people/will.md": ["sessions/will.md"]}
 
 
 def test_rem_session_snapshot_mentions_skip_owner_and_review(notebook, monkeypatch):
     root, _, _ = notebook
     book = Notebook(root)
-    for person in ("owner", "held", "ody"):
-        book.write(f"people/{person}.md", "# Ody\n\n## Facts\n- Also known as: Ody Zhou [1]\n")
+    for person in ("owner", "held", "corin"):
+        book.write(f"people/{person}.md", "# Corin\n\n## Facts\n- Also known as: Corin Marsh [1]\n")
     write_json(state_path(root, "map.json"), {"owner": {"record": "people/owner.md"}})
     from connectonion.rem import map as rem_map
     monkeypatch.setattr(rem_map, "needs_review", lambda root: {"people/held.md"})
-    transcript(notebook, rows=[codex("ask Ody")])
+    transcript(notebook, rows=[codex("ask Corin")])
     import_sessions(root, now=NOW)
     from connectonion.rem.reader import snapshot
     data = snapshot(root)
     people = {r["path"]: r for r in data["records"] if r["category"] == "people"}
-    assert people["people/ody.md"]["session_mentions"] == book.list("sessions")
+    assert people["people/corin.md"]["session_mentions"] == book.list("sessions")
     assert "session_mentions" not in people["people/owner.md"]
     assert "session_mentions" not in people["people/held.md"]
 
@@ -863,14 +863,14 @@ def test_rem_session_summarise_prompt_bounds_and_batch_ids(notebook, summary_rea
         answer = summary_answer("s2", "s1")  # Output ordering is the model's choice.
         value = json.loads(answer["result"])
         value["sessions"][0].update(outcome="invented", tags=["REM!", " rem ", "reader UI", "a", "b", "c", "d", "e"],
-                                    followups=["Ask Ody", 42, "Finish Demo", "Ship reader", "Ignored"])
+                                    followups=["Ask Corin", 42, "Finish Demo", "Ship reader", "Ignored"])
         answer["result"] = json.dumps(value)
         return answer
 
     assert summarise_sessions(root, run=run)["summarised"] == 2
     saved = read_summary(root, "codex:second")
     assert saved["outcome"] == "unknown" and saved["tags"] == ["rem", "reader-ui", "a", "b", "c", "d"]
-    assert saved["followups"] == ["Ask Ody", "Finish Demo", "Ship reader"]
+    assert saved["followups"] == ["Ask Corin", "Finish Demo", "Ship reader"]
 
 
 def test_rem_session_summarise_multilingual_batch_fits_native_argv():
@@ -896,8 +896,8 @@ def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, su
     transcript(notebook)
     imported = import_sessions(root, now=NOW)
     set_config(root, ["limits.runner_calls_per_day", "1"])
-    Notebook(root).stub_person("people/ody.md", "Ody", ["ody@example.org"])
-    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "people/ody.md"}])
+    Notebook(root).stub_person("people/corin.md", "Corin", ["corin@example.org"])
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "people/corin.md"}])
     monkeypatch.setattr(daily, "_clients", lambda sources: {})
     monkeypatch.setattr(daily.quota, "read", lambda *a: {"unknown": "no meter"})
     monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a: summary_answer("s1") if reply_ok else {
@@ -906,6 +906,6 @@ def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, su
     result = daily.run_daily(root, maintain=lambda root: {"outcome": "no_change", "sessions": imported},
         investigate_one=lambda *a, **kw: investigated.append(a[1]) or {"changed": [a[1]]}, say=lines.append)
     assert result["maintenance"]["sessions_summary"]["summarised"] == int(reply_ok)
-    assert result["outcome"] == "completed" and investigated == ["people/ody.md"]
+    assert result["outcome"] == "completed" and investigated == ["people/corin.md"]
     assert service.status(root)["runner_attempts_today"] == 1
     assert any(line.startswith("Summarised") and "left for next time" in line for line in lines)

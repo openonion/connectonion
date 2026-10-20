@@ -65,22 +65,22 @@ def test_a_link_to_an_archived_page_keeps_its_name_and_loses_the_dead_link(tmp_p
 
 
 def test_lines_about_the_run_leave_pages_already_written(tmp_path):
-    """#2058: Tamara's History opened with "The current collector reports 50
+    """#2058: Greta's History opened with "The current collector reports 50
     matching Outlook messages with 50 bodies read"."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    _person(notebook, "people/tamara.md", "Tamara", "t@unsw.edu.au", investigated=True)
-    page = notebook.read("people/tamara.md")
+    _person(notebook, "people/greta.md", "Greta", "t@unsw.edu.au", investigated=True)
+    page = notebook.read("people/greta.md")
     page = re.sub(r"^- Phone: .*$", "- Phone: not found; web not searched because co rem runs are offline.",
                   page, count=1, flags=re.M)
     page = page.replace("## History\n", "## History\n- The current collector reports 50 matching Outlook "
                         "messages with 50 bodies read. [1]\n- 2026-09-24: agreed the pilot. [1]\n", 1)
-    notebook.write("people/tamara.md", page)
+    notebook.write("people/greta.md", page)
 
     done = tidy(tmp_path)
 
-    text = notebook.read("people/tamara.md")
-    assert done["removed line"] == ["people/tamara.md"]
+    text = notebook.read("people/greta.md")
+    assert done["removed line"] == ["people/greta.md"]
     assert "collector" not in text and "- Phone: Unknown" in text
     assert "- 2026-09-24: agreed the pilot. [1]" in text
     assert tidy(tmp_path) == {}
@@ -94,10 +94,10 @@ def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(
     notebook.stub_person("people/aaron-xie.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
     _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
     _person(notebook, "people/confirmed.md", "xietianle@outlook.com", "xietianle@outlook.com")
-    _person(notebook, "people/larry.md", "Larry", "larryleework7@gmail.com")
+    _person(notebook, "people/fenwick.md", "Fenwick", "larryleework7@gmail.com")
     _person(notebook, "people/aaron-smith.md", "Aaron Smith", "aaron.smith@firm.example")
     rows = [{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108, "received": 0},
-            {"record": "people/larry.md", "address": "larryleework7@gmail.com", "name": "Larry", "sent": 17,
+            {"record": "people/fenwick.md", "address": "larryleework7@gmail.com", "name": "Fenwick", "sent": 17,
              "received": 0},
             {"record": "people/aaron-smith.md", "address": "aaron.smith@firm.example", "name": "Aaron Smith",
              "sent": 9, "received": 3}]                                     # he replies: someone else
@@ -110,13 +110,13 @@ def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(
     done = tidy(tmp_path)
 
     assert done["folded into the owner's page"] == ["people/confirmed.md", "people/cx.md"]
-    assert sorted(notebook.list("people")) == ["people/aaron-smith.md", "people/aaron-xie.md", "people/larry.md"]
+    assert sorted(notebook.list("people")) == ["people/aaron-smith.md", "people/aaron-xie.md", "people/fenwick.md"]
     page = notebook.read("people/aaron-xie.md")
     assert "- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2]" in page
     assert "classification unassessed" not in page                          # not a correspondent of their own
     state = read_json(state_path(tmp_path, "map.json"), {})
     assert "aaronplus1996@gmail.com" in state["owner"]["addresses"]
-    assert state["possible_own_addresses"] == []                            # Larry is not offered to --mine
+    assert state["possible_own_addresses"] == []                            # Fenwick is not offered to --mine
     aliases = read_json(state_path(tmp_path, "aliases.json"), {})
     assert aliases["people/cx.md"]["into"] == "people/aaron-xie.md"
 
@@ -140,20 +140,20 @@ def test_a_skill_named_by_its_folder_folds_into_the_named_skill(tmp_path):
 def test_old_coverage_lines_go_line_by_line_and_the_rest_stays(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    page = ("# Finn\n\n## Contact\n- Handles: finn@town.com [2]\n- Also known as: Finn [1][2]\n\n"
+    page = ("# Thane\n\n## Contact\n- Handles: thane@quayside.example [2]\n- Also known as: Thane [1][2]\n\n"
             "## Uncertainties\n- Phone: none in the supplied mail. [2]\n- web: not searched; Wiki runs are offline\n\n"
             "## Sources\n- [1] gmail:abc — a mail\n- [2] investigation:coverage — observed 2026-09-28; high confidence\n\n"
             "Investigation: investigated 2026-09-28\n")
-    notebook.write("people/finn.md", page)
+    notebook.write("people/thane.md", page)
     kept = ("# Atlas\n\n## Uncertainties\n- No related Codex messages were found. [1]\n\n## Sources\n"
             "- [1] investigation:coverage — source-collection record for this investigation.\n")
     notebook.write("projects/atlas.md", kept)
 
     done = tidy(tmp_path)
 
-    assert done == {"removed line": ["people/finn.md"]}
-    assert notebook.read("people/finn.md") == (
-        "# Finn\n\n## Contact\n- Handles: finn@town.com\n- Also known as: Finn [1]\n\n"
+    assert done == {"removed line": ["people/thane.md"]}
+    assert notebook.read("people/thane.md") == (
+        "# Thane\n\n## Contact\n- Handles: thane@quayside.example\n- Also known as: Thane [1]\n\n"
         "## Uncertainties\n- Phone: none in the supplied mail.\n\n"
         "## Sources\n- [1] gmail:abc — a mail\n\nInvestigation: investigated 2026-09-28\n")
     assert notebook.read("projects/atlas.md") == kept                      # the runner's own notice is a fact it cites
@@ -308,19 +308,19 @@ def test_the_maps_mail_count_moves_from_history_to_the_lead(tmp_path):
     """#2059: an older map wrote "Observed mail count" into History; some of its pages had no lead."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    _person(notebook, "people/basem.md", "Basem Suleiman", "b@unsw.edu.au")
-    page = notebook.read("people/basem.md").replace(Notebook.PERSON_LEAD + "\n\n", "")
+    _person(notebook, "people/sami.md", "Sami Haddad", "b@unsw.edu.au")
+    page = notebook.read("people/sami.md").replace(Notebook.PERSON_LEAD + "\n\n", "")
     page = page.replace("## History\n- Unknown — not investigated yet\n",
                         "## History\n- Observed mail count: 6; first: 2026-08-01; last: 2026-09-06; "
                         "mailboxes: outlook. [1]\n")
     page = page.replace("- (none yet)", "- [1] Enumeration metadata, observed 2026-09-20 — .state/map.json")
-    notebook.write("people/basem.md", page)
+    notebook.write("people/sami.md", page)
 
     done = tidy(tmp_path)
 
-    text = notebook.read("people/basem.md")
-    assert done["moved the map's count to the lead"] == ["people/basem.md"]
-    assert text.startswith("# Basem Suleiman\n\nUnknown — not investigated yet. Last contact: 2026-09-06; "
+    text = notebook.read("people/sami.md")
+    assert done["moved the map's count to the lead"] == ["people/sami.md"]
+    assert text.startswith("# Sami Haddad\n\nUnknown — not investigated yet. Last contact: 2026-09-06; "
                            "6 mails (outlook).\n")
     assert "Observed mail count" not in text and "Enumeration metadata" not in text
     assert "## History\n- Unknown — not investigated yet" in text
@@ -332,18 +332,18 @@ def test_a_written_page_links_the_people_it_names_and_a_mapped_one_is_left(tmp_p
     """#2060: 2 of the owner's 381 people pages had any link at all."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    _person(notebook, "people/jiexuan.md", "Jiexuan Deng", "j@unsw.edu.au")
-    _person(notebook, "people/richard.md", "Richard Lai", "r@unsw.edu.au", investigated=True)
+    _person(notebook, "people/kenji.md", "Kenji Hale", "j@unsw.edu.au")
+    _person(notebook, "people/emrys.md", "Emrys Brandt", "r@unsw.edu.au", investigated=True)
     _person(notebook, "people/stub.md", "Stub Person", "s@unsw.edu.au")
-    for record in ("people/richard.md", "people/stub.md"):
-        page = re.sub(r"## Who they are\n- Unknown[^\n]*", "## Who they are\n- Works with Jiexuan Deng. [1]",
+    for record in ("people/emrys.md", "people/stub.md"):
+        page = re.sub(r"## Who they are\n- Unknown[^\n]*", "## Who they are\n- Works with Kenji Hale. [1]",
                       notebook.read(record), count=1)
         notebook.write(record, page)
 
     done = tidy(tmp_path)
 
-    assert done["linked people named on the page"] == ["people/richard.md"]
-    assert "Works with [Jiexuan Deng](../people/jiexuan.md). [1]" in notebook.read("people/richard.md")
+    assert done["linked people named on the page"] == ["people/emrys.md"]
+    assert "Works with [Kenji Hale](../people/kenji.md). [1]" in notebook.read("people/emrys.md")
     assert tidy(tmp_path) == {}
 
 

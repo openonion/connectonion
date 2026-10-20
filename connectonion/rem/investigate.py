@@ -643,7 +643,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     mailbox_addresses = {kind: {a.lower() for a in client.my_addresses()} for kind, client in clients.items()}
     own_addresses = set().union(*mailbox_addresses.values())
     # An org is its domain: "unsw.edu.au" or "@unsw.edu.au" on the page. Only
-    # for org pages -- a person's "vern.chan" alias is shaped like a domain too.
+    # for org pages -- a person's "rowan.ashdown" alias is shaped like a domain too.
     domains = sorted({match[1] for h in handles if (match := DOMAIN_HANDLE.match(h))}) \
         if record.startswith("orgs/") else []
     left_out, archived_left_out = set(), {}
@@ -1113,7 +1113,7 @@ def mail_search(clients: dict, root: Path, known: set | None = None):
                     rows = _patient(client.list_search, query, 10) or []
                 except ProviderCredentialError as error:
                     # A query the provider will not parse is that query's answer, not
-                    # the page's end: Graph's 400 on one lead lost a whole Ody pass.
+                    # the page's end: Graph's 400 on one lead lost a whole Corin pass.
                     if error.status != 400 and error.code != "provider_unavailable":
                         raise
                     found.append({"role": "search-failure", "source": "", "query": query,
@@ -1132,7 +1132,7 @@ def mail_search(clients: dict, root: Path, known: set | None = None):
                         # founders@ mailout passed the no-reply test (2026-10-10).
                         continue
                     body = _patient(client.get_email_body, row["id"])
-                    # 2026-10-16 trial: Ziming Gong's searched citation had no archived body.
+                    # 2026-10-16 trial: Zia Tanaka's searched citation had no archived body.
                     body = retain_message(root, kind, row, body,
                                           fetched_at=datetime.now(timezone.utc).isoformat())["body"]
                     head, _, rest = body.partition("--- Email Body ---")
@@ -1153,7 +1153,7 @@ GITHUB_SOURCE = re.compile(r"github:[\w.-]+/[\w.-]+#\d+")
 def github_search(query: str) -> list[dict]:
     """Read-only GitHub lookups a turn asks for, as citable items (2026-10-15).
 
-    Richard Lai opened #2443-#2446 on 2026-10-12, as he had promised. A turn
+    Emrys Brandt opened #2443-#2446 on 2026-10-12, as he had promised. A turn
     found them with its own `gh` call and cited the issue URLs, and the next
     repair removed them: the audit reads only supplied originals. Run here,
     they are supplied: `github:owner/repo#2443`, or `github:owner/repo <search>`.
@@ -1180,7 +1180,7 @@ def github_search(query: str) -> list[dict]:
 
 
 def retain_cited_github(root: Path, items: list[dict], cited: set[str]) -> None:
-    """Jiexuan's first-run issue citations had no retained original to open (2026-10-16)."""
+    """Kenji's first-run issue citations had no retained original to open (2026-10-16)."""
     for item in items:
         source, body = item.get("source"), item.get("text")
         if (source not in cited or item.get("role") != "github"
@@ -1301,7 +1301,7 @@ ATTACHMENT_EXCERPT = 8000
 def _excerpt(item: dict) -> dict:
     """A long attachment travels as its head and the file that holds the rest.
 
-    Ody's first round (2026-10-15) was one 14k-character generated report and
+    Corin's first round (2026-10-15) was one 14k-character generated report and
     one message: agent-written PDFs and CSVs filled whole rounds while the
     mail that set the relationship's terms stayed in files nobody opened.
     """
@@ -1324,7 +1324,7 @@ def by_thread(items: list[dict]) -> list[dict]:
     """Each thread whole and in order, threads ordered by their latest message.
 
     Cut by date, a request sat in one round and its reply in the next, and
-    the page said "no reply is established" (Tamara, Richard 2026-10-15). A
+    the page said "no reply is established" (Greta, Emrys 2026-10-15). A
     thread read whole shows how it ended; the last round holds what is live.
     """
     threads = {i["source"]: i["thread"] for i in items if i.get("source") and i.get("thread")}
@@ -1340,7 +1340,7 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
     """Thread by thread, the most recently active last, each round small enough for the prompt.
 
     Laid out in files, the model read 3.6-8.7% of a large page's evidence
-    (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
+    (2026-10-08 traces): Corin 4 of 143 files. A part in the prompt is read.
     """
     from .runner import readable_material
     measure = lambda parts: len(readable_material(parts).encode("utf-8"))
@@ -1540,7 +1540,7 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     except RunFailed as error:
         out = {"usage": error.usage, "refused": str(error), "changed": []}
     if _cut_too_much(page, notebook.read(record)):
-        # Ody Zhou, 2026-10-15: told it could delete a hedged line, the turn took
+        # Corin Marsh, 2026-10-15: told it could delete a hedged line, the turn took
         # the lead, the term-sheet paragraph and its Signing entity: 6.6k -> 3.9k.
         notebook.write(record, page)
         out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
@@ -1619,8 +1619,8 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     A refused round loses that round, not the page: the next part builds on
     the last accepted page. Leads a round names in its reply go to the next.
     The refused round's material is returned (`refused_sources`) for the
-    ledger: swallowed here, it reached no run record and no retry (Ody Zhou
-    2026-10-10, Dora 2026-10-12).
+    ledger: swallowed here, it reached no run record and no retry (Corin Marsh
+    2026-10-10, Briar 2026-10-12).
     """
     from .refusals import material_sources
     from .runner import RunFailed
@@ -1722,7 +1722,7 @@ def searched_sources(coverage: list[str]) -> list[str]:
     labels = (line.split(" (")[0].split(":")[0] for line in coverage
               if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line)
     # A source is one word (outlook, gmail, claude-code); every note is a
-    # phrase. Ody Zhou's line read "(outlook, gmail, codex, claude-code,
+    # phrase. Corin Marsh's line read "(outlook, gmail, codex, claude-code,
     # Requested investigation window)" (#2045).
     return list(dict.fromkeys(label for label in labels if re.fullmatch(r"[a-z][a-z0-9-]*", label)))
 
@@ -1731,7 +1731,7 @@ def drop_map_count(page: str) -> str:
     """The map's "Observed mail count" History bullet, once the mail itself was read.
 
     The map writes it from a window-limited count; after an investigation read
-    32 of Jiexuan Deng's mails the page still said "Observed mail count: 2"
+    32 of Kenji Hale's mails the page still said "Observed mail count: 2"
     (#2045). Kept while it is History's only entry."""
     head, marker, rest = page.partition("\n## History\n")
     if not marker:
@@ -1968,7 +1968,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     last = last_investigated(notebook.read(record))
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,
-    # and Ody's phone sat in a signature it never opened (#2068). A mail the
+    # and Corin's phone sat in a signature it never opened (#2068). A mail the
     # page already cites still has its signature. On a page investigated
     # before, the window is not the whole history: its earliest mail is not
     # the relationship's first contact.
@@ -2271,7 +2271,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         forget_refusal(root, record)
         if result.get("refused_sources"):
             # The page was accepted, but a refused round's material was read by no
-            # later round: Ody Zhou's [27],[28] and Dora's citation 22 went nowhere
+            # later round: Corin Marsh's [27],[28] and Briar's citation 22 went nowhere
             # (2026-10-10, 10-12). It stays in the ledger for the daily retry.
             remember_refusal(root, record, result["refused_sources"], result["refused_rounds"][0],
                              stage="investigation round")

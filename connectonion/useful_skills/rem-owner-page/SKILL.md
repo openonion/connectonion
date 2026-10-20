@@ -35,8 +35,8 @@ never a correspondent in `Cadence`.
   themselves** (a signature, "I run …", "as the founder of …"), or **someone
   else states them about the user** ("Aaron, our CTO").
 - **A role in a list the user writes about someone else is that person's, not
-  the user's.** "Ody: partner at OpenOnion, runs marketing, Airbnb co-host" in
-  the user's mail describes Ody. Leave it off this page.
+  the user's.** "Corin: partner at OpenOnion, runs marketing, Airbnb co-host" in
+  the user's mail describes Corin. Leave it off this page.
 - List stated roles with citations and dates; otherwise `Unknown`.
 
 ## The sections

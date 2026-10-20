@@ -227,13 +227,13 @@ def test_a_fact_from_the_carrier_email_does_not_cite_its_attachment_instead():
 
 
 class Signed:
-    """One mail from Vern whose phone is only in his signature."""
+    """One mail from Rowan whose phone is only in his signature."""
     def my_addresses(self): return {"me@x.y"}
     def list_between(self, s, e, n):
-        return [{"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
+        return [{"id": "s1", "from": "Rowan Ashdown <rowan.ashdown@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
                  "date": s}]
     def get_email_body(self, i):
-        return "Hi, see you Thursday.\n\nRegards,\nVern Chan\nGlobal Program Manager\nM: +61 412 000 111\n"
+        return "Hi, see you Thursday.\n\nRegards,\nRowan Ashdown\nGlobal Program Manager\nM: +61 412 000 111\n"
 
 
 @pytest.mark.parametrize("merged_send", [False, True])
@@ -247,16 +247,16 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     prepare(root)
     set_config(root, ["schedule.timezone", "Australia/Sydney"])
     notebook = inv.Notebook(root)
-    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
-    original = notebook.read("people/vern.md")
+    notebook.stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"], email="rowan.ashdown@unsw.edu.au")
+    original = notebook.read("people/rowan.md")
     seen = {}
     mail_rows = [
-        {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
+        {"id": "s1", "from": "Rowan Ashdown <rowan.ashdown@unsw.edu.au>", "to": ["me@x.y"],
          "subject": "Hello", "date": "2026-09-30T23:03:58Z"}]
     if merged_send:
-        # Only Vern's copy is gathered; the other recipients exist only in archive metadata.
+        # Only Rowan's copy is gathered; the other recipients exist only in archive metadata.
         merged = [{"type": "mail", "source": "outlook", "id": f"m{n}", "from": "me@x.y",
-                   "to": ["vern.chan@unsw.edu.au" if n == 0 else f"student{n}@school.example"],
+                   "to": ["rowan.ashdown@unsw.edu.au" if n == 0 else f"student{n}@school.example"],
                    "subject": "Try handoff", "date": "2026-10-15T01:00:00Z"} for n in range(5)]
         (root / ".state" / "source-inventory.jsonl").write_text(
             "".join(json.dumps(row) + "\n" for row in merged))
@@ -267,16 +267,16 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
         seen["facts"] = next(i for i in items if i["role"] == "facts")
         source = next(i["source"] for i in items if i.get("role") == "other")
         page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
-                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                                 "Rowan runs the programme [1]. Last contact: 2026-09-30 [1].")
                 .replace("- Unknown — not investigated yet", "- Unknown")
                 .replace("- Role: Unknown", "- Role: Global Program Manager [1]")
                 .replace("- (none yet)", f"- [1] {source} — 2026-09-30, high"))
         candidate = tmp_path / "candidate.md"
         candidate.write_text(page)
-        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
-        return {"changed": ["people/vern.md"], "usage": None}
+        runner._promote_candidate(nb, "people/rowan.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/rowan.md"], "usage": None}
 
-    result = inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+    result = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan", "rowan.ashdown@unsw.edu.au"], days=5,
                              clients={"outlook": Signed()}, subscriptions={}, runner=write)
     assert "Phone: +61 412 000 111 (mobile)" in seen["facts"]["text"]
     assert found(seen["facts"]["facts"], "Last contact")[0]["value"] == "2026-10-01"
@@ -284,27 +284,27 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     assert ("First contact is the earliest mail found in this material; keep a page's earlier First contact, "
             "and write an earlier start a message states (hired, met, introduced) instead when there is one."
             in seen["facts"]["text"])
-    page = notebook.read("people/vern.md")
+    page = notebook.read("people/rowan.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
     assert result["facts"]["extracted"] >= 3                        # email, phone and last contact
 
 
 class Thread(Signed):
-    """Vern gives a number in his own words; David, copied in, signs with his office line."""
+    """Rowan gives a number in his own words; Colin, copied in, signs with his office line."""
     def list_between(self, s, e, n):
-        return [{"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
+        return [{"id": "s1", "from": "Rowan Ashdown <rowan.ashdown@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
                  "date": "2026-09-30T23:03:58Z"},
-                {"id": "s2", "from": "David Burt <david.burt@unsw.edu.au>", "to": ["me@x.y", "vern.chan@unsw.edu.au"],
+                {"id": "s2", "from": "Colin Drake <colin.drake@unsw.edu.au>", "to": ["me@x.y", "rowan.ashdown@unsw.edu.au"],
                  "subject": "Re: Hello", "date": "2026-09-29T01:00:00Z"}]
     def get_email_body(self, i):
-        return ("Call me on 0457 222 333 any time.\n\nRegards,\nVern Chan\nM: +61 412 000 111\n" if i == "s1" else
-                "Thanks both.\n\nKind regards,\nDavid Burt\nDirector of Entrepreneurship\nT: +61 2 9065 4432\n")
+        return ("Call me on 0457 222 333 any time.\n\nRegards,\nRowan Ashdown\nM: +61 412 000 111\n" if i == "s1" else
+                "Thanks both.\n\nKind regards,\nColin Drake\nDirector of Entrepreneurship\nT: +61 2 9000 0157\n")
 
 
 def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_their_words_stays(tmp_path, monkeypatch):
-    """#2348: Vern's page carried David Burt's office line from David's signature in the
-    thread. The rule that kept only signature phones also took Dannielle's own
+    """#2348: Rowan's page carried Colin Drake's office line from Colin's signature in the
+    thread. The rule that kept only signature phones also took Brianna's own
     "give me a call on …" and refused her page over the source left uncited (1.9.2b3 trial)."""
     from connectonion.rem import investigate as inv
     from connectonion.rem import runner
@@ -313,30 +313,30 @@ def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_
     root = tmp_path / "rem"
     prepare(root)
     notebook = inv.Notebook(root)
-    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
-    original = notebook.read("people/vern.md")
+    notebook.stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"], email="rowan.ashdown@unsw.edu.au")
+    original = notebook.read("people/rowan.md")
     seen = {}
 
     def write(nb, items, config, stage):
         seen["facts"] = next(i for i in items if i["role"] == "facts")["text"]
         mine, davids = (next(i["source"] for i in items if i.get("role") == "other" and name in i.get("speaker", ""))
-                        for name in ("Vern", "David"))
+                        for name in ("Rowan", "Colin"))
         page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
-                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                                 "Rowan runs the programme [1]. Last contact: 2026-09-30 [1].")
                 .replace("- Unknown — not investigated yet", "- Unknown")
-                .replace("- Phone: Unknown", "- Phone: 0457 222 333 (mobile) [1]; +61 2 9065 4432 (work) [2]")
+                .replace("- Phone: Unknown", "- Phone: 0457 222 333 (mobile) [1]; +61 2 9000 0157 (work) [2]")
                 .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high\n- [2] {davids} — 2026-09-29"))
         candidate = tmp_path / "candidate.md"
         candidate.write_text(page)
-        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
-        return {"changed": ["people/vern.md"], "usage": None}
+        runner._promote_candidate(nb, "people/rowan.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/rowan.md"], "usage": None}
 
-    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+    inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan", "rowan.ashdown@unsw.edu.au"], days=5,
                     clients={"outlook": Thread()}, subscriptions={}, runner=write)
-    assert "Someone else's phone: +61 2 9065 4432 (David Burt)" in seen["facts"]
-    page = notebook.read("people/vern.md")
+    assert "Someone else's phone: +61 2 9000 0157 (Colin Drake)" in seen["facts"]
+    page = notebook.read("people/rowan.md")
     assert "0457 222 333 (mobile) [1]" in page and "9065" not in page
-    assert "- [2]" not in page   # David's mail, cited by nothing else now, goes rather than refuse the page
+    assert "- [2]" not in page   # Colin's mail, cited by nothing else now, goes rather than refuse the page
 
 
 def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_domain(tmp_path, monkeypatch):
@@ -349,48 +349,48 @@ def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_dom
     root = tmp_path / "rem"
     prepare(root)
     notebook = inv.Notebook(root)
-    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    notebook.stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"], email="rowan.ashdown@unsw.edu.au")
     notebook.stub_org("orgs/unsw.md", "UNSW Sydney", ["unsw.edu.au"])
-    original = notebook.read("people/vern.md")
+    original = notebook.read("people/rowan.md")
 
     def write(nb, items, config, stage):
-        mine = next(i["source"] for i in items if i.get("role") == "other" and "Vern" in i.get("speaker", ""))
+        mine = next(i["source"] for i in items if i.get("role") == "other" and "Rowan" in i.get("speaker", ""))
         page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
-                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                                 "Rowan runs the programme [1]. Last contact: 2026-09-30 [1].")
                 .replace("- Unknown — not investigated yet", "- Unknown")
                 .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high"))
         candidate = tmp_path / "candidate.md"
         candidate.write_text(page)
-        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
-        return {"changed": ["people/vern.md"], "usage": None}
+        runner._promote_candidate(nb, "people/rowan.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/rowan.md"], "usage": None}
 
-    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+    inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan", "rowan.ashdown@unsw.edu.au"], days=5,
                     clients={"outlook": Signed()}, subscriptions={}, runner=write)
-    assert "- Company: [UNSW Sydney](../orgs/unsw.md) [1]" in notebook.read("people/vern.md")
+    assert "- Company: [UNSW Sydney](../orgs/unsw.md) [1]" in notebook.read("people/rowan.md")
     review = __import__("json").loads((tmp_path / "review.json").read_text())
     assert review["company_from_domain"]["domain"] == "unsw.edu.au"   # code-made changes are on record
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
-    """Ody's case: the signature mail was cited, so nothing was new, and the phone stayed Unknown."""
+    """Corin's case: the signature mail was cited, so nothing was new, and the phone stayed Unknown."""
     from connectonion.rem import investigate as inv
     from connectonion.rem.config import prepare
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
     root = tmp_path / "rem"
     prepare(root)
     notebook = inv.Notebook(root)
-    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    notebook.stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"], email="rowan.ashdown@unsw.edu.au")
     source = "outlook:" + __import__("hashlib").sha256(b"s1").hexdigest()[:12]
-    page = (notebook.read("people/vern.md").replace("- Unknown — not investigated yet", "- Unknown")
+    page = (notebook.read("people/rowan.md").replace("- Unknown — not investigated yet", "- Unknown")
             .replace("- (none yet)", f"- [1] {source} — 2026-09-30, high")
             .replace("- Role: Unknown", "- Role: Global Program Manager [1]")
             .replace("· not investigated yet", "· investigated 2026-09-29 (outlook)"))
-    notebook.write("people/vern.md", page)
+    notebook.write("people/rowan.md", page)
     with pytest.raises(inv.NothingNew):
-        inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+        inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan", "rowan.ashdown@unsw.edu.au"], days=5,
                         clients={"outlook": Signed()}, subscriptions={},
                         runner=lambda *a, **k: pytest.fail("no model call"))
-    kept = notebook.read("people/vern.md")
+    kept = notebook.read("people/rowan.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in kept
     assert "- First contact: Unknown" in kept          # an update's window is not the whole history
 
@@ -415,7 +415,7 @@ NOTICE = ("Hi all,\nPlease see the notice below about the co-working space.\n\n"
 
 @pytest.mark.parametrize("subject", ["Important Notice - Co Working access + power outage Feb", "Co Working access"])
 def test_a_number_under_someone_elses_name_in_the_subjects_own_mail_is_not_theirs(subject):
-    """P1: Nina forwarded an estate notice; "Thank you for your understanding…" opened a
+    """P1: Petra forwarded an estate notice; "Thank you for your understanding…" opened a
     "signature" and the facilities manager's mobile was restored onto her page."""
     rows = extract([mail("outlook:n1", "2026-02-03T01:00:00+00:00", NOTICE, subject=subject)], HANDLES)
     assert not found(rows, "Phone")
@@ -431,8 +431,8 @@ RELAY = "Mia Chen <usr-s2godxk@user.luma-mail.com>"
 
 
 def test_a_luma_host_copy_gives_no_phone_and_its_relay_is_no_email():
-    """P2/E2: the relay joined Ody's handles by display name; his name line opened a
-    "signature" and "call Larry 0405…" became his phone in 8 of 8 runs."""
+    """P2/E2: the relay joined Corin's handles by display name; his name line opened a
+    "signature" and "call Fenwick 0405…" became his phone in 8 of 8 runs."""
     item = mail("gmail:l1", "2026-08-20T06:20:45+00:00", LUMA, speaker=RELAY,
                 subject="[Host Copy] New message in Build Your AI Sales Engine")
     rows = extract([item], [*HANDLES, "usr-s2godxk@user.luma-mail.com"])
@@ -466,7 +466,7 @@ def test_a_restored_phone_or_address_must_be_the_subjects_own():
 
 
 def test_last_contact_is_human_mail_between_them_not_a_broadcast_or_notice():
-    """T2: Tamara's kitchen-etiquette note to about 30 startups became her Last contact."""
+    """T2: Greta's kitchen-etiquette note to about 30 startups became her Last contact."""
     everyone = {"from": "Mia Chen <mia.chen@harbour.example>", "to": [f"p{n}@x.example" for n in range(30)], "cc": []}
     rows = extract([
         mail("gmail:h1", "2026-09-01T01:00:00+00:00", "Thursday works.\nMia"),
@@ -551,11 +551,11 @@ def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, 
     from connectonion.rem.files import Notebook
     from connectonion.rem.project_claim_review import packet
 
-    adi = f"Adi <adi@{domain}>"
+    anselm = f"Anselm <anselm@{domain}>"
     sent = {**mail("gmail:sent", "2026-08-22T01:00:00Z", "Can we talk?", speaker="Me <me@x.example>", role="user"),
-            "participants": {"from": "me@x.example", "to": [adi], "cc": []}}
-    reply = {**mail("gmail:reply", "2026-09-03T01:00:00Z", "Regards,\nAdi\nM: 0400 555 019\n", speaker=adi),
-             "participants": {"from": adi, "to": ["me@x.example"], "cc": []}}
+            "participants": {"from": "me@x.example", "to": [anselm], "cc": []}}
+    reply = {**mail("gmail:reply", "2026-09-03T01:00:00Z", "Regards,\nAnselm\nM: 0400 555 019\n", speaker=anselm),
+             "participants": {"from": anselm, "to": ["me@x.example"], "cc": []}}
     broadcast = {**sent, "source": "gmail:broadcast", "timestamp": "2026-10-06T01:00:00Z",
                  "participants": {"to": [f"p{n}@{domain}" for n in range(40)], "cc": []}}
     items = [sent, reply, broadcast]
@@ -588,7 +588,7 @@ def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, 
     ("noreply@agentmail.cc", "other", ["me@x.example"], "Digest"),
     ("person@agentmail.cc", "other", ["me@x.example"], "Important Notice"),
     ("person@agentmail.cc", "other", [f"p{n}@agentmail.cc" for n in range(40)], "Hello all"),
-    ("adi@notagentmail.cc", "other", ["me@x.example"], "Hello"),
+    ("anselm@notagentmail.cc", "other", ["me@x.example"], "Hello"),
     ("person@agentmail.cc.evil.example", "other", ["me@x.example"], "Hello"),
     ("someone@else.example", "other", ["person@agentmail.cc"], "Hello"),
     ("me@x.example", "user", ["someone@else.example"], "Hello"),
@@ -609,7 +609,7 @@ def contact_page(email, phone, sources):
 
 
 def test_promotion_drops_a_number_from_a_luma_notice_and_keeps_one_given_in_their_own_words(tmp_path):
-    """P2 kept "call Larry"; Andrew's "ring me at 0481…" through the same relay is his (contacts audit)."""
+    """P2 kept "call Fenwick"; Simon's "ring me at 0481…" through the same relay is his (contacts audit)."""
     from connectonion.rem.config import prepare
     from connectonion.rem.page_review import verify_contacts
     prepare(tmp_path)
@@ -666,6 +666,6 @@ def test_promotion_keeps_only_addresses_they_send_from_or_are_written_to_at_by_n
 
 
 def test_a_spelling_the_person_rejected_leaves_also_known_as():
-    """A1: Ody wrote that his Chinese name is 周泽凯, not 周泽楷; the page listed both."""
-    page = "# Ody\n\n## Facts\n- Also known as: 周泽凯; 周泽楷 (corrected by Ody); ody@x.example\n"
-    assert "- Also known as: 周泽凯\n" in facts.names_not_addresses("people/ody.md", page)
+    """A1: Corin wrote that his Chinese name is 周泽凯, not 周泽楷; the page listed both."""
+    page = "# Corin\n\n## Facts\n- Also known as: 周泽凯; 周泽楷 (corrected by Corin); corin@x.example\n"
+    assert "- Also known as: 周泽凯\n" in facts.names_not_addresses("people/corin.md", page)

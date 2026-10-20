@@ -317,10 +317,10 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
 
 
 def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook, monkeypatch):
-    """#2041: Ody Zhou's 18,730-character page learnt about the 20,000 limit
+    """#2041: Corin Marsh's 18,730-character page learnt about the 20,000 limit
     only from the review, after a 643k-token turn."""
-    record = 'people/ody.md'
-    notebook.stub_person(record, 'Ody', ['ody@example.org'], email='ody@example.org')
+    record = 'people/corin.md'
+    notebook.stub_person(record, 'Corin', ['corin@example.org'], email='corin@example.org')
     notebook.write(record, notebook.read(record) + '\n' + 'x' * 18_000 + '\n')
     prompts = []
 
@@ -628,21 +628,21 @@ def test_a_maintenance_batch_that_guts_a_page_keeps_the_old_one(tmp_path):
     prepare(root)
     prepare(work)
     notebook, working = Notebook(root), Notebook(work)
-    notebook.stub_person("people/dora.md", "Dora", [])
-    lines = "\n".join(f"- Dora settled point {n} of the lease, in writing, with the agent. [{n}]" for n in range(1, 13))
+    notebook.stub_person("people/briar.md", "Briar", [])
+    lines = "\n".join(f"- Briar settled point {n} of the lease, in writing, with the agent. [{n}]" for n in range(1, 13))
     sources = "\n".join(f"- [{n}] codex:abc:{n} — 2026-09-24" for n in range(1, 13))
-    full = notebook.read("people/dora.md").replace("## Who they are\n- Unknown — not investigated yet",
+    full = notebook.read("people/briar.md").replace("## Who they are\n- Unknown — not investigated yet",
                                                    f"## Who they are\n{lines}").replace(
         "## Sources\n- (none yet)", f"## Sources\n{sources}")
-    notebook.write("people/dora.md", full)
+    notebook.write("people/briar.md", full)
     gutted = full.replace(lines, lines.split("\n")[0]).replace(sources, sources.split("\n")[0])
-    working.write("people/dora.md", gutted)
+    working.write("people/briar.md", gutted)
     items = [{"role": "user", "source": f"codex:abc:{n}", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}
              for n in range(1, 13)]
     directory = tmp_path / "task"
     directory.mkdir()
-    refusals = _promote_maintenance(notebook, working, {"people/dora.md": full}, items, directory, None, False)
-    assert notebook.read("people/dora.md") == full
+    refusals = _promote_maintenance(notebook, working, {"people/briar.md": full}, items, directory, None, False)
+    assert notebook.read("people/briar.md") == full
     assert any("kept the old page" in error for error in refusals[0]["errors"])
 
 
@@ -941,7 +941,7 @@ def test_runner_restores_dropped_line_after_one_unsuccessful_repair(notebook, tm
 
 
 def test_a_fact_whose_only_citation_is_dropped_loses_that_part_instead_of_failing_the_page(tmp_path):
-    """1.9.2b3 trial: Lisa's Role cited a project file outside her material; the
+    """1.9.2b3 trial: Maren's Role cited a project file outside her material; the
     unresolved [7] was dropped, the half it supported was left uncited, and the
     whole page was refused for "Fact without a citation: Role"."""
     from connectonion.rem import runner
@@ -1502,7 +1502,7 @@ def test_material_carries_local_times_without_changing_the_sources(notebook, del
 
 
 def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
-    """Ody's page kept 13 and 14 October events as open threads on the 15th:
+    """Corin's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -1520,25 +1520,25 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
 
 
 def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):
-    """Ody's Luma relay became his Email (contacts audit E2); a one-page sync turn is
+    """Corin's Luma relay became his Email (contacts audit E2); a one-page sync turn is
     held to the same contact rule as an investigation."""
     from connectonion.rem.runner import _promote_maintenance
     root, work = tmp_path / "rem", tmp_path / "work"
     prepare(root)
     prepare(work)
     notebook, working = Notebook(root), Notebook(work)
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody.zhou@example.com"], email="ody.zhou@example.com")
-    before = notebook.read("people/ody.md")
-    after = before.replace("- Email: ody.zhou@example.com",
-                           "- Email: ody.zhou@example.com; usr-abc@user.luma-mail.com; larry@estate.example")
-    working.write("people/ody.md", after)
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin.marsh@example.com"], email="corin.marsh@example.com")
+    before = notebook.read("people/corin.md")
+    after = before.replace("- Email: corin.marsh@example.com",
+                           "- Email: corin.marsh@example.com; usr-abc@user.luma-mail.com; fenwick@estate.example")
+    working.write("people/corin.md", after)
     directory = tmp_path / "task"
     directory.mkdir()
-    refusals = _promote_maintenance(notebook, working, {"people/ody.md": before}, [], directory, None, False)
-    saved = notebook.read("people/ody.md")
+    refusals = _promote_maintenance(notebook, working, {"people/corin.md": before}, [], directory, None, False)
+    saved = notebook.read("people/corin.md")
     assert not refusals
-    assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/ody.md"]
-    assert "ody.zhou@example.com" in saved and "luma-mail" not in saved and "larry@" not in saved
+    assert json.loads((directory / "review.json").read_text())["accepted"] == ["people/corin.md"]
+    assert "corin.marsh@example.com" in saved and "luma-mail" not in saved and "fenwick@" not in saved
 
 
 def test_a_refuted_first_contact_is_replaced_with_the_extracted_date_on_last_resort(notebook, tmp_path):
@@ -1576,25 +1576,25 @@ def test_a_refuted_first_contact_is_replaced_with_the_extracted_date_on_last_res
 
 
 def test_a_page_whose_audit_emptied_its_lead_is_not_promoted():
-    """Ody Zhou (2026-10-15) was kept with no lead: the audit refuted a claim in
+    """Corin Marsh (2026-10-15) was kept with no lead: the audit refuted a claim in
     each sentence. `_lead` is what the last resort checks before keeping a page."""
     from connectonion.rem.runner import _lead
-    assert _lead("# Ody Zhou\n\n\n## Facts\n- Email: x\n") == ""
-    assert _lead("# Ody Zhou\n\nOdy is a co-founder [1]. Last contact: 2026-10-15.\n\n## Facts\n") \
-        .startswith("Ody is a co-founder")
+    assert _lead("# Corin Marsh\n\n\n## Facts\n- Email: x\n") == ""
+    assert _lead("# Corin Marsh\n\nCorin is a co-founder [1]. Last contact: 2026-10-15.\n\n## Facts\n") \
+        .startswith("Corin is a co-founder")
 
 
 def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
-    """Tamara and Nina (2026-10-15): an audit finding about a missing citation
-    took the lead's first sentence, and Nina's page opened on an HR ticket."""
+    """Greta and Petra (2026-10-15): an audit finding about a missing citation
+    took the lead's first sentence, and Petra's page opened on an HR ticket."""
     from connectonion.rem.runner import _keep_identity
     facts = ("## Facts\n- Company: [UNSW Founders](../orgs/unsw.md) [4]\n- Role: Events Coordinator [4]\n\n"
              "## Insight\n- Unknown\n")
-    before = "# Tamara Berryman\n\nTamara is the user's main MCIC contact [1]. The user owes her a card [5].\n\n" + facts
-    after = "# Tamara Berryman\n\nThe user owes her a card [5].\n\n" + facts
-    kept = _keep_identity("people/tamara.md", before, after)
-    assert kept.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator at "
+    before = "# Greta Holloway\n\nGreta is the user's main MCIC contact [1]. The user owes her a card [5].\n\n" + facts
+    after = "# Greta Holloway\n\nThe user owes her a card [5].\n\n" + facts
+    kept = _keep_identity("people/greta.md", before, after)
+    assert kept.startswith("# Greta Holloway\n\nGreta Holloway is Events Coordinator at "
                            "[UNSW Founders](../orgs/unsw.md) [4]. The user owes her a card [5].\n\n## Facts")
-    assert _keep_identity("people/tamara.md", before, before) == before
-    emptied = _keep_identity("people/tamara.md", before, "# Tamara Berryman\n\n\n" + facts)
-    assert emptied.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator") and "\n\n## Facts" in emptied
+    assert _keep_identity("people/greta.md", before, before) == before
+    emptied = _keep_identity("people/greta.md", before, "# Greta Holloway\n\n\n" + facts)
+    assert emptied.startswith("# Greta Holloway\n\nGreta Holloway is Events Coordinator") and "\n\n## Facts" in emptied

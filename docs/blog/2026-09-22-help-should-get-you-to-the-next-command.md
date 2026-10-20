@@ -5,7 +5,7 @@ then investigates the owner and recent important people, projects, and
 organizations with a model by default. `--no-investigate` explicitly requests
 the older map-only behavior. The account below describes the 1.8.7b4 preview.
 
-The user ran `co wiki investigate` and received a missing-argument error. Help offered `people/emma.md` as an example. They tried that path and another person's name. Neither file existed. Every response described a valid piece of the interface, but none supplied the missing connection: where to find a page that belonged to this notebook.
+The user ran `co wiki investigate` and received a missing-argument error. Help offered `people/elodie.md` as an example. They tried that path and another person's name. Neither file existed. Every response described a valid piece of the interface, but none supplied the missing connection: where to find a page that belonged to this notebook.
 
 We could have written a longer Skill telling the agent to list pages first. That would help an agent that loaded the Skill, while leaving the terminal user with the same problem. It would also create another copy of the command's usage rules. Our decision was to put the workflow in help and share its definition with the no-argument overview. The Skill routes to that guide and adds evidence judgment.
 

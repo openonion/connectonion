@@ -69,7 +69,7 @@ def default_config() -> dict:
             # (a 300k digest chunk, then a project's material).
             # extract_chars_per_batch stays under input_chars_per_batch: a digest
             # chunk is read through the same 600-second turn, and at 300k a Codex
-            # turn reading it piece by piece timed out on 2026-09-23 (Dora, 39
+            # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
             "limits": {"runner_calls_per_day": 50, "translations_per_day": 10, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,

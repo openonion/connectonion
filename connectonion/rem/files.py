@@ -27,7 +27,7 @@ CITATION = re.compile(r"\s*\[W?\d+\]")
 def split_handles(value: str) -> list[str]:
     """The names and addresses on one page line, without its citations.
 
-    A page line is written for a reader: `Tamara Berryman; tamara.berryman@unsw.edu.au [2]`.
+    A page line is written for a reader: `Greta Holloway; greta.holloway@unsw.edu.au [2]`.
     Split on commas only, that came back as one handle with `[2]` in it, and
     because it held an `@` it went to Gmail as an address: the query matched
     677 unrelated mails and a re-investigation read them all (#1954).
@@ -492,8 +492,8 @@ class Notebook:
         A person is named differently by every source. Mail carries a signature
         and an address; a coding session carries whatever the user typed in the
         moment -- a first name, a nickname, a typo, or what dictation heard
-        ("odi" for Ody Zhou, measured 2026-09-12). Literal search cannot bridge
-        that: `search("odi")` does not match "Ody Zhou", so the maintainer
+        ("odi" for Corin Marsh, measured 2026-09-12). Literal search cannot bridge
+        that: `search("odi")` does not match "Corin Marsh", so the maintainer
         concluded, reasonably, that it had met someone new.
 
         This hands over the roster instead of a search box: title, every
@@ -532,7 +532,7 @@ class Notebook:
         """Every person the query names exactly: title, an alias or an address.
 
         For commands that act on someone (`show`, sending mail, a handoff), so
-        it never guesses. A real notebook had three Ody pages; the caller lists
+        it never guesses. A real notebook had three Corin pages; the caller lists
         them all rather than pick one and reach the wrong address.
         """
         wanted = query.strip().casefold()

@@ -7,7 +7,7 @@ tags: [REM, Investigation]
 
 The question was simple: when the notebook investigates a person a second
 time, does the page get deeper? The run logs said yes. Four rounds, fifteen
-minutes, seven million tokens, page changed. By every number we track, Nina's
+minutes, seven million tokens, page changed. By every number we track, Petra's
 page had been worked on.
 
 Then we read the run's own report, round by round. Round one did real work:

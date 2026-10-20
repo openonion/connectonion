@@ -6,7 +6,7 @@ re-sending the whole context, and timed out at twenty minutes. The map already
 knows what a script can know: a coding session names the directory it ran in,
 which is on a project page's Paths; and a person is named in the material by a
 title or alias the roster holds. Those are handed over as the place to start.
-Judgement -- whether "Dora" here is that Dora -- stays with the model.
+Judgement -- whether "Briar" here is that Briar -- stays with the model.
 """
 
 import re

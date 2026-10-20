@@ -85,8 +85,8 @@ supports it and `Unknown` when the batch touches the question without answering 
 
 ```
 ## People
-- **Emma (飘啊飘)** — szh526@gmail.com
-  - Contact: email szh526@gmail.com; phone Unknown; Mandarin for operations,
+- **Elodie (云朵朵)** — elodie526@example.com
+  - Contact: email elodie526@example.com; phone Unknown; Mandarin for operations,
     English for contract redlines. (outlook:1adf5a91461b)
   - Who they are: independent Sydney Airbnb host, 7 property types across 3
     buildings as of 2026-07-10. (outlook:9f2c1a4b7e30)
@@ -100,9 +100,9 @@ supports it and `Unknown` when the batch touches the question without answering 
     - 2026-08-06 — the user sent v9; she replied ~1.5h later with 7 clause
       changes. (outlook:7c8e2d10a4f5, outlook:bf2cd2898fb3)
       - Quote: “Clause 4: please change gross to net, otherwise fine.”
-  - How they write: English for legal (numbered, "Regards, Emma"), brief Mandarin
+  - How they write: English for legal (numbered, "Regards, Elodie"), brief Mandarin
     for operations ("收到"). Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Emma，你好，", signs "Aaron"; leads with
+  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; leads with
     the conclusion, then the math.
   - Cadence: same-day replies through 2026-08-05→07.
   - Open: nothing owed by either side as of 2026-08-07.

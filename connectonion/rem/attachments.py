@@ -1,7 +1,7 @@
 """What an attachment says, as text the investigate turn can read.
 
 The terms of a relationship are in the contract, not the mail that carried
-it; a real investigation of Emma reported "no attachment bodies are included,
+it; a real investigation of Elodie reported "no attachment bodies are included,
 so terms should be rechecked against the actual files". This reads the files.
 PDF through pypdf, Word through python-docx, plain text as it is; anything else
 is named but not read, which is a finding the page can carry.

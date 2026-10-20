@@ -114,15 +114,15 @@ def test_show_me_before_init_says_how_to_get_a_page(tmp_path):
 
 def _people(root):
     nb=Notebook(root)
-    nb.write('people/ody-a.md','# Ody Zhou\n\n## Facts\n- Email: zhouody@gmail.com\n- Also known as: Ody; Zekai Zhou\n')
-    nb.write('people/ody-b.md','# Ody Zhou\n\n## Facts\n- Email: zhouodywork@gmail.com\n- Also known as: Ody\n')
+    nb.write('people/corin-a.md','# Corin Marsh\n\n## Facts\n- Email: zhouody@gmail.com\n- Also known as: Corin; Zekai Marsh\n')
+    nb.write('people/corin-b.md','# Corin Marsh\n\n## Facts\n- Email: zhouodywork@gmail.com\n- Also known as: Corin\n')
     nb.write('people/mia.md','# Mia Chen\n\n## Facts\n- Email: mia@harbour.example\n- Also known as: Mimi\n')
     return nb
 
 
 def test_show_finds_a_person_by_name_alias_or_email(tmp_path):
     # A command that sends mail or hands off work names a person, not a path:
-    # `co rem show ody` said "expected a Markdown record inside a co rem category".
+    # `co rem show corin` said "expected a Markdown record inside a co rem category".
     root=tmp_path/'rem';prepare(root);_people(root)
     for query in ('Mia Chen','mimi','MIA@harbour.example'):
         result=CliRunner().invoke(app,['rem','--root',str(root),'show',query])
@@ -131,11 +131,11 @@ def test_show_finds_a_person_by_name_alias_or_email(tmp_path):
 
 
 def test_show_lists_every_match_instead_of_guessing(tmp_path):
-    # Three Ody pages in a real notebook: picking one would send to the wrong address.
+    # Three Corin pages in a real notebook: picking one would send to the wrong address.
     root=tmp_path/'rem';prepare(root);_people(root)
-    result=CliRunner().invoke(app,['rem','--root',str(root),'show','ody'])
+    result=CliRunner().invoke(app,['rem','--root',str(root),'show','corin'])
     assert result.exit_code!=0
-    assert 'people/ody-a.md' in result.output and 'people/ody-b.md' in result.output
+    assert 'people/corin-a.md' in result.output and 'people/corin-b.md' in result.output
     assert 'zhouody@gmail.com' in result.output and 'zhouodywork@gmail.com' in result.output
     one=CliRunner().invoke(app,['rem','--root',str(root),'show','zhouodywork@gmail.com'])
     assert one.exit_code==0 and 'zhouodywork@gmail.com' in one.output
@@ -149,9 +149,9 @@ def test_show_names_no_person_when_nobody_matches(tmp_path):
 
 
 def test_a_name_in_the_title_brackets_is_a_name_too(tmp_path):
-    # "Ziming Gong (子明)" and a second page aliased 子明: `show 子明` picked one.
+    # "Zia Tanaka (子亚)" and a second page aliased 子亚: `show 子亚` picked one.
     root=tmp_path/'rem';prepare(root);nb=Notebook(root)
-    nb.write('people/a.md','# Ziming Gong (子明)\n\n## Facts\n- Email: z@unsw.example\n')
-    nb.write('people/b.md','# Ziming Gong\n\n## Facts\n- Email: z@hotmail.example\n- Also known as: 子明\n')
-    result=CliRunner().invoke(app,['rem','--root',str(root),'show','子明'])
+    nb.write('people/a.md','# Zia Tanaka (子亚)\n\n## Facts\n- Email: z@unsw.example\n')
+    nb.write('people/b.md','# Zia Tanaka\n\n## Facts\n- Email: z@hotmail.example\n- Also known as: 子亚\n')
+    result=CliRunner().invoke(app,['rem','--root',str(root),'show','子亚'])
     assert result.exit_code!=0 and 'people/a.md' in result.output and 'people/b.md' in result.output

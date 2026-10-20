@@ -1,30 +1,30 @@
 # The phone number was in the signature
 
 The owner had said it several times: co rem's pages find too few facts and
-too little insight. This time he named one. On Ody's page he could not find
-Ody's phone number. The Phone field said `Unknown`, and further down, under
+too little insight. This time he named one. On Corin's page he could not find
+Corin's phone number. The Phone field said `Unknown`, and further down, under
 Uncertainties, the page said "no phone number appears in the material".
 
 That sentence was false. We gathered the same mail again into a copy of the
-notebook and searched it with a regular expression and no model. Ody's number
+notebook and searched it with a regular expression and no model. Corin's number
 was in his signature block. The investigation had paid for a long turn over
 that mail and still wrote that the number was not there.
 
 ## How a model misses a line it was given
 
-Nothing was hidden. Ody's material was too large for one turn: 392 items,
+Nothing was hidden. Corin's material was too large for one turn: 392 items,
 including 101 attachments. So it went into files, and the turn searched them
 for each field still marked `Unknown`. A search only finds what you think to
 search for. The turn looked for the topics of the relationship and never read
 the four lines under "Regards". It then wrote the absence of a result as a
 fact about the mail.
 
-The other pages had the same problem with less obvious fields. Tamara's and
-Richard's pages had no first or last contact date anywhere, although every
+The other pages had the same problem with less obvious fields. Greta's and
+Emrys's pages had no first or last contact date anywhere, although every
 message carries one. When we measured the four pages the owner reads most,
 they filled 6 or 7 of the 14 fields a contact card needs.
 
-Tamara's mail added a second problem. Outlook had delivered every message from
+Greta's mail added a second problem. Outlook had delivered every message from
 her as a single line, with her mobile number in the middle and the next word
 attached to its last digit. The extractor's first version looked for a
 signature in the last lines of a message, so it found nothing. A model reading
@@ -60,20 +60,20 @@ says nothing the inbox had not already shown.
 
 ## What it bought
 
-We re-ran two of the pages on the copy, using the owner's Codex plan. Ody's
+We re-ran two of the pages on the copy, using the owner's Codex plan. Corin's
 page went from 6 of 14 fields filled to 8. It also gained three Insight lines,
 each tied to a specific date or commitment. That run used a bounded quick pass,
 which reads only the newest dozen mails per mailbox, so the extractor never saw
 the signature. The step that restores facts after the turn would have put the
 number back from the full window; on its own it raises the page to 9.
 
-Tamara's page cost the most to learn from. The first two candidates were
+Greta's page cost the most to learn from. The first two candidates were
 refused, one for a single line each time. One wrote a company as two values
 followed by one citation. The other put a full stop after its citation. The
 model was right both times, and our grammar was too strict. We changed two
 rules: a citation at the end of a line now covers the values before it, and an
 uncited new value is removed from the page instead of causing the whole page to
-be refused. With those rules the third candidate passes and moves Tamara from 7
+be refused. With those rules the third candidate passes and moves Greta from 7
 to 11 of 14 fields, including her mobile number. It also has three Insight
 lines of 16 to 28 words each. The three runs used 725 thousand input tokens.
 Two of them were refusals we should not have issued.

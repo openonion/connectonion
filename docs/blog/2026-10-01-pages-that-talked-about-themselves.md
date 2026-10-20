@@ -1,12 +1,12 @@
 # Pages that talked about themselves
 
-Open Ody Zhou's page and look for a phone number. It says: "no phone number
+Open Corin Marsh's page and look for a phone number. It says: "no phone number
 appears in the supplied messages; the web was not searched in this offline Wiki
 run." Further down, under Uncertainties: "web: not searched; Wiki runs are
-offline." Tamara Berryman's History begins: "The current collector reports 50
+offline." Greta Holloway's History begins: "The current collector reports 50
 matching Outlook messages with 50 bodies read in the 150-day window."
 
-None of that is about Ody or Tamara. It is the tool describing its own run, on
+None of that is about Corin or Greta. It is the tool describing its own run, on
 a page the owner opens to remember a person. Five of the seven person pages
 that had a real investigation carried some version of it. The owner's verdict
 on the notebook was that any page they opened was poor. This is one of the
@@ -16,7 +16,7 @@ The skill already said not to. Coverage, meaning what was searched, what was
 offline and how many messages were read, "goes in your final reply, never on
 the page". The model followed the letter of that. It kept coverage out of
 History and Uncertainties as named, then put it in the Phone field. And
-History, the section it was told about, still got Tamara's collector line,
+History, the section it was told about, still got Greta's collector line,
 because the model was also handed the coverage note as a citable source.
 Anything citable reads to a model as evidence, and evidence goes on the page.
 

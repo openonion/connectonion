@@ -54,10 +54,10 @@ Material about other subjects is left for their own passes.
 Recognising a person is judgement, not a string match. A name in a coding
 session is whatever the user typed at the time: a first name, a nickname, a
 typo, or what dictation heard. Measured: a session said "odi" and the notebook
-already held "Ody Zhou" -- a literal search for "odi" finds nothing, because
+already held "Corin Marsh" -- a literal search for "odi" finds nothing, because
 literal search cannot bridge a changed letter, and a second page for the same
 person was created. The context that settles it is the kind only the model can
-weigh: "odi" asked for the pricing analysis in the same week Ody Zhou was sent
+weigh: "odi" asked for the pricing analysis in the same week Corin Marsh was sent
 the pricing analysis.
 
 Adding the new spelling to `Also known as:` means the next batch matches it
@@ -165,7 +165,7 @@ In the 1.9.0a1 acceptance run (2026-09-30), four `sync --all` batches grew `proj
 **The size is enforced, at every stage that writes a page (#2019).** The rule
 lived only in this Skill, and a daily update is an investigation, not upkeep:
 in the 1.9.0a5 acceptance run (2026-10-01) one daily-update pass took
-`projects/connectonion` from 13,421 to 25,255 characters and `ody-zhou` from
+`projects/connectonion` from 13,421 to 25,255 characters and `corin-marsh` from
 18,910 to 21,690. The same rule is now in `rem-investigate`, and the runner's
 review refuses any page candidate -- investigation, daily update or upkeep --
 over **20,000 characters that is longer than the page it replaces**; the

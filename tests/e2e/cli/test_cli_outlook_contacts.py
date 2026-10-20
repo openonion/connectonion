@@ -15,12 +15,12 @@ def test_outlook_contact_add_routes_arguments():
     ) as handler:
         result = runner.invoke(app, [
             "outlook", "contact", "add",
-            "Zhou Yifei", "zhou@example.com",
+            "Nadia Marsh", "marsh@example.com",
         ])
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "Zhou Yifei", "zhou@example.com"
+        "Nadia Marsh", "marsh@example.com"
     )
 
 
@@ -41,8 +41,8 @@ def test_outlook_contact_search_routes_query_and_limit():
         "connectonion.cli.commands.outlook_commands.handle_outlook_contact_search"
     ) as handler:
         result = runner.invoke(app, [
-            "outlook", "contact", "search", "yifei", "-n", "5",
+            "outlook", "contact", "search", "nadia", "-n", "5",
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("yifei", last=5)
+    handler.assert_called_once_with("nadia", last=5)

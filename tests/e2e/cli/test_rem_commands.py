@@ -543,13 +543,13 @@ def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeyp
 
 def test_people_roster_returns_identity_and_existing_path(tmp_path):
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person("people/ody.md", "Ody Zhou", ["odi"], email="ody@example.org")
+    Notebook(tmp_path).stub_person("people/corin.md", "Corin Marsh", ["odi"], email="corin@example.org")
     result = invoke(tmp_path, "--json", "list", "people", "--aliases")
     assert result.exit_code == 0, result.output
     output = json.loads(result.stdout)
-    assert "ody@example.org" in str(output["data"])
-    assert "people/ody.md" in str(output["data"]) and "odi" in str(output["data"])
-    assert output["next"].endswith("show people/ody.md")
+    assert "corin@example.org" in str(output["data"])
+    assert "people/corin.md" in str(output["data"]) and "odi" in str(output["data"])
+    assert output["next"].endswith("show people/corin.md")
 
 
 def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypatch):
@@ -890,11 +890,11 @@ def test_human_formatter_preserves_partial_errors_and_terminal_safety():
 
 def test_investigate_without_arguments_discovers_real_pages_without_a_model(tmp_path, monkeypatch):
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'])
+    Notebook(tmp_path).stub_person('people/corin-123.md', 'Corin', ['corin@example.org'])
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
     result = invoke(tmp_path, 'investigate')
     assert result.exit_code == 0, result.output
-    assert 'people/ody-123.md' in result.output          # listed under People, most useful first
+    assert 'people/corin-123.md' in result.output          # listed under People, most useful first
     assert result.output.rstrip().endswith('investigate people')
 
 
@@ -907,10 +907,10 @@ def test_investigate_empty_notebook_guides_init(tmp_path):
     assert not root.exists()
 
 
-@pytest.mark.parametrize('selector', ['Ody', 'ody@example.org', 'people/ody-123.md'])
+@pytest.mark.parametrize('selector', ['Corin', 'corin@example.org', 'people/corin-123.md'])
 def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch, selector):
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    Notebook(tmp_path).stub_person('people/corin-123.md', 'Corin', ['corin@example.org'], email='corin@example.org')
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     calls = []
     def run(root, record, *args, **kwargs):
@@ -919,13 +919,13 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
     monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
     result = invoke(tmp_path, 'investigate', selector)
     assert result.exit_code == 0, result.output
-    assert calls == ['people/ody-123.md']
-    assert result.output.rstrip().endswith('show people/ody-123.md')
+    assert calls == ['people/corin-123.md']
+    assert result.output.rstrip().endswith('show people/corin-123.md')
 
 
 def test_retry_refused_is_forwarded_only_for_one_page(tmp_path, monkeypatch):
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'])
+    Notebook(tmp_path).stub_person('people/corin-123.md', 'Corin', ['corin@example.org'])
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     calls = []
 
@@ -934,7 +934,7 @@ def test_retry_refused_is_forwarded_only_for_one_page(tmp_path, monkeypatch):
         return {'record': record, 'changed': []}
 
     monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
-    result = invoke(tmp_path, 'investigate', 'people/ody-123.md', '--retry-refused')
+    result = invoke(tmp_path, 'investigate', 'people/corin-123.md', '--retry-refused')
     assert result.exit_code == 0, result.output
     assert calls == [True]
     invalid = invoke(tmp_path, 'investigate', 'people', '--retry-refused')
@@ -946,36 +946,36 @@ def test_nothing_new_is_a_finished_run_not_an_error(tmp_path, monkeypatch):
     """#2034: it printed "Error:", exited 1 and named the same command as Next."""
     from connectonion.rem.investigate import NothingNew
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    Notebook(tmp_path).stub_person('people/corin-123.md', 'Corin', ['corin@example.org'], email='corin@example.org')
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
 
     def quiet(*a, **kw):
-        raise NothingNew("Nothing new since 2026-10-01 for Ody (gmail: 0 matched). No model was called; "
-                         "people/ody-123.md is unchanged and keeps its status line.")
+        raise NothingNew("Nothing new since 2026-10-01 for Corin (gmail: 0 matched). No model was called; "
+                         "people/corin-123.md is unchanged and keeps its status line.")
     monkeypatch.setattr('connectonion.rem.investigate.investigate', quiet)
 
-    result = invoke(tmp_path, 'investigate', 'people/ody-123.md')
+    result = invoke(tmp_path, 'investigate', 'people/corin-123.md')
 
     assert result.exit_code == 0, result.output
     assert 'Error' not in result.output and 'Nothing new since 2026-10-01' in result.output
-    assert result.output.rstrip().endswith('show people/ody-123.md')
+    assert result.output.rstrip().endswith('show people/corin-123.md')
 
 
 def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkeypatch):
     prepare(tmp_path)
     for suffix in ('one', 'two'):
-        Notebook(tmp_path).stub_person(f'people/ody-{suffix}.md', 'Ody', [])
+        Notebook(tmp_path).stub_person(f'people/corin-{suffix}.md', 'Corin', [])
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
-    result = invoke(tmp_path, 'investigate', 'Ody')
+    result = invoke(tmp_path, 'investigate', 'Corin')
     assert result.exit_code == 1, result.output
     assert 'More than one page matches' in result.output
-    assert 'people/ody-one.md' in result.output and 'people/ody-two.md' in result.output
+    assert 'people/corin-one.md' in result.output and 'people/corin-two.md' in result.output
     assert result.output.rstrip().endswith(' investigate')
 
 
 def test_investigate_help_does_not_run_even_with_page_argument(tmp_path, monkeypatch):
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
-    result = invoke(tmp_path, 'investigate', '--help', 'people/ody.md')
+    result = invoke(tmp_path, 'investigate', '--help', 'people/corin.md')
     assert result.exit_code == 0
     assert result.stdout.startswith('co rem investigate —')
 
@@ -1040,14 +1040,14 @@ def test_an_investigation_is_a_run_in_the_logs_with_its_cost(tmp_path, monkeypat
     """A notebook with a dozen investigated pages said "No runs recorded": the
     co rem's most expensive calls were missing from the one command that shows cost."""
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    Notebook(tmp_path).stub_person('people/corin.md', 'Corin', ['corin@example.org'], email='corin@example.org')
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda root, record, *a, **k: {
         'record': record, 'changed': [record], 'usage': {'input_tokens': 1200, 'output_tokens': 300},
         'usage_by_stage': {'investigate': {'input_tokens': 1200, 'output_tokens': 300}}, 'chars_gathered': 4800})
-    assert invoke(tmp_path, 'investigate', 'people/ody.md').exit_code == 0
+    assert invoke(tmp_path, 'investigate', 'people/corin.md').exit_code == 0
     runs = json.loads(invoke(tmp_path, '--json', 'logs').stdout)['data']
-    assert runs[0]['phase'] == 'investigate' and runs[0]['record'] == 'people/ody.md'
+    assert runs[0]['phase'] == 'investigate' and runs[0]['record'] == 'people/corin.md'
     assert runs[0]['outcome'] == 'completed' and runs[0]['runner_attempts'] == 0   # not the background cap
     usage = json.loads(invoke(tmp_path, '--json', 'logs', '--usage').stdout)['data']
     assert usage['total']['input_tokens'] == 1200 and usage['by_stage']['investigate']['output_tokens'] == 300

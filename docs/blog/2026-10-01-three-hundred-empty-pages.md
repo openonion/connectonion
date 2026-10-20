@@ -28,7 +28,7 @@ went with them.
 pages into the archive without deleting them, and leaving any page someone or
 something actually wrote. On a copy of the owner's notebook, people went from
 381 to 85 and organisations from 142 to 18. What is left reads like a contact
-list: Richard Lai, Ody Zhou, Tamara Berryman, Jiexuan Deng, Basem Suleiman.
+list: Emrys Brandt, Corin Marsh, Greta Holloway, Kenji Hale, Sami Haddad.
 
 One threshold moved with it. A nameless address the owner writes to and never
 hears from is held for review rather than investigated, since it may be the
