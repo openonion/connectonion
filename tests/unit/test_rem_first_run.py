@@ -53,35 +53,7 @@ class Mail:
 
 
 @pytest.fixture
-def warming_processes(monkeypatch):
-    from types import SimpleNamespace
-    processes = []
-
-    class Process:
-        def __init__(self, *, target, args, daemon):
-            self.target, self.args, self.daemon = target, args, daemon
-            self.running, self.joined = False, False
-            processes.append(self)
-
-        def start(self):
-            self.running = True
-
-        def join(self):
-            self.running, self.joined = False, True
-
-        def is_alive(self):
-            return self.running
-
-    def context(method):
-        assert method == 'spawn'
-        return SimpleNamespace(Process=Process)
-
-    monkeypatch.setattr('connectonion.cli.commands.rem_commands.multiprocessing.get_context', context)
-    return processes
-
-
-@pytest.fixture
-def first_run(tmp_path, monkeypatch, warming_processes):
+def first_run(tmp_path, monkeypatch):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
     monkeypatch.delenv("CODEX_HOME", raising=False)
@@ -392,7 +364,8 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     result = init()
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-6:]
-    assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
+    # Three counterparties plus the owner's company.
+    assert tail[0] == "Your notebook: 4 people, 4 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Agent sessions: 0 imported, 0 updated, 0 unchanged;")
     assert tail[3].startswith("Your page: ") and tail[3].endswith(".md")
@@ -1218,46 +1191,192 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     assert tries == ["briar"] and outcomes[0][1]["outcome"] == "nothing_new"
 
 
-@pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),
-                                           (['--yes', '--no-start', '--no-investigate'], False)])
-def test_init_only_builds_the_session_cache_early_when_pages_will_be_investigated(first_run, warming_processes, flags, warmed):
-    """2026-10-20: a fresh notebook's session cache took 336 s of the owner's quick page."""
+@pytest.mark.parametrize('flags', [
+    ['--yes', '--no-start', '--estimate-only'],
+    ['--yes', '--no-start', '--no-investigate'],
+    ['--yes', '--no-start'],
+])
+def test_init_reads_sessions_in_the_map_without_spawning_a_warmer(first_run, monkeypatch, flags):
+    from connectonion.rem import session_pass
     root, init, _ = first_run
+    reads = []
+    read = session_pass.read_sessions
+
+    def shared(root, sources, **kwargs):
+        reads.append(root)
+        return read(root, sources, **kwargs)
+
+    monkeypatch.setattr(session_pass, 'read_sessions', shared)
+    monkeypatch.setattr('multiprocessing.get_context', lambda *a: pytest.fail('spawned a warmer'))
     result = init(*flags)
     assert result.exit_code == 0, result.output
-    assert bool(warming_processes) is warmed
+    assert reads == [root]
 
 
-@pytest.mark.parametrize('failure', [False, True])
-def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypatch, warming_processes, failure):
+def test_init_passes_the_maps_sessions_to_import(first_run, monkeypatch):
+    from connectonion.rem import sessions
+    root, init, _ = first_run
+    received = []
+    import_sessions = sessions.import_sessions
+
+    def imported(root, **kwargs):
+        received.append(kwargs.get('sessions'))
+        return import_sessions(root, **kwargs)
+
+    monkeypatch.setattr(sessions, 'import_sessions', imported)
+    result = init('--yes', '--no-start')
+    assert result.exit_code == 0, result.output
+    assert len(received) == 1 and received[0] is not None
+
+
+def test_init_translation_selects_only_listed_written_pages_without_daily_cap(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _first_translation
+    from connectonion.rem.config import prepare, read_config, set_config
+    from connectonion.rem.files import Notebook
+    from connectonion.rem import translate
+    from connectonion.rem.service import run_logs
+    prepare(tmp_path)
+    set_config(tmp_path, ['limits.translations_per_day', '1', 'limits.workers', '3'])
+    book = Notebook(tmp_path)
+    records = ['people/avery-lin.md', 'orgs/northgate-university.md', 'projects/draft.md',
+               'skills/catalog/weekly-brief.md', 'decisions/format.md', 'principles/simple.md']
+    for record in records:
+        book.write(record, '# Invented page\n\nWritten findings.\n\nInvestigation: investigated 2026-10-21\n')
+    book.stub_project('projects/mapped.md', 'Mapped', ['/work/mapped'])
+    book.stub_person('people/mia-chen.md', 'Mia Chen', ['mia@example.com'])
+    book.write('skills/catalog/mapped.md', '# Mapped skill\n\nInvestigation: not investigated yet\n')
+    book.write('skills/catalog/zz-weekly-brief-copy.md', book.read('skills/catalog/weekly-brief.md'))
+    book.write('skills/catalog/index.md', '# Skills\n')
+    book.write('sessions/session.md', '# Session\n')
+    calls, said = [], []
+    monkeypatch.setattr(translate, 'translate', lambda root, page, language: calls.append((page, language)))
+    report = _first_translation(tmp_path, read_config(tmp_path), said.append, language='zh')
+    assert sorted(page for page, language in calls) == sorted(records)
+    assert all(language == 'zh' for page, language in calls)
+    assert report['translated'] == 6 and report['started']
+    assert said == ['Translating 6 pages into zh…']
+    [summary] = run_logs(tmp_path)
+    assert summary['phase'] == 'init-translation' and 'usage' not in summary
+
+
+@pytest.mark.parametrize('flags, language, reason', [
+    ([], 'en', 'English-only'), (['--no-translate'], 'en,zh', '--no-translate'),
+    (['--no-investigate'], 'en,zh', '--no-investigate'),
+    (['--estimate-only'], 'en,zh', 'Estimate only'),
+    ([], 'en,zh', 'Runner not ready')])
+def test_init_reports_why_translation_is_skipped(first_run, monkeypatch, flags, language, reason):
+    root, init, _ = first_run
+    monkeypatch.setattr('connectonion.rem.translate.translate_pages', lambda *args, **kw: pytest.fail('translation started'))
+    if reason == 'Runner not ready':
+        monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('runner unavailable', 'install runner'))
+    result = init('--json', '--languages', language, '--no-start', *flags)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)['data']
+    assert not data['translation']['started'] and reason in data['translation']['reason']
+    assert data['languages']['languages'] == language.split(',') and data['languages']['from'].startswith('set')
+
+
+def test_init_translates_secondary_chinese_after_tidy_and_abstract(first_run, monkeypatch):
     from connectonion.cli.commands import rem_commands
-    from connectonion.rem import map as rem_map
+    from connectonion.rem.files import Notebook
     root, init, _ = first_run
     order = []
-    build_map = rem_map.build_map
 
-    def mapped(*args, **kwargs):
-        [process] = warming_processes
-        assert process.is_alive() and not process.joined
-        assert process.target is rem_commands._warm_sessions_process
-        assert process.args == (str(root),) and process.daemon
-        order.append('map')
-        if failure:
-            raise RuntimeError('mapping failed')
-        return build_map(*args, **kwargs)
+    def tidy(root, say):
+        order.append('tidy')
+        return {}
 
-    monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
-    result = init('--yes', '--no-start')
-    assert result.exit_code == (1 if failure else 0), result.output
-    assert order == ['map']
-    assert all(process.joined and not process.is_alive() for process in warming_processes)
+    def abstract(root, config, say, result):
+        order.append('abstract')
+        Notebook(root).write('decisions/format.md', '# Format\n\nUse Markdown.\n')
+        return {}
+
+    def translate_pages(root, language, records, **options):
+        order.append('translate')
+        assert language == 'zh' and 'decisions/format.md' in records
+        assert options['workers'] == 16
+        return {'language': language, 'pages': [], 'translated': len(records), 'cached': 0, 'failed': 0}
+
+    monkeypatch.setattr(rem_commands, '_first_tidy', tidy)
+    monkeypatch.setattr(rem_commands, '_first_abstract', abstract)
+    monkeypatch.setattr('connectonion.rem.translate.translate_pages', translate_pages)
+    result = init('--json', '--languages', 'en,zh', '--no-start')
+    assert result.exit_code == 0, result.output
+    assert order == ['tidy', 'abstract', 'translate']
+    data = json.loads(result.stdout)['data']
+    assert data['translation']['started'] and data['translation']['language'] == 'zh'
+    assert data['first_run']['translation']['language'] == 'zh'
 
 
-def test_the_warming_process_rereads_subscriptions(tmp_path, monkeypatch):
-    from connectonion.cli.commands.rem_commands import _warm_sessions_process
-    sources, warmed = {'codex': {'kind': 'codex', 'root': str(tmp_path / 'sessions')}}, []
-    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: sources if root == tmp_path else None)
-    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
-                        lambda root, subscriptions: warmed.append((root, subscriptions)))
-    _warm_sessions_process(str(tmp_path))
-    assert warmed == [(tmp_path, sources)]
+def test_init_language_line_precedes_spending_and_languages_are_validated_before_map(first_run, monkeypatch):
+    root, init, _ = first_run
+    result = init('--languages', 'zh,en', '--no-start', '--estimate-only')
+    assert result.exit_code == 0, result.output
+    text = Text.from_ansi(result.output).plain
+    assert 'Languages: 中文, English (set with co rem config set languages).' in text
+    assert 'Pages are written in English and translated into 中文.' in text
+    assert text.index('Languages:') < text.index('First run with')
+    assert 'translation of the written pages into 中文/zh' in text
+    monkeypatch.setattr('connectonion.rem.map.build_map', lambda *args, **kw: pytest.fail('map started'))
+    invalid = init('--languages', '../zh')
+    assert invalid.exit_code == 1 and 'language tags' in invalid.output
+
+
+def test_translation_estimate_uses_completed_local_medians_and_separate_worker_lanes():
+    from connectonion.rem import first_run as fr
+    counts = dict(owner=True, people=2, projects=1, orgs=1, skills=1, workers=2)
+    plain = fr.plan([], **counts)
+    default = fr.plan([], **counts, translation='zh')
+    assert default['translation']['pages'] == 6
+    assert default['input_tokens'] == plain['input_tokens'] + 6 * 80_000
+    assert default['minutes'] == plain['minutes'] + 2  # 3 batches x 35 seconds, after investigations.
+    runs = [{'phase': 'translate', 'outcome': outcome, 'seconds': seconds, 'usage': {'input_tokens': tokens}}
+            for outcome, seconds, tokens in [('completed', 20, 74000), ('completed', 40, 80000), ('failed', 999, 999999)]]
+    total = fr.plan(runs, **counts, translation='zh', abstract_pages=2)
+    assert total['translation'] == {'language': 'zh', 'pages': 8, 'seconds': 30, 'input_tokens': 77000, 'measured': 2}
+    assert total['input_tokens'] == plain['input_tokens'] + 8 * 77000
+    assert total['minutes'] == plain['minutes'] + 2
+    assert '8 translations into zh after the page queue' in fr.announce(total, 'on your plan')
+
+
+def test_detected_languages_are_printed_without_promising_skipped_translations(first_run, monkeypatch):
+    root, init, _ = first_run
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {
+        'languages': ['zh', 'en'], 'from': 'detected from your own mail and sessions', 'detected': ['zh', 'en']})
+    result = init('--no-investigate', '--no-start')
+    assert result.exit_code == 0, result.output
+    assert 'Languages: 中文, English (detected from your sent mail and typed sessions).' in result.output
+    assert 'Translation: Skipped by --no-investigate.' in result.output
+    assert 'and translated into 中文' not in result.output
+
+
+def test_init_translation_failure_keeps_other_pages_and_prints_one_failure_each(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _first_translation
+    from connectonion.rem.config import prepare, read_config
+    from connectonion.rem.files import Notebook, RemError
+    from connectonion.rem.service import run_logs
+    prepare(tmp_path)
+    for record in ['people/avery-lin.md', 'people/mara-ostrowski.md']:
+        Notebook(tmp_path).write(record, '# Invented page\n\nWritten findings.\n')
+
+    def translate(root, record, language):
+        if record == 'people/avery-lin.md':
+            raise RemError('fixture translation refused')
+
+    monkeypatch.setattr('connectonion.rem.translate.translate', translate)
+    said = []
+    report = _first_translation(tmp_path, read_config(tmp_path), said.append, language='zh')
+    assert report['failed'] == report['translated'] == 1
+    assert said == ['Translating 2 pages into zh…', 'people/avery-lin.md: failed: fixture translation refused']
+    assert run_logs(tmp_path)[0]['outcome'] == 'partial'
+
+
+def test_init_summary_reports_translated_pages_and_how_to_retry_failures():
+    from types import SimpleNamespace
+    from connectonion.cli.commands.rem_commands import _translation_line
+    ctx = SimpleNamespace(obj={"json": False, "root": None, "default_root": True})
+    report = {"started": True, "language": "zh", "pages": [{}, {}, {}], "translated": 1, "cached": 1, "failed": 1}
+    line, = _translation_line(ctx, report)
+    assert line.startswith("Translated into zh: 2 of 3 pages. 1 failed; retry with ")
+    assert line.endswith("translate --all.")
+    assert _translation_line(ctx, {"started": False, "reason": "Skipped by --no-translate."}) == []

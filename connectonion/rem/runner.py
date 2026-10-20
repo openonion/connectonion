@@ -340,19 +340,21 @@ def model_denial(error: Exception) -> bool:
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
+    prefix = "insight-critic" if stage == "insight-critic" else "claim"
     if config["runner"] != "codex":
-        packet = workspace / "claim-input.txt"
+        packet = workspace / f"{prefix}-input.txt"
         packet.write_text(prompt, encoding="utf-8")
         return run_task(workspace, f"Read {packet} fully and return its requested JSON decision. "
                         "Do not edit the packet or any page.", config, stage)
     from ..useful_tools.codex import _base_command
     from .project_claim_review import SCHEMA
+    from .insight_critic import CRITIC_SCHEMA
     binary = _base_command()
     if not binary:
         raise RunFailed("Codex is not installed; cited-claim audit could not run")
-    schema = workspace / "claim-schema.json"
-    answer = workspace / "claim-answer.json"
-    schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+    schema = workspace / f"{prefix}-schema.json"
+    answer = workspace / f"{prefix}-answer.json"
+    schema.write_text(json.dumps(CRITIC_SCHEMA if stage == "insight-critic" else SCHEMA), encoding="utf-8")
     command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                "--json", "--output-schema", str(schema), "-o", str(answer)]
     if config["speed"] == "fast":
@@ -728,6 +730,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
     carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
     for attempt in range(repairs + 1):
+        if attempt and stage == "muse" and candidate.is_file():
+            _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress)
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
@@ -764,6 +768,29 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                        lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
                        stage_progress=stage_progress)
+
+
+def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):
+    """2026-10-21: independent audit kept 6/18 proposals; repairs must pass it too."""
+    from .insight_critic import judge, new_bullets
+    proposed = new_bullets(original, candidate.read_text(encoding="utf-8"))
+    if stage_progress:
+        stage_progress("insight critic")
+    result["critic_usage_pending"] = True
+    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task)
+    result["critic_usage_pending"] = False
+    result["usage"] = _add_usage(result.get("usage"), decision["usage"])
+    proposals = list(dict.fromkeys([*result.get("insight_proposals", []), *proposed]))
+    rejected = {row["bullet"]: row for row in result.get("insights_rejected", [])}
+    rejected.update({row["bullet"]: {key: row[key] for key in ("bullet", "verdict", "reason")}
+                     for row in decision["bullets"] if row["bullet"] in proposed and row["verdict"] != "good"
+                     and row["bullet"] not in decision.get("unmatched", [])})
+    for row in decision["bullets"]:
+        if row["verdict"] == "good":
+            rejected.pop(row["bullet"], None)
+    result.update(insight_proposals=proposals, insights_proposed=len(proposals),
+                  insights_kept=sum(row["bullet"] in proposed and row["verdict"] == "good"
+                                    for row in decision["bullets"]), insights_rejected=list(rejected.values()))
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -926,7 +953,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
     if last_resort and carried:
         before_restore = text
-        text = restore_dropped(carried, text, exempt)
+        # A restored History line can take it past sixteen: fold again (2026-10-21, 17 lines refused an update).
+        text = fold_history(restore_dropped(carried, text, exempt))
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
@@ -1063,7 +1091,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         # A gutted page is still refused on what the turn wrote, before anything is put back.
         shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         written = text
-        text = restore_dropped(before.get(record, ''), text) if before.get(record) and not shrunk else text
+        text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
@@ -1101,7 +1129,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # questions, rejection reasons and the Skill text it was given. The rest is a
 # private copy of the owner's mail and pages.
 TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
-              "review-candidates.json", "instructions.md", "refused")
+              "insight-critic.json", "review-candidates.json", "instructions.md", "refused")
 
 
 def scrub_task(directory: Path) -> None:
@@ -1460,6 +1488,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if candidate and not no_change:
             repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
                           if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
+            if stage == "muse" and candidate.is_file():
+                _review_insights(notebook, record, before[record], candidate, items, selected_config,
+                                 directory, result, stage_progress)
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
                                  run=repair_run, stage_progress=stage_progress,
@@ -1489,6 +1520,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 prepare_promotion(notebook.root, record, before[record], items, changed=False)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
+        if result.get("critic_usage_pending") and isinstance(error, RunFailed):
+            usage = _add_usage(result.get("usage"), usage)
+            # 2026-10-21: failed critic calls belong beside completed attempts in the run's audit trail.
+            history = directory / "insight-critic.json"
+            write_json(history, [*read_json(history, []), {"error": str(error), "usage": error.usage or {}}])
         if prior_turn_usage and isinstance(error, RunFailed):
             usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
                      else _add_usage(prior_turn_usage, usage))
@@ -1500,6 +1536,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
+    insight_counts = {key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}
+    if "insights_kept" in insight_counts:
+        from .insight_critic import new_bullets
+        insight_counts["insights_kept"] = min(insight_counts["insights_kept"],
+                                             len(new_bullets(before[record], notebook.read(record))))
+    metrics.update(insight_counts)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
@@ -1509,6 +1551,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "review_candidates": read_json(directory / "review-candidates.json", [])}
     outcome["refuted_claims"] = result.get("refuted_claims", [])
     outcome.update(repairs=metrics["repairs"], repair_usage=metrics["repair_usage"])
+    outcome.update(insight_counts)
     if turns:
         outcome["turn_replies"] = turn_replies
     if record and record in before and notebook.path(record).is_file():

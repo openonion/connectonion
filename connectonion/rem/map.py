@@ -880,15 +880,20 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) 
         return _build_map(root, subscriptions, clients, *args, **options)
 
 
+class MapReport(dict):
+    """The JSON report carries init's parsed sessions only in memory."""
+
+
 def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MAP_DAYS,
                skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
-               progress=None, capture_sources: bool = False, all_history: bool = False) -> dict:
+               progress=None, capture_sources: bool = False, all_history: bool = False,
+               session_days: int | None = None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
-    report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
+    report = MapReport({'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
               'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
               'errors': list(source_errors or []), 'automated_correspondents': [], 'without_page': [],
-              'possible_own_addresses': []}
+              'possible_own_addresses': []})
     if all_history:
         report['all_history'] = True
     state = root / '.state' / 'map.json'
@@ -912,9 +917,13 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     def save():
         atomic_write(state, json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     save()
+    from .session_pass import read_sessions
+    report.sessions = read_sessions(root, subscriptions, now=datetime.fromisoformat(report['started']),
+                                    days=days, import_days=session_days, progress=progress)
     if progress:
         progress("mapping installed skills")
     report['skills'] = map_skills(notebook, skill_directories, lock_held=True, subscriptions=subscriptions,
+                                  sessions=report.sessions,
                                   **({'progress': progress} if progress else {}))
     if progress:
         progress("mapped installed skills", len(report['skills']['created']) + len(report['skills']['preserved']))
@@ -1087,6 +1096,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
         progress("scanning local projects")
     # Only what is given is passed: a progress-less caller keeps the call it always made.
     project_rows = scan_projects(subscriptions, days, root, **({'on_session': inventory.session} if inventory else {}),
+                                 **({'sessions': report.sessions} if report.sessions.projects else {}),
                                  **({'progress': progress} if progress else {}))
     dropped = []
     for identity, row in project_groups(project_rows, dropped).items():
@@ -1098,7 +1108,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     # workspace container, or cd'd into code later. File their attributed
     # messages before tidy and archiving decide which project pages are used.
     from .project_material import extract
-    material = extract(root, subscriptions, full=True, create_pages=True, days=days, recent_days=days, lock_held=True)
+    material = extract(root, subscriptions, full=True, create_pages=True, days=days, recent_days=days,
+                       lock_held=True, sessions=report.sessions)
     report['created'] += material['created']
     report['projects'] = _filed_projects(root, report['projects'] + material['filed_rows'], material['pages'], dropped)
     if material['created']:

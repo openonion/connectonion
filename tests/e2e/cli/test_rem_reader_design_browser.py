@@ -108,7 +108,7 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page.locator('.nav-toggle').click()
     page.locator('.reader-settings > summary').click()
     assert 'Snapshot ' in page.locator('#foot').inner_text()
-    assert 'co rem start' in page.locator('.reader-settings').inner_text()
+    assert 'start to enable' in page.locator('.reader-settings').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
@@ -703,7 +703,7 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     lines = "\n".join(["- 2026-08-26–2026-08-28: Quayside asked [1].", "- 2026-09-23 to 2026-10-09: Daily reports [2].",
                        "- 2026-08-10–11: Demos sent [3].", "- 2026-07-29–08-04: Trip [4].", "- 2025-10: Met at a meetup [5].", "- 2025-10–11: Term [6]."])
     got = page.evaluate("t => historyItems(t).map(i => [i.day, i.end, i.text.slice(0, 4)])", lines, isolated_context=False)
-    assert got == [["2026-08-26", "2026-08-28", "Quayside"], ["2026-09-23", "2026-10-09", "Dail"],
+    assert got == [["2026-08-26", "2026-08-28", "Quay"], ["2026-09-23", "2026-10-09", "Dail"],
                    ["2026-08-10", "2026-08-11", "Demo"], ["2026-07-29", "2026-08-04", "Trip"], ["2025-10", "", "Met "], ["2025-10", "2025-11", "Term"]]
     assert page.evaluate("dayLabel({day: '2025-10', end: ''})", isolated_context=False) == "Oct 2025"
     assert page.evaluate("dayLabel({day: '2026-08-10', end: '2026-08-11'})", isolated_context=False).count("–") == 1
@@ -793,7 +793,9 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
         "Mara Ostrowski", "Fernhill Labs"}
     assert "what this project does" in page.locator('.focus-kicker').inner_text().lower()
     assert "command-line tool" in page.locator('.focus-statement').inner_text()
-    assert "did not confirm current project work" in page.locator('.focus-limit').inner_text()
+    assert not page.locator('.deep-note-limit').is_visible()
+    page.locator('details.deep-note > summary').click()
+    assert "did not confirm current project work" in page.locator('.deep-note-limit').inner_text()
     assert page.get_by_role("heading", name="Recorded direction").is_visible()
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
     page.get_by_role("link", name="View all decisions").click()
@@ -1056,19 +1058,22 @@ def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(re
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 7, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note-limit').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert page.locator('.focus-kicker').first.inner_text() == 'What this project does'
         assert 'reads a local daily log' in page.locator('.focus-statement').inner_text()
         assert 'recent commit' not in page.locator('.focus-statement').inner_text()
-        assert '7-day session sample did not confirm current project work' in page.locator('.focus-limit').inner_text()
+        assert '7-day session sample did not confirm current project work' in page.locator('.deep-note-limit').inner_text()
         assert page.locator('.project-workspace').get_by_text('What this is').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.evaluate("() => { byPath('projects/harbour.md').project_coverage.inputs_read = 0; render(); }",
                   isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
-        assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
+        assert 'No coding-session input was assigned' in page.locator('.deep-note-limit').inner_text()
         assert page.locator('.scope-note').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1697,7 +1702,7 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     assert page.locator('.missing .names').inner_text() == 'Still unknown: Current status.'
     assert 'unresolved section' in page.locator('.missing .lead').inner_text().lower()
     page.goto(uri + '#r=people%2Fquinn-alder.md')
-    assert page.locator('.missing .names').inner_text().startswith('Not investigated yet:')
+    assert page.locator('.missing .names').inner_text().endswith('sections will be written when it is investigated.')
     assert page.locator('.missing .lead').inner_text().lower() == 'only mapped so far'
 
 
@@ -1896,6 +1901,8 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     assert 'A request timed out' in brief.inner_text()
     assert 'private payload' not in brief.inner_text()
     assert 'No memory pages were written' in brief.inner_text()
+    assert 'Your notebook was just built' not in brief.inner_text()
+    assert brief.locator('.cmd').count() == 0
     stopped = page.locator('.night-details .hypno .dot.woke')
     assert stopped.count() == 1
     assert '2 runs stopped early' in stopped.get_attribute('title')
@@ -1925,7 +1932,9 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     page.goto(path.as_uri())
     brief = page.locator('.overnight')
     assert '1 investigation failed' in brief.inner_text()
-    assert 'reworded; nothing new.' in brief.inner_text()
+    assert 'Your notebook was just built.' in brief.inner_text()
+    assert 'reworded; nothing new.' not in brief.inner_text()
+    assert page.locator('.week-details summary').inner_text().startswith('Pages written in the first build (')
     page.locator('.week-details summary').click()
     assert page.locator('.week').get_by_role('link', name='Mara Ostrowski', exact=True).is_visible()
     assert page.locator('.waiting-ledger > li').count() > 0
@@ -2181,7 +2190,7 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
         '- The user owes Mara: an old receipt; since 2026-07-22 [6].',
         '- The user owes Mara: a fourth answer [1].',
         '- Mara owes the user: the usage export [5].',
-        '- Yu owes Corin: a reimbursement [1].'
+        '- Quinn owes Tomás: a reimbursement [1].'
       ];
       r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads\n' + rows.join('\n') + '\n');
       r.text = r.text.replace(/- Now:/, '- **Now**:').replace(/- At stake:/, '- **At stake**:');
@@ -2195,7 +2204,8 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
     assert 'A scope decision; due:' in mine.inner_text()
     assert '7 days' in mine.inner_text() and '85 days, gone quiet' in mine.inner_text()
     assert page.locator('.ledger-column.theirs .ledger-count').inner_text() == '1'
-    assert 'Yu owes Corin' not in page.locator('.between-you').inner_text()
+    assert 'Quinn owes Tomás' not in page.locator('.between-ledger').inner_text()
+    assert 'Quinn owes Tomás' in page.locator('.between-you > .threads').inner_text()
     mine.locator('.ledger-more > summary').click()
     assert mine.locator('.ledger-row').filter(has_text='fourth answer').is_visible()
     assert page.locator('.person-insight dt.at-stake').inner_text() == 'At stake'
@@ -2812,15 +2822,17 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''labelled => {
       const r = byPath('people/mara-ostrowski.md');
-      r.text = '# Mara Ostrowski\n\nA fixture contact.\n\n## Facts\n- Phone: Unknown\n- Role: —\n- Location: unknown\n'
+      r.text = '# Mara Ostrowski\n\nA fixture contact.\n\n## Facts\n- Phone: Unknown\n- Role: —\n- Location: unknown\n- First contact: Unknown\n- Last contact: Unknown\n'
         + '\n## Open threads\nNothing open as of 2026-10-01.\n'
         + '\n## Insight\n- Now: Confidential status. [sensitive] [1]\n'
         + '\n## History\n- 2026-09-25: ' + labelled + '\n- 2026-09-26: [1]\n'
         + '\n## Sources\n- [1] test:fixture\n';
+      delete r.original; delete r.translations;
+      delete r.mail; delete r.index; r.last_activity = '';
       KNOWN.clear(); FACTS.clear(); render();
       document.documentElement.classList.add('hide-private');
     }''', labelled, isolated_context=False)
-    assert page.locator('.between-you').count() == 0
+    assert page.locator('.between-you .empty-line').inner_text() == 'Nothing open as of 2026-10-01.'
     assert page.locator('.activity-list > li:visible').count() == 0
     assert page.locator('.recent-activity .private-history-notice').inner_text() == '1 private entry hidden'
     assert page.locator('.contact-strip dt').filter(has_text='Phone').count() == 0
@@ -2829,7 +2841,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
     assert hidden.inner_text() == 'Hidden labelled passage'
     assert hidden.evaluate('node => parseFloat(getComputedStyle(node).fontSize) <= 13')
     page.locator('details.deep-note > summary').click()
-    assert 'Unknown' in page.locator('.factlist').inner_text() or 'not found' in page.locator('.factlist').inner_text()
+    assert page.locator('.factlist').count() == 0
     assert page.locator('.timeline > li:visible').count() == 0
     assert page.locator('.block-history .private-history-notice').inner_text() == '1 private entry hidden'
     page.evaluate('togglePrivate()', isolated_context=False)
@@ -3350,26 +3362,23 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
 
 @pytest.mark.parametrize('width', [1440, 390])
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_empty_sessions_offer_small_copyable_commands_without_filters(reader, width, language):
+def test_empty_sessions_offer_one_copy_action_without_filters(reader, width, language):
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 844})
     page.goto(uri + '#c=sessions')
-    page.evaluate(r'''language => { REM.default_root = true; setInterfaceLanguage(language); }''', language, isolated_context=False)
-    assert page.locator('h1').inner_text() == ('智能体会话' if language == 'zh' else 'Agent sessions')
-    assert page.locator('.sessions-empty h2').count() == 0
-    assert page.locator('.sessions-empty p').inner_text().startswith(
-        '还没有智能体会话。' if language == 'zh' else 'No agent sessions yet. ')
-    assert page.locator('.sessions-empty').evaluate(r"node => getComputedStyle(node).borderTopWidth === '0px'")
-    assert page.locator('.session-filter-panel, #session-search').count() == 0
-    assert page.locator('.sessions-empty code').all_inner_texts() == ['co rem sources', 'co rem import sessions']
-    assert page.locator('.sessions-empty button[aria-label="' + ('复制命令' if language == 'zh' else 'Copy the command') + '"]').count() == 2
-    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
-    page.evaluate(r'''() => { REM.default_root = false; REM.root = '/tmp/avery notebook'; render(); }''', isolated_context=False)
-    assert "--root '/tmp/avery notebook'" in page.locator('.sessions-empty code').first.inner_text()
-    page.evaluate(r"""() => { REM.root = '/tmp/' + 'long notebook path/'.repeat(12); render(); }""", isolated_context=False)
-    command = page.locator('.sessions-empty code').last
-    assert command.inner_text().endswith('import sessions')
-    assert command.evaluate('node => node.scrollWidth <= node.clientWidth')
+    page.evaluate(r'''language => {
+      REM.default_root = true; setInterfaceLanguage(language);
+      window.copiedCommand = '';
+      copyToClipboard = command => { window.copiedCommand = command; };
+    }''', language, isolated_context=False)
+    assert page.locator('.empty .lead').inner_text() == ('还没有智能体会话。' if language == 'zh' else 'No agent sessions yet.')
+    assert page.locator('.empty a').count() == 1
+    assert page.locator('.empty h2, .session-filter-panel, #session-search').count() == 0
+    page.locator('.empty a').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem import sessions'
+    page.evaluate(r'''() => { REM.default_root = false; REM.root_display = '/tmp/theo notebook'; render(); }''', isolated_context=False)
+    page.locator('.empty a').click()
+    assert "--root '/tmp/theo notebook'" in page.evaluate('window.copiedCommand', isolated_context=False)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -3586,9 +3595,7 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
     }''')
     page.goto(uri + '#view=changes')
     page.evaluate(r'''() => { for (const run of REM.logs) run.claim_changes = []; render(); }''', isolated_context=False)
-    assert page.locator('.empty').inner_text().endswith(
-        '本次可能更新了页面措辞，这不代表新增了记忆。' if language == 'zh'
-        else 'The pass may have refreshed pages; that alone is not a new memory.')
+    assert page.locator('.empty > a').inner_text() == ('浏览记忆 →' if language == 'zh' else 'Explore memory →')
     assert page.locator('.changed-pages .section .n').inner_text() == ('当前背景' if language == 'zh' else 'Current context')
     page.goto(uri + '#view=activity')
     page.evaluate(r'''() => {
@@ -3893,7 +3900,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
     atomic_write(translation_path(root, path, 'zh'),
                  f'<!-- co rem translation of {path} sha256:{digest(original)} -->\n' + checked(original, translated))
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en']})
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en'], 'from': 'detected'})
     snapshot = rem_reader.snapshot
 
     def frozen_snapshot(root, local=False):
@@ -3983,7 +3990,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
       lines.push('- You owe Mara an access decision; since 2026-10-20 [4].');
       r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + lines.join('\n'));
       const pass = REM.logs.at(-1);
-      REM.logs = [{...pass, started_at: REM.as_of, claim_changes: Array.from({length: 4}, () => ({record: r.path,
+      REM.logs = [{...pass, started_at: '2026-10-18T12:00:00Z', claim_changes: []},
+        {...pass, started_at: REM.as_of, claim_changes: Array.from({length: 4}, () => ({record: r.path,
         field: 'role', before: 'Partnerships lead', after: 'Head of Partnerships', sources: ['2']}))}];
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
@@ -4383,4 +4391,278 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
     page.evaluate(r'''() => document.documentElement.classList.add('hide-private')''')
     assert not location.locator('.private').first.is_visible()
     assert ('惠灵顿' if language == 'zh' else 'Wellington') not in location.inner_text()
+    assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
+    from rem_reader_notebook import build
+    from connectonion.rem.reader import render
+    page, _ = reader
+    path = tmp_path / 'round-ten.html'
+    path.write_text(render(build(tmp_path / 'round-ten', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True)))
+    uri = path.as_uri()
+    page.goto(uri)
+    page.evaluate(r'''language => {
+      REM.logs = [REM.logs.reduce((a, b) => runTime(a) > runTime(b) ? a : b)];
+      REM.status = {state: 'Stopped — background maintenance is off'};
+      REM.default_root = true;
+      window.cachedPages = REM.records.filter(r => r.translations?.zh).map(r => ({...r, translations: {...r.translations}}));
+      for (const r of REM.records) delete r.translations;
+      setInterfaceLanguage(language);
+      copyToClipboard = command => { window.copiedCommand = command; };
+    }''', language, isolated_context=False)
+    summary = page.locator('.pass-summary').inner_text()
+    assert summary.startswith('今天建立：读取 ' if language == 'zh' else 'Built today: read ')
+    assert ('夜间变化' if language == 'zh' else 'change overnight') not in page.locator('h1').inner_text()
+    assert page.locator('.recall').count() == 0
+    assert page.locator('.overnight .quiet-line').inner_text() == (
+        '笔记本刚刚建立。下次更新后，这里会显示夜间变化。' if language == 'zh'
+        else 'Your notebook was just built. Overnight changes appear here after the next update.')
+    page.locator('.overnight .cmd button').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem start'
+    notice = page.locator('#main > .translation-note')
+    if language == 'zh':
+        assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+        assert notice.bounding_box()['y'] > page.locator('.brief-header').bounding_box()['y']
+        assert notice.bounding_box()['y'] < page.locator('.overnight').bounding_box()['y']
+        notice.locator('button').click()
+        assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem translate --all'
+    else:
+        assert notice.count() == 0
+    page.locator('.pass-summary a').click()
+    assert page.locator('.night-title').inner_text() == ('首次建立' if language == 'zh' else 'First build')
+    assert ('昨夜' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
+    page.goto(uri + '#view=changes')
+    assert page.locator('.empty .lead').inner_text() == (
+        '暂无变化 — 这是首次建立。' if language == 'zh' else 'No changes yet — this is the first build.')
+    assert page.locator('.changed-pages, .claim-grid').count() == 0
+    # A fragment change keeps this document and the edited snapshot; a bare uri would reload it.
+    page.goto(uri + '#')
+    page.evaluate(r'''() => { REM.status.state = 'Running in background (launchd)'; render(); }''', isolated_context=False)
+    assert page.locator('.overnight .cmd').count() == 0
+    page.evaluate(r'''() => {
+      REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
+      render();
+    }''', isolated_context=False)
+    assert page.locator('#main > .translation-note').count() == 0
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.evaluate(r'''() => {
+      REM.default_root = false; REM.root = REM.root_display = '/tmp/' + 'invented notebook/'.repeat(12);
+      for (const r of REM.records) { delete r.translations; r.shown = ''; }
+      setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    assert page.locator('#main > .translation-note code').evaluate(r'node => node.scrollWidth <= node.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round10_owner_is_your_page_in_today_waiting_and_open_threads(reader, language):
+    page, uri = reader
+    page.goto(uri)
+    page.evaluate(r'''language => {
+      const owner = byPath(REM.owner);
+      owner.title = 'Theo Park';
+      REM.as_of = '2026-10-20T12:00:00Z';
+      owner.text = '# Theo Park\n\n## Facts\n- Company: Northgate University\n- Role: Pilot lead\n'
+        + '\n## Open threads\n- 2026-10-20: You owe a pilot review. Due 2026-10-21.\n'
+        + '- 2026-10-16: You owe a second review.\n';
+      for (const r of REM.records) if (r !== owner) {
+        r.text = '# ' + r.title + '\n'; r.original = r.text; delete r.translations;
+      }
+      KNOWN.clear(); FACTS.clear(); OWING = null;
+      setInterfaceLanguage(language);
+    }''', language, isolated_context=False)
+    who = '你的页面' if language == 'zh' else 'Your page'
+    assert page.locator('.today-who').first.inner_text() == who
+    assert page.locator('.waiting-person a').first.inner_text() == who
+    assert page.locator('.waiting-person .avatar').first.inner_text() == ('你' if language == 'zh' else 'You')
+    assert page.locator('.waiting-person .meta').count() == 0
+    assert page.locator('.today-who').first.get_attribute('href').endswith('people%2Favery-lin.md')
+    page.goto(uri + '#view=open')
+    assert all(text == who for text in page.locator('.thread .who a').all_inner_texts())
+    assert page.locator('.thread .who a').count() == 2
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+def test_round10_calm_record_sections_and_unassigned_person_threads(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri)
+    page.evaluate(r'''() => {
+      REM.records.push({path: 'projects/quiet-pilot.md', category: 'projects', title: 'Quiet pilot', written: true,
+        updated: '2026-10-20', relations: [], text: '# Quiet pilot\n\n## What it is\nA local pilot.\n'
+          + '\n## Insight\nUnknown\n\n## Key decisions\nUnknown\n\n## Open threads\n'
+          + '\nInvestigation: investigated 2026-10-20'});
+      REM.records.push({path: 'people/mia-chen.md', category: 'people', title: 'Mia Chen', written: true,
+        updated: '2026-10-20', relations: [], text: '# Mia Chen\n\n## Facts\n- Phone: Unknown\n'
+          + '\n## Open threads\nNothing open as of 2026-10-17.\n\n## Insight\nUnknown\n\n## History\nUnknown\n'});
+      REM.records.push({path: 'orgs/northgate-university.md', category: 'orgs', title: 'Northgate University', written: true,
+        updated: '2026-10-20', relations: [], text: '# Northgate University\n\n## Open threads\n\n## People here\nNone identified.\n'});
+      KNOWN.clear(); FACTS.clear();
+    }''', isolated_context=False)
+    styles = []
+    for record, heading in [('projects/quiet-pilot.md', 'Open threads'), ('people/mia-chen.md', 'Between you'),
+                            ('orgs/northgate-university.md', 'Open threads')]:
+        page.goto(uri + '#r=' + record.replace('/', '%2F'))
+        assert page.get_by_role('heading', name=heading, exact=True).is_visible()
+        assert page.locator('.empty-line').count() == 1
+        assert page.locator('.focus-section h2, .person-focus h2').all_inner_texts() == [heading]
+        styles.append(page.locator('.empty-line').evaluate(r'''node => {
+          const s = getComputedStyle(node);
+          return [s.fontFamily, s.fontSize, s.color, s.borderTopWidth, s.marginTop];
+        }'''))
+        if record.startswith('people/'):
+            assert page.locator('.empty-line').inner_text() == 'Nothing open as of 2026-10-17.'
+        else:
+            assert page.locator('.empty-line').inner_text() == 'Nothing open.'
+        if record.startswith('projects/'):
+            assert page.locator('.focus-head .deep-note-limit, .focus-limit').count() == 0
+            assert page.locator('.deep-note-limit').count() == 1
+            page.locator('.deep-note > summary').click()
+            assert page.locator('.deep-note-limit').is_visible()
+            assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '13px'
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert styles[0] == styles[1] == styles[2]
+    assert styles[0][1:] == ['14px', styles[0][2], '0px', '8px']
+    page.goto(uri + '#r=people%2Fmia-chen.md')
+    page.evaluate(r'''() => {
+      const r = byPath('people/mia-chen.md');
+      r.text = '# Mia Chen\n\n## Open threads\n- Discuss the pilot review with Theo Park.\n';
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    assert page.locator('.between-you .empty-line').count() == 0
+    assert page.locator('.between-you .threads').inner_text().startswith('Open')
+    assert 'Discuss the pilot review with Theo Park.' in page.locator('.between-you').inner_text()
+
+
+def test_round10_list_empty_states_offer_one_working_next_action(reader):
+    page, uri = reader
+    for category in ('people', 'orgs', 'projects', 'skills'):
+        page.goto(uri + '#c=' + category)
+        page.locator('.sheet-find').fill('no-such-invented-page-zzzz')
+        assert page.locator('.empty .lead').inner_text() == 'No matching pages'
+        assert page.locator('.empty a').count() == 1
+        page.locator('.empty a').click()
+        assert page.locator('.empty').count() == 0
+    page.goto(uri + '#q=no-such-invented-page-zzzz')
+    assert page.locator('.empty .lead').inner_text() == 'No match'
+    assert page.locator('.empty a').count() == 1
+    page.locator('.empty a').click()
+    assert page.locator('h1').inner_text() == 'Explore memory'
+    page.goto(uri + '#view=open')
+    page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
+    assert page.locator('.empty .lead').inner_text() == 'Nothing open'
+    assert page.locator('.empty a').count() == 1
+    page.goto(uri + '#view=changes')
+    assert page.locator('.empty a').count() == 1
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, theme):
+    page, uri = reader
+    page.goto(uri)
+    page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
+    for route, selectors in [('#c=people', '.brand .sub, nav a .n, .sheet .unk'),
+                             ('#r=people%2Fmara-ostrowski.md', '.brand .sub, .ledger-meta, .lead-meta'),
+                             ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
+        page.goto(uri + route)
+        if page.locator('details.deep-note').count():
+            page.locator('details.deep-note > summary').click()
+        values = page.locator(selectors).evaluate_all(r'''nodes => {
+          const rgb = text => text.match(/[\d.]+/g).map(Number);
+          const luminance = color => color.slice(0, 3).map(v => {
+            v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+          }).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
+          return nodes.filter(n => n.getClientRects().length && n.textContent.trim()).map(node => {
+            const style = getComputedStyle(node);
+            let parent = node, bg = [0, 0, 0, 0];
+            while (parent && (bg[3] ?? 1) === 0) {
+              bg = rgb(getComputedStyle(parent).backgroundColor); parent = parent.parentElement;
+            }
+            const a = luminance(rgb(style.color)), b = luminance(bg);
+            return {text: node.textContent, ratio: (Math.max(a, b) + .05) / (Math.min(a, b) + .05), opacity: style.opacity};
+          });
+        }''')
+        assert values and all(v['ratio'] >= 4.5 and v['opacity'] == '1' for v in values), values
+        assert page.locator('span[aria-label]:not([role])').count() == 0
+    page.goto(uri + '#c=people')
+    assert page.locator('.st').count() > 0
+    assert page.locator('.st').evaluate_all(r'nodes => nodes.every(n => n.getAttribute("role") === "img" && n.getAttribute("aria-label"))')
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace('You owe Mara', 'You owe [Mara](../people/mara-ostrowski.md)');
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    assert page.locator('.person-lead a:not(.cite)').evaluate_all(r'nodes => nodes.length > 0 && nodes.every(n => getComputedStyle(n).textDecorationLine.includes("underline"))')
+    page.goto(uri)
+    assert page.locator('.pass-summary a').evaluate(r'n => getComputedStyle(n).textDecorationLine.includes("underline")')
+    page.evaluate(r'''() => document.activeElement.blur()''')
+    page.keyboard.press('Control+Home')
+    page.locator('.skip').focus()
+    assert page.locator('.skip').bounding_box()['y'] >= 0
+    page.keyboard.press('Enter')
+    assert page.locator('#main').evaluate(r'node => document.activeElement === node')
+    page.evaluate(r'''() => setInterfaceLanguage('zh')''', isolated_context=False)
+    assert page.locator('.skip').inner_text() == '跳到正文'
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round10_mapped_page_missing_sections_use_a_count(reader, language):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fquinn-alder.md')
+    page.evaluate(r'''language => setInterfaceLanguage(language)''', language, isolated_context=False)
+    count = page.evaluate(r'''() => known(byPath('people/quinn-alder.md')).missing.length''', isolated_context=False)
+    assert count > 0
+    assert page.locator('.missing .names').inner_text() == (
+        f'调查后会写出 {count} 个章节。' if language == 'zh'
+        else f'{count} sections will be written when it is investigated.')
+
+
+@pytest.mark.parametrize('width', [1440, 375])
+def test_round11_reader_languages_and_written_page_translation_fallback(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri)
+    page.evaluate(r'''() => {
+      REM.your_languages = ['zh', 'en']; REM.languages_from = 'detected';
+      REM.default_root = false; REM.root_display = '~/.co/invented notebook/rem';
+      copyToClipboard = command => { window.copiedCommand = command; };
+      setInterfaceLanguage('en');
+    }''', isolated_context=False)
+    if width < 600:
+        page.locator('.nav-toggle').click()
+    settings = page.locator('.reader-settings')
+    assert not settings.locator('.notebook-languages').is_visible()
+    settings.locator('summary').click()
+    assert settings.locator('.notebook-languages').inner_text().startswith('Notebook languages: 中文 · English — detected')
+    settings.locator('.notebook-languages button').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' config set languages zh,en"
+    assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+    if width < 600:
+        page.locator('.nav-toggle').click()
+    page.evaluate(r'''() => {
+      REM.records = [
+        {path: 'people/avery-lin.md', title: 'Avery Lin', category: 'people', written: true,
+          text: '# Avery Lin\n\n## Facts\nA draft.\n', translations: {zh: '# Avery Lin\n\n## Facts\n草稿。\n'}},
+        ...Array.from({length: 20}, (_, n) => ({path: 'projects/mapped-' + n + '.md',
+          title: 'Mapped ' + n, category: 'projects', written: false, text: '# Mapped\n'}))];
+      REM.logs = []; setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    notice = page.locator('#main > .translation-note')
+    assert notice.count() == 0  # Mapped-only stubs do not trigger the fallback.
+    page.evaluate(r'''() => {
+      delete REM.records[0].translations;
+      render();
+    }''', isolated_context=False)
+    assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+    page.evaluate(r'''() => {
+      REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
+      render();
+    }''', isolated_context=False)
+    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    notice.locator('button').click()
+    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' translate --all"
+    assert notice.locator('code').evaluate(r'''node => node.scrollWidth <= node.clientWidth''')
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')

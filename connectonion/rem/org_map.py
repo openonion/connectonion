@@ -77,14 +77,19 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
                 group['contacts'].add(person['record'])
                 group['talks'] |= not (person.get('automated_hint') or person.get('one_way'))
     owner_page = notebook.read(owner['record']) if owner and notebook.path(owner['record']).is_file() else ''
+    for domain in map(_domain, (owner or {}).get('addresses', [])):
+        if domain:
+            group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set(), 'talks': False})
+            group['domains'].add(domain)
     groups = {key: group for key, group in groups.items()
-              if group['contacts'] and group['talks'] and not own_domain(key, owner, owner_page)}
+              if own_domain(key, owner, owner_page) or (group['contacts'] and group['talks'])}
     rows, created = [], []
     for domain, group in sorted(groups.items()):
         contacts, domains = group['contacts'], sorted(group['domains'] | {domain})
         record = next((existing[d] for d in [domain, *domains] if d in existing), None) \
             or record_for('orgs', domain, domain)
         rows.append({'domain': domain, 'record': record, 'people': sorted(contacts), 'domains': domains,
+                     **({'own': True} if own_domain(domain, owner, owner_page) else {}),
                      'classification': 'domain candidate; organization identity unverified'})
         if not notebook.stub_org(record, domain, domains, sorted(contacts)):
             continue

@@ -13,7 +13,142 @@ from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
-from connectonion.rem.runner import RunFailed, run_stage, task_prompt
+from connectonion.rem.runner import RunFailed, run_claim_task, run_stage, task_prompt
+
+
+@pytest.mark.parametrize('stage', ['muse', 'enrich', 'investigate'])
+def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, monkeypatch, stage):
+    import re
+    from connectonion.rem import insight_critic
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin')
+    calls, progress = [], []
+    bullet = '- Changed: Avery now pays for Lantern testing. [1][2]'
+
+    def run(workdir, prompt, config, phase, **options):
+        next(workdir.glob(f'{stage}-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': 10}}
+
+    def judge(book, page, before, candidate, items, config, directory, independent_run):
+        calls.append('critic')
+        assert page == record and independent_run is runner.run_claim_task
+        assert candidate.read_text().endswith(bullet + '\n')
+        candidate.write_text('# Avery Lin\n\n## Insight\n')
+        return {'bullets': [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}],
+                'usage': {'input_tokens': 3}}
+
+    def promote(book, page, candidate, *args, **options):
+        calls.append('promote')
+        assert (bullet not in candidate.read_text()) == (stage == 'muse')
+        book.write(page, candidate.read_text())
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(insight_critic, 'judge', judge)
+    monkeypatch.setattr(runner, 'promote_with_repairs', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(),
+                       stage=stage, turns=('first', 'second'), stage_progress=progress.append)
+    assert calls == (['critic', 'promote'] if stage == 'muse' else ['promote'])
+    assert ('insight critic' in progress) == (stage == 'muse')
+    assert result['usage'] == {'input_tokens': 13 if stage == 'muse' else 10}
+    if stage == 'muse':
+        assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
+    else:
+        assert 'insights_kept' not in result
+
+
+@pytest.mark.parametrize('critic_fails', [False, True, 'invalid-root', 'invalid-json'])
+def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch, critic_fails):
+    from connectonion.rem.files import write_json
+    record, bullet = 'people/avery-lin.md', '- Now: Avery received the Lantern deck. [1]'
+    notebook.stub_person(record, 'Avery Lin')
+    turns, critics, promotions = [], [], []
+
+    def run(workdir, prompt, config, stage, **options):
+        turns.append(prompt)
+        next(workdir.glob('muse-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': len(turns) * 10}}
+
+    def critic(*args):
+        critics.append(args)
+        if critic_fails and len(critics) == 2:
+            if critic_fails is True:
+                raise RunFailed('Critic failed', {'input_tokens': 3})
+            return {'result': '[]' if critic_fails == 'invalid-root' else '{invalid', 'usage': {'input_tokens': 3}}
+        return {'result': json.dumps({'bullets': [{'bullet': bullet, 'verdict': 'weak',
+                    'reason': 'One message.', 'open_thread': ''}]}), 'usage': {'input_tokens': 3}}
+
+    def promote(book, page, candidate, original, items, directory, usage, **options):
+        promotions.append(candidate.read_text())
+        assert bullet not in candidate.read_text()
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'errors': ['Cited-claim audit did not pass']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(page, candidate.read_text())
+        return {}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, 'run_claim_task', critic)
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    if critic_fails:
+        with pytest.raises(RunFailed, match='Critic failed|Insight critic returned') as error:
+            run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+        assert error.value.usage == {'input_tokens': 26}
+    else:
+        result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+        assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
+        assert result['usage'] == {'input_tokens': 26}
+        assert bullet not in notebook.read(record)
+        logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+        assert logged['insights_rejected'] == result['insights_rejected']
+    assert len(turns) == len(critics) == 2
+    attempts = json.loads(next((notebook.root / '.state/tasks').glob('*/insight-critic.json')).read_text())
+    assert len(attempts) == 2 and attempts[0]['bullets'][0]['verdict'] == 'weak'
+    if critic_fails:
+        assert attempts[1]['error'].startswith(('Critic failed', 'Insight critic returned'))
+        assert attempts[1]['usage'] == {'input_tokens': 3}
+    else:
+        assert attempts[1]['bullets'][0]['verdict'] == 'weak'
+
+
+def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path, monkeypatch):
+    record, bullet = 'people/avery-lin.md', '- Changed: Avery now pays for Lantern testing. [1][2]'
+    notebook.stub_person(record, 'Avery Lin')
+    original = notebook.read(record)
+    candidate = tmp_path / 'candidate.md'
+    text = f'# Avery Lin\n\n## Insight\n{bullet}\n'
+    result = {}
+    verdicts = iter(['weak', 'good'])
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {'result': json.dumps({'bullets': [
+        {'bullet': bullet, 'verdict': next(verdicts), 'reason': 'Invented review.', 'open_thread': ''}]})})
+    for _ in range(2):
+        candidate.write_text(text)
+        runner._review_insights(notebook, record, original, candidate, [], {}, tmp_path, result, None)
+    assert result['insights_proposed'] == result['insights_kept'] == 1
+    assert result['insights_rejected'] == [] and bullet in candidate.read_text()
+    attempts = json.loads((tmp_path / 'insight-critic.json').read_text())
+    assert [attempt['bullets'][0]['verdict'] for attempt in attempts] == ['weak', 'good']
+
+
+def test_independent_critic_uses_its_own_read_only_output_schema(tmp_path, monkeypatch):
+    import importlib
+    from connectonion.rem.insight_critic import CRITIC_SCHEMA
+    codex = importlib.import_module('connectonion.useful_tools.codex')
+    monkeypatch.setattr(codex, '_base_command', lambda: ['codex', 'app-server'])
+
+    def completed(command, **options):
+        assert json.loads(Path(command[command.index('--output-schema') + 1]).read_text()) == CRITIC_SCHEMA
+        assert command[command.index('--sandbox') + 1] == 'read-only'
+        assert '--ephemeral' in command and '--resume' not in command
+        assert options['input'] == 'INDEPENDENT_PACKET' and 'INDEPENDENT_PACKET' not in command
+        Path(command[command.index('-o') + 1]).write_text('{"bullets": []}')
+        return SimpleNamespace(returncode=0, stdout=json.dumps({'type': 'turn.completed',
+                               'usage': {'input_tokens': 3}}), stderr='')
+
+    monkeypatch.setattr(runner.subprocess, 'run', completed)
+    result = run_claim_task(tmp_path, 'INDEPENDENT_PACKET', default_config(), 'insight-critic')
+    assert result['result'] == '{"bullets": []}' and result['usage']['input_tokens'] == 3
 
 
 @pytest.mark.parametrize('timeouts', [1, 2])

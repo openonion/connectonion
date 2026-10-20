@@ -2,6 +2,9 @@
 
 Related to #2334/#2332. Base initially PR2555 head7969db1, not a public version.
 This is distinct from rc8 and from the sync/daily receipt repair in PR2555.
+PR2555 subsequently merged as a7c4ae2; the candidate was integrated with current
+main through fc9557f before PR preparation. Public rc12 was installed and verified
+in both actual runtimes; this new fallback is not claimed included in that release.
 
 ## Finding and selected contract
 
@@ -42,6 +45,21 @@ An initial full offline run on the older base reported6failures,16104passed,
 fixtures using collection-time NOW, a collection-time calendar token expiry and an
 outbox timing race. This is not a full-suite pass. Integration/current-head full
 verification and independent review are still required before PR/merge claims.
+
+On integrated implementation67a3102, the related suite passed520tests in26.31s.
+The full offline suite then passed **16,823 tests,321skipped,7warnings in160.64s**
+with four workers and the existing offline markers, isolated HOME/network and CI
+dummy key. Wall time6293.0s versus monotonic162.06s records a long machine pause;
+no timeout/marker/coverage gate was waived. The older failures did not recur.
+Main's later UI/session/quote updates were then merged without source conflicts;
+fresh affected tests and exact-head remote CI remain required on the resulting head.
+
+Issue-body audit refreshed to257matching issues as of the dated snapshot:96open,
+161closed. Five additional/changed bodies were read, including all62,328characters
+of #1443 in three bounded reads. Historical brainstorms are not new implementation
+authority. The companion ledger records IDs/body hashes; selected comments only,
+not every comment. The later source-isolation finding was opened separately as
+#2617 after that snapshot; its synthetic regression remains red on a separate branch.
 
 No real init/model/provider/mail collection/scheduler execution or restart. No real
 notebook rewrite. No current screenshots or workaround for the existing preview

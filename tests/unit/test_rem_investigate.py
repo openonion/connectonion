@@ -38,6 +38,28 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
+@pytest.mark.parametrize('status', [500, 502, 503, 504, 403, 404])
+def test_http_body_errors_retry_only_transient_server_statuses(monkeypatch, status):
+    slept, calls = [], []
+    monkeypatch.setattr('time.sleep', slept.append)
+    error = Exception('provider failure')
+    error.resp = types.SimpleNamespace(status=status)
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            raise error
+        return 'body'
+
+    if status in (403, 404):
+        with pytest.raises(Exception, match='provider failure'):
+            inv._patient(fetch)
+        assert len(calls) == 1 and slept == []
+    else:
+        assert inv._patient(fetch) == 'body'
+        assert len(calls) == 2 and slept == [1]
+
+
 def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
     import threading
     from datetime import datetime, timedelta, timezone

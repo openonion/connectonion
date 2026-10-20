@@ -75,6 +75,24 @@ page alongside the selected pages. Next come all eligible mapped people, recent
 first, each investigated from up to two years of their mail; queued projects
 already listed in the map, recent first; all pending mapped organisations; and
 installed skills from source and retained run evidence: 16 pages at a time.
+After the map summary, init prints your notebook languages and whether they
+were detected from your sent mail and typed sessions or set in config. Use
+`co rem init --languages zh,en` to set them before mapping, or
+`co rem config set languages en` to change them later. English remains the
+canonical writing language. After tidying and drawing decisions and principles,
+init translates every listed, written page into your first non-English language,
+even when English is first in the list. Mapped-only stubs and the skill catalog
+index are excluded. `--no-translate` skips this last step; `--no-investigate`,
+`--estimate-only`, English-only languages or an unavailable runner also skip it
+with a reason in JSON. JSON includes `languages` and a `translation` summary.
+
+The estimate includes one translation per selected page plus your page, with
+unknown decision/principle counts treated as zero. Translation uses its own
+`limits.workers` lanes after the investigations, so its wall time is added to
+the page queue. Completed translation runs in this notebook supply median rates;
+otherwise planning uses 80,000 input tokens and 35 seconds per page (measured
+2026-10-21). First-run translation has no daily cap.
+
 Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
 pages or change the project count the owner just saw.
@@ -450,6 +468,11 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   its cited originals, and the latest enrich lead list and muse open questions
   for that page.
 
+Before muse saves the page, an independent reviewer checks each proposed new
+Insight bullet against its cited originals and the existing page, without seeing the writer's reasoning.
+Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
+or a question still owed can move to Open threads.
+
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
 if one repair cannot restore them, the lost lines are put back as they were,
 with citations renumbered, so the page keeps its new work. A quote the page
@@ -597,7 +620,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   you owe, as on Home. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. In 中文 mode,
-  Facts values and Connected context snippets come from cached translations
+  Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
@@ -1622,11 +1645,22 @@ Repeated mapping refreshes generated project counts, dates and paths while prese
 See [co rem memory workflows](rem-memory.md) for `reflect`, `review`, `capture`,
 `route` and `daily`, including provider, retention and budget limits.
 
+### Writing languages
+
+`co rem init` prints the owner languages and where they came from; the reader
+shows them under Reader settings, and `co rem config` shows any configured list.
+Detection uses your sent mail and typed sessions.
+`co rem config set languages zh,en` overrides detection; an empty list restores
+it. `co rem init --languages zh,en` sets the same validated configuration before
+the map. The first non-English tag supplies automatic translations, including a
+secondary Chinese language. 中文 mode also reads regional Chinese caches such
+as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
+
 ### Cached page languages
 
 After refreshing the owner's languages, each daily run translates pages changed
 by maintenance or investigation into the first non-English language in
-`co rem languages` (configured or detected), when the runner is ready.
+the owner's languages (configured or detected), when the runner is ready.
 `limits.translations_per_day` defaults to **10** new translation attempts across
 all daily slots; current cached translations use no attempts. Set it with
 `co rem config set limits.translations_per_day 5`. Failures are reported per page
@@ -1642,15 +1676,28 @@ To backfill existing pages once (the English pages remain the audited source):
 ```bash
 co rem translate --all --to zh
 co rem --root /path/to/rem translate --all --category people
-co rem translate people/alice-chen.md --to zh
+co rem translate people/avery-lin.md --to zh
 ```
 
 Omit `--to` to use the owner's first configured or detected non-English language.
-`--all` translates people, orgs, projects, decisions, principles and skills, one
-page at a time. It skips current caches, logs/activity, catalog indexes, duplicate
+`--all` translates people, orgs, projects, decisions, principles and skills,
+using up to `limits.workers` concurrent pages. It skips current caches, logs/activity, catalog indexes, duplicate
 installations and unlisted records. `--category` selects one of those six types.
 Each page prints `translated`, `cached`, or `failed: reason`, followed by counts.
 A page's reported translation failure does not stop the next page; any failures
 make the command exit 1. `--json` returns the outcomes and counts instead.
 Open or refresh the reader afterward: 中文 mode shows current cached prose, with
 quotes in their original language. An untranslated record still shows **原文**.
+
+
+Each model translation records a `translate` run with its language, page,
+duration, harness/model and usage, including failed attempts with reported
+usage. `co rem logs --usage` includes these costs; daily translation summaries
+retain attempt counts without duplicating the per-page usage.
+
+Reader settings shows **Notebook languages: 中文 · English — detected** (or
+**— set**) with a copyable `config set languages` command. Reader commands keep
+the selected root, shortening a root under your home to `~/…` with shell-safe
+quoting. The home translation notice is a fallback based only on written pages.
+When the last init or daily translation reported failures, it names how many
+pages could not be translated and offers a copyable `translate --all` command.

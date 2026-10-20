@@ -113,7 +113,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator('.home-find a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
-            assert page.locator(".next-exchanges").count() == 0
+            assert page.locator(".next-exchanges .thread").count() == 0
+            assert page.locator(".next-exchanges .empty-line").inner_text().startswith("No confirmed pending work")
             page.goto(page_path.as_uri() + "#view=open")
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
@@ -126,7 +127,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.locator("#main").get_by_role("link", name="Storage", exact=True).wait_for()
             page.set_viewport_size({"width": 375, "height": 812})
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
-            assert page.locator(".next-exchanges").count() == 0
+            assert page.locator(".next-exchanges .thread").count() == 0
+            assert page.locator(".next-exchanges .empty-line").is_visible()
             page.screenshot(path=str(shots / "rem-mobile.png"), full_page=True)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors, errors
@@ -286,6 +288,9 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
 
     page, _, _ = reader_page
     page.set_viewport_size({"width": 375, "height": 812})
+    page.locator('.skip').focus()
+    page.keyboard.press('Tab')
+    expect(page.locator('.brand')).to_be_focused()
     button = page.get_by_role("button", name="Browse notebook")
     expect(button).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#nav")).not_to_be_visible()
@@ -301,7 +306,8 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator("#nav").get_by_role("link", name="People").click()
     expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
     expect(button).to_have_attribute("aria-expanded", "false")
-    assert "No people mapped yet" in page.locator("#main").inner_text()
+    assert page.locator('#main .empty .lead').inner_text() == 'Not mapped yet'
+    assert page.locator('#main .empty a').inner_text() == 'Copy setup command'
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
@@ -372,7 +378,11 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.
         page.locator('.hits .t a').click();page.get_by_role('heading', name='Demo', exact=True).wait_for()
         page.locator('#nav a[href="#c=people"]').click()
-        command=page.locator('#main .empty').inner_text().split('Run ',1)[1].split(' (or ',1)[0]
+        page.evaluate('''() => {
+          copyToClipboard = command => { window.copiedCommand = command; };
+        }''', isolated_context=False)
+        page.locator('#main .empty a').click()
+        command = page.evaluate('window.copiedCommand', isolated_context=False)
         assert shlex.split(command)==['co','rem','--root',str(root),'init','--mail','outlook']
         browser.close()
 

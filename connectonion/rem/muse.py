@@ -376,4 +376,6 @@ def muse(root, record, *, runner=None, stage_progress=None) -> dict:
     # here reverted accepted rounds on 2026-10-20, comparing a page re-numbered on save.
     return {**_outcome(notebook, record, page, result, items=len(originals)),
             "turns": len(MUSE_TURNS),
-            "insights": sum(bool(INSIGHT.search(reply)) for reply in result.get("turn_replies", [])[1:-1])}
+            "insights": result.get("insights_kept", sum(bool(INSIGHT.search(reply))
+                            for reply in result.get("turn_replies", [])[1:-1])),
+            **{key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}}

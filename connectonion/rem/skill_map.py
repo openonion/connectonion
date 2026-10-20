@@ -262,7 +262,7 @@ def _listed_files(page: str) -> list[str]:
 
 
 def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, lock_held: bool = False,
-               subscriptions: dict | None = None, days: int = 180, progress=None) -> dict:
+               subscriptions: dict | None = None, days: int = 180, progress=None, sessions=None) -> dict:
     """One page per skill name; merge per-copy pages; refresh the map-owned lines and the index.
 
     `progress(message, "i/N")` every ten names, so init can draw a bar.
@@ -282,7 +282,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
             from .service import subscriptions as saved
             subscriptions = saved(notebook.root)
         counted = usage(subscriptions, [rows[0]["name"] for rows in by_name.values()], root=notebook.root, days=days,
-                        evals=Path.home() / ".co" / "evals")
+                        evals=Path.home() / ".co" / "evals", sessions=sessions)
         existing = _existing(notebook)
         # A page made under a folder name joins the page of the skill it is a copy of.
         for page, key in renamed_pages(notebook, by_name, existing).items():

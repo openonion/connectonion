@@ -1,0 +1,13 @@
+# A second reader
+
+Two rounds of sharper rules in the writer's prompt did not move the share of good insights. Each time, an independent reader checked every new Insight bullet against the messages it cites, and each time a third were good. The rest were weak: a single message already said it, it reworded a bullet the page already had, it was about someone else, or it filed two unrelated facts under "At stake". Only one, in the earlier round, was wrong.
+
+The writer had all of these rules in front of it and broke them anyway. The independent reader, which never saw the writer's reasoning, caught every one. So that reader is now part of muse. Before a page is saved, each new Insight bullet goes to a fresh turn. That turn has the rubric, the bullets already on the page and the cited originals, and nothing else. Only bullets it rates good are kept. A weak one that names something the user still owes becomes an Open thread. The rest are dropped.
+
+Fewer insights is the expected result. A page that gains one true, non-obvious finding is better off than one that gains three summaries of a single email.
+
+Two cheaper fixes came with it. Near-duplicate lines now merge in every section, not only History, Key decisions and Insight. A second round had left the same status line, open thread and quote twice on one page. Muse's rules also say who is speaking: a broadcast mail is never an ask, a sentence the owner wrote is the owner's, and an AI-written draft to someone else is not evidence about this person.
+
+The first live run went wrong in an instructive way. Muse had rewritten the page's existing insights in place. The critic correctly called those rewrites rewordings and removed them, but the originals were already gone, so three pages ended with an empty Insight section. A reviewer that can only delete needs something to fall back to. Now every insight the page had before the run is put back unless a bullet the critic kept replaced it. The run also showed the critic receiving only mail. Bullets that cited a GitHub pull request were rated "wrong" for lacking evidence that existed. GitHub items are now fetched for the critic, and a missing original no longer counts against a claim. It can only make the claim unverifiable.
+
+The near-duplicate merge in this change went too far, and a review caught it before release. It merged any two lines in a section when most of one appeared in the other. Two weekly-report entries a week apart became one. So did "March invoice" and "April invoice", and the March line was gone. Lines that differ by a date or a month are different facts. Outside the sections that merge by date or label, only an exact repeat is merged now.
