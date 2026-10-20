@@ -1295,3 +1295,27 @@ def test_untracked_bytecode_does_not_travel_with_the_code(tmp_path):
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     patch = sessions.code_patch(repo, {"pushed": True, "uncommitted": 2, "repository": "", "commit": commit})
     assert "new.py" in patch["changes"] and "pycache" not in patch["changes"] and ".pyc" not in patch["changes"]
+
+
+def test_code_patch_survives_a_non_utf8_git_diff(tmp_path):
+    """#2570: a repository whose diff bytes are not UTF-8 must not crash handoff send."""
+    import subprocess
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "note.txt").write_bytes(b"cafe\n")
+    git("add", "note.txt")
+    git("commit", "-qm", "one")
+    # Latin-1 content: git emits raw bytes in the diff that are not valid UTF-8.
+    (repo / "note.txt").write_bytes(b"caf\xe9\n")
+    commit = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+    patch = sessions.code_patch(
+        repo, {"pushed": True, "uncommitted": 1, "repository": "", "commit": commit}
+    )
+    assert patch is not None
+    assert "note.txt" in patch["changes"]

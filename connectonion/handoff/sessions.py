@@ -340,7 +340,14 @@ BYTECODE = re.compile(r"(^|/)__pycache__/|\.py[co]$")
 
 
 def _git_out(folder: Path, args: tuple, ok: tuple) -> str:
-    done = subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True)
+    # diffs can contain bytes that are not UTF-8 (#2570); never let decode kill the send
+    done = subprocess.run(
+        ["git", "-C", str(folder), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if done.returncode not in ok:
         raise RuntimeError(f"git {' '.join(args)} failed in {folder}: {done.stderr.strip()}")
     return done.stdout
