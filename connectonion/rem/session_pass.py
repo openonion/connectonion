@@ -60,13 +60,34 @@ def _read_files(files, result, cutoffs, progress):
         stat = path.stat()
         result.stats[str(path)] = stat
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) >= min(cutoffs.values()):
-            data = path.read_bytes()
+            data = _needed_bytes(path, destinations)
             for name, sub in destinations:
                 windows[name] = _feed_file(data, path, stat, sub, result, cutoffs, windows[name])
             del data
         if progress and (number % 500 == 0 or number == len(files)):
             progress(f"reading coding sessions: {number}/{len(files)}")
     return windows
+
+
+def _needed_bytes(path: Path, destinations) -> bytes:
+    """The whole file, or only its first line when every reader stops there.
+
+    Every reader drops a Codex session whose first line marks it as REM's own
+    turn after that line: 14,603 of ~20,500 files, most of the 18 GB of Codex
+    sessions on the owner's machine (2026-10-21).
+    """
+    with path.open("rb") as handle:
+        first = handle.readline(1_000_000)
+        if all(sub["kind"] == "codex" for _, sub in destinations) and _codex_skip(first):
+            return first
+        return first + handle.read()
+
+
+def _codex_skip(first: bytes) -> bool:
+    try:
+        return bool(source.KINDS["codex"]["meta"](json.loads(first)).get("skip"))
+    except (ValueError, UnicodeError, AttributeError, TypeError, source.RemError):
+        return False
 
 
 def _feed_file(data, path, stat, sub, result, cutoffs, window):
