@@ -959,6 +959,7 @@ def make_rem_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
+            summaries = None
             try:
                 result = build_map(root, sources, clients, days=map_days, all_history=all_history,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
@@ -970,8 +971,11 @@ def make_rem_app(factory):
                     result["sessions"] = import_sessions(root, days=days, consented_only=True,
                                                          sessions=getattr(result, "sessions", None))
                     if not rem_runner.ready(config)[0]:
-                        result["sessions_summary"] = summarise_sessions(root, limit=40, say=progress)
-                        progress(summarise_line(result["sessions_summary"]))
+                        # Model turns and mail downloads both wait on servers: run them side by
+                        # side. In sequence they were 6 + 4 minutes of a fresh map (2026-10-21).
+                        from concurrent.futures import ThreadPoolExecutor
+                        summaries = ThreadPoolExecutor(max_workers=1).submit(
+                            summarise_sessions, root, limit=40, say=progress)
                 if archive_mail and not estimate_only and result.get("source_inventory"):
                     from ...rem.files import read_json, write_json
                     from ...rem.mail_archive import archive_init
@@ -987,6 +991,9 @@ def make_rem_app(factory):
                                                    archive_days=MAP_DAYS if all_history else None)
                     result["mail_archive"] = body_report
                     write_json(state_path(root, "map.json"), result)
+                if summaries is not None:
+                    result["sessions_summary"] = summaries.result()
+                    progress(summarise_line(result["sessions_summary"]))
             finally:
                 progress.close()
             unread = {row.get("source") for row in result.get("errors") or []}
