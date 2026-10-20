@@ -25,6 +25,16 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc10**: 1.9.3rc9 with one correction. The packaged handoff blog post
+now tells its story with a fictional sender instead of a real person; the code is unchanged. See
+[1.9.3rc10 notes](releases/1.9.3rc10.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc10'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc9**: pages that quote people. The quote floor, first contact, History
 order and owner pronouns are enforced in code (mean quotes per person page 6.8 to 22.4 on notebook
 copies); enrich reads long histories period by period; gathering at 16 workers is about twice as
@@ -34,8 +44,6 @@ other work now stops and asks for a new one. See [1.9.3rc9 notes](releases/1.9.3
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc9'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc8**: a changed person or organisation without retained
 routing continuity no longer regains the old subject's contact dates. The next
