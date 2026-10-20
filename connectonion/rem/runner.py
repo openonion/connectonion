@@ -775,17 +775,30 @@ def _owner_phones(notebook, record) -> list[str]:
 
 
 def _owner_names(notebook, record) -> list[str]:
-    """2026-10-21: a first name stands for the owner only when no other title shares it."""
+    """2026-10-21: page titles cannot disambiguate an uncatalogued correspondent."""
     if not record or not notebook.exists(record):
         return []
     title = lambda page: next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')  # noqa: E731
     full = title(notebook.read(record))
     if not full:
         return []
-    first = full.split()[0]
-    collision = any(title(notebook.read(person)).split()[:1] == [first]
-                    for person in notebook.list('people') if person != record)
-    return [full] if collision or first == full else [full, first]
+    return list(dict.fromkeys([full, full.split()[0]]))
+
+
+def _owner_tied_lines(notebook, text, owner, names) -> set[str]:
+    """2026-10-21: resolve each line's citations against the page's current numbering."""
+    from .reader_model import SOURCE, cited_context
+    if not names:
+        return set()
+    addresses = {address.casefold() for address in owner.get('addresses', [])}
+    full = re.compile(r'\b' + re.escape(names[0]) + r'\b', re.I)
+    contexts = cited_context(notebook.root, [{'text': text}], private=True)
+    sources = {source for source, context in contexts.items()
+               if context.get('sender', '').casefold() in addresses or full.search(context['excerpt'])}
+    definitions = re.search(r'(?ms)^## Sources[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    numbers = {number for number, source in SOURCE.findall(definitions[1] if definitions else '')
+               if source in sources}
+    return {line for line in text.splitlines() if numbers.intersection(re.findall(r'\[(W?\d+)\](?!\()', line))}
 
 
 def _lead(text: str) -> str:
@@ -918,7 +931,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         restored_lines = sum(count for line, count in added.items() if line.strip())
     # 2026-10-21: restored carried lines must follow the owner's naming rule too.
     if carried:
-        text = owner_name_to_user(text, _owner_names(notebook, owner.get("record")))
+        names = _owner_names(notebook, owner.get("record"))
+        tied = _owner_tied_lines(notebook, text, owner, names)
+        text = owner_name_to_user(text, names, tied=tied.__contains__)
     text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
     if record == owner.get("record") and (not ask_quotes or last_resort):
         text = move_agent_threads(text)
@@ -1321,6 +1336,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate and record.startswith("projects/"):
         prompt += (" Before saving the Project page, check every Sources entry: "
                    "investigation:coverage, investigation:project-scope, investigation:timeline, "
+                   "investigation:earlier-insights, "
                    "investigation:project-inventory, investigation:project-repositories and "
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "

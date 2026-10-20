@@ -24,6 +24,7 @@ you, so do not reread what you already read.
 ## Turn 1 — ask, then choose
 
 Read the page, then every cited original whole. Do not edit the page.
+Read the `earlier-insights` item, when supplied, as a reading guide, never a citable source, and follow its rule for what a new insight must add.
 Questions the last run left open come first among candidates when still open.
 Do not re-ask a question it settled.
 
