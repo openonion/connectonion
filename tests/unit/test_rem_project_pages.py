@@ -896,6 +896,43 @@ def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_p
     assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
 
 
+def test_implementation_evidence_excludes_diary_bodies_but_keeps_the_tree(tmp_path):
+    repo = tmp_path / 'work'
+    (repo / 'journal').mkdir(parents=True)
+    (repo / 'journal/PEOPLE.md').write_text('Mia Chen [sensitive] diary entry.')
+    (repo / 'PEOPLE.md').write_text('Avery Lin reviews the delivery.')
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Avery Lin', '-c',
+                    'user.email=avery@example.org', 'commit', '-qm', 'Add invented notes'], check=True)
+    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert {item['subject'] for item in items} == {'tracked-files', 'PEOPLE.md'}
+    assert 'journal/PEOPLE.md' in items[0]['text']
+    assert any('Avery Lin reviews the delivery.' in item['text'] for item in items)
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+
+def test_pending_excludes_messages_typed_in_diary_subfolders(world):
+    record = 'projects/tide.md'
+    codex(world.codex / 'rollout-j.jsonl', '/work/tide/journal',
+          [('user', 'Mia Chen [sensitive] diary entry.', 1)])
+    codex(world.codex / 'rollout-a.jsonl', '/work/tide',
+          [('user', 'Avery Lin reviews the delivery.', 2)])
+    extract(world.root, world.subs)
+    messages = stored(world.root, record)
+    assert {m['cwd'] for m in messages} == {'/work/tide', '/work/tide/journal'}
+
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'first'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+    mark_written(world.root, record, ago(3))
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'update'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+
+
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
     """#2079: by recency alone a fresh init wrote the owner's private journal
     before LayeredVisions (28 sessions) and browser (17)."""

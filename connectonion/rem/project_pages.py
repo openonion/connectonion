@@ -42,9 +42,11 @@ ROOT_DESCRIPTIONS = {"README.md", "README.rst", "README.txt", "README", "pyproje
 
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
     """The messages the page has not been written from, and whether that is a first write."""
+    from .investigate import _private_folder, opted_in_folders
     state = page_state(root, record)
     through = state.get("written_through") or ""
-    messages = stored(root, record)
+    opted_in = opted_in_folders(root)
+    messages = [m for m in stored(root, record) if not _private_folder(m.get("cwd") or "", opted_in)]
     if through:
         return [m for m in messages if m["timestamp"] > through], "update"
     return messages, "first"
@@ -504,7 +506,7 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
                 ".html", ".css", ".toml", ".md", ".txt", ".json", ".sh", ".yaml", ".yml"}
     excluded = {"node_modules", "dist", "build", "vendor", "venv", "__pycache__"}
     eligible = [name for name in files if (Path(name).suffix in suffixes or name in entrypoints or name in ROOT_DESCRIPTIONS)
-                and not any(part.startswith(".") or part in excluded for part in Path(name).parts)
+                and not any(part.startswith(".") or part in excluded or PRIVATE.search(part) for part in Path(name).parts)
                 and not any(word in name.lower() for word in ("secret", "password", "credential", "private", "token"))
                 and Path(name).name not in ("package-lock.json", "composer.lock")]
     ordered = _implementation_order(eligible, entrypoints, requests)
