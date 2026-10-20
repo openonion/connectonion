@@ -1079,6 +1079,7 @@ def test_critic_fetches_unresolved_git_originals(notebook, monkeypatch, source, 
         return SimpleNamespace(returncode=0, stdout=body)
 
     monkeypatch.setattr(insight_critic.subprocess, 'run', run)
+    monkeypatch.setattr(insight_critic, 'known_checkouts', lambda notebook, record: {Path('/work/lantern').resolve()})
     packet = insight_critic.critic_packet(notebook, candidate, RECORD,
         [{'source': 'git:/work/lantern@def456:README.md', 'text': 'Already supplied original.'}], [bullet])
     assert calls == [['git', '-C', '/work/lantern', 'show', *target]]
@@ -1154,3 +1155,16 @@ def test_restored_and_kept_insights_stay_even_over_four_bullets(notebook, tmp_pa
                                  'reason': 'A new renewal requirement.', 'open_thread': ''}]})})
     assert insight_critic._bullets(path.read_text()) == [new, *old]
     assert report['restored'] == old and report['over_limit'] == 1
+
+
+def test_critic_never_reads_a_checkout_rem_does_not_map(notebook, monkeypatch):
+    """#2612 review: a model-written citation must not make the critic read an arbitrary path."""
+    monkeypatch.setattr(insight_critic.subprocess, 'run', lambda *a, **k: pytest.fail('git ran on an unmapped path'))
+    assert insight_critic._git_original('git:/home/elsewhere/secrets@abc123:notes.txt',
+                                        {Path('/work/lantern').resolve()}) == {}
+
+
+def test_known_checkouts_are_the_map_and_page_paths(notebook):
+    write_json(state_path(notebook.root, 'map.json'), {'projects': [{'record': 'projects/lantern.md',
+                                                                     'paths': ['/work/lantern']}]})
+    assert Path('/work/lantern').resolve() in insight_critic.known_checkouts(notebook, RECORD)
