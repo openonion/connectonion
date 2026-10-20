@@ -19,6 +19,7 @@ Before `Facts`, write 2–4 cited sentences:
   List projects in `Who they are`.
 - Add a firm, due-soon commitment or blocker. Put distant invitations and
   unrelated mail in `Open threads`.
+- Put contact dates in `Facts` and `Cadence`, not the lead.
 
 ## Coding agents are the user's tools, not people
 
