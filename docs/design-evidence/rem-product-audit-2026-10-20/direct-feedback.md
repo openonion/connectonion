@@ -51,8 +51,9 @@ The full offline suite then passed **16,823 tests,321skipped,7warnings in160.64s
 with four workers and the existing offline markers, isolated HOME/network and CI
 dummy key. Wall time6293.0s versus monotonic162.06s records a long machine pause;
 no timeout/marker/coverage gate was waived. The older failures did not recur.
-Main's later UI/session/quote updates were then merged without source conflicts;
-fresh affected tests and exact-head remote CI remain required on the resulting head.
+Main's later UI/session/quote updates were then merged without source conflicts.
+The affected suite on implementationd1acbb7 passed **535tests in31.53s**;
+exact-head remote CI remains required. This evidence-only refresh changes no code.
 
 Issue-body audit refreshed to257matching issues as of the dated snapshot:96open,
 161closed. Five additional/changed bodies were read, including all62,328characters
