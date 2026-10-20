@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc8
+## Current Version: 1.9.3rc9
+
+1.9.3rc9 is a REM candidate; stable remains 1.9.2. Person pages quote people: the quote floor,
+first contact, History order and owner pronouns are enforced in code, and mean quotes per person
+page rose from 6.8 to 22.4 on notebook copies. Enrich reads long histories period by period, enrich
+and muse are judged on the lines they wrote, gathering at 16 workers is about twice as fast, and
+the reader shows quotes, quiet citations and the owner's language. A handoff pasted into a
+conversation about other work stops and asks for a new one. See [1.9.3rc9 notes](docs/releases/1.9.3rc9.md).
+
+- 1.9.3rc9 (pages that quote people).
+
+## Previous preview: 1.9.3rc8
 
 1.9.3rc8 is a REM correction-maintenance candidate; stable remains 1.9.2.
 Subject changes without retained routing continuity no longer regain the prior
@@ -410,7 +421,7 @@ establishes visual/product maturity. See [1.9.3rc8 notes](docs/releases/1.9.3rc8
 
 - 1.9.3rc8 (subject corrections survive restoration; status footers stay bounded).
 
-## Previous preview: 1.9.3rc7
+## Earlier preview: 1.9.3rc7
 
 1.9.3rc7 is a maintenance candidate; stable remains 1.9.2. REM excludes its own
 Windows drive/UNC task sessions from newly imported context, skill invocation
