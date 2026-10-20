@@ -121,7 +121,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 1.9.3rc4: no handoff change; the floor is still the release that sent it.
 # 1.9.3rc5: handoffs are sealed (coh4, #k= links) and replies boxed end to end; older co cannot read them.
 # 1.9.3rc6: no handoff change for the recipient; the floor is still the release that sent it.
-MIN_VERSION = "1.9.3rc8"
+# 1.9.3rc9: the prompt and accept stop in a conversation that was about other work (#2569).
+MIN_VERSION = "1.9.3rc9"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 

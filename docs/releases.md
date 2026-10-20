@@ -25,6 +25,18 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc9**: pages that quote people. The quote floor, first contact, History
+order and owner pronouns are enforced in code (mean quotes per person page 6.8 to 22.4 on notebook
+copies); enrich reads long histories period by period; gathering at 16 workers is about twice as
+fast; the reader shows quotes and the owner's language. A handoff pasted into a conversation about
+other work now stops and asks for a new one. See [1.9.3rc9 notes](releases/1.9.3rc9.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc9'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc8**: a changed person or organisation without retained
 routing continuity no longer regains the old subject's contact dates. The next
 successful pass compacts the Investigation footer to the latest of each known
@@ -45,8 +57,6 @@ After this candidate is published, install its exact pin:
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc7'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc6**: a forwarded link no longer takes the name. A handoff addressed to
 one agent's mailbox and accepted by another agent is saved under the acceptor's own name, the
