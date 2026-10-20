@@ -1188,8 +1188,8 @@ def test_the_recipient_is_told_what_its_patch_is_relative_to():
 # ---- #2569: a handoff gets a conversation of its own ----
 
 def test_a_handoff_pasted_into_a_conversation_about_something_else_is_not_worked_on_there(world):
-    """Aaron pasted Ody's pricing handoff into his marketing session (2026-10-19), and accept told that agent to
-    do the work "here". Both the prompt and accept's rules now stop a conversation that had other work in it."""
+    """A handoff pasted into an open conversation about something else (2026-10-19, #2569) had accept tell that
+    agent to do the work "here". Both the prompt and accept's rules now stop a conversation that had other work in it."""
     from connectonion.cli.commands import handoff_commands as hc
     _send(world)
     [body] = [json.loads(b) for b in world["drops"].values()]
