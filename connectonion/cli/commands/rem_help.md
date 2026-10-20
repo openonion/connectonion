@@ -276,22 +276,23 @@ Example:  co rem deepen --pages 1
           co rem deepen projects/lantern-skills.md avery-lin
 
 Arguments:
-  PAGE...       Resolve like enrich/muse; deepen in order within the slot's bounds.
+  PAGE...       Resolve like enrich/muse; start in order within the slot's bounds.
                 Explicit pages bypass automatic selection and its resting period.
+                limits.depth_workers (default 3) controls pages deepened at once, including PAGE selections.
 
 Options:
-  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 2)
+  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 3)
 
 Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
           from investigation's 35. The shared 90% floor also stops new pages.
           Without a meter, the budget counts the last seven days of run usage.
-          limits.depth_slot_minutes (default 60) stops new pages after that elapsed
-          time, including explicit PAGE selections; a started round finishes.
+          limits.depth_slot_minutes (default 60) stops new pages at that elapsed
+          time, including explicit PAGE selections; started rounds finish.
 Output:   A picked line per page: value, recent multiplier, quotes, sources and round.
           JSON includes picked rows with priority and the number of previous rounds.
           Rounds with before/after metrics, insights, lost quotes, outcomes and
-          points; the stop reason and candidates left. State: .state/depth.json.
-Effects:  Uses the configured model. A round is about 25 minutes.
+          points, in completion order; the stop reason and candidates left. State: .state/depth.json.
+Effects:  Uses the configured model. Large-page rounds took 35–97 minutes (2026-10-20).
           Scheduled sync runs a slot after a due, non-partial daily round.
           Manual sync never deepens.
 
@@ -496,7 +497,7 @@ Example:  co rem sync --dry-run
                       attempts are spent; one line per batch on stderr. To go
                       further today, raise limits.runner_calls_per_day
           --scheduled what the schedule passes: run only if a scheduled time is due;
-                      after a non-partial daily round, deepen up to two pages within
+                      after a non-partial daily round, deepen up to three pages by default within
                       the separate deepening budget. Manual sync never deepens.
 
 Effects:  Reads message bodies, calls the model, updates pages. A run the daily

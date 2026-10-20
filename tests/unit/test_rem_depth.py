@@ -1,6 +1,7 @@
 """Successive rounds spend a separate week and preserve the record when a stage fails."""
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from math import log2
 
@@ -9,7 +10,7 @@ from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 from connectonion.rem import depth, quota, runner, service
-from connectonion.rem.config import default_config, prepare, read_config, validate
+from connectonion.rem.config import default_config, prepare, read_config, set_config, validate
 from connectonion.rem.files import Notebook, RemError, read_json, state_path, write_json
 
 RECORD = "people/avery-lin.md"
@@ -225,13 +226,14 @@ def test_slot_respects_pages_and_announces_round(root):
     choice = depth.candidates(root)[0]
     result = depth.slot(root, pages=1, stage=lambda *a: {}, say=said.append)
     assert len(result["rounds"]) == 1 and result["left"] == 1 and result["stopped"] == ""
-    assert said == [f"Deepening {result['rounds'][0]['record']} (round 1)…"]
+    assert said == [f"{result['rounds'][0]['record']}: Deepening (round 1)…"]
     assert result["picked"] == [{key: choice[key] for key in
                                  ("record", "priority", "value", "recent", "quotes", "sources", "rounds")}]
 
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_slot_checks_budget_before_each_page(root, monkeypatch, explicit):
+    set_config(root, ["limits.depth_workers", "1"])
     Notebook(root).write("projects/atlas.md", "# Atlas\n")
     mapped(root, people=[{"record": RECORD}], projects=[{"record": "projects/atlas.md"}])
     meter = {"used_percent": 40, "window_minutes": 10080, "resets_at": int((TODAY + timedelta(days=1)).timestamp())}
@@ -251,18 +253,24 @@ def test_slot_checks_budget_before_each_page(root, monkeypatch, explicit):
 
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("limit", [5, 60])
-@pytest.mark.parametrize("offset,completed", [(-1, 2), (0, 2), (1, 1)])
+@pytest.mark.parametrize("offset,completed", [(-1, 2), (0, 1), (1, 1)])
 def test_slot_checks_wall_time_before_starting_another_page(root, monkeypatch, explicit, limit, offset, completed):
     project = "projects/atlas.md"
     Notebook(root).write(project, "# Atlas\n")
     config = read_config(root)
-    config["limits"]["depth_slot_minutes"] = limit
+    config["limits"].update(depth_slot_minutes=limit, depth_workers=1)
     monkeypatch.setattr(depth, "read_config", lambda root: config)
-    clock = iter([100, 100 + (limit + offset) * 60])
-    monkeypatch.setattr(depth.time, "monotonic", lambda: next(clock))
+    clock = [100]
+    monkeypatch.setattr(depth.time, "monotonic", lambda: clock[0])
     calls = []
+
+    def stage(path, record, name):
+        calls.append((record, name))
+        clock[0] = 100 + (limit + offset) * 60
+        return {}
+
     result = depth.slot(root, records=[RECORD, project] if explicit else None,
-                        stage=lambda path, record, name: calls.append((record, name)) or {})
+                        stage=stage)
     assert len(result["rounds"]) == completed and result["left"] == 2 - completed
     assert calls == [(row["record"], name) for row in result["rounds"] for name in ("enrich", "muse")]
     assert len(result["picked"]) == completed
@@ -270,6 +278,7 @@ def test_slot_checks_wall_time_before_starting_another_page(root, monkeypatch, e
 
 
 def test_slot_explicit_records_bypass_candidates_and_page_limit_in_order(root, monkeypatch):
+    set_config(root, ["limits.depth_workers", "1"])
     records = ["projects/lantern.md", RECORD, "projects/quiet.md"]
     for record in (records[0], records[2]):
         Notebook(root).write(record, "# Project\n")
@@ -282,13 +291,136 @@ def test_slot_explicit_records_bypass_candidates_and_page_limit_in_order(root, m
     assert [row["record"] for row in result["picked"]] == records
     assert [row["rounds"] for row in result["picked"]] == [0, 2, 0]
     assert result["picked"][1]["quotes"] == 1 and result["picked"][1]["sources"] == 1
-    assert said == [f"Deepening {record} (round {number})…" for record, number in zip(records, [1, 3, 1])]
+    assert said == [f"{record}: Deepening (round {number})…" for record, number in zip(records, [1, 3, 1])]
     assert result["left"] == 0 and result["stopped"] == ""
 
 
 def test_slot_explicit_empty_records_does_not_select_candidates(root):
     assert depth.slot(root, records=[], stage=lambda *a: pytest.fail("started a page")) == {
         "rounds": [], "picked": [], "stopped": "", "left": 0}
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_slot_deepens_three_pages_concurrently_and_keeps_all_history(root, explicit):
+    records = [RECORD, "projects/lantern.md", "orgs/lantern.md"]
+    for record in records[1:]:
+        Notebook(root).write(record, "# Lantern\n")
+    barrier = threading.Barrier(3, timeout=5)
+
+    def stage(path, record, name):
+        barrier.wait()
+        return {}
+
+    result = depth.slot(root, records=records if explicit else None, stage=stage)
+    assert {row["record"] for row in result["rounds"]} == set(records)
+    assert len(result["picked"]) == 3 and result["left"] == 0 and result["stopped"] == ""
+    history = read_json(state_path(root, "depth.json"), {})
+    assert set(history) == set(records)
+    for row in result["rounds"]:
+        assert history[row["record"]] == [{key: value for key, value in row.items() if key != "record"}]
+
+
+def test_slot_with_one_worker_finishes_each_page_before_starting_the_next(root):
+    set_config(root, ["limits.depth_workers", "1"])
+    records = [RECORD, "projects/lantern.md", "orgs/lantern.md"]
+    for record in records[1:]:
+        Notebook(root).write(record, "# Lantern\n")
+    calls = []
+    result = depth.slot(root, records=records, stage=lambda path, record, name: calls.append((record, name)) or {})
+    assert calls == [(record, name) for record in records for name in ("enrich", "muse")]
+    assert [row["record"] for row in result["rounds"]] == records
+
+
+def test_slot_explicit_duplicate_records_run_once(root):
+    project = "projects/lantern.md"
+    Notebook(root).write(project, "# Lantern\n")
+    barrier = threading.Barrier(2, timeout=5)
+
+    def stage(path, record, name):
+        barrier.wait()
+        return {}
+
+    result = depth.slot(root, records=[RECORD, project, RECORD], stage=stage)
+    assert {row["record"] for row in result["rounds"]} == {RECORD, project}
+    assert len(result["rounds"]) == 2 and result["left"] == 0
+
+
+def test_parallel_pages_with_the_same_stem_keep_their_own_evidence(root, monkeypatch):
+    records = ["people/lantern.md", "orgs/lantern.md"]
+    for record in records:
+        Notebook(root).write(record, "# Lantern\n")
+    monkeypatch.setattr(depth.muse, "gather", lambda *a, record, **kw: (
+        [{"source": f"fixture:{record}", "text": f"Evidence for {record}"}], []))
+    monkeypatch.setattr(depth.muse, "_cited_originals", lambda *a: [])
+    barrier = threading.Barrier(2, timeout=5)
+
+    def run(book, items, config, **kw):
+        barrier.wait()
+        record = items[0]["record"]
+        ledger = next(item for item in items if item["role"] == "evidence-index")
+        assert ledger["sources"] == [f"fixture:{record}"]
+        originals = next(item for item in items if item["role"] == "original_evidence")
+        assert read_json(book.root / originals["file"], [])[0]["text"] == f"Evidence for {record}"
+        return {}
+
+    def stage(path, record, name):
+        return getattr(depth.muse, name)(path, record, runner=run)
+
+    result = depth.slot(root, records=records, stage=stage)
+    assert len(result["rounds"]) == 2
+    assert all(row["enrich"] == row["muse"] == "completed" for row in result["rounds"])
+
+
+def test_slot_returns_rounds_in_completion_order(root):
+    set_config(root, ["limits.depth_workers", "2"])
+    records = [RECORD, "projects/lantern.md", "orgs/lantern.md"]
+    for record in records[1:]:
+        Notebook(root).write(record, "# Lantern\n")
+    third_started = threading.Event()
+
+    def stage(path, record, name):
+        if record == records[0]:
+            assert third_started.wait(timeout=5)
+        if record == records[2]:
+            third_started.set()
+        return {}
+
+    result = depth.slot(root, records=records, stage=stage)
+    assert result["rounds"][0]["record"] == records[1]
+    assert [row["record"] for row in result["picked"]] == records
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_slot_checks_stop_reason_before_every_submission(root, monkeypatch, explicit):
+    for record in ("projects/lantern.md", "orgs/lantern.md"):
+        Notebook(root).write(record, "# Lantern\n")
+    records = [row["record"] for row in depth.candidates(root)]
+    reasons = iter(["", "fixture budget exhausted"])
+    monkeypatch.setattr(depth, "stop_reason", lambda *a: next(reasons))
+    result = depth.slot(root, records=records if explicit else None, stage=lambda *a: {})
+    assert [row["record"] for row in result["rounds"]] == records[:1]
+    assert result["stopped"] == "fixture budget exhausted" and result["left"] == 2
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_slot_wall_time_stops_replacements_and_waits_for_running_pages(root, monkeypatch, explicit):
+    set_config(root, ["limits.depth_workers", "2"])
+    for record in ("projects/lantern.md", "orgs/lantern.md"):
+        Notebook(root).write(record, "# Lantern\n")
+    records = [row["record"] for row in depth.candidates(root)]
+    clock = [100]
+    monkeypatch.setattr(depth.time, "monotonic", lambda: clock[0])
+    barrier = threading.Barrier(2, timeout=5)
+
+    def stage(path, record, name):
+        barrier.wait()
+        clock[0] = 100 + 60 * 60
+        return {}
+
+    result = depth.slot(root, records=records if explicit else None, stage=stage)
+    assert {row["record"] for row in result["rounds"]} == set(records[:2])
+    assert all(row["muse"] == "completed" for row in result["rounds"])
+    assert result["stopped"] == "the slot has run 60 of its 60 minutes" and result["left"] == 1
 
 
 @pytest.mark.parametrize("blocked", ["floor", "budget", "runner"])
@@ -308,7 +440,8 @@ def test_slot_stops_before_starting(root, monkeypatch, blocked):
 
 def test_depth_limits_merge_and_validate(root):
     limits = default_config()["limits"]
-    assert limits["depth_quota_points"] == 30 and limits["depth_pages_per_slot"] == 2
+    assert limits["depth_quota_points"] == 30 and limits["depth_pages_per_slot"] == 3
+    assert limits["depth_workers"] == 3
     assert limits["depth_slot_minutes"] == 60
     path = root / "config.yaml"
     path.write_text('\n'.join(line for line in path.read_text().splitlines() if 'depth_' not in line))
@@ -320,9 +453,10 @@ def test_depth_limits_merge_and_validate(root):
 
 
 @pytest.mark.parametrize("value", [0, -1, 1.5, True, "60"])
-def test_slot_minutes_must_be_a_positive_integer(root, value):
+@pytest.mark.parametrize("key", ["depth_slot_minutes", "depth_workers"])
+def test_depth_limits_must_be_positive_integers(root, key, value):
     config = read_config(root)
-    config["limits"]["depth_slot_minutes"] = value
+    config["limits"][key] = value
     with pytest.raises(RemError, match="positive integers"):
         validate(config)
 
@@ -363,6 +497,7 @@ def test_deepen_cli_prints_failed_stage_messages_verbatim(root, monkeypatch):
 
 
 def test_deepen_cli_resolves_explicit_pages_in_order(root, monkeypatch):
+    set_config(root, ["limits.depth_workers", "1"])
     project = "projects/lantern-skills.md"
     Notebook(root).write(project, "# Lantern Skills\n")
     calls = []

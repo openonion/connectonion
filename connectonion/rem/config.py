@@ -87,10 +87,12 @@ def default_config() -> dict:
                        # Deepening's share of the Codex week, separate from investigation's
                        # 35; the owner agreed 30% on #2533.
                        "depth_quota_points": 30,
-                       # Pages one scheduled slot deepens; a round is about 25 minutes.
-                       "depth_pages_per_slot": 2,
-                       # 2026-10-20: rounds take about 25 minutes; stop starting pages
-                       # after an hour so a slow slot does not run into the next.
+                       # 2026-10-20: large-page rounds take 35–97 minutes, mostly
+                       # waiting on model turns. Three pages fill the slot's workers
+                       # while keeping each enrich + muse round whole.
+                       "depth_workers": 3, "depth_pages_per_slot": 3,
+                       # 2026-10-20: stop starting pages after an hour;
+                       # running rounds finish even when they exceed the slot.
                        "depth_slot_minutes": 60,
                        # A page whose evidence is more than one turn can hold is read in
                        # rounds, each part whole, then one synthesis turn (#2314).

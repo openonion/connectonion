@@ -28,7 +28,8 @@ MUSE_TURNS = ("Now do Turn 1 only.",
 
 
 def ledger_dir(root, record) -> Path:
-    return state_path(root, f"enrich/{Path(record).stem}")
+    # 2026-10-20: pages deepened in parallel in different categories can share a stem.
+    return state_path(root, f"enrich/{Path(record).with_suffix('')}")
 
 
 def _archive_note(root) -> str:
@@ -65,6 +66,9 @@ def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
 
 def _ledger_items(root, record) -> list[dict]:
     directory = ledger_dir(root, record)
+    # A ledger written before category paths still serves a standalone muse.
+    if not directory.exists():
+        directory = state_path(root, f"enrich/{Path(record).stem}")
     index, originals = directory / INDEX, directory / "items.json"
     if not index.is_file() or not originals.is_file():
         return []

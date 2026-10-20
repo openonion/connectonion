@@ -79,6 +79,12 @@ Most promising first: what could change the lead, Open threads or Facts.
 
 - Additions and corrections only: cited facts, dated history lines, the end of
   a thread, contact details exactly as the source writes them.
+- What someone asked, decided, promised or gave as a reason goes on the page
+  in their own words: a short verbatim quote of that sentence, cited, not a
+  paraphrase. A correspondent who wrote forty mails should be heard on the
+  page. Quote the author of the original only (not a forwarded text, a
+  title, a bot or an agent prompt), never a greeting, a sign-off or a
+  command, and each sentence once.
 - What is already right stays as written. Do not reorganise, merge pages or
   draw conclusions across pages — that is `rem-muse`. The lead changes only
   when a new fact changes what is live; even then keep its quotes.
