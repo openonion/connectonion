@@ -1417,16 +1417,18 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
-                "section. Make exactly one edit per listed line: delete only the clause about what is not known "
-                "and keep the rest of the sentence, its facts and citations (the ask, the date, who owes what); "
-                "or move the doubt under Uncertainties if it would change the user's next step (five there at "
-                "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
+                "section. Make exactly one edit per listed line: replace the clause about what is not known with "
+                "the dated fact that is known (\"no reply since 2026-10-12\") and keep the rest of the sentence, "
+                "its facts, quotes and every citation (the ask, the date, who owes what); a doubt that changes "
+                "the user's next step becomes an Open threads line or a question under Uncertainties (five "
+                "there at most). Never delete a line, the lead, a paragraph, a quote or a cited fact. Add no claim, no source and no new "
                 "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
 QUOTE_NOTE = ("Quote round: an edit, not an investigation. The page has {quotes} quotes from {messages} cited "
               "messages and {insight} Insight bullets. For each cited message that holds an ask, offer, term, "
               "decision, refusal or how someone asks to be reached, put the speaker's exact words on the line "
               "that uses it as “…” (YYYY-MM-DD) [n], replacing the paraphrase. Copy character for character "
-              "from the originals below, in the original language. Bring Insight to 2–4 bullets, each a finding "
+              "from the originals below, in the original language. Bring Insight to {insight_target}–4 bullets, "
+              "each a finding "
               "resting on two or more cited messages. Add no new claim, no new source. Delete nothing cited. Then end.")
 
 
@@ -1438,28 +1440,28 @@ def _quote_counts(page: str) -> tuple[int, int]:
     return len(QUOTE.findall(body)), len(re.findall(r'(?m)^[-*] +\S', insight))
 
 
-def falls_short(page: str) -> tuple[int, int, int] | None:
-    """Quote, cited-mail and Insight counts when a person page needs one edit."""
+def falls_short(page: str, *, min_insight: int = 2) -> tuple[int, int, int] | None:
+    """Quote, source and Insight counts; the owner's three-bullet target includes sessions."""
     from .page_review import prose
     from .reader_model import SOURCE
     sources = prose(page).partition('\n## Sources\n')[2].split('\n## ', 1)[0]
-    mails, dates = set(), set()
+    messages, dates = set(), set()
     for match in SOURCE.finditer(sources):
-        if match[2].startswith(('gmail:', 'outlook:')):
-            mails.add(match[2])
+        if min_insight == 3 or match[2].startswith(('gmail:', 'outlook:')):
+            messages.add(match[2])
             metadata = sources[match.end():].split('\n', 1)[0]
             date = re.search(r'\b\d{4}-\d{2}-\d{2}\b', metadata)
             if date:
                 dates.add(date[0])
     quotes, insight = _quote_counts(page)
-    floor = 10 if len(mails) > 5 else 6
-    if len(mails) > 3 and (quotes < floor or insight < 2 and len(dates) >= 2):
-        return quotes, len(mails), insight
+    floor = 10 if len(messages) > 5 else 6
+    if len(messages) > 3 and (quotes < floor or insight < min_insight and (min_insight == 3 or len(dates) >= 2)):
+        return quotes, len(messages), insight
     return None
 
 
 def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]], counts: tuple[int, int, int],
-               config: dict, stage_progress=None, context=()):
+               config: dict, stage_progress=None, context=(), *, insight_target=2):
     """One edit with only the page's cited originals, so exact words can replace paraphrases."""
     from .page_review import prose
     from .reader_model import SOURCE
@@ -1473,7 +1475,8 @@ def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]]
               "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
                       f"note:\n\n{page}"},
              {"role": "round", "source": "investigation:round",
-              "text": QUOTE_NOTE.format(quotes=quotes, messages=messages, insight=insight)},
+              "text": QUOTE_NOTE.format(quotes=quotes, messages=messages, insight=insight,
+                                        insight_target=insight_target)},
              # The facts item too: without it the audit refuted the computed First
              # contact and promotion could not put it back (2026-10-20, 3 of 5 pages).
              *[item for item in context if item.get("role") == "facts"],
@@ -1493,11 +1496,14 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
     Both a one-turn investigation and a run of rounds end here: the 2026-10-20
     reruns' thinnest page (3 quotes) was a one-turn page.
     """
-    counts = falls_short(notebook.read(record)) if record.startswith('people/') else None
+    owner = (read_json(state_path(notebook.root, 'map.json'), {}).get('owner') or {}).get('record')
+    insight_target = 3 if record == owner else 2
+    counts = falls_short(notebook.read(record), min_insight=insight_target) if record.startswith('people/') else None
     if counts is None:
         return None
     page = notebook.read(record)
-    out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress, context)
+    out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress, context,
+                     insight_target=insight_target)
     reason, _ = _keep_unless_lost(notebook, record, page, out.get("refuted_claims", []))
     refused = [out["refused"]] if out.get("refused") else []
     if reason:
@@ -1545,6 +1551,13 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
         notebook.write(record, page)
         out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
                "changed": []}
+    else:
+        # A hedge is rewritten, never deleted with what it cited: three trial runs of
+        # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
+        from .page_review import restore_dropped
+        kept = restore_dropped(page, notebook.read(record))
+        if kept != notebook.read(record):
+            notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
 
 

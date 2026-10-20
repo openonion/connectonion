@@ -1773,3 +1773,29 @@ def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_remov
     from connectonion.rem.page_review import hedged_lines
     page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
     assert hedged_lines(page)
+
+
+def test_a_restored_line_keeps_an_unverifiable_quote_as_plain_words():
+    """2026-10-20 upkeep: a restored line carried a name quote its source did not hold; the update was refused."""
+    from connectonion.rem.page_review import restore_dropped
+    line = "- Theo writes as “Theo P.” and asks “Could you review it?” (2026-10-01) [1]"
+    before = f"# Theo Park\n\n## How they communicate\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01\n"
+    after = before.replace(line + "\n", "").replace("- [1] gmail:a — 2026-10-01\n", "")
+    restored = restore_dropped(before, after, frozenset({"Theo P."}))
+    assert "as Theo P. and asks “Could you review it?”" in restored
+
+
+def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
+    """The last contact date showed three times on one screen (lead, Facts, reader meta)."""
+    from connectonion.rem.census import last_activity
+    from connectonion.rem.page_review import lead_without_last_contact
+    from connectonion.rem.store_build import LAST_CONTACT
+    old = ("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2]. Last contact: 2026-10-17, email [2].\n\n"
+           "## Facts\n- Last contact: 2026-10-17 [2]\n")
+    new = lead_without_last_contact("people/avery-lin.md", old)
+    assert new.startswith("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2].\n\n## Facts\n")
+    for page in (old, new):          # old pages stay parseable; new ones are read from Facts
+        assert last_activity(page) == "2026-10-20" or "2026-10-17" in LAST_CONTACT.findall(page)
+        assert max(LAST_CONTACT.findall(page)) == "2026-10-17"
+    stub = "# Avery\n\nUnknown — not investigated yet. Last contact: 2026-10-01; 3 mails (gmail).\n\n## Facts\n"
+    assert lead_without_last_contact("people/avery.md", stub) == stub

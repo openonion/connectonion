@@ -614,6 +614,7 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
                "Key decision without the owner's words:",
+               "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
 # 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
@@ -721,7 +722,10 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
     # not written; a person page lost a quarter of its text in one round.
     # Upkeep too: one-page upkeep rewrote a page with twelve quotes into one with none (2026-10-20 A/B).
-    carried = original if stage in ("enrich", "muse", "maintain") else ""
+    # An update of a page already investigated keeps what it had too: people-page upkeep on
+    # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
+    updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
+    carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
@@ -799,7 +803,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
-                              sources_before_footer, merge_duplicate_definitions,
+                              sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content, unverified_quotes)
@@ -875,7 +879,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Repair them first; the next promotion still runs the complete validator.
     from .page_review import drop_claims, merge_duplicate_sections, misquoted
     text = fold_history(sort_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record")))))
-    text, pronouns = owner_pronouns(text)
+    text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
     if investigation:
         text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
     refuted, unlocated, restored_lines = [], [], 0
@@ -899,6 +903,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
+    if record == owner.get("record") and (not ask_quotes or last_resort):
+        text = move_agent_threads(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
@@ -906,6 +912,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
+    if ask_quotes and not last_resort and record == owner.get("record"):
+        errors += [f"Open thread rests only on coding sessions: {line[:160]} -- a task the user gave a coding "
+                   "agent is work in progress: move it to Who they are, or cite the person it is owed to"
+                   for line in agent_threads(text)]
     if last_resort and record.startswith("people/") and not _lead(text):
         # Corin Marsh (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
@@ -991,7 +1001,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, lead_without_last_contact, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
                               repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
@@ -1012,7 +1022,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
         text, overview_replaced = repair_project_overview(record, text)
         text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
-        text, pronouns = owner_pronouns(fold_history(sort_history(single_title(text))))
+        text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
         # Upkeep has no repair turn: a quote or source the page had and this
         # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
         # A gutted page is still refused on what the turn wrote, before anything is put back.

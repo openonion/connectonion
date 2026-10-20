@@ -1748,6 +1748,10 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)
+        # A quote the cited source does not hold comes back as plain words: restored in
+        # quotation marks, it refused the whole update ("Quote is not in its cited source").
+        for quote in exempt:
+            restored = restored.replace(f'“{quote}”', quote)
         if restored and restored not in after.splitlines():
             after = _insert_restored_line(after, section, restored, lost_quotes, lost_sources)
     return after
@@ -1913,6 +1917,41 @@ def owner_pronouns(text: str) -> tuple[str, int]:
     return "\n".join(lines) + marker + tail, total
 
 
+def agent_threads(text: str) -> list[str]:
+    """Open threads supported exclusively by coding-session originals."""
+    from .reader_model import SOURCE
+    visible = prose(text).replace('\r\n', '\n')
+    section = r'(?ms)^## {}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)'
+    definitions = re.search(section.format('Sources'), visible)
+    sources = dict(SOURCE.findall(definitions[1] if definitions else ''))
+    span = re.search(section.format('Open threads'), visible)
+    lines = []
+    for line in span[1].splitlines() if span else []:
+        citations = re.findall(r'\[(W?\d+)\](?!\()', line)
+        if (re.match(r'^[-*] +\S', line) and citations
+                and all(sources.get(number, '').startswith(('codex:', 'claude-code:')) for number in citations)):
+            lines.append(line)
+    return lines
+
+
+def move_agent_threads(text: str) -> str:
+    """Keep session-only work on the owner's profile rather than as an obligation."""
+    lines = agent_threads(text)
+    if not lines:
+        return text
+    section = r'(?ms)^## {}[ \t]*\r?\n(.*?)(?=^## |^Investigation:|\Z)'
+    threads = re.search(section.format('Open threads'), prose(text))
+    body = text[threads.start(1):threads.end(1)]
+    kept = '\n'.join(line for line, visible in zip(body.splitlines(), threads[1].splitlines())
+                     if visible not in lines).strip()
+    text = text[:threads.start(1)] + (kept or '- Unknown') + '\n\n' + text[threads.end(1):]
+    who = re.search(section.format('Who they are'), prose(text))
+    if who:
+        return text[:who.end(1)].rstrip('\n') + '\n' + '\n'.join(lines) + '\n\n' + text[who.end(1):]
+    at = re.search(r'^## Sources', prose(text), re.M).start()
+    return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
+
+
 def unquoted_decisions(text: str) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
@@ -1923,3 +1962,21 @@ def unquoted_decisions(text: str) -> list[str]:
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "
             "copied from the message the line cites" for line in lines]
+
+
+LEAD_LAST_CONTACT = re.compile(r"[ \t]*Last contact:[^\n]*?\d{4}-\d{2}-\d{2}[^\n]*$", re.I)
+
+
+def lead_without_last_contact(record: str, text: str) -> str:
+    """An investigated person's lead ends with its sentences, not the date `Facts` and the reader already show.
+
+    2026-10-20: the last contact date appeared three times on one screen. A mapped
+    stub keeps its "Last contact: <date>; N mails" lead until it is investigated.
+    """
+    if not record.startswith("people/") or "not investigated yet" in text.partition("\n## ")[0]:
+        return text
+    title, _, rest = text.partition("\n")
+    lead, marker, tail = rest.partition("\n## ")
+    cut = re.sub(r"(?m)(?<=[.!?。）)\]])" + LEAD_LAST_CONTACT.pattern, "", lead, flags=re.I)
+    cut = re.sub(r"(?m)^" + LEAD_LAST_CONTACT.pattern + r"\n?", "", cut, flags=re.I)
+    return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
