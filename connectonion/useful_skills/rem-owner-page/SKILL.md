@@ -26,8 +26,8 @@ Before `Facts`, write 2–4 cited sentences:
 
 Claude Code and Codex are tools. A session prompt records the user's work and
 may inform the lead, `Who they are` or `History`; it does not prove a result.
-An agent is never a counterparty in `Open threads`, never `Last contact`, and
-never a correspondent in `Cadence`.
+A task the user typed to an agent is work for `Who they are`, never an `Open
+threads` line, `Last contact` or `Cadence`.
 
 ## Roles are stated, not collected
 
@@ -35,15 +35,15 @@ never a correspondent in `Cadence`.
   themselves** (a signature, "I run …", "as the founder of …"), or **someone
   else states them about the user** ("Aaron, our CTO").
 - **A role in a list the user writes about someone else is that person's, not
-  the user's.** "Ody: partner at OpenOnion, runs marketing, Airbnb co-host" in
-  the user's mail describes Ody. Leave it off this page.
+  the user's.** "Corin: partner at OpenOnion, runs marketing, Airbnb co-host" in
+  the user's mail describes Corin. Leave it off this page.
 - List stated roles with citations and dates; otherwise `Unknown`.
 
 ## The sections
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
-- `Insight`: 2–4 cited bullets connecting projects and commitments to the next
+- `Insight`: 3–4 cited bullets connecting projects and commitments to the next
   decision: what must happen first, who waits, or a recurring tradeoff.
   Lead with `Changed:` when a dated reversal is
   evidenced; otherwise `Now:` joins repeated work to a decision or exact
@@ -51,7 +51,8 @@ never a correspondent in `Cadence`.
   question; `At stake:` names a firm due-soon commitment or blocker. Compare
   sources when possible and cite the dependency. Summarized requests alone are
   not insight. A coding request proves no shipment or passing test; only
-  artifact evidence proves shipping.
+  artifact evidence proves shipping. Work only: never a `[personal]` or
+  `[sensitive]` item (a purchase, health).
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,
@@ -59,7 +60,10 @@ never a correspondent in `Cadence`.
   map mail counts go to `Cadence`.
 - `Open threads`: mandatory. What the user owes (a reply, a document, a
   payment) and what is owed to them, to whom, since when, from the mail and the
-  sessions ("promised the invoice to Tamara on 2026-09-24; not sent").
+  sessions ("promised the invoice to Mia Chen on 2026-09-24; not sent"). The user
+  owes only what the user agreed to, quoted; someone's unanswered request to
+  the user is `<Name> asked the user`, and the user's unanswered request is
+  `The user asked <Name>`.
 - `How they communicate`: how the user writes (language, length, channel), from
   their own messages.
 - `Cadence`, `Uncertainties`: as on a person's page.

@@ -127,8 +127,8 @@ def test_an_old_page_is_upgraded_without_losing_a_word():
 
 
 @pytest.mark.parametrize("record, label, value", [
-    ("people/edwin-tang.md", "Company", "Unknown; email domain: student.unsw.edu.au [8]"),
-    ("people/vern-chan.md", "First contact", "Unknown."),
+    ("people/bastien-leroy.md", "Company", "Unknown; email domain: student.unsw.edu.au [8]"),
+    ("people/rowan-ashdown.md", "First contact", "Unknown."),
     ("orgs/agentmail-cc.md", "Last contact", "Unknown — supplied messages do not establish the last contact"),
     ("projects/p.md", "Status", "Unknown (not investigated yet)"),
     ("people/mia.md", "Company", "UNSW [1]"),
@@ -224,18 +224,18 @@ def test_markdown_and_malformed_links_do_not_block_the_index():
 
 def test_also_known_as_keeps_names_not_addresses():
     # A turn copies the Email line into Also known as; the reader then shows the
-    # same address three times (Ody, 1.9.2b3 review).
+    # same address three times (Corin, 1.9.2b3 review).
     from connectonion.rem.facts import names_not_addresses
-    page = ("# Ody Zhou\n\n## Facts\n- Email: zhouody@gmail.com [1]\n"
-            "- Also known as: Ody; 周泽凯 [2]; zhouody@gmail.com; zhouodywork@gmail\n\n## Sources\n")
-    assert "- Also known as: Ody; 周泽凯 [2]\n" in names_not_addresses("people/ody.md", page)
-    only = page.replace("Ody; 周泽凯 [2]; ", "")
-    assert "- Also known as: Unknown\n" in names_not_addresses("people/ody.md", only)
+    page = ("# Corin Marsh\n\n## Facts\n- Email: zhouody@gmail.com [1]\n"
+            "- Also known as: Corin; 周泽凯 [2]; zhouody@gmail.com; zhouodywork@gmail\n\n## Sources\n")
+    assert "- Also known as: Corin; 周泽凯 [2]\n" in names_not_addresses("people/corin.md", page)
+    only = page.replace("Corin; 周泽凯 [2]; ", "")
+    assert "- Also known as: Unknown\n" in names_not_addresses("people/corin.md", only)
     assert names_not_addresses("orgs/x.md", page) == page
 
 
 def test_a_facts_label_the_shape_does_not_have_goes_unless_the_page_had_it():
-    """Richard Lai, 2026-10-15: "- First recorded contact" beside "- First contact: Unknown"."""
+    """Emrys Brandt, 2026-10-15: "- First recorded contact" beside "- First contact: Unknown"."""
     from connectonion.rem import facts
     page = ("# R\n\nLead.\n\n## Facts\n- First contact: Unknown\n- First recorded contact: 2026-09-22 [3]\n"
             "- Legacy note: kept [1]\n\n## Insight\n- Unknown\n")
@@ -246,6 +246,6 @@ def test_a_facts_label_the_shape_does_not_have_goes_unless_the_page_had_it():
 
 def test_supplied_mail_boilerplate_is_a_hedge_the_editing_round_removes():
     from connectonion.rem.page_review import hedged_lines
-    page = ("# R\n\nLead.\n\n## Open threads\n- Richard owes the user: issues [1] — no completion is established "
+    page = ("# R\n\nLead.\n\n## Open threads\n- Emrys owes the user: issues [1] — no completion is established "
             "in the supplied mail.\n- The card pickup is unconfirmed [2].\n\n## Uncertainties\n- Unknown\n")
     assert [section for section, _ in hedged_lines(page)] == ["Open threads", "Open threads"]

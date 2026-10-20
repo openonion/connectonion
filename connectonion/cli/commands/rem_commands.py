@@ -1,8 +1,10 @@
 """Experimental co rem inspection. No collection or provider startup on import."""
 
 import json
+import multiprocessing
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -12,6 +14,12 @@ from ...rem.files import MAP_DAYS
 from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
+
+
+def _warm_sessions_process(root: str) -> None:
+    from ...rem.investigate import warm_session_windows
+    from ...rem.service import subscriptions
+    warm_session_windows(Path(root), subscriptions(Path(root)))
 
 
 def _next(ctx, arguments):
@@ -458,8 +466,6 @@ def _deepen_page(ctx, page, stage):
         before, after = result["page_chars"]
         value = {"page": record, "changed": "yes" if result["changed"] else "no",
                  "page_chars": f"{before:,} -> {after:,}"}
-        if result.get("restored"):
-            value["restored"] = result["restored"]
         value["leads" if stage == "enrich" else "result"] = result["report"]
         return value, ["show", record]
 
@@ -666,6 +672,10 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
             return [_deepen_job(root, row, backfill[row["record"]], before)]
         return []
 
+    from ...rem.investigate import warm_session_windows
+    from ...rem.service import subscriptions
+    if jobs:
+        warm_session_windows(root, subscriptions(root))
     try:
         outcomes, stopped = _in_parallel(jobs, workers=workers, gate=gate, done=done)
     finally:
@@ -956,6 +966,14 @@ def make_rem_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
+            warming = None
+            # A frozen co cannot spawn itself as Python; its pages build the cache instead.
+            if not estimate_only and write_mine is not False and not getattr(sys, "frozen", False):
+                # 2026-10-20: sharing the GIL made a 6 s project scan take 13 min
+                # during init. Spawn uses another core and warms the on-disk cache.
+                warming = multiprocessing.get_context("spawn").Process(
+                    target=_warm_sessions_process, args=(str(root),), daemon=True)
+                warming.start()
             try:
                 result = build_map(root, sources, clients, days=map_days, all_history=all_history,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
@@ -985,6 +1003,8 @@ def make_rem_app(factory):
                     write_json(state_path(root, "map.json"), result)
             finally:
                 progress.close()
+                if warming:
+                    warming.join()
             unread = {row.get("source") for row in result.get("errors") or []}
             subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
@@ -1281,7 +1301,7 @@ def make_rem_app(factory):
             chosen = queue if pages_limit == 0 else queue[:pages_limit]
             if list_only:
                 # Heaviest evidence first (UI audit #10): five 0-session projects
-                # led the list above Ody's 274 mails, because his page was read
+                # led the list above Corin's 274 mails, because his page was read
                 # this week. A skipped page keeps its place, marked; the pages a
                 # run takes are still in the order it takes them.
                 rows = sorted(ranked(), key=lambda row: -row["weight"])
@@ -1306,6 +1326,9 @@ def make_rem_app(factory):
                     outcome = "nothing_new" if isinstance(error, NothingNew) else "failed"
                     return {"page": record, "outcome": outcome, "why": str(error)}
 
+            if chosen:
+                from ...rem.investigate import warm_session_windows
+                warm_session_windows(root, subscriptions(root))
             pending, running = iter(chosen), {}
             with ThreadPoolExecutor(max_workers=effective_workers) as pool:
                 while True:
@@ -1455,14 +1478,52 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["doctor"])
 
     @rem.command("translate", cls=V("co rem translate"))
-    def translate_page(ctx: typer.Context, page: str = typer.Argument(...),
-                       to: str = typer.Option(..., "--to", help="Language tag: zh, zh-TW, ja, en ...")):
-        from ...rem.files import Notebook
-        from ...rem.translate import translate
+    def translate_page(ctx: typer.Context, page: str = typer.Argument(""),
+                       to: str = typer.Option("", "--to", help="Language tag; defaults to your first non-English language"),
+                       all_pages: bool = typer.Option(False, "--all", help="Backfill all reader records, skipping current caches"),
+                       category: str = typer.Option("", "--category", help="With --all: people, orgs, projects, decisions, principles or skills")):
+        from ...rem.census import listed, pages
+        from ...rem.files import Notebook, RemError
+        from ...rem.languages import owner_languages
+        from ...rem.translate import cached, checked_language, translate
 
         def operation(root):
-            record = _resolve_page(Notebook(root), page)
-            return translate(root, record, to), ["show", record]
+            if bool(page) == all_pages or (category and not all_pages):
+                raise RemError("Choose PAGE or --all; --category goes with --all")
+            language = to or next((tag for tag in owner_languages(root)["languages"]
+                                   if tag.split("-")[0].lower() != "en"), "")
+            if not language:
+                raise RemError("No non-English owner language; choose --to LANGUAGE or set co rem config set languages zh,en")
+            checked_language(language)
+            if not all_pages:
+                record = _resolve_page(Notebook(root), page)
+                return translate(root, record, language), ["show", record]
+            categories = ("people", "orgs", "projects", "decisions", "principles", "skills")
+            if category and category not in categories:
+                raise RemError("--category must be one of " + ", ".join(categories))
+            rows, counts = [], {"translated": 0, "cached": 0, "failed": 0}
+            found = pages(root)
+            for record in Notebook(root).list():
+                kind = record.split("/")[0]
+                if kind not in ((category,) if category else categories):
+                    continue
+                if record == "skills/catalog/index.md" or (record in found and not listed(found[record])):
+                    continue
+                row = {"page": record, "outcome": "cached"}
+                if cached(root, record, language) is None:
+                    try:
+                        translate(root, record, language)
+                    except RemError as error:
+                        row.update(outcome="failed", error=str(error))
+                    else:
+                        row["outcome"] = "translated"
+                counts[row["outcome"]] += 1
+                rows.append(row)
+                if not ctx.obj["json"]:
+                    typer.echo(f"{record}: {row['outcome']}" + (f": {row['error']}" if "error" in row else ""))
+            result = {"language": language, "pages": rows, **counts}
+            summary = ", ".join(f"{count} {outcome}" for outcome, count in counts.items())
+            return result if ctx.obj["json"] else summary, ["open"], bool(counts["failed"])
         _handle(ctx, operation, ["list"])
 
     @rem.command("list", cls=V("co rem list"))

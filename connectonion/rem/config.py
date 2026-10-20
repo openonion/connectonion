@@ -69,9 +69,9 @@ def default_config() -> dict:
             # (a 300k digest chunk, then a project's material).
             # extract_chars_per_batch stays under input_chars_per_batch: a digest
             # chunk is read through the same 600-second turn, and at 300k a Codex
-            # turn reading it piece by piece timed out on 2026-09-23 (Dora, 39
+            # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
-            "limits": {"runner_calls_per_day": 50, "items_per_batch": 20,
+            "limits": {"runner_calls_per_day": 50, "translations_per_day": 10, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -87,8 +87,13 @@ def default_config() -> dict:
                        # Deepening's share of the Codex week, separate from investigation's
                        # 35; the owner agreed 30% on #2533.
                        "depth_quota_points": 30,
-                       # Pages one scheduled slot deepens; a round is about 25 minutes.
-                       "depth_pages_per_slot": 2,
+                       # 2026-10-20: large-page rounds take 35–97 minutes, mostly
+                       # waiting on model turns. Three pages fill the slot's workers
+                       # while keeping each enrich + muse round whole.
+                       "depth_workers": 3, "depth_pages_per_slot": 3,
+                       # 2026-10-20: stop starting pages after an hour;
+                       # running rounds finish even when they exceed the slot.
+                       "depth_slot_minutes": 60,
                        # A page whose evidence is more than one turn can hold is read in
                        # rounds, each part whole, then one synthesis turn (#2314).
                        "investigation_rounds": 8}}

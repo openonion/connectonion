@@ -39,6 +39,10 @@ When the task hands you one `page` item with the batch as material:
   material about other subjects for their own passes.
 - Keep everything still right. Add, correct and date; do not rewrite sections the
   material says nothing about.
+- **Carry the words.** Each `Quote:` the notes hold for this subject goes on the
+  line that uses it, `“<words>” (YYYY-MM-DD) [n]`, cited to its source id: an
+  ask, offer, term, decision or how someone asks to be reached is quoted, never
+  retold. Keep every quote already on the page.
 - If the material says nothing new about this subject, write the page back unchanged.
 - **Only what is still open is an open thread.** Check each item's date against
   today's date, which the task states (the newest material may be older): an

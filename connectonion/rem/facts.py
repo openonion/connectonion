@@ -1,6 +1,6 @@
 """The Facts block every page opens on: its shape, its upgrade, and what may not be lost (#2068).
 
-The owner, many times: an investigation found too few facts, and on Ody's page
+The owner, many times: an investigation found too few facts, and on Corin's page
 the phone number could not be found at a glance -- it was in a signature the
 page never read, and "no phone appears in the material" sat in Uncertainties.
 Facts are data, not prose, so they are one block with one grammar that the
@@ -110,7 +110,7 @@ def values(raw: str) -> list[dict]:
                        "qualifier": qualifier[1].strip() if qualifier else "",
                        "citations": re.findall(r"\[(W?\d+)\]", cites[1])})
     # A citation covers the uncited values before it: `UNSW Founders; [UNSW](…) [12]`
-    # is one claim cited once, how a real Tamara candidate wrote it (2026-10-02).
+    # is one claim cited once, how a real Greta candidate wrote it (2026-10-02).
     for index in range(len(result) - 2, -1, -1):
         if not result[index]["citations"]:
             result[index]["citations"] = list(result[index + 1]["citations"])
@@ -242,7 +242,7 @@ def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[
     """A new fact value with no citation goes, instead of refusing the page for it.
 
     "A sentence you cannot number is not kept" applies to a field too. Refused
-    whole, a real Tamara investigation was paid for twice (217k, then 144k input
+    whole, a real Greta investigation was paid for twice (217k, then 144k input
     tokens) for one uncited line. A value the page already carried, and the
     map's own identity fields, stay as they are. Returns the page and the labels touched.
     """
@@ -265,7 +265,7 @@ def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[
 
 
 def identity_sentence(record: str, text: str) -> str:
-    """Who a person is, from their own cited Role and Company: `Tamara is Events Coordinator at UNSW Founders [4].`"""
+    """Who a person is, from their own cited Role and Company: `Greta is Events Coordinator at UNSW Founders [4].`"""
     found = parse(text, record)
     role, company = (found.get("Role") or [None])[0], (found.get("Company") or [None])[0]
     if kind(record) != "people" or not role or not role["citations"]:
@@ -279,7 +279,7 @@ def identity_sentence(record: str, text: str) -> str:
 def drop_foreign_labels(record: str, text: str, original: str = "") -> tuple[str, list[str]]:
     """A Facts line whose label the page shape does not have goes; one the page already had stays.
 
-    Richard Lai (2026-10-15) gained "- First recorded contact: 2026-09-22 [3]"
+    Emrys Brandt (2026-10-15) gained "- First recorded contact: 2026-09-22 [3]"
     beside "- First contact: Unknown". The roster reads only the shape's labels,
     so the line was a second answer nobody would see in the right place.
     """
@@ -308,7 +308,7 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
     A phone or address comes back only when the subject sent the mail and it is
     theirs (`own`: their From line, or their own signed block). Restoring every
     extracted number made one bad read certain: a facilities manager's mobile
-    came back onto Nina's page after the turn had left it off (contacts audit P1, #2348).
+    came back onto Petra's page after the turn had left it off (contacts audit P1, #2348).
     """
     restored = []
     for row in rows:
@@ -335,8 +335,8 @@ def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[
     return text, restored
 
 
-# A spelling the page itself says is wrong: "周泽楷 (corrected by Ody)" sat in
-# Ody's Also known as after he wrote "我中文名字是周泽凯 不是周泽楷" (contacts audit A1).
+# A spelling the page itself says is wrong: "周泽楷 (corrected by Corin)" sat in
+# Corin's Also known as after he wrote "我中文名字是周泽凯 不是周泽楷" (contacts audit A1).
 REJECTED_NAME = re.compile(r"\b(?:corrected|wrong|incorrect|misspel\w*|typo|rejected)\b|not (?:his|her|their) name"
                            r"|不是", re.I)
 
@@ -345,7 +345,7 @@ def names_not_addresses(record: str, text: str) -> str:
     """Also known as holds names they answer to; an address there only repeats the Email line.
 
     The map once seeded every handle into it, and a turn copies the Email line
-    across, so the reader showed Ody's address three times (1.9.2b3 review).
+    across, so the reader showed Corin's address three times (1.9.2b3 review).
     A half address (`name@gmail`) goes too, and a spelling marked as one they rejected.
     """
     if kind(record) != "people":

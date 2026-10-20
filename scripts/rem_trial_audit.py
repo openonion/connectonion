@@ -94,8 +94,8 @@ def missing_refusals(root: Path, runs: list[dict]) -> list[str]:
 def refused_turns(root: Path, runs: list[dict]) -> dict:
     """Refused turns the task folders kept, against those the run records name.
 
-    Two refusals on the 2026-10-10 notebook were in task folders only (Ody
-    Zhou's and Dora's rounds): swallowed by an accepted investigation."""
+    Two refusals on the 2026-10-10 notebook were in task folders only (Corin
+    Marsh's and Briar's rounds): swallowed by an accepted investigation."""
     tasks = sum(1 for review in (root / ".state" / "tasks").glob("*/review.json")
                 if json.loads(review.read_text()).get("accepted") is False)
     turns = page_turns(runs)

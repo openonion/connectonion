@@ -112,14 +112,14 @@ def test_runner_status_is_excluded_from_prose_audit(tmp_path, monkeypatch):
 
 def test_people_audit_leaves_identity_fields_and_quote_style_to_code(tmp_path):
     seen = []
-    candidate = '# Vern Chan\n\nVern wrote “Thank you.” [1]\n\n## Sources\n- [1] gmail:a\n'
+    candidate = '# Rowan Ashdown\n\nRowan wrote “Thank you.” [1]\n\n## Sources\n- [1] gmail:a\n'
 
     def audited(_workspace, prompt, *_args):
         seen.append(prompt)
         return {'result': '{"verdict":"PASS","findings":[]}'}
 
     project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-                                record='people/vern-chan.md',
+                                record='people/rowan-ashdown.md',
                                 items=[{'source': 'gmail:a', 'text': 'Thank you'}])
     assert 'Email, Handles and Also known as are filled and checked by code; do not judge them' in seen[0]
     assert "A quote's punctuation, spacing and quote-mark style are checked by code" in seen[0]
@@ -144,18 +144,18 @@ def test_project_audit_counts_the_users_session_inputs_as_the_users_work(tmp_pat
 
 @pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
 def test_only_uncited_field_audit_findings_accept_the_page_unchanged(tmp_path, monkeypatch, field):
-    """Vern Chan's own address must not buy repair turns or become Unknown (2026-10-16)."""
+    """Rowan Ashdown's own address must not buy repair turns or become Unknown (2026-10-16)."""
     prepare(tmp_path)
-    notebook, record = Notebook(tmp_path), 'people/vern-chan.md'
-    notebook.stub_person(record, 'Vern Chan', ['vern.chan@unsw.edu.au'], email='vern.chan@unsw.edu.au')
+    notebook, record = Notebook(tmp_path), 'people/rowan-ashdown.md'
+    notebook.stub_person(record, 'Rowan Ashdown', ['rowan.ashdown@unsw.edu.au'], email='rowan.ashdown@unsw.edu.au')
     before = notebook.read(record)
     candidate = (before.replace('- Unknown — not investigated yet', '- Unknown')
-                 .replace('## Who they are\n- Unknown', '## Who they are\nVern sent a greeting. [1]')
-                 .replace('- Also known as: Unknown', '- Also known as: Vern')
+                 .replace('## Who they are\n- Unknown', '## Who they are\nRowan sent a greeting. [1]')
+                 .replace('- Also known as: Unknown', '- Also known as: Rowan')
                  .replace('- (none yet)', '- [1] gmail:a — 2026-10-16'))
     path = tmp_path / 'candidate.md'
     path.write_text(candidate)
-    items = [{'source': 'gmail:a', 'from': 'Vern Chan <vern.chan@unsw.edu.au>',
+    items = [{'source': 'gmail:a', 'from': 'Rowan Ashdown <rowan.ashdown@unsw.edu.au>',
               'text': 'Hello', 'timestamp': '2026-10-16T00:00:00Z'}]
     # Settle the runner's normal formatting first so the comparison covers the whole page.
     runner._promote_candidate(notebook, record, path, before, items, tmp_path, None)
@@ -179,16 +179,16 @@ def test_only_uncited_field_audit_findings_accept_the_page_unchanged(tmp_path, m
 
 
 def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
-    candidate = ('# Vern Chan\n\n## Facts\n- Email: vern.chan@unsw.edu.au\n'
+    candidate = ('# Rowan Ashdown\n\n## Facts\n- Email: rowan.ashdown@unsw.edu.au\n'
                  '- Phone: 0400 000 000 [1]\n\n## Sources\n- [1] gmail:a\n')
     findings = [{'claim': claim, 'issue': 'Wrong', 'evidence': '', 'required_correction': 'Remove'}
-                for claim in ['- Email: vern.chan@unsw.edu.au', 'Phone: 0400 000 000']]
+                for claim in ['- Email: rowan.ashdown@unsw.edu.au', 'Phone: 0400 000 000']]
 
     def audited(*_args):
         return {'result': json.dumps({'verdict': 'FAIL', 'findings': findings})}
 
     report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-                                                record='people/vern-chan.md',
+                                                record='people/rowan-ashdown.md',
                                                 items=[{'source': 'gmail:a', 'text': 'Hello'}])
     assert report['verdict'] == 'fail' and report['findings'] == [findings[1]]
 
@@ -336,3 +336,20 @@ def test_finished_task_keeps_rejection_reason_but_removes_audit_packet(tmp_path)
     assert all((tmp_path / name).is_file() for name in ('candidate.md', 'review.json', 'claim-review.json'))
     assert not (tmp_path / 'claim-input.txt').exists()
     assert (tmp_path / 'claim-review.json').stat().st_mode & 0o777 == 0o600
+
+
+def test_people_audit_keeps_an_unanswered_ask_open_and_an_overdue_promise_open(tmp_path):
+    """2026-10-20 request-vs-commitment case: the audit failed every open thread as "a past request",
+    and the last resort left Open threads Unknown on five of six runs."""
+    seen = []
+    candidate = '# Avery Lin\n\nAvery asked “Can you review it?” [1]\n\n## Sources\n- [1] gmail:a\n'
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+                                record='people/avery-lin.md', items=[{'source': 'gmail:a', 'text': 'Can you review it?'}])
+    assert "A dated ask or promise that no later message answers is open, however old" in seen[0]
+    assert "overdue, still open" in seen[0]
+    assert "a past ask is not a current debt" not in seen[0]

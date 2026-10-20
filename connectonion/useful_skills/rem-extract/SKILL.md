@@ -74,13 +74,19 @@ One bullet per fact, under the headings above (only those you use). Every
 non-noise message yields at least one bullet. Each bullet gives the fact, who said
 it (`user`, `assistant`, or the sender), the date, and its source ids.
 
+**Carry the words.** A bullet about a request, offer, promise, term (number,
+price, date, condition), decision, correction, instruction or "how to reach me"
+gets a sub-bullet `Quote: “<the speaker's exact sentence>”`, one or two whole
+sentences copied in the original language. The page can only quote what you
+kept: notes from a batch with asks and no `Quote:` lines are wrong.
+
 People are a block per person with these sub-bullets, each present when the batch
 supports it and `Unknown` when the batch touches the question without answering it:
 
 ```
 ## People
-- **Emma (飘啊飘)** — szh526@gmail.com
-  - Contact: email szh526@gmail.com; phone Unknown; Mandarin for operations,
+- **Elodie (云朵朵)** — elodie526@example.com
+  - Contact: email elodie526@example.com; phone Unknown; Mandarin for operations,
     English for contract redlines. (outlook:1adf5a91461b)
   - Who they are: independent Sydney Airbnb host, 7 property types across 3
     buildings as of 2026-07-10. (outlook:9f2c1a4b7e30)
@@ -93,9 +99,10 @@ supports it and `Unknown` when the batch touches the question without answering 
   - History:
     - 2026-08-06 — the user sent v9; she replied ~1.5h later with 7 clause
       changes. (outlook:7c8e2d10a4f5, outlook:bf2cd2898fb3)
-  - How they write: English for legal (numbered, "Regards, Emma"), brief Mandarin
+      - Quote: “Clause 4: please change gross to net, otherwise fine.”
+  - How they write: English for legal (numbered, "Regards, Elodie"), brief Mandarin
     for operations ("收到"). Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Emma，你好，", signs "Aaron"; leads with
+  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; leads with
     the conclusion, then the math.
   - Cadence: same-day replies through 2026-08-05→07.
   - Open: nothing owed by either side as of 2026-08-07.
@@ -115,13 +122,8 @@ Other headings use one-line bullets:
 - Aurora stores notes as Markdown rather than SQLite; reason corrected from
   portability to inspectability on 2026-09-07. — user, 2026-09-02 / 2026-09-07,
   codex:s1:108, codex:s1:347
+  - Quote: “不是为了可移植，是为了能直接打开看。” (codex:s1:347)
 ```
-
-**Carry the words, not only the gist.** For every request, offer, promise,
-term (number, price, date, condition), decision, correction or instruction,
-and every "how to reach me", add the speaker's exact sentence in quotes, in
-its original language, one or two whole sentences: `Quote: “…”`. The page can
-only quote what you kept; a paraphrase here cannot be undone later.
 
 Write notes in English, whatever language the messages are in; the page writer
 puts them into the notebook's language. Quotes stay in their original language. Never translate names. Keep qualifications ("tentative",

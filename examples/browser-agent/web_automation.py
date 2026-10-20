@@ -159,7 +159,7 @@ class WebAutomation:
 
         Args:
             description: Natural language description of what you're looking for
-                        e.g., "the submit button", "email input field", "Ryan Tan KK"
+                        e.g., "the submit button", "email input field", "Rory Ashby"
 
         Returns:
             Playwright locator string for the found element, or error message
@@ -182,7 +182,7 @@ class WebAutomation:
 
         Args:
             description: Natural language description like "the blue submit button"
-                        or "the email field" or "Ryan Tan KK"
+                        or "the email field" or "Rory Ashby"
         """
         if not self.page:
             return "Browser not open"

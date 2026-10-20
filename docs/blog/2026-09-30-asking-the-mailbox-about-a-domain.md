@@ -20,7 +20,7 @@ could already answer.
 So an org page with a domain handle now makes one server query per domain
 instead of walking the window. The server may match loosely; what it returns is
 still checked against the page's handles before anything is read. The rule
-applies to org pages only, because a person's alias like `vern.chan` has the
+applies to org pages only, because a person's alias like `rowan.ashdown` has the
 same shape as a domain and is not one.
 
 The lesson is to look at which question the slow path is answering. Listing

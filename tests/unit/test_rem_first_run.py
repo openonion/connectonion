@@ -53,7 +53,35 @@ class Mail:
 
 
 @pytest.fixture
-def first_run(tmp_path, monkeypatch):
+def warming_processes(monkeypatch):
+    from types import SimpleNamespace
+    processes = []
+
+    class Process:
+        def __init__(self, *, target, args, daemon):
+            self.target, self.args, self.daemon = target, args, daemon
+            self.running, self.joined = False, False
+            processes.append(self)
+
+        def start(self):
+            self.running = True
+
+        def join(self):
+            self.running, self.joined = False, True
+
+        def is_alive(self):
+            return self.running
+
+    def context(method):
+        assert method == 'spawn'
+        return SimpleNamespace(Process=Process)
+
+    monkeypatch.setattr('connectonion.cli.commands.rem_commands.multiprocessing.get_context', context)
+    return processes
+
+
+@pytest.fixture
+def first_run(tmp_path, monkeypatch, warming_processes):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
     monkeypatch.delenv("CODEX_HOME", raising=False)
@@ -392,25 +420,25 @@ def test_rem_session_init_summarises_only_when_runner_ready(first_run, monkeypat
 
 
 def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins_them(tmp_path):
-    """#2349: a real first run gave Ody two pages and Ziming Gong a second under 子明;
+    """#2349: a real first run gave Corin two pages and Zia Tanaka a second under 子亚;
     nothing said so, and `co rem merge` was there to join them."""
     from connectonion.cli.commands.rem_commands import _first_tidy, _init_done
     from connectonion.rem.config import prepare
     from connectonion.rem.files import Notebook
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/zi.md", "子明", ["ziming@openonion.ai"], email="ziming@openonion.ai")
-    notebook.stub_person("people/ziming.md", "Ziming Gong", ["ziming@openonion.ai"], email="ziming@openonion.ai")
+    notebook.stub_person("people/zi.md", "子亚", ["zia@openonion.ai"], email="zia@openonion.ai")
+    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@openonion.ai"], email="zia@openonion.ai")
     said = []
     result = _first_tidy(tmp_path, said.append)
-    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/ziming.md",
-                                "why": "both list ziming@openonion.ai"}]
+    assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/zia.md",
+                                "why": "both list zia@openonion.ai"}]
 
     class Ctx:
         obj = {"root": tmp_path, "json": False}
     text = _init_done(Ctx(), {"tidy": result})
-    assert "Possibly one person (check, then merge): 子明 and Ziming Gong, both list ziming@openonion.ai" in text
-    assert f"co rem --root {tmp_path} merge people/zi.md people/ziming.md" in text
+    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@openonion.ai" in text
+    assert f"co rem --root {tmp_path} merge people/zi.md people/zia.md" in text
 
 
 def test_default_window_matches_the_old_next_command(first_run):
@@ -857,7 +885,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 42  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 71  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -878,9 +906,21 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
     from connectonion.rem.config import default_config
     total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
-    assert 120 <= total["minutes"] <= 140
-    assert 400_000_000 <= total["input_tokens"] <= 480_000_000
+    # Since 2026-10-20 the defaults never announce less than a measured run took:
+    # pages now read in rounds and are deepened, so they cost more than b1's did.
+    assert 129 <= total["minutes"] <= 1.35 * 129
+    assert 439_000_000 <= total["input_tokens"] <= 1.35 * 439_000_000
     assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]
+
+
+def test_the_estimate_matches_the_2026_10_20_release_check():
+    """It announced ~42 minutes and ~50M input tokens for your page, ten people,
+    three projects, two organisations and a skill; the run took 82 minutes of
+    pages after an 11.5-minute quick page, and 102M input tokens."""
+    from connectonion.rem import first_run as fr
+    total = fr.plan([], owner=True, people=10, projects=3, orgs=2, skills=1, workers=16)
+    assert 90 <= total["minutes"] <= 105
+    assert 95_000_000 <= total["input_tokens"] <= 110_000_000
 
 
 def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
@@ -1170,9 +1210,54 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     tries = []
 
     def run():
-        tries.append("dora")
-        raise NothingNew("Nothing dated before 2026-04-13 for Dora. No model was called.")
+        tries.append("briar")
+        raise NothingNew("Nothing dated before 2026-04-13 for Briar. No model was called.")
 
-    outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
+    outcomes, _ = _in_parallel([{"record": "people/briar.md", "mode": "full", "run": run}], workers=1,
                                gate=lambda: "", done=lambda job, outcome: [])
-    assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"
+    assert tries == ["briar"] and outcomes[0][1]["outcome"] == "nothing_new"
+
+
+@pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),
+                                           (['--yes', '--no-start', '--no-investigate'], False)])
+def test_init_only_builds_the_session_cache_early_when_pages_will_be_investigated(first_run, warming_processes, flags, warmed):
+    """2026-10-20: a fresh notebook's session cache took 336 s of the owner's quick page."""
+    root, init, _ = first_run
+    result = init(*flags)
+    assert result.exit_code == 0, result.output
+    assert bool(warming_processes) is warmed
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypatch, warming_processes, failure):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import map as rem_map
+    root, init, _ = first_run
+    order = []
+    build_map = rem_map.build_map
+
+    def mapped(*args, **kwargs):
+        [process] = warming_processes
+        assert process.is_alive() and not process.joined
+        assert process.target is rem_commands._warm_sessions_process
+        assert process.args == (str(root),) and process.daemon
+        order.append('map')
+        if failure:
+            raise RuntimeError('mapping failed')
+        return build_map(*args, **kwargs)
+
+    monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
+    result = init('--yes', '--no-start')
+    assert result.exit_code == (1 if failure else 0), result.output
+    assert order == ['map']
+    assert all(process.joined and not process.is_alive() for process in warming_processes)
+
+
+def test_the_warming_process_rereads_subscriptions(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _warm_sessions_process
+    sources, warmed = {'codex': {'kind': 'codex', 'root': str(tmp_path / 'sessions')}}, []
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: sources if root == tmp_path else None)
+    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
+                        lambda root, subscriptions: warmed.append((root, subscriptions)))
+    _warm_sessions_process(str(tmp_path))
+    assert warmed == [(tmp_path, sources)]

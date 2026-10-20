@@ -232,7 +232,7 @@ for a yes. Sending is not undoable — scheduling is, until it goes out.
 ```bash
 co outlook contact add "Full Name" name@example.com
 co outlook contact list -n 50
-co outlook contact search yifei
+co outlook contact search nadia
 ```
 
 ## Outlook calendar

@@ -12,15 +12,15 @@ def test_the_deepest_project_and_the_people_named_are_the_leads(tmp_path):
     notebook.stub_project("projects/home.md", "home", ["/Users/x"])
     notebook.stub_project("projects/connectonion.md", "connectonion", ["/Users/x/projects/connectonion"])
     notebook.stub_project("projects/other.md", "other", ["/Users/x/projects/other"])
-    notebook.stub_person("people/dora.md", "Dora Chen", ["Dora"], email="dora@example.org")
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["欧弟"], email="ody@example.org")
+    notebook.stub_person("people/briar.md", "Briar Chen", ["Briar"], email="briar@example.org")
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["欧弟"], email="corin@example.org")
     notebook.stub_person("people/al.md", "Al", [], email="al@example.org")
     items = [{"role": "extract", "project": "/Users/x/projects/connectonion/docs",
-              "text": "Dora asked for the CRM export; 欧弟 reviewed it. Also: always test."}]
+              "text": "Briar asked for the CRM export; 欧弟 reviewed it. Also: always test."}]
     leads = page_leads(notebook, items)
     assert leads[0] == "projects/connectonion.md"                 # the deepest, not the home directory
     assert "projects/home.md" not in leads and "projects/other.md" not in leads
-    assert {"people/dora.md", "people/ody.md"} <= set(leads)       # by title word and by alias
+    assert {"people/briar.md", "people/corin.md"} <= set(leads)       # by title word and by alias
     assert "people/al.md" not in leads                              # "Al" inside "always" is not Al
 
 
@@ -35,8 +35,8 @@ def test_a_page_already_written_from_what_points_at_it_has_nothing_new(tmp_path)
     from connectonion.rem.project_material import mark_written
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/dora.md", "Dora Chen", ["Dora"], email="dora@example.org")
-    notebook.write("people/dora.md", notebook.read("people/dora.md").replace(
+    notebook.stub_person("people/briar.md", "Briar Chen", ["Briar"], email="briar@example.org")
+    notebook.write("people/briar.md", notebook.read("people/briar.md").replace(
         "- (none yet)", "- [1] codex:s1:120 — 2026-09-07"))
     notebook.stub_project("projects/tallyho.md", "tallyho", ["/w/tallyho"])
     stored = state_path(tmp_path, "projects/tallyho/messages.jsonl")
@@ -46,10 +46,10 @@ def test_a_page_already_written_from_what_points_at_it_has_nothing_new(tmp_path)
                               for source, stamp in (("codex:s2:10", "2026-09-06T00:00:00+00:00"),
                                                     ("codex:s2:50", "2026-09-08T00:00:00+00:00"))))
     mark_written(tmp_path, "projects/tallyho.md", "2026-09-06T00:00:00+00:00")
-    read = {"source": "codex:s1:120", "text": "Dora sent the export"}
+    read = {"source": "codex:s1:120", "text": "Briar sent the export"}
     elsewhere = {"source": "codex:s9:5", "project": "/w/kite", "text": "the kite logo is late"}
-    assert nothing_new(notebook, "people/dora.md", [read, elsewhere])      # the other message is not about her
-    assert not nothing_new(notebook, "people/dora.md", [read, {"source": "codex:s1:300", "text": "Dora again"}])
+    assert nothing_new(notebook, "people/briar.md", [read, elsewhere])      # the other message is not about her
+    assert not nothing_new(notebook, "people/briar.md", [read, {"source": "codex:s1:300", "text": "Briar again"}])
     assert nothing_new(notebook, "projects/tallyho.md",
                        [{"source": "codex:s2:10", "project": "/w/tallyho/src", "text": "ship"}, elsewhere])
     assert not nothing_new(notebook, "projects/tallyho.md",
@@ -85,7 +85,7 @@ def test_notes_route_to_the_project_they_name_and_say_which_names_have_no_page(t
     notebook = Notebook(tmp_path)
     notebook.stub_project("projects/connectonion.md", "connectonion", ["/Users/x/projects/connectonion"])
     notebook.stub_project("projects/chat.md", "O Chat", ["/Users/x/projects/oo-chat"])
-    notes = ("## People\n- **Dora** — dora@example.org\n\n"
+    notes = ("## People\n- **Briar** — briar@example.org\n\n"
              "## Projects\n- **ConnectOnion** — co rem renamed from wiki\n"
              "- **oo-chat** — reader restyle\n- **Night Runner** — cron agent idea\n\n"
              "## Decisions\n- **Rename** — wiki becomes co rem\n")

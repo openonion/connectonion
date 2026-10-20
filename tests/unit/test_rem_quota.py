@@ -153,7 +153,7 @@ def test_a_daily_investigation_records_the_meter_before_and_after(tmp_path, monk
     monkeypatch.setattr(quota, "read", lambda config, request=None: {
         "used_percent": next(readings), "window_minutes": WEEK, "resets_at": RESETS, "plan": "pro"})
     result = run_daily(root, scheduled=True, maintain=lambda root, scheduled: {"outcome": "no_change"},
-                       investigate_one=lambda *a, **k: {"usage": None, "changed": ["people/vern.md"]})
+                       investigate_one=lambda *a, **k: {"usage": None, "changed": ["people/rowan.md"]})
     run = result["run"]
     assert (run["quota"]["before"]["used_percent"], run["quota"]["after"]["used_percent"]) == (7, 9)
 
@@ -163,7 +163,7 @@ def _mapped_notebook(tmp_path):
     from connectonion.rem.files import Notebook
     root = tmp_path / "rem"
     prepare(root)
-    Notebook(root).stub_person("people/vern.md", "Vern Chan", handles=["vern@example.com"])
+    Notebook(root).stub_person("people/rowan.md", "Rowan Ashdown", handles=["rowan@example.com"])
     return root
 
 

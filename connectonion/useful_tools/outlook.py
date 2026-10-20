@@ -1047,7 +1047,7 @@ class Outlook:
             row['thread_id'] = msg.get('conversationId', '')
         # co rem files the user's own mail under the person it went to, which the
         # from-address cannot say; recipients are only on this listing.
-        # Each recipient keeps its name ("Ody Zhou <ody@g.com>"): dropping it mapped
+        # Each recipient keeps its name ("Corin Marsh <corin@g.com>"): dropping it mapped
         # every person the owner wrote to from Outlook as a bare address (#1844).
         for row, msg in zip(rows, result.get('value', [])):
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]

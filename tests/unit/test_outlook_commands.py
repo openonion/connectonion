@@ -503,23 +503,23 @@ class TestHandleOutlookContacts:
         outlook = MagicMock()
         outlook.add_contact.return_value = {
             "id": "contact-1",
-            "name": "Zhou Yifei",
-            "email": "zhou@example.com",
+            "name": "Nadia Marsh",
+            "email": "marsh@example.com",
         }
 
         with patch.dict(os.environ, CONNECTED_CONTACT_ENV, clear=False):
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_contact_add(
-                    "Zhou Yifei", "zhou@example.com"
+                    "Nadia Marsh", "marsh@example.com"
                 )
 
         outlook.add_contact.assert_called_once_with(
-            "Zhou Yifei", "zhou@example.com"
+            "Nadia Marsh", "marsh@example.com"
         )
         output = capsys.readouterr().out
         assert "Saved contact" in output
-        assert "Zhou Yifei" in output
-        assert "zhou@example.com" in output
+        assert "Nadia Marsh" in output
+        assert "marsh@example.com" in output
 
     def test_list_contacts_terminal_table(self, monkeypatch, capsys):
         monkeypatch.setattr(
@@ -529,8 +529,8 @@ class TestHandleOutlookContacts:
         outlook = MagicMock()
         outlook.list_contacts.return_value = [{
             "id": "contact-1",
-            "name": "Zhou Yifei",
-            "email": "zhou@example.com",
+            "name": "Nadia Marsh",
+            "email": "marsh@example.com",
         }]
 
         with patch.object(outlook_commands, "_outlook", return_value=outlook):
@@ -539,18 +539,18 @@ class TestHandleOutlookContacts:
         outlook.list_contacts.assert_called_once_with(max_results=25)
         output = capsys.readouterr().out
         assert "Outlook contacts" in output
-        assert "Zhou Yifei" in output
-        assert "zhou@example.com" in output
+        assert "Nadia Marsh" in output
+        assert "marsh@example.com" in output
 
     def test_search_contacts_empty_result(self, capsys):
         outlook = MagicMock()
         outlook.search_contacts.return_value = []
 
         with patch.object(outlook_commands, "_outlook", return_value=outlook):
-            handle_outlook_contact_search("yifei", last=25)
+            handle_outlook_contact_search("nadia", last=25)
 
         outlook.search_contacts.assert_called_once_with(
-            "yifei", max_results=25
+            "nadia", max_results=25
         )
         assert "no contacts matching" in capsys.readouterr().out
 
@@ -711,12 +711,12 @@ class TestContactPipedOutput:
         monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=False, width=120))
 
         outlook_commands._print_contacts(
-            [{"id": "contact-1", "name": "Zhou Yifei", "email": "zhou@example.com"}],
+            [{"id": "contact-1", "name": "Nadia Marsh", "email": "marsh@example.com"}],
             "contacts",
         )
 
         row = capsys.readouterr().out.splitlines()[0]
-        assert row.split("\t") == ["Zhou Yifei", "zhou@example.com", "contact-1"]
+        assert row.split("\t") == ["Nadia Marsh", "marsh@example.com", "contact-1"]
 
 
 class TestReplyUsesTheListingYouSaw:

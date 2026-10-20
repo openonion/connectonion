@@ -23,12 +23,12 @@
       "passed": true
     },
     {
-      "command": "co wiki show people/ody-123.md",
+      "command": "co wiki show people/corin-123.md",
       "exit": 0,
       "passed": true
     },
     {
-      "command": "co wiki search Ody",
+      "command": "co wiki search Corin",
       "exit": 0,
       "passed": true
     },

@@ -10,11 +10,11 @@ from connectonion.rem.files import Notebook, state_path, write_json
 def _notebook(root):
     prepare(root)
     notebook = Notebook(root)
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody@example.org"], email="ody@example.org")
-    notebook.write("people/ody.md", notebook.read("people/ody.md").replace(
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin@example.org"], email="corin@example.org")
+    notebook.write("people/corin.md", notebook.read("people/corin.md").replace(
         "not investigated yet", "investigated 2026-09-27").replace(
         "## Who they are\n", "## Who they are\nPartner. Last contact: 2026-09-20. [1]\n"))
-    notebook.stub_person("people/tam.md", "Tamara", ["tam@example.org"], email="tam@example.org")
+    notebook.stub_person("people/gret.md", "Greta", ["gret@example.org"], email="gret@example.org")
     notebook.stub_person("people/apple.md", "Apple", ["appleid@id.apple.com"], email="appleid@id.apple.com")
     notebook.stub_project("projects/atlas.md", "Atlas", ["/repo/atlas"])
     notebook.write("projects/atlas.md", notebook.read("projects/atlas.md") + "- Last seen: 2026-08-02\n")
@@ -31,7 +31,7 @@ def test_one_census_counts_written_pages_and_leaves_services_out(tmp_path):
                                        "sessions": {"mapped": 0, "written": 0}}
     assert found["people/apple.md"]["service"]
     # Each page's own last activity, never the mtime a map just gave every file.
-    assert found["people/ody.md"]["last"] == "2026-09-20"      # last contact, not the day it was investigated
+    assert found["people/corin.md"]["last"] == "2026-09-20"      # last contact, not the day it was investigated
     assert found["projects/atlas.md"]["last"] == "2026-08-02"
 
 
@@ -42,7 +42,7 @@ def test_the_reader_and_status_share_the_census(tmp_path):
     data = snapshot(tmp_path)
     assert data["counts"] == notebook(tmp_path)
     records = {record["path"]: record for record in data["records"]}
-    assert records["people/apple.md"]["service"] and not records["people/ody.md"]["service"]
+    assert records["people/apple.md"]["service"] and not records["people/corin.md"]["service"]
     assert records["skills/catalog/demo.md"]["written"] is False
     assert records["projects/atlas.md"]["last_activity"] == "2026-08-02"
 
@@ -95,7 +95,7 @@ def test_the_last_run_is_in_the_notebooks_zone(tmp_path):
 def test_status_next_is_the_first_thing_to_write(tmp_path):
     from connectonion.cli.commands.rem_status import status_next
     _notebook(tmp_path)
-    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/tam.md", "addresses": []}})
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/gret.md", "addresses": []}})
     value = {"configured": True, "root": str(tmp_path), "state": "Running in background (launchd)"}
     assert status_next(value) == ["investigate", "me"]
 
@@ -132,12 +132,12 @@ def test_structured_thread_direction_wins_over_words_in_the_body():
         assert direction(f"{owner} asked Mara: you promised to review her answer.", "Aaron") == "theirs"
         assert direction(f"Mara owes {owner}: you promised to review her answer.", "Aaron") == "theirs"
     assert direction("- The user owes Mara: an answer.") == "mine"
-    assert direction("Yu at Heidi Health owes Ody A$123.38; you asked about it.") == "third"
-    assert direction("Yu owes Ody: the user promised to check.") == "third"
-    assert direction("Dr. Yu owes Ody the expense reimbursement.") == "third"
-    assert direction("Yu (Heidi Health, Inc.) owes Ody the reimbursement.") == "plain"
+    assert direction("Yu at Heidi Health owes Corin A$123.38; you asked about it.") == "third"
+    assert direction("Yu owes Corin: the user promised to check.") == "third"
+    assert direction("Dr. Yu owes Corin the expense reimbursement.") == "third"
+    assert direction("Yu (Heidi Health, Inc.) owes Corin the reimbursement.") == "plain"
     assert direction("The user needs to reply to Mara") == "mine"
-    assert direction("Aaron asked Adi to arrange a call", "Aaron") == "theirs"
+    assert direction("Aaron asked Anselm to arrange a call", "Aaron") == "theirs"
     assert direction("Mara promised the deck") == "theirs"
     assert direction("Scope to decide together") == "plain"
 
@@ -162,7 +162,7 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
         "- The user owes Mara: reply since 2026-10-15.\n"
         "- The user asked Mara: answer since 2026-08-17.\n"  # exactly 60 days stays active
         "- Mara owes the user: deck since 2026-08-16.\n"
-        "- Yu owes Ody: funds since 2026-10-15.\n"
+        "- Yu owes Corin: funds since 2026-10-15.\n"
         "- The user owes Mara: contract since 2026-08-01, due 2026-10-17.\n"
         "- The user owes Mara: old answer since 2026-08-01, due 2026-10-16.\n"
         "- No work is confirmed pending.\n",
@@ -192,12 +192,12 @@ def test_shared_thread_census_groups_copied_letter_of_support(tmp_path):
     longer = "We're preparing the letter and supporting documents now, and " + quote
     records = [("people/cc-one.md", "Copied One", "7", quote),
                ("people/cc-two.md", "Copied Two", "W5", longer),
-               ("people/weiwei.md", "Weiwei Lei", "3", quote.replace("'", "’")),
+               ("people/liesel.md", "Liesel Voss", "3", quote.replace("'", "’")),
                ("people/me.md", "Aaron Xie", "3", longer)]
     for record, title, n, words in records:
         sources_heading = "## sources " if n == "W5" else "## Sources"
         book.write(record, f"# {title}\n\n## Open threads\n"
-                   f'- The user owes [Weiwei Lei](../people/weiwei.md): a Letter of Support draft; “{words}” [{n}].\n'
+                   f'- The user owes [Liesel Voss](../people/liesel.md): a Letter of Support draft; “{words}” [{n}].\n'
                    f"\n{sources_heading}\n- [{n}] gmail:27472b21b17e — letter; observed 2026-10-15\n")
     record = "people/cc-one.md"
     book.write(record, book.read(record).replace("\n## Sources",
@@ -234,10 +234,10 @@ def test_shared_thread_census_uses_the_named_counterparts_state(tmp_path):
     prepare(tmp_path)
     book = Notebook(tmp_path)
     records = [("people/cc.md", "Copied One", "2026-10-15"),
-               ("people/weiwei.md", "Weiwei Lei", "2026-07-01")]
+               ("people/liesel.md", "Liesel Voss", "2026-07-01")]
     for path, title, since in records:
         book.write(path, f"# {title}\n\n## Open threads\n"
-                   '- The user owes Weiwei Lei: a draft to discuss with [Copied One](../people/cc.md); '
+                   '- The user owes Liesel Voss: a draft to discuss with [Copied One](../people/cc.md); '
                    f'“I will send the Letter of Support draft”; since {since} [1].\n'
                    '\n## Sources\n- [1] gmail:letter\n')
     found = {path: {"category": "people", "held": False, "service": False, "duplicate": False}
@@ -258,9 +258,9 @@ def test_a_thread_last_moved_recently_is_not_quiet():
 def test_direction_only_treats_short_name_phrases_as_debt_prefixes():
     from connectonion.rem.census import direction
 
-    assert direction("You said you would send what Weiwei owes the bank") != "third"
-    assert direction("Mara said that Weiwei owes the bank; you promised a reply") != "third"
-    assert direction("The detailed discussion about sending what Weiwei owes the bank") != "third"
-    assert direction("weiwei owes the bank") == "plain"
-    assert direction("Yu at Heidi Health owes Ody the reimbursement") == "third"
-    assert direction("Weiwei owes you the draft") == "theirs"
+    assert direction("You said you would send what Liesel owes the bank") != "third"
+    assert direction("Mara said that Liesel owes the bank; you promised a reply") != "third"
+    assert direction("The detailed discussion about sending what Liesel owes the bank") != "third"
+    assert direction("liesel owes the bank") == "plain"
+    assert direction("Yu at Heidi Health owes Corin the reimbursement") == "third"
+    assert direction("Liesel owes you the draft") == "theirs"

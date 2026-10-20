@@ -70,15 +70,16 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
 
 
 # Who said and who owes: the errors a person page made on a real first run
-# (Ody "approved" a scope Aaron approved; a cc'd person became a party; a
+# (Corin "approved" a scope Aaron approved; a cc'd person became a party; a
 # February check-in became a current debt; a passed event stayed open).
 PEOPLE = (
     "Who did something is the sender of the cited message: a claim that someone asked, approved, "
     "confirmed, offered or promised fails unless their own message says so; a cc'd person is not a party. "
     "An open thread fails when a later message (later_messages: what came after the cited mail in its thread) "
-    "resolves it or when its event date has passed; "
-    "a past ask is not a current debt unless the page dates it. "
-    # Vern Chan's email and a quote's final period failed the audit (2026-10-16 trial).
+    "resolves it or when the date of a meeting or event it is about has passed. A dated ask or promise that no "
+    "later message answers is open, however old (\"open as of <date>\" is correct); a promise past its due date "
+    "with no delivery is overdue, still open. An ask the other side never agreed to is not their debt. "
+    # Rowan Ashdown's email and a quote's final period failed the audit (2026-10-16 trial).
     "Email, Handles and Also known as are filled and checked by code; do not judge them. "
     "A quote's punctuation, spacing and quote-mark style are checked by code; "
     "judge only whether the words are the original's, in its original language. "
@@ -170,7 +171,7 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         report = {"verdict": "insufficient", "findings": [], "reason": "Audit returned an invalid decision"}
     else:
         report["verdict"] = verdict
-        # The audit must not buy repairs or erase Vern Chan's map address (2026-10-16 trial).
+        # The audit must not buy repairs or erase Rowan Ashdown's map address (2026-10-16 trial).
         findings, carried_findings = [], []
         carried = _claim_text(carried)
         for finding in report["findings"]:

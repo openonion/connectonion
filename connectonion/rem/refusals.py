@@ -5,7 +5,7 @@ each of its rounds, a skill page, a project page, a one-page maintenance turn.
 Only `investigate()` wrote it, so on the 2026-10-10 notebook it held one page
 of the eight refused: job-followup and x-reply (init), startup, browser and
 handoff (sync maintenance), and two refused rounds swallowed inside accepted
-investigations (Ody Zhou, Dora). A refusal nobody records is material nobody
+investigations (Corin Marsh, Briar). A refusal nobody records is material nobody
 reads again.
 
 A maintenance refusal also keeps the material itself: the sync's cursor moves

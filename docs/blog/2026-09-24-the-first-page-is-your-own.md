@@ -5,8 +5,8 @@ on was blank. It was titled "Account owner". Apart from four email addresses,
 every section said "Unknown — not investigated yet".
 
 The map knew more than that. It had just read ninety days of mail headers and
-a thousand coding sessions. It knew the owner writes most to Ody, then Dora,
-then Tamara. It knew most of the owner's sessions ran in one workspace, and
+a thousand coding sessions. It knew the owner writes most to Corin, then Briar,
+then Greta. It knew most of the owner's sessions ran in one workspace, and
 that the next largest project was connectonion. Outlook even had a name on
 file. The map had all of this and wrote none of it onto the page it was
 written for.

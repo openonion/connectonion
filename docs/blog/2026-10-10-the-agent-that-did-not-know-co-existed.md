@@ -5,7 +5,7 @@ tags: [CLI, Agents, Skills]
 
 # The agent that did not know `co` existed
 
-Aaron asked Codex to hand a task to Ody. Nothing happened. Codex was not
+Aaron asked Codex to hand a task to Corin. Nothing happened. Codex was not
 being stubborn; it had no reason to think there was anything to hand it
 *with*. `co` was installed on that Mac, linked skills and all, and
 `~/.codex/AGENTS.md` did not mention it once.

@@ -58,7 +58,9 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
     A company's sending and login subdomains are the company (#1844): on the
     owner's map accounts.google.com and ad.unsw.edu.au were organisations of
     their own. A domain only notice senders use gets no page -- 35 of 272 real
-    organisations were login and mailer domains that nobody wrote from.
+    organisations were login and mailer domains that nobody wrote from. Nor
+    does one whose every correspondent is automated or one-way: lu.ma got a
+    page from sign-in codes and registrations alone (2026-10-20).
     """
     existing = {}
     for record in notebook.list('orgs'):
@@ -69,13 +71,14 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
     for person in people:
         domain = _domain(str(person.get('address', '')))
         if domain:
-            group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set()})
+            group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set(), 'talks': False})
             group['domains'].add(domain)
             if person.get('record'):   # a notice sender has no page to link to
                 group['contacts'].add(person['record'])
+                group['talks'] |= not (person.get('automated_hint') or person.get('one_way'))
     owner_page = notebook.read(owner['record']) if owner and notebook.path(owner['record']).is_file() else ''
     groups = {key: group for key, group in groups.items()
-              if group['contacts'] and not own_domain(key, owner, owner_page)}
+              if group['contacts'] and group['talks'] and not own_domain(key, owner, owner_page)}
     rows, created = [], []
     for domain, group in sorted(groups.items()):
         contacts, domains = group['contacts'], sorted(group['domains'] | {domain})

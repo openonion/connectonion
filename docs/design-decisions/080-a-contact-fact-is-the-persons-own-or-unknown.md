@@ -8,16 +8,16 @@ A wrong phone number is worse than none: the user calls a stranger. Contact
 facts were removed by a denylist (another sender's signature number went;
 anything else stayed), and the contacts audit of the 1.9.2b3 notebook found:
 
-- **P1** A facilities manager's mobile on Nina's page, from an estate notice
+- **P1** A facilities manager's mobile on Petra's page, from an estate notice
   she forwarded: "Thank you for your understanding as we continue…" was read as
   a sign-off, so the block under it became her signature.
-- **P2, E2** "call Larry 0405…" on Ody's page, from a Luma host copy; Ody's
+- **P2, E2** "call Fenwick 0405…" on Corin's page, from a Luma host copy; Corin's
   Luma relay address had joined his page by display name and become his Email.
-- **C1–C4** Company filled from any older domain: UNSW for Ziming, who had
+- **C1–C4** Company filled from any older domain: UNSW for Zia, who had
   graduated and writes from Hotmail; UNSW for Sam, who writes from his own
   company; seven students got their university as employer; an agent's
   `mail.openonion.ai` address named ConnectOnion.
-- **T2** Tamara's Last contact was a kitchen-etiquette note to about 30 startups.
+- **T2** Greta's Last contact was a kitchen-etiquette note to about 30 startups.
 
 ## Decision
 
@@ -48,7 +48,7 @@ Otherwise the field says `Unknown`.
 
 The extractor handed the turn every number it found and promised to put back
 any the page left off, so one bad read became certain: the facilities manager's
-mobile came back onto Nina's page after the turn had dropped it. A turn cannot
+mobile came back onto Petra's page after the turn had dropped it. A turn cannot
 see that the block it read came from a forwarded notice. Whether a
 number is in a mail the person sent is a fact code can check, and checking it
 costs nothing. Judgement stays where it belongs: which of the person's own

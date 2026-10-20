@@ -1,6 +1,6 @@
 """Read the facts a page needs out of the gathered material, with no model (#2068).
 
-The phone number on Ody's page was in a signature block; the turn searched its
+The phone number on Corin's page was in a signature block; the turn searched its
 evidence files for what it thought to look for and wrote "no phone number
 appears in the material". A signature, a From address and the dates of the
 first and last message are text a regular expression reads exactly, so they
@@ -26,7 +26,7 @@ from .source import timestamp
 WEBMAIL = ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "yahoo.com", "icloud.com",
            "me.com", "qq.com", "163.com", "126.com", "proton.me", "protonmail.com", "gmx.com", "foxmail.com")
 # A sign-off is a short line of its own. "Thank you for your understanding as we
-# continue…" opened a "signature" on Nina's forwarded estate notice, and the
+# continue…" opened a "signature" on Petra's forwarded estate notice, and the
 # facilities manager's mobile under it became hers (contacts audit P1, #2348).
 SIGN_OFF = re.compile(r"^(best|best regards|kind regards|regards|warm regards|thanks|thank you|cheers|sincerely|"
                       r"many thanks|all the best|谢谢|此致)[\s,.!]*$", re.I)
@@ -39,14 +39,14 @@ INVITE = re.compile(r"^(invitation|updated invitation|invitation updated|accepte
                     r"Dial by your location|dial[ -]?in|scheduled Zoom meeting|"
                     r"iPhone one[ -]tap|\bzoom\.us/j/|Australian Toll number", re.I | re.M)
 MAIL_SOURCES = ("gmail:", "outlook:", "email:")
-# "call Larry 0405…", "contact a facilities manager … Ph 0466…": a number someone else is
+# "call Fenwick 0405…", "contact a facilities manager … Ph 0466…": a number someone else is
 # named beside is that person's (contacts audit P1/P2, #2348).
 OTHER_PERSON = re.compile(r"(?i:\b(?:call|ring|contact|text|reach|phone|ask for|speak to|talk to))\s+"
                           r"(?!(?i:me|us|our|the|a|an)\b)([A-Z][\w'’-]+)")
 # A notice passed on, or a platform's message: not the sender's own words.
-# Nina forwarded an "Important Notice"; Luma's "[Host Copy] New message in …".
+# Petra forwarded an "Important Notice"; Luma's "[Host Copy] New message in …".
 NOTICE = re.compile(r"\bnotice\b|\[host copy\]|\bnew message in\b|you(?:['’]ve| have) got a new message", re.I)
-# Recipients past which a mail is a broadcast, not contact: Tamara's kitchen
+# Recipients past which a mail is a broadcast, not contact: Greta's kitchen
 # etiquette note to about 30 startups became her Last contact (claims audit T2).
 BROADCAST = 5
 
@@ -61,7 +61,7 @@ def mail_merge_subjects(rows: list[dict], own_addresses: set[str]) -> set[str]:
     Only sends with one To address and no Cc after removing the user's own addresses count.
     """
     # 2026-10-16 trial: "Try handoff" sent individually to ~20 students became
-    # Aurelien Renard's and Jerryl Seow's Last contact. One person's items hide the merge.
+    # Lucan Teng's and Marcus Vale's Last contact. One person's items hide the merge.
     # Team replies are group mail, never merge sends, even when their recipient union grows.
     own = {address.casefold() for address in own_addresses}
     groups = {}
@@ -178,7 +178,7 @@ def _subject(item: dict, addresses: set, names: list[str]) -> bool:
 def notice(item: dict) -> bool:
     """A relay, a system sender or a notice passed on: the sender's facts are not in it (#2348).
 
-    Ody's Luma host copy read "call Larry 0405…" under his name, and the
+    Corin's Luma host copy read "call Fenwick 0405…" under his name, and the
     relay address joined his page by its display name (contacts audit P2, E2).
     """
     senders = [a.casefold() for a in EMAIL.findall(item.get("speaker") or "")]
@@ -207,9 +207,9 @@ def gave_number(item: dict, value: str, addresses: set, names: list[str]) -> boo
 
     They sent it, it is not an invitation or a notice, and nobody else is named
     to call beside it. Through a relay (Airbnb, Luma) their name is a line of its
-    own just over or under the number: the platform's header ("Andrew Roth -
-    Coastal Homies / Sure my number is …", "Tracy / Yes 1pm works- 0403…") or
-    their sign-off ("give me a call on 0457… / Thanks / Dannielle").
+    own just over or under the number: the platform's header ("Simon Calloway -
+    Tidewater Crew / Sure my number is …", "Hazel / Yes 1pm works- 0403…") or
+    their sign-off ("give me a call on 0457… / Thanks / Brianna").
     """
     senders = {a.casefold() for a in EMAIL.findall(item.get("speaker") or "")}
     relayed = any(RELAY.search(a) for a in senders)
@@ -302,7 +302,7 @@ OTHERS_PHONE = "Someone else's phone"
 def _others_phones(mail: list[dict], addresses: set, names: list[str], zone: ZoneInfo) -> list[dict]:
     """Phones in the signatures of the other people writing in the subject's threads (#2348).
 
-    David Burt's office line, from his own signature, sat on two colleagues'
+    Colin Drake's office line, from his own signature, sat on two colleagues'
     pages; the turn is told whose it is, and code takes it off if it lands anyway.
     """
     rows = []

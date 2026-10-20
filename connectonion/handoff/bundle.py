@@ -228,7 +228,7 @@ _START = r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_.%+\\-]))"   # ASCII: 邮箱abc@x.com 
 EMAIL = re.compile(_START + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 PHONE = re.compile(r"\+\d[\d \-]{7,}\d"                               # +61 412 000 111
                    r"|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)"          # 0412 000 111
-                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?!\d|\.\d)"  # (02) 9065 4432, 0873918410
+                   r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?!\d|\.\d)"  # (02) 9000 0157, 0873918410
                    r"|(?<!\d)1[38]00[ -]?\d{3}[ -]?\d{3}(?!\d)"           # 1800 737 633
                    r"|(?<![\d.])(?:\+86[ -]?)?1[3-9]\d[ -]?\d{4}[ -]?\d{4}(?!\d)")   # 138 0013 8000
 IP = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
@@ -273,8 +273,8 @@ def rem_names(keep_names=(), to: str = "") -> list[str]:
             continue   # an address, an acronym ("GIF"), or the sender or recipient
         named.add(title)
         if len(words) == 2 and all(re.fullmatch(r"[\u4e00-\u9fff]+", w) for w in words):
-            named |= {words[1], "".join(words)} if len(words[1]) >= 2 else {"".join(words)}   # 谢 红瑛: 红瑛, 谢红瑛
-        # A session says "Sasha" or "Larry" as often as the whole title: each name-like word goes too.
+            named |= {words[1], "".join(words)} if len(words[1]) >= 2 else {"".join(words)}   # 林 晓雯: 晓雯, 林晓雯
+        # A session says "Tess" or "Fenwick" as often as the whole title: each name-like word goes too.
         named |= {w for w in words if len(words) > 1 and re.fullmatch(r"[A-Z][a-z]{3,}", w)}
     return sorted(named, key=len, reverse=True)
 

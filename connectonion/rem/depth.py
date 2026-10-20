@@ -6,8 +6,12 @@ its own share of the Codex week, 30 points by default (the owner's #2533 decisio
 """
 
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from math import log2
+from queue import Queue
 
 from . import muse, quota, runner, service
 from .config import read_config
@@ -16,6 +20,8 @@ from .page_review import _listed_sources, quotes as page_quotes
 
 REST_DAYS = 30
 DEPTH_PHASES = quota.DEPTH_PHASES
+# 2026-10-20: pages finish together within a slot; keep every history append.
+_HISTORY_LOCK = threading.Lock()
 
 
 def page_metrics(text) -> dict:
@@ -27,17 +33,38 @@ def _stamp(value) -> datetime:
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
 
 
+def _gain(row) -> int:
+    return sum(row[key][1] - row[key][0] for key in ("quotes", "sources")) + row["insights"]
+
+
 def _resting(rounds, today) -> bool:
+    """2026-10-20: four handoff rounds added 350–600 chars and only 0–2 quotes each."""
     if not rounds:
         return False
     last = rounds[-1]
-    return (today - _stamp(last["at"]) < timedelta(days=REST_DAYS)
-            and all(last[key][0] == last[key][1] for key in ("chars", "quotes", "sources"))
-            and last["insights"] == 0)
+    # 2026-10-20: one enrich period hit 1,200s; retrying the same page in the
+    # next slot spends the slot on infrastructure rather than another page.
+    infrastructure = any(last[stage].startswith("failed:") and any(
+        marker in last[stage] for marker in ("timed out", "at capacity", "did not complete", "could not start"))
+        for stage in ("enrich", "muse"))
+    if infrastructure:
+        return today - _stamp(last["at"]) < timedelta(hours=24)
+    # A refused or failed round changed nothing because it was not let through, not because
+    # the page has nothing left (2026-10-20: a refused project round would have rested a month).
+    if last["enrich"] != "completed" or last["muse"] != "completed":
+        return False
+    unchanged = all(last[key][0] == last[key][1] for key in ("chars", "quotes", "sources")) and last["insights"] == 0
+    plateau = len(rounds) >= 2 and all(_gain(row) <= 1 and abs(row["chars"][1] - row["chars"][0]) < 600
+                                       for row in rounds[-2:])
+    return today - _stamp(last["at"]) < timedelta(days=REST_DAYS) and (unchanged or plateau)
 
 
-def _value_last(record, row, text) -> tuple[int, str | None]:
+def _value_last(record, row, text, mapped_rows) -> tuple[int, str | None]:
     project = record.startswith("projects/")
+    if record.startswith("orgs/") and row is not None:
+        people = [mapped_rows[person] for person in row["people"] if person in mapped_rows]
+        last = max((person["last"] for person in people if person.get("last")), key=_stamp, default=None)
+        return sum(person.get("mails") or 0 for person in people), last
     if row is not None:
         return row.get("sessions" if project else "mails") or 0, row.get("last")
     if not project:
@@ -48,29 +75,51 @@ def _value_last(record, row, text) -> tuple[int, str | None]:
     return int(sessions[1]) if sessions else 0, last[1] if last else None
 
 
+def _mapped_rows(mapped) -> dict:
+    return {row["record"]: row for kind in ("people", "projects", "orgs")
+            for row in mapped.get(kind, []) if row.get("record")}
+
+
+def _notification_org(record, mapped_rows) -> bool:
+    """2026-10-20: the first org picked was an event domain with one one-way person."""
+    row = mapped_rows.get(record)
+    if not record.startswith("orgs/") or row is None:
+        return False
+    people = [mapped_rows.get(person, {}) for person in row["people"]]
+    return all(person.get("automated_hint") or person.get("one_way") for person in people)
+
+
+def _candidate(notebook, record, mapped_rows, rounds, today) -> dict:
+    text = notebook.read(record)
+    value, last = _value_last(record, mapped_rows.get(record), text, mapped_rows)
+    metrics = page_metrics(text)
+    recent = 2 if last and today - _stamp(last) <= timedelta(days=30) else 1
+    thin = 1 / (1 + metrics["quotes"] / 3 + metrics["sources"] / 10)
+    # 2026-10-20, fresh notebook copy, two-slot picker: 5 mails on an almost empty
+    # page (priority 4.3) beat 30–55 mails; the round gained one quote, 2,669 ->
+    # 2,660 chars. Square log-value so thinness does not outweigh useful activity.
+    priority = log2(2 + value) ** 2 * recent * thin / (1 + len(rounds))
+    return {"record": record, "priority": priority, "value": value, "recent": recent,
+            "rounds": len(rounds), **metrics}
+
+
 def candidates(root) -> list[dict]:
     mapped = read_json(state_path(root, "map.json"), {})
     history = read_json(state_path(root, "depth.json"), {})
     owner = mapped.get("owner")
     owner = owner.get("record") if isinstance(owner, dict) else owner
-    mapped_rows = {row["record"]: row for kind in ("people", "projects")
-                   for row in mapped.get(kind, []) if row.get("record")}
+    mapped_rows = _mapped_rows(mapped)
     notebook, today, rows = Notebook(root), service.now(), []
     for record in notebook.list():
         row = mapped_rows.get(record, {})
-        if (not record.startswith(("people/", "projects/")) or record == owner
-                or row.get("classification") == "account owner" or row.get("automated_hint")):
+        if (not record.startswith(("people/", "projects/", "orgs/")) or record == owner
+                or row.get("classification") == "account owner" or row.get("automated_hint")
+                or _notification_org(record, mapped_rows)):
             continue
         rounds = history.get(record, [])
         if _resting(rounds, today):
             continue
-        text = notebook.read(record)
-        value, last = _value_last(record, mapped_rows.get(record), text)
-        metrics = page_metrics(text)
-        recent = 2 if last and today - _stamp(last) <= timedelta(days=30) else 1
-        thin = 1 / (1 + metrics["quotes"] / 3 + metrics["sources"] / 10)
-        priority = log2(2 + value) * recent * thin / (1 + len(rounds))
-        rows.append({"record": record, "priority": priority, "rounds": len(rounds), **metrics})
+        rows.append(_candidate(notebook, record, mapped_rows, rounds, today))
     return sorted(rows, key=lambda row: (-row["priority"], row["record"]))
 
 
@@ -110,38 +159,68 @@ def deepen(root, record, *, stage=None) -> dict:
     thought = _run(root, record, "muse", stage or _stage)
     text = notebook.read(record)
     after = page_metrics(text)
-    history = read_json(state_path(root, "depth.json"), {})
-    rounds = history.setdefault(record, [])
-    row = {"round": len(rounds) + 1, "at": service.now().isoformat(),
+    row = {"at": service.now().isoformat(),
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
-    rounds.append(row)
-    write_json(state_path(root, "depth.json"), history)
+    with _HISTORY_LOCK:
+        history = read_json(state_path(root, "depth.json"), {})
+        rounds = history.setdefault(record, [])
+        row["round"] = len(rounds) + 1
+        rounds.append(row)
+        write_json(state_path(root, "depth.json"), history)
     return {"record": record, **row}
 
 
+def _deepen_choices(root, choices, config, started, stage, say):
+    workers = config["limits"]["depth_workers"]
+    limit = config["limits"]["depth_slot_minutes"]
+    # 2026-10-20: queue callbacks so a batch of finished pages keeps completion order.
+    pending, running, finished = iter(choices), set(), Queue()
+    rounds, picked, reason = [], [], ""
+    choice = next(pending, None)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while choice is not None or running:
+            while choice is not None and len(running) < workers and not reason:
+                minutes = (time.monotonic() - started) / 60
+                reason = (f"the slot has run {int(minutes)} of its {limit} minutes" if minutes >= limit
+                          else stop_reason(root, config))
+                if reason:
+                    break
+                record = choice["record"]
+                if say:
+                    say(f"{record}: Deepening (round {choice['rounds'] + 1})…")
+                future = pool.submit(deepen, root, record, stage=stage)
+                running.add(future)
+                future.add_done_callback(finished.put)
+                picked.append({key: choice[key] for key in
+                               ("record", "priority", "value", "recent", "quotes", "sources", "rounds")})
+                choice = next(pending, None)
+            if not running:
+                break
+            future = finished.get()
+            running.remove(future)
+            rounds.append(future.result())
+    return rounds, picked, reason
+
+
 def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
+    started = time.monotonic()
     config = read_config(root)
     if records is None:
         choices = candidates(root)
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
     else:
         history = read_json(state_path(root, "depth.json"), {})
-        choices = [{"record": record, "rounds": len(history.get(record, []))} for record in records]
+        mapped_rows = _mapped_rows(read_json(state_path(root, "map.json"), {}))
+        notebook, today = Notebook(root), service.now()
+        choices = [_candidate(notebook, record, mapped_rows, history.get(record, []), today)
+                   for record in dict.fromkeys(records)]
         pages = len(choices)
     problem, _ = runner.ready(config)
     if problem:
-        return {"rounds": [], "stopped": problem, "left": len(choices)}
-    rounds, reason = [], ""
-    for choice in choices[:pages]:
-        reason = stop_reason(root, config)
-        if reason:
-            break
-        record = choice["record"]
-        if say:
-            say(f"Deepening {record} (round {choice['rounds'] + 1})…")
-        rounds.append(deepen(root, record, stage=stage))
-    return {"rounds": rounds, "stopped": reason, "left": len(choices) - len(rounds)}
+        return {"rounds": [], "picked": [], "stopped": problem, "left": len(choices)}
+    rounds, picked, reason = _deepen_choices(root, choices[:pages], config, started, stage, say)
+    return {"rounds": rounds, "picked": picked, "stopped": reason, "left": len(choices) - len(rounds)}

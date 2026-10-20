@@ -53,22 +53,22 @@ def test_legacy_and_current_codex_sessions_are_read_with_honest_date_scope(tmp_p
     legacy = tmp_path / "rollout-legacy.jsonl"
     rows = [{"id": "older", "timestamp": "2025-11-04T15:24:50Z", "instructions": instructions},
             {"type": "message", "id": "u1", "role": "user",
-             "content": [{"type": "input_text", "text": "Ask Vern about the placement"}]},
+             "content": [{"type": "input_text", "text": "Ask Rowan about the placement"}]},
             {"type": "message", "id": "a1", "role": "assistant",
              "content": [{"type": "output_text", "text": "Claimed execution"}]},
             {"type": "message", "id": "u2", "role": "user",
              "content": [{"type": "input_text", "text": "<environment_context>Injected context"}]},
             {"type": "function_call_output", "call_id": "tool", "output": "Unverified output"}]
     legacy.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    rollout(tmp_path / "rollout-current.jsonl", [("user", "Vern needs the revised scope")])
+    rollout(tmp_path / "rollout-current.jsonl", [("user", "Rowan needs the revised scope")])
     batch = collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), {}, 20, 10000)
-    assert {item["text"] for item in batch.items} == {"Ask Vern about the placement", "Vern needs the revised scope"}
+    assert {item["text"] for item in batch.items} == {"Ask Rowan about the placement", "Rowan needs the revised scope"}
     old = next(item for item in batch.items if item["source"].startswith("codex:older:"))
     assert old["timestamp"] == "2025-11-04T15:24:50Z"
     assert "individual message time was not recorded" in old["timestamp_scope"]
     assert not collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), batch.progress, 20, 10000).items
     recent = collect(subscription(tmp_path), {}, 20, 10000)
-    assert [item["text"] for item in recent.items] == ["Vern needs the revised scope"]
+    assert [item["text"] for item in recent.items] == ["Rowan needs the revised scope"]
 
 
 def test_only_authorized_project_and_user_assistant_text(tmp_path):
@@ -502,3 +502,34 @@ def test_windows_internal_claude_rows_do_not_become_memory(tmp_path, cwd):
 def test_similar_user_directories_are_not_rem_tasks(cwd):
     from connectonion.rem.source import rem_task
     assert not rem_task(cwd)
+
+
+def test_a_skipped_session_is_recorded_and_never_reopened(tmp_path, monkeypatch):
+    """2026-10-20: 11,473 of REM's own Codex turns were reopened on every scan."""
+    from connectonion.rem import source
+    rem_turn = tmp_path / "2026/09/07/rollout-rem.jsonl"
+    rollout(rem_turn, [("user", "a REM turn")], project="/work/.state/tasks/investigate-x")
+    rollout(tmp_path / "2026/09/07/rollout-mine.jsonl", [("user", "Use SQL")])
+    first = collect(subscription(tmp_path), {}, 20, 10000)
+    assert [i["text"] for i in first.items] == ["Use SQL"]
+    assert first.progress["2026/09/07/rollout-rem.jsonl"]["skipped"] is True
+    opened = []
+    real = source._read_rollout
+    monkeypatch.setattr(source, "_read_rollout", lambda path, *a: opened.append(path.name) or real(path, *a))
+    rollout(rem_turn, [("user", "a REM turn"), ("user", "still REM")], project="/work/.state/tasks/investigate-x")
+    again = collect(subscription(tmp_path), first.progress, 20, 10000)
+    assert opened == [] and not again.items
+    assert again.progress == first.progress   # a growing REM turn is not new progress
+
+
+def test_source_files_still_refuses_hidden_and_linked_rollouts(tmp_path):
+    from connectonion.rem.source import source_files
+    rollout(tmp_path / "2026/09/07/rollout-a.jsonl", [("user", "x")])
+    assert [p.name for p in source_files(subscription(tmp_path))] == ["rollout-a.jsonl"]
+    (tmp_path / "2026/09/07/rollout-link.jsonl").symlink_to(tmp_path / "2026/09/07/rollout-a.jsonl")
+    with pytest.raises(RemError, match="Symlinks"):
+        source_files(subscription(tmp_path))
+    (tmp_path / "2026/09/07/rollout-link.jsonl").unlink()
+    rollout(tmp_path / ".hidden/rollout-b.jsonl", [("user", "x")])
+    with pytest.raises(RemError, match="Hidden"):
+        source_files(subscription(tmp_path))

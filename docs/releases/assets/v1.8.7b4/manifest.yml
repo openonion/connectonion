@@ -3,7 +3,7 @@ images:
   - file: before.png
     alt: "The previous preview refuses investigation without a page argument"
     caption: "Installed b3: a missing-argument error leaves the user looking for a page path. Rendered from captured terminal text; environment-loader line omitted."
-    scenario: "co wiki investigate with a synthetic Ody page already mapped"
+    scenario: "co wiki investigate with a synthetic Corin page already mapped"
     viewport: "1120px terminal transcript rendering"
     commit: 3d10c727
     source_run: "before.txt in this directory; installed b3 local CLI"

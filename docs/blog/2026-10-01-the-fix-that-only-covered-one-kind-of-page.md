@@ -4,9 +4,9 @@ Yesterday's fix for the refused project page worked. The 1.9.0a7 acceptance
 run took the connectonion page from 24,586 characters to 18,671 in one turn,
 and the review accepted it. Then the same run did the same thing to a person.
 
-Ody Zhou's page was 18,730 characters. The daily round gathered four days of
+Corin Marsh's page was 18,730 characters. The daily round gathered four days of
 mail and wrote a page of 20,493. The review refused it, and 643 thousand input
-tokens bought nothing. A few minutes later we investigated Ody by hand, as a
+tokens bought nothing. A few minutes later we investigated Corin by hand, as a
 user would after seeing "refused". The gather found the same mail: 113,335
 characters of material against 113,429 the first time. That turn spent 933
 thousand tokens and landed at 19,912, 88 characters under the limit. The next

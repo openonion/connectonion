@@ -19,7 +19,7 @@ REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
-PRIVATE = re.compile(r"\[(?:sensitive|personal)\]", re.I)
+PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
 
 
 def _not_sources(text: str) -> str:

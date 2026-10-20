@@ -300,7 +300,7 @@ def _people_groups(rows: list[dict]) -> list[list[dict]]:
     own page. Most mail first, so the busiest address leads its group.
 
     A relay carries the person's name but is the platform's address: joined by
-    name, Ody's Luma relay became his Email and its host copy gave his page
+    name, Corin's Luma relay became his Email and its host copy gave his page
     another man's mobile (contacts audit P2, E2). It stays a group of its own.
     """
     groups = {}
@@ -582,7 +582,7 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
 
     Maps get better and their old output stays: a real notebook carried ten
     project pages for co rem's own task folders, six for one project's scratch
-    folders, and two pages for Dora -- one titled by her address from an older
+    folders, and two pages for Briar -- one titled by her address from an older
     map. Maintenance saw the duplicates, tried to merge them by deleting one, and
     was refused, batch after batch. Only a page that holds nothing but map output
     is moved, and it is moved, not deleted, to .state/archived/.

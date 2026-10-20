@@ -211,7 +211,7 @@ def test_accept_saves_the_senders_session_at_once(world, tmp_path):
 
 
 def test_the_session_copy_is_the_approved_conversation_without_tool_calls_or_their_output(world, tmp_path):
-    """#2496: the Ody copy was 6.7 MB of raw session, 3,765 tool calls with their output: whole co rem
+    """#2496: the Corin copy was 6.7 MB of raw session, 3,765 tool calls with their output: whole co rem
     pages on 41 people and the sender's own dental and visa mail. A message removed with --edit went too."""
     import os
     from pathlib import Path
@@ -599,26 +599,26 @@ def test_other_peoples_addresses_and_numbers_are_masked_on_the_page():
     recipient's own addresses stay, and so do example addresses."""
     talk = [{"at": "2026-10-13T01:00:00Z", "user": "Mail me at aaron@home.net, not ivvli0000@outlook.com",
              "ai": "Done. people/ivvli0000-outlook-com-e381998ef8.md (grep ivvli0000 *.md) has her number +61 412 000 111 and "
-                   "0435 525 634; bob@example.com is the test user; ody@x.co got it.",
+                   "0491 570 156; bob@example.com is the test user; corin@x.co got it.",
              "final": "", "steps": 0}]
     talk[0]["final"] = talk[0]["ai"]
-    bundle = bundles.assemble(handoff_id="h", sender="0xabc@mail.openonion.ai", to="ody@x.co", what="w",
+    bundle = bundles.assemble(handoff_id="h", sender="0xabc@mail.openonion.ai", to="corin@x.co", what="w",
                               source={"kind": "claude"}, code=[], keep=["aaron@home.net"],
                               top=bundles.Top(title="t", task="ask ivvli0000@outlook.com", where_it_stands="w"),
                               exchanges=talk)
     text = json.dumps(bundle, ensure_ascii=False)
     assert "ivvli0000" not in text and "412 000 111" not in text and "525 634" not in text
-    assert "aaron@home.net" in text and "ody@x.co" in text and "bob@example.com" in text
+    assert "aaron@home.net" in text and "corin@x.co" in text and "bob@example.com" in text
     assert "[email removed]" in bundle["conversation"][0]["user"]
 
 
 def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
     session = tmp_path / "s.jsonl"
     session.write_text(json.dumps({"type": "user", "timestamp": "2026-10-13T01:00:00Z",
-                                   "message": {"content": "write to s.whittle@unsw.edu.au and me@home.net"}}) + "\n")
+                                   "message": {"content": "write to s.ward@unsw.edu.au and me@home.net"}}) + "\n")
     copy = replies.unpack(replies._copy({"sent_at": "2026-10-14T00:00:00Z", "to": "r@x.co", "owner": "me@home.net"},
                                         {"kind": "claude", "path": str(session)}))
-    assert "whittle" not in copy and "me@home.net" in copy
+    assert "ward" not in copy and "me@home.net" in copy
 
 
 def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
@@ -633,12 +633,12 @@ def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
 def test_masking_reaches_names_profiles_numbers_and_ips_that_point_at_a_person():
     """#2493 review on a real session: co rem page names, mail-header names, LinkedIn ids, landlines,
     1800 numbers and IP addresses all survived."""
-    text = ("people/tamara-berryman-324b6af6e8.md; ~/.co/rem/people/vern-chan-cccf24fb07.md; for f in david-burt-daaa78c99a; do; orgs/unsw-edu-au-921856d25b.md\n"
-            "From: Jiexuan Deng <jd@student.unsw.edu.au>\n"
-            "https://www.linkedin.com/in/mia-chen-data/ call 02 9065 4432, (02) 7235 5365, 1800 737 633, 0873918410\n"
+    text = ("people/greta-holloway-324b6af6e8.md; ~/.co/rem/people/rowan-ashdown-cccf24fb07.md; for f in colin-drake-daaa78c99a; do; orgs/unsw-edu-au-921856d25b.md\n"
+            "From: Kenji Hale <jd@student.unsw.edu.au>\n"
+            "https://www.linkedin.com/in/mia-chen-data/ call 02 9000 0157, (02) 7235 5365, 1800 737 633, 0873918410\n"
             "ssh onion@100.71.113.43 and 35.189.30.72; bind 127.0.0.1 or 0.0.0.0")
     out = bundles.mask(text)
-    for gone in ("tamara-berryman", "vern-chan", "david-burt", "Jiexuan Deng", "mia-chen-data", "9065 4432", "7235 5365",
+    for gone in ("greta-holloway", "rowan-ashdown", "colin-drake", "Kenji Hale", "mia-chen-data", "9000 0157", "7235 5365",
                  "737 633", "0873918410", "100.71.113.43", "35.189.30.72"):
         assert gone not in out, gone
     assert "orgs/unsw-edu-au-921856d25b.md" in out and "127.0.0.1" in out and "0.0.0.0" in out
@@ -646,12 +646,12 @@ def test_masking_reaches_names_profiles_numbers_and_ips_that_point_at_a_person()
 
 def test_masking_also_reaches_cjk_glued_addresses_chinese_mobiles_and_every_people_page():
     """Second review of #2493 on the real session, verbatim cases."""
-    text = ("'邮箱s.whittle@unsw.edu.au'] the phone number 02 7235 5365. 电话：138 0013 8000，或 13800138000；"
-            "+86 139 1234 5678. see people/vern.md, people/emma and people/david-burt.md; orgs/unsw.md stays."
-            "x\\npeople/sasha.md and ```\\npeople/tamara-berryman-….md: failed")
+    text = ("'邮箱s.ward@unsw.edu.au'] the phone number 02 7235 5365. 电话：138 0013 8000，或 13800138000；"
+            "+86 139 1234 5678. see people/rowan.md, people/elodie and people/colin-drake.md; orgs/unsw.md stays."
+            "x\\npeople/tess.md and ```\\npeople/greta-holloway-….md: failed")
     out = bundles.mask(text)
-    for gone in ("whittle", "7235 5365", "0013 8000", "13800138000", "1234 5678", "vern", "emma", "david-burt",
-                 "sasha", "tamara"):
+    for gone in ("ward", "7235 5365", "0013 8000", "13800138000", "1234 5678", "rowan", "elodie", "colin-drake",
+                 "tess", "greta"):
         assert gone not in out, gone
     assert "orgs/unsw.md" in out and "people/[person]" in out
 
@@ -687,31 +687,31 @@ def test_co_rem_names_and_handoff_links_are_masked_too(tmp_path, monkeypatch):
     """#2495 review: the copy named 17 of the sender's contacts from co rem pages, and carried live handoff links."""
     people = tmp_path / ".co" / "rem" / "people"
     people.mkdir(parents=True)
-    (people / "谢-红瑛-e381998ef8.md").write_text("# 谢 红瑛\n\nbody")
-    (people / "sasha-whittle-1.md").write_text("# Sasha Ward\n")
-    (people / "ody-zhou-c6.md").write_text("# Ody Zhou\n")
+    (people / "谢-晓雯-e381998ef8.md").write_text("# 林 晓雯\n\nbody")
+    (people / "tess-ward-1.md").write_text("# Tess Ward\n")
+    (people / "corin-marsh-c6.md").write_text("# Corin Marsh\n")
     monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
-    text = ("谢 红瑛 sent materials; User asked Sasha Ward for credits, and Sasha said yes; Ody Zhou will test; "
+    text = ("林 晓雯 sent materials; User asked Tess Ward for credits, and Tess said yes; Corin Marsh will test; "
             "see https://o.openonion.ai/h/eaBga94HJudPRKYNztwRY8AnMEV8WVJT/codex")
-    out = bundles.mask(text, names=bundles.rem_names(keep_names=["Ody Zhou"]))
-    assert "谢 红瑛" not in out and "Sasha" not in out and "Ody Zhou" in out
+    out = bundles.mask(text, names=bundles.rem_names(keep_names=["Corin Marsh"]))
+    assert "林 晓雯" not in out and "Tess" not in out and "Corin Marsh" in out
     assert "eaBga94" not in out and "[handoff link]" in out
 
 
 def test_names_mask_every_capitalised_word_and_keep_the_recipient_found_by_address(tmp_path, monkeypatch):
-    """b27 review: 'Larry' survived a page titled 'Lee Larry'; a page titled 'GIF' masked the word GIF;
+    """b27 review: 'Fenwick' survived a page titled 'Kim Fenwick'; a page titled 'GIF' masked the word GIF;
     the recipient (no handoff contact, but a rem page holding their address) was masked in their own copy;
-    'Melody Chan' was kept because it contains 'ody'."""
+    'Melody Ashdown' was kept because it contains 'corin'."""
     people = tmp_path / "people"
     people.mkdir()
-    (people / "lee-larry-1.md").write_text("# Lee Larry\n")
+    (people / "lee-fenwick-1.md").write_text("# Kim Fenwick\n")
     (people / "gif-2.md").write_text("# GIF\n")
-    (people / "melody-chan-3.md").write_text("# Melody Chan\n")
-    (people / "richard-lai-4.md").write_text("# Richard Lai\n\n- Email: richard.lai@student.unsw.edu.au\n")
+    (people / "melody-ashdown-3.md").write_text("# Melody Ashdown\n")
+    (people / "emrys-brandt-4.md").write_text("# Emrys Brandt\n\n- Email: emrys.brandt@student.unsw.edu.au\n")
     monkeypatch.setattr(bundles, "rem_people_dir", lambda: people)
-    names = bundles.rem_names(["Ody"], to="richard.lai@student.unsw.edu.au")
-    out = bundles.mask("Larry's phone; a GIF; Melody Chan said; Richard Lai will test", names=names)
-    assert "Larry" not in out and "GIF" in out and "Melody" not in out and "Richard Lai" in out
+    names = bundles.rem_names(["Corin"], to="emrys.brandt@student.unsw.edu.au")
+    out = bundles.mask("Fenwick's phone; a GIF; Melody Ashdown said; Emrys Brandt will test", names=names)
+    assert "Fenwick" not in out and "GIF" in out and "Melody" not in out and "Emrys Brandt" in out
 
 
 def test_an_edited_sentence_goes_as_edited_in_the_copy_too(world, tmp_path):
@@ -730,10 +730,10 @@ def test_a_chinese_name_is_masked_by_its_given_name_and_written_together():
     import tempfile
     from pathlib import Path
     folder = Path(tempfile.mkdtemp())
-    (folder / "x.md").write_text("# 谢 红瑛\n")
+    (folder / "x.md").write_text("# 林 晓雯\n")
     original = bundles.rem_people_dir
     bundles.rem_people_dir = lambda: folder
     names = bundles.rem_names([])
     bundles.rem_people_dir = original
-    out = bundles.mask("红瑛那页的武汉行程；谢红瑛；谢 红瑛", names=names)
-    assert "红瑛" not in out
+    out = bundles.mask("晓雯那页的武汉行程；谢晓雯；林 晓雯", names=names)
+    assert "晓雯" not in out

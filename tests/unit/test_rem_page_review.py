@@ -179,6 +179,110 @@ def test_indexed_evidence_is_explicitly_readable_in_inline_and_file_tasks(tmp_pa
         assert 'Read all source material at' in prompt
 
 
+@pytest.mark.parametrize('sources', ['', '## Sources\n- [1] codex:old\n\n'])
+def test_sources_after_footer_move_to_end_of_sources_section(sources):
+    from connectonion.rem.page_review import sources_before_footer
+    head = '# Lantern\n\nA change. [82][W3]\n\n'
+    footer = 'Investigation: mapped 2026-10-20\n'
+    numeric = '- [82] github:acme/lantern#170 — 2026-07-01\n'
+    web = '- [W3] https://example.com\n'
+    text = head + sources + footer + numeric + 'Keep this note.\n' + web
+    section = sources.rstrip('\n') + '\n' if sources else '## Sources\n'
+    expected = head + section + numeric + web + '\n' + footer + 'Keep this note.\n'
+    assert sources_before_footer(text) == expected
+    assert sources_before_footer(expected) == expected
+
+
+@pytest.mark.parametrize('text', [
+    '# Lantern\n\n## Sources\n- [1] codex:old\n\nInvestigation: mapped today\n',
+    '# Lantern\n\nInvestigation: mapped today\nKeep this note.\n',
+    '# Lantern\n\n## Sources\n- [1] codex:old\n',
+])
+def test_sources_before_footer_leaves_pages_without_misplaced_sources_unchanged(text):
+    from connectonion.rem.page_review import sources_before_footer
+    assert sources_before_footer(text) == text
+
+
+@pytest.mark.parametrize('last_resort', [False, True])
+def test_project_promotion_keeps_history_and_drops_unused_sources_appended_after_footer(tmp_path, last_resort):
+    from connectonion.rem.runner import _promote_candidate
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'projects/lantern.md'
+    notebook.stub_project(record, 'Lantern')
+    original = notebook.read(record)
+    history = '- 2026-07-01: Added the export command. [82]'
+    text = original.replace('## What it is\n- Unknown — not investigated yet',
+                            '## What it is\nA local export tool. [82]')
+    text = text.replace('## Sources\n', f'## History\n{history}\n\n## Sources\n')
+    text += '\n- [82] github:acme/lantern#170 — 2026-07-01\n- [83] github:acme/lantern#171 — 2026-07-02\n'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(text)
+    items = [{'source': 'github:acme/lantern#170'}, {'source': 'github:acme/lantern#171'}]
+    assert 'Unused citation: 83' in validate(record, text, original, items)
+
+    _promote_candidate(notebook, record, candidate, original, items, tmp_path, None, last_resort=last_resort)
+
+    page = notebook.read(record)
+    assert history.replace('[82]', '[1]') in page and 'A local export tool. [1]' in page
+    assert page.index('- [1] github:acme/lantern#170') < page.index('Investigation:')
+    assert 'github:acme/lantern#171' not in page
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted']
+
+
+@pytest.mark.parametrize('same_source', [True, False])
+@pytest.mark.parametrize('second_number', [2, 3])
+def test_duplicate_definitions_merge_only_the_same_number_and_source(same_source, second_number):
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] project-source:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = f'- [{second_number}] project-source:' + ('a1' if same_source else 'b2') * 32 + ' — 2026-10-13\n'
+    head = '# Lantern\n\nA decision. [2]\n' + first + '\n## Sources\n'
+    tail = '\n## Notes\n' + second + '\nInvestigation: mapped 2026-10-20\n'
+    text = head + first + second + tail
+    expected = head + first + ('' if same_source and second_number == 2 else second) + tail
+    assert merge_duplicate_definitions(text) == expected
+    assert merge_duplicate_definitions(expected) == expected
+    errors = validate('notes/lantern.md', expected.split('## Notes')[0], '', [])
+    assert ('Missing or duplicate citation: 2' in errors) is (not same_source and second_number == 2)
+
+
+def test_duplicate_definitions_preserve_distinct_file_paths_with_spaces():
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] file:/tmp/acme/lantern notes/a.md#sha256:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = '- [2] file:/tmp/acme/lantern notes/b.md#sha256:' + 'b2' * 32 + ' — 2026-10-13\n'
+    text = '# Lantern\n\nA decision. [2]\n\n## Sources\n' + first + second
+    assert merge_duplicate_definitions(text) == text
+
+
+def test_duplicate_definitions_ignore_fenced_examples():
+    from connectonion.rem.page_review import merge_duplicate_definitions
+    first = '- [2] project-source:' + 'a1' * 32 + ' — 2026-10-10\n'
+    second = first.replace('2026-10-10', '2026-10-13')
+    head = '# Lantern\n\nA decision. [2]\n\n## Sources\n```text\n' + first + '```\n'
+    assert merge_duplicate_definitions(head + first + second) == head + first
+
+
+@pytest.mark.parametrize('last_resort', [False, True])
+def test_promotion_merges_identical_source_definitions(tmp_path, last_resort):
+    from connectonion.rem.runner import _promote_candidate
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'projects/lantern.md'
+    notebook.stub_project(record, 'Lantern')
+    original = notebook.read(record)
+    source = 'project-source:' + 'a1' * 32
+    text = original.replace('## What it is\n- Unknown — not investigated yet',
+                            '## What it is\nA local export tool. [2]')
+    text = text.replace('## Sources\n', f'## Sources\n- [2] {source} — 2026-10-10\n')
+    text += f'- [2] {source} — 2026-10-13\n'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(text)
+    _promote_candidate(notebook, record, candidate, original, [{'source': source}], tmp_path, None,
+                       last_resort=last_resort)
+    page = notebook.read(record)
+    assert page.count(source) == 1 and '2026-10-10' in page and '2026-10-13' not in page
+
+
 def test_numbered_source_list_is_normalized_without_changing_claims():
     text = ('# Aurora\n\nThe date is open. [1]\n\n## Sources\n'
             '1. `codex:synthetic:1` — user correction\n'
@@ -539,11 +643,11 @@ def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
     from connectonion.rem.files import read_json, state_path
     from connectonion.rem.reviews import ingest, listing
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', [])
+    Notebook(tmp_path).stub_person('people/corin.md', 'Corin', [])
     kept = ingest(tmp_path, [
-        {'kind': 'link', 'subjects': ['people/ody.md'], 'question': 'Same as Ody Z?', 'basis': 'name'},
-        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'Still at OpenOnion?', 'basis': 'mail'},
-        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'third', 'basis': 'x'},
+        {'kind': 'link', 'subjects': ['people/corin.md'], 'question': 'Same as Corin Z?', 'basis': 'name'},
+        {'kind': 'question', 'subjects': ['people/corin.md'], 'question': 'Still at OpenOnion?', 'basis': 'mail'},
+        {'kind': 'question', 'subjects': ['people/corin.md'], 'question': 'third', 'basis': 'x'},
     ])
     assert [row['question'] for row in kept] == ['Still at OpenOnion?']
     assert [row['question'] for row in listing(tmp_path)] == ['Still at OpenOnion?']
@@ -582,11 +686,11 @@ def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
     assert "- Sessions: 2\n" in restore_runner_fields("projects/atlas.md", nested.replace("Sessions: 2", "Sessions: 3"),
                                                        original)
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_restores_contact_date_over_unknown(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:iris\n"
     candidate = original.replace(f"- {label}: 2026-10-14 [4]", f"- {label}: Unknown")
 
     assert restore_runner_fields(record, candidate, original) == original
@@ -594,49 +698,49 @@ def test_restore_runner_fields_restores_contact_date_over_unknown(record, label)
 
 def test_restore_runner_fields_maps_contact_citation_to_candidate_number():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
-    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
                  "- [2] outlook:abc — candidate description\n- [4] outlook:other\n")
 
     expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [2]")
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == expected
 
 
 def test_restore_runner_fields_appends_missing_contact_source_at_next_number():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
-    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
                  "- [1] outlook:one\n- [4] outlook:other\n\nInvestigation: mapped\n")
 
     expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [5]")
     expected = expected.replace("\n\nInvestigation:", "\n- [5] outlook:abc — 2026-10-14\n\nInvestigation:")
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == expected
 
 
 def test_restore_runner_fields_skips_contact_line_with_an_unresolved_citation():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
-    candidate = "# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
+    candidate = "# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
 
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == candidate
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == candidate
 
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_keeps_candidate_contact_date(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:iris\n"
     candidate = original.replace("2026-10-14 [4]", "2026-10-15 [4]")
 
     assert restore_runner_fields(record, candidate, original) == candidate
 
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_original_unknown_changes_nothing(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: Unknown\n"
-    candidate = original.replace("# Ying Tan", "# Updated page")
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: Unknown\n"
+    candidate = original.replace("# Iris Kwok", "# Updated page")
 
     assert restore_runner_fields(record, candidate, original) == candidate
 
@@ -645,18 +749,18 @@ def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     """A real one-page maintenance turn cited `investigation:page` and re-cited the
     page's own codex ids in new words; both were refused and the update was lost."""
     from connectonion.rem.page_review import validate
-    original = ("# Dora\n\n## Contact\n- Email: d@example.org [2]\n\n## Sources\n"
-                "- [2] User says Dora is internal. codex:0a:157160, codex:0a:438485\n\n"
+    original = ("# Briar\n\n## Contact\n- Email: d@example.org [2]\n\n## Sources\n"
+                "- [2] User says Briar is internal. codex:0a:157160, codex:0a:438485\n\n"
                 "Investigation: mapped 2026-09-20 · not investigated yet\n")
-    candidate = ("# Dora\n\n## Contact\n- Email: d@example.org [1]\n- Role: internal [2]\n\n## Sources\n"
+    candidate = ("# Briar\n\n## Contact\n- Email: d@example.org [1]\n- Role: internal [2]\n\n## Sources\n"
                  "- [1] investigation:page — the page as it stood listed this address.\n"
-                 "- [2] codex:0a:157160, codex:0a:438485 — user describes Dora as internal.\n\n"
+                 "- [2] codex:0a:157160, codex:0a:438485 — user describes Briar as internal.\n\n"
                  "Investigation: mapped 2026-09-20 · not investigated yet\n")
-    errors = [e for e in validate("people/dora.md", candidate, original, [])
+    errors = [e for e in validate("people/briar.md", candidate, original, [])
               if "identifiable source" in e]
     assert errors == []
     invented = candidate.replace("codex:0a:438485", "codex:0a:999999")
-    assert any("identifiable source" in e for e in validate("people/dora.md", invented, original, []))
+    assert any("identifiable source" in e for e in validate("people/briar.md", invented, original, []))
 
 
 def test_a_person_page_with_a_cited_lead_before_contact_is_accepted():
@@ -717,12 +821,12 @@ def test_one_miscopied_citation_drops_its_line_not_the_page(tmp_path):
                  .replace('- Role: Unknown', '- Role: Head of data [3]')
                  .replace('## Who they are\n- Unknown — not investigated yet',
                           '## Who they are\n- Leads the data team. [1]\n- Joined in 2024. [3]\n'
-                          '- Works with Ody. [2][3]')
+                          '- Works with Corin. [2][3]')
                  .replace('- (none yet)', '- [1] gmail:abc123\n- [2] gmail:def456\n- [3] gmail:abc12Z-typo'))
     repaired, dropped = drop_unresolved('people/mia.md', candidate, original, items)
     assert dropped == {'citations': ['3'], 'lines': 2}
     assert 'Joined in 2024' not in repaired and 'gmail:abc12Z-typo' not in repaired
-    assert '- Works with Ody. [2]' in repaired and '- Leads the data team. [1]' in repaired
+    assert '- Works with Corin. [2]' in repaired and '- Leads the data team. [1]' in repaired
     assert '- Role: Unknown' in repaired
     assert validate('people/mia.md', repaired, original, items) == []
 
@@ -778,7 +882,7 @@ def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_
 
 
 @pytest.mark.parametrize('newest', [
-    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Ziming, C1)
+    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Zia, C1)
     'z1234567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
     'mia.chen@student.unsw.edu.au',  # seven students got UNSW as employer (C3)
     'usr-abc@user.luma-mail.com',    # a relay's domain is the platform's
@@ -897,14 +1001,14 @@ def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
 
 def test_lines_about_the_run_are_removed_and_a_contact_field_keeps_its_label():
     """Five of the owner's seven investigated person pages said "web: not
-    searched; Wiki runs are offline"; Ody's Phone line said it too."""
+    searched; Wiki runs are offline"; Corin's Phone line said it too."""
     from connectonion.rem.page_review import drop_tool_text
-    original = '# Ody\n\n## Contact\n- Phone: Unknown\n\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
-    candidate = ('# Ody\n\n## Contact\n- Phone: no phone number appears; the web was not searched in this '
+    original = '# Corin\n\n## Contact\n- Phone: Unknown\n\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
+    candidate = ('# Corin\n\n## Contact\n- Phone: no phone number appears; the web was not searched in this '
                  'offline Wiki run.\n\n## Uncertainties\n- web: not searched; Wiki runs are offline. [2]\n'
-                 '- Whether the 30/70 split was signed. [1]\n- Ody collects art; a serious collector. [1]\n'
+                 '- Whether the 30/70 split was signed. [1]\n- Corin collects art; a serious collector. [1]\n'
                  '\n## Sources\n- [1] outlook:aaa — 2026-09-01\n- [2] investigation:coverage — offline run\n')
-    text, removed = drop_tool_text('people/ody.md', candidate, original)
+    text, removed = drop_tool_text('people/corin.md', candidate, original)
     assert '- Phone: Unknown' in text
     assert 'Wiki runs are offline. [2]' not in text and len(removed) == 2
     assert 'Whether the 30/70 split was signed. [1]' in text and 'a serious collector' in text
@@ -946,19 +1050,20 @@ def test_undated_lines_keep_their_place_after_dated_history_and_decisions(headin
     page = (f'# Avery Lin\n\n## {heading}\n{older}\n{newer}\n\n'
             '- Earlier introduction, date unknown. [3]\n- Follow-up date unknown. [3]\n\n'
             '## Sources\n- [1] gmail:m:1\n- [2] gmail:m:2\n- [3] gmail:m:3\n')
-    assert sort_history(page) == page.replace(f'{older}\n{newer}', f'{newer}\n{older}')
+    assert sort_history(page) == page.replace(f'{older}\n{newer}', f'{newer}\n{older}').replace(
+        '\n\n- Earlier', '\n- Earlier')
 
 
 @pytest.mark.parametrize('heading', ['History', 'Key decisions'])
-def test_one_dated_history_or_decision_line_is_untouched(heading):
+def test_one_dated_history_or_decision_line_removes_blank_between_items(heading):
     from connectonion.rem.page_review import sort_history
     page = (f'# Avery Lin\n\n## {heading}\n- 2026-10-20: agreed to a call. [1]\n\n'
             '- Earlier introduction, date unknown. [1]\n\n## Sources\n- [1] gmail:m:1\n')
-    assert sort_history(page) == page
+    assert sort_history(page) == page.replace('\n\n- Earlier', '\n- Earlier')
 
 
 def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
-    """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
+    """Corin Marsh's History held 17 bullets, five of them "sent report X" (#2059);
     eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
     from connectonion.rem.page_review import history_errors, history_note
     assert history_errors(_with_history(17), _with_history(16))
@@ -973,23 +1078,23 @@ def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
 
 
 def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
-    """Ody Zhou's page named Ivan Zhu and Harry Cao, who had pages, and linked neither."""
+    """Corin Marsh's page named Lucan Novak and Felix Moreau, who had pages, and linked neither."""
     from connectonion.rem.page_review import link_people, person_names
     prepare(tmp_path)
     nb = Notebook(tmp_path)
-    nb.stub_person('people/jiexuan.md', 'Jiexuan Deng', ['j@unsw.edu.au'], email='j@unsw.edu.au')
-    nb.stub_person('people/ivan.md', 'Ivan', ['ivanxzhu@gmail.com'], email='ivanxzhu@gmail.com')
-    nb.stub_person('people/harry-a.md', 'Harry', ['amazingharry1@gmail.com'], email='amazingharry1@gmail.com')
-    nb.stub_person('people/harry-b.md', 'Harry', ['hai@gmail.com'], email='hai@gmail.com')
-    page = ('# Richard Lai\n\nWorks with Jiexuan Deng. [1]\n\n## Contact\n- Also known as: Jiexuan Deng\n\n'
-            '## History\n- 2026-09-25: met Ivan Zhu and Harry Cao; Jiexuan Deng joined. [1]\n\n'
-            '## Sources\n- [1] outlook:aaa — Jiexuan Deng, 2026-09-25\n')
-    linked = link_people('people/richard.md', page, person_names(nb))
-    assert 'Works with [Jiexuan Deng](../people/jiexuan.md).' in linked          # first mention only
-    assert '; Jiexuan Deng joined' in linked and '- Also known as: Jiexuan Deng' in linked
-    assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
-    assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
-    assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
+    nb.stub_person('people/kenji.md', 'Kenji Hale', ['j@unsw.edu.au'], email='j@unsw.edu.au')
+    nb.stub_person('people/lucan.md', 'Lucan', ['lucannovak@gmail.com'], email='lucannovak@gmail.com')
+    nb.stub_person('people/felix-a.md', 'Felix', ['felix.a@example.com'], email='felix.a@example.com')
+    nb.stub_person('people/felix-b.md', 'Felix', ['felix.b@example.com'], email='felix.b@example.com')
+    page = ('# Emrys Brandt\n\nWorks with Kenji Hale. [1]\n\n## Contact\n- Also known as: Kenji Hale\n\n'
+            '## History\n- 2026-09-25: met Lucan Novak and Felix Moreau; Kenji Hale joined. [1]\n\n'
+            '## Sources\n- [1] outlook:aaa — Kenji Hale, 2026-09-25\n')
+    linked = link_people('people/emrys.md', page, person_names(nb))
+    assert 'Works with [Kenji Hale](../people/kenji.md).' in linked          # first mention only
+    assert '; Kenji Hale joined' in linked and '- Also known as: Kenji Hale' in linked
+    assert 'met [Lucan Novak](../people/lucan.md) and Felix Moreau' in linked           # the only Lucan, lucannovak@
+    assert '- [1] outlook:aaa — Kenji Hale, 2026-09-25' in linked               # Sources untouched
+    assert link_people('people/emrys.md', linked, person_names(nb)) == linked  # idempotent
 
 
 def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
@@ -1061,40 +1166,40 @@ def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
 
 
 def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page():
-    """1.9.2b1 (2026-10-09) gave Weiwei the user's phone from his own signature, against the instructions."""
+    """1.9.2b1 (2026-10-09) gave Liesel the user's phone from his own signature, against the instructions."""
     from connectonion.rem.page_review import drop_owner_addresses
-    page = "## Facts\n- Email: weiwei.lei@rmit.edu.au\n- Phone: +61 435 525 634 [2]\n- Role: Professor [1]\n"
-    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0435 525 634 (work)"})
-    assert "- Phone: Unknown\n" in text and removed == ["+61 435 525 634"]
-    assert "- Email: weiwei.lei@rmit.edu.au" in text
-    other = page.replace("+61 435 525 634", "+61 400 111 222")
-    assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])
+    page = "## Facts\n- Email: liesel.voss@rmit.edu.au\n- Phone: +61 491 570 156 [2]\n- Role: Professor [1]\n"
+    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0491 570 156 (work)"})
+    assert "- Phone: Unknown\n" in text and removed == ["+61 491 570 156"]
+    assert "- Email: liesel.voss@rmit.edu.au" in text
+    other = page.replace("+61 491 570 156", "+61 400 111 222")
+    assert drop_owner_addresses(other, {"0491 570 156 (work)"}) == (other, [])
 
 
 def test_the_owners_phone_is_found_when_each_number_carries_its_own_citation():
-    """1.9.2b2 (2026-10-09) kept the user's phone on Sasha's page: `[48]` was read as two more digits."""
+    """1.9.2b2 (2026-10-09) kept the user's phone on Tess's page: `[48]` was read as two more digits."""
     from connectonion.rem.page_review import drop_owner_addresses
-    page = "## Facts\n- Phone: +61-0435525634 (work) [48]; +61 2 9065 4432 (work) [49]\n"
-    text, removed = drop_owner_addresses(page, {"0435 525 634"})
-    assert "- Phone: +61 2 9065 4432 (work) [49]\n" in text and "0435525634" not in text
-    assert removed == ["+61-0435525634 (work) [48]"]
+    page = "## Facts\n- Phone: +61-0491570156 (work) [48]; +61 2 9000 0157 (work) [49]\n"
+    text, removed = drop_owner_addresses(page, {"0491 570 156"})
+    assert "- Phone: +61 2 9000 0157 (work) [49]\n" in text and "0491570156" not in text
+    assert removed == ["+61-0491570156 (work) [48]"]
 
 
 def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
     """#2348, as narrowed by the 1.9.2b3 trial: only a number known to be someone else's goes."""
     from connectonion.rem.page_review import drop_others_phones
-    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9065 4432 (work) [49]\n- Role: Lead [1]\n"
-    text, removed = drop_others_phones(page, ["+61 2 9065 4432"], [])
-    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9065 4432 (work) [49]"]
-    assert drop_others_phones(page, ["+61 2 9065 4432"], ["02 9065 4432"]) == (page, [])   # theirs too
-    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290654432"], [])[0]
+    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9000 0157 (work) [49]\n- Role: Lead [1]\n"
+    text, removed = drop_others_phones(page, ["+61 2 9000 0157"], [])
+    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9000 0157 (work) [49]"]
+    assert drop_others_phones(page, ["+61 2 9000 0157"], ["02 9000 0157"]) == (page, [])   # theirs too
+    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290000157"], [])[0]
 
 
 def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
     """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
     from datetime import timezone
     from connectonion.rem.runner import _searched_turn
-    (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
+    (tmp_path / "search-requests.json").write_text('["Dewi contract",\n "renewal" "date"]', encoding="utf-8")
     first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
 
     def never(*args):
@@ -1104,19 +1209,19 @@ def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_p
 
 
 def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(tmp_path):
-    """1.9.2b1: Ian's page cited the owner's Claude memory file by path. It sat in
+    """1.9.2b1: Osric's page cited the owner's Claude memory file by path. It sat in
     the folder of a supplied session transcript, so it passed as a local file."""
     from connectonion.rem.page_review import drop_unresolved
     folder = tmp_path / '.claude/projects/-work'
     (folder / 'memory').mkdir(parents=True)
-    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_ian.md'
+    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_osric.md'
     transcript.write_text('{}')
-    memory.write_text('Ian: MBA at UNSW')
+    memory.write_text('Osric: MBA at UNSW')
     items = [{'role': 'owner-work-evidence', 'file': str(transcript), 'sources': ['claude-code:s1']}]
-    text = ('# Ian\n\nIan asked about pricing [1].\n\n## Who they are\nIan studies an MBA [2].\n\n'
+    text = ('# Osric\n\nOsric asked about pricing [1].\n\n## Who they are\nOsric studies an MBA [2].\n\n'
             f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
-    kept, dropped = drop_unresolved('people/ian.md', text, '', items)
-    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
+    kept, dropped = drop_unresolved('people/osric.md', text, '', items)
+    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Osric asked about pricing [1].' in kept
 
 
 def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
@@ -1163,10 +1268,10 @@ def test_repeated_citation_markers_collapse_only_within_prose_runs(text, expecte
 
 def test_merged_sources_leave_one_citation_after_renumbering():
     from connectonion.rem.page_review import collapse_repeated_markers, renumber_sources, settle_sources
-    text = ('# Dora\n\nA fact [1][2]\n\n## Sources\n'
+    text = ('# Briar\n\nA fact [1][2]\n\n## Sources\n'
             '- [1] gmail:abc — original\n- [2] gmail:abc — repeated\n')
     assert collapse_repeated_markers(renumber_sources(settle_sources(text, {}))) == (
-        '# Dora\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
+        '# Briar\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
 
 
 def test_a_required_section_the_turn_left_out_is_added_as_unknown():
@@ -1223,7 +1328,7 @@ def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
 
 
 def test_a_source_id_cited_inline_becomes_a_numbered_citation():
-    """Nina's, Tamara's and Weiwei's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
+    """Petra's, Greta's and Liesel's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
     from connectonion.rem.page_review import normalize_numbered_sources
     page = ("# N\n\nAsked [outlook:ac8a0c940197]; replied [1] [outlook:2af4c0ad8970].\n\n## Sources\n"
             "- [1] outlook:2af4c0ad8970 — 2026-09-24\n\nInvestigation: x\n")
@@ -1458,11 +1563,320 @@ def test_project_timeline_is_not_a_citable_original():
     assert 'Project timeline is a reading guide, not a citable original: 1' in errors
 
 
-def test_a_restored_line_replaces_its_cut_down_copy_instead_of_repeating_it():
+def test_a_restored_line_keeps_the_writer_rewrite_and_adds_missing_evidence_beside_it():
     from connectonion.rem.page_review import dropped, restore_dropped
     before = ('# Avery Lin\n\n## Who they are\nAvery leads Lantern [1]. Her profile says “building in Sydney,” [2]\n\n'
               '## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] https://example.com/avery\n')
     after = '# Avery Lin\n\n## Who they are\nAvery leads Lantern [1].\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n'
     restored = restore_dropped(before, after)
     assert dropped(before, restored) == []
-    assert restored.count('Avery leads Lantern') == 1
+    assert ('Avery leads Lantern [1].\n'
+            'Avery leads Lantern [1]. Her profile says “building in Sydney,” [2]') in restored
+
+
+@pytest.mark.parametrize('heading', ['History', 'Key decisions'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_same_date_history_duplicates_keep_longer_line_and_merge_all_citations(heading, reverse):
+    from connectonion.rem.page_review import sort_history
+    short = '- 2026-10-20: Avery Lin shipped Lantern. [1][W1]'
+    long = '- **2026-10-20** — Avery Lin shipped Lantern with a smaller interface. [2]'
+    lines = [short, long, short] if not reverse else [long, short, short]
+    other = '- 2026-10-19: Avery Lin shipped Lantern. [3]'
+    page = (f'# Lantern\n\n## {heading}\n' + '\n\n'.join([*lines, other])
+            + '\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n'
+            '- [3] github:acme/lantern#13\n- [W1] https://example.com/lantern\n')
+    result = sort_history(page)
+    assert long + ' [1][W1]\n' + other in result
+    assert result.count('Avery Lin shipped Lantern') == 2
+    assert not re.search(r'^- [^\n]+\n(?:[ \t]*\n)+- ', result.partition('\n## Sources')[0], re.M)
+    assert sort_history(result) == result
+
+
+def test_exact_history_duplicates_collapse_but_distinct_same_date_decisions_remain():
+    from connectonion.rem.page_review import sort_history
+    first = '- 2026-10-20: Ship the smaller Lantern interface. [1]'
+    second = '- 2026-10-20: Archive the abandoned database migration. [2]'
+    page = f'# Lantern\n\n## Key decisions\n{first}\n{first}\n{second}\n'
+    assert sort_history(page) == page.replace(f'{first}\n{first}', first)
+
+
+@pytest.mark.parametrize('label', ['Now', 'Changed', 'Pattern', 'At stake'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_insight_duplicates_merge_by_label_without_reordering_or_limiting_bullets(label, reverse):
+    """2026-10-21: a second deepening left two near-identical Now bullets among five."""
+    from connectonion.rem.page_review import sort_history
+    short = f'- {label}: Avery Lin shipped the Lantern interface. [1][W1]'
+    long = f'- {label}: Avery Lin shipped the smaller Lantern interface. [2]'
+    other = '- Different: Avery Lin shipped the Lantern interface. [3]'
+    distinct = [f'- {label}: Theo Park archived the abandoned database migration. [3]',
+                '- Changed: Mara Ostrowski declined the invitation. [3]',
+                '- Pattern: Theo Park prefers written replies. [3]']
+    lines = [short, long] if not reverse else [long, short]
+    page = ('# Lantern\n\n## Insight\n' + '\n'.join([*lines, other, *distinct])
+            + '\n\n## Sources\n- [1] gmail:avery\n- [2] github:acme/lantern#12\n'
+            '- [3] gmail:theo\n- [W1] https://example.com/lantern\n')
+    expected = page.replace('\n' + short, '').replace(long, long + ' [1][W1]')
+    assert sort_history(page) == expected
+    assert sort_history(expected) == expected
+
+
+@pytest.mark.parametrize('wording,count', [('“Keep small tools”', 1), ('Keep small tools', 2)])
+def test_insight_dedupe_keeps_a_quote_missing_from_the_longer_bullet(wording, count):
+    """2026-10-21: Insight uses the same quote guard as dated decisions."""
+    from connectonion.rem.page_review import sort_history
+    short = '- Now: Avery Lin said “Keep small tools” for Lantern. [1]'
+    long = f'- Now: Avery Lin said {wording} for Lantern and shipped the smaller interface. [2]'
+    page = f'# Lantern\n\n## Insight\n{short}\n{long}\n'
+    result = sort_history(page)
+    assert result.count('- Now:') == count
+    assert '“Keep small tools”' in result
+    assert sort_history(result) == result
+
+
+def test_restore_keeps_rewrite_with_new_sources_and_restores_lost_evidence():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Who they are\n'
+              'Avery leads Lantern. “Keep small tools” [7]. Her profile says “building in Sydney” [8].\n\n'
+              '## Sources\n- [7] gmail:aaaaaaaaaaaa\n- [8] https://example.com/avery\n')
+    rewrite = 'Avery leads Lantern. “Keep small tools” [1][3].'
+    after = (f'# Avery Lin\n\n## Who they are\n{rewrite}\n\n## Sources\n'
+             '- [1] gmail:aaaaaaaaaaaa\n- [3] github:acme/lantern#12\n')
+    result = restore_dropped(before, after)
+    assert rewrite + '\nAvery leads Lantern.' in result
+    assert 'Her profile says “building in Sydney” [4].' in result
+    assert '- [3] github:acme/lantern#12' in result
+    assert dropped(before, result) == []
+    assert restore_dropped(before, result) == result
+
+
+def test_restore_checks_loss_again_after_each_line_to_avoid_repeating_shared_quote():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Insight\n- First: “Keep small tools”. [7]\n'
+              '- Second: “Keep small tools”. [7]\n\n## Sources\n- [7] gmail:aaaaaaaaaaaa\n')
+    after = '# Avery Lin\n\n## Insight\nNew work. [1]\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    result = restore_dropped(before, after)
+    assert result.count('“Keep small tools”') == 1
+    assert dropped(before, result) == []
+
+
+@pytest.mark.parametrize('wording,count', [('“Keep small tools”', 1), ('Keep small tools', 2)])
+def test_history_dedupe_merges_only_a_line_whose_quotes_the_longer_keeps(wording, count):
+    from connectonion.rem.page_review import dropped, restore_dropped, sort_history
+    short = '- 2026-10-20: Avery Lin said “Keep small tools” for Lantern. [1]'
+    long = f'- 2026-10-20: Avery Lin said {wording} for Lantern and shipped the smaller interface. [2]'
+    page = (f'# Lantern\n\n## Key decisions\n{short}\n{long}\n\n## Sources\n'
+            '- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n')
+    result = sort_history(page)
+    assert result.count('- 2026-10-20:') == count
+    assert '“Keep small tools”' in result
+    assert dropped(page, result) == []
+    assert restore_dropped(page, result) == result
+    assert sort_history(result) == result
+
+
+def test_restore_never_replaces_rewrite_citing_new_id_even_when_number_was_reused():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Insight\nAvery leads Lantern. “Keep small tools”. [1]\n\n'
+              '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    rewrite = 'Avery leads Lantern. [1]'
+    after = f'# Avery Lin\n\n## Insight\n{rewrite}\n\n## Sources\n- [1] github:acme/lantern#12\n'
+    result = restore_dropped(before, after)
+    assert rewrite + '\nAvery leads Lantern. “Keep small tools”. [2]' in result
+    assert '- [1] github:acme/lantern#12' in result
+    assert dropped(before, result) == []
+
+
+def test_restore_cannot_lose_an_earlier_quote_when_another_quote_is_retained_elsewhere():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    prefix = 'Avery Lin leads Lantern in Sydney and keeps its tools small. '
+    first = prefix + '“Stay calm”. [1]'
+    second = prefix + '“Keep small tools” and file the request. [1][2]'
+    before = (f'# Avery Lin\n\n## Insight\n{first}\n{second}\n\n## Sources\n'
+              '- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n')
+    after = (f'# Avery Lin\n\n## Insight\n{first}\nThey said “Keep small tools”. [1]\n\n'
+             '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    result = restore_dropped(before, after)
+    assert first + '\n' + second in result
+    assert dropped(before, result) == []
+    assert restore_dropped(before, result) == result
+
+
+@pytest.mark.parametrize("line, fixed", [
+    ("The user said it was still open on his side and he would complete it [1].",
+     "The user said it was still open on the user's side and the user would complete it [1]."),
+    ("Avery said she would reply; the user said he would wait for her reply [3].",
+     "Avery said she would reply; the user said the user would wait for her reply [3]."),
+    ("The user thanked Theo and he said the demo was done [2].",
+     "The user thanked Theo and he said the demo was done [2]."),
+    ("The user wrote “he is ready” to Avery [1].", "The user wrote “he is ready” to Avery [1]."),
+    ("Avery said she is away from her desk [1].", "Avery said she is away from her desk [1]."),
+])
+def test_a_pronoun_that_stands_for_the_owner_becomes_the_user(line, fixed):
+    """The owner's rule is never guess a pronoun; reruns still wrote "the user said he" 1-14 times a page."""
+    from connectonion.rem.page_review import owner_pronouns
+    page = f"# Avery Lin\n\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01 he\n"
+    text, count = owner_pronouns(page)
+    assert text == page.replace(line, fixed)
+    assert count == (line != fixed) * (2 if "his side" in line else 1 if line != fixed else 0)
+
+
+def test_a_key_decision_that_retells_the_owner_is_named_for_repair():
+    from connectonion.rem.page_review import unquoted_decisions
+    from connectonion.rem.runner import SALVAGEABLE
+    page = ("# Atlas\n\n## Key decisions\n- 2026-10-19 — Share it as a tool: the user suggested a direct message [1]\n"
+            "- 2026-10-14 — Lead with context: “Don't send the result, send the context” [2]\n\n## Paths\n- /atlas\n")
+    errors = unquoted_decisions(page)
+    assert len(errors) == 1 and "2026-10-19" in errors[0]
+    assert errors[0].startswith(SALVAGEABLE)   # repaired if it can be, never a refusal
+
+
+@pytest.mark.parametrize("page, fixed", [
+    ("# Avery Lin\n\nAvery said she would apply. The user was her manager and submitted her reference [4]. "
+     "The user said it was open on his side [4].\n",
+     "# Avery Lin\n\nAvery said she would apply. The user was her manager and submitted her reference [4]. "
+     "The user said it was open on the user's side [4].\n"),
+    ("# Theo Park\n\nTheo said he would meet. The user said he would send the deck [1].\n",
+     "# Theo Park\n\nTheo said he would meet. The user said he would send the deck [1].\n"),
+])
+def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed):
+    """2026-10-20: the first owner-pronoun repair wrote "the user was the user's direct manager"."""
+    from connectonion.rem.page_review import owner_pronouns
+    assert owner_pronouns(page)[0] == fixed
+
+
+def test_owner_names_become_the_user_outside_quotes_code_and_sources():
+    """2026-10-21: a new Changed bullet named the owner by first name."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Avery Lin\n\nMara Ostrowski handed Avery the deck. Mara\'s reply arrived.\n'
+            'On October 14 Mara handed it over; mara and Marason stayed.\n'
+            '- Changed: Mara Ostrowski\'s deck reached Avery.\n'
+            '**Mara Ostrowski** agreed; Mara’s deck arrived.\n'
+            'Avery quoted “Mara sent it” and "Mara Ostrowski agreed" and `Mara`.\n'
+            "Avery quoted 'Mara agreed' and ‘Mara Ostrowski agreed’.\n"
+            '``Mara Ostrowski `Mara` `` stays code.\n'
+            '```python\nMara Ostrowski\n```\n\n## Sources\n- [1] https://example.com/Mara\n')
+    expected = (page.replace('Mara Ostrowski handed', 'The user handed')
+                .replace("Mara's reply", "The user's reply")
+                .replace('October 14 Mara handed', 'October 14 the user handed')
+                .replace("Changed: Mara Ostrowski's deck", "Changed: The user's deck")
+                .replace('**Mara Ostrowski** agreed; Mara’s deck', "**The user** agreed; the user's deck"))
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
+    assert owner_name_to_user(expected, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
+    assert owner_name_to_user(page, []) == page
+    assert owner_name_to_user(page.replace('## Sources\n', '## Sources \n'), ['Mara Ostrowski', 'Mara'],
+                              tied=lambda line: True) == \
+        expected.replace('## Sources\n', '## Sources \n')
+
+
+@pytest.mark.parametrize('tied', [None, lambda line: '[1]' in line])
+def test_owner_first_name_needs_a_tied_line_but_full_name_does_not(tied):
+    """2026-10-21: Mara Chen has no page; her first name must survive."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Avery Lin\n\nMara asked [1].\nMara asked [2].\nMara asked without a citation.\n'
+            'Mara Ostrowski agreed; Mara Ostrowski’s deck arrived.\n'
+            '“Mara Ostrowski agreed” and `Mara Ostrowski` stay.\n\n'
+            '## Sources\n- [1] gmail:owner\n- [2] gmail:correspondent\n')
+    expected = page.replace('Mara Ostrowski agreed;', 'The user agreed;').replace(
+        'Mara Ostrowski’s deck', "the user's deck")
+    if tied:
+        expected = expected.replace('Mara asked [1]', 'The user asked [1]')
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=tied) == expected
+
+
+@pytest.mark.parametrize('record', ['people/avery.md', 'projects/lantern.md', 'orgs/lantern.md'])
+def test_earlier_insights_are_never_a_citable_original(record):
+    """2026-10-21: the muse reminder must not corroborate its own page."""
+    candidate = '# Avery Lin\n\nAn existing finding. [1]\n\n## Sources\n- [1] investigation:earlier-insights\n'
+    items = [{'role': 'earlier-insights', 'source': 'investigation:earlier-insights', 'text': 'A finding'}]
+    errors = validate(record, candidate, '# Avery Lin\n', items)
+    assert 'Earlier insights are a reading guide, not a citable original: 1' in errors
+
+
+def test_a_qualified_first_contact_is_put_back_over_unknown():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = ("# Avery Lin\n\n## Facts\n- First contact: 2026-08-11 (earliest mail found) [2]\n\n"
+                "## Sources\n- [2] gmail:abc — 2026-08-11\n")
+    candidate = original.replace("2026-08-11 (earliest mail found) [2]", "Unknown")
+    assert restore_runner_fields("people/avery.md", candidate, original) == original
+
+
+def test_a_facts_label_the_turn_left_out_comes_back_from_the_page_before():
+    """2026-10-20 upkeep A/B: a dropped `Location` line refused the whole update, twice in three runs."""
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import restore_missing_facts, fact_errors
+    import tempfile
+    from pathlib import Path
+    notebook = Notebook(Path(tempfile.mkdtemp()))
+    notebook.stub_person("people/avery.md", "Avery Lin", ["avery@example.com"], email="avery@example.com")
+    original = (notebook.read("people/avery.md").replace("- Location: Unknown", "- Location: Sydney [1]")
+                .replace("- (none yet)", "- [1] gmail:abc — 2026-10-01"))
+    candidate = original.replace("- Location: Sydney [1]\n", "").replace("- Phone: Unknown\n", "")
+    fixed = restore_missing_facts("people/avery.md", candidate, original)
+    assert "- Location: Sydney [1]" in fixed and "- Phone: Unknown" in fixed
+    assert not [e for e in fact_errors("people/avery.md", fixed, original) if e.startswith("Missing")]
+    assert fixed.index("- Phone:") < fixed.index("- Location:")
+
+
+def test_a_restored_facts_line_takes_its_own_emptied_field_never_another():
+    """2026-10-20 upkeep A/B: a dropped First contact line was restored over `- Location: Unknown`."""
+    from connectonion.rem.page_review import restore_dropped
+    before = ("# Avery Lin\n\n## Facts\n- Location: Unknown\n- First contact: 2026-08-11 (earliest mail found) [2]\n"
+              "- Last contact: 2026-08-12 [1]\n\n## Sources\n- [1] gmail:a — 2026-08-12\n- [2] gmail:b — 2026-08-11\n")
+    after = before.replace("2026-08-11 (earliest mail found) [2]", "Unknown").replace("- [2] gmail:b — 2026-08-11\n", "")
+    assert restore_dropped(before, after) == before
+
+
+def test_a_restored_line_does_not_replace_a_short_row_inside_a_code_fence():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    diagram = '## Overview\n```text\nUser\n  v\nLantern\n```\n'
+    before = (f'# Lantern\n\n{diagram}\n## Uncertainties\n- A request to delete “zero-risk things” names no subject [1].\n\n'
+              '## Sources\n- [1] codex:s:1 — 2026-10-12\n')
+    after = f'# Lantern\n\n{diagram}\n## Uncertainties\nUnknown\n\n## Sources\n- [1] codex:s:1 — 2026-10-12\n'
+    restored = restore_dropped(before, after)
+    assert dropped(before, restored) == [] and '  v\n' in restored
+
+
+def test_a_carried_quote_that_is_not_in_its_source_is_not_guarded():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Who they are\nAvery signs as “Avery | Founder of Lantern.” [1]\n\n'
+              '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    after = ('# Avery Lin\n\n## Who they are\nAvery signs off as “Avery” and “Founder, Lantern” [1].\n\n'
+             '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    exempt = frozenset({'Avery | Founder of Lantern.'})
+    assert dropped(before, after, exempt) == []
+    assert restore_dropped(before, after, exempt) == after
+    assert dropped(before, after) != []
+
+
+@pytest.mark.parametrize("line", ["- It is unclear whether Avery replied [2].", "- 目前无法确认是否完成 [2]",
+                                  "Avery may have sent it; this cannot be confirmed [1]."])
+def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_removes(line):
+    from connectonion.rem.page_review import hedged_lines
+    page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
+    assert hedged_lines(page)
+
+
+def test_a_restored_line_keeps_an_unverifiable_quote_as_plain_words():
+    """2026-10-20 upkeep: a restored line carried a name quote its source did not hold; the update was refused."""
+    from connectonion.rem.page_review import restore_dropped
+    line = "- Theo writes as “Theo P.” and asks “Could you review it?” (2026-10-01) [1]"
+    before = f"# Theo Park\n\n## How they communicate\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01\n"
+    after = before.replace(line + "\n", "").replace("- [1] gmail:a — 2026-10-01\n", "")
+    restored = restore_dropped(before, after, frozenset({"Theo P."}))
+    assert "as Theo P. and asks “Could you review it?”" in restored
+
+
+def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
+    """The last contact date showed three times on one screen (lead, Facts, reader meta)."""
+    from connectonion.rem.census import last_activity
+    from connectonion.rem.page_review import lead_without_last_contact
+    from connectonion.rem.store_build import LAST_CONTACT
+    old = ("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2]. Last contact: 2026-10-17, email [2].\n\n"
+           "## Facts\n- Last contact: 2026-10-17 [2]\n")
+    new = lead_without_last_contact("people/avery-lin.md", old)
+    assert new.startswith("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2].\n\n## Facts\n")
+    for page in (old, new):          # old pages stay parseable; new ones are read from Facts
+        assert last_activity(page) == "2026-10-20" or "2026-10-17" in LAST_CONTACT.findall(page)
+        assert max(LAST_CONTACT.findall(page)) == "2026-10-17"
+    stub = "# Avery\n\nUnknown — not investigated yet. Last contact: 2026-10-01; 3 mails (gmail).\n\n## Facts\n"
+    assert lead_without_last_contact("people/avery.md", stub) == stub

@@ -15,7 +15,7 @@ be in front of the maintainer when it met that person.
 That is the flaw. Walking the timeline means meeting every subject in slices,
 so breadth arrives first and depth never does. It also means identity has to
 be re-guessed on every batch, which is how "odi" became a second page for a
-person the notebook already held as "Ody Zhou".
+person the notebook already held as "Corin Marsh".
 
 ## Entries are not all found the same way
 

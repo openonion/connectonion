@@ -25,6 +25,46 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc12**: rounds keep what they had. A round keeps every quote the page
+already had and repairs a dropped quote before it is refused; open threads say who owes whom and
+keep overdue promises open; a dropped mail connection no longer stops the first run; the reader's
+home is a morning brief with Copy prompt and Mark done; docs and blog posts use invented names
+only. See [1.9.3rc12 notes](releases/1.9.3rc12.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc12'
+```
+
+## Previous previews
+
+Release candidate **1.9.3rc11**: upkeep keeps its quotes. Daily upkeep checks a rewrite against
+the page it replaces and asks for dropped quotes back; pronoun repair only touches the owner; project
+pages get a quote round; deepen weighs activity above emptiness; the reader shows pages in Chinese
+after `co rem translate --all --to zh`. See
+[1.9.3rc11 notes](releases/1.9.3rc11.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc11'
+```
+
+Release candidate **1.9.3rc10**: 1.9.3rc9 with one correction. The packaged handoff blog post
+now tells its story with a fictional sender instead of a real person; the code is unchanged. See
+[1.9.3rc10 notes](releases/1.9.3rc10.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc10'
+```
+
+Release candidate **1.9.3rc9**: pages that quote people. The quote floor, first contact, History
+order and owner pronouns are enforced in code (mean quotes per person page 6.8 to 22.4 on notebook
+copies); enrich reads long histories period by period; gathering at 16 workers is about twice as
+fast; the reader shows quotes and the owner's language. A handoff pasted into a conversation about
+other work now stops and asks for a new one. See [1.9.3rc9 notes](releases/1.9.3rc9.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc9'
+```
+
 Release candidate **1.9.3rc8**: a changed person or organisation without retained
 routing continuity no longer regains the old subject's contact dates. The next
 successful pass compacts the Investigation footer to the latest of each known
@@ -45,8 +85,6 @@ After this candidate is published, install its exact pin:
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc7'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc6**: a forwarded link no longer takes the name. A handoff addressed to
 one agent's mailbox and accepted by another agent is saved under the acceptor's own name, the
