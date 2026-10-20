@@ -463,16 +463,18 @@ pages.
 ### Deepen over time: co rem deepen
 
 ```bash
-co rem deepen             # one slot: two pages by default
+co rem deepen             # one slot: three pages by default
 co rem deepen --pages 1
 co rem deepen projects/lantern-skills.md avery-lin
 ```
 
 Optional `PAGE...` selectors resolve like enrich/muse and deepen only those
-pages once in the given order, checking the budget before each page; `--pages`
+pages once, starting in the given order and checking the budget before each page; `--pages`
 limits automatic selection only.
+`limits.depth_workers` (default 3) controls how many pages deepen at once, including explicit `PAGE...` selections.
 
-One round on one page is **enrich, then muse**, about 25 minutes. Round N reads
+One round on one page is **enrich, then muse**; large-page rounds measured on
+2026-10-20 took 35–97 minutes, mostly waiting on model turns. Round N reads
 round N-1's open leads and open questions through the latest completed run
 reports. Muse still runs when enrich fails or is refused, using what is there.
 Automatic selection skips a page for 24 hours when its latest enrich or muse outcome reports a timeout, a provider at capacity, a turn that did not complete or a runner that could not start; explicit `PAGE...` selections still run.
@@ -501,15 +503,16 @@ at the last round. Each round appends its metrics, outcomes, lost quotes,
 insights and token-based points to `.state/depth.json`, keyed by record.
 
 `limits.depth_quota_points` defaults to **30 points of the Codex week**,
-separate from investigation's 35; `limits.depth_pages_per_slot` defaults to 2.
+separate from investigation's 35; `limits.depth_pages_per_slot` defaults to 3.
 The shared `limits.quota_floor_percent` (90) also stops new pages. Both bounds
 are checked before each page. Usage counts enrich and muse run logs within
 the reported quota window, or the last seven days when the meter is unknown.
 `limits.depth_slot_minutes` (default 60) stops new pages once elapsed slot time
-exceeds it, including explicit `PAGE...` selections; a started round finishes.
+reaches it, including explicit `PAGE...` selections; started rounds finish.
 Each picked page gets a line with its value, recent multiplier, quotes, sources
 and next round number. `--json` includes these selection metrics and priority
-under `picked` (`rounds` is the number of previous rounds).
+under `picked` (`rounds` is the number of previous rounds); results under `rounds`
+are in completion order.
 The round table shows before/after characters, quotes and sources, insights,
 lost quotes, both outcomes and points; it also reports why it stopped and how
 many candidates remain.
