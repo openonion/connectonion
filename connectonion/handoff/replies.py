@@ -162,9 +162,13 @@ def _install() -> str:
 
 
 def _then(sender: str) -> str:
-    return (f"Do that here, in this folder, without waiting for me: the work, questions to {sender} with co handoff ask, "
-            f"and co handoff done when it is finished. Then tell me in a few lines what {sender} was working on and what "
-            f"you did.\n")
+    """Pasted into a conversation that was about something else, the work used to land there (Aaron pasted
+    Ody's pricing handoff into his marketing session, 2026-10-19): a handoff gets a conversation of its own."""
+    return (f"This needs a conversation of its own: if this conversation had other work in it before my message, do not "
+            f"start here; tell me to paste the line into a new Codex or Claude Code conversation, in the project folder "
+            f"if there is one, and stop. Otherwise do that here, in this folder, without waiting for me: the work, "
+            f"questions to {sender} with co handoff ask, and co handoff done when it is finished. Then tell me in a few "
+            f"lines what {sender} was working on and what you did.\n")
 
 
 PASTE = {   # one line a person pastes; the page it names holds the prompt above (Aaron, 2026-10-13)
