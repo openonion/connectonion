@@ -1,6 +1,7 @@
 """co rem task files in, one co ai invocation out. COAI owns every harness."""
 
 import contextvars
+import hashlib
 import json
 import math
 import os
@@ -1139,6 +1140,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         from .page_review import history_note, size_note
         prompt += size_note(len(notebook.read(record))) + history_note(notebook.read(record))
     before = {r: notebook.read(r) for r in notebook.list()}
+    selected_hash = next((i.get("expected_page_sha256") for i in items if i.get("role") == "page"), None)
+    if selected_hash and (record not in before or hashlib.sha256(before[record].encode()).hexdigest() != selected_hash):
+        raise RunFailed("Page changed before feedback processing; preserve current page and pending feedback")
     task_root = notebook.root
     if candidate:
         task_root = directory / "notebook"
@@ -1306,6 +1310,15 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
                                     result.get("usage"))
                 _verify_no_change(directory, items, result.get("usage"))
+        if candidate and no_change:
+            # No-change accepts an assessment of the original snapshot too.
+            # A later writer's page must not become proof for that older turn.
+            with _promotion_lock(notebook.root, candidate, result.get("usage"), maintenance_lock_held):
+                if not notebook.path(record).is_file() or notebook.read(record) != before[record]:
+                    raise RunFailed("Page changed during no-change assessment; preserve current page and pending feedback",
+                                    result.get("usage"))
+                from .feedback import prepare_promotion
+                prepare_promotion(notebook.root, record, before[record], items, changed=False)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if prior_turn_usage:
@@ -1316,9 +1329,6 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
-    if candidate and no_change:
-        from .feedback import prepare_promotion
-        prepare_promotion(notebook.root, record, notebook.read(record), items, changed=False)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
