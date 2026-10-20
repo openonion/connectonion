@@ -382,15 +382,15 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index,
         emails: ['marcus_jian.vale@some-long-domain.example', 'second@example.test', 'third@example.test'],
-        phone: '+61 0493941028 (mobile); +61 0493941029 (work)'};
+        phone: '+61 0491570157 (mobile); +61 0491570158 (work)'};
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     for kind, first, count, title in [
         ('email', 'marcus_jian.vale@some-long-domain.example', '+2',
          'marcus_jian.vale@some-long-domain.example; second@example.test; third@example.test'),
-        ('phone', '+61 0493941028 (mobile)', '+1',
-         '+61 0493941028 (mobile); +61 0493941029 (work)'),
+        ('phone', '+61 0491570157 (mobile)', '+1',
+         '+61 0491570157 (mobile); +61 0491570158 (work)'),
     ]:
         cell = row.locator('.c-' + kind)
         assert cell.locator('.' + kind + '-first').inner_text() == first
@@ -444,7 +444,7 @@ def test_people_mobile_phone_preview_wraps_with_its_label(reader, width):
     page.goto(uri + '#c=people')
     page.evaluate('''() => {
       const r = byPath('people/mara-ostrowski.md');
-      r.index = {...r.index, phone: '+61 0493941028 (mobile); +61 0493941029 (work)'};
+      r.index = {...r.index, phone: '+61 0491570157 (mobile); +61 0491570158 (work)'};
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
     phone = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.c-phone')
