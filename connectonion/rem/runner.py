@@ -689,7 +689,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     result.update(repairs=0, repair_usage={})
     # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
     # not written; a person page lost a quarter of its text in one round.
-    carried = original if stage in ("enrich", "muse") else ""
+    # Upkeep too: one-page upkeep rewrote a page with twelve quotes into one with none (2026-10-20 A/B).
+    carried = original if stage in ("enrich", "muse", "maintain") else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
@@ -763,7 +764,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer,
-                              repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
+                              repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content)
     if not candidate.is_file():
@@ -773,7 +774,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
-    text = facts.upgrade(record, restore_runner_fields(record, text, original))
+    text = facts.upgrade(record, restore_missing_facts(record, restore_runner_fields(record, text, original), original))
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
@@ -947,8 +948,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, sort_history, headings, normalize_numbered_sources,
-                              repair_project_overview, resolve_sources, restore_runner_fields, shrinkage, single_title, validate,
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
+                              repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
@@ -960,7 +961,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             continue
         from . import facts
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_runner_fields(record, after[record], before.get(record, '')))))
+            restore_missing_facts(record, restore_runner_fields(record, after[record], before.get(record, '')), before.get(record, '')))))
         text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
                                         root=notebook.root)
         unverified = []
@@ -969,15 +970,22 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text, overview_replaced = repair_project_overview(record, text)
         text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
         text, pronouns = owner_pronouns(fold_history(sort_history(single_title(text))))
+        # Upkeep has no repair turn: a quote or source the page had and this
+        # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
+        # A gutted page is still refused on what the turn wrote, before anything is put back.
+        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
+        written = text
+        text = restore_dropped(before.get(record, ''), text) if before.get(record) and not shrunk else text
+        restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
                            "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
-                           "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns}
+                           "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
+                           "restored_lines": restored_lines}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = (validate(record, text, before.get(record, ''), items, pages=set(before), root=notebook.root)
                   if headings(record) else [])
-        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         errors += [shrunk] if shrunk else []
         if errors:
             refusals.append({"record": record, "errors": errors})

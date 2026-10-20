@@ -1,5 +1,6 @@
 """Normalize page shapes and check a candidate before replacing an existing page."""
 
+import collections
 import difflib
 import re
 from collections import Counter
@@ -250,6 +251,31 @@ def subject_scope_changed(record: str, original: str, candidate: str) -> bool:
     return bool(renamed and not (_subject_handles(record, original) & _subject_handles(record, candidate)))
 
 
+def restore_missing_facts(record: str, candidate: str, original: str) -> str:
+    """A Facts label the turn left out comes back from the page before it, or as Unknown.
+
+    2026-10-20 upkeep A/B: a turn dropped `Location` and the whole update was
+    refused for a missing field, twice in three runs.
+    """
+    labels = facts.fields(record)
+    span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
+    if not labels or not span:
+        return candidate
+    body = span[1].rstrip('\n').split('\n')
+    for at, label in enumerate(labels):
+        if any(line.startswith(f'- {label}:') for line in body):
+            continue
+        kept = re.search(rf'^- {re.escape(label)}:.*$', original, re.M)
+        line, candidate_with = _restore_citations(kept[0], candidate, original) if kept else ('', candidate)
+        if line:
+            candidate = candidate_with
+            span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
+        later = next((n for n, row in enumerate(body) for after in labels[at + 1:] if row.startswith(f'- {after}:')),
+                     len(body))
+        body.insert(later, line or f'- {label}: Unknown')
+    return candidate[:span.start(1)] + '\n'.join(body) + '\n\n' + candidate[span.end(1):].lstrip('\n')
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
@@ -268,7 +294,9 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
         if before and after:
             body = after[1]
             for label in ('First contact', 'Last contact'):
-                kept = re.search(r'^- ' + label + r': \d{4}-\d{2}-\d{2}(?:[ \t]*\[W?\d+\])+$', before[1], re.M)
+                # "(earliest mail found)" is part of the value since 1.9.3rc8.
+                kept = re.search(r'^- ' + label + r': \d{4}-\d{2}-\d{2}(?: \([^()\n]+\))?(?:[ \t]*\[W?\d+\])+$',
+                                 before[1], re.M)
                 unknown = r'^- ' + label + r': Unknown$'
                 if kept and re.search(unknown, body, re.M):
                     line, candidate = _restore_citations(kept[0], candidate, original)
@@ -1690,9 +1718,20 @@ def restore_dropped(before: str, after: str) -> str:
 
 
 def _shorter_version(text: str, line: str) -> str:
-    """Find the candidate's rewrite by its words, independent of citation numbering."""
+    """Find the candidate's rewrite by its words, independent of citation numbering.
+
+    A Facts line is only ever rewritten by the same label: "- Location: Unknown"
+    once stood in for a dropped First contact line and was replaced (2026-10-20).
+    """
     clean = re.sub(r'\[W?\d+\](?!\()', '', line)
+    label = CONTACT_LINE.match(line)
+    if label:
+        # The same field, emptied: the restored value takes its place.
+        emptied = next((row for row in text.splitlines() if row.strip() == label[0] + ' Unknown'), '')
+        if emptied:
+            return emptied
     return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
+                 and (not label and not CONTACT_LINE.match(row) or label and row.startswith(label[0]))
                  and (words := re.sub(r'\[W?\d+\](?!\()', '', row).strip())
                  and _contained(words, clean) >= 0.8), '')
 
@@ -1705,6 +1744,8 @@ def _contained(row: str, line: str) -> float:
 
 def _insert_restored_line(text: str, section: str, line: str, lost_quotes: set[str], lost_sources: set[str]) -> str:
     shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
+    if shorter and CONTACT_LINE.match(shorter) and shorter.strip().endswith(': Unknown'):
+        return text.replace(shorter, line, 1)
     if shorter:
         sources = dict(re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)',
                                   text.partition('\n## Sources\n')[2]))
@@ -1745,7 +1786,9 @@ def shrinkage(before: str, after: str) -> str:
 # The owner's rule: never guess a pronoun. A page calls the owner "the user";
 # 1.9.3 trial pages still wrote "the user said he would" on 1 to 14 lines a page.
 OWNER = re.compile(r"\bthe user(?:['’]s)?\b", re.I)
-PRONOUN = re.compile(r"\b(he|him|his|she|her|hers|himself|herself)\b", re.I)
+# Not "her"/"him": object and possessive forms read as the subject's as often as the
+# user's ("the user was her direct manager"); a missed pronoun is better than a wrong one.
+PRONOUN = re.compile(r"\b(he|his|she|himself|herself)\b", re.I)
 NAMED = re.compile(r"\b[A-Z][\w'’-]*[a-z][\w'’-]*\b")
 SENTENCE_START = {"the", "a", "an", "on", "in", "at", "by", "after", "before", "when", "since", "from", "for",
                   "with", "during", "until", "then", "and", "but", "also", "both", "each", "this", "that",
@@ -1768,7 +1811,22 @@ def _family(word: str) -> str:
     return "m" if word.lower() in ("he", "him", "his", "himself") else "f"
 
 
-def _owner_pronouns(sentence: str) -> tuple[str, int]:
+def _subject_family(text: str) -> str:
+    """The form the page itself uses for its subject ("Avery said she"), else ''.
+
+    A pronoun of that form is the subject's, never the user's: the first
+    version wrote "the user was the user's direct manager" for "her" (2026-10-20).
+    """
+    title = re.search(r"^# (\S+)", text, re.M)
+    if not title:
+        return ""
+    near = re.findall(rf"\b{re.escape(title[1])}\b(?:(?!the user)[^.;“”]){{0,60}}?\b(he|his|him|she|her)\b",
+                      prose(text).partition("\n## Sources\n")[0], re.I)
+    families = collections.Counter(_family(word) for word in near)
+    return families.most_common(1)[0][0] if families else ""
+
+
+def _owner_pronouns(sentence: str, skip: str = "") -> tuple[str, int]:
     """A he/his/she/her whose nearest named actor before it is the user becomes "the user".
 
     The first such pronoun fixes the user's form for the sentence; a pronoun of
@@ -1783,7 +1841,7 @@ def _owner_pronouns(sentence: str) -> tuple[str, int]:
         if start < at:
             continue
         word = sentence[start:end]
-        if kind == "pronoun" and last == "user" and family in ("", _family(word)):
+        if kind == "pronoun" and last == "user" and family in ("", _family(word)) and _family(word) != skip:
             family = _family(word)
             out.append(sentence[at:start] + _user_form(word, sentence[end:]))
             at, changed = end, changed + 1
@@ -1799,6 +1857,7 @@ def _owner_pronouns(sentence: str) -> tuple[str, int]:
 def owner_pronouns(text: str) -> tuple[str, int]:
     """Replace pronouns that stand for the owner with "the user", outside quotes and Sources."""
     head, marker, tail = text.partition("\n## Sources\n")
+    skip = _subject_family(text)
     total, lines = 0, []
     for line in head.split("\n"):
         if line.startswith(("#", "```")) or not OWNER.search(line):
@@ -1808,7 +1867,7 @@ def owner_pronouns(text: str) -> tuple[str, int]:
         for n in range(0, len(parts), 2):
             sentences = re.split(r"(?<=[.!?;])(\s+)", parts[n])
             for s in range(0, len(sentences), 2):
-                sentences[s], changed = _owner_pronouns(sentences[s])
+                sentences[s], changed = _owner_pronouns(sentences[s], skip)
                 total += changed
             parts[n] = "".join(sentences)
         lines.append("".join(parts))

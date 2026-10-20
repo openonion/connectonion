@@ -1642,3 +1642,51 @@ def test_a_key_decision_that_retells_the_owner_is_named_for_repair():
     errors = unquoted_decisions(page)
     assert len(errors) == 1 and "2026-10-19" in errors[0]
     assert errors[0].startswith(SALVAGEABLE)   # repaired if it can be, never a refusal
+
+
+@pytest.mark.parametrize("page, fixed", [
+    ("# Avery Lin\n\nAvery said she would apply. The user was her manager and submitted her reference [4]. "
+     "The user said it was open on his side [4].\n",
+     "# Avery Lin\n\nAvery said she would apply. The user was her manager and submitted her reference [4]. "
+     "The user said it was open on the user's side [4].\n"),
+    ("# Jordan Lee\n\nJordan said he would meet. The user said he would send the deck [1].\n",
+     "# Jordan Lee\n\nJordan said he would meet. The user said he would send the deck [1].\n"),
+])
+def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed):
+    """2026-10-20: the first owner-pronoun repair wrote "the user was the user's direct manager"."""
+    from connectonion.rem.page_review import owner_pronouns
+    assert owner_pronouns(page)[0] == fixed
+
+
+def test_a_qualified_first_contact_is_put_back_over_unknown():
+    from connectonion.rem.page_review import restore_runner_fields
+    original = ("# Avery Lin\n\n## Facts\n- First contact: 2026-08-11 (earliest mail found) [2]\n\n"
+                "## Sources\n- [2] gmail:abc — 2026-08-11\n")
+    candidate = original.replace("2026-08-11 (earliest mail found) [2]", "Unknown")
+    assert restore_runner_fields("people/avery.md", candidate, original) == original
+
+
+def test_a_facts_label_the_turn_left_out_comes_back_from_the_page_before():
+    """2026-10-20 upkeep A/B: a dropped `Location` line refused the whole update, twice in three runs."""
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import restore_missing_facts, fact_errors
+    import tempfile
+    from pathlib import Path
+    notebook = Notebook(Path(tempfile.mkdtemp()))
+    notebook.stub_person("people/avery.md", "Avery Lin", ["avery@example.com"], email="avery@example.com")
+    original = (notebook.read("people/avery.md").replace("- Location: Unknown", "- Location: Sydney [1]")
+                .replace("- (none yet)", "- [1] gmail:abc — 2026-10-01"))
+    candidate = original.replace("- Location: Sydney [1]\n", "").replace("- Phone: Unknown\n", "")
+    fixed = restore_missing_facts("people/avery.md", candidate, original)
+    assert "- Location: Sydney [1]" in fixed and "- Phone: Unknown" in fixed
+    assert not [e for e in fact_errors("people/avery.md", fixed, original) if e.startswith("Missing")]
+    assert fixed.index("- Phone:") < fixed.index("- Location:")
+
+
+def test_a_restored_facts_line_takes_its_own_emptied_field_never_another():
+    """2026-10-20 upkeep A/B: a dropped First contact line was restored over `- Location: Unknown`."""
+    from connectonion.rem.page_review import restore_dropped
+    before = ("# Avery Lin\n\n## Facts\n- Location: Unknown\n- First contact: 2026-08-11 (earliest mail found) [2]\n"
+              "- Last contact: 2026-08-12 [1]\n\n## Sources\n- [1] gmail:a — 2026-08-12\n- [2] gmail:b — 2026-08-11\n")
+    after = before.replace("2026-08-11 (earliest mail found) [2]", "Unknown").replace("- [2] gmail:b — 2026-08-11\n", "")
+    assert restore_dropped(before, after) == before
