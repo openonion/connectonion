@@ -642,7 +642,9 @@ PROJECT_QUOTE_NOTE = ("Quote round: an edit, not a rewrite. The page has {quotes
                       "Key decisions without the owner's words. Put the owner's exact sentence that carries "
                       "each decision, the purpose in Why it exists, and each open ask as “…” cited to the "
                       "message it comes from, character for character in the original language, replacing "
-                      "the paraphrase. Keep every section, fact and citation. Add no new claim. Then stop.")
+                      "the paraphrase; Where it stands and Open threads quote the owner's newest asks too. Aim for "
+                      "eight quotes or more where the messages hold the words. Keep every section, fact and "
+                      "citation. Add no new claim. Then stop.")
 
 
 def _project_quote_counts(page: str) -> tuple[int, int]:
