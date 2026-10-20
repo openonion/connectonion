@@ -24,6 +24,7 @@ from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, R
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
+from .mail import SERVER_ERRORS, error_status
 from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -96,6 +97,93 @@ def org_domains(text: str) -> list[str]:
     section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
     values = [line[2:].split()[0].casefold() for line in section.splitlines() if line.startswith("- ") and line[2:].strip()]
     return sorted({match[1] for value in values if (match := DOMAIN_HANDLE.fullmatch(value))})
+
+
+OWN_COMPANY_NOTE = ("This is the user's own company. Write it from the user's side: what it is and does, "
+                    "its products, customers and partners, team, live deals and what is owed. The user is its "
+                    "founder or owner: name their role. Never list the user's own addresses or agents as other "
+                    "people. The main evidence is the user's outbound mail and typed coding sessions. Quote "
+                    "the user's own sent words for each product, customer and deal, with dates. Notices and "
+                    "receipts sent to the company's addresses are not the company's work. All sent mail is "
+                    "supplied to avoid fragile name filtering; use the company-related exchanges. Notebook "
+                    "page leads below are uncited context, not evidence; verify against original sources.")
+
+
+def company_owner(notebook: Notebook, domains: list[str]) -> dict:
+    """Recognise the company after init has written the owner's Company field."""
+    from .map import spells_owner
+    from .org_map import own_domain
+
+    state = read_json(state_path(notebook.root, 'map.json'), {})
+    owner = state.get('owner') or {}
+    record = owner.get('record')
+    page = notebook.read(record) if record and notebook.path(record).is_file() else ''
+    name = page.split('\n', 1)[0].removeprefix('# ').split(' (')[0]
+    addresses = [*owner.get('addresses', []), *[row['address'] for row in state.get('possible_own_addresses', [])
+                 if spells_owner(row['address'], name)]]
+    owner = {**owner, 'addresses': sorted({a.casefold() for a in addresses}), 'name': name}
+    return owner if any(own_domain(domain, owner, page) for domain in domains) else {}
+
+
+def company_projects(notebook: Notebook, record: str, subject: str, domains: list[str]) -> list[str]:
+    """Match company/product names against repository and folder names, not project prose."""
+    page = notebook.read(record)
+    owner = (read_json(state_path(notebook.root, 'map.json'), {}).get('owner') or {}).get('record')
+    if owner and notebook.path(owner).is_file():
+        page += '\n' + notebook.read(owner)
+    products = re.findall(r'(?im)^- (?:Products?|Projects?): (.+)$', page)
+    products += re.findall(r'(?ms)^## (?:Products|Projects)[^\n]*\n(.*?)(?=^## |\Z)', page)
+    names = [subject, *(d.split('.')[0] for d in domains),
+             *re.findall(r'(?im)^- (?:Company|Signing entity): (.+)$', page)]
+    names += [part.strip(' -`').split(' — ', 1)[0] for text in products for part in re.split(r'[,;\n]', text)]
+    names = [re.sub(r'\[\d+\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', name)) for name in names]
+    names = {re.sub(r'[^a-z0-9]', '', name.casefold()) for name in names} - {'', 'unknown'}
+    found = []
+    for project in notebook.list('projects'):
+        text = notebook.read(project)
+        paths = project_paths(text) + re.findall(r'(?im)^- Repositor(?:y|ies): (.+)$', text)
+        if any(name in re.sub(r'[^a-z0-9]', '', path.casefold()) for name in names for path in paths):
+            found.append(project)
+    return found
+
+
+def company_context(notebook: Notebook, record: str, owner: dict) -> str:
+    """Project leads and the 15 busiest contacts give the writer leads, never citations."""
+    state = read_json(state_path(notebook.root, 'map.json'), {})
+    counts = {row['record']: row.get('mails', 0) for row in state.get('people', []) if row.get('record')}
+    counts.update({row['record']: sum(counts.get(person, 0) for person in row.get('people', []))
+                   for row in state.get('orgs', []) if row.get('record')})
+    mine = {record, owner.get('record')} | {row.get('record') for row in state.get('possible_own_addresses', [])
+                                          if row['address'].casefold() in owner['addresses']}
+    contacts = sorted((path for path in counts if path not in mine), key=lambda p: -counts[p])[:15]
+    lines = []
+    for path in dict.fromkeys([*notebook.list('projects'), *contacts]):
+        if notebook.path(path).is_file():
+            lead = re.split(r'(?m)^## ', notebook.read(path).partition('\n')[2], maxsplit=1)[0].strip()
+            if lead:
+                paragraph = lead.split('\n\n', 1)[0]
+                lines.append(f'{path}: {paragraph}')
+    return '\n'.join(lines)
+
+
+def company_material(notebook: Notebook, owner: dict, projects: list[str], *, days: int,
+                     clients: dict, subscriptions: dict, **kwargs) -> tuple[list[dict], list[str]]:
+    """2026-10-20: 983 domain items yielded 0–4 quotes; read what the owner wrote instead."""
+    items, coverage = gather(owner['name'], [*owner['addresses'], owner['name']], days=days, clients=clients,
+                             subscriptions={k: v for k, v in subscriptions.items() if k in MAIL_KINDS},
+                             sent_only=True, record=owner['record'], **kwargs)
+    sessions = {k: v for k, v in subscriptions.items() if v.get('kind') in KINDS}
+    for project in projects:
+        title, handles = page_handles(notebook, project)
+        found, searched = gather(title, handles, days=days, clients={}, subscriptions=sessions,
+                                 record=project, **kwargs)
+        items.extend(found)
+        coverage.extend(searched)
+    items = list({item['source']: item for item in items}.values())
+    mail = sum(item['source'].split(':')[0] in MAIL_KINDS and item.get('role') == 'user' for item in items)
+    messages = sum(item['source'].split(':')[0] in KINDS and item.get('role') == 'user' for item in items)
+    coverage.append(f"owner's company: written from the owner's sent mail ({mail}) and sessions ({messages})")
+    return items, coverage
 
 
 def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int = 40) -> list[str]:
@@ -541,8 +629,10 @@ def _patient(call, *args, attempts: int = 5):
             name = type(error).__name__.lower()
             # Graph's HTTP 429 lost UNSW's page on a 16-worker init (2026-10-08): throttling waits, it does not fail.
             throttled = getattr(error, "status", None) == 429 or "HTTP 429" in str(error)
-            transient = throttled or any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
-                or "timed out" in str(error).lower()
+            # A Gmail 500 on 2026-10-20 cost a 41-minute whole-page retry.
+            transient = (throttled or error_status(error) in SERVER_ERRORS
+                         or any(part in name for part in ("timeout", "connecterror", "connectionerror"))
+                         or "timed out" in str(error).lower())
             if not transient or attempt == attempts - 1:
                 raise
             time.sleep(2 ** attempt * (5 if throttled else 1))
@@ -703,8 +793,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 continue
             if item.get('_org_excluded'):
                 left_out.add((kind, item['_mail_id']))
-            elif not sent_only or item['role'] == 'user':
-                local.append(item)
+            elif not sent_only or _address(item.get('speaker', '')) in mine or item['role'] == 'user':
+                local.append({**item, 'role': 'user'} if sent_only else item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
         items.extend(local)
@@ -1973,11 +2063,25 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         stage_progress("gathering sources")
     related = org_contact_context(notebook, record)
     own_domains = (related["domains"] or org_domains(notebook.read(record))) if record.startswith("orgs/") else []
+    company = company_owner(notebook, own_domains) if own_domains else {}
+    company_note = ''
     search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
-    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=subscriptions,
-                             progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
-                             sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
-                             quick=quick, archive_root=root, record=record)
+    gather_options = dict(progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
+                          mail_skipped=mail_skipped, stage_progress=stage_progress, quick=quick, archive_root=root)
+    mail_subs = {k: v for k, v in subscriptions.items() if k in MAIL_KINDS} if company else subscriptions
+    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=mail_subs,
+                             sent_only=sent_only, record=record, **gather_options)
+    if company:
+        projects = company_projects(notebook, record, subject, own_domains)
+        own_items, own_coverage = company_material(notebook, company, projects, days=days, clients=clients,
+                                                  subscriptions=subscriptions, **gather_options)
+        items = list({item['source']: item for item in [*items, *own_items]}.values())
+        for item in items:
+            if item.get('role') == 'other' and _address(item.get('speaker', '')) in company['addresses']:
+                item['role'] = 'user'
+        coverage.extend(own_coverage)
+        company_note = (OWN_COMPANY_NOTE + f"\nOwner: {company['name']}; own addresses and agents: "
+                        + ', '.join(company['addresses']) + '\n\n' + company_context(notebook, record, company))
     if not sent_only and record.startswith(("people/", "orgs/")):
         mentions, documents_coverage = project_mentions(notebook, [subject, *search_handles])
         items.extend(mentions)
@@ -2104,7 +2208,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # the no-page-kind worst case, which carries every page shape and the CLI
     # reference and left ~33k characters less room for material.
     overhead = (len(instructions("investigate", page_kind=page_kind_of(record), owner=sent_only))
-                + len(notebook.read(record)) + 4000)
+                + len(notebook.read(record)) + len(company_note) + 4000)
     room = config["limits"]["input_chars_per_batch"] - overhead - len(owner_packet)
     from .tier import current
     summary = current(root, config) == "summary"
@@ -2219,7 +2323,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"has moved, keep what is right:\n\n{normalize(record, text, owner=sent_only)}",
                 "timestamp": now, "source": "investigation:page"}
 
-    prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
+    prompt_items = [page_item(notebook.read(record))] + (
+        [{"role": "own-company", "source": "investigation:own-company", "timestamp": now, "text": company_note}]
+        if company_note else []) + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
          if project_roots else []) + line_items + (
         [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,

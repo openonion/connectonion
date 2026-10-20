@@ -228,15 +228,28 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
 # after 33 minutes, before any page was investigated.
 TRANSIENT = (ssl.SSLError, ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError)
 LISTING_ATTEMPTS = 4
+SERVER_ERRORS = {500, 502, 503, 504}
+
+
+def error_status(error) -> int | None:
+    """Gmail keeps HTTP status on resp; Graph puts it on the error itself."""
+    status = getattr(error, 'status', None)
+    if status is None:
+        status = getattr(getattr(error, 'resp', None), 'status', None)
+    if status is not None:
+        return status
+    match = re.search(r'\b(?:HTTP|HttpError) (50[0-9])\b', str(error))
+    return int(match[1]) if match else None
 
 
 def _listed(listing, start: datetime, end: datetime) -> list:
-    """One window's listing, asked again after a dropped connection, with backoff."""
+    """One window's listing, asked again after a connection or server error, with backoff."""
     for attempt in range(LISTING_ATTEMPTS):
         try:
             return listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
-        except TRANSIENT as error:
-            if attempt == LISTING_ATTEMPTS - 1 or 'timeout' in type(error).__name__.lower():
+        except Exception as error:  # providers have distinct HTTP error types
+            transient = isinstance(error, TRANSIENT) or error_status(error) in SERVER_ERRORS
+            if not transient or attempt == LISTING_ATTEMPTS - 1 or 'timeout' in type(error).__name__.lower():
                 raise
             time.sleep(2 ** (attempt + 1))
 

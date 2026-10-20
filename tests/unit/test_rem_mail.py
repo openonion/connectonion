@@ -2,6 +2,7 @@
 into a per-person queue, and a batch is whole people, oldest first, bodies read only then."""
 
 import ssl
+from types import SimpleNamespace
 from datetime import datetime, timezone
 
 import httpx
@@ -12,6 +13,43 @@ from connectonion.rem.files import RemError
 from connectonion.rem.mail import collect_mail
 
 NOW = datetime(2026, 9, 7, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize('status', [500, 502, 503, 504, 403, 404])
+def test_http_listing_errors_retry_only_transient_server_statuses(monkeypatch, status):
+    from connectonion.rem import mail as rem_mail
+    slept, calls = [], []
+    monkeypatch.setattr(rem_mail.time, 'sleep', slept.append)
+    error = Exception('provider failure')
+    error.resp = SimpleNamespace(status=status)
+
+    class Mail:
+        def list_between(self, start, end, limit):
+            calls.append(start)
+            if len(calls) == 1:
+                raise error
+            return [{'id': 'one'}]
+
+    start, end = datetime(2026, 9, 1, tzinfo=timezone.utc), NOW
+    if status in (403, 404):
+        with pytest.raises(Exception, match='provider failure'):
+            rem_mail._list_all(Mail(), start, end)
+        assert len(calls) == 1 and slept == []
+    else:
+        assert rem_mail._list_all(Mail(), start, end) == [{'id': 'one'}]
+        assert len(calls) == 2 and slept == [2]
+
+
+@pytest.mark.parametrize('message,status,resp,expected', [
+    ('HTTP 503', None, None, 503), ('<HttpError 500 when requesting https://example.com/>', None, None, 500),
+    ('HTTP 501', None, None, 501), ('HTTP 504', 403, 502, 403), ('HTTP 504', None, 500, 500),
+    ('HTTP 404', None, None, None), ('failure', None, None, None),
+])
+def test_http_status_uses_provider_attributes_before_message(message, status, resp, expected):
+    from connectonion.rem.mail import error_status
+    error = Exception(message)
+    error.status, error.resp = status, SimpleNamespace(status=resp)
+    assert error_status(error) == expected
 
 
 def test_rem_uses_deferred_full_window_and_lists_each_mail_after_split(monkeypatch):

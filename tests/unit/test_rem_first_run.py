@@ -364,7 +364,8 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     result = init()
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-6:]
-    assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
+    # Three counterparties plus the owner's company.
+    assert tail[0] == "Your notebook: 4 people, 4 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Agent sessions: 0 imported, 0 updated, 0 unchanged;")
     assert tail[3].startswith("Your page: ") and tail[3].endswith(".md")
