@@ -2049,7 +2049,12 @@ def lead_without_last_contact(record: str, text: str) -> str:
     return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
 
 
-CLAUSE = re.compile(r"(?<=[.;!?])\s+|\s+[—–]\s+|,\s+(?=(?:but|and|so|while|though)\b)")
+# Never after an abbreviation or an initial: "Dr. Lin said …" is one clause.
+CLAUSE = re.compile(r"(?<![A-Z]\.)(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)(?<!\bProf\.)(?<!\bSt\.)"
+                    r"(?<!\bvs\.)(?<!\be\.g\.)(?<!\bi\.e\.)(?<!\betc\.)(?<=[.;!?])\s+"
+                    r"|\s+[—–]\s+|,\s+(?=(?:but|and|so|while|though)\b)")
+QUOTED = re.compile(r"“[^”\n]*”|\"[^\"\n]*\"")
+BULLET_DATE = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?(?:\d{4}-\d{2}(?:-\d{2})?(?:\*\*)?\s*[:—–-]\s*)?")
 DATED_SILENCE = re.compile(r"\bno (reply|outcome|response|answer)s? (?:is |was |has been )?(?:documented|found|recorded|"
                            r"established|shown)(?: in the supplied (?:mail|messages|material))?\s+"
                            r"(?:through|as of|by|since|until)\s+(\d{4}-\d{2}-\d{2})", re.I)
@@ -2066,18 +2071,35 @@ def strip_hedge(line: str) -> str:
     sources with the hedges, or left 25-43 of 60 hedges when they were put back whole).
     """
     line = DATED_SILENCE.sub(lambda m: f"no {m[1].lower()} as of {m[2]}", line)
-    parts, seps = CLAUSE.split(line), CLAUSE.findall(line)
+    # The bullet and its date are never a clause; quoted words are never split
+    # (2026-10-21 review: “The budget is not confirmed. I will know Friday.” lost its first half).
+    if line.count("“") != line.count("”") or line.count('"') % 2:
+        return line   # quotes that do not pair cannot be kept whole
+    prefix = BULLET_DATE.match(line)[0]
+    rest = line[len(prefix):]
+    quoted = QUOTED.findall(rest)
+    masked = QUOTED.sub(lambda m: f"\0{quoted.index(m[0])}\0", rest)
+    unmask = lambda text: re.sub(r"\0(\d+)\0", lambda m: quoted[int(m[1])], text)  # noqa: E731
+    raw = CLAUSE.split(masked)
+    parts = [unmask(part) for part in raw]
+    seps = CLAUSE.findall(masked)
     kept, moved = [], []
     for n, part in enumerate(parts):
-        if HEDGE.search(part) and not QUOTE.search(part):
+        # Hedge wording inside a quote is the speaker's, and a quoted clause always stays.
+        if HEDGE.search(QUOTED.sub("", part)) and "\0" not in raw[n]:
             moved += MARKS.findall(part)
             continue
         kept.append((seps[n - 1] if n and kept else "", part))
     if not kept or len(kept) == len(parts):
         return line
-    text = "".join(sep + part for sep, part in kept).rstrip(" ,;—–")
+    body_text = "".join(sep + part for sep, part in kept).rstrip(" ,;—–")
+    if kept[0][1] is not parts[0]:   # the first clause went: the next one starts the sentence
+        body_text = body_text[:1].upper() + body_text[1:]
+    text = prefix + body_text
     # The joins a removed clause leaves: "…2026-10-23; [48]" and "…meetings; The user…".
     text = re.sub(r"\s*[;,—–]\s+(?=\[)", " ", re.sub(r";\s+(?=[A-Z])", ". ", text))
+    if text.count("“") != text.count("”") or text.count('"') % 2:
+        return line
     extra = "".join(mark for mark in dict.fromkeys(moved) if mark not in text)
     if not extra:
         return text

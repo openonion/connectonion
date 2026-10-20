@@ -2008,3 +2008,30 @@ def test_section_dedupe_still_collapses_an_exact_repeat():
             '- [1] gmail:000000000001\n- [2] gmail:000000000002\n')
     result = sort_history(page)
     assert result.count('owes the signed Lantern contract') == 1 and '[1] [2]' in result
+
+
+@pytest.mark.parametrize("line, stripped", [
+    # 2026-10-21 review: a quote holding hedge words was split at its full stop and half of it deleted.
+    ("- 2026-09-12: Avery wrote “The budget is not confirmed. I will know Friday.” [2]",
+     "- 2026-09-12: Avery wrote “The budget is not confirmed. I will know Friday.” [2]"),
+    ('- 2026-09-12: Avery wrote "The budget is not confirmed. Friday." [2]; whether it moved is unknown [3].',
+     '- 2026-09-12: Avery wrote "The budget is not confirmed. Friday." [2][3]'),
+    # "Dr. Lin said … unknown; …" became "- Dr. the contract…".
+    ("- Dr. Lin said the outcome is unknown; the contract was signed on 2026-09-01 [3].",
+     "- The contract was signed on 2026-09-01 [3]."),
+    ("- 2026-09-12: completion is unknown; Mr. Park sent the deck [4].",
+     "- 2026-09-12: Mr. Park sent the deck [4]."),
+    ("- **2026-09-12** — completion is unknown; the user sent the deck [4].",
+     "- **2026-09-12** — The user sent the deck [4]."),
+])
+def test_strip_hedge_never_splits_a_quote_an_abbreviation_or_the_bullet_date(line, stripped):
+    from connectonion.rem.page_review import strip_hedge
+    out = strip_hedge(line)
+    assert out == stripped
+    assert out.count("“") == out.count("”") and out.count('"') % 2 == 0
+
+
+def test_strip_hedge_leaves_a_line_whose_quote_marks_do_not_pair():
+    from connectonion.rem.page_review import strip_hedge
+    line = "- 2026-09-12: Avery wrote “not confirmed. Friday [2]; whether it moved is unknown [3]."
+    assert strip_hedge(line) == line
