@@ -40,6 +40,13 @@ ROOT_DESCRIPTIONS = {"README.md", "README.rst", "README.txt", "README", "pyproje
                      "package.json", "Cargo.toml", "Package.swift"}
 
 
+def _diagnostic_excerpt(value: str) -> str:
+    clean = " ".join("".join(char if char.isprintable() else " " for char in value).split())
+    if len(clean) > 240:
+        clean = clean[:237] + "..."
+    return json.dumps(clean, ensure_ascii=False)
+
+
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
     """The messages the page has not been written from, and whether that is a first write."""
     state = page_state(root, record)
@@ -270,60 +277,125 @@ def repository_context(root: Path, source: str, private: bool = False) -> dict |
             "input_scope": saved.get("input_scope") or "Local repository snapshot. Files and commit records do not verify tests or deployment."}
 
 
-def live_file_snapshot(page: str, source: str) -> dict | None:
-    """Read a hash-pinned file cited under a mapped project repository."""
+def _live_file_check(page: str, source: str) -> tuple[dict | None, str | None]:
+    """Read a hash-pinned file citation and explain any deterministic refusal."""
     from .investigate import project_paths
     from .reader_model import PRIVATE
+    label = _diagnostic_excerpt(source)
     match = re.fullmatch(r"file:(/.+)@([0-9a-f]{64})", source)
     if not match:
-        return None
+        if "@" not in source[5:]:
+            return None, f"Missing SHA-256 file hash: {label}"
+        return None, f"Unsupported file citation format; expected file:/absolute/path@<64-character SHA-256>: {label}"
     path = Path(match[1])
+    path_label = _diagnostic_excerpt(str(path))
     roots = [Path(root).resolve() for root in project_paths(page)]
-    if (path.is_symlink() or not path.is_file() or path.stat().st_size > FILE_SNAPSHOT_CHARS
-            or not any(root in path.resolve().parents for root in roots)):
-        return None
-    raw = path.read_bytes()
-    if len(raw) > FILE_SNAPSHOT_CHARS or hashlib.sha256(raw).hexdigest() != match[2] or b"\0" in raw:
-        return None
+    if not roots:
+        return None, f"No mapped project paths are available for file citation: {label}"
+    if path.is_symlink():
+        return None, f"Cited file is a symbolic link and cannot be inspected: {path_label}"
+    try:
+        resolved_path = path.resolve()
+    except (OSError, RuntimeError):
+        return None, f"Cited file path could not be resolved: {path_label}"
+    if not any(root in resolved_path.parents for root in roots):
+        return None, f"File path is not associated with any mapped project: {path_label}"
+    if not path.is_file():
+        return None, f"Cited file does not exist or is not a regular file: {path_label}"
+    try:
+        if path.stat().st_size > FILE_SNAPSHOT_CHARS:
+            return None, f"Cited file exceeds the {FILE_SNAPSHOT_CHARS}-byte snapshot limit: {path_label}"
+        raw = path.read_bytes()
+    except OSError as error:
+        return None, f"Cited file could not be read ({type(error).__name__}): {path_label}"
+    if len(raw) > FILE_SNAPSHOT_CHARS:
+        return None, f"Cited file exceeds the {FILE_SNAPSHOT_CHARS}-byte snapshot limit: {path_label}"
+    if hashlib.sha256(raw).hexdigest() != match[2]:
+        return None, f"SHA-256 does not match the current file: {path_label}"
+    if b"\0" in raw:
+        return None, f"Cited file is binary and cannot be inspected as project evidence: {path_label}"
     # A Windows-encoded file in a real repository ("\x93", a curly quote) crashed
     # the short-term-rental-agent page twice (2026-10-15); the hash pins the bytes.
     text = raw.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
-        return None
-    return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
-            "file_modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}
+    if SECRET_SHAPES.search(text):
+        return None, f"Cited file contains secret-shaped text and cannot be retained: {path_label}"
+    if PRIVATE.search(text):
+        return None, f"Cited file contains private material and cannot be retained: {path_label}"
+    return ({"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
+             "file_modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}, None)
 
 
-def live_git_snapshot(page: str, source: str) -> dict | None:
-    """Read a file at an exact commit in a mapped repository."""
+def live_file_snapshot(page: str, source: str) -> dict | None:
+    return _live_file_check(page, source)[0]
+
+
+def _live_git_check(page: str, source: str) -> tuple[dict | None, str | None]:
+    """Read a Git citation and explain repository, revision, or file failures."""
     from .investigate import project_paths
     from .reader_model import PRIVATE
-    match = re.fullmatch(r"git:(/.+):([0-9a-f]{40,64}):(.+)", source)
-    if not match or Path(match[3]).is_absolute() or ".." in Path(match[3]).parts:
-        return None
+    label = _diagnostic_excerpt(source)
+    match = re.fullmatch(r"git:(/.+):([0-9a-f]{40}|[0-9a-f]{64}):(.+)", source)
+    if not match:
+        return None, f"Unsupported Git citation format; expected git:/absolute/repository:<full commit>:<relative path>: {label}"
+    relative = Path(match[3])
+    relative_label = _diagnostic_excerpt(match[3])
+    if relative.is_absolute() or ".." in relative.parts:
+        return None, f"Git citation path must stay inside its repository: {label}"
     repo = Path(match[1]).resolve()
-    target = repo / match[3]
-    if not any(root == target or root in target.parents
-               for root in (Path(path).resolve() for path in project_paths(page))):
-        return None
+    repo_label = _diagnostic_excerpt(str(repo))
+    target = (repo / relative).resolve()
+    roots = [Path(path).resolve() for path in project_paths(page)]
+    if not roots:
+        return None, f"No mapped project paths are available for Git citation: {label}"
+    if not any(root == target or root in target.parents for root in roots):
+        return None, f"Repository identity mismatch: cited path is outside the mapped project: {repo_label}"
+    inside = subprocess.run(["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+                            capture_output=True, text=True)
+    if inside.returncode:
+        return None, f"Cited path does not identify a Git repository: {repo_label}"
+    git_root = Path(inside.stdout.strip()).resolve()
+    if git_root != repo:
+        return None, f"Repository identity mismatch: {repo_label} is not the Git root ({_diagnostic_excerpt(str(git_root))})"
+    commit = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{match[2]}^{{commit}}"],
+                            capture_output=True)
+    if commit.returncode:
+        return None, f"Exact Git commit is not present in the cited repository: {match[2]}"
     content = subprocess.run(["git", "-C", str(repo), "show", f"{match[2]}:{match[3]}"],
                              capture_output=True)
-    if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
-        return None
+    if content.returncode:
+        return None, f"Cited file does not exist at the exact Git commit: {relative_label}"
+    if len(content.stdout) > FILE_SNAPSHOT_CHARS:
+        return None, f"Cited Git file exceeds the {FILE_SNAPSHOT_CHARS}-byte snapshot limit: {relative_label}"
+    if b"\0" in content.stdout:
+        return None, f"Cited Git file is binary and cannot be inspected as project evidence: {relative_label}"
     text = content.stdout.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
-        return None
+    if SECRET_SHAPES.search(text):
+        return None, f"Cited Git file contains secret-shaped text and cannot be retained: {relative_label}"
+    if PRIVATE.search(text):
+        return None, f"Cited Git file contains private material and cannot be retained: {relative_label}"
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
                           capture_output=True, text=True)
     if date.returncode or not date.stdout.strip():
-        return None
-    return {"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
-            "commit": match[2], "commit_at": date.stdout.strip(),
-            "captured_at": datetime.now(timezone.utc).isoformat()}
+        return None, f"Commit date could not be read from the cited repository: {match[2]}"
+    return ({"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
+             "commit": match[2], "commit_at": date.stdout.strip(),
+             "captured_at": datetime.now(timezone.utc).isoformat()}, None)
+
+
+def live_git_snapshot(page: str, source: str) -> dict | None:
+    return _live_git_check(page, source)[0]
+
+
+def inspect_live_source(page: str, source: str) -> tuple[dict | None, str | None]:
+    if source.startswith("file:"):
+        return _live_file_check(page, source)
+    if source.startswith("git:"):
+        return _live_git_check(page, source)
+    return None, None
 
 
 def live_source_snapshot(page: str, source: str) -> dict | None:
-    return live_file_snapshot(page, source) if source.startswith("file:") else live_git_snapshot(page, source)
+    return inspect_live_source(page, source)[0]
 
 
 def retain_live_source_context(root: Path, original: str, candidate: str) -> None:

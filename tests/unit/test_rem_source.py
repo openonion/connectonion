@@ -533,3 +533,39 @@ def test_source_files_still_refuses_hidden_and_linked_rollouts(tmp_path):
     rollout(tmp_path / ".hidden/rollout-b.jsonl", [("user", "x")])
     with pytest.raises(RemError, match="Hidden"):
         source_files(subscription(tmp_path))
+
+
+def test_codex_metadata_maps_windows_cwd_to_the_runtime_path(monkeypatch, tmp_path):
+    from connectonion.rem import source
+
+    project = tmp_path / "Projects" / "PROJECT_NAME"
+    project.mkdir(parents=True)
+    windows_cwd = r"D:\Projects\PROJECT_NAME"
+    monkeypatch.setattr(source, "local_path", lambda value: str(project), raising=False)
+
+    meta = source._codex_meta({"type": "session_meta", "payload": {"cwd": windows_cwd}})
+
+    assert meta["cwd"] == str(project)
+
+
+def test_windows_drive_paths_use_wslpath_without_shell_interpolation(monkeypatch):
+    import types
+
+    from connectonion.rem import source
+
+    calls = []
+    path = r"D:\Projects\PROJECT_NAME"
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+
+    def convert(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return types.SimpleNamespace(returncode=0, stdout="/mnt/d/Projects/PROJECT_NAME\n")
+
+    monkeypatch.setattr(source.subprocess, "run", convert)
+    try:
+        assert source.local_path(path) == "/mnt/d/Projects/PROJECT_NAME"
+        assert calls == [(["/usr/bin/wslpath", "-u", path], {"capture_output": True, "text": True, "timeout": 5})]
+    finally:
+        source.local_path.cache_clear()
