@@ -1417,10 +1417,11 @@ SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read
 EDITING_NOTE = ("Editing round: an edit of the page, not an investigation. There is no material in this turn; "
                 "do not open evidence files, do not request searches, do not follow the investigation steps. "
                 "The page still says what is not known in {count} line(s) outside Uncertainties, listed below by "
-                "section. Make exactly one edit per listed line: delete only the clause about what is not known "
-                "and keep the rest of the sentence, its facts and citations (the ask, the date, who owes what); "
-                "or move the doubt under Uncertainties if it would change the user's next step (five there at "
-                "most). Never delete the lead, a paragraph or a cited fact. Add no claim, no source and no new "
+                "section. Make exactly one edit per listed line: replace the clause about what is not known with "
+                "the dated fact that is known (\"no reply since 2026-10-12\") and keep the rest of the sentence, "
+                "its facts, quotes and every citation (the ask, the date, who owes what); a doubt that changes "
+                "the user's next step becomes an Open threads line or a question under Uncertainties (five "
+                "there at most). Never delete a line, the lead, a paragraph, a quote or a cited fact. Add no claim, no source and no new "
                 "line about what is not evidenced. Then end. NO CHANGE is not an answer to this round.\n\n{lines}")
 QUOTE_NOTE = ("Quote round: an edit, not an investigation. The page has {quotes} quotes from {messages} cited "
               "messages and {insight} Insight bullets. For each cited message that holds an ask, offer, term, "
@@ -1550,6 +1551,13 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
         notebook.write(record, page)
         out = {**out, "refused": "Editing round cut the lead or a third of the page; kept the page before it",
                "changed": []}
+    else:
+        # A hedge is rewritten, never deleted with what it cited: three trial runs of
+        # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
+        from .page_review import restore_dropped
+        kept = restore_dropped(page, notebook.read(record))
+        if kept != notebook.read(record):
+            notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
 
 
