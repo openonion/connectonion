@@ -437,7 +437,7 @@ def test_project_quote_floor_ignores_sources_and_fenced_examples(atlas):
     assert project_pages.project_falls_short(page, 12) == (3, 0)
 
 
-def test_project_quote_round_carries_only_saved_page_note_and_this_writes_user_messages(atlas):
+def test_project_quote_round_carries_saved_page_note_and_whole_first_write_material(atlas):
     turns, directories, saved = [], [], []
 
     def page_from(prompt):
@@ -458,9 +458,11 @@ def test_project_quote_round_carries_only_saved_page_note_and_this_writes_user_m
     assert turns[1][0] == {**turns[0][0], "text": f"The page as it stands, at {atlas.record}:\n\n{saved[0]}"}
     assert turns[1][1]["role"] == "round"
     assert turns[1][1]["text"] == project_pages.PROJECT_QUOTE_NOTE.format(quotes=3, decisions=0)
-    assert turns[1][2:] == [item for item in turns[0] if item["role"] == "user"]
-    assert len(turns[1][2:]) == 12
-    assert "Atlas repository packet" not in run.calls[1]
+    assert turns[1][2:] == turns[0][1:]
+    assert turns[1][2]["role"] == "coverage"
+    assert any(item["role"] == "readme" for item in turns[1][2:])
+    assert len([item for item in turns[1] if item["role"] == "user"]) == 12
+    assert "Atlas repository packet" in run.calls[1]
     assert "# A project's page" in run.calls[1]
     assert project_pages._project_quote_counts(atlas.notebook.read(atlas.record)) == (9, 0)
     assert out["quote_round"] == {"quotes": [3, 9], "unquoted_decisions": [0, 0]}
@@ -478,6 +480,27 @@ def test_project_page_with_enough_quotes_needs_no_quote_round(atlas):
     assert out["quote_round"] is None
     metrics = json.loads(next((atlas.root / ".state/tasks").glob("projects-*/result.json")).read_text())
     assert metrics["quote_round"] is None
+
+
+def test_project_quote_round_can_repair_a_rejected_edit_once(atlas):
+    calls = []
+
+    def run(workdir, prompt, config, stage):
+        calls.append(prompt)
+        candidate = Path(re.search(r"(?:NEW file|existing page at) (\S+candidate\.md)", prompt)[1])
+        page = _atlas_page(atlas.messages, 3 if len(calls) == 1 else 9)
+        if len(calls) == 2:
+            page = page.replace(atlas.messages[0]["text"], "Invented Atlas purpose.")
+        candidate.write_text(page)
+        return {"usage": {"input_tokens": 7}}
+
+    out = write_page(atlas.root, atlas.record, config=atlas.config, run=run)
+
+    assert len(calls) == 3
+    assert "Review refused the page" in calls[2]
+    assert project_pages._project_quote_counts(atlas.notebook.read(atlas.record)) == (9, 0)
+    assert out["quote_round"] == {"quotes": [3, 9], "unquoted_decisions": [0, 0]}
+    assert out["usage"]["input_tokens"] == 21
 
 
 def test_project_quote_round_that_drops_one_quote_restores_the_first_page(atlas):
@@ -498,8 +521,13 @@ def test_project_quote_round_that_drops_one_quote_restores_the_first_page(atlas)
     assert page_state(atlas.root, atlas.record)["written_through"] == out["through"]
 
 
-@pytest.mark.parametrize("failure", ["run", "os", "promotion", "cleanup", "metrics"])
-def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypatch, failure):
+@pytest.mark.parametrize("failure,expected_calls,expected_tokens", [
+    ("run", 2, 107), ("run_without_usage", 2, 100), ("os", 2, 100),
+    ("promotion", 3, 114), ("repair", 3, 114),
+    ("cleanup", 2, 107), ("metrics", 2, 107),
+])
+def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypatch, failure,
+                                                               expected_calls, expected_tokens):
     from connectonion.rem import runner
     from connectonion.rem.runner import RunFailed
     calls, saved = [], []
@@ -527,24 +555,31 @@ def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypat
         calls.append(prompt)
         if len(calls) == 1:
             return first(workdir, prompt, config, stage)
-        saved.append(atlas.notebook.read(atlas.record))
+        if len(calls) == 2:
+            saved.append(atlas.notebook.read(atlas.record))
         if failure == "os":
             raise OSError("Atlas runner unavailable")
         if failure == "run":
             raise RunFailed("Atlas quote edit failed", {"input_tokens": 7})
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        if failure == "run_without_usage":
+            raise RunFailed("Atlas quote edit failed")
+        if failure == "none" or (failure == "repair_none" and len(calls) == 3):
+            return None
+        if failure == "repair" and len(calls) == 3:
+            raise RunFailed("Atlas quote repair failed", {"input_tokens": 7})
+        candidate = Path(re.search(r"(?:NEW file|existing page at) (\S+candidate\.md)", prompt)[1])
         page = _atlas_page(atlas.messages, 9)
-        if failure == "promotion":
+        if failure in ("promotion", "repair", "repair_none"):
             page = page.replace(atlas.messages[0]["text"], "Invented Atlas purpose.")
         candidate.write_text(page)
         return {"usage": {"input_tokens": 7}}
 
     out = write_page(atlas.root, atlas.record, config=atlas.config, run=run)
-    assert len(calls) == 2
+    assert len(calls) == expected_calls
     assert atlas.notebook.read(atlas.record).split("\nInvestigation:")[0].rstrip() == saved[0].split("\nInvestigation:")[0].rstrip()
     assert out["changed"] == [atlas.record]
     assert out["quote_round"] == {"quotes": [3, 3], "unquoted_decisions": [0, 0]}
-    assert out["usage"]["input_tokens"] == (100 if failure == "os" else 107)
+    assert out["usage"]["input_tokens"] == expected_tokens
     assert page_state(atlas.root, atlas.record)["written_through"] == out["through"]
 
 

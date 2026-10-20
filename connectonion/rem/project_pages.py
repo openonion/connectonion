@@ -659,7 +659,7 @@ def project_falls_short(page: str, messages: int) -> tuple[int, int] | None:
 
 
 def _project_quote_turn(notebook, record, page, items, counts, config, run, workdir, turn, progress):
-    """Edit the saved page once, without repair calls, and remove the task's private material."""
+    """Edit the saved page with at most one repair, then remove the task's private material."""
     from .investigate import _keep_unless_lost
     from .page_review import quotes
     from .runner import language_note, promote_with_repairs, scrub_task, today_note
@@ -670,13 +670,15 @@ def _project_quote_turn(notebook, record, page, items, counts, config, run, work
         quote_items = [{**items[0], "text": f"The page as it stands, at {record}:\n\n{page}"},
                        {"role": "round", "source": "investigation:round",
                         "text": PROJECT_QUOTE_NOTE.format(quotes=counts[0], decisions=counts[1])},
-                       *[item for item in items if item.get("role") == "user"]]
+                       # The whole first-write material: given only the messages, the claim
+                       # audit refuted sections that cite the repository (2026-10-20, 4 of 6).
+                       *items[1:]]
         text = prompt(directory, quote_items, candidate, len(page)) + today_note(notebook.root) + language_note(notebook.root)
         if progress:
             progress("quote round")
         turn.update(run(workdir, text, config, "investigate"))
         promote_with_repairs(notebook, record, candidate, page, quote_items, directory, turn,
-                             workdir=workdir, config=config, stage="investigate", run=run, repairs=0)
+                             workdir=workdir, config=config, stage="investigate", run=run, repairs=1)
         reason = _keep_unless_lost(notebook, record, page)
         # A quote edit must keep even the small losses the general maintenance guard tolerates.
         lost = bool(reason or quotes(page) - quotes(notebook.read(record)))
