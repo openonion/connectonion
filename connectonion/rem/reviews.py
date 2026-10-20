@@ -51,7 +51,7 @@ def decide(root: Path, review_id: str, verdict: str, *, author: str, response: s
 
 
 def context(root: Path, subject: str = "") -> list[dict]:
-    return [{"role": "review", "source": f"review:{r['id']}",
+    return [{"role": "review", "source": f"review:{r['id']}", "subjects": list(r['subjects']),
              "timestamp": r.get('decided_at', r['created_at']), "text": str(r)}
             for r in listing(root) if r['status'] != 'pending' and (not subject or subject in r['subjects'])]
 
