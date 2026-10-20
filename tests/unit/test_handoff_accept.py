@@ -1183,3 +1183,29 @@ def test_the_recipient_is_told_what_its_patch_is_relative_to():
     from connectonion.cli.commands import handoff_commands as hc
     rules = " ".join(hc._rules("coh3.x", "ho-1").split())
     assert "only your own changes" in rules and "The sender's uncommitted changes" in rules
+
+
+# ---- #2569: a handoff gets a conversation of its own ----
+
+def test_a_handoff_pasted_into_a_conversation_about_something_else_is_not_worked_on_there(world):
+    """Aaron pasted Ody's pricing handoff into his marketing session (2026-10-19), and accept told that agent to
+    do the work "here". Both the prompt and accept's rules now stop a conversation that had other work in it."""
+    from connectonion.cli.commands import handoff_commands as hc
+    _send(world)
+    [body] = [json.loads(b) for b in world["drops"].values()]
+    for prompt in (body["prompt"], _page(world)):   # the page's public prompt, and the one inside the seal
+        assert "if this conversation had other work in it before my message, do not start here" in " ".join(prompt.split())
+    thread = "Store the login token: … Open it with: cd /w && claude --resume 1234"
+    rules = " ".join(hc._rules("coh4.x", "ho-1", thread).split())
+    assert rules.startswith("First: if this conversation had other work in it before the line the person pasted, stop here.")
+    assert f"give them this line, word for word, which opens the sender's conversation as one of its own: {thread}" in rules
+    assert "paste the line into a new Codex or Claude Code conversation" in " ".join(hc._rules("coh4.x", "ho-1").split())
+
+
+def test_a_handoff_with_no_repository_keeps_what_it_makes_out_of_the_project_here(world):
+    from connectonion.cli.commands import handoff_commands as hc
+    code = _code(_send(world))                       # the world's bundle names no repository
+    world["be"](RECIPIENT)
+    accepted = " ".join(_invoke("handoff", "accept", code).output.split())
+    assert "put what you make in a new folder here, handoff-ho-1a2b3c4d/" in accepted
+    assert "handoff-ho-1" not in " ".join(hc._rules("coh4.x", "ho-1", repo=True).split())
