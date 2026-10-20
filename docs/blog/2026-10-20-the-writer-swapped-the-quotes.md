@@ -38,7 +38,10 @@ domain who is not the owner and not a notice sender. And Outlook was searched
 for "mail", the first label of mail.example.ai, instead of the organisation's
 name.
 
-The third was a regression of ours. The session cache was built in a
-background thread while init mapped. It shared one interpreter with mapping's
-own session scans, and a project scan that takes six seconds alone took
-thirteen minutes. The cache is now built in its own process.
+The third we got wrong at first. Mapping took 40 minutes, and we blamed the
+background thread that builds the session cache for slowing the project scan
+from six seconds to thirteen minutes. It was not the scan. The progress log
+shows the scan finished in seconds. The thirteen minutes came after it, in
+filing typed messages under their projects, which reads every session again.
+The cache is built in its own process now, which does no harm, but the fix
+that mattered is in the next post.
