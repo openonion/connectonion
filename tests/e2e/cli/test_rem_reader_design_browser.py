@@ -3579,13 +3579,13 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
       r.translations = {zh: r.text
         .replace(/(^#[^\n]*\n)[\s\S]*?(?=\n## )/, '$1\n中文人物摘要 [1].\n')
         .replace(/## Why they are here\n[^#]+/, '## Why they are here\n- 中文相识经过 [3].\n\n')
-        .replace(/(## History\n)- [^\n]*/, '$1- 2026-09-30：Arthur Chen 发来中文合同 [3].')
+        .replace(/(## History\n)- [^\n]*/, '$1- 2026-09-30：Theo Park 发来中文合同 [3].')
         .replace(/Now:/g, 'Now：')
         .replace(/- \*\*Data-sharing addendum\*\*[^\n]*/, '- 你需要签署中文待办摘要；since 2026-09-22 [4].')};
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('#main').inner_text()
-    assert 'Arthur Chen 发来中文合同' in page.locator('.person-focus .activity-list').inner_text()
+    assert 'Theo Park 发来中文合同' in page.locator('.person-focus .activity-list').inner_text()
     assert page.locator('.person-focus .recent-activity h2').inner_text() == '最近'
     page.locator('details.deep-note > summary').click()
     assert '中文相识经过' in page.locator('.deep-note').inner_text()

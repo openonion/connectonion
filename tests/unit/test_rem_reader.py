@@ -860,9 +860,9 @@ def test_reader_history_accepts_chinese_colon_and_preserves_citations():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['listItems', 'historyItems'])
     result = _run_reader_js(functions + r'''
-      console.log(JSON.stringify(historyItems('- 2026-10-15：Arthur Chen 发来合同 [3].\n- 2026-10-14: 已确认 [2].')));
+      console.log(JSON.stringify(historyItems('- 2026-10-15：Theo Park 发来合同 [3].\n- 2026-10-14: 已确认 [2].')));
     ''')
-    assert result == [{'day': '2026-10-15', 'end': '', 'text': 'Arthur Chen 发来合同 [3].'},
+    assert result == [{'day': '2026-10-15', 'end': '', 'text': 'Theo Park 发来合同 [3].'},
                       {'day': '2026-10-14', 'end': '', 'text': '已确认 [2].'}]
 
 
@@ -875,27 +875,27 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
       const REM = {owner: 'people/aaron.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
       const youify = text => text;
       const records = [
-        {path: REM.owner, title: 'Aaron Xie', category: 'people'},
-        {path: 'people/ody.md', title: 'Ody Zhou', category: 'people'},
-        {path: 'people/ody-alias.md', title: 'Ody Zhou', category: 'people'},
-        {path: 'people/jerryl.md', title: 'Jerryl Seow', category: 'people'}
+        {path: REM.owner, title: 'Avery Lin', category: 'people'},
+        {path: 'people/mara.md', title: 'Mara Ostrowski', category: 'people'},
+        {path: 'people/mara-alias.md', title: 'Mara Ostrowski', category: 'people'},
+        {path: 'people/mia-chen.md', title: 'Mia Chen', category: 'people'}
       ];
       const inCategory = () => records, listedRecords = () => records;
       const threads = r => ({items: r.items});
       for (const r of records) {
         r.text = '# ' + r.title + '\n\n## Sources\n- [1] gmail:shared';
-        r.items = [{text: 'You owe Ody Zhou a signed agreement [1].', dir: 'mine', since: '2026-10-15'}];
+        r.items = [{text: 'You owe Mara Ostrowski a signed agreement [1].', dir: 'mine', since: '2026-10-15'}];
       }
-      records[0].items = [{text: ' ', originalText: 'You owe Ody Zhou a signed agreement [1].', dir: 'mine', since: '2026-10-16'},
-        {text: 'You owe Jerryl Seow [1]', dir: 'mine', since: '2026-10-15'},
+      records[0].items = [{text: ' ', originalText: 'You owe Mara Ostrowski a signed agreement [1].', dir: 'mine', since: '2026-10-16'},
+        {text: 'You owe Mia Chen [1]', dir: 'mine', since: '2026-10-15'},
         {text: '[1].', dir: 'mine', since: '2026-10-16'}];
       records[1].items.push({...records[1].items[0]});
       const merged = threadEntries();
       console.log(JSON.stringify(merged.map(({r, t, also}) => ({person: r.title, text: t.text,
         also: also.map(person => person.title)}))));
     ''')
-    assert result == [{'person': 'Ody Zhou', 'text': 'You owe Ody Zhou a signed agreement [1].',
-                       'also': ['Jerryl Seow']}]
+    assert result == [{'person': 'Mara Ostrowski', 'text': 'You owe Mara Ostrowski a signed agreement [1].',
+                       'also': ['Mia Chen']}]
 
 
 def test_reader_recent_skills_are_capped_and_overflow_keeps_family_groups():
