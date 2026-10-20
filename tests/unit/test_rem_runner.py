@@ -103,6 +103,13 @@ def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch
         logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
         assert logged['insights_rejected'] == result['insights_rejected']
     assert len(turns) == len(critics) == 2
+    attempts = json.loads(next((notebook.root / '.state/tasks').glob('*/insight-critic.json')).read_text())
+    assert len(attempts) == 2 and attempts[0]['bullets'][0]['verdict'] == 'weak'
+    if critic_fails:
+        assert attempts[1]['error'].startswith(('Critic failed', 'Insight critic returned'))
+        assert attempts[1]['usage'] == {'input_tokens': 3}
+    else:
+        assert attempts[1]['bullets'][0]['verdict'] == 'weak'
 
 
 def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path, monkeypatch):
@@ -120,6 +127,8 @@ def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path,
         runner._review_insights(notebook, record, original, candidate, [], {}, tmp_path, result, None)
     assert result['insights_proposed'] == result['insights_kept'] == 1
     assert result['insights_rejected'] == [] and bullet in candidate.read_text()
+    attempts = json.loads((tmp_path / 'insight-critic.json').read_text())
+    assert [attempt['bullets'][0]['verdict'] for attempt in attempts] == ['weak', 'good']
 
 
 def test_independent_critic_uses_its_own_read_only_output_schema(tmp_path, monkeypatch):
