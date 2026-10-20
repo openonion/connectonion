@@ -108,7 +108,7 @@ def test_a_role_only_in_a_calendar_invite_is_handed_over_as_the_invite_line():
 
 
 def test_earliest_direct_mail_becomes_first_contact_with_its_qualifier_and_source():
-    rows = extract([mail("gmail:unrelated", "2025-08-01T01:00:00Z", "hello", speaker="Sam <sam@example.com>"),
+    rows = extract([mail("gmail:unrelated", "2025-08-01T01:00:00Z", "hello", speaker="Theo Park <theo@example.com>"),
                     mail("gmail:a1", "2025-08-04T01:00:00+00:00", "hi"),
                     mail("gmail:a2", "2026-09-10T01:00:00+00:00", "ok", role="user", speaker="Alex <a@r.example>")],
                    HANDLES)
