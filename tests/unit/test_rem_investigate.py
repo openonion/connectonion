@@ -3223,3 +3223,18 @@ def test_the_editing_turn_puts_back_a_quote_and_source_it_deleted_with_a_hedge(t
 
     inv.editing_turn(runner, notebook, record, {})
     assert "“Can you review it?”" in notebook.read(record) and "gmail:b" in notebook.read(record)
+
+
+def test_a_diary_folder_is_not_read_for_the_owners_page_and_the_remote_names_the_repository(tmp_path):
+    """2026-10-21 spot check: diary lines reached the owner's page; a project page said `Repository: Unknown`."""
+    import subprocess
+    assert inv._private_folder("/home/avery/journal") and inv._private_folder("/home/avery/my-diary")
+    assert not inv._private_folder("/private/tmp/work/atlas") and not inv._private_folder("")
+    repo = tmp_path / "atlas"
+    repo.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "a@example.com"], ["config", "user.name", "Avery"],
+                 ["commit", "-q", "--allow-empty", "-m", "start"],
+                 ["remote", "add", "origin", "https://token@github.com/example/atlas.git"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    state = inv.checkout_state(str(repo))
+    assert "Remote origin: https://github.com/example/atlas.git." in state and "token" not in state

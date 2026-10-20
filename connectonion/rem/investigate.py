@@ -591,6 +591,10 @@ def checkout_state(path: str, newest_session: str = "") -> str:
     ref = next((r for r in CURRENT_REFS if _git(path, "rev-parse", "--verify", "--quiet", r + "^{commit}")), "") \
         or _git(path, "for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(refname:short)", "refs/heads")
     lines = [f"Checkout {path}: branch {branch}, HEAD committed {head[:10]}."]
+    # 2026-10-21 spot check: `Repository: Unknown` beside a repo with a GitHub remote.
+    remote = _git(path, "remote", "get-url", "origin")
+    if remote:
+        lines.append(f"Remote origin: {re.sub(r'://[^/@]+@', '://', remote)}.")
     line_date = _git(path, "log", "-1", "--format=%cI", ref) if ref else ""
     if ref and line_date:
         version = _version_at(path, ref)
@@ -977,6 +981,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # sent_only is the owner's page even when no mailbox is connected
             # to tell us their addresses; a chat knows which lines are theirs.
             if is_owner or (chat and sent_only):
+                # A diary folder is never written unasked as a project (project_pages.PRIVATE);
+                # its lines reached the owner's page as hotel bookings and a friend's address (2026-10-21).
+                if not chat and _private_folder(item.get("project") or item.get("cwd") or ""):
+                    return False
                 return not chat or item["role"] == "user"
             said = item["text"] + " " + item.get("project", "")
             if chat:
@@ -1887,6 +1895,11 @@ def window_since(page: str, default: int = 730) -> int:
 
 RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
+
+
+def _private_folder(path: str) -> bool:
+    from .project_pages import PRIVATE
+    return bool(path) and bool(PRIVATE.search(Path(path).name))
 
 
 def owner_work_evidence(items: list[dict]) -> str:

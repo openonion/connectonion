@@ -15,12 +15,10 @@ Before `Facts`, write 2–4 cited sentences:
 - **Start with what they are working on now and why the next step matters.**
   If `owner-work-evidence` shows an explicit reversal, lead with it and cite
   both messages. Newer questions are not a change. Otherwise name a blocker
-  or unresolved choice. Replace the generic lead; put the
-  latest request in the next step. `recent-projects` ranks, not proves shipping.
+  or unresolved choice. `recent-projects` ranks, not proves shipping.
   List projects in `Who they are`.
 - Add a firm, due-soon commitment or blocker. Put distant invitations and
   unrelated mail in `Open threads`.
-- Put contact dates in `Facts` and `Cadence`, not the lead.
 
 ## Coding agents are the user's tools, not people
 
