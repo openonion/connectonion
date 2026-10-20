@@ -163,7 +163,7 @@ def test_existing_notebook_detects_owner_languages_without_writing(tmp_path, mon
     original = {file: file.read_bytes() for file in root.rglob("*") if file.is_file()}
     detected = languages.owner_languages(root)
     assert detected == {"languages": ["en", "zh"], "shares": {"en": 0.75, "zh": 0.25},
-                        "from": "detected from your own mail and sessions"}
+                        "from": "detected from your own mail and sessions", "english_terms": []}
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     assert snapshot(root)["your_languages"] == ["en", "zh"]
     assert {file: file.read_bytes() for file in root.rglob("*") if file.is_file()} == original
@@ -177,3 +177,72 @@ def test_saved_empty_detection_is_not_repeated(tmp_path, monkeypatch):
     write_json(tmp_path / ".state" / "map.json", {"owner": {"languages": {"languages": [], "shares": {}}}})
     monkeypatch.setattr(languages, "detect", lambda *args: pytest.fail("Saved detection should be reused"))
     assert languages.owner_languages(tmp_path)["languages"] == []
+
+
+@pytest.fixture
+def glossary_notebook(tmp_path):
+    prepare(tmp_path)
+    (tmp_path / 'people/avery.md').write_text('# Avery\n\n## Facts\n- Language: Unknown\n')
+    write_json(tmp_path / '.state/map.json', {'owner': {'record': 'people/avery.md',
+                                                      'addresses': ['avery@example.com']}})
+    return tmp_path
+
+
+def test_english_terms_count_distinct_chinese_owner_messages_only(glossary_notebook):
+    from connectonion.rem.investigate import SESSION_WINDOW_VERSION
+
+    root = glossary_notebook
+    mail(root, [
+        ('AVERY@example.com', '请帮我检查这个capstone的PR，然后查看repo和agent。Mira提到了secretword。'),
+        ('avery@example.com', '我们明天再看一下capstone的pr和repo，Mira也提到了secretword。'),
+        ('avery@example.com', '这次只发一次invoice invoice invoice，等待后续确认。'),
+        ('avery@example.com', '这次只发一次invoice invoice invoice，等待后续确认。'),
+        ('avery@example.com', 'Please review this draft and deploy the release with the SDK.'),
+        ('avery@example.com', 'Please review this draft again and deploy the new release with the SDK.'),
+        ('mira@example.com', '我们需要review这份draft然后deploy这次release，检查SDK和invoice。'),
+        ('mira@example.com', '我们明天review这份draft然后deploy这次release，再检查SDK和invoice。'),
+        ('avery@example.com', '收到，谢谢，我们明天见面再聊吧。\nOn Tuesday, Mira wrote:\n> review draft SDK invoice'),
+        ('avery@example.com', '好的，谢谢，我们下午见面再谈吧。\n在 昨天下午，Mira 写道：\n> review draft SDK invoice'),
+        ('avery@example.com', '请检查preview和skillset，还有agentic和my_repo以及api2，稍后再聊。'),
+        ('avery@example.com', '我们明天再检查preview和skillset，还有agentic和my_repo以及api2。'),
+    ])
+    write_json(root / '.state/session-windows/typed.json', {'version': SESSION_WINDOW_VERSION, 'items': [
+        {'role': 'user', 'source': 'session:1', 'text': '请把这个agent的demo再给我演示一下，我们下午讨论。'},
+        {'role': 'user', 'source': 'session:2', 'text': '我们明天再看demo的效果，讨论一下后续的安排。'},
+        {'role': 'assistant', 'text': '请检查review draft SDK invoice，我们之后再讨论。'},
+    ]})
+    assert languages.english_terms(root, ['avery@example.com']) == ['agent', 'capstone', 'demo', 'pr', 'repo']
+
+
+def test_glossary_refresh_is_saved_and_reused_with_configured_languages(glossary_notebook, monkeypatch):
+    root = glossary_notebook
+    mail(root, [('avery@example.com', '我们今天先看capstone项目，然后讨论下一步。'),
+                ('avery@example.com', '我们明天再看capstone项目，然后决定后续安排。')])
+    assert languages.refresh(root)['english_terms'] == ['capstone']
+    assert read_json(root / '.state/map.json', {})['owner']['languages']['english_terms'] == ['capstone']
+    monkeypatch.setattr(languages, 'english_terms', lambda *args: pytest.fail('Saved glossary should be reused'))
+    assert languages.owner_languages(root)['english_terms'] == ['capstone']
+    set_config(root, ['languages', 'en,zh'])
+    assert languages.owner_languages(root)['english_terms'] == ['capstone']
+
+
+@pytest.mark.parametrize('saved_languages', [None, {'languages': ['zh'], 'shares': {'zh': 1}}])
+def test_glossary_fallback_reads_old_maps_without_writing(glossary_notebook, saved_languages):
+    root = glossary_notebook
+    path = root / '.state/map.json'
+    report = read_json(path, {})
+    if saved_languages is not None:
+        report['owner']['languages'] = saved_languages
+        write_json(path, report)
+    mail(root, [('avery@example.com', '我们今天先看PR，然后再讨论这个项目的细节。'),
+                ('avery@example.com', '我们明天再看pr，然后决定这个项目的后续安排。')])
+    original = path.read_bytes()
+    assert languages.owner_languages(root)['english_terms'] == ['pr']
+    assert path.read_bytes() == original
+
+
+def test_empty_saved_glossary_is_not_recomputed(glossary_notebook, monkeypatch):
+    root = glossary_notebook
+    languages.refresh(root)
+    monkeypatch.setattr(languages, 'english_terms', lambda *args: pytest.fail('Saved empty glossary should be reused'))
+    assert languages.owner_languages(root)['english_terms'] == []

@@ -17,6 +17,7 @@ from pathlib import Path
 from .config import LANGUAGE
 from .files import Notebook, RemError, atomic_write, state_path
 
+# Owner glossary changes apply to new translations without invalidating every cached page.
 PROMPT_VERSION = 2
 HEADER = re.compile(r"<!-- co rem translation of (\S+) sha256:([0-9a-f]{64}) -->\n")
 CITATION = re.compile(r"[\[［](W?\d{1,3})[\]］]")
@@ -68,7 +69,7 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
     return found
 
 
-def prompt(language: str, quotes=()) -> str:
+def prompt(language: str, quotes=(), terms=()) -> str:
     from .runner import language_rules
     # Named one by one: told only the rule, the model still translated “zero-risk things”.
     keep = "".join(f"\n- {quote}" for quote in dict.fromkeys(quotes))
@@ -86,6 +87,7 @@ def prompt(language: str, quotes=()) -> str:
             "surrounding prose; keep the ASCII colon after a leading date like `2026-10-15:`. " + language_rules() + "These stay in English even mid-sentence: "
             "`Nothing open as of 2026-09-29; Jordan canceled` becomes `Nothing open as of 2026-09-29；"
             "Jordan 取消了` in Chinese." + (f" These quoted words must appear unchanged:{keep}\n" if keep else "")
+            + (" Keep these terms in English, as the owner writes them: " + ", ".join(terms) + "." if terms else "")
             + " Then reply DONE.")
 
 
@@ -125,6 +127,7 @@ def checked(original: str, translation: str) -> str:
 def translate(root: Path, record: str, language: str) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
+    from .languages import owner_languages
     from .runner import ready, run_task
     text = Notebook(root).read(record)
     if (hit := cached(root, record, language)) is not None:
@@ -138,7 +141,8 @@ def translate(root: Path, record: str, language: str) -> str:
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     prose, stamp = STAMP.sub("", text).rstrip() + "\n", STAMP.search(text)
     (workspace / "page.md").write_text(prose, encoding="utf-8")
-    run_task(workspace, prompt(language, quoted_passages(prose)), config, "abstract")
+    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
     output = workspace / "translation.md"
     answer = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
     shutil.rmtree(workspace)

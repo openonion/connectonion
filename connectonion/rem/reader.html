@@ -2863,9 +2863,14 @@ const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "
 // A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
 // Mirrors facts.parse(): {label: [{value, qualifier, citations}]}, [] when Unknown.
 // Values split on "; ", a trailing "(work)" is a qualifier, trailing [n] / [W1] are citations.
+const PARSED_FACTS = new Map();
 function parseFacts(r) {
+  const language = r.readLanguage ?? r.shown ?? (uiLanguage === "en" ? "" : uiLanguage);
+  const text = r.translations?.[language] ?? r.original ?? r.text;
+  const key = JSON.stringify([r.path, language]), cached = PARSED_FACTS.get(key);
+  if (cached?.text === text) return cached.facts;
   const out = new Map();
-  const raw = rawSection(r, "Facts") || rawSection(r, "Contact");
+  const page = { ...r, text }, raw = rawSection(page, "Facts") || rawSection(page, "Contact");
   for (const line of raw.split("\n")) {
     const m = /^\s*[-*]\s+([^:：\n]{1,40})[:：]\s*(.*)$/.exec(line);
     if (!m) continue;
@@ -2883,6 +2888,7 @@ function parseFacts(r) {
     }
     out.set(m[1].trim(), items);
   }
+  PARSED_FACTS.set(key, { text, facts: out });
   return out;
 }
 function contactFields(r) {
@@ -2943,7 +2949,7 @@ function facts(r) {
     last: k.last || (r.mail && r.mail.last) || "", mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
-    what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
+    what: (r.shown && contact["what they do"]) || lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
     domain: r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
@@ -3531,13 +3537,14 @@ function morningWords(text, r) {
   text = unlabelled(text);
   const quote = /“([^”\n]{6,})”|"([^"\n]{6,})"/.exec(text);
   if (quote) return { words: "“" + (quote[1] || quote[2]).replace(/\s*\[W?\d{1,3}\]/g, "") + "”",
-    context: [text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim(),
+    context: [text.replace(quote[0], "").replace(/[:：—–]\s*([.;；]|$)/g, "$1").trim(),
       (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
   const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
   const summary = plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, "")));
-  const clause = summary.split(/[;；]|(?<=[.!?])\s|(?<=[。！？])\s*/)[0];
+  const separator = uiLanguage === "zh" ? /[;；:：—]|(?<=[.!?])\s|(?<=[。！？])\s*/ : /[;；]|(?<=[.!?])\s|(?<=[。！？])\s*/;
+  const clause = summary.split(separator)[0];
   const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
-  return { words, context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
+  return { words, context: [summary.slice(words.length).replace(/^[；;：:，,、—\s]+/, ""), cites].filter(Boolean).join(" ") };
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
 function morningEntries(entries) {
@@ -4680,14 +4687,17 @@ function refreshFocusExpansion() {
 }
 function relationCard(link, currentPath = "") {
   const other = byPath(link.path), origin = byPath(link.via);
-  const labelled = link.private || hasPrivacy(link.basis || "");
+  const field = /^([^:：\n]{1,40})[:：]/.exec(link.basis || "")?.[1];
+  const items = origin?.shown && field ? parseFacts(origin).get(field) : null;
+  const basis = items?.length ? t(field) + ": " + plainLine(items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; "), true) : link.basis;
+  const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
     "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
   const entry = el("div", { class: "relation-entry" }, [
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
-      link.basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(link.basis) }) : null])]);
+      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(basis) }) : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
