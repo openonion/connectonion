@@ -1700,3 +1700,15 @@ def test_a_restored_line_does_not_replace_a_short_row_inside_a_code_fence():
     after = f'# Lantern\n\n{diagram}\n## Uncertainties\nUnknown\n\n## Sources\n- [1] codex:s:1 — 2026-10-12\n'
     restored = restore_dropped(before, after)
     assert dropped(before, restored) == [] and '  v\n' in restored
+
+
+def test_a_carried_quote_that_is_not_in_its_source_is_not_guarded():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    before = ('# Avery Lin\n\n## Who they are\nAvery signs as “Avery | Founder of Lantern.” [1]\n\n'
+              '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    after = ('# Avery Lin\n\n## Who they are\nAvery signs off as “Avery” and “Founder, Lantern” [1].\n\n'
+             '## Sources\n- [1] gmail:aaaaaaaaaaaa\n')
+    exempt = frozenset({'Avery | Founder of Lantern.'})
+    assert dropped(before, after, exempt) == []
+    assert restore_dropped(before, after, exempt) == after
+    assert dropped(before, after) != []

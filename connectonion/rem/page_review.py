@@ -1533,6 +1533,12 @@ def cited_texts(root: Path, text: str, items: list[dict]) -> dict[str, tuple[str
     return found
 
 
+def unverified_quotes(root: Path, record: str, text: str, items: list[dict]) -> frozenset:
+    """The page's quotes that misquoted() finds in no cited source, as quotes() spells them."""
+    return frozenset(quote for error in misquoted(root, record, text, items)
+                     for quote in quotes('“' + error.split('“', 1)[1]))
+
+
 def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str]:
     """Quotes that are not, word for word, in any source their line cites.
 
@@ -1682,14 +1688,19 @@ def quotes(text: str) -> set[str]:
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
 
 
-def dropped(before: str, after: str) -> list[str]:
-    """Name each loss so a resumed writer can restore it exactly."""
-    return ([f'Dropped quote the page had: “{quote}”' for quote in sorted(quotes(before) - quotes(after))]
+def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
+    """Name each loss so a resumed writer can restore it exactly.
+
+    `exempt` are quotes the page had that are not in their cited source: guarding one put a broken
+    quote back over the writer's correction, and the round was refused (2026-10-20).
+    """
+    return ([f'Dropped quote the page had: “{quote}”'
+             for quote in sorted(quotes(before) - quotes(after) - exempt)]
             + [f'Dropped source id the page had: {source}'
                for source in sorted(_listed_sources(before) - _listed_sources(after))])
 
 
-def restore_dropped(before: str, after: str) -> str:
+def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
     """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
 
     Never replace a line carrying a new source or quote. Insert the original immediately after
@@ -1705,7 +1716,7 @@ def restore_dropped(before: str, after: str) -> str:
             continue
         if section == 'Sources' or line in seen:
             continue
-        lost_quotes = quotes(before) - quotes(after)
+        lost_quotes = quotes(before) - quotes(after) - exempt
         lost_sources = _listed_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
