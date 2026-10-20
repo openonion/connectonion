@@ -76,8 +76,9 @@ PEOPLE = (
     "Who did something is the sender of the cited message: a claim that someone asked, approved, "
     "confirmed, offered or promised fails unless their own message says so; a cc'd person is not a party. "
     "An open thread fails when a later message (later_messages: what came after the cited mail in its thread) "
-    "resolves it or when its event date has passed; "
-    "a past ask is not a current debt unless the page dates it. "
+    "resolves it or when the date of a meeting or event it is about has passed. A dated ask or promise that no "
+    "later message answers is open, however old (\"open as of <date>\" is correct); a promise past its due date "
+    "with no delivery is overdue, still open. An ask the other side never agreed to is not their debt. "
     # Vern Chan's email and a quote's final period failed the audit (2026-10-16 trial).
     "Email, Handles and Also known as are filled and checked by code; do not judge them. "
     "A quote's punctuation, spacing and quote-mark style are checked by code; "
