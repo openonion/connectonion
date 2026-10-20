@@ -69,6 +69,13 @@ def new_bullets(before: str, candidate: str) -> list[str]:
             and not re.fullmatch(r'[-*] Unknown(?: — not investigated yet)?', bullet)]
 
 
+def _matches_approved(bullet: str, approved) -> bool:
+    """2026-10-21: a repair's close rewrite keeps this run's earlier approval."""
+    text = _insight_text(bullet)
+    return any(text == (kept := _insight_text(row['bullet']))
+               or max(_contained(text, kept), _contained(kept, text)) >= 0.8 for row in approved)
+
+
 def _github_original(source: str) -> dict:
     """2026-10-21: supply missing GitHub originals, including discussion comments."""
     # The page's Sources write a GitHub item as an id or as its URL (2026-10-21: a PR cited by URL went unread).
@@ -200,7 +207,7 @@ def _report(result: dict) -> dict:
     return report
 
 
-def _restore_insights(before: str, candidate: str, decisions: list[dict]) -> tuple[str, list[str]]:
+def _restore_insights(before: str, candidate: str, decisions: list[dict], approved=()) -> tuple[str, list[str]]:
     """2026-10-21: rejected rewrites must not delete the page's prior insights.
 
     Restored bullets stay even when restored plus kept bullets exceed four;
@@ -210,8 +217,11 @@ def _restore_insights(before: str, candidate: str, decisions: list[dict]) -> tup
     proposed = set(new_bullets(before, candidate))
     kept = [_insight_text(row['bullet']) for row in decisions
             if row['verdict'] == 'good' and row['bullet'] in proposed]
+    kept += [_insight_text(bullet) for bullet in _bullets(candidate) if _matches_approved(bullet, approved)]
     restored = []
     for bullet in _bullets(before):
+        if re.fullmatch(r'[-*] Unknown(?: — not investigated yet)?', bullet):
+            continue
         text = _insight_text(bullet)
         if text in present or any(_contained(text, replacement) >= 0.5 for replacement in kept):
             continue
@@ -219,6 +229,12 @@ def _restore_insights(before: str, candidate: str, decisions: list[dict]) -> tup
         if line:
             restored.append(line)
             present.add(text)
+    for row in approved:
+        if _matches_approved(row['bullet'], [{'bullet': bullet} for bullet in [*_bullets(candidate), *restored]]):
+            continue
+        line, candidate = _restore_citations(row['bullet'], candidate, row['page'])
+        if line:
+            restored.append(line)
     if restored:
         section = INSIGHT_SECTION.search(prose(candidate))
         addition = '\n'.join(restored) + '\n\n'
@@ -264,10 +280,10 @@ def _consensus(bullets: list[str], reviews: list[list[dict]]) -> list[dict]:
     return decisions
 
 
-def judge(notebook, record, before, candidate_path, items, config, workspace, run) -> dict:
+def judge(notebook, record, before, candidate_path, items, config, workspace, run, *, approved=()) -> dict:
     """2026-10-21: judge each new bullet in two independent turns on the same packet."""
     candidate = candidate_path.read_text(encoding='utf-8')
-    bullets = new_bullets(before, candidate)
+    bullets = [bullet for bullet in new_bullets(before, candidate) if not _matches_approved(bullet, approved)]
     report = {'bullets': [], 'usage': {}}
     if bullets:
         retain_cited_originals(notebook, candidate, items)
@@ -278,7 +294,7 @@ def judge(notebook, record, before, candidate_path, items, config, workspace, ru
         report = {'bullets': _consensus(bullets, reviews), 'usage': usage}
     decisions = report['bullets']
     text, unmatched = _apply(candidate, bullets, decisions)
-    text, restored = _restore_insights(before, text, decisions)
+    text, restored = _restore_insights(before, text, decisions, approved)
     report.update(unmatched=list(dict.fromkeys(unmatched)), restored=restored,
                   critic_flips=sum(row['verdicts'][0] != row['verdicts'][1] for row in decisions
                                    if row['bullet'] in bullets),

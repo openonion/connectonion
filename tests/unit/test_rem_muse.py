@@ -35,6 +35,43 @@ def test_new_insight_bullets_ignore_changed_citations_and_whitespace():
     assert insight_critic.new_bullets(before, f'## Insight\n{carried}\n{added}\n') == [added]
 
 
+@pytest.mark.parametrize('change', ['citations', 'shorter', 'longer'])
+def test_approved_insight_rewrites_need_no_critic_call(notebook, tmp_path, change):
+    bullet = '- Changed: Avery now pays for Lantern testing before each quarterly renewal. [1][2]'
+    rewrite = bullet.replace('[1][2]', '[W3][4]')
+    if change == 'shorter':
+        rewrite = '- Changed: Avery now pays for Lantern testing. [W3][4]'
+    if change == 'longer':
+        rewrite += ' The team schedules security review before launch.'
+    path = tmp_path / 'candidate.md'
+    candidate = f'# Avery Lin\n\n## Insight\n{rewrite}\n'
+    path.write_text(candidate)
+    def no_call(*args):
+        pytest.fail('An approved insight must not be judged again')
+    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, no_call,
+                                 approved=[{'bullet': bullet, 'page': PAGE}])
+    assert path.read_text() == candidate and report['bullets'] == [] and report['restored'] == []
+
+
+@pytest.mark.parametrize('section', ['', '## Insight\nUnknown\n\n'])
+def test_deleted_approved_insight_restores_its_sources(notebook, tmp_path, section):
+    bullet = '- Changed: Avery now pays for Lantern testing. [1][W2]'
+    approved_page = (f'# Avery Lin\n\n## Insight\n{bullet}\n\n## Sources\n'
+                     '- [1] gmail:pilot\n- [W2] gmail:renewal\n')
+    path = tmp_path / 'candidate.md'
+    path.write_text(f'# Avery Lin\n\n{section}## Sources\n- [1] gmail:meeting\n\nInvestigation: complete\n')
+    def no_call(*args):
+        pytest.fail('Restoring an approved insight needs no critic call')
+    before = PAGE.replace('## Sources', '## Insight\n- Unknown — not investigated yet\n\n## Sources')
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path, no_call,
+                                 approved=[{'bullet': bullet, 'page': approved_page}])
+    restored = bullet.replace('[1][W2]', '[2][3]')
+    text = path.read_text()
+    assert insight_critic._bullets(text) == report['restored'] == [restored]
+    assert '- [1] gmail:meeting' in text and '- [2] gmail:pilot' in text and '- [3] gmail:renewal' in text
+    assert text.index('## Insight') < text.index('## Sources') < text.index('Investigation:')
+
+
 @pytest.mark.parametrize('verdict', ['weak', 'wrong'])
 def test_rejected_insight_rewrite_restores_original_and_renumbers_sources(notebook, tmp_path, verdict):
     """2026-10-21: rejecting a rewrite must not erase a finding the page already held."""

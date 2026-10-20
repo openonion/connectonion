@@ -771,12 +771,14 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
 
 def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):
     """2026-10-21: independent audit kept 6/18 proposals; repairs must pass it too."""
-    from .insight_critic import judge, new_bullets
+    from .insight_critic import _bullets, _matches_approved, judge, new_bullets
     proposed = new_bullets(original, candidate.read_text(encoding="utf-8"))
     if stage_progress:
         stage_progress("insight critic")
     result["critic_usage_pending"] = True
-    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task)
+    approved = result.get("insights_approved", [])
+    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task,
+                     approved=approved)
     result["critic_usage_pending"] = False
     result["usage"] = _add_usage(result.get("usage"), decision["usage"])
     proposals = list(dict.fromkeys([*result.get("insight_proposals", []), *proposed]))
@@ -787,10 +789,18 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
     for row in decision["bullets"]:
         if row["verdict"] == "good":
             rejected.pop(row["bullet"], None)
+    text = candidate.read_text(encoding="utf-8")
+    # Keep the approval's source numbering so a later repair can restore a deleted bullet.
+    approved = [*approved, *({"bullet": row["bullet"], "page": text} for row in decision["bullets"]
+                            if row["bullet"] in proposed and row["verdict"] == "good"
+                            and row["bullet"] not in decision.get("unmatched", []))]
+    approved += [{"bullet": bullet, "page": text} for bullet in _bullets(text)
+                 if _matches_approved(bullet, approved) and bullet not in {row["bullet"] for row in approved}]
     result.update(insight_proposals=proposals, insights_proposed=len(proposals),
                   insights_flips=result.get("insights_flips", 0) + decision.get("critic_flips", 0),
-                  insights_kept=sum(row["bullet"] in proposed and row["verdict"] == "good"
-                                    for row in decision["bullets"]), insights_rejected=list(rejected.values()))
+                  insights_approved=approved, insights_kept=sum(_matches_approved(bullet, approved)
+                                                              for bullet in _bullets(text)),
+                  insights_rejected=list(rejected.values()))
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -1532,9 +1542,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     insight_counts = {key: result[key] for key in
                       ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}
     if "insights_kept" in insight_counts:
-        from .insight_critic import new_bullets
-        insight_counts["insights_kept"] = min(insight_counts["insights_kept"],
-                                             len(new_bullets(before[record], notebook.read(record))))
+        from .insight_critic import _bullets, _matches_approved
+        insight_counts["insights_kept"] = sum(_matches_approved(bullet, result["insights_approved"])
+                                             for bullet in _bullets(notebook.read(record)))
     metrics.update(insight_counts)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
