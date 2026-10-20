@@ -1958,6 +1958,10 @@ def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
     ("- At stake: Avery asked the user to sign before 2026-10-23 [5]; completion is unknown.",
      "- At stake: Avery asked the user to sign before 2026-10-23 [5]"),
     ("- Whether it was reviewed is unknown [3].", "- Whether it was reviewed is unknown [3]."),
+    ("- 2026-02-23: Avery asked how the user was; no reply is recorded through 2026-10-20 [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was; no reply as of 2026-10-20 [sensitive] [9]."),
+    ("- 2026-02-23: Avery asked how the user was; it is unclear whether Theo replied [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was [sensitive] [9]"),
 ])
 def test_a_hedge_clause_goes_and_its_citations_stay(line, stripped):
     from connectonion.rem.page_review import strip_hedge
