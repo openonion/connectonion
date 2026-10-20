@@ -857,7 +857,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 42  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 71  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -878,9 +878,21 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
     from connectonion.rem.config import default_config
     total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
-    assert 120 <= total["minutes"] <= 140
-    assert 400_000_000 <= total["input_tokens"] <= 480_000_000
+    # Since 2026-10-20 the defaults never announce less than a measured run took:
+    # pages now read in rounds and are deepened, so they cost more than b1's did.
+    assert 129 <= total["minutes"] <= 1.35 * 129
+    assert 439_000_000 <= total["input_tokens"] <= 1.35 * 439_000_000
     assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]
+
+
+def test_the_estimate_matches_the_2026_10_20_release_check():
+    """It announced ~42 minutes and ~50M input tokens for your page, ten people,
+    three projects, two organisations and a skill; the run took 82 minutes of
+    pages after an 11.5-minute quick page, and 102M input tokens."""
+    from connectonion.rem import first_run as fr
+    total = fr.plan([], owner=True, people=10, projects=3, orgs=2, skills=1, workers=16)
+    assert 90 <= total["minutes"] <= 105
+    assert 95_000_000 <= total["input_tokens"] <= 110_000_000
 
 
 def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
@@ -1176,3 +1188,34 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
                                gate=lambda: "", done=lambda job, outcome: [])
     assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"
+
+
+@pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),
+                                           (['--yes', '--no-start', '--no-investigate'], False)])
+def test_init_only_builds_the_session_cache_early_when_pages_will_be_investigated(first_run, monkeypatch, flags, warmed):
+    """2026-10-20: a fresh notebook's session cache took 336 s of the owner's quick page."""
+    root, init, _ = first_run
+    started = []
+    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
+                        lambda root, sources: started.append(sorted(sources)))
+    init(*flags)
+    assert bool(started) is warmed
+
+
+def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypatch):
+    import threading
+    root, init, _ = first_run
+    order = []
+    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
+                        lambda root, sources: order.append(('warm', threading.current_thread() is threading.main_thread())))
+
+    def mapped(*args, **kwargs):
+        order.append(('map', None))
+        raise SystemExit(0)   # stop init here: only the order matters
+
+    monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
+    init('--yes', '--no-start')
+    for thread in threading.enumerate():
+        if thread is not threading.main_thread() and thread.daemon:
+            thread.join(timeout=5)
+    assert ('warm', False) in order and ('map', None) in order

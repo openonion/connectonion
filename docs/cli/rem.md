@@ -107,12 +107,19 @@ mail bodies; older material is fetched for a selected investigation.
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
-completed runs of that kind (`.state/runs/`); before there are any, planning
-rates from a sampled 90-day concurrent run and separate full Person/Skill reads:
-each owner turn 1.16M and ~7 minutes (quick and full are both counted), a
-person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
-120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
-interrupted, so these rates do not predict every retry or refusal. Minutes are
+completed runs of that kind (`.state/runs/`). Before there are any, it uses
+measured rates, heaviest pages first, because each queue starts with its most
+active pages. The first ten people, three projects and two organisations cost
+what the 2026-10-20 release check measured on a fresh 180-day notebook (16
+workers, Codex at fast speed): a person 6.3M input tokens and ~35 minutes
+including its deepening pass, a project 2.7M and ~11 minutes, an organisation
+8.0M and ~59 minutes. Every page after those costs what the 1.9.2b1 full run
+measured: a person 2.85M and ~11 minutes, a project 630k and ~2 minutes, an
+organisation 2.0M and ~8.5 minutes, a skill 800k and ~3 minutes. Each owner
+turn is 6.5M and ~35 minutes; the quick and full turns are both counted. The
+full-run rates alone announced ~42 minutes and ~50M tokens for the release
+check, which took 82 minutes and 102M; the estimate now says 95 minutes and
+100M. It does not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
 full turn and selected pages share `limits.workers` workers (default 16),
 the same setting as `co rem investigate CATEGORY`. The estimate simulates

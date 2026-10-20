@@ -23,7 +23,11 @@ maintainer can tell a request received from a commitment made.
 import hashlib
 import json
 import re
+import ssl
+import time
 from datetime import datetime, timedelta, timezone
+
+import httpx
 
 from .files import RemError
 
@@ -196,6 +200,24 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     return updated
 
 
+# A dropped connection is retried; a timeout still splits the window (below).
+# On 2026-10-20 one Gmail SSLError in the 13th listed week stopped a first init
+# after 33 minutes, before any page was investigated.
+TRANSIENT = (ssl.SSLError, ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError)
+LISTING_ATTEMPTS = 4
+
+
+def _listed(listing, start: datetime, end: datetime) -> list:
+    """One window's listing, asked again after a dropped connection, with backoff."""
+    for attempt in range(LISTING_ATTEMPTS):
+        try:
+            return listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+        except TRANSIENT as error:
+            if attempt == LISTING_ATTEMPTS - 1 or 'timeout' in type(error).__name__.lower():
+                raise
+            time.sleep(2 ** (attempt + 1))
+
+
 def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """Every mail in [start, end), however many there are.
 
@@ -208,7 +230,7 @@ def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """
     listing = getattr(client, 'list_between_for_rem', client.list_between)
     try:
-        rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+        rows = _listed(listing, start, end)
     except Exception as error:
         # A real all-history Outlook scan reached 2010 and lost its whole map
         # when a year-wide listing timed out. Smaller queries often succeed.
