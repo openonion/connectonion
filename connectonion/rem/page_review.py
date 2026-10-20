@@ -251,6 +251,31 @@ def subject_scope_changed(record: str, original: str, candidate: str) -> bool:
     return bool(renamed and not (_subject_handles(record, original) & _subject_handles(record, candidate)))
 
 
+def restore_missing_facts(record: str, candidate: str, original: str) -> str:
+    """A Facts label the turn left out comes back from the page before it, or as Unknown.
+
+    2026-10-20 upkeep A/B: a turn dropped `Location` and the whole update was
+    refused for a missing field, twice in three runs.
+    """
+    labels = facts.fields(record)
+    span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
+    if not labels or not span:
+        return candidate
+    body = span[1].rstrip('\n').split('\n')
+    for at, label in enumerate(labels):
+        if any(line.startswith(f'- {label}:') for line in body):
+            continue
+        kept = re.search(rf'^- {re.escape(label)}:.*$', original, re.M)
+        line, candidate_with = _restore_citations(kept[0], candidate, original) if kept else ('', candidate)
+        if line:
+            candidate = candidate_with
+            span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
+        later = next((n for n, row in enumerate(body) for after in labels[at + 1:] if row.startswith(f'- {after}:')),
+                     len(body))
+        body.insert(later, line or f'- {label}: Unknown')
+    return candidate[:span.start(1)] + '\n'.join(body) + '\n\n' + candidate[span.end(1):].lstrip('\n')
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 

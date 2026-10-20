@@ -764,7 +764,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer,
-                              repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
+                              repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content)
     if not candidate.is_file():
@@ -774,7 +774,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
-    text = facts.upgrade(record, restore_runner_fields(record, text, original))
+    text = facts.upgrade(record, restore_missing_facts(record, restore_runner_fields(record, text, original), original))
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
@@ -949,7 +949,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
     from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
-                              repair_project_overview, resolve_sources, restore_runner_fields, shrinkage, single_title, validate,
+                              repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
@@ -961,7 +961,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             continue
         from . import facts
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_runner_fields(record, after[record], before.get(record, '')))))
+            restore_missing_facts(record, restore_runner_fields(record, after[record], before.get(record, '')), before.get(record, '')))))
         text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
                                         root=notebook.root)
         unverified = []

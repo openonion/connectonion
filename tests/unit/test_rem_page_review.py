@@ -1664,3 +1664,20 @@ def test_a_qualified_first_contact_is_put_back_over_unknown():
                 "## Sources\n- [2] gmail:abc — 2026-08-11\n")
     candidate = original.replace("2026-08-11 (earliest mail found) [2]", "Unknown")
     assert restore_runner_fields("people/avery.md", candidate, original) == original
+
+
+def test_a_facts_label_the_turn_left_out_comes_back_from_the_page_before():
+    """2026-10-20 upkeep A/B: a dropped `Location` line refused the whole update, twice in three runs."""
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import restore_missing_facts, fact_errors
+    import tempfile
+    from pathlib import Path
+    notebook = Notebook(Path(tempfile.mkdtemp()))
+    notebook.stub_person("people/avery.md", "Avery Lin", ["avery@example.com"], email="avery@example.com")
+    original = (notebook.read("people/avery.md").replace("- Location: Unknown", "- Location: Sydney [1]")
+                .replace("- (none yet)", "- [1] gmail:abc — 2026-10-01"))
+    candidate = original.replace("- Location: Sydney [1]\n", "").replace("- Phone: Unknown\n", "")
+    fixed = restore_missing_facts("people/avery.md", candidate, original)
+    assert "- Location: Sydney [1]" in fixed and "- Phone: Unknown" in fixed
+    assert not [e for e in fact_errors("people/avery.md", fixed, original) if e.startswith("Missing")]
+    assert fixed.index("- Phone:") < fixed.index("- Location:")
