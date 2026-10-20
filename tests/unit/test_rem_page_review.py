@@ -690,7 +690,7 @@ def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_restores_contact_date_over_unknown(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:iris\n"
     candidate = original.replace(f"- {label}: 2026-10-14 [4]", f"- {label}: Unknown")
 
     assert restore_runner_fields(record, candidate, original) == original
@@ -729,7 +729,7 @@ def test_restore_runner_fields_skips_contact_line_with_an_unresolved_citation():
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_keeps_candidate_contact_date(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:iris\n"
     candidate = original.replace("2026-10-14 [4]", "2026-10-15 [4]")
 
     assert restore_runner_fields(record, candidate, original) == candidate

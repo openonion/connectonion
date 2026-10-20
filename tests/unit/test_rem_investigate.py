@@ -843,7 +843,7 @@ def test_org_domains_supply_last_contact_facts_to_investigation(tmp_path, latest
     set_config(root, ['schedule.timezone', 'UTC'])
     notebook = inv.Notebook(root)
     record = 'orgs/kestrelfund-com.md'
-    notebook.stub_org(record, 'Kestrel Fund', ['kestrelfund.com'])
+    notebook.stub_org(record, 'Kestrel Capital', ['kestrelfund.com'])
     assert '## Domains\n- kestrelfund.com' in notebook.read(record)
     now = datetime.now(timezone.utc)
     write_json(state_path(root, 'mail/archive.json'), {
@@ -862,9 +862,9 @@ def test_org_domains_supply_last_contact_facts_to_investigation(tmp_path, latest
         received.extend(items)
         return {'changed': [], 'usage': None}
 
-    inv.investigate(root, record, 'Kestrel Fund', ['Kestrel Fund'], days=30,
+    inv.investigate(root, record, 'Kestrel Capital', ['Kestrel Capital'], days=30,
                     clients={}, subscriptions={}, runner=runner,
-                    website=lambda url: {'url': url, 'markdown': 'Kestrel Fund'})
+                    website=lambda url: {'url': url, 'markdown': 'Kestrel Capital'})
     assert {item['role'] for item in received if item['source'].startswith('gmail:')} == {'user', 'other'}
     rows = [row for item in received if item.get('role') == 'facts' for row in item['facts']
             if row['field'] == 'Last contact']

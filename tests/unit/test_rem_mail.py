@@ -227,7 +227,7 @@ def test_an_outlook_quote_header_on_its_own_lines_is_cut():
     lines with no rule above them; his signature, LinkedIn and office line stayed in
     her text and landed on her page, Tess's and Rowan's (#2349)."""
     from connectonion.rem.mail import strip_quoted
-    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nMargot\nMargot Olarte\n"
+    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nMargot\nMargot Duval\n"
             "Program Coordinator\nFrom: Aaron x <aaron@example.com>\nSent: Friday, 2 October 2026 18:40\n"
             "To: Colin Drake <colin@example.edu>\nSubject: RE: Invitation\nHi Colin,\nCheers,\nAaron\n"
             "From: Colin Drake <colin@example.edu>\nSent: Thursday\nKind regards,\nColin\nColin Drake\n"
