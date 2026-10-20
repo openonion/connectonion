@@ -1,6 +1,7 @@
 """Both runners are co ai; the runner setting only picks which harness answers."""
 
 import json
+import re
 import types
 from pathlib import Path
 
@@ -59,9 +60,13 @@ def test_project_can_establish_company_ownership(tmp_path, field):
     notebook = Notebook(tmp_path)
     notebook.write('people/avery.md', '# Avery Lin\n\n- Company: Unknown\n')
     notebook.write('projects/mara.md', '# Mara\n\n' + field + '\n')
+    # An owned project counts when the owner also writes from its domain (#2615 review).
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com', 'avery@maralabs.example']}})
+    assert inv.company_owner(notebook, ['maralabs.example'])['name'] == 'Avery Lin'
     write_json(state_path(tmp_path, 'map.json'), {
         'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com']}})
-    assert inv.company_owner(notebook, ['maralabs.example'])['name'] == 'Avery Lin'
+    assert inv.company_owner(notebook, ['maralabs.example']) == {}
 
 
 def test_project_ownership_without_an_owner_page_cannot_supply_owner_material(tmp_path):
@@ -3353,3 +3358,10 @@ def test_the_editing_turn_puts_back_a_quote_and_source_it_deleted_with_a_hedge(t
 
     inv.editing_turn(runner, notebook, record, {})
     assert "“Can you review it?”" in notebook.read(record) and "gmail:b" in notebook.read(record)
+
+
+def test_short_product_names_match_only_as_written_whole_words():
+    """#2615 review: a two- or three-letter product name pulled in unrelated mail."""
+    pattern = inv.company_mentions(['Mara Labs', 'Pix', 'go'])
+    assert pattern.search('notes on mara labs pricing') and pattern.search('Pix shipped today')
+    assert not pattern.search('we should go to the pixel show') and not pattern.search('pix and Go')

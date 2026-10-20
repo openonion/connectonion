@@ -187,7 +187,8 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
     page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
     projects = [notebook.read(p) for p in notebook.list("projects")]
     return {record for record in notebook.list("orgs")
-            if any(own_company(domain, page, projects) for domain in org_domains(notebook.read(record)))}
+            if any(own_company(domain, page, projects, (owner or {}).get("addresses", []))
+                   for domain in org_domains(notebook.read(record)))}
 
 
 ALL = ("people", "projects", "orgs", "skills")

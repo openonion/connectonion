@@ -94,3 +94,29 @@ def test_company_name_uses_legal_suffix_and_markdown_normalisation(field):
 def test_project_website_cannot_make_academic_or_webmail_domains_owned(domain):
     from connectonion.rem.org_map import own_company
     assert not own_company(domain, '- Company: Example\n', [f'- Website: https://{domain}\n'])
+
+
+@pytest.mark.parametrize('website', ['https://github.com/maralabs/tool', 'https://tool-maralabs.vercel.app',
+                                     'https://pypi.org/project/maratool', 'https://maralabs.github.io'])
+def test_a_project_hosted_on_a_platform_does_not_make_the_platform_the_owners_company(website):
+    """#2615 review: a project's Website on github.com or vercel.app is where it lives, not a company."""
+    from connectonion.rem.org_map import organisation, own_company
+    from urllib.parse import urlsplit
+    host = organisation(urlsplit(website).hostname)
+    assert not own_company(host, '- Company: Unknown\n', [f'- Website: {website}\n'], ['avery@' + host])
+
+
+def test_a_client_project_does_not_make_the_client_the_owners_company():
+    """#2615 review: a pilot built for a customer names the customer as its Organisation."""
+    from connectonion.rem.org_map import own_company
+    client = '# Pilot\n\n- Organisation: Fernvale Clinic\n- Website: https://fernvaleclinic.example\n'
+    owner = '- Company: Mara Labs\n'
+    assert not own_company('fernvaleclinic.example', owner, [client], ['avery@maralabs.example'])
+    assert own_company('maralabs.example', owner, [client], ['avery@maralabs.example'])
+
+
+def test_an_owned_project_counts_only_when_the_owner_writes_from_its_domain():
+    from connectonion.rem.org_map import own_company
+    project = ['- Organisation: Mara Labs\n- Website: https://maralabs.example\n']
+    assert own_company('maralabs.example', '- Company: Unknown\n', project, ['avery@maralabs.example'])
+    assert not own_company('maralabs.example', '- Company: Unknown\n', project, ['avery@gmail.com'])
