@@ -1950,3 +1950,15 @@ def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
         assert max(LAST_CONTACT.findall(page)) == "2026-10-17"
     stub = "# Avery\n\nUnknown — not investigated yet. Last contact: 2026-10-01; 3 mails (gmail).\n\n## Facts\n"
     assert lead_without_last_contact("people/avery.md", stub) == stub
+
+
+@pytest.mark.parametrize("line, stripped", [
+    ("- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2]; whether it was reviewed is unknown [3].",
+     "- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2][3]"),
+    ("- At stake: Avery asked the user to sign before 2026-10-23 [5]; completion is unknown.",
+     "- At stake: Avery asked the user to sign before 2026-10-23 [5]"),
+    ("- Whether it was reviewed is unknown [3].", "- Whether it was reviewed is unknown [3]."),
+])
+def test_a_hedge_clause_goes_and_its_citations_stay(line, stripped):
+    from connectonion.rem.page_review import strip_hedge
+    assert strip_hedge(line) == stripped

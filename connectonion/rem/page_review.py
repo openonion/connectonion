@@ -2044,3 +2044,32 @@ def lead_without_last_contact(record: str, text: str) -> str:
     cut = re.sub(r"(?m)(?<=[.!?。）)\]])" + LEAD_LAST_CONTACT.pattern, "", lead, flags=re.I)
     cut = re.sub(r"(?m)^" + LEAD_LAST_CONTACT.pattern + r"\n?", "", cut, flags=re.I)
     return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
+
+
+CLAUSE = re.compile(r"(?<=[.;!?])\s+|\s+[—–]\s+|,\s+(?=(?:but|and|so|while|though)\b)")
+
+
+def strip_hedge(line: str) -> str:
+    """The line without its clauses about what is not known; their citations stay on the line.
+
+    The editing turn deletes a hedged line with the quotes and sources it cites; put
+    back whole, the hedge came back too (60 -> 25-34 left, 2026-10-20). A clause
+    holding a quote is kept; a line that is nothing but hedge is left as it is.
+    """
+    parts = CLAUSE.split(line)
+    seps = CLAUSE.findall(line)
+    kept, moved = [], []
+    for n, part in enumerate(parts):
+        if HEDGE.search(part) and not QUOTE.search(part):
+            moved += [c for c in re.findall(r"\[(?:W?\d+)\]", part)]
+            continue
+        kept.append((seps[n - 1] if n and kept else "", part))
+    if not kept or len(kept) == len(parts):
+        return line
+    text = "".join(sep + part for sep, part in kept).rstrip(" ,;—–")
+    extra = "".join(c for c in dict.fromkeys(moved) if c not in text)
+    if extra:
+        body = re.sub(r"(\s*(?:\[(?:W?\d+)\])+)?[.]?$", "", text)
+        tail = text[len(body):]
+        text = body + tail.rstrip(".") + extra + ("." if text.endswith(".") else "")
+    return text
