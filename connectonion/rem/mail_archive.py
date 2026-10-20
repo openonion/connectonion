@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WRITE_WAIT_SECONDS, RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
+from .mail import _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
 
 
 def _key(value: str) -> str:
@@ -372,7 +372,7 @@ def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, l
     return _material(manifest, snapshots)
 
 
-def _domain_observations(root: Path, domains: list[str], contacts: set, snapshots: list[dict]) -> list[dict]:
+def _domain_observations(root: Path, domains: list[str], snapshots: list[dict], keep, exclude: set) -> list[dict]:
     """Saved observations add originals; the manifest still describes only init."""
     rows = mail_metadata(root)
     seen = {(saved['provider'], saved['id']) for saved in snapshots}
@@ -385,16 +385,17 @@ def _domain_observations(root: Path, domains: list[str], contacts: set, snapshot
         if not ref:
             continue
         saved = read_json(root / ref['message'], {})
-        own_domain = on_domains(saved, domains)
-        if own_domain or contacts.intersection(participants(saved)):
+        own_domain = org_member(saved, domains, exclude)
+        if keep(saved):
             output.append({**saved, 'thread': threads[(row['source'], row['id'])],
                            **({'relationship_scope': RELATED_ORG_SCOPE} if not own_domain else {})})
     return output
 
 
 def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
-                    include_observed: bool = False) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
-    """An org's mail from the complete local archive: every snapshot a domain is on.
+                    include_observed: bool = False,
+                    left_out: dict | None = None) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+    """An org's archived mail through members other than the owner or notice addresses.
 
     People get an index at init; an org has none, so UNSW's page said "0 loaded
     from private init archive" and listed 3,800 headers from the providers
@@ -409,20 +410,30 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     if manifest.get("phase") not in READABLE or not domains:
         return None
+    from .investigate import known_addresses
     contacts = {address.casefold() for address in contact_addresses}
+    own = {address.casefold() for address in manifest.get('owner_addresses', [])}
+    notices, known = notice_addresses(root), known_addresses(root)
+
+    def keep(row):
+        kept = org_mail(row, domains, own, notices, known, contacts)
+        if not kept and on_domains(row, domains) and left_out is not None:
+            left_out[(row['provider'], row['id'])] = row.get('date', '')
+        return kept
+
     snapshots = []
     for provider in manifest.get("providers", []):
         for path in sorted(state_path(root, f"mail/messages/{provider}").glob("*.json")):
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            own_domain = on_domains(snapshot, domains)
-            if own_domain or contacts.intersection(participants(snapshot)):
+            own_domain = org_member(snapshot, domains, own | notices)
+            if keep(snapshot):
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     if include_observed:
-        snapshots = _domain_observations(root, domains, contacts, snapshots)
+        snapshots = _domain_observations(root, domains, snapshots, keep, own | notices)
     return _material(manifest, snapshots)
 
 

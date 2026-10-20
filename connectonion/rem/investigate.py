@@ -23,7 +23,7 @@ from ..provider_credentials import ProviderCredentialError
 from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
-from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
+from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -640,11 +640,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
     items, coverage = [], []
-    own_addresses = set()
+    mailbox_addresses = {kind: {a.lower() for a in client.my_addresses()} for kind, client in clients.items()}
+    own_addresses = set().union(*mailbox_addresses.values())
     # An org is its domain: "unsw.edu.au" or "@unsw.edu.au" on the page. Only
     # for org pages -- a person's "vern.chan" alias is shaped like a domain too.
     domains = sorted({match[1] for h in handles if (match := DOMAIN_HANDLE.match(h))}) \
         if record.startswith("orgs/") else []
+    left_out, archived_left_out = set(), {}
+    notices = notice_addresses(archive_root) if domains and archive_root is not None else set()
+    known = known_addresses(archive_root) if domains and archive_root is not None else set()
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
@@ -652,8 +656,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
-                                   include_observed=True)
+                                   include_observed=True, left_out=archived_left_out)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
+    # Count exclusions through the same date and subscription checks as kept mail.
+    for (kind, native), when in archived_left_out.items() if archived else []:
+        cached_by_provider.setdefault(kind, []).append({
+            'timestamp': when, '_mail_id': native, '_org_excluded': True})
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
                           if not subscriptions.get(kind, {}).get("unsubscribed")}
@@ -675,7 +683,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             share = f" ({on_disk:,} of {target:,} bodies saved so far)"
     for kind in dict.fromkeys([*clients, *cached_by_provider]):
         client = clients.get(kind)
-        mine = {a.lower() for a in client.my_addresses()} if client else set()
+        mine = mailbox_addresses.get(kind, set())
         if sent_only:
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
@@ -691,7 +699,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             except RemError:
                 undated += 1
                 continue
-            if start <= when < end and (not sent_only or item["role"] == "user"):
+            if not start <= when < end:
+                continue
+            if item.get('_org_excluded'):
+                left_out.add((kind, item['_mail_id']))
+            elif not sent_only or item['role'] == 'user':
                 local.append(item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
@@ -755,8 +767,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 try:
                     rows = [r for term in terms
                             for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
-                                               term, begin.isoformat(), finish.isoformat()) or [])
-                            if on_domains(r, domains) or set(participants(r)).intersection(emails)]
+                                               term, begin.isoformat(), finish.isoformat()) or [])]
                 except ProviderCredentialError as error:
                     # One mailbox failing is that mailbox's gap, not the page's:
                     # a Graph 500 used to end the whole investigation before
@@ -780,10 +791,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     if progress:
                         progress(kind, stop, len(rows))
                     cursor = stop
-                rows = [r for r in rows if (on_domains(r, domains) or set(participants(r)).intersection(emails)
-                        if domains else _matches(r, handles, mine))]
-                searched += f"; scanned {len(rows)} matched mails"
+                if not domains:
+                    rows = [r for r in rows if _matches(r, handles, mine)]
+                searched += f"; scanned {len(rows)} candidate mails"
             for row in rows:
+                if domains and not org_mail(row, domains, own_addresses, notices, known, set(emails)):
+                    if on_domains(row, domains):
+                        left_out.add((kind, row['id']))
+                    continue
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
                     taken.add(row["id"])
                     hit.append(row)
@@ -813,7 +828,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-                scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
                 thread = r.get("thread_id") or r.get("thread") or ""
                 items.append({"role": "user" if own else "other", "speaker": r["from"],
                               "text": body, "timestamp": str(r["date"]),
@@ -839,6 +854,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
                    else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
+    if domains:
+        coverage.append(f"{len(left_out)} notice or owner-only messages on the domain left out")
     from .chat import CHAT_KINDS, collect_chat
     for name, sub in subscriptions.items():
         chat = sub.get("kind") in CHAT_KINDS

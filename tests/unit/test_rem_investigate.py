@@ -831,6 +831,81 @@ def test_an_org_s_mail_is_asked_of_the_server_by_domain_not_found_by_listing_eve
     assert "searched on the server for unsw" in coverage[0] and "1 matched" in coverage[0]
 
 
+
+@pytest.mark.parametrize('searchable', [True, False])
+def test_org_gather_leaves_notice_and_owner_only_mail_out_before_reading_bodies(tmp_path, searchable):
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'map.json'), {
+        'people': [{'name': 'Owner', 'addresses': ['owner@example.ai']},
+                   {'name': 'Mara', 'addresses': ['mara@example.ai']}],
+        'automated_correspondents': [{'address': 'billing@service.example.net',
+                                     'addresses': ['alerts@example.ai']}]})
+    reads = []
+
+    class Mail:
+        def my_addresses(self): return {'owner@example.ai'}
+
+        def list_between(self, start, end, limit):
+            return self.rows(start)
+
+        def rows(self, start):
+            return [{'id': native, 'from': sender, 'to': recipients, 'cc': cc, 'date': start}
+                    for native, sender, recipients, cc in [
+                        ('billing', 'billing@service.example.net', ['owner@example.ai'], []),
+                        ('owner', 'owner@example.ai', ['Avery Lin <avery@partner.example.org>'], []),
+                        ('notice-member', 'avery@partner.example.org', ['alerts@example.ai'], []),
+                        ('notice-sender', 'alerts@example.ai', ['staff@example.ai'], []),
+                        ('mara', 'Mara <mara@example.ai>', ['owner@example.ai'], []),
+                        ('notice-with-person', 'billing@service.example.net', ['owner@example.ai'], ['mara@example.ai']),
+                        ('staff', 'staff@example.edu.au', ['owner@example.ai'], [])]]
+
+        def get_email_body(self, native):
+            reads.append(native)
+            return native
+
+    box = Mail()
+    if searchable:
+        box.list_with = lambda term, start, end, **kwargs: box.rows(start)
+    items, coverage = inv.gather('Example', ['mail.example.ai', 'example.ai'], days=5,
+                                 clients={'gmail': box}, subscriptions={}, archive_root=tmp_path,
+                                 record='orgs/example.md')
+    assert {item['text'] for item in items} == {'mara', 'notice-with-person'}
+    assert set(reads) == {'mara', 'notice-with-person'}
+    assert [line for line in coverage if 'notice or owner-only messages' in line] == [
+        '5 notice or owner-only messages on the domain left out']
+    reads.clear()
+    items, coverage = inv.gather('School', ['example.edu.au'], days=5, clients={'gmail': box},
+                                 subscriptions={}, archive_root=tmp_path, record='orgs/school.md')
+    assert [item['text'] for item in items] == ['staff']
+    assert '0 notice or owner-only messages on the domain left out' in coverage
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_org_membership_excludes_owner_addresses_from_every_connected_mailbox(reverse):
+    class Mail:
+        def __init__(self, owner, rows):
+            self.owner, self.rows = owner, rows
+
+        def my_addresses(self): return {self.owner}
+
+        def list_with(self, term, start, end, **kwargs):
+            return [{**row, 'date': start} for row in self.rows]
+
+        def get_email_body(self, native):
+            raise AssertionError('owner-only mail body was read')
+
+    clients = {'gmail': Mail('owner@example.com', [
+        {'id': 'owner', 'from': 'owner@example.ai', 'to': ['Avery Lin <avery@partner.example.org>']}]),
+        'outlook': Mail('owner@example.ai', [])}
+    if reverse:
+        clients = dict(reversed(list(clients.items())))
+    items, coverage = inv.gather('Example', ['example.ai'], days=5, clients=clients,
+                                 subscriptions={}, record='orgs/example.md')
+    assert items == []
+    assert '1 notice or owner-only messages on the domain left out' in coverage
+
 @pytest.mark.parametrize('latest_sender', ['org', 'owner'])
 def test_org_domains_supply_last_contact_facts_to_investigation(tmp_path, latest_sender):
     """The org's page domain reaches extraction even when its handles omit it."""
