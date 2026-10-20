@@ -2,6 +2,7 @@
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,6 +33,147 @@ def test_new_insight_bullets_ignore_changed_citations_and_whitespace():
     carried = '- Pattern: Avery  reads before replying. [W2][3]'
     added = '- Changed: Avery now tests Lantern before sending feedback. [2][3]'
     assert insight_critic.new_bullets(before, f'## Insight\n{carried}\n{added}\n') == [added]
+
+
+@pytest.mark.parametrize('verdict', ['weak', 'wrong'])
+def test_rejected_insight_rewrite_restores_original_and_renumbers_sources(notebook, tmp_path, verdict):
+    """2026-10-21: rejecting a rewrite must not erase a finding the page already held."""
+    old = '- Pattern: Avery tests Lantern before replying. [1][W2]'
+    rewrite = '- Pattern: Avery replies after testing Lantern. [1][4]'
+    before = f'# Avery Lin\n\n## Insight\n{old}\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [W2] gmail:bbbbbbbbbbbb\n'
+    candidate = f'# Avery Lin\n\n## Insight\n{rewrite}\n\n## Sources\n- [1] gmail:cccccccccccc\n- [4] gmail:aaaaaaaaaaaa\n'
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [{'bullet': rewrite, 'verdict': verdict,
+            'reason': 'Rewords the existing finding.', 'open_thread': ''}]})})
+    restored = old.replace('[1][W2]', '[4][5]')
+    assert insight_critic._bullets(path.read_text()) == [restored]
+    assert '- [1] gmail:cccccccccccc' in path.read_text()
+    assert '- [5] gmail:bbbbbbbbbbbb' in path.read_text()
+    assert report['restored'] == [restored]
+    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [report]
+
+
+def test_four_insights_rewritten_in_place_and_rejected_all_survive(notebook, tmp_path):
+    """2026-10-21: the first live gate run emptied three pages' Insight sections this way."""
+    labels = ('Now', 'Changed', 'Pattern', 'At stake')
+    old = [f'- {label}: Avery finding {n} about Lantern releases and reviews. [{n}]' for n, label in enumerate(labels, 1)]
+    new = [f'- {label}: Lantern releases and reviews show Avery finding {n}, reworded. [{n}]'
+           for n, label in enumerate(labels, 1)]
+    sources = ''.join(f'- [{n}] gmail:{n:012x}\n' for n in range(1, 5))
+    before = '# Avery Lin\n\n## Insight\n' + '\n'.join(old) + '\n\n## Sources\n' + sources
+    path = tmp_path / 'candidate.md'
+    path.write_text('# Avery Lin\n\n## Insight\n' + '\n'.join(new) + '\n\n## Sources\n' + sources)
+    insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [
+            {'bullet': bullet, 'verdict': 'weak', 'reason': 'Rewords an existing bullet.', 'open_thread': ''}
+            for bullet in new]})})
+    assert insight_critic._bullets(path.read_text()) == old
+
+
+@pytest.mark.parametrize('section', ['', '## Insight\nUnknown\n\n'])
+def test_missing_old_insights_are_restored_without_a_model_call(notebook, tmp_path, section):
+    old = '- Pattern: Avery tests Lantern before replying. [1]'
+    before = PAGE.replace('## Sources', f'## Insight\n{old}\n\n## Sources')
+    path = tmp_path / 'candidate.md'
+    path.write_text(f'# Avery Lin\n\n{section}Investigation: complete\n')
+    def no_call(*args):
+        pytest.fail('Restoring existing insights needs no critic call')
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path, no_call)
+    assert insight_critic._bullets(path.read_text()) == [old]
+    assert '- [1] gmail:aaaaaaaaaaaa' in path.read_text()
+    assert path.read_text().index('## Insight') < path.read_text().index('## Sources')
+    assert path.read_text().index('## Sources') < path.read_text().index('Investigation:')
+    assert report['restored'] == [old]
+
+
+def test_only_kept_good_additions_replace_old_insights(notebook, tmp_path):
+    old = '- Pattern: Avery tests Lantern before replying. [1]'
+    lost = '- Changed: The renewal deadline moved to November. [1]'
+    kept = old + ' Paid pilots now require a security review before renewal. [2]'
+    before = PAGE.replace('## Sources', f'## Insight\n{old}\n{lost}\n\n## Sources')
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE.replace('## Sources', f'## Insight\n{kept}\n\n## Sources'))
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [{'bullet': kept, 'verdict': 'good',
+            'reason': 'Adds a decision-changing review requirement.', 'open_thread': ''}]})})
+    assert insight_critic._bullets(path.read_text()) == [kept, lost]
+    assert report['restored'] == [lost]
+
+
+def test_unmatched_good_verdict_for_old_bullet_cannot_replace_a_missing_insight(notebook, tmp_path):
+    """2026-10-21: only good new proposals can stand in for a missing prior insight."""
+    old = '- Pattern: Avery tests Lantern before replying. [1]'
+    lost = old + ' Renewal also needs a security review. [1]'
+    added = '- Changed: Avery scheduled a pilot renewal. [1]'
+    before = PAGE.replace('## Sources', f'## Insight\n{old}\n{lost}\n\n## Sources')
+    path = tmp_path / 'candidate.md'
+    path.write_text(before.replace(lost, added))
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [{'bullet': old, 'verdict': 'good',
+            'reason': 'Invented mismatched verdict.', 'open_thread': ''}]})})
+    assert report['restored'] == [lost]
+    assert lost in insight_critic._bullets(path.read_text())
+
+
+@pytest.mark.parametrize('fallback', [False, True])
+def test_insight_packet_fetches_only_unresolved_cited_github_sources(notebook, monkeypatch, fallback):
+    """2026-10-21: mail-only packets wrongly rejected claims citing existing GitHub originals."""
+    bullets = ['- Changed: Lantern now requires review before renewal. [1][2][3]']
+    candidate = ('\n'.join(bullets) + '\n\n## Sources\n- [1] github:invented/lantern#17\n'
+                 '- [2] github:invented/lantern#18\n- [3] repository:lantern\n- [4] github:invented/lantern#19\n')
+    calls = []
+    body = json.dumps({'title': 'Renewal review', 'body': 'Invented evidence. ' * 3000,
+                       'comments': [{'body': 'Review before renewal.'}]})
+    def run(argv, **options):
+        calls.append(argv)
+        assert options == {'capture_output': True, 'text': True, 'timeout': 60}
+        return SimpleNamespace(returncode=int(fallback and argv[1] == 'issue'), stdout=body)
+    monkeypatch.setattr(insight_critic.subprocess, 'run', run)
+    packet = insight_critic.critic_packet(notebook, candidate, RECORD,
+        [{'source': 'github:invented/lantern#18', 'text': 'Already supplied original.'}], bullets)
+    assert calls == [['gh', kind, 'view', '17', '-R', 'invented/lantern', '--json',
+                      'title,body,author,createdAt,state,url,comments']
+                     for kind in (['issue', 'pr'] if fallback else ['issue'])]
+    sources = {row['citation']: row for row in packet['sources']}
+    assert sources['1']['source_id'] == 'github:invented/lantern#17'
+    assert sources['1']['context'] == {'excerpt': body[:40_000], 'truncated': True}
+    assert sources['2']['context']['excerpt'] == 'Already supplied original.'
+    assert packet['missing_citations'] == ['3']
+
+
+@pytest.mark.parametrize('failure', ['exit', 'missing-gh', 'timeout'])
+def test_github_fetch_failure_leaves_citation_missing(notebook, monkeypatch, failure):
+    bullet = '- Changed: Lantern requires review before renewal. [1]'
+    def run(argv, **options):
+        if failure == 'missing-gh':
+            raise FileNotFoundError('Invented missing gh')
+        if failure == 'timeout':
+            raise subprocess.TimeoutExpired(argv, 60)
+        return SimpleNamespace(returncode=1, stdout='')
+    monkeypatch.setattr(insight_critic.subprocess, 'run', run)
+    packet = insight_critic.critic_packet(notebook,
+        f'{bullet}\n\n## Sources\n- [1] github:invented/lantern#17\n', RECORD, [], [bullet])
+    assert packet['sources'] == [] and packet['missing_citations'] == ['1']
+
+
+def test_critic_prompt_judges_additions_and_does_not_treat_missing_originals_as_contradictions(notebook, tmp_path):
+    old = '- Pattern: Avery tests Lantern before replying. [1]'
+    addition = old + ' The pilot now requires a security review before renewal. [2]'
+    before = PAGE.replace('## Sources', f'## Insight\n{old}\n\n## Sources')
+    path = tmp_path / 'candidate.md'
+    path.write_text(before.replace(old, addition))
+    def run(workspace, prompt, config, stage):
+        assert ('An original not supplied here is not evidence against a claim: never rate wrong or weak '
+                'only because a citation is missing; judge on what is supplied, and if the claim rests '
+                "only on missing originals, rate weak with reason 'unverifiable'.") in prompt
+        assert ('Judge what a bullet adds: if it restates something the page has but adds a new fact '
+                'or connection that changes what the user would do, judge the addition.') in prompt
+        return {'result': json.dumps({'bullets': [{'bullet': addition, 'verdict': 'good',
+            'reason': 'The addition changes the renewal decision.', 'open_thread': ''}]})}
+    insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path, run)
+    assert insight_critic._bullets(path.read_text()) == [addition]
 
 
 def test_new_insights_include_duplicate_sections_and_remove_only_exact_bullets(notebook, tmp_path):
@@ -144,8 +286,8 @@ def test_insight_critic_edits_only_new_bullets_from_independent_originals(notebo
     assert text.index('## Open threads') < text.index('## Sources')
     assert '\nUnknown\n' not in text
     assert ('- An earlier obligation. [1]' in text) == ('earlier obligation' in open_section)
-    assert report == {'bullets': decisions, 'unmatched': [], 'usage': {'input_tokens': 31}}
-    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == report
+    assert report == {'bullets': decisions, 'unmatched': [], 'restored': [], 'usage': {'input_tokens': 31}}
+    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [report]
     assert notebook.read(RECORD) == before
 
 
@@ -155,7 +297,7 @@ def test_insight_critic_skips_model_when_there_are_no_new_bullets(notebook, tmp_
     def no_call(*args):
         pytest.fail('No proposed insights need a model call')
     assert insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, no_call) == {
-        'bullets': [], 'usage': {}}
+        'bullets': [], 'usage': {}, 'unmatched': [], 'restored': []}
 
 
 def test_insight_critic_records_unmatched_bullet_and_leaves_it_in_place(notebook, tmp_path):
@@ -868,3 +1010,12 @@ def test_enrich_period_turns_resume_one_thread_and_keep_usage(notebook, monkeypa
     assert "2025-01–2025-01" in calls[0][1] and "2025-02–2025-02" in calls[1][1]
     assert [kw for _, _, kw in calls] == [{}, {"session": "first-thread"}, {"session": "first-thread"}]
     assert len({workdir for workdir, _, _ in calls}) == 1
+
+
+@pytest.mark.parametrize('source', ['github:acme/lantern#12', 'https://github.com/acme/lantern/pull/12'])
+def test_critic_fetches_a_github_original_by_id_or_url(monkeypatch, source):
+    calls = []
+    monkeypatch.setattr(insight_critic.subprocess, 'run', lambda argv, **kw: calls.append(argv) or SimpleNamespace(
+        returncode=0, stdout='{"title": "Ship Lantern"}', stderr=''))
+    assert insight_critic._github_original(source)['excerpt'] == '{"title": "Ship Lantern"}'
+    assert calls[0][:5] == ['gh', 'issue', 'view', '12', '-R'] and calls[0][5] == 'acme/lantern'

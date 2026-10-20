@@ -1509,6 +1509,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if result.get("critic_usage_pending") and isinstance(error, RunFailed):
             usage = _add_usage(result.get("usage"), usage)
+            # 2026-10-21: failed critic calls belong beside completed attempts in the run's audit trail.
+            history = directory / "insight-critic.json"
+            write_json(history, [*read_json(history, []), {"error": str(error), "usage": error.usage or {}}])
         if prior_turn_usage and isinstance(error, RunFailed):
             usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
                      else _add_usage(prior_turn_usage, usage))
