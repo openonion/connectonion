@@ -291,3 +291,11 @@ def test_shared_history_rule_only_applies_to_shapes_with_history():
         assert ('`History`, on a page whose shape has one: one dated line per thread, '
                 'how it ended; at most sixteen.') in text
         assert len(text) <= INSTRUCTION_BUDGET
+
+
+def test_the_owner_page_keeps_private_life_out_of_insight_and_debts_to_what_was_agreed():
+    """#2128 / #2233 reruns: an Insight bullet about a purchase; 'The user owes' for a status question."""
+    owner = instructions("investigate", page_kind="person", owner=True)
+    assert "Work only: never a `[personal]`" in owner
+    assert "owes only what the user agreed to" in owner
+    assert len(owner) <= INSTRUCTION_BUDGET

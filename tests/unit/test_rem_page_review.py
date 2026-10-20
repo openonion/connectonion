@@ -1620,8 +1620,8 @@ def test_restore_cannot_lose_an_earlier_quote_when_another_quote_is_retained_els
      "The user said it was still open on the user's side and the user would complete it [1]."),
     ("Avery said she would reply; the user said he would wait for her reply [3].",
      "Avery said she would reply; the user said the user would wait for her reply [3]."),
-    ("The user thanked Jordan and he said the demo was done [2].",
-     "The user thanked Jordan and he said the demo was done [2]."),
+    ("The user thanked Theo and he said the demo was done [2].",
+     "The user thanked Theo and he said the demo was done [2]."),
     ("The user wrote “he is ready” to Avery [1].", "The user wrote “he is ready” to Avery [1]."),
     ("Avery said she is away from her desk [1].", "Avery said she is away from her desk [1]."),
 ])
@@ -1649,8 +1649,8 @@ def test_a_key_decision_that_retells_the_owner_is_named_for_repair():
      "The user said it was open on his side [4].\n",
      "# Avery Lin\n\nAvery said she would apply. The user was her manager and submitted her reference [4]. "
      "The user said it was open on the user's side [4].\n"),
-    ("# Jordan Lee\n\nJordan said he would meet. The user said he would send the deck [1].\n",
-     "# Jordan Lee\n\nJordan said he would meet. The user said he would send the deck [1].\n"),
+    ("# Theo Park\n\nTheo said he would meet. The user said he would send the deck [1].\n",
+     "# Theo Park\n\nTheo said he would meet. The user said he would send the deck [1].\n"),
 ])
 def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed):
     """2026-10-20: the first owner-pronoun repair wrote "the user was the user's direct manager"."""
@@ -1712,3 +1712,11 @@ def test_a_carried_quote_that_is_not_in_its_source_is_not_guarded():
     assert dropped(before, after, exempt) == []
     assert restore_dropped(before, after, exempt) == after
     assert dropped(before, after) != []
+
+
+@pytest.mark.parametrize("line", ["- It is unclear whether Avery replied [2].", "- 目前无法确认是否完成 [2]",
+                                  "Avery may have sent it; this cannot be confirmed [1]."])
+def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_removes(line):
+    from connectonion.rem.page_review import hedged_lines
+    page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
+    assert hedged_lines(page)

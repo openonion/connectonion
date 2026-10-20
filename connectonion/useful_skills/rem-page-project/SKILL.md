@@ -6,8 +6,9 @@ description: A project page a new teammate understands in one screen: what it is
 # A project's page
 
 Write for a teammate who has one minute. Say what is, dated; never what the
-evidence lacks ("no test result is reported", "unverified"): a gap that
-changes the next step is one question under `Uncertainties`. The first screen answers, dated and
+evidence lacks ("no test result is reported", "it is unclear whether",
+"目前无法确认是否完成"): write the dated fact that is known and put the open
+part in `Open threads`. The first screen answers, dated and
 cited: what the project is, why it exists in the owner's words, where it
 stands now, and what is still open. Reference detail follows. A page that
 tours files and hedges every line fails even when every line is true.

@@ -336,3 +336,20 @@ def test_finished_task_keeps_rejection_reason_but_removes_audit_packet(tmp_path)
     assert all((tmp_path / name).is_file() for name in ('candidate.md', 'review.json', 'claim-review.json'))
     assert not (tmp_path / 'claim-input.txt').exists()
     assert (tmp_path / 'claim-review.json').stat().st_mode & 0o777 == 0o600
+
+
+def test_people_audit_keeps_an_unanswered_ask_open_and_an_overdue_promise_open(tmp_path):
+    """2026-10-20 request-vs-commitment case: the audit failed every open thread as "a past request",
+    and the last resort left Open threads Unknown on five of six runs."""
+    seen = []
+    candidate = '# Avery Lin\n\nAvery asked “Can you review it?” [1]\n\n## Sources\n- [1] gmail:a\n'
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+                                record='people/avery-lin.md', items=[{'source': 'gmail:a', 'text': 'Can you review it?'}])
+    assert "A dated ask or promise that no later message answers is open, however old" in seen[0]
+    assert "overdue, still open" in seen[0]
+    assert "a past ask is not a current debt" not in seen[0]
