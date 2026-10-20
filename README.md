@@ -113,12 +113,23 @@ through your work.
 <a href="https://docs.connectonion.com/rem/demo">
   <picture>
     <source media="(max-width: 600px)" srcset="docs/assets/rem-readme/reader-phone.png">
-    <img src="docs/assets/rem-readme/reader-desktop.png" alt="co rem morning overview: a changed role, its supporting source, and notebook navigation" width="960">
+    <img src="docs/assets/rem-readme/reader-desktop.png" alt="co rem morning brief: one verified change overnight, one thing due soon, and the three most important open threads" width="960">
   </picture>
 </a>
 
-*The 1.9.0a20 reader with invented example data. The linked sample is a frozen
+*The reader's morning brief with invented example data. The linked sample is a frozen
 notebook you can explore without connecting an account.*
+
+<details>
+<summary>More of the reader: English and 中文, desktop and phone, light and dark</summary>
+
+| | |
+|---|---|
+| <img src="docs/assets/rem-readme/tour-en-person-dark-desktop.png" alt="A person's page in dark mode: what is owed in each direction and the facts with their sources" width="480"> | <img src="docs/assets/rem-readme/tour-zh-home-desktop.png" alt="The morning brief with the Chinese interface and cached Chinese page text" width="480"> |
+| <img src="docs/assets/rem-readme/tour-en-people-desktop.png" alt="The People table: one line per person with what is open, company and last contact" width="480"> | <img src="docs/assets/rem-readme/tour-en-open-phone-dark.png" alt="Open threads on a phone in dark mode, each with Copy prompt and Mark done" width="240"> <img src="docs/assets/rem-readme/tour-zh-person-phone.png" alt="A person's page on a phone in Chinese" width="240"> |
+
+Captured with `python scripts/capture_rem_reader.py --readme docs/assets/rem-readme`.
+</details>
 
 - **Connect scattered context.** Bring mail and coding sessions into linked
   pages about the people, projects and skills involved.

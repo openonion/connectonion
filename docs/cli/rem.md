@@ -532,19 +532,41 @@ Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
 
-- **Home** opens with up to three pages changed in the latest pass, labeling
-  their statements as current context. A changed Project card shows its purpose
-  separately from its latest finding. When the new run log has cited Facts or
-  Contact value changes, they appear separately as old and new values. A page
-  rewrite alone is not described as a new fact. **Remember with REM** asks
-  about an older page and reveals what it says on request. **Open threads**
-  previews three items in each direction and links to the full action view.
-  **This week** follows. Compact category cards replace the long contents
-  shelves. The last pass's counts and hypnogram are available in **How REM
-  processed the last pass**. The owner's page is pinned as **You**.
+- **Home** is a morning brief, read top to bottom. A date line and one
+  sentence count what matters ("1 change overnight · 1 due soon · 4 waiting
+  on you"); a quiet line under it summarises the last pass, with its
+  hypnogram one click away in **How co rem processed the last pass**.
+  **Overnight** lists only verified field changes from the run log (old and
+  new value, with a link to the source). A page rewrite alone is not a
+  change, and a quiet night says so. **Today** lists open threads, in either
+  direction, that are overdue, due within three days, or new today.
+  **Open threads** shows the three most important things waiting on you that
+  Today did not already show. **Find** is a search field with task entry
+  points (who do I owe, what changed this week, people, projects,
+  everything). **Worth remembering** and **Gone quiet** sit beside the brief on
+  desktop. **Pages rewritten this week** stays collapsed. The owner's page is
+  pinned as **You**.
+- **Thread actions**: every open thread on Home and in Open threads has
+  **Copy prompt** and **Mark done**. Copy prompt puts a ready-to-paste prompt
+  for Codex or Claude Code on the clipboard. It contains the thread, its page
+  with the `co rem show` command, other pages carrying the same thread, and
+  the cited source ids and dates, and it asks the agent to draft without
+  sending anything. Labelled private passages are left out. Mark done hides
+  the thread from Home and the counts in this browser only (local storage,
+  per notebook); with storage blocked it lasts for the session. **Undo** is
+  offered at once and under **Marked done on this device** in Open threads.
+  Nothing is sent and the notebook is not changed; the next pass that sees
+  your reply closes the thread there.
+- **Merged threads**: the same request copied onto several pages is shown
+  once, with **Also on** naming the other pages. Copies merge when they cite
+  the same message and one mostly repeats the other's distinctive words, or
+  when dated within a week with matching wording. Written dates such as "23
+  October 2026" or "Sep 3" count as dates. A page's undirected line can join
+  a directed copy of the same request; two different requests in one email
+  stay separate.
 - **People, Organisations and Projects** open as a sheet: one row per page,
   the facts in columns (People starts with name and summary, what's open,
-  company and last contact; **More columns** reveals role, email, phone and
+  company and last contact, each one line with the full text on hover; **More columns** reveals role, email, phone and
   mails, remembering your choice in this browser; status is the moon beside
   the name), a sticky header, sort on any shown column, filters (*Something open*,
   *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
