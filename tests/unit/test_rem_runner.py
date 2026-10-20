@@ -698,7 +698,7 @@ def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, 
     result = {}
     runner.promote_with_repairs(notebook, record, candidate, original, items, tmp_path, result,
         workdir=tmp_path, config={}, stage=stage, run=lambda *args: {})
-    assert seen == [original if stage in ('enrich', 'muse') else ''] * 2
+    assert seen == [original if stage in ('enrich', 'muse', 'maintain') else ''] * 2
     assert result['repairs'] == 1
 
 
