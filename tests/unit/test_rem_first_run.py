@@ -857,7 +857,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 42  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 71  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -878,9 +878,21 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
     from connectonion.rem.config import default_config
     total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
-    assert 120 <= total["minutes"] <= 140
-    assert 400_000_000 <= total["input_tokens"] <= 480_000_000
+    # Since 2026-10-20 the defaults never announce less than a measured run took:
+    # pages now read in rounds and are deepened, so they cost more than b1's did.
+    assert 129 <= total["minutes"] <= 1.35 * 129
+    assert 439_000_000 <= total["input_tokens"] <= 1.35 * 439_000_000
     assert fr.plan([], **b1, workers=48)["minutes"] == total["minutes"]
+
+
+def test_the_estimate_matches_the_2026_10_20_release_check():
+    """It announced ~42 minutes and ~50M input tokens for your page, ten people,
+    three projects, two organisations and a skill; the run took 82 minutes of
+    pages after an 11.5-minute quick page, and 102M input tokens."""
+    from connectonion.rem import first_run as fr
+    total = fr.plan([], owner=True, people=10, projects=3, orgs=2, skills=1, workers=16)
+    assert 90 <= total["minutes"] <= 105
+    assert 95_000_000 <= total["input_tokens"] <= 110_000_000
 
 
 def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
