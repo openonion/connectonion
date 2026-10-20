@@ -4009,3 +4009,95 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()
     assert action.evaluate(r'''node => node === document.activeElement''')
+
+
+@pytest.mark.parametrize('width', [390, 800, 1099, 1440])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, width, theme, language):
+    from rem_reader_notebook import build
+    from connectonion.rem.reader import render
+
+    page, _ = reader
+    path = tmp_path / 'round-eight.html'
+    path.write_text(render(build(tmp_path / 'round-eight', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True)))
+    page.set_viewport_size({'width': width, 'height': 1000})
+    page.goto(path.as_uri())
+    page.evaluate(r'''({theme, language}) => {
+      setTheme(theme);
+      setInterfaceLanguage(language);
+    }''', {'theme': theme, 'language': language}, isolated_context=False)
+    rows = page.locator('.overnight-change')
+    assert rows.count() == 1
+    assert rows.locator('.supported').count() == 0
+    source = rows.get_by_role('link', name='来源' if language == 'zh' else 'source', exact=True)
+    assert source.count() == 1
+    assert source.get_attribute('title') == ('有引用来源支持' if language == 'zh' else 'Supported by the cited source')
+    assert source.get_attribute('href').endswith('h=src-2')
+    assert page.locator('.recall-toggle').evaluate(r'''button => {
+      const css = getComputedStyle(button);
+      return css.borderTopStyle === 'solid' && css.borderTopWidth === '1px'
+        && parseFloat(css.borderTopLeftRadius) >= 6 && parseFloat(css.borderTopLeftRadius) <= 7
+        && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+    }''')
+    page.locator('.recall-toggle').click()
+    assert page.locator('.recall-answer').is_visible()
+    page.locator('.recall-toggle').click()
+    assert not page.locator('.recall-answer').is_visible()
+    if width < 1100:
+        assert page.evaluate(r'''() => {
+          const bottom = selector => document.querySelector(selector).getBoundingClientRect().bottom;
+          const top = selector => document.querySelector(selector).getBoundingClientRect().top;
+          return bottom('.overnight') <= top('.home-find')
+            && bottom('.open-brief') <= top('.home-find')
+            && bottom('.home-find') <= top('.recall')
+            && (!document.querySelector('.gone-quiet') || bottom('.recall') <= top('.gone-quiet'));
+        }''')
+    summaries = page.locator(':is(.gone-quiet, .week-details, .night-details, .done-details) > summary')
+    for summary in summaries.all():
+        assert summary.evaluate(r'''summary => {
+          const css = getComputedStyle(summary);
+          return css.display === 'list-item' && css.fontSize === '14px'
+            && css.fontWeight === '400';
+        }''')
+        if width == 390:
+            assert summary.bounding_box()['height'] >= 44
+    assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path, theme, language):
+    from rem_reader_notebook import build
+    from connectonion.rem.reader import render
+
+    page, _ = reader
+    path = tmp_path / 'round-eight-facts.html'
+    path.write_text(render(build(tmp_path / 'round-eight-facts', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True)))
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(path.as_uri())
+    page.evaluate(r'''({theme, language}) => {
+      setTheme(theme);
+      setInterfaceLanguage(language);
+    }''', {'theme': theme, 'language': language}, isolated_context=False)
+    for record in ['people/mara-ostrowski.md', 'projects/harbour.md', 'orgs/fernhill-labs.md']:
+        page.goto(path.as_uri() + '#r=' + record.replace('/', '%2F'))
+        summary = page.locator('details.deep-note > summary')
+        heading = summary.locator('h2').bounding_box()
+        plus = summary.locator('.deep-toggle').bounding_box()
+        assert abs(plus['y'] - heading['y']) <= 4
+        assert plus['x'] > heading['x'] + heading['width']
+        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"+"'
+        summary.click()
+        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"−"'
+        facts = page.locator('.panel').filter(has=page.locator('.factlist'))
+        assert facts.count() == 1
+        if language == 'zh':
+            assert facts.locator('h3').inner_text() == '资料'
+            labels = facts.locator('.factlist dt').all_inner_texts()
+            assert labels and all(not re.search('[A-Za-z]', label) for label in labels)
+            assert '— not found' not in facts.inner_text()
+            if record.startswith('people/'):
+                assert set(labels) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '账号', '语言', '别名'}
+                assert '— 未找到' in facts.inner_text()
+        assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')

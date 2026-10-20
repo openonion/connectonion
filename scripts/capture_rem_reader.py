@@ -27,7 +27,7 @@ FIXTURE_VIEWS = {
 SIZES = {"desktop": (1440, 1000), "phone": (390, 844)}
 
 
-def capture(page_file: Path, out: Path, views: dict) -> list[Path]:
+def capture(page_file: Path, out: Path, views: dict, language: str = "") -> list[Path]:
     from playwright.sync_api import sync_playwright
     shots = []
     with sync_playwright() as api:
@@ -37,6 +37,8 @@ def capture(page_file: Path, out: Path, views: dict) -> list[Path]:
                 for theme in ("light", "dark"):
                     page = browser.new_page(viewport={"width": width, "height": height}, color_scheme=theme)
                     page.route("http*://**/*", lambda route: route.abort())
+                    if language:
+                        page.add_init_script(f"localStorage.setItem('co-rem-ui-language', '{language}')")
                     for name, fragment in views.items():
                         page.goto(page_file.as_uri() + (fragment or "#"))
                         page.wait_for_timeout(1700 if name == "home" else 250)
@@ -46,7 +48,7 @@ def capture(page_file: Path, out: Path, views: dict) -> list[Path]:
                             if name == "contact-command":
                                 page.locator(".contact-directory td button").first.click()
                         overflow = page.evaluate("document.documentElement.scrollWidth - innerWidth")
-                        path = out / f"{name}-{theme}-{size}.png"
+                        path = out / f"{name}{'-' + language if language else ''}-{theme}-{size}.png"
                         page.screenshot(path=str(path), full_page=True)
                         shots.append(path)
                         if overflow > 0:
@@ -103,6 +105,7 @@ def main() -> int:
     parser.add_argument("--readme", type=Path, metavar="DIR", help="capture the seven README tour images from the fixture")
     parser.add_argument("--root", type=Path, help="a COPY of a notebook; default is the invented fixture")
     parser.add_argument("--view", action="append", default=[], help="name=#fragment, for --root")
+    parser.add_argument("--language", choices=["en", "zh"], default="", help="interface language, as if chosen in the reader")
     parser.add_argument("--only", action="append", default=[], help="capture only these named fixture views")
     args = parser.parse_args()
     if args.readme:
@@ -123,7 +126,7 @@ def main() -> int:
             views = {name: views[name] for name in args.only}
     page_file = args.out / "reader.html"
     page_file.write_text(render(root), encoding="utf-8")
-    for shot in capture(page_file, args.out, views):
+    for shot in capture(page_file, args.out, views, args.language):
         print(shot)
     return 0
 

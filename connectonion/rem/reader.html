@@ -219,7 +219,6 @@
   .morning-side .recall h2 { font: 19px/1.4 var(--text); margin: 14px 0 10px; }
   .morning-side .recall-toggle { margin-top: 14px; }
   .gone-quiet { margin-top: 28px; color: var(--ink-2); }
-  .gone-quiet summary { font: 600 17px/1.5 var(--display); cursor: pointer; color: var(--ink); }
   .quiet-list { list-style: none; padding: 0; font-size: 13px; }
   .quiet-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .quiet-list p { margin: 4px 0 0; color: var(--ink-2); font: 13px/1.4 var(--text); }
@@ -264,8 +263,8 @@
   .recall .label { font: 600 10px/1.4 var(--ui); letter-spacing: 0; text-transform: none; color: var(--blue); }
   .recall h2 { grid-column: 1; font: 500 23px/1.28 var(--display); margin: 6px 0; }
   .recall .why { grid-column: 1; color: var(--ink-2); font-size: 13px; margin: 0; }
-  .recall-toggle { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; border-radius: 7px; padding: 10px 14px; font: 600 13px var(--ui); cursor: pointer; background: transparent; border: 1px dashed var(--ink-3); color: var(--ink-2); }
-  .recall-toggle:hover { border-color: var(--blue); }
+  .recall-toggle { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; border-radius: 7px; padding: 10px 14px; font: 600 13px var(--ui); cursor: pointer; background: var(--sheet); border: 1px solid var(--line); color: var(--ink-2); }
+  .recall-toggle:hover { border-color: var(--ink-3); }
   .recall-answer { grid-column: 1 / -1; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 15px; }
   .recall-answer[hidden] { display: none; }
   .recall-answer p { font: 16px/1.5 var(--text); margin: 0 0 7px; }
@@ -276,7 +275,6 @@
   .connection-review p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
   .connection-review .subjects { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
   .night-details { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 10px; }
-  .night-details > summary { cursor: pointer; color: var(--ink-2); font: 13px var(--ui); padding: 8px 0; }
   .night-details .night { margin-top: 10px; }
 
   /* ---- this week: what was rewritten ---- */
@@ -314,6 +312,7 @@
 
   /* ---- rows: a page as one line of what it knows ---- */
   .hits { list-style: none; margin: 0; padding: 0; max-width: 80ch; border-top: 1px solid var(--line); }
+  .changed-pages { max-width: 80ch; }
   .hits.cols { max-width: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
   .hits > li { padding: 13px 0 14px; border-bottom: 1px solid var(--line); min-width: 0; }
   .hits .t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -348,11 +347,11 @@
 
   /* the engine room: maintenance, kept below everything */
   .maint { margin-top: 64px; border-top: 1px solid var(--line); padding-top: 8px; }
-  .maint > summary { cursor: pointer; list-style: none; padding: 10px 0; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+  .maint > summary { flex-wrap: nowrap; cursor: pointer; list-style: none; padding: 10px 0; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
   .maint > summary::-webkit-details-marker { display: none; }
   .maint > summary h2 { font: 500 18px var(--display); margin: 0; display: inline; }
   .maint > summary .n { font: 11.5px var(--ui); color: var(--ink-3); }
-  .maint > summary::after { content: "+"; font: 16px var(--ui); color: var(--ink-3); }
+  .maint > summary::after { content: "+"; font: 16px var(--ui); color: var(--ink-3); flex: none; white-space: nowrap; }
   .maint[open] > summary::after { content: "−"; }
   .maint .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px 22px; margin: 6px 0 16px; }
   .maint .k { font: 10.5px var(--ui); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
@@ -596,7 +595,7 @@
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
 
   .contact-directory { margin: 18px 0 24px; overflow: hidden; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
-  .contact-directory summary { cursor: pointer; padding: 15px 18px; font-weight: 650; color: var(--ink); }
+  .contact-directory summary { cursor: pointer; padding: 15px 0; font: 600 15px/1.5 var(--ui); color: var(--ink); }
   .contact-directory summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
   .contact-directory .directory-body { padding: 0 18px 18px; }
   .contact-directory .directory-note { margin: 0 0 12px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
@@ -748,7 +747,7 @@
   .project-workspace .focus-section { min-width: 0; }
   .project-workspace p, .project-workspace li { max-width: 72ch; font: 15px/1.5 var(--text); }
   .project-workspace p { margin: 0; }
-  .project-workspace ul { margin: 0; padding-left: 18px; }
+  .project-workspace ul { margin: 0; padding: 0; list-style: none; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
   .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -815,8 +814,9 @@
   .activity-type { font: 400 12px var(--ui); color: var(--ink-3); }
   .activity-text { max-width: 72ch; font: 14px/1.5 var(--text); }
   .deep-note { max-width: 1120px; border-top: 1px solid var(--line); margin-top: 18px; }
-  .deep-head { display: flex; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
+  .deep-head { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
   .deep-head h2 { margin: 0; font: 600 18px/1.3 var(--display); color: var(--ink); }
+  .deep-label { display: flex; flex: 1; min-width: 0; justify-content: space-between; gap: 15px; align-items: baseline; }
   .deep-hint { font: 11px var(--ui); color: var(--ink-3); }
   .deep-note .page-grid { padding-top: 22px; }
   /* A person's first screen is a ledger; the full note waits below it. */
@@ -824,6 +824,8 @@
   .person-head h1 { margin-bottom: 12px; }
   .person-lead { max-width: 72ch; margin: 0 0 12px; font: 18px/1.5 var(--text); }
   .contact-line.leadrow { margin: 0; color: var(--ink-2); }
+  .lang-status { margin-left: 6px; color: var(--ink-3); font: 11px var(--ui); white-space: nowrap; }
+  .role-more { color: var(--ink-3); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: 13px/1.5 var(--ui); overflow-wrap: anywhere; }
   .person-focus { max-width: 1120px; }
   .person-focus h2 { margin: 24px 0 12px; font: 600 18px/1.3 var(--display); }
@@ -850,15 +852,20 @@
   .recent-activity .activity-head h2 { margin-top: 0; }
   details.deep-note > summary { cursor: pointer; min-height: 56px; padding: 18px 0; }
   details.deep-note > summary h2 { display: inline; }
-  details.deep-note > summary::after { content: "+"; margin-left: auto; color: var(--ink-3); }
-  details.deep-note[open] > summary::after { content: "−"; }
+  .deep-toggle { margin-left: auto; color: var(--ink-3); flex: none; white-space: nowrap; }
+  .deep-toggle::after { content: "+"; }
+  details.deep-note[open] .deep-toggle::after { content: "−"; }
   .deep-context { margin-top: 24px; }
   @media (max-width: 719px) {
     .between-ledger { grid-template-columns: minmax(0, 1fr); gap: 22px; }
     .person-head { margin-bottom: 18px; }
     .person-lead { font-size: 16px; }
     .person-insight dl > div { grid-template-columns: 65px minmax(0, 1fr); gap: 10px; }
+    details.deep-note > summary { display: flex; flex-wrap: nowrap; gap: 12px; align-items: baseline; }
+    details.deep-note > summary .deep-label { display: block; }
     details.deep-note > summary .deep-hint { display: block; margin-top: 4px; }
+    .waiting-person > div { min-width: 0; }
+    .waiting-person .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }
   .claim-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 20px 0; display: block; border-top: 1px solid var(--line); }
   .claim-grid.standalone { max-width: 980px; }
@@ -1342,8 +1349,7 @@
     .people-card-meta .clamp { display: inline; color: inherit; }
     .people-sheet .sheet td.c-open { width: auto; min-width: 0; max-width: none; grid-row: 2; }
     .people-sheet .sheet td:is(.c-email, .c-phone) { width: auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-    .people-sheet .sheet td:is(.c-email, .c-phone):not([data-empty="true"])::before { content: attr(data-label) ": "; color: var(--ink-3); }
-    .people-sheet .sheet td.c-email:not([data-empty="true"])::before { content: attr(data-label) " "; font: 11px var(--ui); }
+    .people-sheet .sheet td:is(.c-email, .c-phone):not([data-empty="true"])::before { content: attr(data-label) " "; color: var(--ink-3); font: 11px var(--ui); }
     .people-sheet .sheet :is(.people-emails, .people-phones, .contact-first) { display: inline; }
     .people-sheet .contact-first { white-space: normal; overflow-wrap: anywhere; }
     .people-sheet .sheet .contact-more { display: inline; margin-left: 6px; }
@@ -1363,8 +1369,7 @@
   .overnight-change { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 12px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; overflow-wrap: anywhere; }
   .overnight-change > a:first-child { color: var(--ink); font-weight: 500; }
   .claim-values { color: var(--ink-2); }
-  .claim-values del, .supported { color: var(--ink-3); }
-  .supported { font-size: 11px; }
+  .claim-values del { color: var(--ink-3); }
   .brief-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; font-size: 13px; }
   .today-thread { padding: 12px 0; border-bottom: 1px solid var(--line-2); overflow-wrap: anywhere; }
   .today-who { color: var(--ink); font: 500 14px var(--ui); }
@@ -1379,7 +1384,7 @@
   .task-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13px; }
   .task-links a { min-height: 24px; }
   .week-details, .done-details { margin-top: 28px; }
-  .week-details > summary, .done-details > summary { cursor: pointer; color: var(--ink-2); font: 14px/1.5 var(--ui); }
+  :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { display: list-item; cursor: pointer; color: var(--ink-2); font: 400 14px/1.5 var(--ui); padding: 8px 0; }
   @media (min-width: 900px) {
     .people-sheet .sheet td { padding-block: 8px; border-bottom-color: var(--line-2); }
     .people-sheet .sheet .name { box-shadow: none; }
@@ -1397,7 +1402,7 @@
     .pass-summary a, .today-who, .task-links a, .overnight-change a { display: inline-flex; align-items: center; min-height: 44px; }
     /* Full-size tap targets without the extra line height between rows. */
     .pass-summary a, .today-who, .overnight-change a { margin-block: -10px; }
-    .week-details > summary, .done-details > summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; }
+    :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; }
     .thread-actions button { min-height: 44px; }
     .done-notice button { min-height: 44px; }
   }
@@ -1442,9 +1447,34 @@ const UI = {
   zh: {
     "Find": "查找",
     "Overnight": "昨夜",
-    "supported": "有来源支持",
+    "Supported by the cited source": "有引用来源支持",
+    "Original": "原文",
+    "No Chinese translation yet; showing original": "尚无中文译文，显示原文",
+    "company": "公司",
+    "email": "邮箱",
+    "phone": "电话",
+    "location": "位置",
     "source": "来源",
     "role": "职位",
+    "time zone": "时区",
+    "links": "链接",
+    "how we know them": "如何认识",
+    "first contact": "首次联系",
+    "last contact": "最近联系",
+    "signing entity": "签约主体",
+    "handles": "账号",
+    "language": "语言",
+    "also known as": "别名",
+    "repository": "代码仓库",
+    "stack": "技术栈",
+    "status": "状态",
+    "people": "人物",
+    "organisation": "组织",
+    "started": "开始时间",
+    "what they do": "业务",
+    "website": "网站",
+    "legal entity": "法律主体",
+    "your contacts": "你的联系人",
     "All {n} changes →": "查看全部 {n} 项变化 →",
     "Copy prompt": "复制提示词",
     "Mark done": "标为完成",
@@ -1573,7 +1603,25 @@ const UI = {
     "Name": "姓名",
     "What's open": "待处理事项",
     "Company": "公司",
-    "Role": "角色",
+    "Role": "职位",
+    "Facts": "资料",
+    "What it is": "项目简介",
+    "Time zone": "时区",
+    "Links": "链接",
+    "How we know them": "如何认识",
+    "First contact": "首次联系",
+    "Signing entity": "签约主体",
+    "Handles": "账号",
+    "Language": "语言",
+    "Also known as": "别名",
+    "Repository": "代码仓库",
+    "Stack": "技术栈",
+    "Started": "开始时间",
+    "Website": "网站",
+    "Legal entity": "法律主体",
+    "Your contacts": "你的联系人",
+    "— not found": "— 未找到",
+    "— map date shown above": "— 映射日期见上方",
     "Email": "邮箱",
     "Phone": "电话",
     "Last contact": "最近联系",
@@ -2392,6 +2440,7 @@ function inline(text, from) {
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
   });
+  if (uiLanguage === "zh") s = s.replace(/\bUnknown\b/g, t("Unknown"));
   s = privatePassages(s, (passage, level) => '<span class="private" data-level="' + level + '">' +
     passage.replace(/[\[［](personal|sensitive)[\]］]/gi, (_, tag) => '<span class="privacy-tag ' + tag.toLowerCase() + '">' + tag.toLowerCase() + '</span>') + '</span>');
   // Full-width citation brackets carry the same source ids.
@@ -2728,6 +2777,14 @@ function plainLine(text, keepPrivate = false) {
   const line = String(keepPrivate ? text : unlabelled(text)).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean);
   return line ? youify(line) : "";
+}
+// Display only: parsers and claim comparisons keep the original marker words.
+function displayLine(text) {
+  const line = plainLine(text);
+  return uiLanguage === "zh" ? line.replace(/\bUnknown\b/g, t("Unknown")) : line;
+}
+function summaryLine(text) {
+  return displayLine(text).replace(/^(?:Now|Pattern|At stake|Changed|现在|规律|关键所在|变化|利害|模式)[:：]\s*/i, "");
 }
 function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
 function byActivity(a, b) {
@@ -3159,8 +3216,8 @@ const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
 function openCell(f) {
   if (!f.open.length) return f.calm ? el("span", { class: "unk", text: t("nothing open") }) : el("span", { class: "unk", text: "—" });
   const thread = f.open[0];
-  return el("span", { class: "open-cell " + thread.dir, title: plainLine(thread.text) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
-    el("span", { class: "txt", text: plainLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
+  return el("span", { class: "open-cell " + thread.dir, title: displayLine(thread.text) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
+    el("span", { class: "txt", text: displayLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
   text: shortDate(day) + (fromMap ? t(" · map") : "") }) : el("span", { class: "unk", text: "—" }); }
@@ -3178,8 +3235,15 @@ function privateFallback(node) {
 function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
   title: hasPrivacy(v) ? "" : plainLine(v),
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
+function roleSummary(value, from) {
+  // Labelled passages retain their full privacy boundary.
+  const roles = hasPrivacy(value) ? [value] : value.split(/;\s+/);
+  return privateFallback(el("span", { title: hasPrivacy(value) ? "" : plainLine(value) }, [
+    el("span", { html: inline(roles[0].replace(/\s*\[W?\d{1,3}\]/g, ""), from) }),
+    roles.length > 1 ? el("span", { class: "role-more", text: " +" + (roles.length - 1) }) : null]));
+}
 function peopleCardMeta(r, f) {
-  const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && textCell(f.role), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
+  const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && roleSummary(f.role, r.path), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
   const meta = el("div", { class: "people-card-meta" }, parts.flatMap((node, i) => i ? [" · ", node] : [node]));
   meta.querySelectorAll("a").forEach(link => link.replaceWith(...link.childNodes));
   meta.title = meta.querySelector(".private") ? "" : meta.textContent;
@@ -3203,7 +3267,7 @@ function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
     r.category === "projects" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
-    withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null,
+    withSummary && k.summary ? el("span", { class: "sum", text: summaryLine(k.summary) }) : null,
     r.category === "people" ? peopleCardMeta(r, f) : null]);
 }
 const COLUMNS = {
@@ -3377,9 +3441,12 @@ function updatedMarker(r, withLabel = false) {
   const dot = el("span", { class: "fresh-dot", text: "●", title: t("updated last night"), "aria-label": t("updated last night") });
   return el("span", { class: "updated-label" }, [dot, t("updated last night")]);
 }
-function changedValue(node, r, label) {
+function factText(r, label) {
   const items = [...parseFacts(r)].find(([key]) => key.toLowerCase() === label.toLowerCase())?.[1] || [];
-  const current = items.map(item => item.value + (item.qualifier ? " (" + item.qualifier + ")" : "")).join("; ");
+  return items.map(item => item.value + (item.qualifier ? " (" + item.qualifier + ")" : "")).join("; ");
+}
+function changedValue(node, r, label) {
+  const current = factText({ ...r, readLanguage: "" }, label);
   const change = memoryPass?.claims.find(claim => claim.record === r.path
     && (claim.field || "").toLowerCase() === label.toLowerCase()
     && plainLine(current) === plainLine(claim.after));
@@ -3583,10 +3650,11 @@ function row(r, opts) {
     el("div", { class: "t" }, [
       el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
-  const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
+  const summary = summaryLine(k.summary);
+  const lead = summary.length > 220 ? summary.slice(0, 217) + "…" : summary;
   if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
   const open = threads(r).items[0];
-  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: plainLine(open.text) })]));
+  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: displayLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "meta usage" }, [t("{n} uses", { n: u.count }) + (u.last ? t(" · last {last}", { last: shortDate(u.last) }) : "")]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: t("{n} installed copies — open to compare sources", { n: r.installations.length }) }));
@@ -3652,14 +3720,27 @@ function memoryConnection(records) {
   }
   return null;
 }
+function originalMark() {
+  return el("span", { class: "lang-status", text: t("Original"), title: t("No Chinese translation yet; showing original") });
+}
+function claimValue(claim, r, after, compact = false) {
+  let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
+  if (after && original && r.translations?.[uiLanguage]
+      && plainLine(factText({ ...r, readLanguage: "" }, claim.field)) === plainLine(claim.after)) {
+    const translated = factText({ ...r, readLanguage: uiLanguage }, claim.field);
+    if (translated) { value = translated; original = false; }
+  }
+  // The 原文 mark stays outside the strike-through: it labels the language, not the old value.
+  return el("span", {}, [el(after ? "span" : "del", { text: compact ? plainLine(value) : value }), original ? originalMark() : null]);
+}
 function changeCard(claim) {
   const r = byPath(claim.record);
   if (!r) return null;
   const card = el("article", { class: "claim-card" }, [
     el("span", { class: "claim-kind", text: claim.kind === "newly recorded" ? t("Newly recorded · supported") : t("Revised in memory · supported") }),
-    el("h3", {}, [el("a", { href: href(r), text: r.title }), " / " + claim.field]),
-    claim.before ? el("p", { class: "before", text: t("Before: ") + claim.before }) : null,
-    el("p", { class: "after", text: t("Now: ") + claim.after }),
+    el("h3", {}, [el("a", { href: href(r), text: r.title }), " / " + t(claim.field)]),
+    claim.before ? el("p", { class: "before" }, [t("Before: "), claimValue(claim, r, false)]) : null,
+    el("p", { class: "after" }, [t("Now: "), claimValue(claim, r, true)]),
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
       text: t("Open the page and source →") })]);
   return card;
@@ -3690,10 +3771,9 @@ function overnightChange(claim) {
   if (!r) return null;
   return el("li", { class: "overnight-change" }, [el("a", { href: href(r), text: r.title }),
     el("span", { class: "meta", text: " · " + t(claim.field) }),
-    el("span", { class: "claim-values" }, [claim.before ? el("del", { text: plainLine(claim.before) }) : null,
-      claim.before ? " → " : "", el("span", { text: plainLine(claim.after) })]),
-    el("span", { class: "supported", text: t("supported") }),
-    el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(), text: t("source") })]);
+    el("span", { class: "claim-values" }, [claim.before ? claimValue(claim, r, false, true) : null,
+      claim.before ? " → " : "", claimValue(claim, r, true, true)]),
+    el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(), text: t("source"), title: t("Supported by the cited source") })]);
 }
 function morningBrief() {
   const pass = lastPass(), claims = pass?.claims || [];
@@ -3761,10 +3841,11 @@ function morningThread(entry) {
   const { words, context } = morningWords(thread.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const meta = [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
+  const metaParts = [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
   const label = /\b(?:promised|agreed|offered to)\b/i.test(thread.text) ? "you promised" : /\?|\bquestion\b/i.test(thread.text) ? "a question" : "a request";
   const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("");
   return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: initials }),
-    el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null])]),
+    el("div", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", title: meta }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
       privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also), threadActions(entry)]),
     el("div", { class: "waiting-age" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : "") },
@@ -3826,7 +3907,7 @@ function recallPrompt() {
   const r = candidates[0];
   if (!r) return null;
   const relationship = section(r, "our relationship");
-  const answerText = plainLine(relationship?.text || known(r).summary);
+  const answerText = summaryLine(relationship?.text || known(r).summary);
   const card = el("section", { class: "recall", "aria-label": t("Recall a memory") });
   const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
     el("p", { text: answerText }), el("a", { href: href(r), text: t("Open {name} and its sources →", { name: r.title }) })]);
@@ -3941,7 +4022,7 @@ function overview() {
       el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
         el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
         el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-          known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?(?:Now|现在)[:：](?:\*\*)?\s*/i, "") }) : null])])))]));
+          known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
   }
 
   const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
@@ -4115,6 +4196,9 @@ function contactDirectory() {
   return details;
 }
 
+function ledeSeparator(text) {
+  return /[？。！?.!]$/.test(text.trim()) ? " " : uiLanguage === "zh" ? " · " : ". ";
+}
 function categoryCount(c, counts, total) {
   const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
@@ -4129,7 +4213,7 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
-  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? (uiLanguage === "zh" ? " · " : /[?.]$/.test(lede) ? " " : ". ") : ""),
+  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? ledeSeparator(t(lede)) : ""),
     items.length || other ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
       + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
@@ -4813,7 +4897,7 @@ function factList(r) {
     if (items.length) filled++;
     const missing = label === "Last contact" && mappedContact(r) && known(r).last
       ? "— map date shown above" : "— not found";
-    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: missing })]);
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: t(missing) })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, t("Copied"));
@@ -5032,7 +5116,7 @@ function contactLine(r) {
   if (f.last) meta.appendChild(changedValue(el("span", { text: t(mappedContact(r) ? "Last contact in map" : "Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
   for (const [label, value] of fields) {
     if (meta.childNodes.length) meta.append(" · ");
-    meta.appendChild(changedValue(el("span", { html: inline(String(value), r.path) }), r, label));
+    meta.appendChild(changedValue(label === "Role" ? el("span", {}, [roleSummary(String(value), r.path)]) : el("span", { html: inline(String(value), r.path) }), r, label));
   }
   return el("p", { class: "contact-line leadrow" }, [privateFallback(meta)]);
 }
@@ -5341,7 +5425,7 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
     updatedMarker(r, true),
-    uiLanguage !== "en" && !r.translations?.[uiLanguage] ? el("span", { class: "lang-status", text: "原文", title: "尚无中文译文，显示原文" }) : null,
+    uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark() : null,
     ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? t(r.category === "projects" ? "last mapped session" : "last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
@@ -5412,8 +5496,9 @@ function record(path, heading) {
   const hasMemory = note.childElementCount > 0 || !!grid.querySelector(".factlist, .deep-context h2, .side .panel:not(.toc-panel) a")
     || !!parts.related || !!parts.sources || sources > 0;
   const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
-    el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("h2", { id: "full-memory-heading", text: t("Full memory and sources") }),
-      el("span", { class: "deep-hint", text: disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations") })]), grid]);
+    el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("span", { class: "deep-label" }, [el("h2", { id: "full-memory-heading", text: t("Full memory and sources") }),
+      el("span", { class: "deep-hint", text: disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations") })]),
+      disclosed ? el("span", { class: "deep-toggle", "aria-hidden": "true" }) : null]), grid]);
   if (hasMemory) main.appendChild(deep);
   const column = grid.firstChild;
 
@@ -5561,7 +5646,7 @@ function search(q) {
         el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(r.title, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
       const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
-      if (line) li.appendChild(el("div", { class: "hit", html: highlight(line.replace(/\s*\[W?\d{1,3}\]/g, ""), needle) }));
+      if (line) li.appendChild(el("div", { class: "hit", html: highlight(summaryLine(line), needle) }));
       ul.appendChild(li);
     }
     group.appendChild(ul);
@@ -5580,8 +5665,8 @@ function bestMatch(r) {
   const open = f.open[0];
   return el("section", { class: "best" }, [
     el("div", { class: "best-head" }, [el("span", { class: "lead", text: t("Best match") }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
-    el("dl", { class: "best-facts" }, cells.filter(([, v]) => knownValue(v)).flatMap(([name, v]) => [el("dt", { text: t(name) }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
-    open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: plainLine(open.text) })]) : null]);
+    el("dl", { class: "best-facts" }, cells.filter(([, v]) => knownValue(v)).flatMap(([name, v]) => [el("dt", { text: t(name) }), el("dd", { class: v ? "" : "none", text: v ? displayLine(v) : t("— not found") })])),
+    open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: displayLine(open.text) })]) : null]);
 }
 
 function reviewPage() {
