@@ -4360,7 +4360,7 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
       const r = byPath('people/mara-ostrowski.md');
       r.original = (r.original || r.text).replace('- Role: Head of Partnerships [2]',
         '- Role: Head of the [Pilot Programme](../projects/harbour.md) [2]')
-        .replace('- Location: Wellington, New Zealand [2]', '- Location: Wellington, New Zealand [personal] [2]');
+        .replace(/^(- Location: [^\n\[]+) \[2\]$/m, '$1 [personal] [2]');
       r.translations.zh = r.translations.zh.replace('- Role: 合作负责人 [2]',
         '- Role: [试点项目负责人](../projects/harbour.md) [2]')
         .replace('- Location: 新西兰惠灵顿 [2]', '- Location: 新西兰惠灵顿 [personal] [2]');

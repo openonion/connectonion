@@ -1530,7 +1530,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     mara = next(r for r in data['records'] if r['path'] == 'people/mara-ostrowski.md')
     # An English index and a previously selected English page must not override the interface's values.
     mara['shown'] = ''
-    mara['index'] = {'role': 'Old role', 'location': 'Wellington, New Zealand'}
+    mara['index'] = {'role': 'Old role', 'location': 'Old harbour town'}
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'contactLine',
