@@ -78,7 +78,8 @@ installed skills from source and retained run evidence: 16 pages at a time.
 After the map summary, init prints your notebook languages and whether they
 were detected from your sent mail and typed sessions or set in config. Use
 `co rem init --languages zh,en` to set them before mapping, or
-`co rem config set languages en` to change them later. English remains the
+`co rem config set languages zh,en` (your list, as init prints it) to change them
+later; `languages en` keeps English only. English remains the
 canonical writing language. After tidying and drawing decisions and principles,
 init translates every listed, written page into your first non-English language,
 even when English is first in the list. Mapped-only stubs and the skill catalog
@@ -90,8 +91,10 @@ The estimate includes one translation per selected page plus your page, with
 unknown decision/principle counts treated as zero. Translation uses its own
 `limits.workers` lanes after the investigations, so its wall time is added to
 the page queue. Completed translation runs in this notebook supply median rates;
-otherwise planning uses 80,000 input tokens and 35 seconds per page (measured
-2026-10-21). First-run translation has no daily cap.
+otherwise planning uses 90,000 input tokens and 200 seconds per page (measured
+2026-10-21 on a 297-page notebook at 16 workers: one translation alone takes
+22–40 s, but concurrent turns share the model's throughput; the whole notebook
+took 66 minutes). First-run translation has no daily cap.
 
 Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
@@ -1718,6 +1721,17 @@ The reader uses current cached prose for its selected interface language and
 shows the original when no translation is available. Rendering never starts a
 translation. The per-page Read in menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
+
+What the model sees and must keep: the `## Sources` section is never sent; it is
+copied back byte-identical after the translated prose. Amounts and currency
+symbols stay as written (`$50,000` never becomes US dollars), and so do names of
+people, organisations, projects, products and tools, including lowercase project
+names; the page title and every link text are passed as an explicit list.
+Email addresses, URLs, paths, issue numbers, versions and code spans are kept.
+Each translation is checked before it is cached: headings, `[n]` citations,
+privacy labels, quoted passages and reader markers. When a check fails, the
+model gets one repair turn with the exact difference ("missing [12] (1 time)");
+a second failure is reported and nothing is cached.
 
 To backfill existing pages once (the English pages remain the audited source):
 
