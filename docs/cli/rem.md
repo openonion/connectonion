@@ -597,7 +597,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   you owe, as on Home. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. In 中文 mode,
-  Facts values and Connected context snippets come from cached translations
+  Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a

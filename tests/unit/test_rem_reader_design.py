@@ -170,3 +170,25 @@ def test_readme_capture_uses_seven_offline_viewports_without_launching_a_browser
         assert options['device_scale_factor'] == (2 if phone else 1)
     assert all(not call['full_page'] for call in calls if isinstance(call, dict) and 'path' in call)
     assert [options['locale'] for options in viewports] == ['en-GB'] * 4 + ['zh-CN'] * 2 + ['en-GB']
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark-auto', 'dark-forced'])
+def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
+    css = TEMPLATE.read_text()
+    patterns = {
+        'light': r':root \{(.*?)\n  \}',
+        'dark-auto': r':root:not\(\[data-theme="light"\]\) \{(.*?)\}',
+        'dark-forced': r':root\[data-theme="dark"\] \{(.*?)\}',
+    }
+    block = re.search(patterns[theme], css, re.S).group(1)
+    colors = dict(re.findall(r'(--[\w-]+): (#[\da-f]{6})', block))
+
+    def luminance(hex_color):
+        rgb = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in rgb]
+        return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
+
+    for surface in ['--paper', '--sheet', '--line-2']:
+        for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
+            a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
+            assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
