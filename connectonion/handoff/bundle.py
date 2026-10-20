@@ -225,7 +225,16 @@ def redact(text: str, known_secrets: list[str] = ()) -> str:
 # sender's and the recipient's own addresses stay, and so do example ones (RFC 2606) and git@host.
 # Tool output quotes JSON, so a literal \\n can sit right before an address: it is not part of it.
 _START = r"(?:(?<=\\[nrt])|(?<![A-Za-z0-9_.%+\\-]))"   # ASCII: 邮箱abc@x.com starts at the a
-EMAIL = re.compile(_START + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+# Full user@domain.tld, or a known mail host written without its TLD (name@gmail). REM fact
+# pages quote truncated headers that way (#2531); a bare alice@ token is left alone.
+_KNOWN_MAIL_HOST = r"(?i:gmail|googlemail|outlook|hotmail|yahoo|ymail|icloud|protonmail|live|msn|aol|me)"
+EMAIL = re.compile(
+    _START
+    + r"[A-Za-z0-9][A-Za-z0-9._%+-]*@(?:"
+    + r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+    + r"|" + _KNOWN_MAIL_HOST + r"(?![A-Za-z0-9.-])"
+    + r")"
+)
 PHONE = re.compile(r"\+\d[\d \-]{7,}\d"                               # +61 412 000 111
                    r"|(?<!\d)04\d{2}[ -]?\d{3}[ -]?\d{3}(?!\d)"          # 0412 000 111
                    r"|(?<![\d.])\(?0[2378]\)?[ -]?\d{4}[ -]?\d{4}(?!\d|\.\d)"  # (02) 9000 0157, 0873918410
