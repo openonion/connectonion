@@ -1176,3 +1176,34 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
                                gate=lambda: "", done=lambda job, outcome: [])
     assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"
+
+
+@pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),
+                                           (['--yes', '--no-start', '--no-investigate'], False)])
+def test_init_only_builds_the_session_cache_early_when_pages_will_be_investigated(first_run, monkeypatch, flags, warmed):
+    """2026-10-20: a fresh notebook's session cache took 336 s of the owner's quick page."""
+    root, init, _ = first_run
+    started = []
+    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
+                        lambda root, sources: started.append(sorted(sources)))
+    init(*flags)
+    assert bool(started) is warmed
+
+
+def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypatch):
+    import threading
+    root, init, _ = first_run
+    order = []
+    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
+                        lambda root, sources: order.append(('warm', threading.current_thread() is threading.main_thread())))
+
+    def mapped(*args, **kwargs):
+        order.append(('map', None))
+        raise SystemExit(0)   # stop init here: only the order matters
+
+    monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
+    init('--yes', '--no-start')
+    for thread in threading.enumerate():
+        if thread is not threading.main_thread() and thread.daemon:
+            thread.join(timeout=5)
+    assert ('warm', False) in order and ('map', None) in order

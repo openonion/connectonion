@@ -1,7 +1,10 @@
 """Mail is a source worked one correspondent at a time: the listing is scanned forward once
 into a per-person queue, and a batch is whole people, oldest first, bodies read only then."""
 
+import ssl
 from datetime import datetime, timezone
+
+import httpx
 
 import pytest
 
@@ -296,3 +299,50 @@ def test_a_second_more_crowded_than_one_listing_fails_loudly_rather_than_droppin
     messages = [mail(i, "2026-09-02T09:00:00+00:00", sender=f"p{i}@example.com") for i in range(201)]
     with pytest.raises(RemError, match="more than 200"):
         collect_mail(subscription(), {}, 1, 100000, FakeMail(messages), now=NOW)
+
+
+@pytest.mark.parametrize("dropped", [ssl.SSLError("EOF occurred in violation of protocol"),
+                                     ConnectionResetError(54, "Connection reset by peer"),
+                                     httpx.ReadError("connection closed")])
+def test_a_dropped_connection_is_asked_again_with_backoff(monkeypatch, dropped):
+    """2026-10-20: one Gmail SSLError in the 13th week stopped a first init after 33 minutes."""
+    from connectonion.rem import mail as rem_mail
+    slept = []
+    monkeypatch.setattr(rem_mail.time, "sleep", slept.append)
+    calls = []
+
+    class Client:
+        def list_between(self, start, end, limit):
+            calls.append(start)
+            if len(calls) < 3:
+                raise dropped
+            return [{"id": "a"}]
+
+    rows = rem_mail._list_all(Client(), datetime(2026, 9, 1, tzinfo=timezone.utc),
+                              datetime(2026, 9, 8, tzinfo=timezone.utc))
+    assert rows == [{"id": "a"}] and len(calls) == 3 and slept == [2, 4]
+
+
+def test_a_connection_that_stays_down_or_an_auth_error_still_fails(monkeypatch):
+    from connectonion.rem import mail as rem_mail
+    monkeypatch.setattr(rem_mail.time, "sleep", lambda seconds: None)
+    calls = []
+
+    class Down:
+        def list_between(self, start, end, limit):
+            calls.append(start)
+            raise ConnectionResetError(54, "Connection reset by peer")
+
+    with pytest.raises(ConnectionResetError):
+        rem_mail._list_all(Down(), datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 9, 8, tzinfo=timezone.utc))
+    assert len(calls) == rem_mail.LISTING_ATTEMPTS
+
+    class Denied:
+        def list_between(self, start, end, limit):
+            calls.append(start)
+            raise PermissionError("401 unauthorized")
+
+    calls.clear()
+    with pytest.raises(PermissionError):
+        rem_mail._list_all(Denied(), datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 9, 8, tzinfo=timezone.utc))
+    assert len(calls) == 1

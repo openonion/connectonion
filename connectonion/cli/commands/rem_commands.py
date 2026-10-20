@@ -960,6 +960,12 @@ def make_rem_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
+            if not estimate_only and write_mine is not False:
+                import threading
+                from ...rem.investigate import warm_session_windows
+                # A fresh notebook's session cache took 336 s of the owner's quick page
+                # (2026-10-20). Built while the map waits on mail servers, it is ready first.
+                threading.Thread(target=warm_session_windows, args=(root, sources), daemon=True).start()
             try:
                 result = build_map(root, sources, clients, days=map_days, all_history=all_history,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
