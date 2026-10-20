@@ -1681,3 +1681,12 @@ def test_a_facts_label_the_turn_left_out_comes_back_from_the_page_before():
     assert "- Location: Sydney [1]" in fixed and "- Phone: Unknown" in fixed
     assert not [e for e in fact_errors("people/avery.md", fixed, original) if e.startswith("Missing")]
     assert fixed.index("- Phone:") < fixed.index("- Location:")
+
+
+def test_a_restored_facts_line_takes_its_own_emptied_field_never_another():
+    """2026-10-20 upkeep A/B: a dropped First contact line was restored over `- Location: Unknown`."""
+    from connectonion.rem.page_review import restore_dropped
+    before = ("# Avery Lin\n\n## Facts\n- Location: Unknown\n- First contact: 2026-08-11 (earliest mail found) [2]\n"
+              "- Last contact: 2026-08-12 [1]\n\n## Sources\n- [1] gmail:a — 2026-08-12\n- [2] gmail:b — 2026-08-11\n")
+    after = before.replace("2026-08-11 (earliest mail found) [2]", "Unknown").replace("- [2] gmail:b — 2026-08-11\n", "")
+    assert restore_dropped(before, after) == before

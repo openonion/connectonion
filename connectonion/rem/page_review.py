@@ -1718,9 +1718,20 @@ def restore_dropped(before: str, after: str) -> str:
 
 
 def _shorter_version(text: str, line: str) -> str:
-    """Find the candidate's rewrite by its words, independent of citation numbering."""
+    """Find the candidate's rewrite by its words, independent of citation numbering.
+
+    A Facts line is only ever rewritten by the same label: "- Location: Unknown"
+    once stood in for a dropped First contact line and was replaced (2026-10-20).
+    """
     clean = re.sub(r'\[W?\d+\](?!\()', '', line)
+    label = CONTACT_LINE.match(line)
+    if label:
+        # The same field, emptied: the restored value takes its place.
+        emptied = next((row for row in text.splitlines() if row.strip() == label[0] + ' Unknown'), '')
+        if emptied:
+            return emptied
     return next((row for row in text.splitlines() if row.strip() and not row.startswith('#')
+                 and (not label and not CONTACT_LINE.match(row) or label and row.startswith(label[0]))
                  and (words := re.sub(r'\[W?\d+\](?!\()', '', row).strip())
                  and _contained(words, clean) >= 0.8), '')
 
@@ -1733,6 +1744,8 @@ def _contained(row: str, line: str) -> float:
 
 def _insert_restored_line(text: str, section: str, line: str, lost_quotes: set[str], lost_sources: set[str]) -> str:
     shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
+    if shorter and CONTACT_LINE.match(shorter) and shorter.strip().endswith(': Unknown'):
+        return text.replace(shorter, line, 1)
     if shorter:
         sources = dict(re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)',
                                   text.partition('\n## Sources\n')[2]))
