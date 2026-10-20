@@ -3229,7 +3229,9 @@ def test_a_diary_folder_is_not_read_for_the_owners_page_and_the_remote_names_the
     """2026-10-21 spot check: diary lines reached the owner's page; a project page said `Repository: Unknown`."""
     import subprocess
     assert inv._private_folder("/home/avery/journal") and inv._private_folder("/home/avery/my-diary")
+    assert inv._private_folder("/home/avery/journal/2026-10") and inv._private_folder("/home/avery/私人/notes")
     assert not inv._private_folder("/private/tmp/work/atlas") and not inv._private_folder("")
+    assert not inv._private_folder("/home/avery/journal/2026-10", frozenset({"/home/avery/journal"}))
     repo = tmp_path / "atlas"
     repo.mkdir()
     for args in (["init", "-q"], ["config", "user.email", "a@example.com"], ["config", "user.name", "Avery"],
@@ -3238,3 +3240,20 @@ def test_a_diary_folder_is_not_read_for_the_owners_page_and_the_remote_names_the
         subprocess.run(["git", "-C", str(repo), *args], check=True)
     state = inv.checkout_state(str(repo))
     assert "Remote origin: https://github.com/example/atlas.git." in state and "token" not in state
+
+
+def test_a_diary_session_line_naming_a_friend_never_reaches_the_friends_page(tmp_path, monkeypatch):
+    """Review of #2618: the diary rule applied only to the owner; a line naming a friend passed `related()`."""
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:s:10", "project": "/home/avery/journal/2026-10",
+         "timestamp": stamp, "text": "Book the hotel near Mia Chen's flat in Example Lane."},
+        {"role": "user", "source": "claude-code:s:20", "project": "/home/avery/atlas",
+         "timestamp": stamp, "text": "Send Mia Chen the Atlas deck."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, _ = inv.gather("Mia Chen", ["mia chen"], days=7, clients={},
+                          subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path), "enabled": True}},
+                          record="people/mia-chen.md")
+    assert [item["source"] for item in items] == ["claude-code:s:20"]

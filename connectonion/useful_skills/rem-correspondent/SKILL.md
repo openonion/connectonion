@@ -16,7 +16,8 @@ description: Rules for investigating someone other than the user — composed af
 - **Work promised on GitHub is checked there.** When they said they would
   open an issue or PR, or one is named, request a `github:` search (by number,
   or repository and `created:>=<promise-date>`; never person names), match
-  `Author:` logins to the person and cite the `github:` ids.
+  `Author:` logins to the person and cite the `github:` ids. Your own `gh`
+  URLs are not supplied; review removes them.
 - **Read the originals whole before writing**, oldest thread too: the page
   quotes them, and a quote can only come from a message you read.
 - **A page titled by an address is renamed** once the material names the

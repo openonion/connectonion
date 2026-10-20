@@ -973,18 +973,20 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         scoped = {**sub, "enabled": True, "consented": True, "since": session_start.isoformat()}
         scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
+        opted_in = opted_in_folders(archive_root)
         read = collect_chat if chat else collect
 
         def related(item):
+            # A diary folder is never read for any page unless the owner opted it in by
+            # having its project page written (project_pages.private); its lines reached
+            # the owner's page as hotel bookings and a friend's address (2026-10-21).
+            if not chat and _private_folder(item.get("project") or item.get("cwd") or "", opted_in):
+                return False
             # A chat line says who said it; mail's rule for the owner applies:
             # what the owner wrote describes them, the whole chat does not.
             # sent_only is the owner's page even when no mailbox is connected
             # to tell us their addresses; a chat knows which lines are theirs.
             if is_owner or (chat and sent_only):
-                # A diary folder is never written unasked as a project (project_pages.PRIVATE);
-                # its lines reached the owner's page as hotel bookings and a friend's address (2026-10-21).
-                if not chat and _private_folder(item.get("project") or item.get("cwd") or ""):
-                    return False
                 return not chat or item["role"] == "user"
             said = item["text"] + " " + item.get("project", "")
             if chat:
@@ -1897,9 +1899,31 @@ RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
 
 
-def _private_folder(path: str) -> bool:
+def _private_folder(path: str, opted_in=frozenset()) -> bool:
+    """Any folder on the path is named like a diary (~/journal/2026-10, ~/私人/notes), unless opted in.
+
+    macOS's /private system prefix (/private/tmp, /private/var) is not a name anyone chose.
+    """
     from .project_pages import PRIVATE
-    return bool(path) and bool(PRIVATE.search(Path(path).name))
+    if not path or any(path == folder or path.startswith(folder.rstrip("/") + "/") for folder in opted_in):
+        return False
+    parts = Path(path).parts
+    parts = parts[2:] if parts[:2] == ("/", "private") else parts
+    return any(PRIVATE.search(part) for part in parts)
+
+
+def opted_in_folders(root: Path | None) -> frozenset:
+    """Folders of private projects the owner had written on purpose (`co rem investigate <page>`)."""
+    from .project_pages import private
+    if root is None:
+        return frozenset()
+    notebook = Notebook(root)
+    folders = set()
+    for record in notebook.list("projects"):
+        page = notebook.read(record)
+        if private(record, page) and last_investigated(page):
+            folders.update(project_paths(page))
+    return frozenset(folders)
 
 
 def owner_work_evidence(items: list[dict]) -> str:
