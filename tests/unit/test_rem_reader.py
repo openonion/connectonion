@@ -50,7 +50,8 @@ def test_this_week_project_rows_strip_the_now_label():
         week, '}', 'console.log(JSON.stringify(rows));',
     ])
     rows = _run_reader_js(script)
-    for week_list in rows[1::2]:
+    for details in rows:
+        week_list = details["children"][1]
         summary = next(child["text"] for child in week_list["children"][0]["children"][2]["children"]
                        if child and child.get("class") == "s")
         assert summary == "waiting on review"
@@ -780,8 +781,8 @@ def test_reader_near_duplicate_obligations_keep_direction_dates_and_sources():
       }));
     '''
     result = _run_reader_js(script)
-    assert result == {'grouped': [['people/mara.md', 'people/tomas.md', 'people/ines.md']],
-                      'bridge': [2, 1], 'sharedThread': True,
+    assert result == {'grouped': [['people/mara.md', 'people/tomas.md'], ['people/ines.md']],
+                      'bridge': [2, 1], 'sharedThread': False,
                       'opposite': False, 'older': False, 'quoteOnly': False, 'unresolved': False}
 
 
@@ -1137,3 +1138,189 @@ def test_reader_classifies_a_full_session_reply_before_truncating_its_preview():
     assert result['class'] == 'session-quote private'
     assert len(result['textContent']) == 601
     assert result['sessionFullText'].endswith('［personal］。')
+
+
+def test_written_thread_dates_and_evidence_backed_request_groups():
+    page = TEMPLATE.read_text()
+    names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm', 'direction', 'projectDirection', 'owing', 'rawSection',
+             'threadEntries', 'obligationWords', 'obligationEvidence', 'sameObligation', 'threadGroups']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-10-20T12:00:00Z', owner: 'people/avery-lin.md'}, DAY_MS = 86400000;
+      const COMMENT = /<!--[\s\S]*?-->/g, calendarDay = value => value.slice(0, 10), daysSince = () => 0;
+      let OWING = null;
+      const byPath = () => ({title: 'Avery Lin'}), plainLine = text => text, threadWords = text => text;
+      let records = [];
+      const listedRecords = () => records;
+      const entry = (path, text, n = 4, source = 'outlook:aa11bb22cc33') => ({
+        path, title: path.startsWith('people') ? 'Theo Park' : 'Northgate University',
+        category: path.split('/')[0], text: '# Page\n\n## Open threads\n- ' + text + '\n\n## Sources\n- [' + n + '] ' + source
+      });
+      records = [entry('people/theo-park.md', 'T3 capstone agreement: Theo asks the user to fill in the collaborator details, sign the execution section and reply all by 2026-10-23 [15][16].', 15),
+        entry('orgs/northgate-university.md', 'Northgate asked the user to complete and sign the capstone agreement by 23 October 2026. [32][33]', 32)];
+      const a = threadEntries().map(({t, also}) => ({due: t.due, copies: also.length}));
+      records = [entry('people/theo-park.md', 'Theo — send the meeting link the user requested on 2026-09-03 [4].'),
+        entry('orgs/northgate-university.md', 'The user asked Theo to send a Meet link on Sep 3 [4].'),
+        entry('projects/harbour.md', 'The user requested a meeting link on Sept 3; whether it was sent is unknown [4].')];
+      const b = threadEntries().map(({t, also}) => ({since: t.since, copies: also.length}));
+      records = [entry('orgs/northgate-university.md', 'Mia Chen requested written approval to upload client code to LLMs for planning; no approval is supplied. [43]', 43),
+        entry('people/mia-chen.md', 'The team, through Mia Chen, said on 2026-10-17 that written approval is required before uploading client code to LLMs; the user owes the team a decision [2].', 2)];
+      const c = threadEntries().map(({r, t, also}) => ({path: r.path, dir: t.dir, copies: also.length}));
+      records = [entry('people/theo-park.md', 'Theo Park — sign the agreement by 23 Oct [4].'),
+        entry('orgs/northgate-university.md', 'Theo Park — send the invoice for September by 23 Oct [4].')];
+      REM.records = [...records, {title: 'Theo Park', category: 'people'}];
+      const negative = threadEntries().length;
+      records = [entry('people/theo-park.md', 'Theo Park promised on 2026-08-31 to send the first work-package draft covering milestones, staffing, dependencies, delivery, scope and costs [4].'),
+        entry('orgs/northgate-university.md', 'Northgate University promised a standalone Work Package draft on 2026-08-31 detailing research objectives, methods, resources, evaluation and acceptance [4].')];
+      REM.records = records;
+      const evidence = records.map(r => obligationEvidence({r, t: threads(r).items[0]}));
+      const overlap = [...evidence[0].words].filter(word => evidence[1].words.has(word)).length;
+      const coefficient = overlap / Math.min(...evidence.map(item => item.words.size));
+      const workPackage = threadEntries().map(({t, also}) => ({since: t.since, copies: also.length}));
+      const undated = sameObligation({...evidence[0], day: ''}, {...evidence[1], day: ''});
+      const crossDirection = sameObligation({...evidence[0], dir: 'plain'}, {...evidence[1], dir: 'mine'});
+      records = [entry('people/theo-park.md', 'You owe Theo Park a Harbour sprint budget forecast covering staffing allocations [4].'),
+        entry('orgs/northgate-university.md', 'You owe Theo Park a Harbour sprint security checklist covering access permissions [4].')];
+      REM.records = records;
+      const undatedRequests = threadEntries().length;
+      const byPerson = ['You owe a reply requested by Theo Park on Sep 3; due October 23, 2026 [4].',
+        'You owe a reply requested by Theo Park, due October 23, 2026 [4].'].map(text => threads(entry('people/theo-park.md', text)).items[0].due);
+      const dates = writtenDates('23 October 2026; October 23, 2026; 23 Oct; Sep 3; Sept 3; March 3');
+      const due = threads(entry('people/theo-park.md', 'The user owes a review, since Sep 3, due October 23, 2026 [4].')).items[0];
+      REM.as_of = '2026-01-10T12:00:00Z';
+      console.log(JSON.stringify({a, b, c, negative, workPackage, coefficient, undated, crossDirection, undatedRequests,
+        byPerson, dates, due: [due.since, due.due], rollover: writtenDates('Dec 20')}));
+    ''')
+    assert result == {
+        'a': [{'due': '2026-10-23', 'copies': 1}],
+        'b': [{'since': '2026-09-03', 'copies': 2}],
+        'c': [{'path': 'people/mia-chen.md', 'dir': 'mine', 'copies': 1}], 'negative': 2,
+        'workPackage': [{'since': '2026-08-31', 'copies': 1}], 'coefficient': 1 / 3,
+        'undated': False, 'crossDirection': False, 'undatedRequests': 2,
+        'dates': ['2026-10-23', '2026-10-23', '2026-10-23', '2026-09-03', '2026-09-03', '2026-03-03'],
+        'due': ['2026-09-03', '2026-10-23'], 'byPerson': ['2026-10-23', '2026-10-23'], 'rollover': ['2025-12-20']}
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
+    page = TEMPLATE.read_text()
+    names = ['doneKey', 'doneStorageKey', 'isDone', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
+      const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
+      let doneThreads = new Set(), saved = {}, rendered = 0;
+      const localStorage = {setItem: (key, value) => { if (blocked) throw new Error('Storage blocked'); saved[key] = value; }};
+      const render = () => rendered++, doneNotice = () => {}, window = {scrollY: 0, scrollTo() {}};
+      const document = {getElementById: () => null}, calendarDay = value => value.slice(0, 10);
+      const make = (text, dir, due = '', since = '') => ({r: {path: 'people/theo-park.md'}, t: {text, dir, due, since}});
+      const entries = [make('You owe the signed agreement', 'mine', '2026-10-18'),
+        make('You owe the draft', 'mine', '2026-10-20'), make('They owe a link', 'theirs', '', '2026-10-20'),
+        make('Old thread', 'mine', '', '2026-10-19'), make('Future thread', 'mine', '2026-10-23'),
+        {...make('Quiet thread', 'theirs', '2026-09-01'), t: {text: 'Quiet thread', dir: 'theirs', due: '2026-09-01', quiet: true}}];
+      const threadEntries = () => entries;
+      (async () => {
+        const before = todayEntries(entries).length;
+        setDone(entries[0], true);
+        await Promise.resolve(); await Promise.resolve();
+        const marked = {today: todayEntries(entries).length, counts: threadCounts(), saved: Object.values(saved).map(JSON.parse),
+          sameTranslation: doneKey({...entries[0], t: {...entries[0].t, originalText: entries[0].t.text, text: '已翻译'}}) === doneKey(entries[0])};
+        setDone(entries[0], false);
+        await Promise.resolve(); await Promise.resolve();
+        console.log(JSON.stringify({before, marked, after: todayEntries(entries).length, open: threadCounts().mine,
+          stored: Object.values(saved).map(JSON.parse), rendered, records: entries.length}));
+      })();
+    ''')
+    assert result['before'] == result['after'] == 4
+    assert result['marked']['today'] == 3
+    assert result['marked']['counts'] == {'mine': 3, 'theirs': 1, 'other': 0, 'quiet': 1, 'open': 4}
+    assert result['marked']['saved'] == [] if blocked else len(result['marked']['saved'][0]) == 1
+    assert result['marked']['sameTranslation']
+    assert result['open'] == 4 and result['stored'] == ([] if blocked else [[]])
+    assert result['rendered'] == 2 and result['records'] == 6
+
+
+def test_thread_prompt_keeps_citations_root_and_public_text_only_in_both_languages():
+    page = TEMPLATE.read_text()
+    names = ['threadPrompt', 'sourceList', 'sourceId', 'listItems', 'rawSection', 'plainLine', 'obligationWords', 'obligationEvidence']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    command = re.search(r'function remCommand\(args\).*', page).group(0)
+    interface = page[page.index('const UI ='):page.index('function t(')]
+    result = _run_reader_js(functions + command + interface.replace('const UI =', 'const TRANSLATED_UI =') + r'''
+      UI.zh = TRANSLATED_UI.zh;
+      const REM = {root: '/fixture/notebook', default_root: false}, DIRECTION_LABEL = {mine: 'You owe'};
+      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/, youify = text => text;
+      const r = {path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', text: '# Mara Ostrowski\n\n## Sources\n'
+        + '- [4] outlook:e4a2c1907bd3 — addendum; observed 2026-10-11.\n'
+        + '- [5] outlook:unused — unused; observed 2026-10-10.\n'
+        + '- [6] Hidden source [personal]\n'};
+      const entry = {r, t: {text: 'Sign the capstone agreement [4]. Secret payment [personal] [5]. Public ending. [6]',
+        dir: 'mine', since: '2026-10-11', due: '2026-10-23'}, also: [{path: 'orgs/fernhill-labs.md'}]};
+      const en = threadPrompt(entry);
+      uiLanguage = 'zh'; entry.t.text = '请签署协议 [4]。秘密付款[personal] [5]。公开结尾。 [6]';
+      console.log(JSON.stringify({en, zh: threadPrompt(entry)}));
+    ''')
+    en, zh = result['en'], result['zh']
+    assert 'Sign the capstone agreement [4]' in en
+    assert 'Page: people/mara-ostrowski.md (Mara Ostrowski)' in en
+    assert "co rem --root '/fixture/notebook' show people/mara-ostrowski.md" in en
+    assert 'Also on: orgs/fernhill-labs.md' in en
+    assert '- [4] outlook:e4a2c1907bd3 — 2026-10-11' in en
+    assert 'Cited sources:' in en and 'do not send, sign, pay or contact anyone without my approval' in en
+    assert '请帮我处理' in zh and '请签署协议 [4]' in zh and '引用来源：' in zh and '未经我批准' in zh
+    for prompt in (en, zh):
+        assert 'Secret' not in prompt and '秘密' not in prompt
+        assert 'outlook:unused' not in prompt and 'Hidden source' not in prompt
+        assert "co rem --root '/fixture/notebook' search" in prompt
+
+
+def test_brief_header_counts_due_soon_including_overdue_and_translates_find():
+    page = TEMPLATE.read_text()
+    interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
+    function = re.search(r'function briefHeader\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + function + r'''
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, lastPass = () => null;
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const entries = [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}},
+        {t: {due: '2026-10-20'}}, {t: {due: '2026-10-23'}}];
+      const header = briefHeader({mine: 4}, entries), noDeadline = briefHeader({mine: 1}, entries.slice(0, 1));
+      const quiet = briefHeader({mine: 0}, []);
+      uiLanguage = 'zh';
+      const zh = briefHeader({mine: 4}, entries);
+      console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
+    })();''')
+    assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
+    assert result['header']['children'][1]['text'] == '3 due soon · 4 waiting on you'
+    assert result['noDeadline']['children'][1]['text'] == '1 waiting on you'
+    assert result['quiet']['children'][1]['text'] == 'A quiet morning'
+    assert result['zh']['children'][1]['text'] == '3 项即将到期 · 4 件等你处理'
+    assert result['find'] == '查找'
+
+
+def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['todayEntries', 'todayThread', 'morningWords'])
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
+      const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
+      const make = (text, due = '', since = '', extra = {}) => ({r, also, t: {text, due, since, dir: 'mine', ...extra}});
+      const entries = [make('overdue', '2026-10-29'), make('today', '2026-10-30'),
+        make('three days', '2026-11-02'), make('four days', '2026-11-03'),
+        make('new', '', '2026-10-30', {dir: 'theirs'}), make('old', '', '2026-10-29'),
+        make('done', '2026-10-30'), make('quiet', '2026-10-01', '', {quiet: true}),
+        make('undirected', '2026-10-30', '', {dir: 'plain'})];
+      const isDone = entry => entry.t.text === 'done';
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children}), href = page => page.path;
+      const capFirst = text => text, threadWords = text => text, plainLine = text => text;
+      const privateFallback = node => node, inline = text => text, threadActions = () => null;
+      const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
+      console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
+        row: todayThread(entries[2]), quoted: todayThread(quoted)}));
+    ''')
+    assert result['selected'] == ['overdue', 'today', 'three days', 'new']
+    assert result['row']['children'][3]['children'][0]['text'] == 'due 2026-11-02'
+    assert result['row']['children'][4]['also'] == [{'path': 'orgs/northgate-university.md'}]
+    assert result['quoted']['children'][1]['text'] == '“Please include the contribution details.”'
+    assert 'Letter of Support draft' in result['quoted']['children'][2]['html']
+    assert '[4]' in result['quoted']['children'][2]['html']

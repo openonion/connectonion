@@ -8,6 +8,8 @@ remote host. The People table's mail columns come from one adapter (#2064).
 
 import json
 import re
+
+import pytest
 from datetime import datetime, timezone
 
 from connectonion.rem.reader import TEMPLATE, mail_facts, snapshot
@@ -83,3 +85,88 @@ def test_the_template_has_activity_and_no_run_logs_category():
     assert "Run logs" not in page
     assert 'const ACTIVITY = new Set(["notes", "logs"])' in page
     assert 'view === "activity"' in page and 'href: "#view=activity"' in page
+
+
+@pytest.mark.parametrize('zh', [False, True])
+def test_fixture_cached_chinese_pages_preserve_reader_contract(tmp_path, monkeypatch, zh):
+    import sys
+    from pathlib import Path
+    from connectonion.rem import translate
+    from connectonion.rem.files import Notebook
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = build(tmp_path / 'rem', datetime(2026, 10, 20, 12, tzinfo=timezone.utc), zh=zh)
+    data = snapshot(root)
+    assert data['your_languages'] == (['zh', 'en'] if zh else ['en'])
+    paths = ['people/mara-ostrowski.md', 'people/ines-halvorsen.md', 'people/avery-lin.md',
+             'orgs/fernhill-labs.md', 'projects/harbour.md']
+    for path in paths:
+        translated = translate.cached(root, path, 'zh')
+        if not zh:
+            assert translated is None
+            continue
+        original = Notebook(root).read(path)
+        assert translate.checked(original, translated) == translated
+        assert original.partition('\n## Sources')[2] == translated.partition('\n## Sources')[2]
+        assert '试点' in translated or path == 'people/ines-halvorsen.md'
+        record = next(r for r in data['records'] if r['path'] == path)
+        assert record['translations']['zh'] == translated
+
+
+def test_readme_capture_uses_seven_offline_viewports_without_launching_a_browser(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('capture_rem_reader', Path(__file__).resolve().parents[2] / 'scripts' / 'capture_rem_reader.py')
+    capture = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(capture)
+    calls = []
+
+    class Page:
+        def route(self, pattern, callback):
+            assert pattern == 'http*://**/*'
+            callback(types.SimpleNamespace(abort=lambda: calls.append('blocked')))
+
+        def goto(self, url):
+            calls.append(url)
+
+        def locator(self, selector):
+            return types.SimpleNamespace(wait_for=lambda: None)
+
+        def screenshot(self, **options):
+            calls.append(options)
+
+        def close(self):
+            pass
+
+    class Browser:
+        def new_page(self, **options):
+            calls.append(options)
+            return Page()
+
+        def close(self):
+            pass
+
+    class Playwright:
+        def __enter__(self):
+            return types.SimpleNamespace(chromium=types.SimpleNamespace(launch=lambda **kw: Browser()))
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setitem(sys.modules, 'playwright.sync_api', types.SimpleNamespace(sync_playwright=Playwright))
+    monkeypatch.setattr(capture, 'render', lambda root: '<html>invented fixture</html>')
+    shots = capture.capture_readme(tmp_path)
+    assert [shot.name for shot in shots] == ['reader-desktop.png', 'reader-phone.png',
+        'tour-en-person-dark-desktop.png', 'tour-en-open-phone-dark.png', 'tour-zh-home-desktop.png',
+        'tour-zh-person-phone.png', 'tour-en-people-desktop.png']
+    viewports = [call for call in calls if isinstance(call, dict) and 'viewport' in call]
+    assert len(viewports) == 7 and calls.count('blocked') == 7
+    for options in viewports:
+        phone = options['viewport']['width'] == 390
+        assert options['viewport'] == {'width': 390, 'height': 844} if phone else options['viewport'] == {'width': 1440, 'height': 1000}
+        assert options['device_scale_factor'] == (2 if phone else 1)
+    assert all(not call['full_page'] for call in calls if isinstance(call, dict) and 'path' in call)
+    assert [options['locale'] for options in viewports] == ['en-GB'] * 4 + ['zh-CN'] * 2 + ['en-GB']

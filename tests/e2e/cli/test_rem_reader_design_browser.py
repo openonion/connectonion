@@ -201,7 +201,7 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.locator(".morning-primary h1").wait_for()
+        page.locator(".brief-header h1").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
@@ -247,7 +247,8 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
       }).reverse();
       render();
     }""", isolated_context=False)
-    band = page.locator('.night-strip')
+    page.locator('.night-details summary').click()
+    band = page.locator('.night-details .night')
     hypno = band.locator('.hypno')
     assert hypno.locator('.dot.changed').count() == 2
     assert hypno.locator('.dot.woke').count() == 1
@@ -275,15 +276,18 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
     # One count everywhere: the heading says what "See all" and the sidebar say; the rows are the top three.
-    total = page.locator('.waiting-more a').inner_text().split()[2]
-    assert page.locator('.morning-primary h1').inner_text() == f'{total} things are waiting on you'
+    total = page.locator('.waiting-more a').inner_text().split()[0]
+    assert f'{total} waiting on you' in page.locator('.brief-header h1').inner_text()
     assert page.locator('.waiting-ledger > li').count() == 3
-    assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Inès Halvorsen', 'Fernhill Labs']
+    assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
+    assert page.locator('.today-who').all_inner_texts() == ['Inès Halvorsen']
+    assert page.locator('.today-meta').inner_text().startswith('due 3 Oct')
     assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
-    changes = page.locator('.overnight .claim-card')
+    changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
     assert 'Head of Partnerships' in changes.inner_text()
-    assert changes.get_by_role('link', name='Open the page and source →').get_attribute('href').endswith('h=src-2')
+    assert changes.get_by_role('link', name='source', exact=True).get_attribute('href').endswith('h=src-2')
+    page.locator('.week-details summary').click()
     assert set(page.locator('.week a').all_inner_texts()) >= {'Mara Ostrowski', 'Harbour', 'Fernhill Labs'}
     recall = page.locator(".recall")
     assert recall.count() == 1
@@ -552,7 +556,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri())
-    assert page.locator('.morning-primary h1').is_visible()
+    assert page.locator('.brief-header h1').is_visible()
     assert page.locator('.first-map').is_visible()
     assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
     assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
@@ -1181,20 +1185,12 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     }""", {"mine": mine, "theirs": theirs}, isolated_context=False)
     primary = page.locator('.morning-primary')
     assert 'See all 0' not in primary.inner_text()
-    assert ' 0 ' not in primary.inner_text()
-    assert page.locator('.waiting-intro').count() == bool(mine)
+    assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.waiting-ledger').count() == bool(mine)
     assert page.locator('.waiting-ledger li').count() == mine
-    if not mine:
-        assert primary.locator('h1').inner_text() == 'Nothing is waiting on you'
-    if mine or theirs:
-        text = f'See all {mine} waiting on you' if mine else f'{theirs} waiting on someone else →'
-        if mine and theirs:
-            text += f' and {theirs} {"is" if theirs == 1 else "are"} waiting on someone else'
-        assert primary.locator('.waiting-more').inner_text() == text
-    else:
-        assert primary.locator('.waiting-more').count() == 0
-        assert primary.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
+    heading = page.locator('.brief-header h1').inner_text()
+    assert (f'{mine} waiting on you' in heading) == bool(mine)
+    assert primary.locator('.waiting-more').inner_text() == f'{mine} waiting on you · {theirs} on others →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if mine or theirs:
         primary.locator('.waiting-more a').click()
@@ -1880,6 +1876,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     brief = page.locator('.overnight')
     assert '1 investigation failed' in brief.inner_text()
     assert 'reworded; nothing new.' in brief.inner_text()
+    page.locator('.week-details summary').click()
     assert page.locator('.week').get_by_role('link', name='Mara Ostrowski', exact=True).is_visible()
     assert page.locator('.waiting-ledger > li').count() > 0
     assert 'No memory pages were written' not in brief.inner_text()
@@ -1959,7 +1956,8 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
     assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
-    assert 'Maps' not in page.locator('.category-cards').inner_text()
+    assert page.locator('.category-cards').count() == 0
+    assert 'Maps' not in page.locator('.task-links').inner_text()
     page.goto(path.as_uri() + '#q=coverage')
     assert 'weekly-brief runs' not in page.locator('#main').inner_text()
     page.goto(path.as_uri() + '#r=logs%2Fskill-runs-0123456789ab.md')
@@ -2243,9 +2241,9 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
       }
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    home = page.locator('.waiting-ledger > li').filter(has_text='Letter of Support draft')
+    home = page.locator('.waiting-ledger > li, .today-thread').filter(has_text='Letter of Support draft')
     assert home.count() == 1
-    assert home.locator('.waiting-person a').inner_text() == 'Mara Ostrowski'
+    assert home.locator('.waiting-person a, .today-who').inner_text() == 'Mara Ostrowski'
     assert home.locator('.also-on').inner_text() == 'Also on Tomás Reyes'
     also = home.locator('.also-on a')
     assert also.get_attribute('href') == '#r=people%2Ftomas-reyes.md'
@@ -2820,6 +2818,8 @@ def test_last_pass_band_has_equal_insets_and_complete_trace_in_both_views(reader
     }''', isolated_context=False)
     for fragment in ('', '#view=activity'):
         page.evaluate('fragment => { location.hash = fragment; render(); }', fragment, isolated_context=False)
+        if not fragment:
+            page.locator('#processing > summary').click()
         band = page.locator('.night').first
         main_box, box = page.locator('#main').bounding_box(), band.bounding_box()
         assert abs((box['x'] - main_box['x']) - (main_box['x'] + main_box['width'] - box['x'] - box['width'])) <= 1
@@ -3399,6 +3399,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.goto(uri + '#c=orgs')
     assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
     page.goto(uri)
+    page.locator('.week-details summary').click()
     assert page.locator('.week li').filter(has_text='Mara Ostrowski').locator('.fresh-label').is_visible()
     assert page.locator('.week li').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
@@ -3602,6 +3603,7 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     assert '中文人物摘要' in page.locator('#main').inner_text()
     page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
     assert '中文待办摘要' in page.locator('.waiting-ledger').inner_text()
+    page.locator('.week-details > summary').click()
     assert '中文人物摘要' in page.locator('.week').inner_text()
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
@@ -3831,7 +3833,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(html.as_uri())
-        page.locator('.morning-primary h1').wait_for()
+        page.locator('.brief-header h1').wait_for()
 
         def no_private_words():
             visible = page.locator('body').inner_text()
@@ -3844,6 +3846,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         assert '公开试点' in page.locator('.waiting-ledger').inner_text()
         no_private_words()
         # Missing translations have no note in either home row type.
+        page.locator('.week-details > summary').click()
+        no_private_words()
         for selector in ('.waiting-ledger', '.week'):
             assert page.locator(selector).locator('.lang-status').count() == 0
             assert '原文' not in page.locator(selector).inner_text()
@@ -3881,3 +3885,121 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         assert page.locator('.eyebrow .lang-status').inner_text() == '原文'
         assert not errors, errors
         browser.close()
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 1000})
+    page.emulate_media(color_scheme=theme)
+    page.evaluate(r'''() => {
+      REM.as_of = '2026-10-20T12:00:00Z';
+      for (const r of REM.records) {
+        r.original = undefined;
+        r.text = r.text.replace(/(^## Open threads[^\n]*\n)[\s\S]*?(?=^## |^Investigation:|(?![\s\S]))/mi, '$1Unknown\n\n');
+      }
+      const r = byPath('people/mara-ostrowski.md');
+      const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
+      const lines = pairs.map((words, i) => '- You owe Mara a review of the ' + words + '; due ' + (i === 0 ? '2026-10-18' : '2026-10-20') + ' [4].');
+      lines.push('- You owe Mara an access decision; since 2026-10-20 [4].');
+      r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + lines.join('\n'));
+      const pass = REM.logs.at(-1);
+      REM.logs = [{...pass, started_at: REM.as_of, claim_changes: Array.from({length: 4}, () => ({record: r.path,
+        field: 'role', before: 'Partnerships lead', after: 'Head of Partnerships', sources: ['2']}))}];
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    assert page.locator('.night-strip').count() == 0
+    assert page.locator('.overnight-change').count() == 3
+    assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
+    assert page.locator('.today-thread').count() == 5
+    assert 'overdue · 18 Oct' in page.locator('.today-thread').first.inner_text()
+    assert '6 due soon' in page.locator('.brief-header h1').inner_text()
+    assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
+    assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
+    assert page.locator('.week-details').get_attribute('open') is None
+    assert page.locator('.night-details').get_attribute('open') is None
+    assert page.locator('.category-cards').count() == 0
+    page.locator('.pass-summary a').click()
+    assert page.locator('.night-details').get_attribute('open') is not None
+    assert page.locator('.night-details .night').is_visible()
+    assert page.evaluate(r'''() => {
+      const keys = [...document.querySelectorAll('.today-who')].map(a => a.textContent);
+      return document.documentElement.scrollWidth <= innerWidth && keys.length === 5;
+    }''')
+    page.locator('.home-find input[type=search]').fill('pilot renewal')
+    page.locator('.home-find input').press('Enter')
+    page.wait_for_url(uri + '#q=pilot%20renewal')
+    assert 'pilot renewal' in page.locator('h1').inner_text()
+
+
+def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
+    page, uri = reader
+    page.goto(uri + '#view=open')
+    target = page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').first
+    before = int(page.locator('#nav a[href="#view=open"] .n').inner_text())
+    page.evaluate(r'''() => { copyToClipboard = text => window.copiedThreadPrompt = text; }''', isolated_context=False)
+    target.get_by_role('button', name='Copy prompt', exact=True).click()
+    copied = page.evaluate(r'''() => window.copiedThreadPrompt''', isolated_context=False)
+    assert 'outlook:e4a2c1907bd3' in copied and 'people/mara-ostrowski.md' in copied
+    assert 'do not send, sign, pay or contact anyone without my approval' in copied
+    target.get_by_role('button', name='Mark done', exact=True).click()
+    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 0
+    assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before - 1
+    page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
+    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 1
+    page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').get_by_role('button', name='Mark done').click()
+    page.reload()
+    page.locator('.done-details summary').wait_for()
+    assert page.locator('.done-details').get_attribute('open') is None
+    page.locator('.done-details summary').click()
+    assert 'Only this browser remembers this.' in page.locator('.done-details').inner_text()
+    assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    row = page.locator('.ledger-row').filter(has_text='Data-sharing addendum')
+    assert row.locator('.done-tag').inner_text() == 'marked done here'
+    row.get_by_role('button', name='Undo', exact=True).click()
+    assert row.locator('.done-tag').count() == 0
+    page.goto(uri)
+    assert 'Data-sharing addendum' in page.locator('.waiting-ledger').inner_text()
+    assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before
+
+
+def test_round7_done_remains_usable_when_storage_is_blocked(reader):
+    page, uri = reader
+    page.add_init_script(r'''Object.defineProperty(window, 'localStorage', {
+      get() { throw new Error('Storage blocked by this fixture'); }
+    });''')
+    page.goto(uri + '#view=open')
+    page.reload()
+    assert page.evaluate(r'''async () => {
+      await readerStorage('fixture-probe', 'value');
+      return readerStorage('fixture-probe');
+    }''', isolated_context=False) is None
+    page.locator('.task-band .thread').first.get_by_role('button', name='Mark done', exact=True).click()
+    assert page.locator('.done-details summary').is_visible()
+    page.goto(uri + '#')
+    page.goto(uri + '#view=open')
+    assert page.locator('.done-details summary').is_visible()
+    page.locator('.done-details summary').click()
+    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
+    assert page.locator('.done-details').count() == 0
+
+
+def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(reader):
+    page, uri = reader
+    page.goto(uri + '#c=people')
+    assert page.evaluate(r'''() => [...document.querySelectorAll('.people-sheet tbody tr')].every(row => {
+      const open = row.querySelector('.open-cell'), company = row.querySelector('.c-company .clamp');
+      return row.getBoundingClientRect().height <= 64 && (!open || getComputedStyle(open).flexWrap === 'nowrap')
+        && (!company || getComputedStyle(company).whiteSpace === 'nowrap')
+        && getComputedStyle(row.querySelector('.name')).boxShadow === 'none';
+    })''')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
+    page.goto(uri)
+    action = page.locator('.waiting-ledger .thread-actions button').first
+    action.scroll_into_view_if_needed()
+    assert action.is_visible() and action.bounding_box()['height'] >= 44
+    action.focus()
+    assert action.evaluate(r'''node => node === document.activeElement''')
