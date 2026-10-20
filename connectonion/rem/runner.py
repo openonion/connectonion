@@ -952,7 +952,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
     if last_resort and carried:
         before_restore = text
-        text = restore_dropped(carried, text, exempt)
+        # A restored History line can take it past sixteen: fold again (2026-10-21, 17 lines refused an update).
+        text = fold_history(restore_dropped(carried, text, exempt))
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
@@ -1087,7 +1088,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         # A gutted page is still refused on what the turn wrote, before anything is put back.
         shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         written = text
-        text = restore_dropped(before.get(record, ''), text) if before.get(record) and not shrunk else text
+        text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.

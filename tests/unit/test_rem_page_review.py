@@ -1966,3 +1966,15 @@ def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
 def test_a_hedge_clause_goes_and_its_citations_stay(line, stripped):
     from connectonion.rem.page_review import strip_hedge
     assert strip_hedge(line) == stripped
+
+
+def test_restored_history_lines_are_folded_back_under_sixteen():
+    """2026-10-21: lines put back took History from 11 to 17 lines and the update was refused."""
+    from connectonion.rem.page_review import fold_history, history_errors, restore_dropped
+    old = [f"- 2025-0{m}-01: Thread {m} — closed, “ok {m}” [{m}]" for m in range(1, 7)]
+    new = [f"- 2026-{m:02d}-01: Thread {m} — closed [{m + 6}]" for m in range(1, 12)]
+    sources = "".join(f"- [{n}] gmail:{n:012x} — 2026-01-01\n" for n in range(1, 18))
+    before = "# Avery Lin\n\n## History\n" + "\n".join(new + old) + "\n\n## Sources\n" + sources
+    after = "# Avery Lin\n\n## History\n" + "\n".join(new) + "\n\n## Sources\n" + sources
+    restored = fold_history(restore_dropped(before, after))
+    assert not history_errors(restored, after) and "“ok 3”" in restored
