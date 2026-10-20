@@ -161,9 +161,9 @@ still asks before anything is read in the background.
 To fill other pages, `co rem investigate` lists what is left, by category, and
 runs no model. Copy the `Next:` command printed by `investigate` to investigate one existing
 page. You can also supply an exact title or email when it identifies one page,
-for example `co rem investigate 'Ody'` if that person exists in your notebook.
+for example `co rem investigate 'Corin'` if that person exists in your notebook.
 Ambiguous names list the matching paths and do not start a model. Example page
-names in old help text, such as `people/emma.md`, are not built-in records.
+names in old help text, such as `people/elodie.md`, are not built-in records.
 `--help` displays help and exits, even when you also supply a page name.
 
 ```bash
@@ -368,7 +368,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem import sessions --days 30` | Agent sessions: one page per Codex or Claude Code conversation you typed in, under `sessions/`, linked to the project whose folder it ran in (a worktree counts as its repository). Your typed messages and the final reply, with what the session produced (pull requests, commits, branches, changed files). No model. Automation, harness prompts, subagents, `/tmp` probes and REM's own runs stay out; init and sync run it. |
 | `co rem import sessions --summarise` | Also ask the configured model, eight sessions per turn, for each session's title, summary, topic tags, outcome, your decisions (kept only when quoted word for word) and open follow-ups. `--limit` caps it (default 40). The reader's **Agent sessions** list searches and filters them. |
 | `co rem stub person "Alice" --email alice@example.org --handle 艾丽丝` | Create the canonical person skeleton if absent. |
-| `co rem stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
+| `co rem stub org "UNSW" --domain unsw.edu.au --person people/rowan-ashdown.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co rem stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co rem list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
 | `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to, or only ever wrote to. |
@@ -1034,7 +1034,7 @@ it finishes. A sync that resumes the archive says so, with its progress:
 A person is named, in this order, by the name they write under, the name in the
 owner's saved contacts (Google contacts and "other contacts", Outlook contacts;
 skipped when the login cannot read them), and the owner's own greeting in a mail
-to that one person ("Hi Larry,", "Larry 你好，", "子明，"). A greeting to several
+to that one person ("Hi Fenwick,", "Fenwick 你好，", "子亚，"). A greeting to several
 people names none of them. On the owner's notebook this named 176 of 195 people
 the map had titled with a bare address. An organisation is the registrable
 domain (accounts.google.com and google.com are one), and a domain only notice
@@ -1103,7 +1103,7 @@ reader and `co rem status` both ask it:
 ## Facts and Insight on every page (#2068)
 
 The owner, many times: an investigation finds too few facts and too little
-insight, and on Ody's page the phone number could not be found at a glance. A
+insight, and on Corin's page the phone number could not be found at a glance. A
 page now opens on a **Facts** block — one field a line, each value cited, a
 missing value visibly `Unknown` — and a short **Insight** section; the prose
 sections follow. `connectonion/rem/facts.py` owns the shape; the reader renders
@@ -1220,11 +1220,11 @@ investigation's result carries `facts` — fields filled before and after, the
 facts the extractor found and how many of them the page kept.
 
 Measured on a copy of the owner's notebook (2026-10-02), fields filled of 14:
-Ody 6, Tamara 7, Richard 6, the owner's own page 3. The material held more
-than each page had: Ody's phone (in a signature), every page's first and last
+Corin 6, Greta 7, Emrys 6, the owner's own page 3. The material held more
+than each page had: Corin's phone (in a signature), every page's first and last
 contact, and on the owner's page a phone, links, company and role. After
-re-investigating with these skills, Ody went to 8 (9 with the restore step over
-the full window; the run was a quick pass of the newest mail) and Tamara to 11,
+re-investigating with these skills, Corin went to 8 (9 with the restore step over
+the full window; the run was a quick pass of the newest mail) and Greta to 11,
 her mobile among them, each with three labelled Insight lines.
 
 When an investigation finds nothing new, the restore step still runs: a page
@@ -1261,7 +1261,7 @@ before it refuses anything.
   supports nor contradicts is left out, not failed.
 - **Up to two repair turns for every page type; one for enrich and muse.**
   What review names goes back to the writer with where to read the originals.
-  Only project pages had repairs before; hamish-mcfarlane and two skill pages
+  Only project pages had repairs before; callum-reid and two skill pages
   stayed unwritten after 1.9.2b3's
   first run for one section or one citation. A page someone changed meanwhile
   gets no repair: it is theirs.
@@ -1273,7 +1273,7 @@ before it refuses anything.
   N refuted claims removed`. Anything else still refuses the page.
 - **Code settles shape.** A heading glued to a paragraph goes back on its own
   line and a repeated section is merged into the first, instead of refusing
-  the page (hamish-mcfarlane was refused for it on every pass). A second page
+  the page (callum-reid was refused for it on every pass). A second page
   title goes; a leftover "not investigated yet" becomes bare `Unknown`; a
   History past 16 lines folds its oldest years into one line each; an
   `investigation:` citation goes from project and skill pages. A page is
@@ -1296,7 +1296,7 @@ before it refuses anything.
   mail cited as `[1]` and `[2]` with two dates, and dates the writer typed that
   matched no message.
 - **Every turn is told today's date** (`Today is 2026-10-15 (Australia/Sydney)`),
-  and that an event before it is history, never an open thread. Ody's page kept
+  and that an event before it is history, never an open thread. Corin's page kept
   13 and 14 October events open on the 15th.
 - A one-page sync turn that keeps less than 60% of a page's characters, or of
   its cited sources, keeps the old page (pages under 1,000 characters are
@@ -1396,7 +1396,7 @@ page, the project writer, and a sync's one-page turn. Before, only
 pages. A sync's refusal also holds the batch's material for that page, from
 every source, because the cursor moves on and the batch is not read twice. A
 refused round inside an accepted investigation stays in the ledger with the
-sources no later round read (Ody Zhou's and Dora's, 2026-10-10 and 10-12), and
+sources no later round read (Corin Marsh's and Briar's, 2026-10-10 and 10-12), and
 the daily row shows it as `refused_rounds`.
 
 **Retries.** Every later run of the day retries ledger pages neither refused

@@ -1860,8 +1860,8 @@ def test_list_between_fetches_each_message_once_with_its_recipients_and_retries(
         def list(self, **kw): return Call({"messages": [{"id": "a"}, {"id": "b"}]})
         def get(self, **kw):
             gets.append(kw)
-            return Call({"id": kw["id"], "snippet": "Hi Larry,", "labelIds": [], "payload": {"headers": [
-                {"name": "From", "value": "me@x.y"}, {"name": "To", "value": "Larry <l@q.com>"},
+            return Call({"id": kw["id"], "snippet": "Hi Fenwick,", "labelIds": [], "payload": {"headers": [
+                {"name": "From", "value": "me@x.y"}, {"name": "To", "value": "Fenwick <l@q.com>"},
                 {"name": "Cc", "value": "c@q.com"}, {"name": "Subject", "value": "s"},
                 {"name": "Date", "value": "Thu, 10 Sep 2026 10:00:00 +0000"}]}})
 
@@ -1876,6 +1876,6 @@ def test_list_between_fetches_each_message_once_with_its_recipients_and_retries(
     rows = gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")
     assert len(gets) == 2
     assert {"To", "Cc", "From"} <= set(gets[0]["metadataHeaders"])
-    assert rows[0]["to"] == ["Larry <l@q.com>"] and rows[0]["cc"] == ["c@q.com"]
-    assert rows[0]["snippet"] == "Hi Larry,"
+    assert rows[0]["to"] == ["Fenwick <l@q.com>"] and rows[0]["cc"] == ["c@q.com"]
+    assert rows[0]["snippet"] == "Hi Fenwick,"
     assert all(n >= 3 for n in retries)     # a 429 or 5xx is retried with backoff, not fatal

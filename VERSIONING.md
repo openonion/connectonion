@@ -1125,7 +1125,7 @@ have a designed terminal layout; and the notebook keeps a SQLite index beside
 its pages (#2067). Pages got leaner: person pages only for people the owner
 corresponds with (381 → 85 on the owner's notebook, #2057), History as eight
 dated milestones (#2059), no lines about the tool itself (#2058), names linked,
-pages in English (#2060), and evidence a month per file (Ody 2.77M → 1.48M
+pages in English (#2060), and evidence a month per file (Corin 2.77M → 1.48M
 input tokens, #2080). Stable is 1.8.9. See [1.9.0a9 notes](docs/releases/1.9.0a9.md).
 
 - 1.9.0a9 (#2064, #2065, #2067, #2054, #2057, #2058, #2059, #2060, #2080; terminal design #2070.)

@@ -10,28 +10,28 @@ from connectonion.rem.files import CATEGORIES, MAX_NOTE_BYTES, Notebook, RemErro
 
 
 def test_a_cited_page_line_yields_bare_names_and_addresses():
-    """#1954: `Tamara Berryman; tamara.berryman@unsw.edu.au [2]` came back as one
+    """#1954: `Greta Holloway; greta.holloway@unsw.edu.au [2]` came back as one
     handle, `[2]` included, and went to Gmail as an address (677 wrong mails)."""
     from connectonion.rem.files import is_address, split_handles
 
-    handles = split_handles(" Tamara Berryman; `tamara.berryman@unsw.edu.au` [2], Tam [W1]、Unknown")
+    handles = split_handles(" Greta Holloway; `greta.holloway@unsw.edu.au` [2], Gret [W1]、Unknown")
 
-    assert handles == ["Tamara Berryman", "tamara.berryman@unsw.edu.au", "Tam"]
-    assert [h for h in handles if is_address(h)] == ["tamara.berryman@unsw.edu.au"]
-    assert not is_address("tamara.berryman@unsw.edu.au [2]")
+    assert handles == ["Greta Holloway", "greta.holloway@unsw.edu.au", "Gret"]
+    assert [h for h in handles if is_address(h)] == ["greta.holloway@unsw.edu.au"]
+    assert not is_address("greta.holloway@unsw.edu.au [2]")
 
 
 def test_the_roster_reads_aliases_without_their_citations(tmp_path):
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/tamara.md", "Tamara Berryman", ["tam"])
-    page = notebook.read("people/tamara.md")
+    notebook.stub_person("people/greta.md", "Greta Holloway", ["gret"])
+    page = notebook.read("people/greta.md")
     line = next(l for l in page.splitlines() if l.lstrip("- ").startswith("Also known as:"))
-    notebook.write("people/tamara.md", page.replace(
-        line, "- Also known as: Tamara Berryman; tamara.berryman@unsw.edu.au [2], Tam [3]", 1))
+    notebook.write("people/greta.md", page.replace(
+        line, "- Also known as: Greta Holloway; greta.holloway@unsw.edu.au [2], Gret [3]", 1))
 
-    person = next(p for p in notebook.people() if p["path"] == "people/tamara.md")
+    person = next(p for p in notebook.people() if p["path"] == "people/greta.md")
 
-    assert person["aliases"] == ["Tam", "Tamara Berryman", "tamara.berryman@unsw.edu.au"]
+    assert person["aliases"] == ["Gret", "Greta Holloway", "greta.holloway@unsw.edu.au"]
 
 
 def test_inspection_does_not_initialize(tmp_path):
@@ -144,10 +144,10 @@ def _person(root, path, body):
 
 def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
     """Literal search cannot bridge a changed letter; the roster is what can."""
-    _person(tmp_path, "people/ody-zhou.md", "\n".join([
-        "# Ody Zhou", "", "## Contact",
+    _person(tmp_path, "people/corin-marsh.md", "\n".join([
+        "# Corin Marsh", "", "## Contact",
         "- Email: zhouodywork@gmail.com",
-        "- Also known as: Ody, Odi, 欧迪, 周泽凯",
+        "- Also known as: Corin, Odi, 欧迪, 周泽凯",
         "- Phone: Unknown",
         "", "## Who they are",
         "- OpenOnion partner running business development. [1]",
@@ -156,7 +156,7 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
 
     assert len(roster) == 1
     entry = roster[0]
-    assert entry["path"] == "people/ody-zhou.md" and entry["title"] == "Ody Zhou"
+    assert entry["path"] == "people/corin-marsh.md" and entry["title"] == "Corin Marsh"
     # The spelling a coding session would use is here even though it is not in the title.
     assert "Odi" in entry["aliases"] and "欧迪" in entry["aliases"]
     assert entry["emails"] == ["zhouodywork@gmail.com"]
@@ -168,8 +168,8 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
 def test_an_address_written_inside_prose_is_read_as_an_address_not_the_prose(tmp_path):
     """A real page wrote "candidate `x@y` (case variant reported)"; splitting on
     commas handed that whole sentence back as an email."""
-    _person(tmp_path, "people/andrew.md", "\n".join([
-        "# Andrew", "", "## Contact",
+    _person(tmp_path, "people/simon.md", "\n".join([
+        "# Simon", "", "## Contact",
         "- Email: candidate `andrewroth@coastalhomies.com.au` (case variant reported)",
         "", "## Who they are", "- A lead for outreach. [1]",
     ]))
@@ -188,9 +188,9 @@ def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     notebook = Notebook(tmp_path)
 
-    assert notebook.stub_person("people/emma.md", "Emma (艾玛)",
-                                ["emma", "艾玛", "szh526"]) is True
-    page = notebook.read("people/emma.md")
+    assert notebook.stub_person("people/elodie.md", "Elodie (艾洛蒂)",
+                                ["elodie", "艾洛蒂", "elodie526"]) is True
+    page = notebook.read("people/elodie.md")
 
     for section in ("Facts", "Insight", "Open threads", "Uncertainties", "Sources",
                     *Notebook.PERSON_SECTIONS):
@@ -198,8 +198,8 @@ def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
     for label in Notebook.PERSON_CONTACT:
         assert f"- {label}: " in page, label
     # The handles it was given are on the page; everything else is a work item.
-    assert "- Handles: emma, 艾茅, szh526" not in page
-    assert "- Also known as: emma, 艾玛, szh526" in page
+    assert "- Handles: elodie, 艾茅, elodie526" not in page
+    assert "- Also known as: elodie, 艾洛蒂, elodie526" in page
     # Every section, plus the lead under the title.
     assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS) + 2  # + Insight
 
@@ -223,11 +223,11 @@ def test_a_second_map_pass_does_not_overwrite_an_investigated_page(tmp_path):
     for name in CATEGORIES:
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/emma.md", "Emma", ["emma"])
-    notebook.write("people/emma.md", "# Emma\n\n## Contact\n- Email: szh526@gmail.com\n")
+    notebook.stub_person("people/elodie.md", "Elodie", ["elodie"])
+    notebook.write("people/elodie.md", "# Elodie\n\n## Contact\n- Email: elodie526@example.com\n")
 
-    assert notebook.stub_person("people/emma.md", "Emma", ["emma"]) is False
-    assert "szh526@gmail.com" in notebook.read("people/emma.md")
+    assert notebook.stub_person("people/elodie.md", "Elodie", ["elodie"]) is False
+    assert "elodie526@example.com" in notebook.read("people/elodie.md")
 
 
 def test_the_roster_reads_a_page_that_has_only_been_mapped(tmp_path):
@@ -236,10 +236,10 @@ def test_the_roster_reads_a_page_that_has_only_been_mapped(tmp_path):
     for name in CATEGORIES:
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/ody-zhou.md", "Ody Zhou", ["Ody", "odi", "周泽凯"])
+    notebook.stub_person("people/corin-marsh.md", "Corin Marsh", ["Corin", "odi", "周泽凯"])
 
     entry = notebook.people()[0]
-    assert entry["title"] == "Ody Zhou"
+    assert entry["title"] == "Corin Marsh"
     assert "odi" in entry["aliases"] and "周泽凯" in entry["aliases"]
 
 
@@ -250,14 +250,14 @@ def test_an_organisation_page_has_its_own_shape_settled_when_it_is_created(tmp_p
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     assert notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au", "student.unsw.edu.au"],
-                             people=["people/vern-chan.md", "people/karen-da-lapa-soares.md"])
+                             people=["people/rowan-ashdown.md", "people/ingrid-falk.md"])
     page = notebook.read("orgs/unsw.md")
     assert page.startswith("# UNSW\n")
     for section in ("## Domains", "## Who they are", "## Our relationship", "## People here",
                     "## Terms", "## Open threads", "## Uncertainties", "## Sources"):
         assert section in page, section
     assert "- unsw.edu.au" in page and "- student.unsw.edu.au" in page
-    assert "[vern-chan](../people/vern-chan.md)" in page   # the people are links, not copies
+    assert "[rowan-ashdown](../people/rowan-ashdown.md)" in page   # the people are links, not copies
     assert page.count("Unknown — not investigated yet") >= 4
     assert notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au"]) is False   # never overwrites
     assert "orgs/unsw.md" in notebook.list() and "orgs/unsw.md" in notebook.list("orgs")
@@ -390,7 +390,7 @@ def test_a_mapped_person_is_not_also_known_by_their_addresses(tmp_path):
 
     assert "- Handles: mia@harbour.example, Mimi" in page
     assert "- Also known as: Mimi" in page
-    notebook.stub_person("people/bo.md", "Bo", ["bo@town.example"])
+    notebook.stub_person("people/bo.md", "Bo", ["bo@quayside.example"])
     assert "- Also known as: Unknown" in notebook.read("people/bo.md")
 
 

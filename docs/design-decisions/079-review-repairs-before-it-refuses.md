@@ -9,11 +9,11 @@ A model-written page is paid for before review sees it. Review used to have two
 answers, accept or refuse, and only project investigations had repair turns. On
 1.9.2b3's first run (2026-10-10) that lost whole pages for small faults:
 
-- hamish-mcfarlane was refused on every pass for one heading glued to the end
+- callum-reid was refused on every pass for one heading glued to the end
   of a paragraph ("… [10]. ## Our relationship").
 - job-followup's skill page was refused for citing its applications log as a
   hash-pinned `file:` id, which only project pages accepted.
-- A Hamish History line was refused whole because the audit copied one claim
+- A Callum History line was refused whole because the audit copied one claim
   without its `[7]`, though the line's first sentence was true.
 
 Meanwhile the checks that mattered most were missing: 8 of 89 quotes on that

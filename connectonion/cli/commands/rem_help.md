@@ -163,7 +163,7 @@ Usage:
 
 Examples:
   co rem investigate
-  co rem investigate people/ody-zhou-c6a901ffd8.md
+  co rem investigate people/corin-marsh-c6a901ffd8.md
   co rem investigate people --limit 3
   co rem investigate people --recent-days 7 --list
   co rem investigate projects --list          (show the order, run nothing)
@@ -397,9 +397,9 @@ Back:     co rem --help
 Print one page as Markdown. Read-only.
 
 Usage:    co rem show PAGE | PERSON
-Example:  co rem show people/tamara-berryman-324b6af6e8.md
+Example:  co rem show people/greta-holloway-324b6af6e8.md
           co rem show me   (your own page)
-          co rem show "Tamara Berryman"   (a person's name, alias or email)
+          co rem show "Greta Holloway"   (a person's name, alias or email)
 Inputs:   PAGE comes from list, search, or the Next line of investigate.
           A PERSON naming several pages lists them and shows none.
 Next:     co rem investigate PAGE   (if it still says Unknown)

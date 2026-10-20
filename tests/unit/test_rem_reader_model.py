@@ -239,7 +239,7 @@ def test_cited_github_original_is_openable_without_rem_db(tmp_path):
     from connectonion.rem.reader_model import cited_context
 
     source, created_at = 'github:openonion/connectonion#2346', '2026-10-12T00:00:00Z'
-    page = '# Jiexuan\n\nIssue body [1].\n\n## Sources\n- [1] ' + source + ' — 2026-10-12\n'
+    page = '# Kenji\n\nIssue body [1].\n\n## Sources\n- [1] ' + source + ' — 2026-10-12\n'
     item = {'role': 'github', 'source': source, 'text': ' Issue body ', 'timestamp': created_at}
     ignored = [
         {**item, 'source': 'github:openonion/connectonion#1886'},
@@ -290,11 +290,11 @@ def test_github_original_is_retained_by_page_save_and_claim_audit(tmp_path, save
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     source = 'github:openonion/connectonion#2346'
-    page = '# Jiexuan\n\nIssue body [1].\n\n## Sources\n- [1] ' + source + ' — 2026-10-12\n'
+    page = '# Kenji\n\nIssue body [1].\n\n## Sources\n- [1] ' + source + ' — 2026-10-12\n'
     items = [{'role': 'github', 'source': source, 'text': 'Issue body', 'timestamp': '2026-10-12T00:00:00Z'}]
     if save_path == 'accepted_page':
-        _write_page(notebook, 'people/jiexuan.md', page, items)
-        page = notebook.read('people/jiexuan.md')
+        _write_page(notebook, 'people/kenji.md', page, items)
+        page = notebook.read('people/kenji.md')
     else:
         retain_cited_originals(notebook, page, items)
     assert cited_context(tmp_path, [{'text': page}])[source]['excerpt'] == 'Issue body'
@@ -416,6 +416,6 @@ def test_claim_rewordings_set_aside_source_qualifications_and_added_words():
     ]
     for old, new in unchanged:
         assert _same(old, new), (old, new)
-    for old, new in [("Stable 1.9.1", "Stable 1.9.2"), ("waiting on Weiwei", "waiting on you"),
+    for old, new in [("Stable 1.9.1", "Stable 1.9.2"), ("waiting on Liesel", "waiting on you"),
                      ("Python project", "project Python"), ("waiting waiting", "waiting")]:
         assert not _same(old, new), (old, new)

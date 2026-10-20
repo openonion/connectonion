@@ -26,8 +26,8 @@ co outlook read 3 --listing <listing-id> --mark-read
 co outlook send alice@example.com "Hello" "Thanks for the meeting today!"
 
 # Save and find contacts
-co outlook contact add "Zhou Yifei" zhou@example.com
-co outlook contact search yifei
+co outlook contact add "Nadia Marsh" marsh@example.com
+co outlook contact search nadia
 
 # Your calendar
 co outlook calendar today
@@ -75,14 +75,14 @@ Contacts start deliberately small: a display name and one email address.
 
 ```bash
 # Create
-co outlook contact add "Zhou Yifei" zhou@example.com
+co outlook contact add "Nadia Marsh" marsh@example.com
 
 # List (25 by default)
 co outlook contact list
 co outlook contact list -n 50
 
 # Find by a case-insensitive name or email substring
-co outlook contact search yifei
+co outlook contact search nadia
 co outlook contact search gmail.com -n 10
 ```
 
@@ -279,7 +279,7 @@ numbered for cancel, with recipient, subject, and local send time:
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
 ┃ To                          ┃ Subject                ┃ Sends at     ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
-│ tamara.berryman@unsw.edu.au │ RE: Access to the MCIC │ Jul 07 08:00 │
+│ greta.holloway@unsw.edu.au │ RE: Access to the MCIC │ Jul 07 08:00 │
 └─────────────────────────────┴────────────────────────┴──────────────┘
 ```
 
@@ -348,9 +348,9 @@ Or call it directly:
 ```python
 outlook = Outlook()
 outlook.list_inbox(last=10, unread=True)
-outlook.add_contact("Zhou Yifei", "zhou@example.com")
+outlook.add_contact("Nadia Marsh", "marsh@example.com")
 outlook.list_contacts(max_results=25)
-outlook.search_contacts("yifei")
+outlook.search_contacts("nadia")
 outlook.send(
     "alice@example.com", "Report", "See attached.",
     attachments=["report.pdf"],

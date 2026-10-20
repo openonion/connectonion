@@ -365,7 +365,7 @@ def test_newtab_allocates_incrementing_tab_ids(tmp_path):
     assert ok is True
     assert payload.startswith("[tab 1]")
 
-    ok, payload = daemon.dispatch('newtab b.com --purpose=inbox --who=tamara')
+    ok, payload = daemon.dispatch('newtab b.com --purpose=inbox --who=greta')
     assert ok is True
     assert payload.startswith("[tab 2]")
     assert {"1", "2"} <= set(daemon.browser._pages)

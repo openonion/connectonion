@@ -29,7 +29,7 @@ from .chat import CHAT_KINDS
 INDEX = "index.md"
 
 
-# A file the agent reads in one go. One file per mail made Ody Zhou's 98k
+# A file the agent reads in one go. One file per mail made Corin Marsh's 98k
 # characters 373 files; the agent re-sends its whole context with every file
 # it opens, and the turn cost 2.77M input tokens (#2080). A month of one
 # mailbox is one file, split when it passes this.

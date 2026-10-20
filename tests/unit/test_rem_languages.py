@@ -58,12 +58,12 @@ def notebook(tmp_path):
 
 def test_mixed_chinese_and_english_owner_is_detected_from_own_words_only(notebook, tmp_path):
     mail(notebook, [
-        ("aaron@openonion.ai", "From: Aaron <aaron@openonion.ai>\nTo: dora@x.com\n\n你好，明天下午我们再聊一下这个合同的细节吧。"),
-        ("Aaron@OpenOnion.ai", "Hi Dora, the contract looks good, let's sign it next week.\n\n"
-                               "On Mon, 12 Oct 2026, Dora wrote:\n> 我们这边已经准备好了所有的文件和材料"),
+        ("aaron@openonion.ai", "From: Aaron <aaron@openonion.ai>\nTo: briar@x.com\n\n你好，明天下午我们再聊一下这个合同的细节吧。"),
+        ("Aaron@OpenOnion.ai", "Hi Briar, the contract looks good, let's sign it next week.\n\n"
+                               "On Mon, 12 Oct 2026, Briar wrote:\n> 我们这边已经准备好了所有的文件和材料"),
         ("aaron@openonion.ai", "收到，谢谢你帮忙安排这次会议和后续的事情。"),
-        ("dora@x.com", "今天天气很好我们去公园散步吧然后吃晚饭怎么样"),   # someone else's words
-        ("dora@x.com", "这是别人的邮件不是你写的内容所以不应该算进去"),
+        ("briar@x.com", "今天天气很好我们去公园散步吧然后吃晚饭怎么样"),   # someone else's words
+        ("briar@x.com", "这是别人的邮件不是你写的内容所以不应该算进去"),
     ])
     subscription = transcript(tmp_path / "claude", [
         ("cli", "帮我把这个页面的语言切换功能做完，然后跑一下测试"),
@@ -82,7 +82,7 @@ def test_mixed_chinese_and_english_owner_is_detected_from_own_words_only(noteboo
 
 def test_quoted_thread_and_headers_are_not_the_owners_words():
     body = ("From: Aaron <a@x.com>\nSubject: Re: plan\n\nSounds good.\n\n"
-            "在 2026年10月12日，Dora 写道：\n> 我们下周见面讨论吧")
+            "在 2026年10月12日，Briar 写道：\n> 我们下周见面讨论吧")
     assert languages.own_words(body).strip() == "Sounds good."
     assert languages.language_of("ok") is None                       # too short to vote
     assert languages.language_of("今日はいい天気ですね、散歩に行きましょう") == "ja"   # kana outrank shared Han
@@ -129,14 +129,14 @@ def test_config_shows_your_languages_and_where_they_came_from(notebook):
 
 def test_the_snapshot_gives_the_menu_your_languages_the_page_language_and_theirs(notebook):
     from connectonion.rem.reader import snapshot
-    (notebook / "people" / "dora.md").write_text(
-        "# Dora\n\n## Facts\n- Language: Japanese and English [1]\n\n## Who they are\nDora runs the Tokyo office.\n")
+    (notebook / "people" / "briar.md").write_text(
+        "# Briar\n\n## Facts\n- Language: Japanese and English [1]\n\n## Who they are\nBriar runs the Tokyo office.\n")
     (notebook / "people" / "li.md").write_text("# 李雷\n\n## Facts\n- Language: Chinese\n\n## Who they are\n李雷是公司的创始人，负责产品和融资。\n")
     set_config(notebook, ["languages", "zh,en"])
     data = snapshot(notebook)
     rows = {r["path"]: r for r in data["records"]}
     assert data["your_languages"] == ["zh", "en"]
-    assert rows["people/dora.md"]["written_in"] == "en" and rows["people/dora.md"]["speaks"] == ["ja", "en"]
+    assert rows["people/briar.md"]["written_in"] == "en" and rows["people/briar.md"]["speaks"] == ["ja", "en"]
     assert rows["people/li.md"]["written_in"] == "zh" and rows["people/li.md"]["speaks"] == ["zh"]
 
 

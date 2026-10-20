@@ -9,9 +9,9 @@ def item(source, when, text, **extra):
 
 def test_a_mail_is_one_file_and_a_session_or_chat_is_one_conversation(tmp_path):
     items = [
-        item("outlook:a1", "2026-09-02T09:00:00Z", "Invoice attached", speaker="vern@x.y", subject="Invoice"),
+        item("outlook:a1", "2026-09-02T09:00:00Z", "Invoice attached", speaker="rowan@x.y", subject="Invoice"),
         item("outlook:a1:invoice.pdf", "2026-09-02T09:00:00Z", "Total $4,200", role="attachment",
-             speaker="vern@x.y", subject="Invoice — invoice.pdf"),
+             speaker="rowan@x.y", subject="Invoice — invoice.pdf"),
         item("codex:s1:10", "2026-09-03T01:00:00Z", "fix the login bug", project="oo-chat"),
         item("codex:s1:20", "2026-09-03T01:05:00Z", "now ship it", project="oo-chat"),
         item("whatsapp:0a1b2c", "2026-09-04T05:00:00Z", "Venue booked", speaker="John",
@@ -43,11 +43,11 @@ def test_an_odd_source_id_cannot_escape_the_evidence_directory(tmp_path):
 def test_entry_and_index_use_the_notebooks_local_date(tmp_path):
     from zoneinfo import ZoneInfo
     from connectonion.rem.source import with_local_times
-    items = with_local_times([item("outlook:reply", "2026-08-27T21:30:00Z", "Reply sent.", speaker="Vern")],
+    items = with_local_times([item("outlook:reply", "2026-08-27T21:30:00Z", "Reply sent.", speaker="Rowan")],
                              ZoneInfo("Australia/Sydney"))
     out = write_evidence(tmp_path / "ev", items)
     entry = next(p for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
-    assert "### outlook:reply · 2026-08-27T21:30:00Z · local 2026-08-28 07:30 Australia/Sydney · Vern" in entry.read_text()
+    assert "### outlook:reply · 2026-08-27T21:30:00Z · local 2026-08-28 07:30 Australia/Sydney · Rowan" in entry.read_text()
     assert "- 2026-08-28 · outlook:2026-08" in out["index"].read_text()
     assert entry.name.startswith("2026-08-27_")
 
@@ -65,7 +65,7 @@ def test_indexed_mail_preserves_actual_cc_when_rendered_body_omits_it(tmp_path):
 
 def test_legacy_timestamp_scope_survives_an_indexed_evidence_packet(tmp_path):
     out = write_evidence(tmp_path / "ev", [item(
-        "codex:legacy:100", "2025-11-04T15:24:50Z", "Vern asked about the placement",
+        "codex:legacy:100", "2025-11-04T15:24:50Z", "Rowan asked about the placement",
         timestamp_scope="Legacy session start only; individual message time was not recorded")])
     body = next(p.read_text() for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
     assert "Timestamp scope: Legacy session start only; individual message time was not recorded" in body
@@ -73,12 +73,12 @@ def test_legacy_timestamp_scope_survives_an_indexed_evidence_packet(tmp_path):
 
 
 def test_a_month_of_one_mailbox_is_one_file_split_when_large(tmp_path):
-    """#2080: Ody Zhou's 98k characters of mail were 373 files, one tool call each,
+    """#2080: Corin Marsh's 98k characters of mail were 373 files, one tool call each,
     and the turn re-sent its context every time: 2.77M input tokens."""
     from connectonion.rem.evidence import FILE_CHARS
     items = [item(f"outlook:m{n:03d}", f"2026-{7 + n % 3:02d}-{1 + n % 28:02d}T09:00:00Z", "x" * 260,
-                  speaker="ody@x.y", subject=f"Thread {n}") for n in range(373)]
-    items.append(item("gmail:g1", "2026-09-05T09:00:00Z", "From the other mailbox", speaker="ody@x.y"))
+                  speaker="corin@x.y", subject=f"Thread {n}") for n in range(373)]
+    items.append(item("gmail:g1", "2026-09-05T09:00:00Z", "From the other mailbox", speaker="corin@x.y"))
 
     out = write_evidence(tmp_path / "ev", items)
 

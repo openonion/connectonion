@@ -100,7 +100,7 @@ person:
 
 Lines worth keeping: "Role: not in her signature or on fis.com; unknown." --
 "Whether the 2026-09-22 meeting happened is not in the mail." -- "Signed as
-‘Ody’ and as ‘欧弟’; assumed the same person from the shared address."
+‘Corin’ and as ‘欧弟’; assumed the same person from the shared address."
 
 **No citation on `Unknown`.** `How the user writes to them: Unknown — no message
 from the user [8]` and `Phone: Unknown [W1]` cite a source for something it does
@@ -116,13 +116,13 @@ not contain. The search belongs in `Uncertainties`.
   maintenance rule (search first, judge carefully, mark a possible twin) does
   not apply the same way here.
 - **Every given handle on the page, wrong spellings too, unless the person said
-  it is not their name** (Ody's rejected 周泽楷 sat beside 周泽凯): that line is how the
+  it is not their name** (Corin's rejected 周泽楷 sat beside 周泽凯): that line is how the
   daily pass recognises the subject without thinking. Discovered handles let the
   next sweep reach material this one could not.
 - **A handle that produced nothing is a finding** (unless it is the page's own
   address) because it tells the next run the handle is dead.
-- **Title from the name.** The map created `# vern.chan` from an address; a
-  signature reading "Vern Chan" makes the title `# Vern Chan`. The title is what
+- **Title from the name.** The map created `# rowan.ashdown` from an address; a
+  signature reading "Rowan Ashdown" makes the title `# Rowan Ashdown`. The title is what
   the user will search for.
 - **Self-profile.** When the subject is a mailbox owner, a notice addressed to
   them (e.g. from a vendor) was being read as their own role or company, and a
@@ -597,8 +597,8 @@ the duplicated Open-threads and attribution rules it replaces were folded in.
 - **The speaker is the cited message's `From`.** In a thread, "X approved"
   went to the wrong person, and a cc'd person became a party.
 - **An old open item keeps its date**, and an event whose date has passed is
-  not open: Ody's page kept 13 and 14 October events open on the 15th. Every
+  not open: Corin's page kept 13 and 14 October events open on the 15th. Every
   turn is now told today's date.
-- **Search before `Unknown`.** Tamara's page called co-working access "not
+- **Search before `Unknown`.** Greta's page called co-working access "not
   established" while the mail granting it was in the page's own material. The
   audit now fails an "unknown" claim a supplied original settles.

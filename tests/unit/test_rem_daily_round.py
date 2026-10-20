@@ -112,7 +112,7 @@ def test_a_refused_page_is_retried_by_a_later_run_with_its_refused_material(root
 
 
 def test_an_accepted_page_keeps_its_refused_rounds_in_the_daily_row(root, monkeypatch):
-    """Dora's round was refused inside c50b6913 (2026-10-12), whose row said only accepted."""
+    """Briar's round was refused inside c50b6913 (2026-10-12), whose row said only accepted."""
     _investigators(monkeypatch)
     monkeypatch.setattr("connectonion.rem.skill_runs.investigate_skill_page", lambda root, record, dirs: {
         "changed": [record], "refused_rounds": ["Candidate rejected: Missing or duplicate citation: 22"]})

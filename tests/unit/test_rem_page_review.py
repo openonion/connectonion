@@ -643,11 +643,11 @@ def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
     from connectonion.rem.files import read_json, state_path
     from connectonion.rem.reviews import ingest, listing
     prepare(tmp_path)
-    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', [])
+    Notebook(tmp_path).stub_person('people/corin.md', 'Corin', [])
     kept = ingest(tmp_path, [
-        {'kind': 'link', 'subjects': ['people/ody.md'], 'question': 'Same as Ody Z?', 'basis': 'name'},
-        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'Still at OpenOnion?', 'basis': 'mail'},
-        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'third', 'basis': 'x'},
+        {'kind': 'link', 'subjects': ['people/corin.md'], 'question': 'Same as Corin Z?', 'basis': 'name'},
+        {'kind': 'question', 'subjects': ['people/corin.md'], 'question': 'Still at OpenOnion?', 'basis': 'mail'},
+        {'kind': 'question', 'subjects': ['people/corin.md'], 'question': 'third', 'basis': 'x'},
     ])
     assert [row['question'] for row in kept] == ['Still at OpenOnion?']
     assert [row['question'] for row in listing(tmp_path)] == ['Still at OpenOnion?']
@@ -686,11 +686,11 @@ def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
     assert "- Sessions: 2\n" in restore_runner_fields("projects/atlas.md", nested.replace("Sessions: 2", "Sessions: 3"),
                                                        original)
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_restores_contact_date_over_unknown(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
     candidate = original.replace(f"- {label}: 2026-10-14 [4]", f"- {label}: Unknown")
 
     assert restore_runner_fields(record, candidate, original) == original
@@ -698,49 +698,49 @@ def test_restore_runner_fields_restores_contact_date_over_unknown(record, label)
 
 def test_restore_runner_fields_maps_contact_citation_to_candidate_number():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
-    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
                  "- [2] outlook:abc — candidate description\n- [4] outlook:other\n")
 
     expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [2]")
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == expected
 
 
 def test_restore_runner_fields_appends_missing_contact_source_at_next_number():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
-    candidate = ("# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:abc — 2026-10-14\n"
+    candidate = ("# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n"
                  "- [1] outlook:one\n- [4] outlook:other\n\nInvestigation: mapped\n")
 
     expected = candidate.replace("Last contact: Unknown", "Last contact: 2026-10-14 [5]")
     expected = expected.replace("\n\nInvestigation:", "\n- [5] outlook:abc — 2026-10-14\n\nInvestigation:")
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == expected
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == expected
 
 
 def test_restore_runner_fields_skips_contact_line_with_an_unresolved_citation():
     from connectonion.rem.page_review import restore_runner_fields
-    original = "# Ying Tan\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
-    candidate = "# Ying Tan\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
+    original = "# Iris Kwok\n\n## Facts\n- Last contact: 2026-10-14 [4][9]\n\n## Sources\n- [4] outlook:abc\n"
+    candidate = "# Iris Kwok\n\n## Facts\n- Last contact: Unknown\n\n## Sources\n- [2] outlook:other\n"
 
-    assert restore_runner_fields("people/ying-tan.md", candidate, original) == candidate
+    assert restore_runner_fields("people/iris-kwok.md", candidate, original) == candidate
 
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_keeps_candidate_contact_date(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: 2026-10-14 [4]\n\n## Sources\n- [4] outlook:ying\n"
     candidate = original.replace("2026-10-14 [4]", "2026-10-15 [4]")
 
     assert restore_runner_fields(record, candidate, original) == candidate
 
 
-@pytest.mark.parametrize("record", ["people/ying-tan.md", "orgs/harbour.md"])
+@pytest.mark.parametrize("record", ["people/iris-kwok.md", "orgs/harbour.md"])
 @pytest.mark.parametrize("label", ["First contact", "Last contact"])
 def test_restore_runner_fields_original_unknown_changes_nothing(record, label):
     from connectonion.rem.page_review import restore_runner_fields
-    original = f"# Ying Tan\n\n## Facts\n- {label}: Unknown\n"
-    candidate = original.replace("# Ying Tan", "# Updated page")
+    original = f"# Iris Kwok\n\n## Facts\n- {label}: Unknown\n"
+    candidate = original.replace("# Iris Kwok", "# Updated page")
 
     assert restore_runner_fields(record, candidate, original) == candidate
 
@@ -749,18 +749,18 @@ def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     """A real one-page maintenance turn cited `investigation:page` and re-cited the
     page's own codex ids in new words; both were refused and the update was lost."""
     from connectonion.rem.page_review import validate
-    original = ("# Dora\n\n## Contact\n- Email: d@example.org [2]\n\n## Sources\n"
-                "- [2] User says Dora is internal. codex:0a:157160, codex:0a:438485\n\n"
+    original = ("# Briar\n\n## Contact\n- Email: d@example.org [2]\n\n## Sources\n"
+                "- [2] User says Briar is internal. codex:0a:157160, codex:0a:438485\n\n"
                 "Investigation: mapped 2026-09-20 · not investigated yet\n")
-    candidate = ("# Dora\n\n## Contact\n- Email: d@example.org [1]\n- Role: internal [2]\n\n## Sources\n"
+    candidate = ("# Briar\n\n## Contact\n- Email: d@example.org [1]\n- Role: internal [2]\n\n## Sources\n"
                  "- [1] investigation:page — the page as it stood listed this address.\n"
-                 "- [2] codex:0a:157160, codex:0a:438485 — user describes Dora as internal.\n\n"
+                 "- [2] codex:0a:157160, codex:0a:438485 — user describes Briar as internal.\n\n"
                  "Investigation: mapped 2026-09-20 · not investigated yet\n")
-    errors = [e for e in validate("people/dora.md", candidate, original, [])
+    errors = [e for e in validate("people/briar.md", candidate, original, [])
               if "identifiable source" in e]
     assert errors == []
     invented = candidate.replace("codex:0a:438485", "codex:0a:999999")
-    assert any("identifiable source" in e for e in validate("people/dora.md", invented, original, []))
+    assert any("identifiable source" in e for e in validate("people/briar.md", invented, original, []))
 
 
 def test_a_person_page_with_a_cited_lead_before_contact_is_accepted():
@@ -821,12 +821,12 @@ def test_one_miscopied_citation_drops_its_line_not_the_page(tmp_path):
                  .replace('- Role: Unknown', '- Role: Head of data [3]')
                  .replace('## Who they are\n- Unknown — not investigated yet',
                           '## Who they are\n- Leads the data team. [1]\n- Joined in 2024. [3]\n'
-                          '- Works with Ody. [2][3]')
+                          '- Works with Corin. [2][3]')
                  .replace('- (none yet)', '- [1] gmail:abc123\n- [2] gmail:def456\n- [3] gmail:abc12Z-typo'))
     repaired, dropped = drop_unresolved('people/mia.md', candidate, original, items)
     assert dropped == {'citations': ['3'], 'lines': 2}
     assert 'Joined in 2024' not in repaired and 'gmail:abc12Z-typo' not in repaired
-    assert '- Works with Ody. [2]' in repaired and '- Leads the data team. [1]' in repaired
+    assert '- Works with Corin. [2]' in repaired and '- Leads the data team. [1]' in repaired
     assert '- Role: Unknown' in repaired
     assert validate('people/mia.md', repaired, original, items) == []
 
@@ -882,7 +882,7 @@ def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_
 
 
 @pytest.mark.parametrize('newest', [
-    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Ziming, C1)
+    'mia88@hotmail.com',             # graduated, writing from Hotmail: the old university is stale (Zia, C1)
     'z1234567@unsw.edu.au',          # a student ID is enrolment, not employment (Sam, C2)
     'mia.chen@student.unsw.edu.au',  # seven students got UNSW as employer (C3)
     'usr-abc@user.luma-mail.com',    # a relay's domain is the platform's
@@ -1001,14 +1001,14 @@ def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
 
 def test_lines_about_the_run_are_removed_and_a_contact_field_keeps_its_label():
     """Five of the owner's seven investigated person pages said "web: not
-    searched; Wiki runs are offline"; Ody's Phone line said it too."""
+    searched; Wiki runs are offline"; Corin's Phone line said it too."""
     from connectonion.rem.page_review import drop_tool_text
-    original = '# Ody\n\n## Contact\n- Phone: Unknown\n\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
-    candidate = ('# Ody\n\n## Contact\n- Phone: no phone number appears; the web was not searched in this '
+    original = '# Corin\n\n## Contact\n- Phone: Unknown\n\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
+    candidate = ('# Corin\n\n## Contact\n- Phone: no phone number appears; the web was not searched in this '
                  'offline Wiki run.\n\n## Uncertainties\n- web: not searched; Wiki runs are offline. [2]\n'
-                 '- Whether the 30/70 split was signed. [1]\n- Ody collects art; a serious collector. [1]\n'
+                 '- Whether the 30/70 split was signed. [1]\n- Corin collects art; a serious collector. [1]\n'
                  '\n## Sources\n- [1] outlook:aaa — 2026-09-01\n- [2] investigation:coverage — offline run\n')
-    text, removed = drop_tool_text('people/ody.md', candidate, original)
+    text, removed = drop_tool_text('people/corin.md', candidate, original)
     assert '- Phone: Unknown' in text
     assert 'Wiki runs are offline. [2]' not in text and len(removed) == 2
     assert 'Whether the 30/70 split was signed. [1]' in text and 'a serious collector' in text
@@ -1063,7 +1063,7 @@ def test_one_dated_history_or_decision_line_removes_blank_between_items(heading)
 
 
 def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
-    """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
+    """Corin Marsh's History held 17 bullets, five of them "sent report X" (#2059);
     eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
     from connectonion.rem.page_review import history_errors, history_note
     assert history_errors(_with_history(17), _with_history(16))
@@ -1078,23 +1078,23 @@ def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
 
 
 def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
-    """Ody Zhou's page named Ivan Zhu and Harry Cao, who had pages, and linked neither."""
+    """Corin Marsh's page named Lucan Novak and Felix Moreau, who had pages, and linked neither."""
     from connectonion.rem.page_review import link_people, person_names
     prepare(tmp_path)
     nb = Notebook(tmp_path)
-    nb.stub_person('people/jiexuan.md', 'Jiexuan Deng', ['j@unsw.edu.au'], email='j@unsw.edu.au')
-    nb.stub_person('people/ivan.md', 'Ivan', ['ivanxzhu@gmail.com'], email='ivanxzhu@gmail.com')
-    nb.stub_person('people/harry-a.md', 'Harry', ['amazingharry1@gmail.com'], email='amazingharry1@gmail.com')
-    nb.stub_person('people/harry-b.md', 'Harry', ['hai@gmail.com'], email='hai@gmail.com')
-    page = ('# Richard Lai\n\nWorks with Jiexuan Deng. [1]\n\n## Contact\n- Also known as: Jiexuan Deng\n\n'
-            '## History\n- 2026-09-25: met Ivan Zhu and Harry Cao; Jiexuan Deng joined. [1]\n\n'
-            '## Sources\n- [1] outlook:aaa — Jiexuan Deng, 2026-09-25\n')
-    linked = link_people('people/richard.md', page, person_names(nb))
-    assert 'Works with [Jiexuan Deng](../people/jiexuan.md).' in linked          # first mention only
-    assert '; Jiexuan Deng joined' in linked and '- Also known as: Jiexuan Deng' in linked
-    assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
-    assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
-    assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
+    nb.stub_person('people/kenji.md', 'Kenji Hale', ['j@unsw.edu.au'], email='j@unsw.edu.au')
+    nb.stub_person('people/lucan.md', 'Lucan', ['lucannovak@gmail.com'], email='lucannovak@gmail.com')
+    nb.stub_person('people/felix-a.md', 'Felix', ['felix.a@example.com'], email='felix.a@example.com')
+    nb.stub_person('people/felix-b.md', 'Felix', ['felix.b@example.com'], email='felix.b@example.com')
+    page = ('# Emrys Brandt\n\nWorks with Kenji Hale. [1]\n\n## Contact\n- Also known as: Kenji Hale\n\n'
+            '## History\n- 2026-09-25: met Lucan Novak and Felix Moreau; Kenji Hale joined. [1]\n\n'
+            '## Sources\n- [1] outlook:aaa — Kenji Hale, 2026-09-25\n')
+    linked = link_people('people/emrys.md', page, person_names(nb))
+    assert 'Works with [Kenji Hale](../people/kenji.md).' in linked          # first mention only
+    assert '; Kenji Hale joined' in linked and '- Also known as: Kenji Hale' in linked
+    assert 'met [Lucan Novak](../people/lucan.md) and Felix Moreau' in linked           # the only Lucan, lucannovak@
+    assert '- [1] outlook:aaa — Kenji Hale, 2026-09-25' in linked               # Sources untouched
+    assert link_people('people/emrys.md', linked, person_names(nb)) == linked  # idempotent
 
 
 def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
@@ -1166,40 +1166,40 @@ def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
 
 
 def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page():
-    """1.9.2b1 (2026-10-09) gave Weiwei the user's phone from his own signature, against the instructions."""
+    """1.9.2b1 (2026-10-09) gave Liesel the user's phone from his own signature, against the instructions."""
     from connectonion.rem.page_review import drop_owner_addresses
-    page = "## Facts\n- Email: weiwei.lei@rmit.edu.au\n- Phone: +61 435 525 634 [2]\n- Role: Professor [1]\n"
-    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0435 525 634 (work)"})
-    assert "- Phone: Unknown\n" in text and removed == ["+61 435 525 634"]
-    assert "- Email: weiwei.lei@rmit.edu.au" in text
-    other = page.replace("+61 435 525 634", "+61 400 111 222")
-    assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])
+    page = "## Facts\n- Email: liesel.voss@rmit.edu.au\n- Phone: +61 491 570 156 [2]\n- Role: Professor [1]\n"
+    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0491 570 156 (work)"})
+    assert "- Phone: Unknown\n" in text and removed == ["+61 491 570 156"]
+    assert "- Email: liesel.voss@rmit.edu.au" in text
+    other = page.replace("+61 491 570 156", "+61 400 111 222")
+    assert drop_owner_addresses(other, {"0491 570 156 (work)"}) == (other, [])
 
 
 def test_the_owners_phone_is_found_when_each_number_carries_its_own_citation():
-    """1.9.2b2 (2026-10-09) kept the user's phone on Sasha's page: `[48]` was read as two more digits."""
+    """1.9.2b2 (2026-10-09) kept the user's phone on Tess's page: `[48]` was read as two more digits."""
     from connectonion.rem.page_review import drop_owner_addresses
-    page = "## Facts\n- Phone: +61-0435525634 (work) [48]; +61 2 9065 4432 (work) [49]\n"
-    text, removed = drop_owner_addresses(page, {"0435 525 634"})
-    assert "- Phone: +61 2 9065 4432 (work) [49]\n" in text and "0435525634" not in text
-    assert removed == ["+61-0435525634 (work) [48]"]
+    page = "## Facts\n- Phone: +61-0491570156 (work) [48]; +61 2 9000 0157 (work) [49]\n"
+    text, removed = drop_owner_addresses(page, {"0491 570 156"})
+    assert "- Phone: +61 2 9000 0157 (work) [49]\n" in text and "0491570156" not in text
+    assert removed == ["+61-0491570156 (work) [48]"]
 
 
 def test_a_number_in_someone_elses_signature_is_taken_off_and_any_other_stays():
     """#2348, as narrowed by the 1.9.2b3 trial: only a number known to be someone else's goes."""
     from connectonion.rem.page_review import drop_others_phones
-    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9065 4432 (work) [49]\n- Role: Lead [1]\n"
-    text, removed = drop_others_phones(page, ["+61 2 9065 4432"], [])
-    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9065 4432 (work) [49]"]
-    assert drop_others_phones(page, ["+61 2 9065 4432"], ["02 9065 4432"]) == (page, [])   # theirs too
-    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290654432"], [])[0]
+    page = "## Facts\n- Phone: 0457 857 962 (mobile) [2]; +61 2 9000 0157 (work) [49]\n- Role: Lead [1]\n"
+    text, removed = drop_others_phones(page, ["+61 2 9000 0157"], [])
+    assert "- Phone: 0457 857 962 (mobile) [2]\n" in text and removed == ["+61 2 9000 0157 (work) [49]"]
+    assert drop_others_phones(page, ["+61 2 9000 0157"], ["02 9000 0157"]) == (page, [])   # theirs too
+    assert "- Phone: Unknown\n" in drop_others_phones(page, ["0457 857 962", "+61290000157"], [])[0]
 
 
 def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
     """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
     from datetime import timezone
     from connectonion.rem.runner import _searched_turn
-    (tmp_path / "search-requests.json").write_text('["Wisiani contract",\n "renewal" "date"]', encoding="utf-8")
+    (tmp_path / "search-requests.json").write_text('["Dewi contract",\n "renewal" "date"]', encoding="utf-8")
     first = {"result": "edited", "report": "Round 5 read.", "usage": {"input_tokens": 3}}
 
     def never(*args):
@@ -1209,19 +1209,19 @@ def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_p
 
 
 def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(tmp_path):
-    """1.9.2b1: Ian's page cited the owner's Claude memory file by path. It sat in
+    """1.9.2b1: Osric's page cited the owner's Claude memory file by path. It sat in
     the folder of a supplied session transcript, so it passed as a local file."""
     from connectonion.rem.page_review import drop_unresolved
     folder = tmp_path / '.claude/projects/-work'
     (folder / 'memory').mkdir(parents=True)
-    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_ian.md'
+    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_osric.md'
     transcript.write_text('{}')
-    memory.write_text('Ian: MBA at UNSW')
+    memory.write_text('Osric: MBA at UNSW')
     items = [{'role': 'owner-work-evidence', 'file': str(transcript), 'sources': ['claude-code:s1']}]
-    text = ('# Ian\n\nIan asked about pricing [1].\n\n## Who they are\nIan studies an MBA [2].\n\n'
+    text = ('# Osric\n\nOsric asked about pricing [1].\n\n## Who they are\nOsric studies an MBA [2].\n\n'
             f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
-    kept, dropped = drop_unresolved('people/ian.md', text, '', items)
-    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
+    kept, dropped = drop_unresolved('people/osric.md', text, '', items)
+    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Osric asked about pricing [1].' in kept
 
 
 def test_sources_are_renumbered_without_gaps_and_code_is_left_alone():
@@ -1268,10 +1268,10 @@ def test_repeated_citation_markers_collapse_only_within_prose_runs(text, expecte
 
 def test_merged_sources_leave_one_citation_after_renumbering():
     from connectonion.rem.page_review import collapse_repeated_markers, renumber_sources, settle_sources
-    text = ('# Dora\n\nA fact [1][2]\n\n## Sources\n'
+    text = ('# Briar\n\nA fact [1][2]\n\n## Sources\n'
             '- [1] gmail:abc — original\n- [2] gmail:abc — repeated\n')
     assert collapse_repeated_markers(renumber_sources(settle_sources(text, {}))) == (
-        '# Dora\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
+        '# Briar\n\nA fact [1]\n\n## Sources\n- [1] gmail:abc — original\n')
 
 
 def test_a_required_section_the_turn_left_out_is_added_as_unknown():
@@ -1328,7 +1328,7 @@ def test_source_dates_come_from_the_original_in_the_notebooks_timezone():
 
 
 def test_a_source_id_cited_inline_becomes_a_numbered_citation():
-    """Nina's, Tamara's and Weiwei's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
+    """Petra's, Greta's and Liesel's pages (2026-10-15) cited `[outlook:ac8a0c940197]` in prose."""
     from connectonion.rem.page_review import normalize_numbered_sources
     page = ("# N\n\nAsked [outlook:ac8a0c940197]; replied [1] [outlook:2af4c0ad8970].\n\n## Sources\n"
             "- [1] outlook:2af4c0ad8970 — 2026-09-24\n\nInvestigation: x\n")

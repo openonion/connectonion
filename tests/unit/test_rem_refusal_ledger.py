@@ -1,6 +1,6 @@
 """Every refused page reaches the one ledger, with the material it was refused for.
 
-The 2026-10-10 notebook refused eight pages and its ledger held one (hamish):
+The 2026-10-10 notebook refused eight pages and its ledger held one (callum):
 two skill pages, three sync maintenance turns and two investigation rounds
 went nowhere, and nothing retried them.
 """
@@ -35,11 +35,11 @@ def test_a_refused_page_is_retried_once_a_day(tmp_path):
 
 
 def test_a_refused_round_inside_an_accepted_investigation_is_ledgered(tmp_path, monkeypatch):
-    """Ody Zhou's round 2 (2026-10-10) and Dora's (10-12) were refused inside accepted
+    """Corin Marsh's round 2 (2026-10-10) and Briar's (10-12) were refused inside accepted
     investigations: the run said accepted, and the round's mail was never read again."""
     root = tmp_path / "rem"
     prepare(root)
-    Notebook(root).stub_person("people/vern.md", "Vern Chan", ["vern"])
+    Notebook(root).stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"])
     items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
               "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
@@ -49,14 +49,14 @@ def test_a_refused_round_inside_an_accepted_investigation_is_ledgered(tmp_path, 
         turns.append([i["source"] for i in material if i.get("source", "").startswith("outlook:")])
         if len(turns) == 2:
             raise RunFailed("Candidate rejected: Missing or duplicate citation: 22", {"input_tokens": 1})
-        page = notebook.path("people/vern.md")
+        page = notebook.path("people/rowan.md")
         page.write_text(page.read_text() + f"\nRound {len(turns)}.\n")
-        return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5}}
+        return {"changed": ["people/rowan.md"], "usage": {"input_tokens": 5}}
 
-    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+    out = inv.investigate(root, "people/rowan.md", "Rowan", ["me@x.y"], days=7, clients={}, subscriptions={},
                           extractor=lambda *a: pytest.fail("no digest"), runner=write)
     assert out["refused_rounds"] == ["Candidate rejected: Missing or duplicate citation: 22"]
-    entry = refused_for(root, "people/vern.md")
+    entry = refused_for(root, "people/rowan.md")
     assert entry["sources"] == sorted(turns[1]) and entry["stage"] == "investigation round"
 
 

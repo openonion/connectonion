@@ -500,7 +500,7 @@ def language_rules() -> str:
 
 
 def today_note(root: Path) -> str:
-    """The date a turn writes on. Without it, Ody's page kept a 13 October event
+    """The date a turn writes on. Without it, Corin's page kept a 13 October event
     as an open thread on the 15th: nothing told the writer the day had passed."""
     from .config import read_config
     from .service import notebook_zone
@@ -713,7 +713,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
-    section or one citation was lost whole: hamish-mcfarlane and two skill
+    section or one citation was lost whole: callum-reid and two skill
     pages stayed unwritten after 1.9.2b3's first run.
     """
     run = run or run_task
@@ -779,7 +779,7 @@ def _lead(text: str) -> str:
 def _keep_identity(record: str, before: str, after: str) -> str:
     """A lead whose first sentence the last resort dropped opens with who they are, from Facts.
 
-    Tamara's and Nina's after-pages (2026-10-15) lost "who this is to the user"
+    Greta's and Petra's after-pages (2026-10-15) lost "who this is to the user"
     to an audit finding that a citation was missing beside it; the lead then
     opened on an HR ticket. Role and Company are cited fields on the same page.
     """
@@ -835,7 +835,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items, root=notebook.root)
-        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
+        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Maren, 1.9.2b3).
         text, more = facts.drop_uncited(record, text, original)
         uncited = [*uncited, *more]
     # The last resort has no repair turn after it: a finding on an untraceable
@@ -863,7 +863,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, unverified = verify_contacts(notebook.root, record, text, items, original)
         removed = sorted({*removed, *again, *borrowed})
         if again or borrowed or unverified:
-            # The number's own source, cited nowhere else now: Dannielle's page was refused for it.
+            # The number's own source, cited nowhere else now: Brianna's page was refused for it.
             text = drop_uncited_sources(text)
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
@@ -907,7 +907,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
     if last_resort and record.startswith("people/") and not _lead(text):
-        # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
+        # Corin Marsh (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
         errors.append("Audit removed the whole lead; the page before this turn is kept")
     # A refuted claim no line holds any more is already gone: a repair turn
@@ -1336,7 +1336,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if stage == "investigate" and candidate and search and not quick_first_pass:
-        # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
+        # Emrys Brandt's #2443-#2446 (2026-10-12) were missed by adding "Emrys BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
                    f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "

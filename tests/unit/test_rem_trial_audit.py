@@ -53,7 +53,7 @@ def test_the_problems_found_in_the_b3_logs_are_each_severe(tmp_path):
     root, home, tasks = _notebook(tmp_path)
     sessions = home / ".codex" / "sessions"
     # REM read a transcript of the user's and another notebook (row 2 of the audit).
-    _rollout(sessions, "s-wander", tasks, [f"rg Larry {home}/.claude/projects/x.jsonl",
+    _rollout(sessions, "s-wander", tasks, [f"rg Fenwick {home}/.claude/projects/x.jsonl",
                                            f"cat {home}/.co/rem-trials/iter13/people/v.md"])
     # A page cites REM's own task session as the user's words (row 3).
     _rollout(sessions, "01a12360-47f8-7513-aff3-eb033d92fb14", root / ".state" / "tasks" / "model-access", [])
@@ -75,7 +75,7 @@ def test_the_problems_found_in_the_b3_logs_are_each_severe(tmp_path):
 def test_page_checks_name_the_page(tmp_path):
     root, home, _ = _notebook(tmp_path)
     (root / "orgs").mkdir()
-    (root / "orgs" / "x.md").write_text("# morganpost.net\n\nA newsroom [1][3].\n\n## Sources\n- [1] gmail:a\n- [3] gmail:b\n")
+    (root / "orgs" / "x.md").write_text("# harbourpost.example\n\nA newsroom [1][3].\n\n## Sources\n- [1] gmail:a\n- [3] gmail:b\n")
     (root / "people" / "bo.md").write_text("# Bo\n\nBo [1].\n\n## Facts\n- Also known as: bo@x.example\n\n"
                                            "## Sources\n- [1] gmail:c\n")
     report = _audit().audit(root, home / ".codex" / "sessions", home)
@@ -121,12 +121,12 @@ def test_maintenance_refusals_shrinks_churn_and_swallowed_rounds_are_counted(tmp
          page_chars={"projects/connectonion.md": [14356, 4132]}, changed=["projects/connectonion.md"],
          refusals=[{"record": "projects/handoff.md", "errors": ["Changed page has no numbered evidence references"]}])
     _run(root, "daily", phase="daily-update", started_at="2026-10-12T16:23:00+00:00",
-         pages=[{"page": "people/dora.md", "outcome": "accepted", "refused_rounds": ["Missing or duplicate citation: 22"]}])
+         pages=[{"page": "people/briar.md", "outcome": "accepted", "refused_rounds": ["Missing or duplicate citation: 22"]}])
     report = _audit().audit(root, home / ".codex" / "sessions", home)
     severe = {(f["check"], f["example"].split()[0]) for f in report["severe"]}
     assert ("refusal missing from ledger", "projects/handoff.md") in severe
     assert ("page shrank", "projects/connectonion.md") in severe
-    assert report["runs"]["refused_rounds"] == ["people/dora.md"]
+    assert report["runs"]["refused_rounds"] == ["people/briar.md"]
     assert report["runs"]["refused_turns"] == {"tasks": 1, "recorded": 2, "swallowed": 0}
     browser = next(c for c in report["runs"]["churn"] if c["page"] == "projects/browser.md")
     assert browser["turns"] == 5 and browser["no_change"] == 5

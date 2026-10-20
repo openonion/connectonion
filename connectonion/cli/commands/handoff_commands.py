@@ -1214,11 +1214,11 @@ def make_handoff_app(factory) -> typer.Typer:
         help="Experimental: hand the context of what you discussed with your coding agent to another person's agent, "
              "so their Codex or Claude Code continues without you rewriting the background. "
              "Sends by agent mail; nothing runs on their side until they open it.",
-        epilog='Example:  co handoff send ody "the login task"  |  co handoff inbox',
+        epilog='Example:  co handoff send corin "the login task"  |  co handoff inbox',
         no_args_is_help=True,
     )
 
-    @app.command("send", epilog='Examples:  co handoff send ody "the login task"  |  co handoff send ody --draft ho-1a2b3c4d --yes')
+    @app.command("send", epilog='Examples:  co handoff send corin "the login task"  |  co handoff send corin --draft ho-1a2b3c4d --yes')
     def send(
         who: str = typer.Argument(..., help="Contact name (co handoff contact), an email, or a 0x agent address"),
         what: str = typer.Argument("", help="What to hand off, in your words; the draft is built around it"),
@@ -1318,9 +1318,9 @@ def make_handoff_app(factory) -> typer.Typer:
         """Show where a handoff stands: who accepted it and their questions (sender), or the sender's answers (recipient). Read-only."""
         handle_status(handoff_id, wait, verbose, timeout)
 
-    @app.command("contact", epilog="Example:  co handoff contact ody ody@example.com")
+    @app.command("contact", epilog="Example:  co handoff contact corin corin@example.com")
     def contact(
-        name: str = typer.Argument(..., help="Short name you will type, e.g. ody"),
+        name: str = typer.Argument(..., help="Short name you will type, e.g. corin"),
         address: str = typer.Argument(..., help="Their agent's email or full 0x address"),
     ):
         """Save who a name means, so co handoff send <name> knows where to deliver. Writes ~/.co/handoff/contacts.json."""

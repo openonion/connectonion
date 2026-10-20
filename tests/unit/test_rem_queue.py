@@ -10,24 +10,24 @@ from connectonion.rem.queue import last_investigated, order
 def test_most_mail_first_and_never_the_owner_or_what_may_be_the_owner(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    for record, name in (("people/me.md", "Me"), ("people/ody.md", "Ody"), ("people/dora.md", "Dora"),
+    for record, name in (("people/me.md", "Me"), ("people/corin.md", "Corin"), ("people/briar.md", "Briar"),
                          ("people/second-gmail.md", "second"), ("people/noreply.md", "noreply"),
-                         ("people/tamara.md", "Tamara")):
+                         ("people/greta.md", "Greta")):
         notebook.stub_person(record, name, [])
-    tamara = notebook.read("people/tamara.md").replace(
+    greta = notebook.read("people/greta.md").replace(
         "Investigation: mapped", "Investigation: investigated 2026-09-22 (outlook) · mapped").replace(
         "- (none yet)", "- [1] outlook:0123456789ab")
-    notebook.write("people/tamara.md", tamara)
+    notebook.write("people/greta.md", greta)
     write_json(state_path(tmp_path, "map.json"), {
         "owner": {"record": "people/me.md"},
         "possible_own_addresses": [{"record": "people/second-gmail.md"}],
-        "people": [{"record": "people/ody.md", "mails": 185, "classification": "unassessed"},
-                   {"record": "people/dora.md", "mails": 40, "classification": "unassessed"},
-                   {"record": "people/tamara.md", "mails": 90, "classification": "unassessed"},
+        "people": [{"record": "people/corin.md", "mails": 185, "classification": "unassessed"},
+                   {"record": "people/briar.md", "mails": 40, "classification": "unassessed"},
+                   {"record": "people/greta.md", "mails": 90, "classification": "unassessed"},
                    {"record": "people/second-gmail.md", "mails": 106, "classification": "unassessed"},
                    {"record": "people/noreply.md", "mails": 300, "classification": "automated candidate"}]})
     rows = order(tmp_path, "people", today=date(2026, 9, 24))
-    assert [row["path"] for row in rows] == ["people/ody.md", "people/dora.md", "people/tamara.md"]
+    assert [row["path"] for row in rows] == ["people/corin.md", "people/briar.md", "people/greta.md"]
     assert rows[-1]["recent"] and rows[-1]["last_investigated"] == "2026-09-22"   # this week's page waits
 
 
@@ -70,14 +70,14 @@ def test_an_org_of_unsubscribe_addresses_is_not_queued_and_an_org_counts_only_re
     unsubs = [f"people/unsub-{n}.md" for n in range(6)]
     for record in unsubs:
         notebook.stub_person(record, "unsub", [])
-    notebook.stub_person("people/jeff.md", "Jeff Vo", [])
+    notebook.stub_person("people/glen.md", "Glen Ross", [])
     write_json(state_path(tmp_path, "map.json"), {
         "people": [{"record": r, "address": f"unsub+{n}@reply.github.com", "mails": 1, "sent": 1,
                     "classification": "unassessed"} for n, r in enumerate(unsubs)]
-                  + [{"record": "people/jeff.md", "address": "jeffvo@google.com", "mails": 2, "sent": 1,
+                  + [{"record": "people/glen.md", "address": "glenross@google.com", "mails": 2, "sent": 1,
                       "classification": "unassessed"}],
         "orgs": [{"record": "orgs/github.md", "domain": "github.com", "people": unsubs},
-                 {"record": "orgs/google.md", "domain": "google.com", "people": ["people/jeff.md"]}]})
+                 {"record": "orgs/google.md", "domain": "google.com", "people": ["people/glen.md"]}]})
     rows = order(tmp_path, "orgs", today=date(2026, 10, 1))
     assert [(row["path"], row["weight"]) for row in rows] == [("orgs/google.md", 1)]
 

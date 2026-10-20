@@ -225,15 +225,15 @@ def test_no_session_names_the_from_file_fallback(project, model, mailbox):
 # ---- recipients ----
 
 def test_an_unknown_name_exits_1_with_the_command_to_add_it(project, model, mailbox):
-    result = _invoke("handoff", "send", "ody", "task")
+    result = _invoke("handoff", "send", "corin", "task")
     assert result.exit_code == 1
-    assert "Next: co handoff contact ody <their-email-or-0x-address>" in result.output
+    assert "Next: co handoff contact corin <their-email-or-0x-address>" in result.output
     assert model == []
 
 
 def test_a_contact_name_resolves_to_its_address(project, model, mailbox):
-    assert _invoke("handoff", "contact", "Ody", "ody@example.com").exit_code == 0
-    assert transport.resolve("ody") == "ody@example.com"
+    assert _invoke("handoff", "contact", "Corin", "corin@example.com").exit_code == 0
+    assert transport.resolve("corin") == "corin@example.com"
 
 
 def test_a_0x_address_resolves_to_that_agents_mailbox():
@@ -498,12 +498,12 @@ def test_since_starts_the_conversation_at_that_message(project, model, mailbox):
 def test_other_peoples_addresses_and_numbers_are_masked_and_the_preview_counts_them(project, model, mailbox):
     """Listing them for the sender to remove by hand reached a public page anyway (2026-10-14): now they are
     masked before anything leaves, and the preview says how many, up front."""
-    write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 435 525 634")
+    write_codex_session(project, extra=" cc bob.smith@gmail.com, call +61 491 570 156")
     result = _invoke("handoff", "send", SELF, "task")
     said = " ".join(result.output.split())
     assert "Masked other people's contact details: 1 email address and 1 phone number and 0 names from your co rem pages in the brief" in said
     assert "in the session copy that goes with it" in said and "no commands or their output" in said
-    assert "bob.smith@gmail.com" not in result.output and "+61 435 525 634" not in result.output
+    assert "bob.smith@gmail.com" not in result.output and "+61 491 570 156" not in result.output
 
 
 def test_session_by_id_or_path(project, tmp_path):
@@ -574,8 +574,8 @@ def test_claude_open_reads_the_result_event_from_claude_codes_event_list(monkeyp
 
 def _sent_to_a_personal_address(project, mailbox) -> dict:
     write_codex_session(project)
-    handoff_id = _draft_id(_invoke("handoff", "send", "ody@gmail.com", "task").output)
-    _invoke("handoff", "send", "ody@gmail.com", "--draft", handoff_id, "--yes")
+    handoff_id = _draft_id(_invoke("handoff", "send", "corin@gmail.com", "task").output)
+    _invoke("handoff", "send", "corin@gmail.com", "--draft", handoff_id, "--yes")
     return mailbox[-1]
 
 
@@ -1044,14 +1044,14 @@ def test_a_long_handoff_previews_its_newest_messages_not_all_of_it(project, mode
 
 
 def test_the_preview_says_how_often_the_recipient_is_named_and_lists_it_on_request(project, model, mailbox):
-    """The Ody send: he was named 61 times in what he would read, and the preview never said so."""
-    assert _invoke("handoff", "contact", "Ody", SELF).exit_code == 0
-    write_codex_session(project, extra=" Ody's page is a mess; ask Ody later")
-    result = _invoke("handoff", "send", "Ody", "task")
+    """The Corin send: he was named 61 times in what he would read, and the preview never said so."""
+    assert _invoke("handoff", "contact", "Corin", SELF).exit_code == 0
+    write_codex_session(project, extra=" Corin's page is a mess; ask Corin later")
+    result = _invoke("handoff", "send", "Corin", "task")
     said = " ".join(result.output.split())
-    assert "Ody is named 2 times in what they will read" in said and "--mentions Ody" in said
-    listed = _invoke("handoff", "send", "Ody", "--draft", _draft_id(result.output), "--mentions", "Ody")
-    assert "Ody's page is a mess" in listed.output
+    assert "Corin is named 2 times in what they will read" in said and "--mentions Corin" in said
+    listed = _invoke("handoff", "send", "Corin", "--draft", _draft_id(result.output), "--mentions", "Corin")
+    assert "Corin's page is a mess" in listed.output
 
 
 def test_the_preview_names_messages_that_mention_health_visa_legal_or_money(project, model, mailbox):

@@ -1,6 +1,6 @@
 # The phone number was on the page
 
-The owner opened Ody's page in co rem to call him, and could not find the
+The owner opened Corin's page in co rem to call him, and could not find the
 number. It was there, under Contact, between the email and the
 company. He had to read the page to find it, and he said what he wanted
 instead: People should open like a spreadsheet, one row per person, the

@@ -37,7 +37,7 @@ already has the slot, and the validator reads it as ordinary cited text.
 
 The Skill had compressed the order above to "start with a supported current
 obligation", and the every-page review of a real 1.9.2b1 notebook found the
-result on about thirty person pages: the lead opened on Tracy's budget, an
+result on about thirty person pages: the lead opened on Hazel's budget, an
 unresolved hedge, a missed call or a signature line, and never said who the
 person was. The rule now names the order again: who they are to the user, what
 is open, last contact.
@@ -52,7 +52,7 @@ and reads as `you` for the owner.
 
 ## An assistant's memory is not a source
 
-Ian's page cited the owner's Claude memory file by absolute path. It sat in the
+Osric's page cited the owner's Claude memory file by absolute path. It sat in the
 folder of a supplied session transcript, so it passed the local-file check.
 Code now refuses paths in assistant memory and transcript folders as sources;
 a session is cited by its id.
@@ -66,7 +66,7 @@ exactly what dropping sections produces.
 ## `Facts` is data (#2068)
 
 A phone number inside a sentence cannot be found, and `Unknown` is the only way
-the user learns that the mailbox never carried one. Ody's real page said "no
+the user learns that the mailbox never carried one. Corin's real page said "no
 phone number appears in the material" while his signature carried one: the
 turn searched evidence files for what it thought to look for. So the section
 that was `Contact` is now `Facts`, with the fields a reader scans for
@@ -277,7 +277,7 @@ failures and remaining automatic-writer and broader page-review gaps.
 
 `Open threads` and the terms in `Our relationship` quote the exact words with
 their date (`“<exact words>” (YYYY-MM-DD) [n]`) instead of restating them. On
-the 1.9.2b3 notebook the errors that misled were retellings: Ody "approved" a
+the 1.9.2b3 notebook the errors that misled were retellings: Corin "approved" a
 scope Aaron had approved, a cc'd person became a party, a February check-in
 became a current debt, and a fee changed from net to gross. A quote can be
 checked against its source, and the runner does: a `“…”` not word for word in
@@ -293,9 +293,9 @@ email") and lists no channel they did not offer or use.
 The rules here match what code now enforces after the turn
 (`page_review.verify_contacts`), so a turn does not write what will be taken
 off. A relay address (Luma, Airbnb's message relay) is the platform's, not the
-person's `Email`, even when the map gave it: Ody's Luma relay joined his page by
+person's `Email`, even when the map gave it: Corin's Luma relay joined his page by
 display name and its host copy handed his page another man's mobile. A spelling
-the person rejected leaves `Also known as` (Ody wrote "我中文名字是周泽凯 不是周泽楷",
+the person rejected leaves `Also known as` (Corin wrote "我中文名字是周泽凯 不是周泽楷",
 and 周泽楷 stayed beside it). Pronouns appear only where their own words show
 them.
 

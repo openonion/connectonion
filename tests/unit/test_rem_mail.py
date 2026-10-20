@@ -215,47 +215,47 @@ def test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line():
     """Outlook's HTML-to-text turns a mail into one long line, so `^From: … Sent:` and
     `wrote:$` never matched and every reply carried the whole thread beneath it."""
     from connectonion.rem.mail import strip_quoted
-    flat = ("Hi Aaron,I'm connecting you with Helena and Natalie.Thank you,Vern Chan UNSW Global Program Manager"
-            "From: Vern Chan <vern.chan@unsw.edu.au>Sent: 10 July 2026 11:56To: xietianle Subject: US Students Dear Aaron,Thank you for your interest")
+    flat = ("Hi Aaron,I'm connecting you with Ines and Odette.Thank you,Rowan Ashdown UNSW Global Program Manager"
+            "From: Rowan Ashdown <rowan.ashdown@unsw.edu.au>Sent: 10 July 2026 11:56To: xietianle Subject: US Students Dear Aaron,Thank you for your interest")
     assert strip_quoted(flat).endswith("Program Manager") and "Dear Aaron,Thank you for your interest" not in strip_quoted(flat)
     flat2 = "Agreed, Friday works. On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote: Can we do Friday?"
     assert strip_quoted(flat2).strip() == "Agreed, Friday works."
 
 
 def test_an_outlook_quote_header_on_its_own_lines_is_cut():
-    """Celine's reply (2026-10-05) quoted David's mail under `From:` and `Sent:` on two
+    """Margot's reply (2026-10-05) quoted Colin's mail under `From:` and `Sent:` on two
     lines with no rule above them; his signature, LinkedIn and office line stayed in
-    her text and landed on her page, Sasha's and Vern's (#2349)."""
+    her text and landed on her page, Tess's and Rowan's (#2349)."""
     from connectonion.rem.mail import strip_quoted
-    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nCeline\nCeline Olarte\n"
+    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nMargot\nMargot Olarte\n"
             "Program Coordinator\nFrom: Aaron x <aaron@example.com>\nSent: Friday, 2 October 2026 18:40\n"
-            "To: David Burt <david@example.edu>\nSubject: RE: Invitation\nHi David,\nCheers,\nAaron\n"
-            "From: David Burt <david@example.edu>\nSent: Thursday\nKind regards,\nDavid\nDavid Burt\n"
-            "https://www.linkedin.com/in/david-burt-/")
+            "To: Colin Drake <colin@example.edu>\nSubject: RE: Invitation\nHi Colin,\nCheers,\nAaron\n"
+            "From: Colin Drake <colin@example.edu>\nSent: Thursday\nKind regards,\nColin\nColin Drake\n"
+            "https://www.linkedin.com/in/colin-drake-/")
     assert strip_quoted(body).rstrip().endswith("Program Coordinator")
-    header = "From: Celine <c@example.edu>\nTo: aaron@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
+    header = "From: Margot <c@example.edu>\nTo: aaron@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
     assert strip_quoted(header) == header
-    apple = ("No, I have not.\nBest,\nAaron\nFrom: David Burt <david@example.edu>\nDate: Tuesday, March 31\n"
-             "To: aaron\nCc: Vern Chan <vern@example.edu>\nSubject: Decent Capital?\nT: +61 2 9065 4432")
+    apple = ("No, I have not.\nBest,\nAaron\nFrom: Colin Drake <colin@example.edu>\nDate: Tuesday, March 31\n"
+             "To: aaron\nCc: Rowan Ashdown <rowan@example.edu>\nSubject: Decent Capital?\nT: +61 2 9000 0157")
     assert strip_quoted(apple).rstrip().endswith("Aaron")
-    forward = "\n\nFrom: Rushi Vyas\nSent: Tuesday\nSubject: Aaron <> BDMz\nWhere: Bondi Junction station"
+    forward = "\n\nFrom: Nikhil Bhatt\nSent: Tuesday\nSubject: Aaron <> SFz\nWhere: Bondi Junction station"
     assert strip_quoted(forward) == forward
 
 
 def test_signature_link_noise_is_dropped():
     """Booking links and newsletter links in signatures are tokens, not facts."""
     from connectonion.rem.mail import strip_noise
-    body = ("Thanks,Vern Chan Subscribe to Our Fortnightly Newsletter <https://unswfounders.typeform.com/newsletter>"
+    body = ("Thanks,Rowan Ashdown Subscribe to Our Fortnightly Newsletter <https://unswfounders.typeform.com/newsletter>"
             "https://outlook.office.com/bookwithme/user/34b2cc480b9d4541a2f837bc47adae32@unsw.edu.au?anonymous&ismsaljsauthenabled&ep=bwmEmailSignature"
             "Book a time <https://outlook.office.com/bookwithme/user/34b2cc480b9d4541a2f837bc47adae32@unsw.edu.au?anonymous>with me")
     cleaned = strip_noise(body)
     assert "bookwithme" not in cleaned and "typeform" not in cleaned
-    assert "Vern Chan" in cleaned and "Book a time" in cleaned
+    assert "Rowan Ashdown" in cleaned and "Book a time" in cleaned
     assert strip_noise("see https://example.com/docs for details") == "see https://example.com/docs for details"
 
 
 def test_one_correspondent_can_be_pulled_on_its_own():
-    """"Sync my mail with Vern" is the most natural thing to ask for and there was no
+    """"Sync my mail with Rowan" is the most natural thing to ask for and there was no
     way to say it. The queue is already per person, so the ask is a filter on whose
     turn it is -- and everyone else keeps their place for the next pass."""
     client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00"),
@@ -269,8 +269,8 @@ def test_one_correspondent_can_be_pulled_on_its_own():
 
 
 def test_a_correspondent_can_be_named_by_part_of_their_address():
-    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", sender="Vern Chan <vern.chan@unsw.edu.au>")])
-    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="vern")
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", sender="Rowan Ashdown <rowan.ashdown@unsw.edu.au>")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="rowan")
     assert references(batch) == ["outlook:m1"]
     assert collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="nobody").items == []
 

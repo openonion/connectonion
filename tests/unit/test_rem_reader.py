@@ -92,14 +92,14 @@ def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     pages = {
-        "orgs/resdemou-com-1.md": "# resdemou.com\n\nResdemou's legal identity is recorded.\n",
+        "orgs/brightlane-example-1.md": "# brightlane.example\n\nBrightlane's legal identity is recorded.\n",
         "orgs/connectonion-com-2.md": "# connectonion.com\n\nAn agent framework.\n",
-        "orgs/morganpost-net-3.md": "# morganpost.net\n\nNo name stated.\n\n## Sources\n- MorganPost archived mail\n",
-        "orgs/blackdiamondz-com-au-4.md": "# blackdiamondz.com.au\n\nBlack Diamondz manages properties.\n",
+        "orgs/harbourpost-example-3.md": "# harbourpost.example\n\nNo name stated.\n\n## Sources\n- HarbourPost archived mail\n",
+        "orgs/stonefield-example-4.md": "# stonefield.example\n\nStone Field manages properties.\n",
         "orgs/named.md": "# An existing title\n\nConnectOnion operates here.\n",
-        "projects/domain.md": "# resdemou.com\n\nResdemou operates here.\n",
+        "projects/domain.md": "# brightlane.example\n\nBrightlane operates here.\n",
         "people/alice.md": "# Alice\n\n## Facts\n- Company: [ConnectOnion](../orgs/connectonion-com-2.md) [3]\n",
-        "people/bob.md": "# Bob\n\n- Company: [An older name](../orgs/resdemou-com-1.md) [1]\n",
+        "people/bob.md": "# Bob\n\n- Company: [An older name](../orgs/brightlane-example-1.md) [1]\n",
     }
     for path, text in pages.items():
         notebook.write(path, text)
@@ -107,30 +107,30 @@ def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
               for p in tmp_path.rglob("*") if p.is_file()}
 
     records = {r["path"]: r for r in snapshot(tmp_path)["records"]}
-    for path, name, domain in [("orgs/resdemou-com-1.md", "Resdemou", "resdemou.com"),
+    for path, name, domain in [("orgs/brightlane-example-1.md", "Brightlane", "brightlane.example"),
                                ("orgs/connectonion-com-2.md", "ConnectOnion", "connectonion.com"),
-                               ("orgs/blackdiamondz-com-au-4.md", "Black Diamondz", "blackdiamondz.com.au")]:
+                               ("orgs/stonefield-example-4.md", "Stone Field", "stonefield.example")]:
         assert records[path]["title"] == name
         assert records[path]["domain"] == domain
         assert records[path]["text"] == pages[path]
-    assert records["orgs/morganpost-net-3.md"]["title"] == "morganpost.net"
-    assert "domain" not in records["orgs/morganpost-net-3.md"]
+    assert records["orgs/harbourpost-example-3.md"]["title"] == "harbourpost.example"
+    assert "domain" not in records["orgs/harbourpost-example-3.md"]
     assert records["orgs/named.md"]["title"] == "An existing title"
     assert "domain" not in records["orgs/named.md"]
-    assert records["projects/domain.md"]["title"] == "resdemou.com"
+    assert records["projects/domain.md"]["title"] == "brightlane.example"
     assert "domain" not in records["projects/domain.md"]
     assert before == {p.relative_to(tmp_path).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns)
                       for p in tmp_path.rglob("*") if p.is_file()}
 
 
 @pytest.mark.parametrize("domain, text, expected", [
-    ("blackdiamondz.com.au", "Black Diamondz manages properties.", "Black Diamondz"),
+    ("stonefield.example", "Stone Field manages properties.", "Stone Field"),
     ("connectonion.com", "Connectonion began. ConnectOnion grew. ConnectOnion ships.", "ConnectOnion"),
-    ("resdemou.com", "Resdemou’s legal identity.", "Resdemou"),
+    ("brightlane.example", "Brightlane’s legal identity.", "Brightlane"),
     ("onetwothreefourfive.com", "One Two Three Four Five operates here.", ""),
-    ("blackdiamondz.com.au", "Black and Diamondz are separate words.", ""),
-    ("resdemou.com", "resdemou is lowercase.", ""),
-    ("resdemou.com", "No name.\n\n## Sources\nResdemou is only a source.\n\n## History\nNothing new.", ""),
+    ("stonefield.example", "Stone and Field are separate words.", ""),
+    ("brightlane.example", "brightlane is lowercase.", ""),
+    ("brightlane.example", "No name.\n\n## Sources\nBrightlane is only a source.\n\n## History\nNothing new.", ""),
 ])
 def test_org_prose_name_matches_capitalised_runs_and_most_frequent_spelling(domain, text, expected):
     from connectonion.rem.reader import _org_name

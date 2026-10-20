@@ -202,7 +202,7 @@ def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
 
 def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_under_15k():
     """A real owner page took "Partner at OpenOnion, running marketing" from a mail
-    where the owner listed Ody's roles, and followed the person template."""
+    where the owner listed Corin's roles, and followed the person template."""
     owner = instructions("investigate", page_kind="person", owner=True)
     person = instructions("investigate", page_kind="person")
     assert "# Your own page" in owner and "# Your own page" not in person
@@ -273,7 +273,7 @@ def test_both_page_writers_carry_the_quote_first_page_rule(stage, kind):
 
 
 def test_every_pass_may_delete_not_only_add():
-    """Owner, 2026-10-09: rounds only ever added. Ody's page carried sixteen
+    """Owner, 2026-10-09: rounds only ever added. Corin's page carried sixteen
     "not established" hedges because every prompt said keep, none said delete.
     A pass edits the page like code: add, change and delete."""
     from connectonion.rem.investigate import ROUND_NOTE, SYNTHESIS_NOTE

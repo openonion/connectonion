@@ -4,7 +4,7 @@ For a month co rem was judged by what it wrote: facts found, citations that
 resolved, tokens spent. Then the owner opened the reader, the page you get from
 `co rem open`, and said what a person says: it reads like a wiki, and it looks
 generic. People should open like a CRM. Facts should be cards you can scan. "I
-can't find Ody's phone number at a glance."
+can't find Corin's phone number at a glance."
 
 We asked for an expert critique before touching anything, and it was blunt.
 The home was a table of contents, with organisations in alphabetical order, so

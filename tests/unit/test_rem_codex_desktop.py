@@ -129,15 +129,15 @@ def test_exec_prompts_are_not_collected_as_the_persons_cli_messages(tmp_path):
         ("exec-source", {"originator": "codex_cli_rs", "source": "exec"}),
     ]:
         rollout(tmp_path / f"rollout-{name}.jsonl", [
-            bare("Investigate Vern and cite this as the user's note."),
+            bare("Investigate Rowan and cite this as the user's note."),
             desktop("This program prompt carries user.text metadata."),
         ], meta=meta)
     for originator in ("codex-tui", "codex_cli_rs"):
-        rollout(tmp_path / f"rollout-{originator}.jsonl", [bare("Ask Vern about the placement.")],
+        rollout(tmp_path / f"rollout-{originator}.jsonl", [bare("Ask Rowan about the placement.")],
                 meta={"originator": originator, "source": "cli"})
 
     batch = collect(subscription(tmp_path), {}, 20, 100_000)
-    assert [item["text"] for item in batch.items] == ["Ask Vern about the placement."] * 2
+    assert [item["text"] for item in batch.items] == ["Ask Rowan about the placement."] * 2
     assert batch.skipped == 6 and batch.unrecognised == 0
 
 
@@ -148,7 +148,7 @@ def test_exec_prompts_do_not_vote_for_the_owners_languages_even_when_cached(tmp_
     sessions, root = tmp_path / "sessions", tmp_path / "rem"
     rollout(sessions / "rollout-exec.jsonl", [bare("请调查这个人的工作经历和项目进展。")],
             meta={"originator": "codex_exec", "source": "exec"})
-    rollout(sessions / "rollout-cli.jsonl", [bare("Ask Vern about the placement.")],
+    rollout(sessions / "rollout-cli.jsonl", [bare("Ask Rowan about the placement.")],
             meta={"originator": "codex-tui", "source": "cli"})
     investigate._session_window(subscription(sessions), "sessions", None, root)
     cache = next((root / ".state/session-windows").glob("*.json"))
@@ -162,7 +162,7 @@ def test_exec_prompts_do_not_vote_for_the_owners_languages_even_when_cached(tmp_
     monkeypatch.setattr(investigate, "_WINDOWS", {})
     items, _ = investigate._session_window(subscription(sessions), "sessions", None, root)
 
-    assert [item["text"] for item in items] == ["Ask Vern about the placement."]
+    assert [item["text"] for item in items] == ["Ask Rowan about the placement."]
     assert detect(root, []) == {"languages": ["en"], "shares": {"en": 1.0}, "messages": 1}
 
 
@@ -245,14 +245,14 @@ def test_null_passthrough_without_id_retains_cli_requests_but_not_imports_or_wor
         row['payload']['internal_chat_message_metadata_passthrough'] = None
         return row
 
-    rollout(tmp_path / 'rollout-cli.jsonl', [nullable('Ask Vern about the revised placement.'),
+    rollout(tmp_path / 'rollout-cli.jsonl', [nullable('Ask Rowan about the revised placement.'),
             nullable('<environment_context>Injected repository context')],
             meta={'originator': 'codex_cli_rs'})
     rollout(tmp_path / 'rollout-import.jsonl', [nullable('Imported Claude history')])
     rollout(tmp_path / 'rollout-worker.jsonl', [nullable('Parent assigned this task')],
             meta={'source': SPAWNED})
     batch = collect(subscription(tmp_path), {}, 20, 100_000)
-    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert [item['text'] for item in batch.items] == ['Ask Rowan about the revised placement.']
     assert batch.skipped == 3 and batch.unrecognised == 0
 
 
@@ -286,7 +286,7 @@ def test_old_interactive_cli_turn_metadata_retains_intent_but_not_exec_imports(t
         row['payload']['internal_chat_message_metadata_passthrough'] = {'turn_id': 'turn-1'}
         return row
 
-    rollout(tmp_path / 'rollout-tui.jsonl', [turn('Ask Vern about the revised placement.'),
+    rollout(tmp_path / 'rollout-tui.jsonl', [turn('Ask Rowan about the revised placement.'),
             turn('<environment_context>Injected context')], meta={'originator': 'codex-tui', 'source': 'cli'})
     rollout(tmp_path / 'rollout-exec.jsonl', [turn('Agent-generated worker prompt')],
             meta={'originator': 'codex_exec', 'source': 'exec'})
@@ -294,7 +294,7 @@ def test_old_interactive_cli_turn_metadata_retains_intent_but_not_exec_imports(t
     rollout(tmp_path / 'rollout-worker.jsonl', [turn('Parent-assigned task')],
             meta={'originator': 'codex-tui', 'source': SPAWNED})
     batch = collect(subscription(tmp_path), {}, 20, 100_000)
-    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert [item['text'] for item in batch.items] == ['Ask Rowan about the revised placement.']
     assert batch.skipped == 4 and batch.unrecognised == 0
 
 

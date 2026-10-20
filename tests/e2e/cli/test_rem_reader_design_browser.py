@@ -381,14 +381,14 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index,
-        emails: ['jerryl_shijie.seow@some-long-domain.example', 'second@example.test', 'third@example.test'],
+        emails: ['marcus_jian.vale@some-long-domain.example', 'second@example.test', 'third@example.test'],
         phone: '+61 0493941028 (mobile); +61 0493941029 (work)'};
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     for kind, first, count, title in [
-        ('email', 'jerryl_shijie.seow@some-long-domain.example', '+2',
-         'jerryl_shijie.seow@some-long-domain.example; second@example.test; third@example.test'),
+        ('email', 'marcus_jian.vale@some-long-domain.example', '+2',
+         'marcus_jian.vale@some-long-domain.example; second@example.test; third@example.test'),
         ('phone', '+61 0493941028 (mobile)', '+1',
          '+61 0493941028 (mobile); +61 0493941029 (work)'),
     ]:
@@ -671,7 +671,7 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     cases = {
         "The user has not signed it; with the user since 2026-09-22.": "You have not signed it; with you since 2026-09-22.",
         "the user's main contact": "your main contact",
-        "Richard owes the user its P115 proposal": "Richard owes you its P115 proposal",
+        "Emrys owes the user its P115 proposal": "Emrys owes you its P115 proposal",
         "How the user writes to them": "How you write to them",
         "the user still owes Mara an answer": "you still owe Mara an answer",
         "the user is waiting; the user doesn't know": "you are waiting; you don't know",
@@ -685,7 +685,7 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     # 1.9.2b1: these said nothing was open and showed as OPEN, "open for N days"; a real thread stays open.
     calm = ["None identified as of 2026-10-01.", "None as of 2026-09-30 [2].", "No explicit open request in the material.",
             "Nothing owed either way [3].", "No outstanding items.", "Nothing open as of 2026-10-02."]
-    still_open = ["No reply from Lisa since 2026-09-12 [4].", "Unknown — whether Ody sent the invoice; Aaron asked 2026-09-30 [2]."]
+    still_open = ["No reply from Maren since 2026-09-12 [4].", "Unknown — whether Corin sent the invoice; Aaron asked 2026-09-30 [2]."]
     assert page.evaluate("t => t.map(isCalm)", calm + still_open, isolated_context=False) == [True] * 6 + [False] * 2
     # 1.9.2b1 skill pages: the finding after "Unknown — not verified." was hidden with the placeholder.
     record = {"path": "skills/catalog/x.md", "title": "x", "text": "# x\n\n## Current status\nUnknown — not verified. "
@@ -693,10 +693,10 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     kept = page.evaluate("r => known(r).kept.map(s => s.title)", record, isolated_context=False)
     assert kept == ["Current status"]
     # 1.9.2b1 History ranges: the end date leaked into the text or the gutter was blank.
-    lines = "\n".join(["- 2026-08-26–2026-08-28: Town asked [1].", "- 2026-09-23 to 2026-10-09: Daily reports [2].",
+    lines = "\n".join(["- 2026-08-26–2026-08-28: Quayside asked [1].", "- 2026-09-23 to 2026-10-09: Daily reports [2].",
                        "- 2026-08-10–11: Demos sent [3].", "- 2026-07-29–08-04: Trip [4].", "- 2025-10: Met at a meetup [5].", "- 2025-10–11: Term [6]."])
     got = page.evaluate("t => historyItems(t).map(i => [i.day, i.end, i.text.slice(0, 4)])", lines, isolated_context=False)
-    assert got == [["2026-08-26", "2026-08-28", "Town"], ["2026-09-23", "2026-10-09", "Dail"],
+    assert got == [["2026-08-26", "2026-08-28", "Quayside"], ["2026-09-23", "2026-10-09", "Dail"],
                    ["2026-08-10", "2026-08-11", "Demo"], ["2026-07-29", "2026-08-04", "Trip"], ["2025-10", "", "Met "], ["2025-10", "2025-11", "Term"]]
     assert page.evaluate("dayLabel({day: '2025-10', end: ''})", isolated_context=False) == "Oct 2025"
     assert page.evaluate("dayLabel({day: '2026-08-10', end: '2026-08-11'})", isolated_context=False).count("–") == 1
@@ -2137,7 +2137,7 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
         '- The user owes Mara: an old receipt; since 2026-07-22 [6].',
         '- The user owes Mara: a fourth answer [1].',
         '- Mara owes the user: the usage export [5].',
-        '- Yu owes Ody: a reimbursement [1].'
+        '- Yu owes Corin: a reimbursement [1].'
       ];
       r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads\n' + rows.join('\n') + '\n');
       r.text = r.text.replace(/- Now:/, '- **Now**:').replace(/- At stake:/, '- **At stake**:');
@@ -2151,7 +2151,7 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
     assert 'A scope decision; due:' in mine.inner_text()
     assert '7 days' in mine.inner_text() and '85 days, gone quiet' in mine.inner_text()
     assert page.locator('.ledger-column.theirs .ledger-count').inner_text() == '1'
-    assert 'Yu owes Ody' not in page.locator('.between-you').inner_text()
+    assert 'Yu owes Corin' not in page.locator('.between-you').inner_text()
     mine.locator('.ledger-more > summary').click()
     assert mine.locator('.ledger-row').filter(has_text='fourth answer').is_visible()
     assert page.locator('.person-insight dt.at-stake').inner_text() == 'At stake'
@@ -2172,12 +2172,12 @@ def test_morning_rows_quote_only_original_words_and_format_overdue_dates(reader)
     page, _ = reader
     values = page.evaluate(r"""() => {
       REM.as_of = '2026-10-15T12:00:00Z'; REM.status.timezone = 'UTC';
-      const r = {title: 'Weiwei Lei'};
-      return [morningWords('The user owes Weiwei Lei a draft; send questions afterward [5].', r),
-        morningWords('You owe Weiwei Lei a draft; due: 2026-10-22 [5].', r),
-        morningWords('Weiwei asked “Send the draft and questions.” [5].', r),
-        morningWords('You owe Weiwei Lei "ok" and a draft [5].', r),
-        dueLabel({due: '2026-09-10'}), direction('You said you would send what Weiwei owes the bank')];
+      const r = {title: 'Liesel Voss'};
+      return [morningWords('The user owes Liesel Voss a draft; send questions afterward [5].', r),
+        morningWords('You owe Liesel Voss a draft; due: 2026-10-22 [5].', r),
+        morningWords('Liesel asked “Send the draft and questions.” [5].', r),
+        morningWords('You owe Liesel Voss "ok" and a draft [5].', r),
+        dueLabel({due: '2026-09-10'}), direction('You said you would send what Liesel owes the bank')];
     }""", isolated_context=False)
     assert values[0] == {'words': 'A draft', 'context': 'send questions afterward. [5]'}
     assert values[1]['words'] == 'A draft' and 'due: 2026-10-22' in values[1]['context']

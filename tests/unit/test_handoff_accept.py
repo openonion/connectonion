@@ -259,8 +259,8 @@ def test_a_contact_named_after_an_agent_mailbox_is_reached_by_that_name(world):
 def test_an_old_contacts_file_of_plain_addresses_still_resolves(world):
     world["be"](SENDER)
     transport.contacts_file().parent.mkdir(parents=True)
-    transport.contacts_file().write_text(json.dumps({"ody": "ody@example.com"}))
-    assert transport.resolve("ody") == "ody@example.com"
+    transport.contacts_file().write_text(json.dumps({"corin": "corin@example.com"}))
+    assert transport.resolve("corin") == "corin@example.com"
 
 
 def test_a_malformed_code_names_what_to_paste(world):

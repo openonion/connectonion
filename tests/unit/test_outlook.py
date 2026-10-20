@@ -978,10 +978,10 @@ class TestOutlookReply:
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
-            outlook.reply("msg-1", "Hi Tamara,\n\nFirst line\nsecond line\n\nBye")
+            outlook.reply("msg-1", "Hi Greta,\n\nFirst line\nsecond line\n\nBye")
 
             comment = mock_httpx.request.call_args.kwargs["json"]["comment"]
-            assert comment == "<p>Hi Tamara,</p><p>First line<br>second line</p><p>Bye</p>"
+            assert comment == "<p>Hi Greta,</p><p>First line<br>second line</p><p>Bye</p>"
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_reply_escapes_html_characters(self, mock_httpx):
@@ -1293,7 +1293,7 @@ class TestOutlookScheduled:
             {
                 "id": "sched-1",
                 "subject": "RE: Access to the MCIC",
-                "toRecipients": [{"emailAddress": {"address": "tamara@unsw.edu.au"}}],
+                "toRecipients": [{"emailAddress": {"address": "greta@unsw.edu.au"}}],
                 "singleValueExtendedProperties": [
                     {"id": "SystemTime 0x3fef", "value": "2026-07-06T22:00:00Z"}
                 ],
@@ -1313,7 +1313,7 @@ class TestOutlookScheduled:
         assert scheduled == [{
             "id": "sched-1",
             "subject": "RE: Access to the MCIC",
-            "to": "tamara@unsw.edu.au",
+            "to": "greta@unsw.edu.au",
             "send_at": "2026-07-06T22:00:00Z",
         }]
 
@@ -1381,10 +1381,10 @@ class TestOutlookContacts:
         response = MagicMock(status_code=201, text="ok")
         response.json.return_value = {
             "id": "contact-1",
-            "displayName": "Zhou Yifei",
+            "displayName": "Nadia Marsh",
             "emailAddresses": [{
-                "name": "Zhou Yifei",
-                "address": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "address": "marsh@example.com",
             }],
         }
         mock_httpx.request.return_value = response
@@ -1394,22 +1394,22 @@ class TestOutlookContacts:
             outlook = Outlook()
             outlook._access_token = "test-token"
             contact = outlook.add_contact(
-                "Zhou Yifei", "zhou@example.com"
+                "Nadia Marsh", "marsh@example.com"
             )
 
         assert contact == {
             "id": "contact-1",
-            "name": "Zhou Yifei",
-            "email": "zhou@example.com",
+            "name": "Nadia Marsh",
+            "email": "marsh@example.com",
         }
         method, url = mock_httpx.request.call_args.args[:2]
         assert method == "POST"
         assert url.endswith("/me/contacts")
         assert mock_httpx.request.call_args.kwargs["json"] == {
-            "displayName": "Zhou Yifei",
+            "displayName": "Nadia Marsh",
             "emailAddresses": [{
-                "name": "Zhou Yifei",
-                "address": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "address": "marsh@example.com",
             }],
         }
 
@@ -1419,10 +1419,10 @@ class TestOutlookContacts:
         response.json.return_value = {"value": [
             {
                 "id": "contact-1",
-                "displayName": "Zhou Yifei",
+                "displayName": "Nadia Marsh",
                 "emailAddresses": [{
-                    "name": "Zhou Yifei",
-                    "address": "zhou@example.com",
+                    "name": "Nadia Marsh",
+                    "address": "marsh@example.com",
                 }],
             },
             {
@@ -1442,8 +1442,8 @@ class TestOutlookContacts:
         assert contacts == [
             {
                 "id": "contact-1",
-                "name": "Zhou Yifei",
-                "email": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "email": "marsh@example.com",
             },
             {"id": "contact-2", "name": "No Email", "email": ""},
         ]
@@ -1458,8 +1458,8 @@ class TestOutlookContacts:
             contacts = [
                 {
                     "id": "contact-1",
-                    "name": "Zhou Yifei",
-                    "email": "zhou@example.com",
+                    "name": "Nadia Marsh",
+                    "email": "marsh@example.com",
                 },
                 {
                     "id": "contact-2",
@@ -1471,15 +1471,15 @@ class TestOutlookContacts:
                 iter(contacts),
                 iter(contacts),
             ])
-            assert outlook.search_contacts("YIFEI") == [{
+            assert outlook.search_contacts("NADIA") == [{
                 "id": "contact-1",
-                "name": "Zhou Yifei",
-                "email": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "email": "marsh@example.com",
             }]
-            assert outlook.search_contacts("ou@example") == [{
+            assert outlook.search_contacts("sh@example") == [{
                 "id": "contact-1",
-                "name": "Zhou Yifei",
-                "email": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "email": "marsh@example.com",
             }]
 
     @patch("connectonion.useful_tools.outlook.httpx")
@@ -1501,10 +1501,10 @@ class TestOutlookContacts:
         page2 = MagicMock(status_code=200, text="ok")
         page2.json.return_value = {"value": [{
             "id": "contact-2",
-            "displayName": "Zhou Yifei",
+            "displayName": "Nadia Marsh",
             "emailAddresses": [{
-                "name": "Zhou Yifei",
-                "address": "zhou@example.com",
+                "name": "Nadia Marsh",
+                "address": "marsh@example.com",
             }],
         }]}
         mock_httpx.request.side_effect = [page1, page2]
@@ -1513,7 +1513,7 @@ class TestOutlookContacts:
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
             outlook._access_token = "test-token"
-            contacts = outlook.search_contacts("yifei")
+            contacts = outlook.search_contacts("nadia")
 
         assert [contact["id"] for contact in contacts] == ["contact-2"]
         assert mock_httpx.request.call_count == 2
@@ -1710,14 +1710,14 @@ def test_list_between_keeps_the_recipients_names(monkeypatch):
     from connectonion.useful_tools.outlook import Outlook
     outlook = Outlook.__new__(Outlook)
     message = {"id": "1", "from": {"emailAddress": {"address": "me@x.y", "name": "Me"}},
-               "toRecipients": [{"emailAddress": {"address": "ody@g.com", "name": "Ody Zhou"}},
+               "toRecipients": [{"emailAddress": {"address": "corin@g.com", "name": "Corin Marsh"}},
                                 {"emailAddress": {"address": "bare@g.com", "name": "bare@g.com"}}],
-               "ccRecipients": [{"emailAddress": {"address": "dora@g.com", "name": ""}}],
+               "ccRecipients": [{"emailAddress": {"address": "briar@g.com", "name": ""}}],
                "subject": "s", "receivedDateTime": "2026-09-10T00:00:00Z", "bodyPreview": "Hi", "isRead": True}
     monkeypatch.setattr(outlook, "_request", lambda *a, **k: {"value": [message]}, raising=False)
     row = outlook.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")[0]
-    assert row["to"] == ["Ody Zhou <ody@g.com>", "bare@g.com"]
-    assert row["cc"] == ["dora@g.com"]
+    assert row["to"] == ["Corin Marsh <corin@g.com>", "bare@g.com"]
+    assert row["cc"] == ["briar@g.com"]
 
 
 class TestReplyAll:
@@ -1748,7 +1748,7 @@ class TestReplyAll:
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_reply_all_with_cc_adds_to_the_original_cc(self, mock_httpx):
         """Setting ccRecipients on replyAll replaces the list, so the original cc is kept explicitly."""
-        original = {"ccRecipients": [{"emailAddress": {"address": "ody@example.com"}}]}
+        original = {"ccRecipients": [{"emailAddress": {"address": "corin@example.com"}}]}
         mock_httpx.request.side_effect = [
             MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
             MagicMock(status_code=202, text=""),
@@ -1760,13 +1760,13 @@ class TestReplyAll:
         assert calls[0].args[0] == "GET" and "/me/messages/msg-1" in calls[0].args[1]
         assert calls[1].args[1].endswith("/me/messages/msg-1/replyAll")
         cc = [r["emailAddress"]["address"] for r in calls[1].kwargs["json"]["message"]["ccRecipients"]]
-        assert cc == ["ody@example.com", "sam@example.com"]
+        assert cc == ["corin@example.com", "sam@example.com"]
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_reply_all_with_cc_leaves_the_owner_off_their_own_reply(self, mock_httpx):
         """replyAll drops the owner from its computed Cc; the explicit list must too."""
         original = {"ccRecipients": [{"emailAddress": {"address": "Me@Example.com"}},
-                                     {"emailAddress": {"address": "ody@example.com"}}]}
+                                     {"emailAddress": {"address": "corin@example.com"}}]}
         mock_httpx.request.side_effect = [
             MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
             MagicMock(status_code=202, text=""),
@@ -1776,11 +1776,11 @@ class TestReplyAll:
 
         body = mock_httpx.request.call_args_list[1].kwargs["json"]
         cc = [r["emailAddress"]["address"] for r in body["message"]["ccRecipients"]]
-        assert cc == ["ody@example.com", "sam@example.com"]
+        assert cc == ["corin@example.com", "sam@example.com"]
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_scheduled_reply_all_with_cc_patches_the_merged_cc_onto_the_draft(self, mock_httpx):
-        original = {"ccRecipients": [{"emailAddress": {"address": "ody@example.com"}}]}
+        original = {"ccRecipients": [{"emailAddress": {"address": "corin@example.com"}}]}
         mock_httpx.request.side_effect = [
             MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
             MagicMock(status_code=201, text="x", json=MagicMock(return_value={"id": "draft-1"})),
@@ -1795,7 +1795,7 @@ class TestReplyAll:
         assert calls[1].args[1].endswith("/me/messages/msg-1/createReplyAll")
         assert calls[2].args[0] == "PATCH"
         cc = [r["emailAddress"]["address"] for r in calls[2].kwargs["json"]["ccRecipients"]]
-        assert cc == ["ody@example.com", "sam@example.com"]
+        assert cc == ["corin@example.com", "sam@example.com"]
         assert calls[3].args[1].endswith("/me/messages/draft-1/send")
 
     @patch('connectonion.useful_tools.outlook.httpx')

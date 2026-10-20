@@ -593,14 +593,14 @@ def test_tab_status_marks_active_and_prunes_closed_tabs():
     browser._pages = {None: p0, "1": p1}
     browser._tab_meta = {
         None: {"who": "aaron", "purpose": "post"},
-        "1": {"who": "tamara", "purpose": "inbox"},
+        "1": {"who": "greta", "purpose": "inbox"},
     }
     browser._bind_session("1")                    # active tab = session "1"
 
     out = browser.tab_status()
     assert "Tabs (2):" in out
     assert " [main] https://x.com/home  who=aaron" in out
-    assert "*[1] https://mail.google.com  who=tamara" in out
+    assert "*[1] https://mail.google.com  who=greta" in out
 
     # A tab whose page has closed still shows (from the registry) but as reserved.
     p1.is_closed = lambda: True

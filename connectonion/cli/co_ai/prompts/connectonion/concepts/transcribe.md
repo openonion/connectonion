@@ -25,7 +25,7 @@ Improve accuracy for domain-specific terms:
 # Technical meeting with specific names
 text = transcribe(
     "standup.mp3",
-    prompt="Technical AI discussion. Names: Aaron, Lisa. Terms: ConnectOnion, OpenOnion"
+    prompt="Technical AI discussion. Names: Aaron, Maren. Terms: ConnectOnion, OpenOnion"
 )
 
 # Medical transcription

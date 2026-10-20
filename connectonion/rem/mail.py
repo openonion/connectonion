@@ -52,7 +52,7 @@ SELF = "me"                          # the correspondent of a mail the user sent
 # their own day; carrying them again turned a 17-mail batch into 370k tokens.
 # Outlook's HTML-to-text collapses a mail into one line, so none of these may
 # rely on line starts or ends; each is the first sign of the quoted thread.
-# No word boundaries either: flattened text runs "…Program ManagerFrom: Vern…"
+# No word boundaries either: flattened text runs "…Program ManagerFrom: Rowan…"
 # straight through, so the header words themselves are the only signal.
 # Unflattened, `Sent:` or `Date:` starts the line after `From:` with no rule above it (#2349).
 QUOTED_REPLY = re.compile(
@@ -133,7 +133,7 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                  now=None, only: str = "") -> Batch:
     """`only` narrows the batch to one correspondent, named by address or part of one.
 
-    "Sync my mail with Vern" is the most natural thing to ask of a notebook and there
+    "Sync my mail with Rowan" is the most natural thing to ask of a notebook and there
     was no way to say it. Everyone else keeps their place in the queue: this passes
     over them, it does not consume them.
     """

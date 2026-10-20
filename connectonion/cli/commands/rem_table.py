@@ -6,7 +6,7 @@ out of 381 pages on every call. Plain text aligned by terminal cells, so a
 Chinese name lines up with an English one; `--json` gives the rows.
 
 The UI audit of 2026-10-15 read it at 158 columns whatever the terminal, with
-"[OpenOnion](../orgs…" for a company, a Luma relay as Ody's email and
+"[OpenOnion](../orgs…" for a company, a Luma relay as Corin's email and
 "written" on every row. Cells are now the words a person reads, the widest
 text columns give way until the table fits, a Status every row shares is not
 a column, and a relay is never anyone's email (`map.RELAY`).
