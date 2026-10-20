@@ -35,25 +35,50 @@ def organisation(domain: str) -> str:
 LEGAL_SUFFIX = re.compile(r'\b(?:pty|ltd|limited|inc|llc|corp|co|gmbh)\b\.?', re.I)
 
 
-def own_company(domain: str, owner_page: str, project_pages: list[str]) -> bool:
-    """Ownership needs a named company or an owned project, never just a sending address."""
-    org = organisation(domain.casefold().rstrip('.'))
-    # University and mailbox addresses cannot establish company ownership, even in a mistaken page field.
-    if personal_mailbox(org) or {'edu', 'ac'}.intersection(org.split('.')):
-        return False
-    lines = re.findall(r'^- (?:Company|Signing entity): (.+)$', owner_page, re.M)
-    for page in project_pages:
-        lines += re.findall(r'^- Organisation: (.+)$', page, re.M)
-        for website in re.findall(r'^- Website: (.+)$', page, re.M):
-            website = re.sub(r'\[([^\]]+)\]\(([^)]*)\)', r'\2', website).strip(' `').split()[0]
-            host = urlsplit(website if '://' in website else '//' + website).hostname
-            if host and organisation(host.rstrip('.')) == org:
-                return True
+# Code, package and hosting platforms: a project's Website on one of these is
+# where the project lives, not a company the owner owns (#2615 review).
+PLATFORMS = frozenset({'github.com', 'github.io', 'gitlab.com', 'bitbucket.org', 'vercel.app', 'netlify.app',
+                       'pages.dev', 'herokuapp.com', 'pypi.org', 'npmjs.com', 'huggingface.co', 'readthedocs.io',
+                       'gitbook.io', 'notion.site', 'substack.com', 'medium.com', 'apple.com', 'google.com'})
+
+
+def _names(lines: list[str]) -> set:
     names = set()
     for line in lines:
         line = re.sub(r'\[(\d+)\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', line))
         names |= {re.sub(r'[^a-z0-9]', '', LEGAL_SUFFIX.sub('', part).casefold()) for part in re.split(r'[;,/]', line)}
-    return org.split('.')[0] in names - {'', 'unknown'}
+    return names - {'', 'unknown'}
+
+
+def _website_hosts(page: str) -> set:
+    hosts = set()
+    for website in re.findall(r'^- Website: (.+)$', page, re.M):
+        website = re.sub(r'\[([^\]]+)\]\(([^)]*)\)', r'\2', website).strip(' `').split()[0]
+        host = urlsplit(website if '://' in website else '//' + website).hostname
+        if host:
+            hosts.add(organisation(host.rstrip('.')))
+    return hosts
+
+
+def own_company(domain: str, owner_page: str, project_pages: list[str], owner_addresses=()) -> bool:
+    """The owner's company: named on the owner's page, or an owned project's that the owner writes from.
+
+    A sending address alone is not ownership (a university, an employer), and a
+    project's Organisation or Website alone is not either: a client project names
+    its client, and a project's Website may be github.com or vercel.app (#2615).
+    """
+    org = organisation(domain.casefold().rstrip('.'))
+    # University and mailbox addresses cannot establish company ownership, even in a mistaken page field.
+    if personal_mailbox(org) or {'edu', 'ac'}.intersection(org.split('.')) or org in PLATFORMS:
+        return False
+    label = org.split('.')[0]
+    if label in _names(re.findall(r'^- (?:Company|Signing entity): (.+)$', owner_page, re.M)):
+        return True
+    sends = org in {organisation(d) for d in map(_domain, owner_addresses) if d}
+    if not sends:
+        return False
+    return any(label in _names(re.findall(r'^- Organisation: (.+)$', page, re.M)) or org in _website_hosts(page)
+               for page in project_pages)
 
 
 def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
@@ -88,14 +113,14 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for,
             group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set(), 'talks': False})
             group['domains'].add(domain)
     groups = {key: group for key, group in groups.items()
-              if own_company(key, owner_page, project_pages) or (group['contacts'] and group['talks'])}
+              if own_company(key, owner_page, project_pages, (owner or {}).get('addresses', [])) or (group['contacts'] and group['talks'])}
     rows, created = [], []
     for domain, group in sorted(groups.items()):
         contacts, domains = group['contacts'], sorted(group['domains'] | {domain})
         record = next((existing[d] for d in [domain, *domains] if d in existing), None) \
             or record_for('orgs', domain, domain)
         rows.append({'domain': domain, 'record': record, 'people': sorted(contacts), 'domains': domains,
-                     **({'own': True} if own_company(domain, owner_page, project_pages) else {}),
+                     **({'own': True} if own_company(domain, owner_page, project_pages, (owner or {}).get('addresses', [])) else {}),
                      'classification': 'domain candidate; organization identity unverified'})
         if not notebook.stub_org(record, domain, domains, sorted(contacts)):
             continue

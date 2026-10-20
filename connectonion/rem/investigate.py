@@ -125,7 +125,7 @@ def company_owner(notebook: Notebook, domains: list[str]) -> dict:
                  if spells_owner(row['address'], name)]]
     owner = {**owner, 'addresses': sorted({a.casefold() for a in addresses}), 'name': name}
     projects = [notebook.read(p) for p in notebook.list('projects')]
-    return owner if any(own_company(domain, page, projects) for domain in domains) else {}
+    return owner if any(own_company(domain, page, projects, owner['addresses']) for domain in domains) else {}
 
 
 def company_projects(notebook: Notebook, record: str, subject: str, domains: list[str]) -> list[str]:
@@ -180,12 +180,24 @@ def company_names(notebook: Notebook, record: str, owner: dict, projects: list[s
     return [name for name in names if name.casefold() not in ('', 'unknown')]
 
 
+def company_mentions(names: list[str]) -> re.Pattern:
+    """Whole-word mentions of the company's names; a short name only as written and capitalised.
+
+    A two- or three-letter product name ("go") matched unrelated mail; a short
+    name counts only with a capital, as written ("REM", "Pix") (#2615 review).
+    """
+    long = [re.escape(name) for name in names if len(name) >= 4]
+    short = [re.escape(name) for name in names if 2 <= len(name) < 4 and any(c.isupper() for c in name)]
+    patterns = ([f"(?i:{'|'.join(long)})"] if long else []) + (['|'.join(short)] if short else [])
+    return re.compile(r'(?<!\w)(?:' + '|'.join(patterns) + r')(?!\w)') if patterns else re.compile(r'(?!)')
+
+
 def company_material(notebook: Notebook, owner: dict, projects: list[str], *, record: str, days: int,
                      clients: dict, subscriptions: dict, **kwargs) -> tuple[list[dict], list[str]]:
     """Read the owner's work about this company without supplying unrelated private mail."""
     domains = org_domains(notebook.read(record))
     names = company_names(notebook, record, owner, projects) + domains
-    mentions = re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(name) for name in names) + r')(?!\w)', re.I)
+    mentions = company_mentions(names)
     sent = kept = 0
 
     def keep_mail(row, body):
