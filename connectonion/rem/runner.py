@@ -614,6 +614,7 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
                "Key decision without the owner's words:",
+               "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
 # 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
@@ -799,7 +800,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
-                              sources_before_footer, merge_duplicate_definitions,
+                              sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content, unverified_quotes)
@@ -899,6 +900,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
+    if record == owner.get("record") and (not ask_quotes or last_resort):
+        text = move_agent_threads(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
@@ -906,6 +909,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
+    if ask_quotes and not last_resort and record == owner.get("record"):
+        errors += [f"Open thread rests only on coding sessions: {line[:160]} -- a task the user gave a coding "
+                   "agent is work in progress: move it to Who they are, or cite the person it is owed to"
+                   for line in agent_threads(text)]
     if last_resort and record.startswith("people/") and not _lead(text):
         # Corin Marsh (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.

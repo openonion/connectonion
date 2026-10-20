@@ -239,8 +239,8 @@ def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projec
     owner = instructions("investigate", page_kind="person", owner=True)
     assert len(owner) <= INSTRUCTION_BUDGET
     for rule in ("Coding agents are the user's tools, not people",
-                 "never a counterparty in `Open threads`",
-                 "never `Last contact`",
+                 "never an `Open\nthreads` line",
+                 "`Last contact` or `Cadence`",
                  "`recent-projects`"):
         assert rule in owner, rule
 

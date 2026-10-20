@@ -1913,6 +1913,41 @@ def owner_pronouns(text: str) -> tuple[str, int]:
     return "\n".join(lines) + marker + tail, total
 
 
+def agent_threads(text: str) -> list[str]:
+    """Open threads supported exclusively by coding-session originals."""
+    from .reader_model import SOURCE
+    visible = prose(text).replace('\r\n', '\n')
+    section = r'(?ms)^## {}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)'
+    definitions = re.search(section.format('Sources'), visible)
+    sources = dict(SOURCE.findall(definitions[1] if definitions else ''))
+    span = re.search(section.format('Open threads'), visible)
+    lines = []
+    for line in span[1].splitlines() if span else []:
+        citations = re.findall(r'\[(W?\d+)\](?!\()', line)
+        if (re.match(r'^[-*] +\S', line) and citations
+                and all(sources.get(number, '').startswith(('codex:', 'claude-code:')) for number in citations)):
+            lines.append(line)
+    return lines
+
+
+def move_agent_threads(text: str) -> str:
+    """Keep session-only work on the owner's profile rather than as an obligation."""
+    lines = agent_threads(text)
+    if not lines:
+        return text
+    section = r'(?ms)^## {}[ \t]*\r?\n(.*?)(?=^## |^Investigation:|\Z)'
+    threads = re.search(section.format('Open threads'), prose(text))
+    body = text[threads.start(1):threads.end(1)]
+    kept = '\n'.join(line for line, visible in zip(body.splitlines(), threads[1].splitlines())
+                     if visible not in lines).strip()
+    text = text[:threads.start(1)] + (kept or '- Unknown') + '\n\n' + text[threads.end(1):]
+    who = re.search(section.format('Who they are'), prose(text))
+    if who:
+        return text[:who.end(1)].rstrip('\n') + '\n' + '\n'.join(lines) + '\n\n' + text[who.end(1):]
+    at = re.search(r'^## Sources', prose(text), re.M).start()
+    return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
+
+
 def unquoted_decisions(text: str) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
