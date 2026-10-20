@@ -1,8 +1,10 @@
 """Experimental co rem inspection. No collection or provider startup on import."""
 
 import json
+import multiprocessing
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -12,6 +14,12 @@ from ...rem.files import MAP_DAYS
 from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
+
+
+def _warm_sessions_process(root: str) -> None:
+    from ...rem.investigate import warm_session_windows
+    from ...rem.service import subscriptions
+    warm_session_windows(Path(root), subscriptions(Path(root)))
 
 
 def _next(ctx, arguments):
@@ -959,13 +967,12 @@ def make_rem_app(factory):
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
             warming = None
-            if not estimate_only and write_mine is not False:
-                import threading
-                from ...rem.investigate import warm_session_windows
-                # A fresh notebook's session cache took 336 s of the owner's quick page
-                # (2026-10-20). Built while the map waits on mail servers, it is ready first;
-                # joined when mapping ends, so no init (or test) leaves it running.
-                warming = threading.Thread(target=warm_session_windows, args=(root, sources), daemon=True)
+            # A frozen co cannot spawn itself as Python; its pages build the cache instead.
+            if not estimate_only and write_mine is not False and not getattr(sys, "frozen", False):
+                # 2026-10-20: sharing the GIL made a 6 s project scan take 13 min
+                # during init. Spawn uses another core and warms the on-disk cache.
+                warming = multiprocessing.get_context("spawn").Process(
+                    target=_warm_sessions_process, args=(str(root),), daemon=True)
                 warming.start()
             try:
                 result = build_map(root, sources, clients, days=map_days, all_history=all_history,

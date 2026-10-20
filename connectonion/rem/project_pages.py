@@ -687,7 +687,7 @@ def _project_quote_turn(notebook, record, page, items, counts, config, run, work
         # discarding the whole edit threw away four of six (2026-10-20).
         edited = restore_dropped(page, notebook.read(record))
         notebook.write(record, edited)
-        reason = _keep_unless_lost(notebook, record, page)
+        reason, _ = _keep_unless_lost(notebook, record, page)
         # A quote edit must keep even the small losses the general maintenance guard tolerates.
         lost = bool(reason or quotes(page) - quotes(notebook.read(record)))
         if lost:

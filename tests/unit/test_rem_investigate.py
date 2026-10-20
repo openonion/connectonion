@@ -2653,8 +2653,11 @@ def test_an_investigated_page_that_loses_its_sources_is_restored(tmp_path):
               + '\n## Sources\n- [1] outlook:unsw-invitation\n\n'
               + 'Investigation: mapped 2026-10-16 · investigated 2026-10-16 (outlook)\n')
     notebook.write(record, before.replace('outlook:unsw-invitation', 'outlook:new-mail'))
-    assert inv._keep_unless_lost(notebook, record, before) == (
-        "Maintenance kept 0 of the page's 1 cited sources; kept the old page")
+    reason, lost = inv._keep_unless_lost(notebook, record, before)
+    assert reason == "Maintenance kept 0 of the page's 1 cited sources; kept the old page"
+    assert lost == []
+    assert notebook.read(record) != before   # the caller decides when to restore
+    inv._restore_page(notebook, record, before)
     assert notebook.read(record) == before
 
 
@@ -2676,8 +2679,10 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
     assert notebook.read('projects/co.md') == full
 
 
-def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path):
+def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path, monkeypatch):
     """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
+    # Mechanical restore placed nothing here, so the repair turn is what is tested.
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/co.md'
     notebook.stub_project(record, 'co', ['/w/co'])
@@ -2697,10 +2702,99 @@ def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retri
     assert notebook.read(record) == full and seen[-1] == full
     assert out['refused_rounds'] == ["Round 2 rejected: Turn kept 0 of the page's 4 quotes; restored the prior page"]
     assert out['refused_sources'] == ['codex:s:2']
+    assert seen[2] == paraphrased   # repair edits the rejected candidate before restoring
+    assert out['repaired_rounds'] == 1
+    assert out['usage'] == {'input_tokens': 20} and out['threads'] == ['1', '2', '3', '4']
+
+
+def test_a_round_repairs_its_carried_quotes_and_keeps_its_other_change(tmp_path, monkeypatch):
+    # Mechanical restore placed nothing here, so the repair turn is what is tested.
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'example', ['/work/example'])
+    lines = ['- “Keep this simple” (2026-10-01) [1]',
+             '- “Read every source” (2026-10-02) [1]',
+             '- “Quote my words” (2026-10-03) [1]']
+    full = notebook.read(record).replace('## Key decisions\n', '## Key decisions\n' + '\n'.join(lines) + '\n')
+    full = full.replace('- (none yet)', '- [1] codex:example:1')
+    notebook.write(record, full)
+    candidate = full.replace('“', '').replace('”', '') + '\nA new finding. [1]\n'
+    accepted = full + '\nA new finding. [1]\n'
+    notes = []
+    context = [{'role': 'facts', 'source': 'investigation:facts', 'text': 'Prior facts'}]
+
+    def runner(notebook, items, config, stage):
+        note = next(i['text'] for i in items if i['role'] == 'round')
+        notes.append(note)
+        if note.startswith('Round'):
+            notebook.write(record, candidate)
+        elif note.startswith('Repair'):
+            assert items[0]['text'] == candidate
+            assert items[1:-1] == context
+            assert all(line in note for line in lines)
+            assert items[-1]['source'] == 'investigation:round'
+            notebook.write(record, accepted)
+        return {'changed': [record], 'usage': {'input_tokens': 5}, 'threads': [str(len(notes))]}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, context,
+                         [[{'source': 'codex:example:2', 'text': 'New material'}]], {})
+    assert notebook.read(record) == accepted
+    assert out['changed'] == [record] and out['refused_rounds'] == [] and out['refused_sources'] == []
+    assert out['repaired_rounds'] == 1
     assert out['usage'] == {'input_tokens': 15} and out['threads'] == ['1', '2', '3']
 
 
+def test_escaped_quotes_whitespace_and_case_do_not_count_as_lost_quotes(tmp_path):
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'notes/quotes.md'
+    before = ('# Quotes\n- “Tell your agent "hand this to Mara"”\n'
+              '- “Keep this simple”\n- “Read every source”\n')
+    after = before.replace('"', '\\"').replace('Keep this simple', 'KEEP  this\tsimple')
+    after = after.replace('Read every source', 'READ every SOURCE')
+    notebook.write(record, after)
+    assert inv._keep_unless_lost(notebook, record, before) == ('', [])
+
+
+def test_the_round_note_keeps_earlier_quotes_word_for_word():
+    assert 'Every quote already on the page stays word for word, with its date and citation.' in inv.ROUND_NOTE
+    assert 'Never replace an earlier quote with a newer one' in inv.ROUND_NOTE
+    assert 'delete only unquoted repetition' in inv.ROUND_NOTE
+    assert all('{' + field + '}' in inv.ROUND_NOTE for field in ('number', 'total', 'first', 'last'))
+
+
+@pytest.mark.parametrize('domain', ['mail.example.com', 'ad.example.edu.au'])
+def test_outlook_searches_the_registrable_domain_label(domain):
+    assert inv._server_term('outlook', domain) == 'example'
+    assert inv._server_term('gmail', domain) == domain
+
+
+def test_org_gather_queries_each_distinct_server_term_once():
+    class Outlook(Quiet):
+        def __init__(self):
+            self.asked = []
+
+        def list_with(self, term, start, end, **kwargs):
+            self.asked.append(term)
+            return [{'id': '1', 'from': 'Avery Lin <avery@ad.example.edu.au>', 'to': ['me@example.com'],
+                     'subject': 'Pilot', 'date': start},
+                    {'id': '2', 'from': 'Mia Chen <mia@elsewhere.example.com>', 'to': ['me@example.com'],
+                     'subject': 'Other', 'date': start}]
+
+        def get_email_body(self, message_id):
+            return f'--- Email Body ---\nbody {message_id}'
+
+    box = Outlook()
+    items, coverage = inv.gather('example', ['example.edu.au', 'ad.example.edu.au', 'student.example.edu.au'],
+                                 days=90, clients={'outlook': box}, subscriptions={}, record='orgs/example.md')
+    assert box.asked == ['example']
+    assert [item['text'].split('\n')[-1] for item in items] == ['body 1']
+    assert 'searched on the server for example' in coverage[0]
+
+
 def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
+    # Mechanical restore placed nothing here, so the repair turn is what is tested.
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
     root = _notebook(tmp_path, 'codex')
     notebook, record = inv.Notebook(root), 'people/vern.md'
     full = notebook.read(record).replace('## History\n',
@@ -2731,8 +2825,10 @@ def test_quote_retention_counts_distinct_carried_prose_quotes(tmp_path, quotes, 
     after = '# Quotes\n' + ''.join(f'- “quote {n}”\n' for n in range(kept))
     after += '- “new quote one”\n- “new quote two”\n'
     notebook.write(record, after)
-    assert bool(inv._keep_unless_lost(notebook, record, before)) == restored
-    assert notebook.read(record) == (before if restored else after)
+    reason, lost = inv._keep_unless_lost(notebook, record, before)
+    assert bool(reason) == restored
+    assert bool(lost) == restored
+    assert notebook.read(record) == after
 
 
 @pytest.mark.parametrize('paraphrase', [False, True])
@@ -2743,8 +2839,11 @@ def test_a_restore_never_brings_back_quotes_the_turns_audit_refuted(tmp_path, pa
     sound = before.replace('- “quote 0”\n', '').replace('- “quote 1”\n', '')
     after = sound.replace('“', '').replace('”', '') if paraphrase else sound
     notebook.write(record, after)
-    reason = inv._keep_unless_lost(notebook, record, before, ['“quote 0”', '“quote 1”'])
+    reason, lost = inv._keep_unless_lost(notebook, record, before, ['“quote 0”', '“quote 1”'])
     assert bool(reason) == paraphrase
+    assert not {'quote 0', 'quote 1'}.intersection(lost)
+    if reason:
+        inv._restore_page(notebook, record, before, ['“quote 0”', '“quote 1”'])
     assert notebook.read(record) == sound
 
 
@@ -2984,3 +3083,29 @@ def test_no_synthesis_turn_when_no_part_round_changed_the_page(tmp_path):
                          parts, {"limits": {}}, None)
     assert len(notes) == 3 and not any(note.startswith("Final round") for note in notes)
     assert "skipped; no earlier round changed the page" in out["report"]
+
+
+def test_a_round_that_paraphrases_carried_quotes_gets_them_put_back_without_another_turn(tmp_path):
+    """2026-10-20: two of four owner rounds were thrown away for dropping quotes, 7-15 minutes each."""
+    notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'example', ['/work/example'])
+    lines = ['- “Keep this simple” (2026-10-01) [1]', '- “Read every source” (2026-10-02) [1]',
+             '- “Quote my words” (2026-10-03) [1]']
+    full = notebook.read(record).replace('## Key decisions\n', '## Key decisions\n' + '\n'.join(lines) + '\n')
+    full = full.replace('- (none yet)', '- [1] codex:example:1')
+    notebook.write(record, full)
+    notes = []
+
+    def runner(notebook, items, config, stage):
+        notes.append(next(i['text'] for i in items if i['role'] == 'round'))
+        if len(notes) == 1:
+            notebook.write(record, full.replace('“', '').replace('”', ''))
+        return {'changed': [record], 'usage': {'input_tokens': 5}}
+
+    out = inv.run_rounds(runner, notebook, record, lambda text: {'role': 'page', 'text': text}, [],
+                         [[{'source': 'codex:example:2', 'text': 'New material'}]], {})
+    page = notebook.read(record)
+    assert all(line.split(' (')[0][2:] in page for line in lines)
+    assert out['refused_rounds'] == [] and out['repaired_rounds'] == 0
+    assert not any(note.startswith('Repair') for note in notes)
