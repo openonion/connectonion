@@ -96,12 +96,29 @@ def _github_original(source: str) -> dict:
     return {}
 
 
-def _git_original(source: str) -> dict:
-    """2026-10-21: unresolved git citations name a checkout and a commit or file."""
+def known_checkouts(notebook, record) -> set[Path]:
+    """Checkouts REM already maps: the map's project paths and this page's own Paths."""
+    from .files import state_path
+    from .investigate import project_paths
+    mapped = read_json(state_path(notebook.root, 'map.json'), {})
+    paths = [path for row in mapped.get('projects', []) for path in row.get('paths') or []]
+    if notebook.path(record).is_file():
+        paths += project_paths(notebook.read(record))
+    return {Path(path).resolve() for path in paths}
+
+
+def _git_original(source: str, known=frozenset()) -> dict:
+    """2026-10-21: unresolved git citations name a checkout and a commit or file.
+
+    Only a checkout REM already maps is read: a model-written citation must not make
+    the critic read an arbitrary local path (#2612 review)."""
     match = re.fullmatch(r'git:(.+?)(?:@|:)([0-9a-fA-F]+)(?::(.+))?', source)
     if not match:
         return {}
     checkout, sha, file = match.groups()
+    where = Path(checkout).resolve()
+    if not any(where == path or path in where.parents for path in known):
+        return {}
     target = [f'{sha}:{file}'] if file else ['--stat', '--format=%H%n%an%n%ad%n%s%n%n%b', sha]
     try:
         result = subprocess.run(['git', '-C', checkout, 'show', *target],
@@ -113,9 +130,9 @@ def _git_original(source: str) -> dict:
     return {}
 
 
-def _original(source: str) -> dict:
+def _original(source: str, known=frozenset()) -> dict:
     """2026-10-21: resolve only originals the packet could not supply."""
-    return _github_original(source) or _git_original(source)
+    return _github_original(source) or _git_original(source, known)
 
 
 def critic_packet(notebook, candidate, record, items, bullets) -> dict:
@@ -131,9 +148,10 @@ def critic_packet(notebook, candidate, record, items, bullets) -> dict:
                  and item.get('role') not in ('page', 'prior-runs', 'earlier-insights', 'turn-reply', 'assistant')]
     material, missing = packet(notebook, cited_page, record, originals)
     # 2026-10-21: only unresolved sources cited by judged bullets need a lookup.
+    known = known_checkouts(notebook, record)
     for definition in definitions:
         number, source = SOURCE.match(definition).groups()
-        if number in missing and (context := _original(source)):
+        if number in missing and (context := _original(source, known)):
             material['sources'].append({'citation': number, 'source_id': source,
                                         'definition': definition, 'context': context})
             missing.remove(number)
