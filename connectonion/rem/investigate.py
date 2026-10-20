@@ -1029,10 +1029,22 @@ def warm_session_windows(root: Path, subscriptions: dict) -> None:
         if sub.get("kind") not in KINDS or sub.get("enabled") is False or not Path(sub.get("root", "")).is_dir():
             continue
         scoped = {**sub, "enabled": True, "consented": True, "since": since}
-        try:
-            _window_items(collect, scoped, f"{name} sessions", None, root)
-        except RemError:
-            continue   # each page's gather reports an unreadable store in its coverage
+        read_session_window(_window_items, collect, scoped, f"{name} sessions", None, root)
+
+
+def read_session_window(read, *args):
+    """Keep the warmer's existing source-level parse guard for the shared pass too."""
+    try:
+        return read(*args)
+    except RemError:
+        return None  # each page's gather reports an unreadable store in its coverage
+
+
+def session_window_cache(root: Path, scoped: dict) -> tuple[str, Path]:
+    identity = json.dumps({key: value for key, value in scoped.items() if key != "since"},
+                          sort_keys=True, default=str)
+    path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
+    return identity, path
 
 
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
@@ -1043,8 +1055,7 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     three minutes on the owner's Mac, and each of a 16-worker init's people paid
     it in turn under the lock (1.9.1b3: 350 of a 363-second gather).
     """
-    identity = json.dumps({key: value for key, value in scoped.items() if key != "since"},
-                          sort_keys=True, default=str)
+    identity, cache_path = session_window_cache(root, scoped)
     memo = ("session-window", str(root), identity)
     kept = _WINDOWS.get(memo)
     if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS and kept[1] <= timestamp(scoped["since"]):
@@ -1056,7 +1067,6 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     requested = timestamp(scoped["since"])
     widest = min(requested, datetime.now(timezone.utc) - timedelta(days=SESSION_WIDEST_DAYS))
     scoped = {**scoped, "since": widest.isoformat()}
-    cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
     if (saved.get("version") not in (1, SESSION_WINDOW_VERSION) or saved.get("subscription") != identity

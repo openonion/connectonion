@@ -1,6 +1,7 @@
 """One page per owner conversation, with optional batched model summaries."""
 
 import hashlib
+import io
 import json
 import re
 import tempfile
@@ -224,8 +225,12 @@ def _row_reason(row: dict, kind: str) -> str:
 
 
 def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
+    return _read_session_data(path.read_bytes(), path, kind, since)
+
+
+def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> tuple[dict, str]:
     parsers = source.KINDS[kind]
-    with path.open("rb") as transcript:
+    with io.BytesIO(data) as transcript:
         first = transcript.readline(1_000_000)
         # A corrupt first line is a counted file, never a half-imported session.
         try:
@@ -491,8 +496,8 @@ def mentions(people: list[dict], sessions: list[dict]) -> dict[str, list[str]]:
     return found
 
 
-def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
-    stat = path.stat()
+def _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions=None):
+    stat = sessions.stats[str(path)] if sessions is not None else path.stat()
     if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
         return "outside_window"
     old = progress["files"].get(str(path), {})
@@ -500,7 +505,8 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
             and (not old.get("record") or notebook.path(old["record"]).is_file())):
         counts["unchanged"] += 1
         return ""
-    session, why = _read_session(path, kind, since)
+    session, why = (sessions.imports[str(path)] if sessions is not None
+                    else _read_session(path, kind, since))
     cwd = session.get("cwd") or ""
     if not why and cwd and Path(cwd).resolve().is_relative_to(notebook.root):
         why = "notebook"
@@ -526,11 +532,12 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts):
 
 
 def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
-                    consented_only: bool = False, lock_held: bool = False) -> dict:
+                    consented_only: bool = False, lock_held: bool = False, sessions=None) -> dict:
     if days < 1:
         raise RemError("Session import days must be positive")
     started = time.monotonic()
-    since = (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
+    since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
     counts = {"imported": 0, "updated": 0, "unchanged": 0}
@@ -542,18 +549,19 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
             progress["files"] = {}
         progress["settings"] = settings
         folders = page_folders(notebook)
-        for sub in service.subscriptions(root).values():
+        for name, sub in service.subscriptions(root).items():
             kind = sub.get("kind")
             if kind not in source.KINDS or sub.get("enabled") is False or (consented_only and not sub.get("consented")):
                 continue
             directory = Path(sub["root"])
             if directory.is_symlink() or not directory.is_dir():
                 continue
-            for path in sorted(directory.rglob(source.KINDS[kind]["glob"])):
+            paths = sessions.files[name] if sessions is not None else sorted(directory.rglob(source.KINDS[kind]["glob"]))
+            for path in paths:
                 relative = path.relative_to(directory)
                 if any((directory / parent).is_symlink() for parent in (relative, *relative.parents)) or not path.is_file():
                     continue
-                why = _import_file(path, kind, since, notebook, folders, zone, progress, counts)
+                why = _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions)
                 if why:
                     skipped[why] += 1
         write_json(state_path(root, "sessions.json"), progress)

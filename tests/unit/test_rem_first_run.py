@@ -53,35 +53,7 @@ class Mail:
 
 
 @pytest.fixture
-def warming_processes(monkeypatch):
-    from types import SimpleNamespace
-    processes = []
-
-    class Process:
-        def __init__(self, *, target, args, daemon):
-            self.target, self.args, self.daemon = target, args, daemon
-            self.running, self.joined = False, False
-            processes.append(self)
-
-        def start(self):
-            self.running = True
-
-        def join(self):
-            self.running, self.joined = False, True
-
-        def is_alive(self):
-            return self.running
-
-    def context(method):
-        assert method == 'spawn'
-        return SimpleNamespace(Process=Process)
-
-    monkeypatch.setattr('connectonion.cli.commands.rem_commands.multiprocessing.get_context', context)
-    return processes
-
-
-@pytest.fixture
-def first_run(tmp_path, monkeypatch, warming_processes):
+def first_run(tmp_path, monkeypatch):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
     monkeypatch.delenv("CODEX_HOME", raising=False)
@@ -1218,46 +1190,39 @@ def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
     assert tries == ["briar"] and outcomes[0][1]["outcome"] == "nothing_new"
 
 
-@pytest.mark.parametrize('flags, warmed', [(['--yes', '--no-start', '--estimate-only'], False),
-                                           (['--yes', '--no-start', '--no-investigate'], False)])
-def test_init_only_builds_the_session_cache_early_when_pages_will_be_investigated(first_run, warming_processes, flags, warmed):
-    """2026-10-20: a fresh notebook's session cache took 336 s of the owner's quick page."""
+@pytest.mark.parametrize('flags', [
+    ['--yes', '--no-start', '--estimate-only'],
+    ['--yes', '--no-start', '--no-investigate'],
+    ['--yes', '--no-start'],
+])
+def test_init_reads_sessions_in_the_map_without_spawning_a_warmer(first_run, monkeypatch, flags):
+    from connectonion.rem import session_pass
     root, init, _ = first_run
+    reads = []
+    read = session_pass.read_sessions
+
+    def shared(root, sources, **kwargs):
+        reads.append(root)
+        return read(root, sources, **kwargs)
+
+    monkeypatch.setattr(session_pass, 'read_sessions', shared)
+    monkeypatch.setattr('multiprocessing.get_context', lambda *a: pytest.fail('spawned a warmer'))
     result = init(*flags)
     assert result.exit_code == 0, result.output
-    assert bool(warming_processes) is warmed
+    assert reads == [root]
 
 
-@pytest.mark.parametrize('failure', [False, True])
-def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypatch, warming_processes, failure):
-    from connectonion.cli.commands import rem_commands
-    from connectonion.rem import map as rem_map
+def test_init_passes_the_maps_sessions_to_import(first_run, monkeypatch):
+    from connectonion.rem import sessions
     root, init, _ = first_run
-    order = []
-    build_map = rem_map.build_map
+    received = []
+    import_sessions = sessions.import_sessions
 
-    def mapped(*args, **kwargs):
-        [process] = warming_processes
-        assert process.is_alive() and not process.joined
-        assert process.target is rem_commands._warm_sessions_process
-        assert process.args == (str(root),) and process.daemon
-        order.append('map')
-        if failure:
-            raise RuntimeError('mapping failed')
-        return build_map(*args, **kwargs)
+    def imported(root, **kwargs):
+        received.append(kwargs.get('sessions'))
+        return import_sessions(root, **kwargs)
 
-    monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
+    monkeypatch.setattr(sessions, 'import_sessions', imported)
     result = init('--yes', '--no-start')
-    assert result.exit_code == (1 if failure else 0), result.output
-    assert order == ['map']
-    assert all(process.joined and not process.is_alive() for process in warming_processes)
-
-
-def test_the_warming_process_rereads_subscriptions(tmp_path, monkeypatch):
-    from connectonion.cli.commands.rem_commands import _warm_sessions_process
-    sources, warmed = {'codex': {'kind': 'codex', 'root': str(tmp_path / 'sessions')}}, []
-    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: sources if root == tmp_path else None)
-    monkeypatch.setattr('connectonion.rem.investigate.warm_session_windows',
-                        lambda root, subscriptions: warmed.append((root, subscriptions)))
-    _warm_sessions_process(str(tmp_path))
-    assert warmed == [(tmp_path, sources)]
+    assert result.exit_code == 0, result.output
+    assert len(received) == 1 and received[0] is not None
