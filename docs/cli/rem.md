@@ -421,6 +421,7 @@ the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
 claims pass the audit; review names problems back to the writer twice at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
+A model turn that times out is retried once in the same thread when available, and usage from the failed attempt is counted.
 
 ```bash
 co rem enrich projects/aurora.md   # discovery: follow what the page has not followed
@@ -474,6 +475,7 @@ limits automatic selection only.
 One round on one page is **enrich, then muse**, about 25 minutes. Round N reads
 round N-1's open leads and open questions through the latest completed run
 reports. Muse still runs when enrich fails or is refused, using what is there.
+Automatic selection skips a page for 24 hours when its latest enrich or muse outcome reports a timeout, a provider at capacity, a turn that did not complete or a runner that could not start; explicit `PAGE...` selections still run.
 
 Candidates include every notebook page under `people/`, `projects/` and `orgs/`, excluding
 the owner and mapped automated accounts; map rows supply activity, while unmapped

@@ -37,6 +37,13 @@ def _resting(rounds, today) -> bool:
     if not rounds:
         return False
     last = rounds[-1]
+    # 2026-10-20: one enrich period hit 1,200s; retrying the same page in the
+    # next slot spends the slot on infrastructure rather than another page.
+    infrastructure = any(last[stage].startswith("failed:") and any(
+        marker in last[stage] for marker in ("timed out", "at capacity", "did not complete", "could not start"))
+        for stage in ("enrich", "muse"))
+    if infrastructure:
+        return today - _stamp(last["at"]) < timedelta(hours=24)
     # A refused or failed round changed nothing because it was not let through, not because
     # the page has nothing left (2026-10-20: a refused project round would have rested a month).
     if last["enrich"] != "completed" or last["muse"] != "completed":

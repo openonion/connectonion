@@ -397,3 +397,32 @@ def test_a_refused_round_does_not_rest_the_page(root):
     row = round_row(chars=[1, 1], enrich="refused", muse="refused")
     write_json(state_path(root, "depth.json"), {RECORD: [row]})
     assert [r["record"] for r in depth.candidates(root)] == [RECORD]
+
+
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+@pytest.mark.parametrize('message', ['co ai timed out after 1200s', 'provider at capacity',
+                                   'turn did not complete', 'co ai could not start'])
+@pytest.mark.parametrize('hours,eligible', [(23, False), (24, True)])
+def test_infrastructure_failures_rest_for_twenty_four_hours(root, stage, message, hours, eligible):
+    row = round_row(at=(TODAY - timedelta(hours=hours)).isoformat(), **{stage: f'failed: {message}'})
+    write_json(state_path(root, 'depth.json'), {RECORD: [row]})
+    assert bool(depth.candidates(root)) is eligible
+
+
+@pytest.mark.parametrize('outcome', ['refused', 'failed: review rejected', 'completed', 'no_change'])
+def test_other_outcomes_do_not_trigger_infrastructure_rest(root, outcome):
+    write_json(state_path(root, 'depth.json'), {RECORD: [round_row(enrich=outcome)]})
+    assert depth.candidates(root)
+
+
+def test_only_the_last_round_can_trigger_infrastructure_rest(root):
+    write_json(state_path(root, 'depth.json'), {RECORD: [
+        round_row(enrich='failed: timed out'), round_row(insights=2)]})
+    assert depth.candidates(root)
+
+
+def test_explicit_pages_bypass_infrastructure_rest(root):
+    write_json(state_path(root, 'depth.json'), {RECORD: [round_row(enrich='failed: timed out')]})
+    assert depth.candidates(root) == []
+    result = depth.slot(root, records=[RECORD], stage=lambda *a: {})
+    assert [row['record'] for row in result['rounds']] == [RECORD]

@@ -16,6 +16,180 @@ from connectonion.rem import runner
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+@pytest.mark.parametrize('timeouts', [1, 2])
+@pytest.mark.parametrize('message', ['co ai timed out after 1200s', 'turn timed out after 1200s'])
+def test_stage_retries_a_timeout_once_and_counts_failed_usage(notebook, monkeypatch, timeouts, message):
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) <= timeouts:
+            raise RunFailed(message, {'input_tokens': 3})
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    if timeouts == 1:
+        result = run_stage(notebook, [], default_config(), stage='abstract')
+        assert result['usage'] == {'input_tokens': 13}
+    else:
+        with pytest.raises(RunFailed, match='timed out') as caught:
+            run_stage(notebook, [], default_config(), stage='abstract')
+        assert caught.value.usage == {'input_tokens': 6}
+    assert len(calls) == 2 and calls[0] == calls[1]
+    metrics = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+    assert metrics['timeouts_retried'] == 1
+    assert metrics['usage'] == {'input_tokens': 13 if timeouts == 1 else 6}
+    assert metrics['status'] == ('execution_finished' if timeouts == 1 else 'failed')
+
+
+def test_stage_does_not_retry_other_failures(notebook, monkeypatch):
+    calls = []
+
+    def run(*args):
+        calls.append(args)
+        raise RunFailed('provider at capacity', {'input_tokens': 3})
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    with pytest.raises(RunFailed, match='at capacity'):
+        run_stage(notebook, [], default_config(), stage='abstract')
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('harness,expected', [('codex', 33), ('claude-code', 63)])
+def test_timeout_retry_resumes_same_thread_and_usage_survives_later_turns(notebook, monkeypatch, harness, expected):
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    calls = []
+
+    def run(workdir, prompt, config, stage, **options):
+        calls.append((prompt, options))
+        if len(calls) == 2:
+            raise RunFailed('turn timed out after 1200s', {'input_tokens': 3})
+        usage = 10 if len(calls) == 1 else 20 if len(calls) == 3 else 30
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': usage}}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}],
+                       {**default_config(), 'runner': harness}, stage='enrich', turns=('first', 'second', 'third'))
+    assert calls[1] == calls[2] == ('second', {'session': 'avery-thread'})
+    assert result['usage'] == {'input_tokens': expected}
+
+
+def test_later_timeouts_without_usage_keep_prior_retry_usage(notebook, monkeypatch):
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    calls = []
+
+    def run(*args, **options):
+        calls.append(options)
+        if len(calls) == 2:
+            return {'session_id': 'avery-thread', 'usage': {'input_tokens': 10}}
+        raise RunFailed('turn timed out after 1200s', {'input_tokens': 3} if len(calls) == 1 else None)
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    with pytest.raises(RunFailed, match='timed out') as caught:
+        run_stage(notebook, [{'role': 'page', 'record': record}], default_config(),
+                  stage='enrich', turns=('first', 'second'))
+    assert len(calls) == 4
+    assert caught.value.usage == {'input_tokens': 13}
+
+
+@pytest.mark.parametrize('fails_twice', [False, True])
+@pytest.mark.parametrize('followup', ['one_more', 'search'])
+def test_followup_retries_timeout_and_counts_all_attempts(notebook, monkeypatch, fails_twice, followup):
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    calls = []
+
+    def run(workdir, prompt, config, stage):
+        calls.append(prompt)
+        if len(calls) == 2 or len(calls) == 3 and fails_twice:
+            raise RunFailed('co ai timed out after 1200s', {'input_tokens': 3})
+        if len(calls) == 3 or followup == 'search':
+            next(workdir.glob('investigate-*/candidate.md')).write_text('# Avery Lin\n')
+        if followup == 'search':
+            next(workdir.glob('investigate-*')).joinpath('search-requests.json').write_text('["Avery Lin"]')
+        return {'usage': {'input_tokens': 10}}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, '_promote_candidate', lambda *a, **kw: None)
+    options = {'search': lambda queries: []} if followup == 'search' else {}
+    if fails_twice:
+        with pytest.raises(RunFailed, match='timed out') as caught:
+            run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='investigate', **options)
+        assert caught.value.usage == {'input_tokens': 16}
+    else:
+        result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='investigate', **options)
+        assert result['usage'] == {'input_tokens': 23}
+    assert len(calls) == 3 and calls[1] == calls[2]
+    metrics = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+    assert metrics['usage'] == {'input_tokens': 16 if fails_twice else 23}
+    assert metrics['timeouts_retried'] == 1
+
+
+@pytest.mark.parametrize('fails_twice', [False, True])
+def test_resumed_repair_retries_timeout_and_counts_failed_usage(notebook, monkeypatch, fails_twice):
+    from connectonion.rem.files import write_json
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    calls, reviews = [], []
+
+    def run(workdir, prompt, config, stage, **options):
+        calls.append(options)
+        if len(calls) == 2 or len(calls) == 3 and fails_twice:
+            raise RunFailed('turn timed out after 1200s', {'input_tokens': 150})
+        next(workdir.glob('enrich-*/candidate.md')).write_text('# Avery Lin\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': 100 if len(calls) == 1 else 200}}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        reviews.append(usage)
+        if len(reviews) == 1:
+            write_json(directory / 'review.json', {'errors': ['Missing section: Insight']})
+            raise RunFailed('Candidate rejected', usage)
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    if fails_twice:
+        with pytest.raises(RunFailed, match='timed out') as caught:
+            run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='enrich')
+        assert caught.value.usage == {'input_tokens': 300}
+    else:
+        result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='enrich')
+        assert result['usage'] == {'input_tokens': 350}
+        assert result['repair_usage'] == {'input_tokens': 250}
+    assert calls == [{}, {'session': 'avery-thread'}, {'session': 'avery-thread'}]
+    metrics = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+    assert metrics['timeouts_retried'] == 1
+
+
+def test_review_and_audit_progress_separate_one_repair_from_model_turns(notebook, monkeypatch):
+    import re
+    from connectonion.rem import page_review, project_claim_review
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    progress, calls, reviews = [], [], []
+
+    def run(workdir, prompt, config, stage, **options):
+        calls.append(options)
+        Path(re.search(r'(/\S+/candidate\.md)', prompt)[1]).write_text('# Avery Lin\n\nA finding.\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': len(calls) * 10}}
+
+    def review(*args, **options):
+        reviews.append(options)
+        return ({'verdict': 'fail' if len(reviews) == 1 else 'pass',
+                 'findings': [{'claim': 'A finding.'}] if len(reviews) == 1 else []}, {})
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(page_review, 'validate', lambda *a, **kw: [])
+    monkeypatch.setattr(project_claim_review, 'review', review)
+    monkeypatch.setattr(project_claim_review, 'retain_cited_originals', lambda *a: None)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(),
+                       stage='enrich', turns=('first',), stage_progress=progress.append)
+    assert result['repairs'] == 1
+    assert progress == ['turn 1 of 1', 'reviewing', 'claim audit', 'repair 1', 'reviewing', 'claim audit']
+    assert calls == [{}, {'session': 'avery-thread'}]
+
+
 def test_model_access_probes_without_sources(tmp_path, monkeypatch):
     from connectonion.rem import runner as rem_runner
     prompts = []
