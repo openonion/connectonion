@@ -1116,7 +1116,9 @@ def make_rem_app(factory):
                                                        if language and not translation_skip else "")
             basis = f" ({origin})" if result["languages"]["languages"] else ""
             say(f"Languages: {names}{basis}. {writing}. To change: "
-                + _next(ctx, ["config", "set", "languages", "en"]))
+                + _next(ctx, ["config", "set", "languages", ",".join(result["languages"]["languages"])])
+                + " (current)" + (" — or `" + _next(ctx, ["config", "set", "languages", "en"])
+                                  + "` for English only." if language else ""))
             if translation_skip:
                 say("Translation: Runner not ready." if translation_skip.startswith("Runner not ready:")
                     else "Translation: " + translation_skip)

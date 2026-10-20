@@ -179,7 +179,7 @@ def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failu
     report = result['maintenance']['translations']
     assert calls == [(pages[1], 'zh'), (pages[2], 'zh')]
     assert [row['outcome'] for row in report['pages']] == ['cached', 'failed', 'translated']
-    assert report['runner_attempts'] == 2
+    assert report['attempted'] == 2
     assert report['pages'][1]['error'] == 'A quoted passage changed'
     assert any('Translation failed' in message for message in messages)
     log = next(log for log in daily.run_logs(root) if log['phase'] == 'daily-translation')
@@ -220,4 +220,4 @@ def test_daily_translation_respects_total_runner_cap(translation_root, monkeypat
     result = daily.run_daily(translation_root,
                              maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
                              translate_one=lambda *a: pytest.fail('daily cap exceeded'))
-    assert result['maintenance']['translations']['runner_attempts'] == 0
+    assert result['maintenance']['translations']['attempted'] == 0
