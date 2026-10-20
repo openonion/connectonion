@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc9
+## Current Version: 1.9.3rc10
+
+1.9.3rc10 is 1.9.3rc9 with one correction; stable remains 1.9.2. The packaged handoff blog post
+told its story with a real person and their business; it now uses a fictional sender. The code is
+unchanged. See [1.9.3rc10 notes](docs/releases/1.9.3rc10.md).
+
+- 1.9.3rc10 (the docs ship too).
+
+## Previous preview: 1.9.3rc9
 
 1.9.3rc9 is a REM candidate; stable remains 1.9.2. Person pages quote people: the quote floor,
 first contact, History order and owner pronouns are enforced in code, and mean quotes per person
@@ -411,7 +419,7 @@ conversation about other work stops and asks for a new one. See [1.9.3rc9 notes]
 
 - 1.9.3rc9 (pages that quote people).
 
-## Previous preview: 1.9.3rc8
+## Earlier preview: 1.9.3rc8
 
 1.9.3rc8 is a REM correction-maintenance candidate; stable remains 1.9.2.
 Subject changes without retained routing continuity no longer regain the prior
