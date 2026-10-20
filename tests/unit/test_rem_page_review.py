@@ -1773,3 +1773,13 @@ def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_remov
     from connectonion.rem.page_review import hedged_lines
     page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
     assert hedged_lines(page)
+
+
+def test_a_restored_line_keeps_an_unverifiable_quote_as_plain_words():
+    """2026-10-20 upkeep: a restored line carried a name quote its source did not hold; the update was refused."""
+    from connectonion.rem.page_review import restore_dropped
+    line = "- Theo writes as “Theo P.” and asks “Could you review it?” (2026-10-01) [1]"
+    before = f"# Theo Park\n\n## How they communicate\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01\n"
+    after = before.replace(line + "\n", "").replace("- [1] gmail:a — 2026-10-01\n", "")
+    restored = restore_dropped(before, after, frozenset({"Theo P."}))
+    assert "as Theo P. and asks “Could you review it?”" in restored

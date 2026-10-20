@@ -1748,6 +1748,10 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)
+        # A quote the cited source does not hold comes back as plain words: restored in
+        # quotation marks, it refused the whole update ("Quote is not in its cited source").
+        for quote in exempt:
+            restored = restored.replace(f'“{quote}”', quote)
         if restored and restored not in after.splitlines():
             after = _insert_restored_line(after, section, restored, lost_quotes, lost_sources)
     return after
