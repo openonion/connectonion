@@ -1712,3 +1712,11 @@ def test_a_carried_quote_that_is_not_in_its_source_is_not_guarded():
     assert dropped(before, after, exempt) == []
     assert restore_dropped(before, after, exempt) == after
     assert dropped(before, after) != []
+
+
+@pytest.mark.parametrize("line", ["- It is unclear whether Avery replied [2].", "- 目前无法确认是否完成 [2]",
+                                  "Avery may have sent it; this cannot be confirmed [1]."])
+def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_removes(line):
+    from connectonion.rem.page_review import hedged_lines
+    page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
+    assert hedged_lines(page)
