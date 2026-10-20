@@ -766,7 +766,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               sources_before_footer,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
-                              restore_dropped, dropped as dropped_content)
+                              restore_dropped, dropped as dropped_content, unverified_quotes)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -852,16 +852,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, again = facts.keep_extracted(record, text, extracted)
         restored = [*restored, *again]
         text = drop_uncited_sources(text)
+    exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
     if last_resort and carried:
         before_restore = text
-        text = restore_dropped(carried, text)
+        text = restore_dropped(carried, text, exempt)
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
-        errors += dropped_content(carried, text)
+        errors += dropped_content(carried, text, exempt)
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
