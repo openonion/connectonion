@@ -499,7 +499,9 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
     """Tracked source snapshots at one resolved revision, searched rather than read wholesale."""
     from .investigate import _git
     import subprocess
-    tree = _git(folder, "ls-tree", "-r", revision).splitlines()
+    # A diary file's name alone can say where the owner stayed; it is not listed at all.
+    tree = [line for line in _git(folder, "ls-tree", "-r", revision).splitlines()
+            if not any(PRIVATE.search(part) for part in Path(line.split("\t", 1)[-1]).parts)]
     files = [line.split("\t", 1)[1] for line in tree if line.startswith(("100644 ", "100755 "))]
     entrypoints = _declared_entrypoints(folder, revision)
     suffixes = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".swift", ".kt",

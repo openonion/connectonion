@@ -896,7 +896,7 @@ def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_p
     assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
 
 
-def test_implementation_evidence_excludes_diary_bodies_but_keeps_the_tree(tmp_path):
+def test_implementation_evidence_neither_reads_nor_lists_diary_files(tmp_path):
     repo = tmp_path / 'work'
     (repo / 'journal').mkdir(parents=True)
     (repo / 'journal/PEOPLE.md').write_text('Mia Chen [sensitive] diary entry.')
@@ -909,7 +909,7 @@ def test_implementation_evidence_excludes_diary_bodies_but_keeps_the_tree(tmp_pa
 
     items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
     assert {item['subject'] for item in items} == {'tracked-files', 'PEOPLE.md'}
-    assert 'journal/PEOPLE.md' in items[0]['text']
+    assert 'journal' not in items[0]['text'] and 'PEOPLE.md' in items[0]['text']
     assert any('Avery Lin reviews the delivery.' in item['text'] for item in items)
     assert all('[sensitive]' not in item['text'] for item in items)
 
