@@ -669,7 +669,9 @@
   .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .lead-calm { font: 600 10.5px var(--ui); letter-spacing: 0; text-transform: none; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
-  .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
+  .lead-meta.project-purpose-preview { display: block; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
+  .lead-meta.project-purpose-preview.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .leadrow .focus-more { flex-basis: 100%; margin: 0; text-align: left; }
   .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
   /* Standalone source controls need a full touch target. */
   .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
@@ -681,7 +683,7 @@
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--ink-3); }
   .fresh-dot { color: var(--fresh); font: 10px var(--ui); margin-left: 6px; vertical-align: middle; }
   .fresh-label { color: var(--dawn); font: 11px var(--ui); margin-left: 6px; white-space: nowrap; }
-  .updated-label { color: var(--ink-3); font: 12px var(--ui); }
+  .updated-label { white-space: nowrap; color: var(--ink-3); font: 12px var(--ui); }
   .updated-label .fresh-dot { margin: 0 5px 0 0; }
   .changed-value { text-decoration: underline; text-decoration-color: var(--fresh-soft); text-decoration-thickness: 3px; text-underline-offset: 4px; }
   .uncertain-marker { color: var(--unsure); font: 11px var(--ui); }
@@ -706,7 +708,7 @@
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
-  .factlist .val.mono > span:first-child { font: 11.5px var(--ui); }
+  .factlist .val.mono > .fact-tail, .factlist .val.mono > span:first-child { font: 11.5px var(--ui); }
   .factlist .val.derived { color: var(--ink-2); }
   .factlist .qual { margin-left: 6px; font: 10px var(--ui); color: var(--ink-3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
   .factlist .copy { position: absolute; right: 0; top: 5px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; cursor: pointer; opacity: 0; }
@@ -758,10 +760,15 @@
   .focus-section .threads { margin: 0; padding: 0; border-top: 0; }
   .focus-section .thread { margin: 0 0 8px; }
   .focus-section .thread:last-child { margin-bottom: 0; border-bottom: 0; }
+  .next-exchanges .thread { padding-inline: 0; }
   @media (min-width: 821px) {
-    .next-exchanges .thread { font: 16px/1.55 var(--text); grid-template-columns: 112px minmax(0, 72ch) auto; justify-content: start; }
+    .next-exchanges .thread { font: 16px/1.55 var(--text); grid-template-columns: 112px minmax(0, 1fr) auto; align-items: start; }
+    .next-exchanges .what { max-width: 72ch; }
     .next-exchanges .when { text-align: right; }
   }
+  .next-exchanges .when { justify-self: end; align-self: start; color: var(--ink-3); }
+  .next-exchanges .mine .when { color: var(--wait); font-weight: 600; }
+  .next-exchanges .when.overdue { color: var(--wait); }
   .record-focus.skills:has(~ .missing.primary) { margin-bottom: 0; }
   .record-focus.skills:has(~ .missing.primary) .focus-head { padding-bottom: 16px; }
   .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
@@ -774,8 +781,8 @@
   .contact-strip .contact-what { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-2); }
   .contact-strip .copy { margin-left: 8px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
   .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
-  .relation-entry { min-width: 0; }
-  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 0; overflow-wrap: anywhere; }
+  .relation-entry { min-width: 0; display: flex; flex-direction: column; }
+  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 0; overflow-wrap: anywhere; margin-top: auto; }
   .relation-provenance .cite { margin-left: 4px; }
   .relation-provenance > span:first-child .cite:first-child { margin-left: 0; }
   .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; align-items: start; }
@@ -784,14 +791,20 @@
   .relation-card strong { font: 600 14px var(--ui); color: var(--ink); }
   .relation-kind { font: 10px var(--ui); text-transform: none; letter-spacing: 0; color: var(--ink-3); }
   .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 13px/1.5 var(--ui); color: var(--ink-2); }
-  .more-relations { margin-top: 10px; }
-  .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
+  /* Only cards with snippets share desktop row height to align source dates.
+     Snippet-free cards keep their natural height; phone cards stay compact. */
+  @media (min-width: 821px) {
+    .relation-entry:has(.relation-basis) { align-self: stretch; }
+    :root.hide-private .relation-entry:has(.relation-basis.private) { align-self: start; }
+  }
+  .more-relations { margin-top: 8px; }
+  .more-relations > summary { cursor: pointer; font: 400 14px/1.5 var(--ui); color: var(--ink-2); display: list-item; padding: 0; box-sizing: border-box; }
   .more-relations .relation-list { margin-top: 10px; }
   .related-records { grid-column: 1 / -1; }
   .related-records > .more-relations { margin-top: 8px; }
   .related-records > .more-relations > summary { min-height: 0; padding: 0; font-weight: 400; }
-  @media (pointer: coarse) {
-    .related-records > .more-relations > summary { min-height: 44px; padding: 11px 0; }
+  @media (max-width: 820px), (pointer: coarse) {
+    .more-relations > summary, .related-records > .more-relations > summary { min-height: 44px; padding: 11px 0; }
   }
   .conversation-view, .documents { grid-column: 1 / -1; }
   .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
@@ -830,15 +843,17 @@
   .person-focus { max-width: 1120px; }
   .person-focus h2 { margin: 24px 0 12px; font: 600 18px/1.3 var(--display); }
   .between-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
-  .ledger-column { min-width: 0; border-top: 2px solid var(--ink); }
-  .ledger-column.mine { border-color: var(--wait); }
-  .ledger-column h3 { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; font: 600 16px/1.4 var(--ui); }
+  .ledger-column { min-width: 0; border-top: 1px solid var(--line); }
+  .ledger-column.mine .ledger-count { color: var(--wait); }
+  .ledger-column h3 { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; font: 600 15px/1.4 var(--ui); color: var(--ink); }
   .ledger-count { color: var(--ink-3); font-weight: 400; }
   .ledger-rows { list-style: none; padding: 0; margin: 0; }
-  .ledger-row { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .ledger-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
   .ledger-row p { margin: 0 0 5px; font: 16px/1.5 var(--text); }
-  .ledger-meta { display: block; color: var(--ink-2); font: 12px/1.4 var(--ui); }
-  .ledger-row.quiet .ledger-meta { color: var(--ink-3); }
+  .ledger-meta { grid-column: 2; grid-row: 1; justify-self: end; text-align: right; white-space: nowrap; color: var(--ink-3); font: 400 12px/1.5 var(--ui); }
+  .ledger-column.mine .ledger-meta { color: var(--wait); font-weight: 600; }
+  .ledger-row .thread-actions { grid-column: 1 / -1; }
+  .fact-tail { white-space: nowrap; }
   .overdue, .thread .when.overdue, .waiting-age.overdue b { color: var(--wait); }
   .ledger-more > summary { cursor: pointer; padding: 10px 0; min-height: 44px; color: var(--ink-2); font: 13px/1.5 var(--ui); }
   .person-insight dl { margin: 0; }
@@ -1021,6 +1036,11 @@
     .night .thesis { font-size: 22px; }
     .thread, .band .threads .thread, .block-threads .thread { grid-template-columns: minmax(0, 1fr); padding: 11px 14px; }
     .thread .when { order: -1; }
+    .next-exchanges .thread { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+    .next-exchanges .thread > .dir { grid-column: 1; grid-row: 1; }
+    .next-exchanges .thread > div { grid-column: 1 / -1; grid-row: 2; }
+    .next-exchanges .thread > .when { grid-column: 2; grid-row: 1; order: 0; }
+    .lead-meta.project-purpose-preview.clamped, .focus-head.purpose-lead .focus-statement.clamped { -webkit-line-clamp: 4; }
     .morning { margin: 24px 0 0; padding: 24px 0; border-top: 1px solid var(--line); color: var(--ink); }
     .morning-top { display: block; }
     .morning-time { display: block; margin-top: 10px; }
@@ -1709,6 +1729,13 @@ const UI = {
     "Purpose sources": "用途的来源",
     "At a glance": "概览",
     "Read full purpose": "展开用途",
+    "The supplied session sample did not confirm current project work.": "提供的会话样本未能确认项目当前的工作。",
+    "The {n}-day session sample did not confirm current project work.": "{n} 天的会话样本未能确认项目当前的工作。",
+    "No coding-session input was assigned to this project in this investigation.": "本次调查没有为此项目分配编程会话输入。",
+    "No coding-session input was assigned to this project in this {n}-day investigation.": "本次 {n} 天的调查没有为此项目分配编程会话输入。",
+    "On ": "来自 ",
+    "{n} person": "{n} 人",
+    "{n} people": "{n} 人",
     "Read complete finding": "展开发现",
     "Read complete relationship": "展开关系",
     "Read full context": "展开背景",
@@ -2186,6 +2213,7 @@ function togglePrivate() {
   button.textContent = t(hidden ? "Show labelled passages" : "Hide labelled passages");
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
   if (query) search(query);
+  refreshFocusExpansion();
 }
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme;
@@ -3097,7 +3125,7 @@ const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "
 // Values split on "; ", a trailing "(work)" is a qualifier, trailing [n] / [W1] are citations.
 const PARSED_FACTS = new Map();
 function parseFacts(r) {
-  const language = r.readLanguage ?? r.shown ?? (uiLanguage === "en" ? "" : uiLanguage);
+  const language = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
   const text = r.translations?.[language] ?? r.original ?? r.text;
   const key = JSON.stringify([r.path, language]), cached = PARSED_FACTS.get(key);
   if (cached?.text === text) return cached.facts;
@@ -3159,8 +3187,9 @@ function company(r) {
 // (#2067) only this function changes.
 const FACTS = new Map();
 function facts(r) {
-  if (FACTS.has(r.path)) return FACTS.get(r.path);
-  const k = known(r), contact = {}, parsed = parseFacts(r);
+  const parsed = parseFacts(r), cached = FACTS.get(r.path);
+  if (cached?.parsed === parsed && cached.text === r.text) return cached.value;
+  const k = known(r), contact = {};
   // Preserve qualifications, especially historical roles and affiliations.
   for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
   const text = r.text.replace(COMMENT, "");
@@ -3174,15 +3203,15 @@ function facts(r) {
     email: contact.email || ((text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0] || ""),
     company: contact.company || "", role: contact.role || "", phone: contact.phone || "",
     location: contact.location || contact["time zone"] || contact.timezone || "",
-    links: [...new Set((rawSection(r, "Contact").match(/https?:\/\/[^\s)\]]+/g) || []))].join(", "),
+    links: contact.links || [...new Set((rawSection(r, "Contact").match(/https?:\/\/[^\s)\]]+/g) || []))].join(", "),
     language: contact.language || "",
     how: lineOf("why they are here") || lineOf("our relationship"),
     first: (r.mail && r.mail.first) || (observed && observed[2]) || history[0] || field(/^First seen[:：]\s*(\S+)/),
     last: k.last || (r.mail && r.mail.last) || "", mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
-    what: (r.shown && contact["what they do"]) || lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
-    domain: r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
+    what: contact["what they do"] || lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
+    domain: contact.website || r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
@@ -3193,20 +3222,21 @@ function facts(r) {
   const x = r.index;
   if (x) {
     const take = (key, value) => { if (value != null && value !== "" && !(Array.isArray(value) && !value.length)) f[key] = value; };
-    take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
-    take("phone", x.phone); take("language", x.language);
+    if (!parsed.has("Email")) take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
+    if (!parsed.has("Phone")) take("phone", x.phone);
+    if (!parsed.has("Language")) take("language", x.language);
     // Reviewed page fields, including explicit Unknown, supersede derived index values.
     if (!parsed.has("Company")) take("company", x.company);
     if (!parsed.has("Role")) take("role", x.role);
-    take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
-    take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
+    if (!["Location", "Time zone", "Timezone"].some(label => parsed.has(label))) take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
+    if (!parsed.has("Links")) take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
     if (!r.shown || !f.how) take("how", x.how_known);
     take("first", x.first_contact);
     // The page census owns activity dates; an older index must not contradict it.
     take("last", r.last_activity === undefined ? x.last_contact : k.last);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
-  FACTS.set(r.path, f);
+  FACTS.set(r.path, { parsed, text: r.text, value: f });
   return f;
 }
 function plainValue(v) { return plainLine(v || ""); }
@@ -3219,7 +3249,7 @@ function openCell(f) {
   return el("span", { class: "open-cell " + thread.dir, title: displayLine(thread.text) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("span", { class: "txt", text: displayLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
-function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
+function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? t("Last contact in map") : "",
   text: shortDate(day) + (fromMap ? t(" · map") : "") }) : el("span", { class: "unk", text: "—" }); }
 function privateFallback(node) {
   const visible = node.cloneNode(true);
@@ -4858,7 +4888,7 @@ function legacyFact(r, label) {
     "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? f.last : "", "Email": f.email,
     "Last activity": r.category === "projects" ? k.last : "",
     "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
-    "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
+    "Your contacts": f.people ? t(f.people === 1 ? "{n} person" : "{n} people", { n: f.people }) : "", "Links": f.links
   }[label];
   return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
 }
@@ -4869,9 +4899,21 @@ function factValue(item, from) {
   const html = day ? esc(fmtDate(item.value)) : email ? '<a href="mailto:' + esc(item.value) + '">' + esc(item.value) + "</a>"
     : url ? '<a href="' + esc(item.value) + '" target="_blank" rel="noopener noreferrer">' + esc(item.value.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"
     : inline(item.value, from);
-  return el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
-    el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
-    item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
+  const value = el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
+    el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null]);
+  if (!item.citations.length) return value;
+  const cites = el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") });
+  softBreaks(value);
+  const walker = document.createTreeWalker(value.firstChild, NodeFilter.SHOW_TEXT);
+  let last;
+  while (walker.nextNode()) if (walker.currentNode.data.trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) last = walker.currentNode;
+  if (!last) { value.appendChild(cites); return value; }
+  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S+\s*$/.exec(last.data);
+  const range = document.createRange();
+  range.setStart(last, tail.index);
+  range.setEnd(value, value.childNodes.length);
+  value.appendChild(el("span", { class: "fact-tail" }, [range.extractContents(), cites]));
+  return value;
 }
 // A long address or path wraps after '@' or before '.' and '/', never mid-word.
 function softBreaks(node) {
@@ -4947,11 +4989,13 @@ function leadRow(r) {
   const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
   if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead)) {
     const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?。！？])?\s*$/, "$1").trim();
-    row.appendChild(privateFallback(el("span", { id: "what-it-is", class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
+    const statement = privateFallback(el("span", { id: "what-it-is", class: "lead-meta project-purpose-preview clamped", html: inline(preview, r.path) }));
+    row.append(statement, expansionButton(statement, "Read full purpose"));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
       [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) })]));
+  if (k.last && r.category === "projects") row.appendChild(el("span", { class: "lead-meta", text: t("Last mapped session") + " " + fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) }));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
     el("span", { class: "lead-meta usage-scope", text: t("Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome.") }));
@@ -4986,16 +5030,44 @@ function sidePanels(r, k) {
 }
 
 function refreshFocusExpansion() {
-  const statement = document.querySelector(".focus-statement");
-  const more = document.querySelector(".focus-more");
-  if (!statement || !more) return;
-  more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
+  document.querySelectorAll(".focus-more").forEach(more => {
+    const statement = document.getElementById(more.getAttribute("aria-controls"));
+    more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
+  });
+}
+function expansionButton(statement, label) {
+  const more = el("button", { type: "button", class: "focus-more", "aria-controls": statement.id,
+    "aria-expanded": "false", text: t(label), hidden: "" });
+  more.onclick = () => {
+    const clamped = statement.classList.toggle("clamped");
+    more.setAttribute("aria-expanded", String(!clamped));
+    more.textContent = t(clamped ? label : "Show less");
+    refreshFocusExpansion();
+  };
+  return more;
+}
+// Match the origin's first explicit link, as reader_model._forward_relations does.
+function translatedRelationBasis(origin, target) {
+  const text = uiLanguage !== "en" && origin?.translations?.[uiLanguage];
+  if (!text) return "";
+  const line = text.split(/^## Sources\b/im)[0].split("\n").find(line =>
+    [...line.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].some(match => resolve(origin.path, match[2]) === target));
+  if (!line) return "";
+  const basis = line.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "").replace(/^[- ]+/, "").trim();
+  return basis.length <= 220 ? basis : basis.slice(0, 220).replace(/\s+\S*$/, "").replace(/[ ,;:]+$/, "") + "…";
+}
+function localizedRelation(link, currentPath) {
+  if (uiLanguage === "en" || !link.basis) return { ...link, original: false };
+  const origin = byPath(link.via);
+  const field = /^([^:：\n]{1,40})[:：]/.exec(link.basis)?.[1];
+  const items = origin?.translations?.[uiLanguage] && field
+    ? parseFacts({ ...origin, readLanguage: uiLanguage }).get(field) : null;
+  const translated = items?.length ? t(field) + ": " + plainLine(items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; "), true)
+    : translatedRelationBasis(origin, origin?.path === link.path ? currentPath : link.path);
+  return { ...link, basis: translated || link.basis, original: !translated };
 }
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via);
-  const field = /^([^:：\n]{1,40})[:：]/.exec(link.basis || "")?.[1];
-  const items = origin?.shown && field ? parseFacts(origin).get(field) : null;
-  const basis = items?.length ? t(field) + ": " + plainLine(items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; "), true) : link.basis;
+  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis;
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
     "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
@@ -5003,9 +5075,10 @@ function relationCard(link, currentPath = "") {
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
-      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(basis) }) : null])]);
+      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(basis) }) : null,
+      basis && link.original ? originalMark() : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
-    origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
+    origin.path !== currentPath ? el("span", {}, [t("On "), el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
   return entry;
 }
@@ -5017,20 +5090,21 @@ function dedupeRelationSnippets(links) {
   const seen = [], normal = text => String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
   const duplicate = text => text && seen.some(shown => shown.includes(text) || text.includes(shown));
   return links.map(link => {
-    let basis = link.basis || "";
+    let basis = link.basis || "", original = link.original;
     if (duplicate(normal(basis))) {
       const page = byPath(link.path), k = known(page);
       const own = k.intro || facts(page).role || k.summary;
+      original = uiLanguage !== "en" && !page.translations?.[uiLanguage];
       basis = hasPrivacy(own) ? "" : plainLine(own).split(/(?<=[.!?])\s|(?<=[。！？])\s*/)[0].slice(0, 160);
       if (duplicate(normal(basis))) basis = "";
     }
     if (normal(basis)) seen.push(normal(basis));
-    return { ...link, basis };
+    return { ...link, basis, original };
   });
 }
 function connectedContext(r) {
   const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
-    && !(r.category === "projects" && byPath(link.path).category === "sessions"));
+    && !(r.category === "projects" && byPath(link.path).category === "sessions")).map(link => localizedRelation(link, r.path));
   if (!related.length) return null;
   const explicit = link => link.kind === "linked" || link.kind === "linked from";
   const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
@@ -5097,7 +5171,7 @@ function mappedProjectLine(r) {
   const sessions = (/^-\s*Sessions[:：]\s*(\d+)/m.exec(paths) || [])[1];
   const last = (/^-\s*Last seen[:：]\s*([0-9-]+)/m.exec(paths) || [])[1];
   return t("Not written yet") + (sessions ? t(sessions === "1" ? ": {n} session" : ": {n} sessions", { n: sessions }) +
-    (last ? t(", last on {day}", { day: last }) : "") : "") + (uiLanguage === "zh" ? "。" : ".");
+    (last ? t(", last on {day}", { day: fmtDate(last) }) : "") : "") + (uiLanguage === "zh" ? "。" : ".");
 }
 function personLead(r) {
   const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^(?:Now|现在)[:：]/i.test(t));
@@ -5190,20 +5264,13 @@ function recordFocus(r) {
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : ""), ...(projectNeedsContext ? { id: "what-it-is" } : {}) }, [el("span", { class: "focus-kicker", text: t(question) })]);
-  const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
+  const statementNode = privateFallback(el("p", { id: "focus-statement", class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? t("Mapped from source metadata. REM has not investigated this record yet.") : t("No supported summary yet.")), r.path) }));
   focusHead.appendChild(statementNode);
   if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
     const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
       r.category === "orgs" ? "Read complete relationship" : "Read full context";
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: t(label), hidden: "" });
-    more.onclick = () => {
-      const clamped = statementNode.classList.toggle("clamped");
-      more.setAttribute("aria-expanded", String(!clamped));
-      more.textContent = t(clamped ? label : "Show less");
-      refreshFocusExpansion();
-    };
-    focusHead.appendChild(more);
+    focusHead.appendChild(expansionButton(statementNode, label));
   }
   if (finding) {
     const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
@@ -5218,8 +5285,8 @@ function recordFocus(r) {
       [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
     const days = r.project_coverage?.days;
     const limit = r.project_coverage?.inputs_read === 0
-      ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
-      : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
+      ? t(days ? "No coding-session input was assigned to this project in this {n}-day investigation." : "No coding-session input was assigned to this project in this investigation.", { n: days })
+      : t(days ? "The {n}-day session sample did not confirm current project work." : "The supplied session sample did not confirm current project work.", { n: days });
     focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
   }
   if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
@@ -5250,19 +5317,26 @@ function recordFocus(r) {
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: t("View all decisions →") })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
-  const f = facts(r);
-  const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
-    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
-    : r.category === "projects" ? [["Last mapped session", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
-      : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
-      : [];
-  const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
-  if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
-    el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }), changedValue(el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(String(value), r.path), title: plainLine(String(value)) }), r, key)]))));
+  const strip = recordFacts(r);
+  if (strip) out.appendChild(strip);
   out.append(...recordContext(r).childNodes);
   const activity = activityPanel(r);
   if (activity) out.appendChild(activity);
   return out;
+}
+function recordFacts(r) {
+  const f = facts(r);
+  const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
+    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
+    : r.category === "projects" ? [["Mapped sessions", f.sessions], ["Local path", f.repo]]
+      : r.category === "orgs" ? (r.domain ? [] : [["Domain", f.domain]])
+      : [];
+  const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
+  return shown.length ? el("dl", { class: "focus-facts" }, shown.map(([key, value]) => {
+    const text = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? fmtDate(value) : String(value);
+    return el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }),
+      changedValue(el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(text, r.path), title: plainLine(text) }), r, key)]);
+  })) : null;
 }
 function recordContext(r) {
   const out = el("div", { class: "record-focus deep-context " + r.category });
@@ -5408,6 +5482,15 @@ function activityPanel(r, recent = false) {
   return rows.length ? box : null;
 }
 
+function recordEyebrow(r, person) {
+  const k = known(r), children = [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
+    updatedMarker(r, true), uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark() : null];
+  if (!person) children.push(el("span", { class: "sep", text: "/" }), statusPill(r));
+  if (!person && !["projects", "orgs"].includes(r.category)) children.push(el("span", { class: "when", text:
+    (k.last && !mappedContact(r) && r.category !== "skills" ? t("last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) }));
+  return el("div", { class: "eyebrow" }, children);
+}
+
 function record(path, heading) {
   const r = byPath(path);
   const main = document.getElementById("main");
@@ -5423,10 +5506,7 @@ function record(path, heading) {
   const disclosed = person || ["projects", "orgs", "skills", "decisions"].includes(r.category);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
-    updatedMarker(r, true),
-    uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark() : null,
-    ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? t(r.category === "projects" ? "last mapped session" : "last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) })])]));
+  main.appendChild(recordEyebrow(r, person));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
@@ -5497,7 +5577,7 @@ function record(path, heading) {
     || !!parts.related || !!parts.sources || sources > 0;
   const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
     el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("span", { class: "deep-label" }, [el("h2", { id: "full-memory-heading", text: t("Full memory and sources") }),
-      el("span", { class: "deep-hint", text: disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations") })]),
+      el("span", { class: "deep-hint", text: (disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations")) + (["projects", "orgs"].includes(r.category) ? " · " + t("File updated") + " " + fmtDate(r.updated) : "") })]),
       disclosed ? el("span", { class: "deep-toggle", "aria-hidden": "true" }) : null]), grid]);
   if (hasMemory) main.appendChild(deep);
   const column = grid.firstChild;
@@ -5550,7 +5630,7 @@ function record(path, heading) {
   foot.append(pathBtn, copyMd);
   const languages = languageBar(r);
   if (languages) foot.appendChild(languages);
-  foot.append(el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
+  if (!hasMemory || !["projects", "orgs"].includes(r.category)) foot.append(el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
   (deep.parentNode ? column : main).appendChild(foot);
 
   if (heading) {

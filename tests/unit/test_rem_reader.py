@@ -1481,3 +1481,246 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     assert compact_role['title'] == '合作负责人; 试点负责人; 研究联络人'
     assert compact_role['children'][0]['html'] == '合作负责人'
     assert compact_role['children'][1]['text'] == ' +2'
+
+
+@pytest.mark.parametrize('value, tail', [
+    ('Head of the Pilot Programme', 'Programme'), ('试点项目负责人', '人'), ('合作负责人。', '人。'),
+])
+def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail):
+    page = TEMPLATE.read_text()
+    function = re.search(r'function factValue\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const inline = text => text, softBreaks = node => node;
+      const citeChip = n => '<a class="cite">' + n + '</a>';
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        get firstChild() { return this.children[0]; }, get childNodes() { return this.children; },
+        appendChild(node) { this.children.push(node); }});
+      const NodeFilter = {SHOW_TEXT: 4};
+      const document = {
+        createTreeWalker(node) {
+          const text = {data: node.html, parentElement: {closest: () => null}};
+          let seen = false;
+          return {currentNode: text, nextNode() { if (seen) return false; seen = true; return true; }};
+        },
+        createRange() {
+          let text, offset;
+          return {setStart(node, start) { text = node; offset = start; }, setEnd() {},
+            extractContents() { return text.data.slice(offset); }};
+        }
+      };
+      console.log(JSON.stringify(factValue({value: ''' + json.dumps(value) + r''', citations: ['2'], qualifier: ''}, 'people/theo-park.md')));
+    ''')
+    tether = result['children'][-1]
+    assert tether['class'] == 'fact-tail'
+    assert tether['children'][0] == tail
+    assert tether['children'][1]['html'] == '<a class="cite">2</a>'
+    assert '.fact-tail { white-space: nowrap; }' in page
+
+
+def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from connectonion.rem.reader import snapshot
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    data = snapshot(build(tmp_path / 'rem', datetime(2026, 10, 20, 12, tzinfo=timezone.utc), zh=True))
+    mara = next(r for r in data['records'] if r['path'] == 'people/mara-ostrowski.md')
+    # An English index and a previously selected English page must not override the interface's values.
+    mara['shown'] = ''
+    mara['index'] = {'role': 'Old role', 'location': 'Old harbour town'}
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
+        'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'contactLine',
+        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'morningThread', 'translatedRelationBasis',
+        'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+    labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
+    columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + labels + columns + '\nUI.zh = ' + ui + r''';
+      const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
+      const r = ''' + json.dumps(mara) + r''';
+      const REM = {as_of: '2026-10-20'};
+      const known = () => ({last: '', summary: ''}), section = () => null, historyItems = () => [];
+      const listItems = () => [], threads = () => ({items: [], calm: false});
+      const youify = text => text, inline = text => text, softBreaks = node => node, privateFallback = node => node;
+      const changedValue = node => node, mappedContact = () => false, legacyFact = () => [], knownValue = Boolean;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        get childNodes() { return this.children; },
+        get textContent() { return (this.text || this.html || '') + this.children.map(n => typeof n === 'string' ? n : n?.textContent || '').join(''); },
+        appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); },
+        querySelectorAll() { return []; }, querySelector() { return null; }});
+      const panel = (title, children) => el('section', {title}, children);
+      const factValue = item => el('span', {text: item.value});
+      const textCell = text => el('span', {text}), dateCell = () => null;
+      const href = r => r.path, singular = () => '', byPath = path => path === r.path ? r : null;
+      const morningWords = () => ({words: '', context: ''}), threadActions = () => null, alsoOn = () => null;
+      const threadAge = () => '', blockerTag = () => null;
+      const english = facts(r);
+      uiLanguage = 'zh';
+      const f = facts(r), role = COLUMNS.people.find(c => c.key === 'role').cell(r, f);
+      const relation = relationCard(localizedRelation({path: r.path, via: r.path, kind: 'linked',
+        basis: 'Role: Head of Partnerships', sources: []}, 'orgs/fernhill-labs.md'), 'orgs/fernhill-labs.md');
+      console.log(JSON.stringify({english: english.role, role: f.role, location: f.location,
+        paths: {facts: factList(r), subtitle: contactLine(r), contact: contactStrip(r), table: role,
+          phone: peopleCardMeta(r, f), home: morningThread({r, t: {text: '', since: ''}, also: []}), relation}}));
+    ''')
+    assert result['english'] == 'Head of Partnerships'
+    assert result['role'] == '合作负责人'
+    assert result['location'] == '新西兰惠灵顿'
+    for name, output in result['paths'].items():
+        rendered = json.dumps(output, ensure_ascii=False)
+        assert '合作负责人' in rendered, name
+        assert 'Head of Partnerships' not in rendered, name
+    assert '新西兰惠灵顿' in json.dumps(result['paths']['facts'], ensure_ascii=False)
+
+
+def test_record_header_dates_appear_once_and_strip_dates_are_localized():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
+        'recordEyebrow', 'leadRow', 'recordFacts', 'fmtDate', 'calendarDay', 'daysSince', 'age'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + r''';
+      const REM = {as_of: '2026-10-20', owner: 'people/avery-lin.md'}, DAY_MS = 86400000;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
+      const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
+      const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
+      const statusPill = () => null, originalMark = () => null, mappedContact = () => false;
+      const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
+      const localPath = text => text;
+      const facts = () => ({last: '2026-10-17', sessions: 4, repo: '/work/harbour', domain: 'fernhill.example'});
+      const r = {path: 'projects/harbour.md', category: 'projects', translations: {zh: ''}, updated: '2026-10-19'};
+      const output = {};
+      for (const language of ['en', 'zh']) {
+        uiLanguage = language;
+        output[language] = ['projects', 'orgs'].map(category => {
+          r.category = category;
+          return {eyebrow: recordEyebrow(r, false), lead: leadRow(r), strip: recordFacts(r)};
+        });
+        r.category = 'people'; output[language].push(recordFacts(r));
+      }
+      console.log(JSON.stringify(output));
+    ''')
+    for language, date in [('en', 'Oct 17, 2026'), ('zh', '2026年10月17日')]:
+        for record in result[language][:2]:
+            header = json.dumps([record['eyebrow'], record['lead']], ensure_ascii=False)
+            assert header.count(date) == 1
+            assert '2026-10-17' not in header
+            assert 'file updated' not in json.dumps(record['eyebrow'])
+            assert '2026-10-17' not in json.dumps(record['strip'])
+        # A strip date that isn't represented in the record header is still localized.
+        assert date in json.dumps(result[language][2], ensure_ascii=False)
+    assert '3 天前' in json.dumps(result['zh'][1]['lead'], ensure_ascii=False)
+
+
+def test_purpose_expansion_controls_are_independent_and_keep_collapse_available():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['expansionButton', 'refreshFocusExpansion'])
+    result = _run_reader_js(functions + r''';
+      const statements = ['what-it-is', 'focus-statement'].map(id => {
+        const classes = new Set(['clamped']);
+        return {id, scrollHeight: 180, clientHeight: 80, classList: {
+          contains: value => classes.has(value),
+          toggle(value) { if (classes.has(value)) { classes.delete(value); return false; }
+            classes.add(value); return true; }}};
+      });
+      const el = (tag, attrs) => ({...attrs, setAttribute(k, v) { this[k] = v; },
+        getAttribute(k) { return this[k]; }});
+      const controls = statements.map(statement => expansionButton(statement, 'Read full purpose'));
+      const document = {querySelectorAll: () => controls,
+        getElementById: id => statements.find(statement => statement.id === id)};
+      refreshFocusExpansion();
+      const visible = controls.every(control => !control.hidden);
+      controls[0].onclick();
+      const expanded = controls[0]['aria-expanded'] === 'true' && controls[0].textContent === 'Show less'
+        && !statements[0].classList.contains('clamped') && statements[1].classList.contains('clamped');
+      statements[0].clientHeight = statements[0].scrollHeight;
+      statements[1].clientHeight = statements[1].scrollHeight;
+      refreshFocusExpansion();
+      const shortHidden = !controls[0].hidden && controls[1].hidden;
+      controls[0].onclick();
+      console.log(JSON.stringify({visible, expanded, shortHidden,
+        collapsed: controls[0]['aria-expanded'] === 'false' && controls[0].textContent === 'Read full purpose'
+          && statements[0].classList.contains('clamped')}));
+    ''')
+    assert result == dict(visible=True, expanded=True, shortHidden=True, collapsed=True)
+
+
+@pytest.mark.parametrize('days, inputs, expected', [
+    (None, 1, '提供的会话样本未能确认项目当前的工作。'),
+    (7, 1, '7 天的会话样本未能确认项目当前的工作。'),
+    (None, 0, '本次调查没有为此项目分配编程会话输入。'),
+    (7, 0, '本次 7 天的调查没有为此项目分配编程会话输入。'),
+])
+def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
+    page = TEMPLATE.read_text()
+    limit = page[page.index('    const days = r.project_coverage?.days;'):page.index('    focusHead.appendChild(el("p", { class: "focus-limit"')]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js('UI.zh = ' + ui + '; uiLanguage = "zh";\nconst r = ' + json.dumps({
+        'project_coverage': {'days': days, 'inputs_read': inputs}}) + ';\n' + limit + '\nconsole.log(JSON.stringify(limit));')
+    assert result == expected
+
+
+def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['translatedRelationBasis', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
+      const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
+        '# Fernhill Labs\n## People here\n- [Theo Park](../people/theo-park.md) — 代表试点团队确认了计划 [2].\n\n## Sources\n- [2] mail:invented'}};
+      const person = {path: 'people/theo-park.md', title: 'Theo Park', category: 'people'};
+      const byPath = path => [origin, person].find(r => r.path === path), href = r => r.path;
+      const youify = text => text, singular = () => '', inline = text => text;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        appendChild(node) { this.children.push(node); }});
+      const link = {path: person.path, via: origin.path, basis: 'Theo Park — confirmed the plan [2].', kind: 'linked', sources: ['2']};
+      const forward = relationCard(localizedRelation(link, origin.path), origin.path),
+        reverse = relationCard(localizedRelation({...link, path: origin.path, kind: 'linked from'}, person.path), person.path);
+      origin.translations.zh = '# Fernhill Labs\n## Sources\n- [Theo Park](../people/theo-park.md) — 来源说明不是关系。';
+      const missingLine = relationCard(localizedRelation(link, origin.path), origin.path);
+      delete origin.translations;
+      const missingCache = relationCard(localizedRelation(link, origin.path), origin.path);
+      console.log(JSON.stringify({forward, reverse, missingLine, missingCache}));
+    ''')
+    for direction in ['forward', 'reverse']:
+        basis = result[direction]['children'][0]['children'][2]
+        assert basis['text'] == 'Theo Park — 代表试点团队确认了计划 .'
+        assert '[2]' not in basis['text']
+        assert result[direction]['children'][0]['children'][3] is None
+    assert result['reverse']['children'][1]['children'][0]['children'][0] == '来自 '
+    for fallback in ['missingLine', 'missingCache']:
+        basis = result[fallback]['children'][0]['children'][2]
+        assert basis['text'] == 'Theo Park — confirmed the plan [2].'
+        assert result[fallback]['children'][0]['children'][3]['text'] == '原文'
+
+
+def test_chinese_connected_context_deduplicates_translated_snippets_before_fallbacks():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
+                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      UI.zh = {}; uiLanguage = 'zh';
+      const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
+        translations: {zh: '# Fernhill Labs\n- [Theo Park](../people/theo-park.md) 和 [Mia Chen](../people/mia-chen.md) 共同审阅了试点计划 [2].'}};
+      const theo = {path: 'people/theo-park.md', category: 'people', title: 'Theo Park', translations: {zh: ''}};
+      const mia = {path: 'people/mia-chen.md', category: 'people', title: 'Mia Chen', translations: {zh: '# Mia Chen\n负责核对试点团队的下一步安排。'}};
+      origin.relations = [theo, mia].map(r => ({path: r.path, via: origin.path, kind: 'linked',
+        basis: 'Theo Park and Mia Chen reviewed the pilot plan.', sources: ['2']}));
+      const byPath = path => [origin, theo, mia].find(r => r.path === path);
+      const known = r => ({intro: r === mia ? '负责核对试点团队的下一步安排。' : '负责试点。'}), facts = () => ({});
+      const youify = text => text, inline = text => text, singular = () => '', href = r => r.path;
+      const originalMark = () => ({text: '原文'});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        appendChild(node) { this.children.push(node); }});
+      console.log(JSON.stringify(connectedContext(origin)));
+    ''')
+    cards = result['children'][2]['children']
+    snippets = [card['children'][0]['children'][2]['text'] for card in cards]
+    assert snippets == ['Theo Park 和 Mia Chen 共同审阅了试点计划 .', '负责核对试点团队的下一步安排。']
+    assert all(card['children'][0]['children'][3] is None for card in cards)
