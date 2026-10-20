@@ -460,7 +460,7 @@ co rem deepen --pages 1
 co rem deepen projects/lantern-skills.md avery-lin
 ```
 
-Optional `PAGE...` selectors resolve like enrich/muse and deepen exactly those
+Optional `PAGE...` selectors resolve like enrich/muse and deepen only those
 pages once in the given order, checking the budget before each page; `--pages`
 limits automatic selection only.
 
@@ -473,10 +473,11 @@ the owner and mapped automated accounts; map rows supply activity, while unmappe
 projects use Sessions under Paths (0 if absent) and Last seen. Orgs sum their
 mapped people's mails and use those people's newest Last seen; unmapped people
 and orgs have value 0.
+Mapped orgs with no people, or only automated or one-way people, are excluded.
 The highest priority goes first, ties by record:
 
 ```text
-priority = log2(2 + value) × recent × thin / (1 + rounds)
+priority = log2(2 + value) ** 2 * recent * thin / (1 + rounds)
 value = mails for people, sessions for projects, its people's mails for orgs
 recent = 2 for activity within 30 days, otherwise 1
 thin = 1 / (1 + quotes/3 + sources/10)
@@ -495,6 +496,8 @@ separate from investigation's 35; `limits.depth_pages_per_slot` defaults to 2.
 The shared `limits.quota_floor_percent` (90) also stops new pages. Both bounds
 are checked before each page. Usage counts enrich and muse run logs within
 the reported quota window, or the last seven days when the meter is unknown.
+`limits.depth_slot_minutes` (default 60) stops new pages once elapsed slot time
+exceeds it, including explicit `PAGE...` selections; a started round finishes.
 Each picked page gets a line with its value, recent multiplier, quotes, sources
 and next round number. `--json` includes these selection metrics and priority
 under `picked` (`rounds` is the number of previous rounds).

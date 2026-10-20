@@ -259,20 +259,24 @@ Back:     co rem --help
 ```
 co rem deepen — deepen valuable thin pages over time, one enrich then muse round each.
 
-Choose notebook people, projects and orgs by value times thinness, with recent activity
-first and each previous round reducing priority. An unchanged round with no
+Choose notebook people, projects and orgs by value times thinness, boosting recent
+activity and reducing priority for each previous round. An unchanged round with no
 insights rests for 30 days; so do two consecutive rounds each gaining at most 1
 (new quotes + new sources + insights) and changing fewer than 600 characters
 in absolute terms. Rest starts at the last round. Each round reads earlier open leads and questions.
 Unmapped projects use Sessions under Paths and Last seen; other missing activity is zero.
 Org value sums its mapped people's mails; recency uses their newest Last seen.
+Mapped orgs with no people, or only automated or one-way people, are excluded.
+priority = log2(2 + value) ** 2 * recent * thin / (1 + rounds)
+Value is mails (people), sessions (projects), or its people's mails (orgs);
+recent is 2 within 30 days, otherwise 1; thin = 1 / (1 + quotes/3 + sources/10).
 
 Usage:    co rem deepen [PAGE...] [--pages N]
 Example:  co rem deepen --pages 1
           co rem deepen projects/lantern-skills.md avery-lin
 
 Arguments:
-  PAGE...       Resolve like enrich/muse; deepen each once in order, checking budget before each.
+  PAGE...       Resolve like enrich/muse; deepen in order within the slot's bounds.
                 Explicit pages bypass automatic selection and its resting period.
 
 Options:
@@ -281,6 +285,8 @@ Options:
 Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
           from investigation's 35. The shared 90% floor also stops new pages.
           Without a meter, the budget counts the last seven days of run usage.
+          limits.depth_slot_minutes (default 60) stops new pages after that elapsed
+          time, including explicit PAGE selections; a started round finishes.
 Output:   A picked line per page: value, recent multiplier, quotes, sources and round.
           JSON includes picked rows with priority and the number of previous rounds.
           Rounds with before/after metrics, insights, lost quotes, outcomes and
