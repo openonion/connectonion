@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import collections
 import hashlib
+import io
 import json
 import os
 import re
@@ -71,7 +72,7 @@ def _private_dir(path: Path) -> Path:
 
 
 def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | None = None,
-                     folders: dict | None = None) -> tuple[list[dict], dict]:
+                     folders: dict | None = None, sessions=None) -> tuple[list[dict], dict]:
     """Every message the user typed after `since`, with the folder it was typed in.
 
     A message typed in a workspace container carries the project folder its
@@ -90,26 +91,36 @@ def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | N
         if not root.is_dir() or root.is_symlink():
             continue
         parse, read_meta = KINDS[kind]["message"], KINDS[kind]["meta"]
-        for path in sorted(root.rglob(KINDS[kind]["glob"])):
-            if path.is_symlink() or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) < since:
+        paths = sessions.files[name] if sessions is not None else sorted(root.rglob(KINDS[kind]["glob"]))
+        for path in paths:
+            stat = sessions.stats[str(path)] if sessions is not None else path.stat()
+            if path.is_symlink() or datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
                 continue  # messages are appended with their own time: an older file holds none newer
             counts["files"] += 1
-            messages += _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
+            if sessions is None:
+                messages += _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
+            else:
+                material = _material_window(sessions.filing[str(path)], since)
+                messages += _material_messages(material, rem_root, counts, owner)
     return sorted(messages, key=lambda m: (m["timestamp"], m["source"])), counts
 
 
 def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner) -> list[dict]:
-    found, turns, held = [], [], []
-    with path.open("rb") as source:
+    material = _file_material(path.read_bytes(), path, kind, parse, read_meta, since)
+    return _material_messages(material, rem_root, counts, owner)
+
+
+def _file_material(data: bytes, path, kind, parse, read_meta, since) -> dict:
+    messages, turns, skipped = [], [], []
+    counts = {"harness": 0, "unfamiliar": 0}
+    with io.BytesIO(data) as source:
         first = source.readline(1_000_000)
         try:
             meta = read_meta(json.loads(first))
         except (ValueError, UnicodeError, AttributeError, RemError):
-            return []
+            return {"messages": [], "turns": [], "calls": [], "counts": counts, "skipped": []}
         if meta.get("skip") or meta.get("subagent"):
-            # The notebook's own model runs, and exec/subagent threads whose user slot is a
-            # program's: their messages are never the owner's (2,561 files read in full, 2026-10-20).
-            return []
+            return {"messages": [], "turns": [], "calls": [], "counts": counts, "skipped": []}
         offset = len(first)
         for line in source:
             at, offset = offset, offset + len(line)
@@ -121,36 +132,57 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
             except (ValueError, UnicodeError, AttributeError, TypeError, RemError):
                 continue
             if item is SKIPPED or item is UNFAMILIAR:
-                counts["unfamiliar" if item is UNFAMILIAR else "harness"] += 1
+                key = "unfamiliar" if item is UNFAMILIAR else "harness"
+                counts[key] += 1
+                skipped.append((timestamp(row.get("timestamp") or meta.get("timestamp")), key))
                 continue
             if not item or item.get("role") != "user":
                 continue
-            turns.append(at)  # every typed message opens a turn, wherever it was typed
-            cwd = item.get("cwd") or meta.get("cwd") or ""
-            why = "no folder recorded" if not cwd else project_exclusion(Path(cwd))
-            if not why and rem_root and Path(cwd).resolve().is_relative_to(rem_root.resolve()):
-                why = "the notebook itself"
+            turns.append(at)
             session = item.get("session") or meta.get("id") or path.stem
-            message = {"source": f"{kind}:{session}:{at}", "tool": kind,
-                       # One spelling, so times from both tools compare as text.
-                       "timestamp": timestamp(item["timestamp"]).isoformat(),
-                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
-                       **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}
-            if why == CONTAINER or (why == "temporary execution directory" and owner.worktree(cwd)):
-                held.append((at, message))
-            elif why:
-                counts["excluded"][why] = counts["excluded"].get(why, 0) + 1
-            else:
-                found.append(message)
-    return found + _attributed(path, kind, held, turns, owner, counts)
+            messages.append((at, {"source": f"{kind}:{session}:{at}", "tool": kind,
+                "timestamp": timestamp(item["timestamp"]).isoformat(),
+                "cwd": item.get("cwd") or meta.get("cwd") or "",
+                "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}))
+    # Attribution used a second disk read: 256 s for filing alone (2026-10-21).
+    # Keep raw paths until map has created the project pages that own them.
+    return {"messages": messages, "turns": turns, "counts": counts, "skipped": skipped,
+            "calls": _raw_evidence(data, kind, "") if messages else []}
 
 
-def _attributed(path, kind, held, turns, owner, counts) -> list[dict]:
+def _material_window(material, since):
+    messages = [(at, message) for at, message in material["messages"] if timestamp(message["timestamp"]) >= since]
+    counts = {"harness": 0, "unfamiliar": 0}
+    for when, key in material["skipped"]:
+        counts[key] += when >= since
+    return {**material, "messages": messages, "turns": [at for at, _ in messages], "counts": counts}
+
+
+def _material_messages(material, rem_root, counts, owner) -> list[dict]:
+    found, held = [], []
+    for key, value in material["counts"].items():
+        counts[key] += value
+    for at, message in material["messages"]:
+        cwd = message["cwd"]
+        why = "no folder recorded" if not cwd else project_exclusion(Path(cwd))
+        if not why and rem_root and Path(cwd).resolve().is_relative_to(rem_root.resolve()):
+            why = "the notebook itself"
+        if why == CONTAINER or (why == "temporary execution directory" and owner.worktree(cwd)):
+            held.append((at, message))
+        elif why:
+            counts["excluded"][why] = counts["excluded"].get(why, 0) + 1
+        else:
+            found.append(message)
+    return found + _attributed(material["calls"], held, material["turns"], owner, counts)
+
+
+def _attributed(calls, held, turns, owner, counts) -> list[dict]:
     """Messages typed in a workspace, each moved to the project folder its session worked in."""
     if not held:
         return []
     container = held[0][1]["cwd"]
-    chosen = _choose(_evidence(path, kind, container, owner), turns)
+    chosen = _choose(_owned_evidence(calls, container, owner), turns)
     found = []
     for at, message in held:
         folder = chosen(at)
@@ -180,14 +212,24 @@ def _choose(calls: list[tuple[int, set, bool]], turns: list[int]):
 
 
 def _evidence(path: Path, kind: str, container: str, owner) -> list[tuple[int, set, bool]]:
-    """Every tool call and change of folder in one session file: (offset, project folders, opens next turn).
+    return _owned_evidence(_raw_evidence(path.read_bytes(), kind, container), container, owner)
 
-    Only the calls, never their output: a path named in output is not a place
-    the session worked. One call counts once per folder, however often it names it.
-    """
+
+def _owned_evidence(calls, container, owner) -> list[tuple[int, set, bool]]:
+    found = []
+    for at, paths, relative, ahead in calls:
+        paths = paths | {os.path.normpath(os.path.join(container, path)) for path in relative}
+        folders = {owner(path, container) for path in paths} - {None}
+        if folders:
+            found.append((at, folders, ahead))
+    return found
+
+
+def _raw_evidence(data: bytes, kind: str, container: str) -> list[tuple]:
+    """Tool-named paths with byte offsets and turn-context direction, before ownership."""
     calls, here = [], container
     markers = CALL_MARKERS[kind]
-    with path.open("rb") as source:
+    with io.BytesIO(data) as source:
         offset = 0
         for line in source:
             at, offset = offset, offset + len(line)
@@ -201,9 +243,12 @@ def _evidence(path: Path, kind: str, container: str, owner) -> list[tuple[int, s
             if not named:
                 continue
             texts, here, ahead = named
-            folders = {owner(p, container) for text in texts for p in _paths(text, here)} - {None}
-            if folders:
-                calls.append((at, folders, ahead))
+            paths = {p for text in texts for p in _paths(text, here)}
+            relative = {p for p in paths if not here and not os.path.isabs(p)}
+            if kind == "claude-code" and not here:
+                relative.add("")  # Its missing cwd is the held message's container, resolved later.
+            if paths or relative:
+                calls.append((at, paths - relative, relative, ahead))
     return calls
 
 
@@ -406,7 +451,7 @@ def _keep_newest(messages: list[dict], cap: int) -> tuple[list[dict], int]:
 
 def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, full: bool = False,
             days: int = LOOKBACK_DAYS, now: datetime | None = None, recent_days: int = RECENT_DAYS,
-            lock_held: bool = False, create_pages: bool = True) -> dict:
+            lock_held: bool = False, create_pages: bool = True, sessions=None) -> dict:
     """Refresh every project page's material; return counts, never message text.
 
     With no `since`, the first extraction reads `days` back and every later one
@@ -420,7 +465,7 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
     was missing because its sessions began in a workspace container. `lock_held`
     says the caller already holds the maintenance lock the new pages need.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
     notebook = Notebook(root)
     base = _private_dir(state_path(root, "projects"))
     index = read_json(base / "index.json", {})
@@ -428,7 +473,7 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         previous = index.get("extracted_at")
         since = (timestamp(previous) - OVERLAP) if previous and not full else now - timedelta(days=days)
     folders = page_folders(notebook)
-    messages, counts = session_messages(subscriptions, since=since, rem_root=root, folders=folders)
+    messages, counts = session_messages(subscriptions, since=since, rem_root=root, folders=folders, sessions=sessions)
     filed_rows, created = (_new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
                            if create_pages else ([], []))
     if create_pages:

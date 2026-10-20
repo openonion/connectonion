@@ -1,7 +1,6 @@
 """Experimental co rem inspection. No collection or provider startup on import."""
 
 import json
-import multiprocessing
 import re
 import shlex
 import sys
@@ -14,12 +13,6 @@ from ...rem.files import MAP_DAYS
 from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
-
-
-def _warm_sessions_process(root: str) -> None:
-    from ...rem.investigate import warm_session_windows
-    from ...rem.service import subscriptions
-    warm_session_windows(Path(root), subscriptions(Path(root)))
 
 
 def _next(ctx, arguments):
@@ -496,7 +489,7 @@ def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
     return _capped(queue(root, recent_days=recent_days), cap)
 
 
-def _first_project_rows(root, cap) -> list[dict]:
+def _first_project_rows(root, cap, *, sessions=None) -> list[dict]:
     """Unwritten messages, then mapped projects with readable local evidence."""
     from ...rem.files import Notebook
     from ...rem.investigate import project_file_inventory
@@ -506,7 +499,7 @@ def _first_project_rows(root, cap) -> list[dict]:
     from ...rem.service import subscriptions
     # The map just extracted its full window and filed attributed folders.
     # Read only new messages; the project count already shown stays fixed.
-    extract(root, subscriptions(root), create_pages=False)
+    extract(root, subscriptions(root), create_pages=False, sessions=sessions)
     rows = queue(root)
     selected = {row['record'] for row in rows}
     notebook = Notebook(root)
@@ -966,23 +959,16 @@ def make_rem_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
             progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
-            warming = None
-            # A frozen co cannot spawn itself as Python; its pages build the cache instead.
-            if not estimate_only and write_mine is not False and not getattr(sys, "frozen", False):
-                # 2026-10-20: sharing the GIL made a 6 s project scan take 13 min
-                # during init. Spawn uses another core and warms the on-disk cache.
-                warming = multiprocessing.get_context("spawn").Process(
-                    target=_warm_sessions_process, args=(str(root),), daemon=True)
-                warming.start()
             try:
                 result = build_map(root, sources, clients, days=map_days, all_history=all_history,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
                                    absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
-                                   capture_sources=True, progress=progress)
+                                   capture_sources=True, progress=progress, session_days=days)
                 run_state["result"] = result
                 if not estimate_only:
                     from ...rem.sessions import import_sessions, summarise_line, summarise_sessions
-                    result["sessions"] = import_sessions(root, days=days, consented_only=True)
+                    result["sessions"] = import_sessions(root, days=days, consented_only=True,
+                                                         sessions=getattr(result, "sessions", None))
                     if not rem_runner.ready(config)[0]:
                         result["sessions_summary"] = summarise_sessions(root, limit=40, say=progress)
                         progress(summarise_line(result["sessions_summary"]))
@@ -1003,8 +989,6 @@ def make_rem_app(factory):
                     write_json(state_path(root, "map.json"), result)
             finally:
                 progress.close()
-                if warming:
-                    warming.join()
             unread = {row.get("source") for row in result.get("errors") or []}
             subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
@@ -1091,7 +1075,8 @@ def make_rem_app(factory):
             from .rem_people import counted
             from ...rem.service import run_logs
             people_rows = _first_people_rows(root, first_people, days)
-            project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
+            project_rows = (_first_project_rows(root, first_projects, sessions=getattr(result, "sessions", None))
+                            if first_projects != 0 else [])
             org_rows = _first_org_rows(root, first_orgs)
             from ...rem.queue import order
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
