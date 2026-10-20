@@ -25,6 +25,18 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc11**: upkeep keeps its quotes. Daily upkeep checks a rewrite against
+the page it replaces and asks for dropped quotes back; pronoun repair only touches the owner; project
+pages get a quote round; deepen weighs activity above emptiness; the reader shows pages in Chinese
+after `co rem translate --all --to zh`. See
+[1.9.3rc11 notes](releases/1.9.3rc11.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc11'
+```
+
+## Previous previews
+
 Release candidate **1.9.3rc10**: 1.9.3rc9 with one correction. The packaged handoff blog post
 now tells its story with a fictional sender instead of a real person; the code is unchanged. See
 [1.9.3rc10 notes](releases/1.9.3rc10.md).
@@ -32,8 +44,6 @@ now tells its story with a fictional sender instead of a real person; the code i
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc10'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc9**: pages that quote people. The quote floor, first contact, History
 order and owner pronouns are enforced in code (mean quotes per person page 6.8 to 22.4 on notebook
