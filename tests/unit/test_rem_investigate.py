@@ -311,6 +311,58 @@ def project_documents(tmp_path):
     return book, folder
 
 
+def test_project_mentions_excludes_diary_documents_unless_opted_in(tmp_path):
+    book = inv.Notebook(_notebook(tmp_path, 'codex'))
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Mia Chen reviews the delivery with Avery Lin.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    book.stub_project('projects/work.md', 'Work', [str(work)])
+    book.stub_project('projects/diary.md', 'Diary', [str(diary)])
+
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert [item['file'] for item in items] == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+    book.stub_project('projects/journal.md', 'Journal', [str(journal)])
+    for record in ('projects/journal.md', 'projects/diary.md'):
+        book.note_pass(record, 'investigated', 'project files')
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
+
+
+def test_project_inventory_excludes_diary_files_unless_opted_in(tmp_path):
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Avery Lin reviews the delivery.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    page = f'# Work\n## Paths\n- {work}\n- {diary}\n'
+
+    leads = inv.project_file_inventory(page)
+    assert leads == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in inv.project_file_texts(leads))
+
+    leads = inv.project_file_inventory(page, opted_in=frozenset({str(journal), str(diary)}))
+    items = inv.project_file_texts(leads)
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
+
+
 def test_project_mentions_reads_document_excerpts_and_redacts_secrets(project_documents):
     book, folder = project_documents
     note = folder / 'notes/a.md'
