@@ -589,11 +589,21 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   changed-field underline draws in about 600 ms. Filtering or rerendering the
   same view does not replay them; reduced motion shows the final state immediately.
   A short legend lives in **Reader settings**.
+- **Between you** on a person's page lists what you owe and what they owe in
+  two quiet columns; each thread's age sits at its top right, amber for what
+  you owe, as on Home. Project and organisation pages show each date once,
+  under the title, in the reader's date format; when the file was last
+  updated is noted in the Full memory and sources header. In 中文 mode,
+  Facts values and Connected context snippets come from cached translations
+  when they exist, and otherwise show the original with a 原文 mark.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
   recorded decision when supported. A project opens on its current supported
-  finding; on a phone, its purpose citations remain directly openable beside
-  the displayed purpose. When only part of its queued or archived session history was read,
+  finding; on a phone, a long purpose shows four lines with **Read full purpose**
+  (**展开用途**) to reveal the rest in one tap. Its citations stay directly after
+  the purpose and its toggle. Connected cards without a snippet stay compact;
+  desktop cards with snippets align their source dates across each row.
+  When only part of its queued or archived session history was read,
   the page says how many inputs were supplied. Explicit links and unambiguous name
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
