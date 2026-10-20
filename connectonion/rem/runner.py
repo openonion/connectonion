@@ -788,6 +788,7 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
         if row["verdict"] == "good":
             rejected.pop(row["bullet"], None)
     result.update(insight_proposals=proposals, insights_proposed=len(proposals),
+                  insights_flips=result.get("insights_flips", 0) + decision.get("critic_flips", 0),
                   insights_kept=sum(row["bullet"] in proposed and row["verdict"] == "good"
                                     for row in decision["bullets"]), insights_rejected=list(rejected.values()))
 
@@ -1511,7 +1512,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             usage = _add_usage(result.get("usage"), usage)
             # 2026-10-21: failed critic calls belong beside completed attempts in the run's audit trail.
             history = directory / "insight-critic.json"
-            write_json(history, [*read_json(history, []), {"error": str(error), "usage": error.usage or {}}])
+            previous = read_json(history, [])
+            previous = [previous] if isinstance(previous, dict) else previous
+            write_json(history, [*previous, {"error": str(error), "usage": error.usage or {}}])
         if prior_turn_usage and isinstance(error, RunFailed):
             usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
                      else _add_usage(prior_turn_usage, usage))
@@ -1526,7 +1529,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         from .feedback import prepare_promotion
         prepare_promotion(notebook.root, record, notebook.read(record), items, changed=False)
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
-    insight_counts = {key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}
+    insight_counts = {key: result[key] for key in
+                      ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}
     if "insights_kept" in insight_counts:
         from .insight_critic import new_bullets
         insight_counts["insights_kept"] = min(insight_counts["insights_kept"],

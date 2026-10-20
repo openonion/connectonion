@@ -470,6 +470,8 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
 
 Before muse saves the page, an independent reviewer checks each proposed new
 Insight bullet against its cited originals and the existing page, without seeing the writer's reasoning.
+Unresolved `git:` citations are read from the local checkout with `git show`, capped at 40,000 characters.
+The critic judges the same packet twice independently, keeps only bullets both calls rate good, and records both verdicts and their disagreement count.
 Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
 or a question still owed can move to Open threads.
 
