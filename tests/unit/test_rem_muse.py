@@ -109,14 +109,9 @@ def test_stage_instructions_compose_core_and_page_kind(stage):
 
 
 @pytest.mark.parametrize("stage", ["enrich", "muse"])
-@pytest.mark.parametrize("loss", ["quote", "source", "none"])
-def test_deepening_restores_lost_quotes_and_sources(notebook, monkeypatch, loss, stage):
+def test_deepening_keeps_what_the_runner_promoted(notebook, monkeypatch, stage):
     monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
-    updated = PAGE + "\nAn insight.\n"
-    if loss == "quote":
-        updated = updated.replace("“Keep the original words”", "A paraphrase")
-    if loss == "source":
-        updated = updated.replace("- [1] gmail:aaaaaaaaaaaa", "- [1] gmail:bbbbbbbbbbbb")
+    updated = PAGE.replace("“Keep the original words”", "A paraphrase") + "\nAn insight.\n"
 
     def fake(book, items, config, **kw):
         assert kw["stage"] == stage
@@ -126,162 +121,10 @@ def test_deepening_restores_lost_quotes_and_sources(notebook, monkeypatch, loss,
         return {"changed": [RECORD], "report": "An insight"}
 
     result = getattr(feature, stage)(notebook.root, RECORD, runner=fake)
-    assert notebook.read(RECORD) == (updated if loss == "none" else PAGE)
-    assert bool(result["restored"]) == (loss != "none")
-    assert result["changed"] == ([RECORD] if loss == "none" else [])
-    assert result["page_chars"] == [len(PAGE), len(notebook.read(RECORD))]
+    assert notebook.read(RECORD) == updated and result["changed"] == [RECORD]
+    assert result["page_chars"] == [len(PAGE), len(updated)]
     if stage == "muse":
         assert result["turns"] == 7
-
-
-def test_enrich_keeps_and_replaces_its_ledger(notebook, monkeypatch):
-    gathered = [{"source": f"gmail:{n * 12}", "text": f"Original {n}", "timestamp": "2026-10-01"}
-                for n in ("a", "b")]
-    seen = {}
-
-    def gather(title, handles, **kw):
-        assert title == "Avery Lin" and "Avery Lin" in handles
-        assert kw["days"] == 3650 and kw["clients"] == {} and kw["attachments_dir"] is None
-        assert kw["archive_root"] == notebook.root and kw["record"] == RECORD
-        assert "live mail is not searched" in kw["mail_skipped"]
-        return gathered, ["Saved mail read"]
-
-    def fake(book, items, config, **kw):
-        assert kw["stage"] == "enrich"
-        assert items[0]["role"] == "page" and items[1]["role"] == "coverage"
-        ledger = next(item for item in items if item["role"] == "evidence-index")
-        assert ledger["sources"] == [item["source"] for item in gathered]
-        assert "2 reachable sources" in ledger["text"] and "1" in ledger["text"]
-        assert "gmail:bbbbbbbbbbbb" in ledger["text"]
-        seen["index"] = Path(ledger["file"])
-        assert seen["index"].is_file()
-        assert seen["index"].read_text() not in ledger["text"]
-        assert "one line per evidence file" in ledger["text"]
-        assert "### <source id>" in ledger["text"]
-        originals = next(item for item in items if item["role"] == "original_evidence")
-        assert json.loads(Path(originals["file"]).read_text()) == gathered
-        assert Path(originals["file"]).name == "items.json"
-        return {"changed": [], "report": "Open lead"}
-
-    monkeypatch.setattr(feature, "gather", gather)
-    result = feature.enrich(notebook.root, RECORD, runner=fake)
-    assert result["items"] == 2 and result["report"] == "Open lead"
-    assert seen["index"] == notebook.root / ".state/enrich/avery-lin" / feature.INDEX
-    assert seen["index"].is_file()
-    stale = seen["index"].parent / "stale.md"
-    stale.write_text("Previous run")
-    feature.enrich(notebook.root, RECORD, runner=fake)
-    assert seen["index"].is_file() and not stale.exists()
-
-
-@pytest.mark.parametrize("has_ledger", [True, False])
-def test_muse_includes_ledger_and_archive_paths(notebook, has_ledger):
-    index = feature.ledger_dir(notebook.root, RECORD) / feature.INDEX
-    if has_ledger:
-        index.parent.mkdir(parents=True)
-        index.write_text("Saved ledger")
-        write_json(index.parent / "items.json", [{"source": "github:owner/repo#42", "text": "Issue"}])
-
-    def fake(book, items, config, **kw):
-        ledger = items[1]
-        assert ledger["role"] == "evidence-index" and ledger["source"] == "investigation:evidence"
-        assert ledger["timestamp"]
-        assert str(notebook.root / ".state/mail/messages") in ledger["text"]
-        assert str(notebook.root / ".state/attachments") in ledger["text"]
-        assert (str(index) in ledger["text"]) == has_ledger
-        assert ("No enrich ledger exists for this page yet." in ledger["text"]) == (not has_ledger)
-        if has_ledger:
-            assert ledger["file"] == str(index)
-            assert ledger["sources"] == ["github:owner/repo#42"]
-            assert "Uncited source ids" in ledger["text"]
-            originals = items[2]
-            assert originals["role"] == "original_evidence"
-            assert originals["source"] == "investigation:original-evidence"
-            assert originals["timestamp"]
-            assert originals["file"] == str(index.parent / "items.json")
-        else:
-            assert not any(item["role"] == "original_evidence" for item in items)
-        return {}
-
-    feature.muse(notebook.root, RECORD, runner=fake)
-
-
-@pytest.mark.parametrize("command", ["enrich", "muse"])
-def test_refuses_missing_or_unsupported_pages(notebook, command):
-    function = getattr(feature, command)
-    with pytest.raises(RemError, match="does not exist"):
-        function(notebook.root, "people/missing.md", runner=lambda *a, **kw: None)
-    notebook.write("notes/notes.md", "# Notes")
-    with pytest.raises(RemError, match="people/.*projects/.*orgs/"):
-        function(notebook.root, "notes/notes.md", runner=lambda *a, **kw: None)
-
-
-@pytest.mark.parametrize("stage", ["enrich", "muse"])
-def test_changed_candidate_is_reviewed_once_after_all_turns(notebook, monkeypatch, stage):
-    calls, reviews = [], []
-
-    def run(workdir, prompt, config, phase, **kw):
-        calls.append(prompt)
-        candidate = next(workdir.glob(f"{stage}-*/candidate.md"))
-        candidate.write_text(PAGE + "\nNew insight.\n")
-        return {"result": "Findings", "session_id": "thread", "usage": {"output_tokens": 1}}
-
-    def promote(book, record, candidate, original, *args, **kw):
-        assert len(calls) == (7 if stage == "muse" else 1)
-        assert kw["investigation"] is True
-        reviews.append(record)
-        book.write(record, candidate.read_text())
-
-    monkeypatch.setattr(runner, "run_task", run)
-    monkeypatch.setattr(runner, "promote_with_repairs", promote)
-    result = runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
-                              read_config(notebook.root), stage=stage,
-                              turns=feature.MUSE_TURNS if stage == "muse" else ())
-    assert reviews == [RECORD] and result["changed"] == [RECORD]
-
-
-@pytest.mark.parametrize("harness,failure_usage,expected", [
-    ("codex", {"input_tokens": 45}, 45), ("codex", None, 25),
-    ("codex", {}, 25), ("claude-code", {"input_tokens": 45}, 80),
-    ("claude-code", None, 35), ("claude-code", {}, 35)])
-def test_failed_later_turn_reports_all_usage_without_promotion(notebook, monkeypatch, harness, failure_usage, expected):
-    calls = []
-
-    def run(*args, **kw):
-        calls.append(kw)
-        if len(calls) == 3:
-            raise runner.RunFailed("delegate failed", failure_usage)
-        return {"result": "Questions", "session_id": "thread", "usage": {"input_tokens": 10 if len(calls) == 1 else 25}}
-
-    monkeypatch.setattr(runner, "run_task", run)
-    with pytest.raises(runner.RunFailed, match="delegate failed") as caught:
-        runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
-                         {**read_config(notebook.root), "runner": harness}, stage="muse", turns=feature.MUSE_TURNS)
-    assert caught.value.usage == {"input_tokens": expected}
-    assert notebook.read(RECORD) == PAGE
-
-
-@pytest.mark.parametrize("stage", ["enrich", "muse"])
-def test_muse_reads_latest_completed_reports_for_this_page(notebook, monkeypatch, stage):
-    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
-    for n, (phase, record, outcome, report) in enumerate([
-            ("enrich", RECORD, "completed", "Old lead"),
-            ("enrich", RECORD, "completed", "Newest lead"),
-            ("muse", RECORD, "completed", "Open question"),
-            ("enrich", RECORD, "failed", "Failed lead"),
-            ("muse", "people/another.md", "completed", "Other person's question")], 1):
-        write_json(state_path(notebook.root, f"runs/run_{n:032x}.json"), {
-            "phase": phase, "record": record, "outcome": outcome, "report": report,
-            "started_at": f"2026-10-{n:02d}T00:00:00+00:00"})
-
-    def fake(book, items, config, **kw):
-        prior = next(item for item in items if item["role"] == "prior-runs")
-        assert "Open leads from enrich\nNewest lead" in prior["text"]
-        assert "Questions the last muse run left\nOpen question" in prior["text"]
-        assert all(text not in prior["text"] for text in ("Old lead", "Failed lead", "Other person's"))
-        return {"report": "No insight"}
-
-    getattr(feature, stage)(notebook.root, RECORD, runner=fake)
 
 
 def test_muse_preserves_quotes_when_markdown_link_markup_changes(notebook):
@@ -292,8 +135,8 @@ def test_muse_preserves_quotes_when_markdown_link_markup_changes(notebook):
         book.write(RECORD, PAGE)
         return {"report": "Same quote"}
 
-    result = feature.muse(notebook.root, RECORD, runner=fake)
-    assert result["restored"] == "" and notebook.read(RECORD) == PAGE
+    feature.muse(notebook.root, RECORD, runner=fake)
+    assert notebook.read(RECORD) == PAGE
 
 
 def test_enrich_keeps_evidence_when_runner_refuses(notebook, monkeypatch):

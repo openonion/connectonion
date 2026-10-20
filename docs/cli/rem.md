@@ -451,8 +451,8 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
 
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
 if two repairs cannot restore them, the lost lines are put back as they were,
-with citations renumbered, so the page keeps its new work. A post-run guard
-also restores any remaining loss and reports it in the result.
+with citations renumbered, so the page keeps its new work. A quote the page
+had that is not in its cited source is not guarded.
 
 Both print whether the page changed and its size before and after, record a
 run in `co rem logs` (with usage, counted in the separate deepening budget),
