@@ -91,7 +91,7 @@ def prompt(language: str, quotes=()) -> str:
 
 def quoted_passages(text: str) -> Counter:
     """The reader's six-character quotations, including Markdown evidence lines."""
-    # The words, not the marks: “Hi Basem,” may come back as “Hi Basem”, in Chinese punctuation.
+    # The words, not the marks: “Hi Mara,” may come back as “Hi Mara”, in Chinese punctuation.
     quotes = [quote[1:-1].rstrip(",.;:!?，。；：！？ ")
               for quote in re.findall(r'“[^”\n]{6,}”|"[^"\n]{6,}"|「[^」\n]{6,}」', text)]
     quotes += re.findall(r"^[ \t]*>[^\n]{6,}$", text, re.M)

@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc10
+## Current Version: 1.9.3rc11
+
+1.9.3rc11 is a REM fix candidate; stable remains 1.9.2. Daily upkeep no longer drops a page's quotes
+(it now checks a rewrite against the page it replaces), pronoun repair only touches the owner,
+project pages get a quote round, deepen weighs activity above emptiness, and `co rem translate --all --to zh` gives the reader
+Chinese page content. See
+[1.9.3rc11 notes](docs/releases/1.9.3rc11.md).
+
+- 1.9.3rc11 (upkeep keeps its quotes).
+
+## Previous preview: 1.9.3rc10
 
 1.9.3rc10 is 1.9.3rc9 with one correction; stable remains 1.9.2. The packaged handoff blog post
 told its story with a real person and their business; it now uses a fictional sender. The code is
@@ -408,7 +418,7 @@ unchanged. See [1.9.3rc10 notes](docs/releases/1.9.3rc10.md).
 
 - 1.9.3rc10 (the docs ship too).
 
-## Previous preview: 1.9.3rc9
+## Earlier preview: 1.9.3rc9
 
 1.9.3rc9 is a REM candidate; stable remains 1.9.2. Person pages quote people: the quote floor,
 first contact, History order and owner pronouns are enforced in code, and mean quotes per person

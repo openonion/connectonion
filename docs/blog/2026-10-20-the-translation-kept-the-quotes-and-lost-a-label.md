@@ -16,8 +16,8 @@ Quotes are evidence, so they stay in the language they were written in. The
 prompt said so, and the model still turned “zero-risk things” into
 “零风险事情”. The check that runs before a translation is cached caught it.
 The prompt now lists each quoted passage by name, and the next run kept them. The
-check compares a quote's words, not its punctuation, because “Hi Basem,”
-legitimately comes back as “Hi Basem”, with the comma outside the quote.
+check compares a quote's words, not its punctuation, because “Hi Mara,”
+legitimately comes back as “Hi Mara”, with the comma outside the quote.
 
 The serious find came from the first real translated pages. A sentence the
 owner had labelled private ended "…联系 [personal]。" in Chinese. The
