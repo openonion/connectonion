@@ -450,6 +450,11 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
   its cited originals, and the latest enrich lead list and muse open questions
   for that page.
 
+Before muse saves the page, an independent reviewer checks each proposed new
+Insight bullet against its cited originals and the existing page, without seeing the writer's reasoning.
+Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
+or a question still owed can move to Open threads.
+
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
 if one repair cannot restore them, the lost lines are put back as they were,
 with citations renumbered, so the page keeps its new work. A quote the page

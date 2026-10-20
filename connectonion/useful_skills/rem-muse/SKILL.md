@@ -17,6 +17,9 @@ originals; what is missing is the right question. **Asking a precise question
 matters more than answering it.** Go slowly. One sharp insight is worth more
 than ten new facts.
 
+Each proposed `Insight` bullet is checked by an independent reviewer before
+it is saved; only good ones are kept. Propose fewer, stronger ones.
+
 Muse runs as one conversation. Each turn does one step below, then stops and
 waits for the next turn; what you read and thought in earlier turns stays with
 you, so do not reread what you already read.
@@ -111,6 +114,7 @@ Decide one of:
 Never answer from plausibility. An inference is labelled and rests on quotes.
 Each edit is small and cited; never rewrite a correct section, never drop a
 cited fact that is still true, keep every quote verbatim.
+An `At stake:` bullet names what the user loses or gains, and by when if a date is known.
 An `Insight` bullet states what is true and why it matters — a finding, not
 advice and not a hedge. It never tells the user what to do (`verify`,
 `agree`, `complete`, `confirm`, `pursue`, `should`): the action goes in the
@@ -131,6 +135,11 @@ reword it, and never replace a bullet with one its own sources contradict.
 Who said it is the original's author. An agent's or scheduler's prompt, a
 bot message, an issue or pull-request title, and a client's text the user
 forwarded are not the user's words: give each speaker their own verb.
+Evidence about another person (a draft an agent wrote to someone else, a
+different contact's thread) is not evidence about this subject. A broadcast
+or mass mail, newsletter or automated notice is never an ask or a commitment.
+A sentence the user wrote is the user's, even inside someone else's reply;
+never credit it to the correspondent.
 Quote a sentence only when it carries an ask, a decision, a commitment or
 a reason; never a command, a title, a greeting or a sign-off, and each
 sentence once per page. A thread is `open` only while a reply is owed, and

@@ -175,12 +175,14 @@ def test_deepen_records_metrics_insights_losses_and_points(root):
     def stage(path, record, name):
         calls.append(name)
         Notebook(path).write(record, enriched if name == "enrich" else after)
-        return {"insights": 2, "usage": {"input_tokens": 6_500_000, "cached_input_tokens": 500_000}}
+        return {"insights": 2, "insights_rejected": [{'bullet': '- Now: Avery received the deck. [1]',
+                 'verdict': 'weak', 'reason': 'One message.'}],
+                "usage": {"input_tokens": 6_500_000, "cached_input_tokens": 500_000}}
 
     row = depth.deepen(root, RECORD, stage=stage)
     assert calls == ["enrich", "muse"]
     assert row == {"record": RECORD, "round": 1, "at": TODAY.isoformat(), "chars": [len(PAGE), len(after)],
-                   "quotes": [1, 1], "sources": [1, 2], "insights": 2, "lost_quotes": 1,
+                   "quotes": [1, 1], "sources": [1, 2], "insights": 2, "insights_rejected": 1, "lost_quotes": 1,
                    "after_enrich": {"chars": len(enriched), "quotes": 2, "sources": 2},
                    "enrich": "completed", "muse": "completed", "points": 2}
     assert read_json(state_path(root, "depth.json"), {})[RECORD] == [{k: v for k, v in row.items() if k != "record"}]

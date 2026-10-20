@@ -12,6 +12,76 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+@pytest.mark.parametrize('heading', ['Open threads', 'Where it stands', 'Who they are'])
+@pytest.mark.parametrize('prefix', ['- ', ''])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_section_wide_duplicates_keep_longer_prose_and_all_citations(heading, prefix, reverse):
+    """2026-10-21: round two repeated an Open threads line and a status paragraph."""
+    from connectonion.rem.page_review import sort_history
+    short = prefix + 'The user owes Avery Lin the Lantern pilot price. [1]'
+    long = prefix + 'The user owes Avery Lin the Lantern pilot price before Friday. [2]'
+    rows = [short, long, short] if not reverse else [long, short, short]
+    page = f'# Avery Lin\n\n## {heading}\n' + ('\n' if prefix else '\n\n').join(rows) + '\n'
+    result = sort_history(page)
+    assert result.partition(f'## {heading}\n')[2].strip() == long + ' [1]'
+    assert sort_history(result) == result
+
+
+@pytest.mark.parametrize('heading', ['Sources', 'Paths', 'Facts', 'Contact', 'Domains'])
+def test_section_dedupe_leaves_excluded_sections_untouched(heading):
+    from connectonion.rem.page_review import sort_history
+    line = '- Avery Lin leads the Lantern pilot and needs the price. [1]'
+    page = f'# Avery Lin\n\n## {heading}\n{line}\n{line}\n'
+    assert sort_history(page) == page
+
+
+def test_section_dedupe_keeps_short_similar_lines_but_collapses_exact_duplicates():
+    from connectonion.rem.page_review import sort_history
+    lines = '- Send price. [1]\n- Send pilot price. [2]\n- Send price. [3]\n'
+    page = '# Avery Lin\n\n## Open threads\n' + lines
+    assert sort_history(page) == page.replace('- Send price. [1]', '- Send price. [1] [3]').replace('- Send price. [3]\n', '')
+
+
+def test_section_dedupe_groups_different_list_markers_together():
+    from connectonion.rem.page_review import sort_history
+    line = 'The user owes Avery Lin the detailed Lantern pilot price.'
+    page = f'# Avery Lin\n\n## Open threads\n- {line} [1]\n* {line} [2]\n'
+    assert sort_history(page) == f'# Avery Lin\n\n## Open threads\n- {line} [1] [2]\n'
+
+
+def test_section_dedupe_keeps_multiline_paragraphs_whole():
+    from connectonion.rem.page_review import sort_history
+    first = 'Avery Lin reads the Lantern pilot outline before starting.\nThen asks for the price. [1]'
+    second = 'Avery Lin reads the Lantern pilot outline carefully before starting.\nThen asks for the price before Friday. [2]'
+    page = f'# Avery Lin\n\n## Who they are\n{first}\n\n{second}\n'
+    result = sort_history(page)
+    assert second + ' [1]' in result and first not in result
+    assert result.count('Avery Lin reads') == 1 and sort_history(result) == result
+
+
+def test_exact_repeated_prose_lines_always_collapse_even_inside_one_paragraph():
+    from connectonion.rem.page_review import sort_history
+    page = '# Avery Lin\n\n## Open threads\nPrice owed. [1]\nPrice owed. [2]\n'
+    assert sort_history(page) == '# Avery Lin\n\n## Open threads\nPrice owed. [1] [2]\n'
+
+
+def test_section_dedupe_preserves_fenced_code_and_quotes_the_longer_line_lacks():
+    from connectonion.rem.page_review import sort_history
+    code = '```text\nAvery Lin owes a detailed Lantern pilot price.\nAvery Lin owes a detailed Lantern pilot price.\n```\n'
+    short = '- Avery Lin said “Send the pilot price” about Lantern. [1]'
+    long = '- Avery Lin said Send the pilot price about Lantern before Friday. [2]'
+    page = f'# Avery Lin\n\n## Open threads\n{code}\n{short}\n{long}\n'
+    assert sort_history(page) == page
+
+
+def test_section_dedupe_ignores_section_headings_inside_fenced_examples():
+    from connectonion.rem.page_review import sort_history
+    code = ('```markdown\n## Insight\n- Avery Lin needs the detailed Lantern pilot price. [1]\n'
+            '- Avery Lin needs the detailed Lantern pilot price. [1]\n```\n')
+    page = f'# Avery Lin\n\n## Open threads\n{code}'
+    assert sort_history(page) == page
+
+
 def test_a_fact_restored_from_mail_outside_the_quick_sample_keeps_its_source():
     candidate = '# Owner\n\nA dated fact [1].\n\n## Sources\n- [1] outlook:older — 2026-09-29\n'
     items = [{'role': 'facts', 'source': 'investigation:facts',
@@ -1581,13 +1651,13 @@ def test_same_date_history_duplicates_keep_longer_line_and_merge_all_citations(h
     short = '- 2026-10-20: Avery Lin shipped Lantern. [1][W1]'
     long = '- **2026-10-20** — Avery Lin shipped Lantern with a smaller interface. [2]'
     lines = [short, long, short] if not reverse else [long, short, short]
-    other = '- 2026-10-19: Avery Lin shipped Lantern. [3]'
+    other = '- 2026-10-19: Mara Ostrowski ended the Lantern pilot. [3]'
     page = (f'# Lantern\n\n## {heading}\n' + '\n\n'.join([*lines, other])
             + '\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n'
             '- [3] github:acme/lantern#13\n- [W1] https://example.com/lantern\n')
     result = sort_history(page)
     assert long + ' [1][W1]\n' + other in result
-    assert result.count('Avery Lin shipped Lantern') == 2
+    assert result.count('Avery Lin shipped Lantern') == 1
     assert not re.search(r'^- [^\n]+\n(?:[ \t]*\n)+- ', result.partition('\n## Sources')[0], re.M)
     assert sort_history(result) == result
 
@@ -1607,7 +1677,7 @@ def test_insight_duplicates_merge_by_label_without_reordering_or_limiting_bullet
     from connectonion.rem.page_review import sort_history
     short = f'- {label}: Avery Lin shipped the Lantern interface. [1][W1]'
     long = f'- {label}: Avery Lin shipped the smaller Lantern interface. [2]'
-    other = '- Different: Avery Lin shipped the Lantern interface. [3]'
+    other = '- Different: Mara Ostrowski renewed the Lantern pilot. [3]'
     distinct = [f'- {label}: Theo Park archived the abandoned database migration. [3]',
                 '- Changed: Mara Ostrowski declined the invitation. [3]',
                 '- Pattern: Theo Park prefers written replies. [3]']
