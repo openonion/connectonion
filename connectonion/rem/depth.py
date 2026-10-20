@@ -37,6 +37,10 @@ def _resting(rounds, today) -> bool:
     if not rounds:
         return False
     last = rounds[-1]
+    # A refused or failed round changed nothing because it was not let through, not because
+    # the page has nothing left (2026-10-20: a refused project round would have rested a month).
+    if last["enrich"] != "completed" or last["muse"] != "completed":
+        return False
     unchanged = all(last[key][0] == last[key][1] for key in ("chars", "quotes", "sources")) and last["insights"] == 0
     plateau = len(rounds) >= 2 and all(_gain(row) <= 1 and abs(row["chars"][1] - row["chars"][0]) < 600
                                        for row in rounds[-2:])

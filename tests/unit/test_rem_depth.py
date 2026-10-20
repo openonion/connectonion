@@ -34,7 +34,7 @@ def mapped(root, people=(), projects=(), orgs=(), owner=None):
 
 def round_row(**extra):
     return {"at": TODAY.isoformat(), "chars": [1, 2], "quotes": [1, 1], "sources": [1, 1],
-            "insights": 0, **extra}
+            "insights": 0, "enrich": "completed", "muse": "completed", **extra}
 
 
 def test_candidates_rank_value_thinness_recency_and_rounds(root):
@@ -390,3 +390,10 @@ def test_only_due_completed_scheduled_sync_deepens(root, monkeypatch, scheduled,
     if called:
         assert callable(calls[0]["stage"]) and callable(calls[0]["say"])
         assert "Deepened 0 pages; stopped: fixture floor" in result.stdout
+
+
+def test_a_refused_round_does_not_rest_the_page(root):
+    mapped(root, people=[{"record": RECORD}])
+    row = round_row(chars=[1, 1], enrich="refused", muse="refused")
+    write_json(state_path(root, "depth.json"), {RECORD: [row]})
+    assert [r["record"] for r in depth.candidates(root)] == [RECORD]
