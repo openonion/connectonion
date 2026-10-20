@@ -36,9 +36,22 @@ jobs:
           uv lock --check
           uv export --quiet --frozen --no-dev --no-emit-project \
             --output-file "$RUNNER_TEMP/connectonion-audit-requirements.txt"
+          # Pillow 12.3.0 advisories CVE-2026-112395, CVE-2026-112397, CVE-2026-112400,
+          # CVE-2026-112404, CVE-2026-112895, CVE-2026-112896, CVE-2026-112897 and
+          # CVE-2026-112899 are fixed only in Pillow 13.0.0, which requires Python 3.11;
+          # no patched 12.x exists, so the lock keeps 12.3.0 for Python 3.10 alone.
+          # Ignored on Python < 3.11 only; every other advisory, and these on 3.11+, fail.
+          # Revisit when 3.10 support is dropped or a 12.x fix ships.
+          ignore=""
+          if python -c 'import sys; sys.exit(sys.version_info >= (3, 11))'; then
+            for id in CVE-2026-112395 CVE-2026-112397 CVE-2026-112400 CVE-2026-112404 \
+                      CVE-2026-112895 CVE-2026-112896 CVE-2026-112897 CVE-2026-112899; do
+              ignore="$ignore --ignore-vuln $id"
+            done
+          fi
           python -m pip_audit \
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \
-            --disable-pip --strict --progress-spinner off
+            --disable-pip --strict --progress-spinner off $ignore
 
   test:
     runs-on: ubuntu-latest
