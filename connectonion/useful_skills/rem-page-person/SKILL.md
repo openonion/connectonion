@@ -15,7 +15,7 @@ sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 ```markdown
 # <observed name>
 
-<lead>. Last contact: <date>.
+<lead>
 
 ## Facts
 - Email: Unknown
@@ -55,7 +55,7 @@ Rules:
   them` carry the speaker's exact words, `“<words>” (YYYY-MM-DD) [n]`.
   Retell only routine sequence and Facts. Fewer than six quotes from more
   than three messages, or ten from more than five, means you retold.
-- **Lead: three cited sentences, then `Last contact: <date>, <channel>.`**
+- **Lead: three cited sentences**; the last contact date lives in `Facts` only.
   (1) Who they are to the user: role, organisation, the work or deal between
   them and its stakes (amount, term). (2) What is live: the most consequential
   open item, who owes whom, the ask as a short exact quote with its date and

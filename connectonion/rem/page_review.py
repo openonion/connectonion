@@ -1962,3 +1962,21 @@ def unquoted_decisions(text: str) -> list[str]:
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "
             "copied from the message the line cites" for line in lines]
+
+
+LEAD_LAST_CONTACT = re.compile(r"[ \t]*Last contact:[^\n]*?\d{4}-\d{2}-\d{2}[^\n]*$", re.I)
+
+
+def lead_without_last_contact(record: str, text: str) -> str:
+    """An investigated person's lead ends with its sentences, not the date `Facts` and the reader already show.
+
+    2026-10-20: the last contact date appeared three times on one screen. A mapped
+    stub keeps its "Last contact: <date>; N mails" lead until it is investigated.
+    """
+    if not record.startswith("people/") or "not investigated yet" in text.partition("\n## ")[0]:
+        return text
+    title, _, rest = text.partition("\n")
+    lead, marker, tail = rest.partition("\n## ")
+    cut = re.sub(r"(?m)(?<=[.!?。）)\]])" + LEAD_LAST_CONTACT.pattern, "", lead, flags=re.I)
+    cut = re.sub(r"(?m)^" + LEAD_LAST_CONTACT.pattern + r"\n?", "", cut, flags=re.I)
+    return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
