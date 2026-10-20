@@ -30,3 +30,22 @@ def test_one_real_correspondent_keeps_the_domain(tmp_path):
     rows, _ = map_orgs(notebook, people, "2026-10-20", 180, _record_for)
     assert [row["domain"] for row in rows] == ["eventsdesk.example"]
     assert rows[0]["people"] == ["people/events-codes.md", "people/theo-park.md"]
+
+
+def test_owner_domain_gets_a_company_page_even_without_another_correspondent(tmp_path):
+    notebook = Notebook(tmp_path)
+    owner = {'record': 'people/avery.md', 'addresses': ['avery.lin@example.ai']}
+    notebook.stub_person(owner['record'], 'Avery Lin', email=owner['addresses'][0])
+    rows, created = map_orgs(notebook, [], '2026-10-20', 180, _record_for, owner)
+    assert rows[0]['domain'] == 'example.ai' and rows[0]['own'] is True
+    assert created == ['orgs/example-ai.md']
+    assert notebook.path(created[0]).is_file()
+
+
+def test_company_named_on_owner_page_keeps_a_notice_only_domain(tmp_path):
+    notebook = Notebook(tmp_path)
+    owner = {'record': 'people/avery.md', 'addresses': ['avery.lin@gmail.com']}
+    notebook.write(owner['record'], '# Avery Lin\n\n- Company: Example\n')
+    people = [{'address': 'notices@example.ai', 'record': None}]
+    rows, created = map_orgs(notebook, people, '2026-10-20', 180, _record_for, owner)
+    assert rows[0]['own'] is True and created == ['orgs/example-ai.md']
