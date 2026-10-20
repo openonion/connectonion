@@ -1600,6 +1600,39 @@ def test_exact_history_duplicates_collapse_but_distinct_same_date_decisions_rema
     assert sort_history(page) == page.replace(f'{first}\n{first}', first)
 
 
+@pytest.mark.parametrize('label', ['Now', 'Changed', 'Pattern', 'At stake'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_insight_duplicates_merge_by_label_without_reordering_or_limiting_bullets(label, reverse):
+    """2026-10-21: a second deepening left two near-identical Now bullets among five."""
+    from connectonion.rem.page_review import sort_history
+    short = f'- {label}: Avery Lin shipped the Lantern interface. [1][W1]'
+    long = f'- {label}: Avery Lin shipped the smaller Lantern interface. [2]'
+    other = '- Different: Avery Lin shipped the Lantern interface. [3]'
+    distinct = [f'- {label}: Theo Park archived the abandoned database migration. [3]',
+                '- Changed: Mara Ostrowski declined the invitation. [3]',
+                '- Pattern: Theo Park prefers written replies. [3]']
+    lines = [short, long] if not reverse else [long, short]
+    page = ('# Lantern\n\n## Insight\n' + '\n'.join([*lines, other, *distinct])
+            + '\n\n## Sources\n- [1] gmail:avery\n- [2] github:acme/lantern#12\n'
+            '- [3] gmail:theo\n- [W1] https://example.com/lantern\n')
+    expected = page.replace('\n' + short, '').replace(long, long + ' [1][W1]')
+    assert sort_history(page) == expected
+    assert sort_history(expected) == expected
+
+
+@pytest.mark.parametrize('wording,count', [('“Keep small tools”', 1), ('Keep small tools', 2)])
+def test_insight_dedupe_keeps_a_quote_missing_from_the_longer_bullet(wording, count):
+    """2026-10-21: Insight uses the same quote guard as dated decisions."""
+    from connectonion.rem.page_review import sort_history
+    short = '- Now: Avery Lin said “Keep small tools” for Lantern. [1]'
+    long = f'- Now: Avery Lin said {wording} for Lantern and shipped the smaller interface. [2]'
+    page = f'# Lantern\n\n## Insight\n{short}\n{long}\n'
+    result = sort_history(page)
+    assert result.count('- Now:') == count
+    assert '“Keep small tools”' in result
+    assert sort_history(result) == result
+
+
 def test_restore_keeps_rewrite_with_new_sources_and_restores_lost_evidence():
     from connectonion.rem.page_review import dropped, restore_dropped
     before = ('# Avery Lin\n\n## Who they are\n'
@@ -1709,6 +1742,29 @@ def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed)
     """2026-10-20: the first owner-pronoun repair wrote "the user was the user's direct manager"."""
     from connectonion.rem.page_review import owner_pronouns
     assert owner_pronouns(page)[0] == fixed
+
+
+def test_owner_names_become_the_user_outside_quotes_code_and_sources():
+    """2026-10-21: a new Changed bullet named the owner by first name."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Mara Ostrowski\n\nAvery Lin handed Mara the deck. Avery\'s reply arrived.\n'
+            'On October 14 Avery handed it over; avery and Averyson stayed.\n'
+            '- Changed: Avery Lin\'s deck reached Mara.\n'
+            '**Avery Lin** agreed; Avery’s deck arrived.\n'
+            'Mara quoted “Avery sent it” and "Avery Lin agreed" and `Avery`.\n'
+            "Mara quoted 'Avery agreed' and ‘Avery Lin agreed’.\n"
+            '``Avery Lin `Avery` `` stays code.\n'
+            '```python\nAvery Lin\n```\n\n## Sources\n- [1] https://example.com/Avery\n')
+    expected = (page.replace('Avery Lin handed', 'The user handed')
+                .replace("Avery's reply", "The user's reply")
+                .replace('October 14 Avery handed', 'October 14 the user handed')
+                .replace("Changed: Avery Lin's deck", "Changed: The user's deck")
+                .replace('**Avery Lin** agreed; Avery’s deck', "**The user** agreed; the user's deck"))
+    assert owner_name_to_user(page, ['Avery Lin', 'Avery']) == expected
+    assert owner_name_to_user(expected, ['Avery Lin', 'Avery']) == expected
+    assert owner_name_to_user(page, []) == page
+    assert owner_name_to_user(page.replace('## Sources\n', '## Sources \n'), ['Avery Lin', 'Avery']) == \
+        expected.replace('## Sources\n', '## Sources \n')
 
 
 def test_a_qualified_first_contact_is_put_back_over_unknown():

@@ -774,6 +774,20 @@ def _owner_phones(notebook, record) -> list[str]:
             if "unknown" not in part.casefold() and part.strip()]
 
 
+def _owner_names(notebook, record) -> list[str]:
+    """2026-10-21: a first name stands for the owner only when no other title shares it."""
+    if not record or not notebook.exists(record):
+        return []
+    title = lambda page: next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')  # noqa: E731
+    full = title(notebook.read(record))
+    if not full:
+        return []
+    first = full.split()[0]
+    collision = any(title(notebook.read(person)).split()[:1] == [first]
+                    for person in notebook.list('people') if person != record)
+    return [full] if collision or first == full else [full, first]
+
+
 def _lead(text: str) -> str:
     """The prose between a page's title and its first section."""
     body = re.split(r"(?m)^## ", text.partition("\n")[2], maxsplit=1)[0]
@@ -802,7 +816,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        stage_progress=None):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
-                              drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
+                              drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
@@ -879,7 +893,6 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Repair them first; the next promotion still runs the complete validator.
     from .page_review import drop_claims, merge_duplicate_sections, misquoted
     text = fold_history(sort_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record")))))
-    text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
     if investigation:
         text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
     refuted, unlocated, restored_lines = [], [], 0
@@ -903,6 +916,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
+    # 2026-10-21: restored carried lines must follow the owner's naming rule too.
+    if carried:
+        text = owner_name_to_user(text, _owner_names(notebook, owner.get("record")))
+    text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
     if record == owner.get("record") and (not ask_quotes or last_resort):
         text = move_agent_threads(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),

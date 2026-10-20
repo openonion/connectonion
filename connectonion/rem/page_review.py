@@ -1024,18 +1024,19 @@ def history_note(page: str) -> str:
 DATED = re.compile(r'^- \**(?P<date>(?P<year>\d{4})(?:-\d{2}){0,2})\**[ \t]*[:—–-][ \t]*(?P<text>.*)$')
 
 
-def _dedupe_history(lines: list[str]) -> list[str]:
+def _dedupe_history(lines: list[str], key=DATED) -> list[str]:
     """2026-10-20: one date's near-duplicate decisions survived four deepening rounds.
 
-    Keep the longer same-date line, with the shorter one's citations.
+    Keep the longer same-key line, with the shorter one's citations.
+    2026-10-21: Insight repeats the same finding under one label after deepening.
     """
+    keys = {i: match[1].strip('* ') for i, line in enumerate(lines) if (match := key.match(line))}
     clean = {i: re.sub(r'\[W?\d+\](?!\()', '', line).strip()
-             for i, line in enumerate(lines) if DATED.match(line)}
+             for i, line in enumerate(lines) if i in keys}
     kept, removed = {}, set()
     for i in sorted(clean, key=lambda i: len(clean[i]), reverse=True):
-        date = DATED.match(lines[i])['date']
         # A line with a quote the longer one lacks stays: glued on, a quote reads as nonsense.
-        same = next((j for j in kept if DATED.match(lines[j])['date'] == date
+        same = next((j for j in kept if keys[j] == keys[i]
                      and _contained(clean[i], clean[j]) >= 0.8
                      and quotes(lines[i]) <= quotes(kept[j])), None)
         if same is None:
@@ -1050,21 +1051,23 @@ def _dedupe_history(lines: list[str]) -> list[str]:
 
 
 def sort_history(text: str) -> str:
-    """History and Key decisions newest first, in code: a dated story read out of order misleads.
+    """History and Key decisions newest first; Insight duplicates merge by label.
 
     2026-10-20 trial: three of five first-run person pages put one line out of
     order although the Skill says newest first. Undated lines keep their place
     after the dated ones; distinct lines of one date keep the turn's order.
     Same-date duplicates merge citations, and blank lines cannot split the list.
     """
-    for heading in ('History', 'Key decisions'):
+    for heading in ('History', 'Key decisions', 'Insight'):
         span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
         if not span:
             continue
-        lines = _dedupe_history(span[1].split('\n'))
-        dated = [line for line in lines if DATED.match(line)]
-        ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
-        lines = [next(ordered) if DATED.match(line) else line for line in lines]
+        key = re.compile(r'^- ([^:]+):') if heading == 'Insight' else DATED
+        lines = _dedupe_history(span[1].split('\n'), key)
+        if heading != 'Insight':
+            dated = [line for line in lines if DATED.match(line)]
+            ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
+            lines = [next(ordered) if DATED.match(line) else line for line in lines]
         body = re.sub(r'(?m)(^- [^\n]+)\n(?:[ \t]*\n)+(?=- )', r'\1\n', '\n'.join(lines))
         text = text[:span.start(1)] + body + text[span.end(1):]
     return text
@@ -1895,6 +1898,32 @@ def _owner_pronouns(sentence: str, skip: str = "") -> tuple[str, int]:
             last = kind
     out.append(sentence[at:])
     return "".join(out), changed
+
+
+def owner_name_to_user(text: str, names: list[str]) -> str:
+    """2026-10-21: deepening named the owner instead of saying "the user"."""
+    if not names:
+        return text
+    name = re.compile(r"\b(?:" + '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+                      + r")\b(['’]s)?")
+    head, *sources = re.split(r'(?m)(^## Sources[ \t]*\n)', text, maxsplit=1)
+    protected = re.compile(r'(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)|“[^”]*”|"[^"\n]*"|‘[^’]*’'
+                           r"|(?<!\w)'[^'\n]+'(?!\w)")
+    lines = []
+    for line, visible in zip(head.split('\n'), prose(head).split('\n')):
+        if not visible.strip() or line.startswith('#'):
+            lines.append(line)
+            continue
+        parts, at = [], 0
+        def replace(match):
+            prefix = line[:at + match.start()]
+            initial = re.search(r'(^|[.!?]\s+|^[-*] (?:[^:\n]+:\s*)?)[*_]*$', prefix)
+            return ('The user' if initial else 'the user') + ("'s" if match[1] else '')
+        for span in protected.finditer(line):
+            parts.extend([name.sub(replace, line[at:span.start()]), span[0]])
+            at = span.end()
+        lines.append(''.join(parts) + name.sub(replace, line[at:]))
+    return '\n'.join(lines) + ''.join(sources)
 
 
 def owner_pronouns(text: str) -> tuple[str, int]:
