@@ -35,7 +35,7 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
         assert candidate.read_text().endswith(bullet + '\n')
         candidate.write_text('# Avery Lin\n\n## Insight\n')
         return {'bullets': [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}],
-                'usage': {'input_tokens': 3}}
+                'usage': {'input_tokens': 3}, 'critic_flips': 1}
 
     def promote(book, page, candidate, *args, **options):
         calls.append('promote')
@@ -52,6 +52,9 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
     assert result['usage'] == {'input_tokens': 13 if stage == 'muse' else 10}
     if stage == 'muse':
         assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_flips'] == 1
+        logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+        assert logged['insights_flips'] == 1
         assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
     else:
         assert 'insights_kept' not in result
@@ -71,7 +74,7 @@ def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch
 
     def critic(*args):
         critics.append(args)
-        if critic_fails and len(critics) == 2:
+        if critic_fails and len(critics) == 4:
             if critic_fails is True:
                 raise RunFailed('Critic failed', {'input_tokens': 3})
             return {'result': '[]' if critic_fails == 'invalid-root' else '{invalid', 'usage': {'input_tokens': 3}}
@@ -93,21 +96,21 @@ def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch
     if critic_fails:
         with pytest.raises(RunFailed, match='Critic failed|Insight critic returned') as error:
             run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
-        assert error.value.usage == {'input_tokens': 26}
+        assert error.value.usage == {'input_tokens': 32}
     else:
         result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
         assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
         assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
-        assert result['usage'] == {'input_tokens': 26}
+        assert result['usage'] == {'input_tokens': 32}
         assert bullet not in notebook.read(record)
         logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
         assert logged['insights_rejected'] == result['insights_rejected']
-    assert len(turns) == len(critics) == 2
+    assert len(turns) == 2 and len(critics) == 4
     attempts = json.loads(next((notebook.root / '.state/tasks').glob('*/insight-critic.json')).read_text())
     assert len(attempts) == 2 and attempts[0]['bullets'][0]['verdict'] == 'weak'
     if critic_fails:
         assert attempts[1]['error'].startswith(('Critic failed', 'Insight critic returned'))
-        assert attempts[1]['usage'] == {'input_tokens': 3}
+        assert attempts[1]['usage'] == {'input_tokens': 6}
     else:
         assert attempts[1]['bullets'][0]['verdict'] == 'weak'
 
@@ -119,7 +122,7 @@ def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path,
     candidate = tmp_path / 'candidate.md'
     text = f'# Avery Lin\n\n## Insight\n{bullet}\n'
     result = {}
-    verdicts = iter(['weak', 'good'])
+    verdicts = iter(['weak', 'good', 'good', 'good'])
     monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {'result': json.dumps({'bullets': [
         {'bullet': bullet, 'verdict': next(verdicts), 'reason': 'Invented review.', 'open_thread': ''}]})})
     for _ in range(2):
@@ -127,6 +130,7 @@ def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path,
         runner._review_insights(notebook, record, original, candidate, [], {}, tmp_path, result, None)
     assert result['insights_proposed'] == result['insights_kept'] == 1
     assert result['insights_rejected'] == [] and bullet in candidate.read_text()
+    assert result['insights_flips'] == 1
     attempts = json.loads((tmp_path / 'insight-critic.json').read_text())
     assert [attempt['bullets'][0]['verdict'] for attempt in attempts] == ['weak', 'good']
 

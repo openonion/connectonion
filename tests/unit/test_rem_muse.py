@@ -286,7 +286,9 @@ def test_insight_critic_edits_only_new_bullets_from_independent_originals(notebo
     assert text.index('## Open threads') < text.index('## Sources')
     assert '\nUnknown\n' not in text
     assert ('- An earlier obligation. [1]' in text) == ('earlier obligation' in open_section)
-    assert report == {'bullets': decisions, 'unmatched': [], 'restored': [], 'usage': {'input_tokens': 31}}
+    assert report == {'bullets': [{**row, 'verdicts': [row['verdict']] * 2} for row in decisions],
+                      'unmatched': [], 'restored': [], 'usage': {'input_tokens': 62},
+                      'critic_flips': 0, 'over_limit': 0}
     assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [report]
     assert notebook.read(RECORD) == before
 
@@ -297,26 +299,27 @@ def test_insight_critic_skips_model_when_there_are_no_new_bullets(notebook, tmp_
     def no_call(*args):
         pytest.fail('No proposed insights need a model call')
     assert insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, no_call) == {
-        'bullets': [], 'usage': {}, 'unmatched': [], 'restored': []}
+        'bullets': [], 'usage': {}, 'unmatched': [], 'restored': [], 'critic_flips': 0, 'over_limit': 0}
 
 
-def test_insight_critic_records_unmatched_bullet_and_leaves_it_in_place(notebook, tmp_path):
+def test_insight_critic_records_unmatched_bullet_and_rejects_unrated_proposal(notebook, tmp_path):
     bullet = '- Now: Avery received the Lantern deck. [1]'
     path = tmp_path / 'candidate.md'
     path.write_text(PAGE.replace('## Sources', f'## Insight\n{bullet}\n\n## Sources'))
     decision = {'bullet': bullet.replace('deck', 'draft'), 'verdict': 'weak', 'reason': 'One message.', 'open_thread': ''}
     report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
         lambda *args: {'result': json.dumps({'bullets': [decision]})})
-    assert bullet in path.read_text() and decision['bullet'] in report['unmatched']
+    assert bullet not in path.read_text() and decision['bullet'] in report['unmatched']
 
 
 @pytest.mark.parametrize('kept', [0, 1])
 def test_muse_counts_kept_insights_instead_of_writer_verdicts(notebook, kept):
     rejected = [{'bullet': '- Now: Avery received the deck. [1]', 'verdict': 'weak', 'reason': 'One message.'}]
     result = feature.muse(notebook.root, RECORD, runner=lambda *args, **kw: {
-        'insights_proposed': 2, 'insights_kept': kept, 'insights_rejected': rejected,
+        'insights_proposed': 2, 'insights_kept': kept, 'insights_rejected': rejected, 'insights_flips': 1,
         'turn_replies': ['Questions', *['verdict: insight'] * 5, 'Done']})
     assert result['insights'] == kept and result['insights_rejected'] == rejected
+    assert result['insights_flips'] == 1
 
 
 @pytest.mark.parametrize("stage", ["enrich", "muse"])
@@ -1019,3 +1022,98 @@ def test_critic_fetches_a_github_original_by_id_or_url(monkeypatch, source):
         returncode=0, stdout='{"title": "Ship Lantern"}', stderr=''))
     assert insight_critic._github_original(source)['excerpt'] == '{"title": "Ship Lantern"}'
     assert calls[0][:5] == ['gh', 'issue', 'view', '12', '-R'] and calls[0][5] == 'acme/lantern'
+
+
+@pytest.mark.parametrize('source,target', [
+    ('git:/work/lantern@abc123:src/app.py', ['abc123:src/app.py']),
+    ('git:/work/lantern:abc123:src/app.py', ['abc123:src/app.py']),
+    ('git:/work/lantern@abc123', ['--stat', '--format=%H%n%an%n%ad%n%s%n%n%b', 'abc123'])])
+def test_critic_fetches_unresolved_git_originals(notebook, monkeypatch, source, target):
+    """2026-10-21: both file citation spellings and commit-only ids reach git show."""
+    calls = []
+    body = 'Invented Lantern source.\n' * 2000
+    bullet = '- Changed: Lantern renewals now need review. [1][2]'
+    candidate = (f'{bullet}\n\n## Sources\n- [1] {source}\n'
+                 '- [2] git:/work/lantern@def456:README.md\n- [3] git:/work/lantern@fed789\n')
+
+    def run(argv, **options):
+        calls.append(argv)
+        assert options == {'capture_output': True, 'text': True, 'timeout': 60}
+        return SimpleNamespace(returncode=0, stdout=body)
+
+    monkeypatch.setattr(insight_critic.subprocess, 'run', run)
+    packet = insight_critic.critic_packet(notebook, candidate, RECORD,
+        [{'source': 'git:/work/lantern@def456:README.md', 'text': 'Already supplied original.'}], [bullet])
+    assert calls == [['git', '-C', '/work/lantern', 'show', *target]]
+    sources = {row['citation']: row for row in packet['sources']}
+    assert sources['1']['source_id'] == source
+    assert sources['1']['context'] == {'excerpt': body[:40_000], 'truncated': True}
+    assert sources['2']['context']['excerpt'] == 'Already supplied original.'
+    assert packet['missing_citations'] == []
+
+
+@pytest.mark.parametrize('failure', ['exit', 'missing-git', 'timeout', 'empty'])
+def test_git_fetch_failure_leaves_citation_missing(notebook, monkeypatch, failure):
+    def run(argv, **options):
+        if failure == 'missing-git':
+            raise FileNotFoundError('Invented missing git')
+        if failure == 'timeout':
+            raise subprocess.TimeoutExpired(argv, 60)
+        return SimpleNamespace(returncode=int(failure == 'exit'), stdout='')
+
+    monkeypatch.setattr(insight_critic.subprocess, 'run', run)
+    bullet = '- Changed: Lantern renewals need review. [1]'
+    packet = insight_critic.critic_packet(notebook,
+        f'{bullet}\n\n## Sources\n- [1] git:/work/lantern@abc123:README.md\n', RECORD, [], [bullet])
+    assert packet['sources'] == [] and packet['missing_citations'] == ['1']
+
+
+@pytest.mark.parametrize('first,second', [
+    ('good', 'good'), ('good', 'weak'), ('weak', 'good'), ('good', 'wrong'),
+    ('wrong', 'good'), ('weak', 'wrong'), ('wrong', 'weak')])
+def test_critic_requires_two_good_verdicts_on_the_same_packet(notebook, tmp_path, first, second):
+    """2026-10-21: disagreement is observable and the worse verdict always controls."""
+    bullet = '- Changed: Lantern renewals now need review. [1][2]'
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE.replace('## Sources', f'## Insight\n{bullet}\n\n## Sources'))
+    calls = []
+
+    def run(*args):
+        verdict = (first, second)[len(calls)]
+        calls.append(args)
+        return {'result': json.dumps({'bullets': [{'bullet': bullet, 'verdict': verdict,
+            'reason': f'Invented {verdict} reason.', 'open_thread': ''}]}), 'usage': {'input_tokens': len(calls)}}
+
+    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, run)
+    worse = min((first, second), key=('wrong', 'weak', 'good').index)
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert report['bullets'] == [{'bullet': bullet, 'verdict': worse, 'verdicts': [first, second],
+                                  'reason': f'Invented {worse} reason.', 'open_thread': ''}]
+    assert (bullet in path.read_text()) == (first == second == 'good')
+    assert report['critic_flips'] == int(first != second)
+    assert report['usage'] == {'input_tokens': 3}
+    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [report]
+
+
+def test_critic_wraps_legacy_dict_history_before_appending(notebook, tmp_path):
+    """2026-10-21: #2607 wrote one dict, rather than an array of attempts."""
+    previous = {'bullets': [], 'usage': {'input_tokens': 7}}
+    write_json(tmp_path / 'insight-critic.json', previous)
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE)
+    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, None)
+    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [previous, report]
+
+
+def test_restored_and_kept_insights_stay_even_over_four_bullets(notebook, tmp_path):
+    """2026-10-21: restoring the page's findings takes priority over the four-bullet cap."""
+    old = [f'- Pattern: Avery finding {n} about Lantern. [1]' for n in range(4)]
+    new = '- Changed: Paid renewals now require a security review. [1][2]'
+    before = PAGE.replace('## Sources', '## Insight\n' + '\n'.join(old) + '\n\n## Sources')
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE.replace('## Sources', f'## Insight\n{new}\n\n## Sources'))
+    report = insight_critic.judge(notebook, RECORD, before, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [{'bullet': new, 'verdict': 'good',
+                                 'reason': 'A new renewal requirement.', 'open_thread': ''}]})})
+    assert insight_critic._bullets(path.read_text()) == [new, *old]
+    assert report['restored'] == old and report['over_limit'] == 1

@@ -89,6 +89,28 @@ def _github_original(source: str) -> dict:
     return {}
 
 
+def _git_original(source: str) -> dict:
+    """2026-10-21: unresolved git citations name a checkout and a commit or file."""
+    match = re.fullmatch(r'git:(.+?)(?:@|:)([0-9a-fA-F]+)(?::(.+))?', source)
+    if not match:
+        return {}
+    checkout, sha, file = match.groups()
+    target = [f'{sha}:{file}'] if file else ['--stat', '--format=%H%n%an%n%ad%n%s%n%n%b', sha]
+    try:
+        result = subprocess.run(['git', '-C', checkout, 'show', *target],
+                                capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if not result.returncode and result.stdout.strip():
+        return {'excerpt': result.stdout[:40_000], 'truncated': len(result.stdout) > 40_000}
+    return {}
+
+
+def _original(source: str) -> dict:
+    """2026-10-21: resolve only originals the packet could not supply."""
+    return _github_original(source) or _git_original(source)
+
+
 def critic_packet(notebook, candidate, record, items, bullets) -> dict:
     """2026-10-21: the critic caught all 12 weak bullets without the writer's reasoning."""
     numbers = set(re.findall(r'\[(W?\d+)\]', '\n'.join(bullets)))
@@ -98,10 +120,10 @@ def critic_packet(notebook, candidate, record, items, bullets) -> dict:
     originals = [item for item in original_items(items) if not item.get('source', '').startswith('investigation:')
                  and item.get('role') not in ('page', 'prior-runs', 'earlier-insights', 'turn-reply', 'assistant')]
     material, missing = packet(notebook, cited_page, record, originals)
-    # 2026-10-21: only unresolved sources cited by judged bullets need a network lookup.
+    # 2026-10-21: only unresolved sources cited by judged bullets need a lookup.
     for definition in definitions:
         number, source = SOURCE.match(definition).groups()
-        if number in missing and (context := _github_original(source)):
+        if number in missing and (context := _original(source)):
             material['sources'].append({'citation': number, 'source_id': source,
                                         'definition': definition, 'context': context})
             missing.remove(number)
@@ -176,7 +198,11 @@ def _report(result: dict) -> dict:
 
 
 def _restore_insights(before: str, candidate: str, decisions: list[dict]) -> tuple[str, list[str]]:
-    """2026-10-21: rejected rewrites must not delete the page's prior insights."""
+    """2026-10-21: rejected rewrites must not delete the page's prior insights.
+
+    Restored bullets stay even when restored plus kept bullets exceed four;
+    preserving what the page had takes priority over the Insight limit.
+    """
     present = {_insight_text(bullet) for bullet in _bullets(candidate)}
     proposed = set(new_bullets(before, candidate))
     kept = [_insight_text(row['bullet']) for row in decisions
@@ -204,8 +230,39 @@ def _restore_insights(before: str, candidate: str, decisions: list[dict]) -> tup
     return candidate, restored
 
 
+def _critic_reviews(workspace, prompt, config, run) -> tuple[list[list[dict]], dict]:
+    """2026-10-21: two fresh calls reduce variance; codex exec temperature support is unverified."""
+    from .runner import RunFailed, _add_usage
+    reviews, usage = [], {}
+    for _ in range(2):
+        # 2026-10-21: only paid-call failures need cumulative usage attached before propagating.
+        try:
+            result = run(workspace, prompt, config, 'insight-critic')
+            report = _report(result)
+        except RunFailed as error:
+            error.usage = _add_usage(usage, error.usage)
+            raise
+        usage = _add_usage(usage, result.get('usage')) or {}
+        reviews.append(report['bullets'])
+    return reviews, usage
+
+
+def _consensus(bullets: list[str], reviews: list[list[dict]]) -> list[dict]:
+    """2026-10-21: keep only unanimous good verdicts, recording the worse decision."""
+    ranked = ('wrong', 'weak', 'good')
+    indexed = [{row['bullet']: row for row in review} for review in reviews]
+    names = dict.fromkeys([*bullets, *(row['bullet'] for review in reviews for row in review)])
+    decisions = []
+    for bullet in names:
+        pair = [review.get(bullet, {'bullet': bullet, 'verdict': 'weak',
+                                   'reason': 'No critic verdict returned.', 'open_thread': ''}) for review in indexed]
+        worse = min(pair, key=lambda row: ranked.index(row['verdict']))
+        decisions.append({**worse, 'verdicts': [row['verdict'] for row in pair]})
+    return decisions
+
+
 def judge(notebook, record, before, candidate_path, items, config, workspace, run) -> dict:
-    """2026-10-21: writer rules kept only 6/18 good; judge new bullets in an independent turn."""
+    """2026-10-21: judge each new bullet in two independent turns on the same packet."""
     candidate = candidate_path.read_text(encoding='utf-8')
     bullets = new_bullets(before, candidate)
     report = {'bullets': [], 'usage': {}}
@@ -214,20 +271,19 @@ def judge(notebook, record, before, candidate_path, items, config, workspace, ru
         material = critic_packet(notebook, candidate, record, items, bullets)
         material['page'], material['existing_bullets'] = before, _bullets(before)
         prompt = RUBRIC + json.dumps(fit(material, BOUND - len(RUBRIC.encode('utf-8'))), ensure_ascii=False)
-        result = run(workspace, prompt, config, 'insight-critic')
-        report = {**_report(result), 'usage': result.get('usage') or {}}
+        reviews, usage = _critic_reviews(workspace, prompt, config, run)
+        report = {'bullets': _consensus(bullets, reviews), 'usage': usage}
     decisions = report['bullets']
-    returned = {row['bullet'] for row in decisions}
-    # Unmatched copied text is left alone as requested; an omitted verdict is a rejection.
-    if not returned - set(bullets):
-        decisions.extend({'bullet': bullet, 'verdict': 'weak', 'reason': 'No critic verdict returned.', 'open_thread': ''}
-                         for bullet in dict.fromkeys(bullets) if bullet not in returned)
     text, unmatched = _apply(candidate, bullets, decisions)
     text, restored = _restore_insights(before, text, decisions)
-    unmatched.extend(bullet for bullet in bullets if bullet not in {row['bullet'] for row in decisions})
-    report.update(unmatched=list(dict.fromkeys(unmatched)), restored=restored)
+    report.update(unmatched=list(dict.fromkeys(unmatched)), restored=restored,
+                  critic_flips=sum(row['verdicts'][0] != row['verdicts'][1] for row in decisions
+                                   if row['bullet'] in bullets),
+                  over_limit=max(0, len(_bullets(text)) - 4))
     candidate_path.write_text(text, encoding='utf-8')
     # 2026-10-21: repairs share the run directory; retain every attempt's decisions.
     history = workspace / 'insight-critic.json'
-    write_json(history, [*read_json(history, []), report])
+    previous = read_json(history, [])
+    previous = [previous] if isinstance(previous, dict) else previous
+    write_json(history, [*previous, report])
     return report
