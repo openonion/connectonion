@@ -622,6 +622,28 @@ def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     assert line not in notebook.read(record)
 
 
+def test_upkeep_puts_back_a_quote_the_turn_dropped(notebook, tmp_path):
+    """2026-10-20 upkeep A/B: one-page upkeep dropped 1-2 of a page's quotes per run, with no repair turn."""
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    quoted = '- Avery asked: “Could you send the deck by Friday?” (2026-10-01) [1]'
+    page = (notebook.read(record).replace('## Who they are\n- Unknown — not investigated yet',
+                                          '## Who they are\n' + quoted)
+            .replace('- (none yet)', '- [1] gmail:avery-deck — 2026-10-01')
+            .replace('- Unknown — not investigated yet', '- Unknown'))
+    notebook.write(record, page)
+    items = [{'source': 'gmail:avery-deck', 'role': 'other', 'speaker': 'Avery <avery@example.com>',
+              'text': 'Could you send the deck by Friday?'}]
+    before = {r: notebook.read(r) for r in notebook.list()}
+    working = Notebook(tmp_path / 'working')
+    for r, text in before.items():
+        working.write(r, text)
+    working.write(record, page.replace(quoted, '- Avery asked for the deck by Friday [1].'))
+    assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+    assert '“Could you send the deck by Friday?”' in notebook.read(record)
+    assert json.loads((tmp_path / 'review.json').read_text())['repairs'][record]['restored_lines'] == 1
+
+
 def test_a_finished_people_page_waits_for_backfill_before_its_claim_audit(tmp_path, monkeypatch):
     """2026-10-16: first-run backfill made the audit's zero-wait lock lose paid-for pages."""
     from connectonion.rem import page_review, project_claim_review
