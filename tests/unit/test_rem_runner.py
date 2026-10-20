@@ -823,6 +823,60 @@ def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     assert line not in notebook.read(record)
 
 
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+@pytest.mark.parametrize('collision', [False, True])
+def test_deepening_replaces_only_unambiguous_owner_names(notebook, tmp_path, monkeypatch, stage, collision):
+    """2026-10-21: a deepened person page named its owner in a new Changed bullet."""
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem import project_claim_review
+    owner, record = 'people/avery.md', 'people/mara.md'
+    notebook.stub_person(owner, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    notebook.stub_person(record, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    if collision:
+        notebook.stub_person('people/another-avery.md', 'Avery', ['another@example.com'], email='another@example.com')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner}})
+    original = notebook.read(record)
+    short = '- Now: Mara Ostrowski reviewed the Lantern interface. [1]'
+    long = '- Now: Mara Ostrowski reviewed the smaller Lantern interface. [1]'
+    line = "- Changed: On October 14 Avery handed Mara Avery Lin's deck [1]."
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## Insight\n- Unknown — not investigated yet',
+                                          f'## Insight\n{short}\n{long}\n{line}')
+                         .replace('- (none yet)', '- [1] gmail:mara-deck')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    monkeypatch.setattr(project_claim_review, 'review', lambda *a, **kw: ({'verdict': 'pass', 'findings': []}, {}))
+    runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:mara-deck'}],
+                                tmp_path, {}, workdir=tmp_path, config={}, stage=stage)
+    page = notebook.read(record)
+    first = 'Avery' if collision else 'the user'
+    assert f"- Changed: On October 14 {first} handed Mara the user's deck [1]." in page
+    assert long in page and short not in page
+
+
+def test_a_restored_carried_line_also_replaces_the_owner_name(notebook, tmp_path):
+    """2026-10-21: last-resort evidence restoration must not reintroduce the owner's name."""
+    from connectonion.rem.files import state_path, write_json
+    owner, record = 'people/avery.md', 'people/mara.md'
+    notebook.stub_person(owner, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    notebook.stub_person(record, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner}})
+    original = (notebook.read(record).replace('## Insight\n- Unknown — not investigated yet',
+                                             '## Insight\n- Changed: Avery handed Mara the deck. [1]')
+                .replace('- (none yet)', '- [1] gmail:mara-deck')
+                .replace('- Unknown — not investigated yet', '- Unknown'))
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Changed: Avery handed Mara the deck. [1]',
+                                          '- Now: Mara reviewed the Lantern interface. [2]')
+                         .replace('- [1] gmail:mara-deck', '- [2] github:acme/lantern#12'))
+    runner._promote_candidate(notebook, record, candidate, original,
+                              [{'source': 'gmail:mara-deck'}, {'source': 'github:acme/lantern#12'}],
+                              tmp_path, None, carried=original, last_resort=True)
+    page = notebook.read(record)
+    assert '- Changed: The user handed Mara the deck.' in page
+    assert 'gmail:mara-deck' in page and 'github:acme/lantern#12' in page
+
+
 def test_upkeep_puts_back_a_quote_the_turn_dropped(notebook, tmp_path):
     """2026-10-20 upkeep A/B: one-page upkeep dropped 1-2 of a page's quotes per run, with no repair turn."""
     record = 'people/avery.md'
