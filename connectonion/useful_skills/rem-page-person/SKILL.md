@@ -110,13 +110,14 @@ Rules:
   stopped says `no reply after <date>`. Not a send or a newsletter.
 - **`Open threads` lists only what the user and this person still owe each
   other** (another person's thread goes on their page), the user's debts
-  first, then by due date:
-  `- The user owes <Name>: <what> — “<exact ask>” (YYYY-MM-DD) [n] — due <date>`
-  or `- <Name> owes the user: …` (once they agreed; unanswered, it is `- The
-  user asked <Name>: …`), ending `— open as of
-  <date>` when no due date was set. A reply about that ask, a delivered item or
-  a passed event date closes a thread (it moves to `History`); a later message
-  on another topic closes nothing. An ask with no movement
+  first, then by due date. Four shapes, by who asked and whether they agreed:
+  `- The user owes <Name>: <what> — “<the user's yes>” (YYYY-MM-DD) [n] — due <date>`,
+  `- <Name> owes the user: …` (they agreed), `- <Name> asked the user: …` (no
+  yes from the user) and `- The user asked <Name>: …` (no answer), ending
+  `— open as of <date>` when no due date was set. A reply about that ask or a
+  delivered item closes a thread (it moves to `History`); a meeting's date
+  passing closes it too, but a promise's due date passing does not: it is
+  `— due <date>, overdue`. A later message on another topic closes nothing. An ask with no movement
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its
   people and object finds nothing later (an access grant came in another thread). Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
