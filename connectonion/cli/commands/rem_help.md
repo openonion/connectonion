@@ -163,7 +163,7 @@ Usage:
 
 Examples:
   co rem investigate
-  co rem investigate people/ody-zhou-c6a901ffd8.md
+  co rem investigate people/corin-marsh-c6a901ffd8.md
   co rem investigate people --limit 3
   co rem investigate people --recent-days 7 --list
   co rem investigate projects --list          (show the order, run nothing)
@@ -259,28 +259,40 @@ Back:     co rem --help
 ```
 co rem deepen — deepen valuable thin pages over time, one enrich then muse round each.
 
-Choose notebook people and projects by value times thinness, with recent activity
-first and each previous round reducing priority. An unchanged round with no
-insights rests for 30 days. Each round reads earlier open leads and questions.
+Choose notebook people, projects and orgs by value times thinness, boosting recent
+activity and reducing priority for each previous round. An unchanged round with no
+insights rests for 30 days; so do two consecutive rounds each gaining at most 1
+(new quotes + new sources + insights) and changing fewer than 600 characters
+in absolute terms. Rest starts at the last round. Each round reads earlier open leads and questions.
 Unmapped projects use Sessions under Paths and Last seen; other missing activity is zero.
+Org value sums its mapped people's mails; recency uses their newest Last seen.
+Mapped orgs with no people, or only automated or one-way people, are excluded.
+priority = log2(2 + value) ** 2 * recent * thin / (1 + rounds)
+Value is mails (people), sessions (projects), or its people's mails (orgs);
+recent is 2 within 30 days, otherwise 1; thin = 1 / (1 + quotes/3 + sources/10).
 
 Usage:    co rem deepen [PAGE...] [--pages N]
 Example:  co rem deepen --pages 1
           co rem deepen projects/lantern-skills.md avery-lin
 
 Arguments:
-  PAGE...       Resolve like enrich/muse; deepen each once in order, checking budget before each.
+  PAGE...       Resolve like enrich/muse; start in order within the slot's bounds.
                 Explicit pages bypass automatic selection and its resting period.
+                limits.depth_workers (default 3) controls pages deepened at once, including PAGE selections.
 
 Options:
-  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 2)
+  --pages N     Maximum automatically selected pages (default limits.depth_pages_per_slot: 3)
 
 Budget:   limits.depth_quota_points is 30 points of the Codex week, separate
           from investigation's 35. The shared 90% floor also stops new pages.
           Without a meter, the budget counts the last seven days of run usage.
-Output:   Rounds with before/after metrics, insights, lost quotes, outcomes and
-          points; the stop reason and candidates left. State: .state/depth.json.
-Effects:  Uses the configured model. A round is about 25 minutes.
+          limits.depth_slot_minutes (default 60) stops new pages at that elapsed
+          time, including explicit PAGE selections; started rounds finish.
+Output:   A picked line per page: value, recent multiplier, quotes, sources and round.
+          JSON includes picked rows with priority and the number of previous rounds.
+          Rounds with before/after metrics, insights, lost quotes, outcomes and
+          points, in completion order; the stop reason and candidates left. State: .state/depth.json.
+Effects:  Uses the configured model. Large-page rounds took 35–97 minutes (2026-10-20).
           Scheduled sync runs a slot after a due, non-partial daily round.
           Manual sync never deepens.
 
@@ -297,8 +309,8 @@ Read one existing people, projects or orgs page, its cited originals, other
 notebook pages for context, and this page's latest completed enrich and muse
 reports. One thread of seven turns: ask twenty questions and pick five; study
 one per turn; look back. Edit only on insight. The same review gate as investigate
-decides whether the page is saved. A page that lost a quote or a source id is
-put back as it was at the start of the run, with the reason reported.
+decides whether the page is saved. A quote or source id the page had is sent
+back for repair, then its line is put back as it was if two repairs cannot.
 
 Usage:    co rem muse PAGE
 Example:  co rem muse people/avery-lin.md
@@ -341,11 +353,21 @@ Back:     co rem --help
 ## co rem translate
 
 ```
-Translate one page with co ai, on the notebook's runner, and print it.
+Translate one page, or backfill reader records with co ai on the notebook's runner.
 
-Usage:    co rem translate PAGE --to LANGUAGE
+Usage:    co rem translate [PAGE | --all] [--to LANGUAGE] [--category CATEGORY]
 Example:  co rem translate people/alice-chen.md --to zh
           co rem translate "Alice Chen" --to ja
+          co rem translate --all --to zh
+          co rem translate --all --category people
+Options:  --to defaults to your first configured or detected non-English language.
+          Put --root PATH before translate to select another notebook.
+          --all processes people, orgs, projects, decisions, principles and skills,
+          one at a time. --category limits it to one of those categories.
+          Current caches are skipped; logs, activity, catalog indexes, duplicate
+          installations and unlisted pages are excluded. Prints translated /
+          cached / failed: reason for each page, then counts; failures continue
+          and give exit 1. --json returns the page outcomes and counts.
 Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
           the page it was made from. The page itself never changes. Asked
           again, a current translation is printed with no model call; once the
@@ -376,9 +398,9 @@ Back:     co rem --help
 Print one page as Markdown. Read-only.
 
 Usage:    co rem show PAGE | PERSON
-Example:  co rem show people/tamara-berryman-324b6af6e8.md
+Example:  co rem show people/greta-holloway-324b6af6e8.md
           co rem show me   (your own page)
-          co rem show "Tamara Berryman"   (a person's name, alias or email)
+          co rem show "Greta Holloway"   (a person's name, alias or email)
 Inputs:   PAGE comes from list, search, or the Next line of investigate.
           A PERSON naming several pages lists them and shows none.
 Next:     co rem investigate PAGE   (if it still says Unknown)
@@ -475,7 +497,7 @@ Example:  co rem sync --dry-run
                       attempts are spent; one line per batch on stderr. To go
                       further today, raise limits.runner_calls_per_day
           --scheduled what the schedule passes: run only if a scheduled time is due;
-                      after a non-partial daily round, deepen up to two pages within
+                      after a non-partial daily round, deepen up to three pages by default within
                       the separate deepening budget. Manual sync never deepens.
 
 Effects:  Reads message bodies, calls the model, updates pages. A run the daily

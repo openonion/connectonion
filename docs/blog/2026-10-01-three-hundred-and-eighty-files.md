@@ -1,6 +1,6 @@
 # Three hundred and eighty files
 
-On a fresh `co rem init` on the owner's Mac, one person page, Ody Zhou's, cost
+On a fresh `co rem init` on the owner's Mac, one person page, Corin Marsh's, cost
 2.77 million input tokens. What the gather collected for it fit in about 98
 thousand characters. The announced estimate for the whole first run was 4.2
 million tokens. This one page used two thirds of that.
@@ -10,7 +10,7 @@ agent searches, one file per mail, each with its source id in the heading. The
 design was right about summarising. Digesting everything before writing a
 word had cost the owner's own page 16 million tokens. It missed what a tool
 call costs. An agent turn re-sends its whole context every time it opens a
-file. Three months of mail with Ody was 380 files, and the model's own report
+file. Three months of mail with Corin was 380 files, and the model's own report
 said it had narrowed its reading "instead of reading all 373 files". Each
 file it did open sent the conversation so far again, so the cost grew with the
 number of reads, not with the size of the mail.
@@ -23,7 +23,7 @@ read as wholes anyway. The instruction changed with the layout. It used to say
 to read only the matching entries with sed. Now it says to read the files that
 matter whole, newest first, because every tool call re-sends the turn.
 
-We measured it on a copy of that fresh notebook, with Ody's page reset to its
+We measured it on a copy of that fresh notebook, with Corin's page reset to its
 stub and the same 90-day window, the same model and the same mail: 139 Outlook
 and 138 Gmail messages. Input went from 2,775k tokens to 1,476k, output from
 68k to 37k, and the whole run from 17m43s to 10m44s. Evidence went from 380

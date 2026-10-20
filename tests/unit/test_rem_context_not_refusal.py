@@ -29,10 +29,10 @@ def _mail(root, native, sender, date, body, thread="t-1", subject="Coaching term
     return "outlook:" + hashlib.sha256(native.encode()).hexdigest()[:12]
 
 
-def _person(root, name="Nina"):
+def _person(root, name="Petra"):
     notebook = Notebook(root)
-    notebook.stub_person("people/nina.md", name, ["nina@uni.example"], email="nina@uni.example")
-    return notebook, notebook.read("people/nina.md")
+    notebook.stub_person("people/petra.md", name, ["petra@uni.example"], email="petra@uni.example")
+    return notebook, notebook.read("people/petra.md")
 
 
 # ------------------------------------------- 2. a citation that resolves is kept
@@ -42,7 +42,7 @@ def test_mail_the_turn_was_not_handed_but_rem_holds_is_a_real_citation(tmp_path)
     """v192b3 investigate-oe0cfbv0: 2.04M tokens refused for [27][28], real
     mail in .state/mail that supported the claim. Made-up ids still go."""
     prepare(tmp_path)
-    reply = _mail(tmp_path, "AQMkNATIVE27", "nina@uni.example", "2026-10-07T01:41:01Z", "Budget agreed.")
+    reply = _mail(tmp_path, "AQMkNATIVE27", "petra@uni.example", "2026-10-07T01:41:01Z", "Budget agreed.")
     refresh(tmp_path)
     assert archived(tmp_path, reply) and not archived(tmp_path, "outlook:000000000000")
     notebook, original = _person(tmp_path)
@@ -50,20 +50,20 @@ def test_mail_the_turn_was_not_handed_but_rem_holds_is_a_real_citation(tmp_path)
     candidate = (original.replace("## Who they are\n- Unknown — not investigated yet",
                                   "## Who they are\n- Agreed the budget. [1]\n- Ran a hackathon. [2]")
                  .replace("- (none yet)", f"- [1] {reply} — 2026-10-07\n- [2] {fake} — 2026-10-07"))
-    text, dropped = drop_unresolved("people/nina.md", candidate, original, [], root=tmp_path)
+    text, dropped = drop_unresolved("people/petra.md", candidate, original, [], root=tmp_path)
     assert dropped["citations"] == ["2"] and "Agreed the budget. [1]" in text and "hackathon" not in text
-    assert not [e for e in validate("people/nina.md", text, original, [], root=tmp_path) if "identifiable" in e]
+    assert not [e for e in validate("people/petra.md", text, original, [], root=tmp_path) if "identifiable" in e]
 
 
 def test_a_raw_graph_id_and_a_backticked_id_are_written_as_the_ids_that_resolve(tmp_path):
     """v192b3: a raw Outlook (Graph) id was rejected, and 7 real git citations
     went only for their backticks."""
     prepare(tmp_path)
-    digest = _mail(tmp_path, "AQMkADAwATMwRAW", "nina@uni.example", "2026-09-01T00:00:00Z", "Hello.")
+    digest = _mail(tmp_path, "AQMkADAwATMwRAW", "petra@uni.example", "2026-09-01T00:00:00Z", "Hello.")
     refresh(tmp_path)
-    text = ("# Nina\n\nSaid hello. [1] Ran it. [2]\n\n## Sources\n- [1] outlook:AQMkADAwATMwRAW — 2026-09-01\n"
+    text = ("# Petra\n\nSaid hello. [1] Ran it. [2]\n\n## Sources\n- [1] outlook:AQMkADAwATMwRAW — 2026-09-01\n"
             "- [2] `git:/work/repo:" + "a" * 40 + ":README.md` — 2026-09-01\n")
-    resolved = resolve_sources(tmp_path, "people/nina.md", normalize_numbered_sources(text))
+    resolved = resolve_sources(tmp_path, "people/petra.md", normalize_numbered_sources(text))
     assert f"- [1] {digest} — 2026-09-01" in resolved
     assert "- [2] git:/work/repo:" + "a" * 40 + ":README.md — 2026-09-01" in resolved
 
@@ -93,12 +93,12 @@ def test_a_short_file_hash_is_pinned_to_the_full_sha256_of_the_same_content(tmp_
 # ------------------------------------------- 3. inline ids are numbered before facts are checked
 
 
-NINA = """# Nina
+PETRA = """# Petra
 
-Nina is a manager at the Founders programme [outlook:3a0992e193d0].
+Petra is a manager at the Founders programme [outlook:3a0992e193d0].
 
 ## Facts
-- Email: nina@uni.example [outlook:3a0992e193d0]
+- Email: petra@uni.example [outlook:3a0992e193d0]
 - Phone: +61 400 000 000 (work) [outlook:3a0992e193d0]
 - Role: Senior Manager [outlook:3a0992e193d0]
 - How we know them: casual coaching terms [outlook:84e76a8ba655][outlook:29f6fb800f12]
@@ -116,8 +116,8 @@ Investigation: mapped 2026-10-15
 def test_facts_cited_by_inline_source_id_are_kept():
     """v193q1 investigate-z3qdttxi: seven true Facts fields were stripped as
     uncited because they cited `[outlook:…]` instead of `[1]`."""
-    numbered = normalize_numbered_sources(NINA)
-    assert facts.drop_uncited("people/nina.md", numbered)[1] == []
+    numbered = normalize_numbered_sources(PETRA)
+    assert facts.drop_uncited("people/petra.md", numbered)[1] == []
     assert "- Role: Senior Manager [1]" in numbered and "casual coaching terms [2][3]" in numbered
     assert "- [1] outlook:3a0992e193d0 — 2026-06-29" in numbered
     assert normalize_numbered_sources(numbered) == numbered
@@ -147,7 +147,7 @@ def test_a_second_title_and_a_leftover_placeholder_are_repaired():
 
 
 def test_a_history_past_sixteen_folds_its_oldest_years_in_code():
-    """Ody's History held 17 lines; the page was refused for the seventeenth."""
+    """Corin's History held 17 lines; the page was refused for the seventeenth."""
     rows = ([f"- 2024-0{m}-01: met about step {m} [1]." for m in range(1, 7)]
             + [f"- 2025-{m:02d}-01: agreed step {m} [2]." for m in range(1, 13)])
     page = "# P\n\n## History\n" + "\n".join(reversed(rows)) + "\n\n## Sources\n- [1] a\n- [2] b\n"
@@ -180,7 +180,7 @@ def test_maintenance_is_handed_the_later_replies_in_its_threads(tmp_path, monkey
     """10 of 35 bad claims in the audit were stale: an open ask a later reply had closed."""
     from connectonion.rem import runner
     prepare(tmp_path)
-    ask = _mail(tmp_path, "native-ask", "nina@uni.example", "2026-09-01T00:00:00Z", "Can you send the form?")
+    ask = _mail(tmp_path, "native-ask", "petra@uni.example", "2026-09-01T00:00:00Z", "Can you send the form?")
     done = _mail(tmp_path, "native-done", "owner@example.org", "2026-09-03T00:00:00Z", "Form sent, all done.")
     _mail(tmp_path, "native-other", "x@other.example", "2026-09-04T00:00:00Z", "Unrelated.", thread="t-2")
     refresh(tmp_path)
@@ -214,18 +214,18 @@ def test_the_claim_audit_reads_later_messages_and_the_runners_contact_dates(tmp_
     part of a truncated excerpt the packet cut off."""
     from connectonion.rem import project_claim_review
     prepare(tmp_path)
-    first = _mail(tmp_path, "native-1", "nina@uni.example", "2026-06-29T00:00:00Z", "Senior Manager, Founders.")
-    later = _mail(tmp_path, "native-2", "nina@uni.example", "2026-07-02T00:00:00Z", "Thanks, settled.")
+    first = _mail(tmp_path, "native-1", "petra@uni.example", "2026-06-29T00:00:00Z", "Senior Manager, Founders.")
+    later = _mail(tmp_path, "native-2", "petra@uni.example", "2026-07-02T00:00:00Z", "Thanks, settled.")
     refresh(tmp_path)
     notebook, _ = _person(tmp_path)
-    candidate = f"# Nina\n\n- Last contact: 2026-07-02 [1]\n\n## Sources\n- [1] {first} — 2026-06-29\n"
+    candidate = f"# Petra\n\n- Last contact: 2026-07-02 [1]\n\n## Sources\n- [1] {first} — 2026-06-29\n"
     facts_item = {"role": "facts", "source": "investigation:facts",
                   "facts": [{"field": "Last contact", "value": "2026-07-02", "source": later}]}
     prompts = []
     project_claim_review.review(notebook, candidate, default_config(), tmp_path,
                                 lambda w, prompt, c, s: prompts.append(prompt) or {"result": json.dumps(
                                     {"verdict": "PASS", "findings": []})},
-                                record="people/nina.md", items=[facts_item])
+                                record="people/petra.md", items=[facts_item])
     packet = json.loads(prompts[0][prompts[0].index("{\"candidate\""):])
     assert [m["source"] for m in packet["later_messages"]] == [later]
     assert packet["runner_facts"] == [{"field": "Last contact", "value": "2026-07-02", "source": later}]
@@ -241,11 +241,11 @@ def test_naming_a_page_retries_its_refused_material(tmp_path, monkeypatch):
     from connectonion.cli.main import app
     root = tmp_path / "rem"
     prepare(root)
-    Notebook(root).stub_person("people/vern.md", "Vern", ["vern@example.org"], email="vern@example.org")
+    Notebook(root).stub_person("people/rowan.md", "Rowan", ["rowan@example.org"], email="rowan@example.org")
     calls = []
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_page",
                         lambda root, notebook, record, **kw: calls.append(kw["retry_refused"]) or {"record": record})
-    result = CliRunner().invoke(app, ["rem", "--root", str(root), "--json", "investigate", "people/vern.md"])
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "--json", "investigate", "people/rowan.md"])
     assert result.exit_code == 0, result.output
     assert calls == [True]
 
@@ -268,11 +268,11 @@ def test_reflections_past_the_budget_are_trimmed_not_a_failed_turn():
 def test_labelled_mail_shows_in_the_local_reader_and_never_in_the_shared_view(tmp_path):
     from connectonion.rem.reader import snapshot
     prepare(tmp_path)
-    private = _mail(tmp_path, "native-p", "nina@uni.example", "2026-09-01T00:00:00Z",
+    private = _mail(tmp_path, "native-p", "petra@uni.example", "2026-09-01T00:00:00Z",
                     "My surgery is on Friday [sensitive].")
     refresh(tmp_path)
     notebook, original = _person(tmp_path)
-    notebook.write("people/nina.md", original.replace("- (none yet)", f"- [1] {private} — 2026-09-01"))
+    notebook.write("people/petra.md", original.replace("- (none yet)", f"- [1] {private} — 2026-09-01"))
     local, shared = snapshot(tmp_path, local=True), snapshot(tmp_path)
     assert "surgery" in local["source_context"][private]["excerpt"] and not local["shared"]
     assert private not in shared["source_context"] and shared["shared"]

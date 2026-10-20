@@ -277,31 +277,31 @@ def test_project_scan_excludes_a_multi_repository_workspace_root(tmp_path):
 
 
 def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_path, monkeypatch):
-    """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
+    """On a real mailbox Corin Marsh was four pages -- two Gmail addresses, an event
     platform's relay, and a Drive share notice -- and notice senders were 165 of
     565 people pages. A full display name joins addresses; a sender that only ever
     sends and looks like a system, or writes through a relay, is listed, not paged.
-    The relay keeps its own group: joined to Ody by name it became his Email (contacts audit E2)."""
+    The relay keeps its own group: joined to Corin by name it became his Email (contacts audit E2)."""
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
     people = [
-        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 12, 'received': 18,
+        {'name': 'Corin Marsh', 'address': 'corin@example.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 3, 'sent': 1, 'received': 2,
+        {'name': 'Corin Marsh', 'address': 'corin.marsh@example.com', 'mails': 3, 'sent': 1, 'received': 2,
          'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
-        {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
+        {'name': 'Corin Marsh', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
+        {'name': 'Corin Marsh (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
          'one_way': True},
         {'name': 'Neon Changelog', 'address': 'changelog@neon.tech', 'mails': 4, 'one_way': True},
-        {'name': 'Andrew Suryanto', 'address': 'usr-xyz@user.luma-mail.com', 'mails': 1, 'one_way': True},
+        {'name': 'Simon Wirawan', 'address': 'usr-xyz@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'John', 'address': 'john@a.com', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
         {'name': 'John', 'address': 'john@b.com', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
         {'name': 'a16z speedrun', 'address': 'speedrun@substack.com', 'mails': 10, 'one_way': True},
         {'name': 'AI Tinkerers', 'address': 'post-training@mail.aitinkerers.org', 'mails': 13, 'one_way': True},
         {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 3, 'one_way': True},
         # Each answered at least once: a one-way correspondent gets no page at all (#2057).
-        {'name': 'Zhang, Misa', 'address': 'misa.zhang@fisglobal.com', 'mails': 3, 'sent': 1, 'received': 2,
+        {'name': 'Kato, Misa', 'address': 'misa.kato@finworks.com', 'mails': 3, 'sent': 1, 'received': 2,
          'one_way': False},
         {'name': 'Lee Chen', 'address': 'lee.chen@mail.com', 'mails': 2, 'sent': 1, 'received': 1,
          'one_way': False},
@@ -310,17 +310,17 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     pages = {row['record']: row for row in result['people']}
-    ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
-    assert ody['addresses'] == ['ody@example.com', 'ody.zhou@example.com']
-    assert ody['mails'] == 33
-    assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
+    corin = next(row for row in result['people'] if row['name'] == 'Corin Marsh')
+    assert corin['addresses'] == ['corin@example.com', 'corin.marsh@example.com']
+    assert corin['mails'] == 33
+    assert (corin['first'], corin['last']) == ('2024-08-01', '2026-09-29')
     from connectonion.rem.reader import mail_facts
-    facts = mail_facts(tmp_path)[ody['record']]
+    facts = mail_facts(tmp_path)[corin['record']]
     assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
-    page = Notebook(tmp_path).read(ody['record'])
+    page = Notebook(tmp_path).read(corin['record'])
     assert 'Last contact: 2026-09-29' in page
-    assert 'ody.zhou@example.com' in page and 'Confirm they are one person' in page
-    assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
+    assert 'corin.marsh@example.com' in page and 'Confirm they are one person' in page
+    assert len(pages) == 5               # Corin, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
     assert 'luma-mail' not in page
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
@@ -345,7 +345,7 @@ def test_addresses_the_owner_writes_to_and_never_hears_from_are_asked_about_not_
          'one_way': True},
         {'name': 'Dana Reyes', 'address': 'dana@client.example', 'mails': 1, 'sent': 1, 'received': 0,
          'one_way': True},
-        {'name': 'Misa Zhang', 'address': 'misa@fisglobal.example', 'mails': 9, 'sent': 4, 'received': 5,
+        {'name': 'Misa Kato', 'address': 'misa@finworks.example', 'mails': 9, 'sent': 4, 'received': 5,
          'one_way': False},
     ]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
@@ -465,11 +465,11 @@ def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch)
         def my_name(self): return 'Aaron x'
 
     people = [
-        {'name': 'Ody Zhou', 'address': 'ody@example.com', 'mails': 30, 'sent': 20, 'received': 10,
+        {'name': 'Corin Marsh', 'address': 'corin@example.com', 'mails': 30, 'sent': 20, 'received': 10,
          'one_way': False, 'first': '2026-07-01', 'last': '2026-09-20', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 4, 'sent': 2, 'received': 2,
+        {'name': 'Corin Marsh', 'address': 'corin.marsh@example.com', 'mails': 4, 'sent': 2, 'received': 2,
          'one_way': False, 'boxes': ['outlook']},
-        {'name': 'Tamara Berryman', 'address': 'tamara@unsw.example', 'mails': 12, 'sent': 5, 'received': 7,
+        {'name': 'Greta Holloway', 'address': 'greta@unsw.example', 'mails': 12, 'sent': 5, 'received': 7,
          'one_way': False, 'boxes': ['outlook']},
         {'name': '', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106, 'received': 0,
          'one_way': True, 'boxes': ['gmail']},
@@ -486,8 +486,8 @@ def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch)
     result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     page = Notebook(tmp_path).read(result['owner']['record'])
     assert page.startswith('# Aaron x\n')
-    assert 'Ody Zhou (34)' in page and 'Tamara Berryman (12)' in page
-    assert page.index('Ody Zhou (34)') < page.index('Tamara Berryman (12)')
+    assert 'Corin Marsh (34)' in page and 'Greta Holloway (12)' in page
+    assert page.index('Corin Marsh (34)') < page.index('Greta Holloway (12)')
     assert 'aaronplus1996@gmail.com (106' not in page.split('## Uncertainties')[0]   # not a correspondent
     assert 'Possibly also the owner\'s: aaronplus1996@gmail.com' in page
     assert 'co rem init --mine aaronplus1996@gmail.com' in page
@@ -581,7 +581,7 @@ def test_an_upgraded_notebook_turns_the_owners_old_correspondent_page_into_the_o
         def my_addresses(self): return {'aaron@mail.example'}
         def my_name(self): return ''
 
-    people = [{'name': 'Ody Zhou', 'address': 'ody@x.example', 'mails': 30, 'sent': 20, 'received': 10,
+    people = [{'name': 'Corin Marsh', 'address': 'corin@x.example', 'mails': 30, 'sent': 20, 'received': 10,
                'one_way': False, 'boxes': ['gmail']}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, {'aaron@mail.example'}))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
@@ -589,7 +589,7 @@ def test_an_upgraded_notebook_turns_the_owners_old_correspondent_page_into_the_o
     assert result['owner']['record'] == 'people/aaron-mail.md'
     page = notebook.read('people/aaron-mail.md')
     assert page.startswith('# Aaron Xie\n')
-    assert 'Observed mail count: 1' not in page and 'Most mail with: Ody Zhou (30)' in page
+    assert 'Observed mail count: 1' not in page and 'Most mail with: Corin Marsh (30)' in page
     assert 'Correspondent classification unassessed' not in page
     assert '- Email: aaron@mail.example' in page
 
@@ -615,9 +615,9 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
         (path / 'package.json').write_text('{"name": "acme-project"}')
     notebook.stub_project('projects/rvc-a.md', 'acme-project', [str(scratch_a)])
     notebook.stub_project('projects/rvc-b.md', 'acme-project-2', [str(scratch_b)])
-    notebook.stub_person('people/dora-by-address.md', 'dora@example.org', ['dora@example.org'],
-                         email='dora@example.org')
-    people = [{'name': 'Dora Chen', 'address': 'dora@example.org', 'mails': 40, 'sent': 20, 'received': 20,
+    notebook.stub_person('people/briar-by-address.md', 'briar@example.org', ['briar@example.org'],
+                         email='briar@example.org')
+    people = [{'name': 'Briar Chen', 'address': 'briar@example.org', 'mails': 40, 'sent': 20, 'received': 20,
                'one_way': False, 'boxes': ['gmail']}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [
@@ -635,8 +635,8 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
     assert all((tmp_path / '.state/archived' / old).is_file() for old in merged)
     assert notebook.path('projects/notebook-2.md').is_file()                  # investigated: never moved
     assert (tmp_path / '.state/archived/projects/notebook-1.md').is_file()    # moved, not deleted
-    dora = [row['record'] for row in result['people'] if row.get('name') == 'Dora Chen'][0]
-    assert dora == 'people/dora-by-address.md' or 'people/dora-by-address.md' in result['archived']
+    briar = [row['record'] for row in result['people'] if row.get('name') == 'Briar Chen'][0]
+    assert briar == 'people/briar-by-address.md' or 'people/briar-by-address.md' in result['archived']
 
 
 def test_an_older_maps_person_page_for_a_notice_sender_is_archived(tmp_path, monkeypatch):
@@ -734,16 +734,16 @@ def test_a_page_an_older_map_titled_with_an_address_takes_the_name_found_now(tmp
     skills = tmp_path / 'installed'
     skills.mkdir()
     notebook = Notebook(tmp_path)
-    notebook.stub_person('people/larry.md', 'larry@q.com', ['larry@q.com'], email='larry@q.com')
+    notebook.stub_person('people/fenwick.md', 'fenwick@q.com', ['fenwick@q.com'], email='fenwick@q.com')
     notebook.stub_person('people/kept.md', 'kept@q.com', ['kept@q.com'], email='kept@q.com')
     notebook.write('people/kept.md', notebook.read('people/kept.md').replace(
         'not investigated yet', 'investigated 2026-09-20 (codex)'))
-    people = [{'name': 'Larry', 'address': 'larry@q.com', 'mails': 14, 'sent': 14, 'received': 0},
+    people = [{'name': 'Fenwick', 'address': 'fenwick@q.com', 'mails': 14, 'sent': 14, 'received': 0},
               {'name': 'Kept Person', 'address': 'kept@q.com', 'mails': 3, 'sent': 2, 'received': 1}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     build_map(tmp_path, {}, {}, skill_directories=[skills])
-    assert notebook.read('people/larry.md').startswith('# Larry\n')
+    assert notebook.read('people/fenwick.md').startswith('# Fenwick\n')
     assert notebook.read('people/kept.md').startswith('# kept@q.com\n')
 
 
@@ -1046,12 +1046,12 @@ def test_an_older_maps_held_page_for_a_service_is_archived_by_the_next_map(tmp_p
 
 
 def test_a_mailbox_provider_or_an_event_relay_is_never_an_organisation(tmp_path, monkeypatch):
-    """#2018: orgs/yahoo-com-hk (Ian, ischihang@yahoo.com.hk) and luma-mail.com,
+    """#2018: orgs/yahoo-com-hk (Osric, osricho@yahoo.com.hk) and luma-mail.com,
     reached through a person whose display name joined a relay address."""
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
-    people = [_row('Ian', 'ischihang@yahoo.com.hk', 22, 1), _row('Tracy Wu', 'tracy@hotmail.co.uk', 3, 1),
+    people = [_row('Osric', 'osricho@yahoo.com.hk', 22, 1), _row('Hazel Brooks', 'hazel@hotmail.co.uk', 3, 1),
               _row('Kim Park', 'kim@naver.com', 1, 1), _row('Jo Lin', 'jo@outlook.com.au', 1, 1),
               _row('Sam Lee', 'sam@acme.com.au', 2, 2), _row('Sam Lee', 'sam-lee@user.luma-mail.com', 0, 253)]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
@@ -1076,7 +1076,7 @@ def test_a_remap_rewrites_the_owners_map_lines_instead_of_adding_more(tmp_path, 
 
     def mail_rows(*a, **kw):
         sent = next(counts)
-        rows = [_row('', 'aaronplus1996@gmail.com', sent, 0), _row('Ody Zhou', 'ody@x.example', sent, 5)]
+        rows = [_row('', 'aaronplus1996@gmail.com', sent, 0), _row('Corin Marsh', 'corin@x.example', sent, 5)]
         return rows, {'xietianle@outlook.com'}
 
     monkeypatch.setattr('connectonion.rem.map._mail_rows', mail_rows)
@@ -1164,7 +1164,7 @@ def test_a_new_person_page_states_the_last_contact_in_its_lead_and_leaves_histor
     skills = tmp_path / 'installed'
     skills.mkdir()
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (
-        [{'name': 'Basem Suleiman', 'address': 'b@unsw.edu.au', 'mails': 6, 'sent': 2, 'received': 4,
+        [{'name': 'Sami Haddad', 'address': 'b@unsw.edu.au', 'mails': 6, 'sent': 2, 'received': 4,
           'first': '2026-08-01', 'last': '2026-09-06', 'boxes': ['outlook']}], set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
@@ -1208,7 +1208,7 @@ def test_the_owners_possible_addresses_are_asked_about_without_pages_of_their_ow
         def my_name(self): return 'Aaron Xie'
 
     rows = [_row('常兴', 'aaronplus1996@gmail.com', 108, 0), _row('', 'aaron.xie@mail.openonion.ai', 5, 2),
-            _row('Ody Zhou', 'ody@x.example', 30, 25), _row('Ken', 'ken@y.example', 3, 0)]
+            _row('Corin Marsh', 'corin@x.example', 30, 25), _row('Ken', 'ken@y.example', 3, 0)]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (rows, {'xietianle@outlook.com'}))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
@@ -1216,7 +1216,7 @@ def test_the_owners_possible_addresses_are_asked_about_without_pages_of_their_ow
     asked = {row['address'] for row in result['possible_own_addresses']}
     assert asked == {'aaronplus1996@gmail.com', 'aaron.xie@mail.openonion.ai'}
     assert not asked & paged                                        # asked about, no page of their own
-    assert {'ody@x.example', 'ken@y.example'} <= paged               # a friend written to is still a person
+    assert {'corin@x.example', 'ken@y.example'} <= paged               # a friend written to is still a person
     owner_page = Notebook(tmp_path).read(result['owner']['record'])
     assert 'co rem init --mine aaronplus1996@gmail.com' in owner_page
 
@@ -1249,7 +1249,7 @@ def test_the_owners_own_domain_is_never_a_counterparty_organisation(tmp_path, mo
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
-    people = [{'name': 'Zi Ming', 'address': 'ziming@openonion.ai', 'mails': 6, 'sent': 3, 'received': 3},
+    people = [{'name': 'Zi Ming', 'address': 'zia@openonion.ai', 'mails': 6, 'sent': 3, 'received': 3},
               {'name': 'Bot', 'address': 'agent@mail.openonion.ai', 'mails': 4, 'sent': 2, 'received': 2},
               {'name': 'Ann Lee', 'address': 'ann@partner.com.au', 'mails': 4, 'sent': 2, 'received': 2}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, {'me@openonion.ai'}))
@@ -1264,9 +1264,9 @@ def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():
     from connectonion.rem.map import RELAY, _people_groups
     for relay in ('usr-abc@user.luma-mail.com', 'calendar-invite@lu.ma', 'express@airbnb.com'):
         assert RELAY.search(relay)
-    assert not RELAY.search('host@airbnb.com') and not RELAY.search('ody@lu.ma.example.com')
-    rows = [{'name': 'Ody Zhou', 'address': 'ody.zhou@example.com', 'mails': 5},
-            {'name': 'Ody Zhou', 'address': 'calendar-invite@lu.ma', 'mails': 2},
-            {'name': 'Ody Zhou', 'address': 'express@airbnb.com', 'mails': 1}]
+    assert not RELAY.search('host@airbnb.com') and not RELAY.search('corin@lu.ma.example.com')
+    rows = [{'name': 'Corin Marsh', 'address': 'corin.marsh@example.com', 'mails': 5},
+            {'name': 'Corin Marsh', 'address': 'calendar-invite@lu.ma', 'mails': 2},
+            {'name': 'Corin Marsh', 'address': 'express@airbnb.com', 'mails': 1}]
     assert [[row['address'] for row in group] for group in _people_groups(rows)] == [
-        ['ody.zhou@example.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]
+        ['corin.marsh@example.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]

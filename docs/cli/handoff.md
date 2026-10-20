@@ -7,15 +7,15 @@ Code) continues from it, and asks you for anything that is missing.
 
 ```bash
 # You, in the directory where you discussed the task with Codex
-co handoff contact ody ody@example.com          # once per person
-co handoff send ody "the login token task"      # preview; nothing is sent
-co handoff send ody --draft ho-98fb1cb3 --yes   # send it; prints the same prompt for chat
+co handoff contact corin corin@example.com          # once per person
+co handoff send corin "the login token task"      # preview; nothing is sent
+co handoff send corin --draft ho-98fb1cb3 --yes   # send it; prints the same prompt for chat
 co handoff status ho-98fb1cb3 --wait            # returns when they accept or ask
 co handoff answer ho-98fb1cb3 "30 days"
 co handoff status ho-98fb1cb3                   # "Done, …" and any file they sent back
 ```
 
-Ody does not type any of this. The mail comes from your own mailbox and reads
+Corin does not type any of this. The mail comes from your own mailbox and reads
 like a short note from you: who has been working on what with their AI, what
 they talked through, and one block to paste into a new Codex or Claude Code
 conversation. He pastes it, and his

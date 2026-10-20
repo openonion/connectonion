@@ -6,8 +6,9 @@ description: A project page a new teammate understands in one screen: what it is
 # A project's page
 
 Write for a teammate who has one minute. Say what is, dated; never what the
-evidence lacks ("no test result is reported", "unverified"): a gap that
-changes the next step is one question under `Uncertainties`. The first screen answers, dated and
+evidence lacks ("no test result is reported", "it is unclear whether",
+"目前无法确认是否完成"): write the dated fact that is known and put the open
+part in `Open threads`. The first screen answers, dated and
 cited: what the project is, why it exists in the owner's words, where it
 stands now, and what is still open. Reference detail follows. A page that
 tours files and hedges every line fails even when every line is true.
@@ -102,7 +103,10 @@ words that started it or best state its purpose:
 `YYYY-MM-DD — “<exact words>” [n]`. The newest request is not why a project
 exists; without such words, quote the README's purpose, dated by its revision.
 
-**Where it stands**: 3–5 bullets about now, newest first, each dated: the
+**Where it stands**: development first: what was built, fixed, tested or
+released, from commits and the owner's build and release messages; launch,
+marketing and outreach work is one bullet after it. 3–5 bullets, newest first
+within each, each dated: the
 latest finished work and milestones (releases, features shipped: commit
 subjects on the current line with short sha, the owner's
 latest messages; quiet for weeks — say so); work in flight (recent unmerged

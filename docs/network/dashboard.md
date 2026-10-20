@@ -43,8 +43,8 @@ It writes no file, so improvements and newly published skills appear after upgra
 from connectonion import Agent
 from connectonion.network import host
 
-host(lambda: Agent("lisa", tools=[...]))
-# → The client receives Lisa's current Control Center.
+host(lambda: Agent("maren", tools=[...]))
+# → The client receives Maren's current Control Center.
 ```
 
 If you create `.co/dashboard.html`, the file is yours and ConnectOnion never overwrites it.

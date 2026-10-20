@@ -32,9 +32,9 @@ against the names, the real list separated cleanly:
 
 ```
 ppl 2way notice  domain                    who
- 26   11      1  unsw.edu.au               Tamara Berryman, Vern Chan, …   → a page
+ 26   11      1  unsw.edu.au               Greta Holloway, Rowan Ashdown, …   → a page
   3    0      0  cubpbc.com                Tara Sassine, Gemma Ingles      → a page: people, named
-  2    0      0  corp.town.com             Jean-Denis Greze, Tony Vincent  → a page
+  2    0      0  corp.quayside.example             Gaspard Moss, Tobias Ashby  → a page
  22    0      0  user.luma-mail.com        one sender per event            → no: a platform
   6    0      1  substack.com              FounderCoHo, a16z speedrun      → no: newsletters
   3    0      0  email.apple.com           Apple Developer, Apple Support  → no: a vendor's
@@ -64,7 +64,7 @@ be written once. A named person with no page yet is a finding, not a failure.
 ## `Our relationship` is with the entity
 
 It is often not the sum of the individual ones. The user mentors for UNSW; that
-is not Vern's relationship or Karen's, it is the university's.
+is not Rowan's relationship or Ingrid's, it is the university's.
 
 ## Retained observations and source meaning
 

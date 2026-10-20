@@ -471,7 +471,7 @@ def _name_pattern(name: str) -> str:
         pattern = f"(?i:{pattern})"
     elif len(re.findall(r"[^\W\d_]", name)) < 3:
         return ""
-    # Latin edges only: "让Ody看看" names Ody, "melody" does not.
+    # Latin edges only: "让Corin看看" names Corin, "melody" does not.
     return rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
 
 

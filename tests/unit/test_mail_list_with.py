@@ -4,8 +4,8 @@ from connectonion.useful_tools.gmail import Gmail
 from connectonion.useful_tools.outlook import Outlook
 
 
-def graph_message(i, when, sender="vern.chan@unsw.edu.au", to=("me@outlook.com",)):
-    return {"id": f"o{i}", "from": {"emailAddress": {"address": sender, "name": "Vern Chan"}},
+def graph_message(i, when, sender="rowan.ashdown@unsw.edu.au", to=("me@outlook.com",)):
+    return {"id": f"o{i}", "from": {"emailAddress": {"address": sender, "name": "Rowan Ashdown"}},
             "toRecipients": [{"emailAddress": {"address": a}} for a in to], "ccRecipients": [],
             "subject": f"s{i}", "receivedDateTime": when, "bodyPreview": "", "isRead": True}
 
@@ -18,7 +18,7 @@ def test_outlook_asks_for_the_participant_and_follows_every_page():
          "@odata.nextLink": Outlook.GRAPH_API_URL + "/me/messages?$skiptoken=abc"},
         {"value": [graph_message(3, "2026-09-30T00:00:00Z"),             # after the window
                    graph_message(4, "2026-06-26T00:00:00Z", sender="me@outlook.com",
-                                 to=("vern.chan@unsw.edu.au",))]},
+                                 to=("rowan.ashdown@unsw.edu.au",))]},
     ]
 
     def request(method, endpoint, **kwargs):
@@ -26,11 +26,11 @@ def test_outlook_asks_for_the_participant_and_follows_every_page():
         return pages[len(calls) - 1]
 
     outlook._request = request
-    rows = outlook.list_with("vern.chan@unsw.edu.au", "2026-06-25T00:00:00+00:00", "2026-09-23T00:00:00+00:00")
+    rows = outlook.list_with("rowan.ashdown@unsw.edu.au", "2026-06-25T00:00:00+00:00", "2026-09-23T00:00:00+00:00")
     assert [r["id"] for r in rows] == ["o4", "o1", "o2"]                    # oldest first, window applied
-    assert "participants:vern.chan@unsw.edu.au AND received>=2026-06-25" in calls[0][1]["$search"]
+    assert "participants:rowan.ashdown@unsw.edu.au AND received>=2026-06-25" in calls[0][1]["$search"]
     assert calls[1] == ("/me/messages?$skiptoken=abc", None)                 # the second page was followed
-    assert rows[0]["to"] == ["vern.chan@unsw.edu.au"]                       # recipients, so sent mail files right
+    assert rows[0]["to"] == ["rowan.ashdown@unsw.edu.au"]                       # recipients, so sent mail files right
 
 
 class FakeGmailService:
@@ -56,7 +56,7 @@ class FakeGmailService:
 def test_gmail_searches_all_three_fields_and_follows_page_tokens():
     service = FakeGmailService(
         pages=[{"messages": [{"id": "g2"}], "nextPageToken": "t1"}, {"messages": [{"id": "g1"}]}],
-        headers={"g1": {"From": "Ody <zhouodywork@gmail.com>", "To": "me@gmail.com", "Subject": "a",
+        headers={"g1": {"From": "Corin <zhouodywork@gmail.com>", "To": "me@gmail.com", "Subject": "a",
                         "Date": "Mon, 07 Sep 2026 10:00:00 +1000"},
                  "g2": {"From": "me@gmail.com", "To": "zhouodywork@gmail.com", "Cc": "x@y.z", "Subject": "b",
                         "Date": "Tue, 08 Sep 2026 10:00:00 +1000"}})

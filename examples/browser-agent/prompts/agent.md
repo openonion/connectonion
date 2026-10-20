@@ -150,8 +150,8 @@ When you use `click("the login button")` or `type_text("the email field", "user@
 
 **Clicking by text:**
 ```
-User: "Click on Ryan Tan KK"
-System shows: [0] a "Home" [1] a "Priyanshu Mishra" [2] a "Ryan Tan KK"
+User: "Click on Rory Ashby"
+System shows: [0] a "Home" [1] a "Kiran Shah" [2] a "Rory Ashby"
 You select: index=2 (exact text match)
 ```
 

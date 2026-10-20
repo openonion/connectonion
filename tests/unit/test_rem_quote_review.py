@@ -25,12 +25,12 @@ def page(lines: str, sources: str) -> str:
 
 
 def test_a_quote_copied_from_its_source_passes_across_line_wraps_and_punctuation():
-    text = page('- 2026-10-01 — Ody asked: “可以放在 Connect 页面上，我们自己再转发一下也可以。” [1]\n'
+    text = page('- 2026-10-01 — Corin asked: “可以放在 Connect 页面上，我们自己再转发一下也可以。” [1]\n'
                 '- She signed off “Best.” and wrote “sounds great,” [1]',
                 '- [1] gmail:abc — 2026-10-01\n')
     items = [{'source': 'gmail:abc', 'text': 'Hi,\n> earlier\n可以放在 Connect 页面上，\n我们自己再转发一下也可以。\n'
                                              'That sounds great\nBest'}]
-    assert misquoted(NOWHERE, 'people/ody.md', text, items) == []
+    assert misquoted(NOWHERE, 'people/corin.md', text, items) == []
 
 
 def test_a_paraphrase_or_translation_inside_quotation_marks_is_refused():
@@ -71,27 +71,27 @@ def test_drop_claims_removes_the_line_and_reports_claims_it_cannot_find():
 
 
 @pytest.mark.parametrize('field', ['Email', 'Handles', 'Also known as'])
-@pytest.mark.parametrize('claim', ['{field}: vern.chan@unsw.edu.au', 'vern.chan@unsw.edu.au'])
+@pytest.mark.parametrize('claim', ['{field}: rowan.ashdown@unsw.edu.au', 'rowan.ashdown@unsw.edu.au'])
 def test_drop_claims_keeps_uncited_fields_but_drops_a_refuted_phone(field, claim):
-    """Vern Chan's map address was lost to the citation audit (2026-10-16 trial)."""
-    text = ('# Vern Chan\n\n## Facts\n'
-            f'- {field}: vern.chan@unsw.edu.au\n- Phone: 0400 000 000 [1]\n\n'
+    """Rowan Ashdown's map address was lost to the citation audit (2026-10-16 trial)."""
+    text = ('# Rowan Ashdown\n\n## Facts\n'
+            f'- {field}: rowan.ashdown@unsw.edu.au\n- Phone: 0400 000 000 [1]\n\n'
             '## Sources\n- [1] gmail:a — 2026-10-16\n')
-    kept, unlocated = drop_claims('people/vern-chan.md', text,
+    kept, unlocated = drop_claims('people/rowan-ashdown.md', text,
                                   [claim.format(field=field), 'Phone: 0400 000 000'])
     assert kept == text.replace('- Phone: 0400 000 000 [1]', '- Phone: Unknown')
     assert unlocated == []
 
 
 def test_a_glued_heading_and_a_repeated_section_are_merged_not_refused():
-    text = ('# Hamish\n\nLead [1].\n\n## Facts\n- Email: h@example.com\n\n## Who they are\n'
+    text = ('# Callum\n\nLead [1].\n\n## Facts\n- Email: h@example.com\n\n## Who they are\n'
             'He leads the program [1]. ## Our relationship\n- Colleagues [1]\n\n'
             '## Uncertainties\n- Unknown\n\n## Uncertainties\n- Whether he stays [1]\n\n'
             '## Sources\n- [1] gmail:a — 2026-10-01\n')
-    merged = merge_duplicate_sections('people/hamish.md', text)
+    merged = merge_duplicate_sections('people/callum.md', text)
     assert 'program [1].\n\n## Our relationship\n- Colleagues [1]' in merged
     assert merged.count('## Uncertainties') == 1 and '- Whether he stays [1]' in merged
-    assert not [e for e in validate('people/hamish.md', merged, '', []) if 'occur once' in e or 'Duplicate' in e]
+    assert not [e for e in validate('people/callum.md', merged, '', []) if 'occur once' in e or 'Duplicate' in e]
 
 
 @pytest.mark.parametrize('decisions', ['', '## Key decisions\n- Chose local storage [1]\n\n'])
@@ -118,15 +118,15 @@ def test_a_fenced_history_example_is_not_a_project_section():
 def _person(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person('people/ody.md', 'Ody', ['ody@example.com'], email='ody@example.com')
-    old = notebook.read('people/ody.md')
+    notebook.stub_person('people/corin.md', 'Corin', ['corin@example.com'], email='corin@example.com')
+    old = notebook.read('people/corin.md')
     written = (old.replace('- Unknown — not investigated yet', '- Unknown')
                .replace('## Open threads\n- Unknown',
-                        '## Open threads\n- 2026-10-01 — Ody asked: “send the deck by Friday” [1] — open\n'
-                        '- 2026-10-02 — Ody offered: “I can intro you to Sam” [1] — open')
+                        '## Open threads\n- 2026-10-01 — Corin asked: “send the deck by Friday” [1] — open\n'
+                        '- 2026-10-02 — Corin offered: “I can intro you to Jonah” [1] — open')
                .replace('- (none yet)', '- [1] gmail:abc — 2026-10-01'))
-    items = [{'role': 'page', 'record': 'people/ody.md', 'text': old},
-             {'source': 'gmail:abc', 'text': 'Could you send the deck by Friday? Happy to introduce Sam.'}]
+    items = [{'role': 'page', 'record': 'people/corin.md', 'text': old},
+             {'source': 'gmail:abc', 'text': 'Could you send the deck by Friday? Happy to introduce Jonah.'}]
     return notebook, old, written, items
 
 
@@ -137,38 +137,38 @@ def test_review_gives_the_writer_turns_to_fix_a_misquote_then_keeps_the_sound_li
     repairs = []
     monkeypatch.setattr(runner, 'run_task', lambda *args: repairs.append(args[1]) or {'usage': {}})
     result = {'usage': {'input_tokens': 5}}
-    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, result,
+    runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, result,
                                 workdir=tmp_path, config={}, stage='investigate')
-    assert len(repairs) == runner.MAX_REPAIRS and '“I can intro you to Sam”' in repairs[0]
-    saved = notebook.read('people/ody.md')
-    assert '“send the deck by Friday”' in saved and 'intro you to Sam' not in saved
+    assert len(repairs) == runner.MAX_REPAIRS and '“I can intro you to Jonah”' in repairs[0]
+    saved = notebook.read('people/corin.md')
+    assert '“send the deck by Friday”' in saved and 'intro you to Jonah' not in saved
 
 
 def test_review_refuses_what_it_cannot_settle(tmp_path, monkeypatch):
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
     # A second title is code's to drop now; a page with none is still refused.
-    candidate.write_text(written.replace('# Ody\n', '', 1))
+    candidate.write_text(written.replace('# Corin\n', '', 1))
     monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
     with pytest.raises(runner.RunFailed, match='exactly one page title'):
-        runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+        runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                     workdir=tmp_path, config={}, stage='investigate')
-    assert notebook.read('people/ody.md') == old
+    assert notebook.read('people/corin.md') == old
 
 
 def test_an_audit_finding_goes_with_its_line_after_the_repairs(tmp_path, monkeypatch):
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
-    candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
-    finding = {'claim': 'Ody offered: “Happy to introduce Sam”', 'issue': 'Sam is not named as an intro',
+    candidate.write_text(written.replace('“I can intro you to Jonah”', '“Happy to introduce Jonah”'))
+    finding = {'claim': 'Corin offered: “Happy to introduce Jonah”', 'issue': 'Jonah is not named as an intro',
                'evidence': 'x', 'required_correction': 'remove'}
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
         'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]}), 'usage': {}})
     monkeypatch.setattr(runner, 'run_task', lambda *args: {'usage': {}})
-    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+    runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')
-    saved = notebook.read('people/ody.md')
-    assert 'introduce Sam' not in saved and '“send the deck by Friday”' in saved
+    saved = notebook.read('people/corin.md')
+    assert 'introduce Jonah' not in saved and '“send the deck by Friday”' in saved
 
 
 def test_a_source_listed_twice_becomes_one_dated_by_its_original():
@@ -181,13 +181,13 @@ def test_a_source_listed_twice_becomes_one_dated_by_its_original():
 
 
 def test_an_audit_claim_is_found_without_its_citation_and_only_its_sentence_goes():
-    """Hamish (2026-10-15 trial): the audit copied the claim without its [7], so no
+    """Callum (2026-10-15 trial): the audit copied the claim without its [7], so no
     line matched and the whole page was refused; the line's other sentence was true."""
-    text = ('# H\n\n## History\n- 2026-01-12: Hamish replied that the team would miss him [2]. '
-            'Nina later sent a drinks location update [7].\n\n## Sources\n- [2] gmail:a — 2026-01-12\n')
-    kept, unlocated = drop_claims('people/h.md', text, ['Nina later sent a drinks location update.'])
+    text = ('# H\n\n## History\n- 2026-01-12: Callum replied that the team would miss him [2]. '
+            'Petra later sent a drinks location update [7].\n\n## Sources\n- [2] gmail:a — 2026-01-12\n')
+    kept, unlocated = drop_claims('people/h.md', text, ['Petra later sent a drinks location update.'])
     assert unlocated == [] and 'drinks' not in kept
-    assert '- 2026-01-12: Hamish replied that the team would miss him [2].' in kept
+    assert '- 2026-01-12: Callum replied that the team would miss him [2].' in kept
 
 
 def _audit_fails_with(monkeypatch, claim):
@@ -199,19 +199,19 @@ def _audit_fails_with(monkeypatch, claim):
 
 def test_a_claim_on_a_linked_name_is_found_and_a_claim_already_gone_does_not_refuse(tmp_path, monkeypatch):
     """v193q1 (2026-10-15): 10 of 28 pages were refused because the audit's claim named
-    'Sasha Ward' while the page, linked by code, said '[Sasha Ward](...)', or
+    'Tess Ward' while the page, linked by code, said '[Tess Ward](...)', or
     because a repair had already rewritten the refuted sentence."""
-    kept, unlocated = drop_claims('people/x.md', '# X\n\n## Insight\n- Now: [Sasha Ward](../people/s.md) '
+    kept, unlocated = drop_claims('people/x.md', '# X\n\n## Insight\n- Now: [Tess Ward](../people/s.md) '
                                   'approved it [1].\n\n## Sources\n- [1] gmail:a — 2026-10-01\n',
-                                  ['Sasha Ward approved it.'])
+                                  ['Tess Ward approved it.'])
     assert 'approved' not in kept and unlocated == []
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
-    candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
+    candidate.write_text(written.replace('“I can intro you to Jonah”', '“Happy to introduce Jonah”'))
     _audit_fails_with(monkeypatch, 'A sentence a repair already rewrote.')
-    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+    runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')
-    assert '“send the deck by Friday”' in notebook.read('people/ody.md')
+    assert '“send the deck by Friday”' in notebook.read('people/corin.md')
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['factual_quality'] == 'bounded citation audit failed; 0 refuted claims removed, 1 already gone'
 
@@ -220,11 +220,11 @@ def test_a_page_kept_after_its_audit_failed_says_how_many_claims_went(tmp_path, 
     """b827e4cc: the review record said only "failed" for a page that was saved."""
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
-    candidate.write_text(written.replace('“I can intro you to Sam”', '“Happy to introduce Sam”'))
-    _audit_fails_with(monkeypatch, 'Ody offered: “Happy to introduce Sam”')
-    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+    candidate.write_text(written.replace('“I can intro you to Jonah”', '“Happy to introduce Jonah”'))
+    _audit_fails_with(monkeypatch, 'Corin offered: “Happy to introduce Jonah”')
+    runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')
-    assert '“send the deck by Friday”' in notebook.read('people/ody.md')
+    assert '“send the deck by Friday”' in notebook.read('people/corin.md')
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['accepted'] is True
     assert review['factual_quality'] == 'bounded citation audit failed; 1 refuted claims removed'
@@ -233,16 +233,16 @@ def test_a_page_kept_after_its_audit_failed_says_how_many_claims_went(tmp_path, 
 def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch):
     """"insufficient" means the audit read too little; nobody showed a claim wrong."""
     notebook, old, written, items = _person(tmp_path)
-    written = written.replace('- 2026-10-02 — Ody offered: “I can intro you to Sam” [1] — open',
-                              '- 2026-10-02 — Ody offered to introduce Sam [1] — open')
+    written = written.replace('- 2026-10-02 — Corin offered: “I can intro you to Jonah” [1] — open',
+                              '- 2026-10-02 — Corin offered to introduce Jonah [1] — open')
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
         'result': json.dumps({'verdict': 'INSUFFICIENT', 'findings': []}), 'usage': {}})
     monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('nothing to repair'))
-    runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+    runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')
-    assert 'introduce Sam' in notebook.read('people/ody.md')
+    assert 'introduce Jonah' in notebook.read('people/corin.md')
     assert json.loads((tmp_path / 'review.json').read_text())['factual_quality'] == \
         'bounded citation audit insufficient'
 
@@ -251,12 +251,12 @@ def test_a_page_someone_else_changed_meanwhile_gets_no_repair_turn(tmp_path, mon
     notebook, old, written, items = _person(tmp_path)
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
-    notebook.write('people/ody.md', old + '\nEdited by the user.\n')
+    notebook.write('people/corin.md', old + '\nEdited by the user.\n')
     monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('a repair would overwrite their edit'))
     with pytest.raises(runner.RunFailed, match='Page changed during'):
-        runner.promote_with_repairs(notebook, 'people/ody.md', candidate, old, items, tmp_path, {},
+        runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                     workdir=tmp_path, config={}, stage='investigate')
-    assert 'Edited by the user.' in notebook.read('people/ody.md')
+    assert 'Edited by the user.' in notebook.read('people/corin.md')
 
 
 def test_a_person_audit_reads_the_turns_own_mail_and_knows_the_people_rules_and_the_date(tmp_path):
@@ -270,7 +270,7 @@ def test_a_person_audit_reads_the_turns_own_mail_and_knows_the_people_rules_and_
         sent.append(prompt)
         return {'result': json.dumps({'verdict': 'PASS', 'findings': []}), 'usage': {}}
 
-    report, _ = project_claim_review.review(notebook, written, {}, tmp_path, audit, record='people/ody.md',
+    report, _ = project_claim_review.review(notebook, written, {}, tmp_path, audit, record='people/corin.md',
                                             items=items)
     assert report['verdict'] == 'pass' and report['sources_supplied'] == 1
     assert 'Could you send the deck by Friday?' in sent[0]

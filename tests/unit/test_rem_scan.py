@@ -34,18 +34,18 @@ class Box:
 
 def test_the_other_partys_name_comes_from_their_side_of_the_mail():
     """Mail the user sent lists the user in From; a census read the user's own
-    display name as Ody's, Dora's and a private Gmail's."""
-    sent = {"from": "openonion ai <me@x.y>", "to": ["Ody Zhou <ody@g.com>"], "cc": []}
-    assert _display_name(sent, "ody@g.com") == "Ody Zhou"
-    received = {"from": "Ody Zhou <ody@g.com>", "to": ["me@x.y"], "cc": []}
-    assert _display_name(received, "ody@g.com") == "Ody Zhou"
+    display name as Corin's, Briar's and a private Gmail's."""
+    sent = {"from": "openonion ai <me@x.y>", "to": ["Corin Marsh <corin@g.com>"], "cc": []}
+    assert _display_name(sent, "corin@g.com") == "Corin Marsh"
+    received = {"from": "Corin Marsh <corin@g.com>", "to": ["me@x.y"], "cc": []}
+    assert _display_name(received, "corin@g.com") == "Corin Marsh"
 
 
 def test_own_addresses_are_never_correspondents_even_across_mailboxes():
     rows = [{"id": "1", "from": "me@x.y", "to": ["private@gmail.com"], "cc": [], "date": "2026-09-10", "subject": "s"},
-            {"id": "2", "from": "Ody <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
+            {"id": "2", "from": "Corin <corin@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
     people = scan_people({"outlook": Box("me@x.y", rows)}, days=30, own_addresses={"private@gmail.com"})
-    assert [p["address"] for p in people] == ["ody@g.com"]
+    assert [p["address"] for p in people] == ["corin@g.com"]
 
 
 def test_one_sent_mail_maps_every_recipient_without_duplicate_person_counts():
@@ -126,15 +126,15 @@ def test_all_history_keeps_completed_years_after_a_later_connection_failure(fail
 def test_signals_are_handed_over_and_verdicts_are_not():
     rows = [{"id": "1", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-10", "subject": "Statement"},
             {"id": "2", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Statement"},
-            {"id": "3", "from": "Ody <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Re: terms"},
-            {"id": "4", "from": "me@x.y", "to": ["ody@g.com"], "cc": [], "date": "2026-09-12", "subject": "terms"}]
+            {"id": "3", "from": "Corin <corin@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Re: terms"},
+            {"id": "4", "from": "me@x.y", "to": ["corin@g.com"], "cc": [], "date": "2026-09-12", "subject": "terms"}]
     people = {p["address"]: p for p in scan_people({"outlook": Box("me@x.y", rows)}, days=30, own_addresses=set())}
-    bank, ody = people["no-reply.products@edm.bank.au"], people["ody@g.com"]
+    bank, corin = people["no-reply.products@edm.bank.au"], people["corin@g.com"]
     # the pattern anchored at "@" missed this one; anywhere before the @ catches it
     assert bank["automated_hint"] and bank["one_way"]
-    assert not ody["automated_hint"] and not ody["one_way"]
-    assert ody["sent"] == 1 and ody["received"] == 1
-    assert "terms" in ody["subjects"][0]
+    assert not corin["automated_hint"] and not corin["one_way"]
+    assert corin["sent"] == 1 and corin["received"] == 1
+    assert "terms" in corin["subjects"][0]
     # nothing is dropped here: classifying is the Skill's job
     assert len(people) == 2
 
@@ -149,7 +149,7 @@ def test_one_transient_timeout_does_not_end_the_gather(monkeypatch):
     class Flaky:
         def my_addresses(self): return {"me@x.y"}
         def list_between(self, s, e, n):
-            return [{"id": "1", "from": "Ody <ody@g.com>", "to": ["me@x.y"], "cc": [],
+            return [{"id": "1", "from": "Corin <corin@g.com>", "to": ["me@x.y"], "cc": [],
                      "date": "2026-09-10T00:00:00+00:00", "subject": "terms"}]
         def get_email_body(self, i):
             calls["n"] += 1
@@ -157,7 +157,7 @@ def test_one_transient_timeout_does_not_end_the_gather(monkeypatch):
                 raise TimeoutError("The read operation timed out")
             return "--- Email Body ---\nhello"
 
-    items, coverage = inv.gather("Ody", ["ody"], days=7, clients={"outlook": Flaky()}, subscriptions={})
+    items, coverage = inv.gather("Corin", ["corin"], days=7, clients={"outlook": Flaky()}, subscriptions={})
     assert len(items) == 1 and calls["n"] == 2
     assert "1 matched" in coverage[0]
 
@@ -179,13 +179,13 @@ def test_a_persistent_failure_still_surfaces(monkeypatch):
 
 def test_a_senders_name_is_read_from_from_name_when_from_is_a_bare_address():
     """Outlook and Gmail hand back `from` bare and the name beside it; a real
-    census left Tamara, Vern and Wisiani nameless for exactly this reason."""
-    row = {"from": "tamara.berryman@unsw.edu.au", "from_name": "Tamara Berryman", "to": ["me@x.y"], "cc": []}
-    assert _display_name(row, "tamara.berryman@unsw.edu.au") == "Tamara Berryman"
+    census left Greta, Rowan and Dewi nameless for exactly this reason."""
+    row = {"from": "greta.holloway@unsw.edu.au", "from_name": "Greta Holloway", "to": ["me@x.y"], "cc": []}
+    assert _display_name(row, "greta.holloway@unsw.edu.au") == "Greta Holloway"
 
 
 def test_material_over_the_room_is_digested_in_order_not_dropped():
-    """Ody's investigation kept the newest 107 of 182 and dropped 75 -- the
+    """Corin's investigation kept the newest 107 of 182 and dropped 75 -- the
     oldest, where the terms of the relationship were set."""
     from connectonion.rem.investigate import digest_in_chunks
     config = {"limits": {"extract_items_per_batch": 3, "extract_chars_per_batch": 10_000}}
@@ -233,13 +233,13 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
     from connectonion.rem import investigate as inv
     root = tmp_path / "rem"; prepare(root); set_config(root, ["runner", "coai"])
     nb = inv.Notebook(root)
-    nb.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    nb.stub_person("people/rowan.md", "Rowan Ashdown", ["rowan"], email="rowan.ashdown@unsw.edu.au")
 
     class Quiet:
         def my_addresses(self): return {"me@x.y"}
         def list_between(self, s, e, n):
-            return [{"id": "q1", "from": "vern.chan@unsw.edu.au", "to": ["me@x.y"], "subject": "Hi", "date": s}]
-        def get_email_body(self, i): return "Hi, Vern here."
+            return [{"id": "q1", "from": "rowan.ashdown@unsw.edu.au", "to": ["me@x.y"], "subject": "Hi", "date": s}]
+        def get_email_body(self, i): return "Hi, Rowan here."
 
     handed = []
 
@@ -247,7 +247,7 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
         import types
         if argv[1] == "-c":  # the Skill check before the gather (#1974)
             return types.SimpleNamespace(stdout="", stderr="", returncode=0)
-        page = root / "people/vern.md"
+        page = root / "people/rowan.md"
         import re
         from pathlib import Path
         # Read while the turn runs: a finished task keeps no copy of it (#1958).
@@ -262,10 +262,10 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
 
     monkeypatch.setattr(inv.subprocess if hasattr(inv, "subprocess") else __import__("subprocess"), "run", fake_co_ai)
     monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
-    out = inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+    out = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan"], days=7,
                           clients={"outlook": Quiet()}, subscriptions={})
-    assert out["changed"] == ["people/vern.md"]
-    status = [l for l in nb.read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
+    assert out["changed"] == ["people/rowan.md"]
+    status = [l for l in nb.read("people/rowan.md").splitlines() if l.startswith("Investigation:")][0]
     assert "outlook" in status
     assert handed[0]["role"] == "page"
 
@@ -278,18 +278,18 @@ def test_an_organisation_is_only_proposed_where_two_people_share_a_work_domain()
     institutional facts are otherwise copied onto every one of their pages."""
     from connectonion.rem.scan import scan_orgs
     people = [
-        {"address": "vern.chan@unsw.edu.au", "name": "Vern Chan", "mails": 7, "last": "2026-09-10"},
-        {"address": "k.dalapa@unsw.edu.au", "name": "Karen da Lapa-Soares", "mails": 6, "last": "2026-09-12"},
-        {"address": "tamara@unsw.edu.au", "name": "Tamara Berryman", "mails": 15, "last": "2026-09-01"},
+        {"address": "rowan.ashdown@unsw.edu.au", "name": "Rowan Ashdown", "mails": 7, "last": "2026-09-10"},
+        {"address": "i.falk@unsw.edu.au", "name": "Ingrid Falk", "mails": 6, "last": "2026-09-12"},
+        {"address": "greta@unsw.edu.au", "name": "Greta Holloway", "mails": 15, "last": "2026-09-01"},
         {"address": "solo@dataquaranteed.com", "name": "Siraj Deen", "mails": 4, "last": "2026-09-09"},
-        {"address": "ody@gmail.com", "name": "Ody", "mails": 30, "last": "2026-09-14"},
+        {"address": "corin@gmail.com", "name": "Corin", "mails": 30, "last": "2026-09-14"},
         {"address": "someone.else@gmail.com", "name": "Else", "mails": 9, "last": "2026-09-14"},
     ]
     orgs = scan_orgs(people)
     assert [o["domain"] for o in orgs] == ["unsw.edu.au"]          # the only domain two people share
     assert orgs[0]["people"] == 3 and orgs[0]["mails"] == 28
-    assert orgs[0]["addresses"][0] == "tamara@unsw.edu.au"          # busiest first
-    assert "Vern Chan" in orgs[0]["names"]
+    assert orgs[0]["addresses"][0] == "greta@unsw.edu.au"          # busiest first
+    assert "Rowan Ashdown" in orgs[0]["names"]
     assert orgs[0]["last"] == "2026-09-12"
 
 
@@ -330,9 +330,9 @@ def test_a_domain_that_only_sends_notices_is_not_an_organisation_we_deal_with():
     from connectonion.rem.scan import scan_orgs
     notices = [{"address": f"noreply+{i}@google.com", "name": "Google Play", "mails": 4, "last": "2026-09-10",
                 "automated_hint": True, "one_way": True} for i in range(29)]
-    real = [{"address": "vern@unsw.edu.au", "name": "Vern", "mails": 7, "last": "2026-09-10",
+    real = [{"address": "rowan@unsw.edu.au", "name": "Rowan", "mails": 7, "last": "2026-09-10",
              "automated_hint": False, "one_way": False},
-            {"address": "karen@unsw.edu.au", "name": "Karen", "mails": 6, "last": "2026-09-12",
+            {"address": "ingrid@unsw.edu.au", "name": "Ingrid", "mails": 6, "last": "2026-09-12",
              "automated_hint": False, "one_way": False},
             {"address": "no-reply@unsw.edu.au", "name": "UNSW Alerts", "mails": 40, "last": "2026-09-12",
              "automated_hint": True, "one_way": True}]
@@ -341,7 +341,7 @@ def test_a_domain_that_only_sends_notices_is_not_an_organisation_we_deal_with():
     org = orgs[0]
     assert org["people"] == 2          # the two who correspond decide the threshold
     assert org["notices"] == 1         # the alert sender is still reported, not hidden
-    assert org["addresses"][0] == "vern@unsw.edu.au"   # ranked among the people, not the notices
+    assert org["addresses"][0] == "rowan@unsw.edu.au"   # ranked among the people, not the notices
 
 
 def test_the_users_own_domain_is_not_an_organisation_they_deal_with():
@@ -350,9 +350,9 @@ def test_the_users_own_domain_is_not_an_organisation_they_deal_with():
     from connectonion.rem.scan import scan_orgs
     rows = [{"address": f"agent{i}@mail.openonion.ai", "name": f"0x{i}", "mails": 3, "last": "2026-09-10",
              "automated_hint": False, "one_way": False} for i in range(4)]
-    rows += [{"address": "vern@unsw.edu.au", "name": "Vern", "mails": 7, "last": "2026-09-10",
+    rows += [{"address": "rowan@unsw.edu.au", "name": "Rowan", "mails": 7, "last": "2026-09-10",
               "automated_hint": False, "one_way": False},
-             {"address": "karen@unsw.edu.au", "name": "Karen", "mails": 6, "last": "2026-09-12",
+             {"address": "ingrid@unsw.edu.au", "name": "Ingrid", "mails": 6, "last": "2026-09-12",
               "automated_hint": False, "one_way": True}]
     orgs = scan_orgs(rows, own_addresses={"aaron@mail.openonion.ai", "me@x.y"})
     assert [o["domain"] for o in orgs] == ["unsw.edu.au"]
@@ -375,7 +375,7 @@ def test_the_row_carries_how_many_of_them_wrote_back():
 # Names (#1844). On the owner's map 195 people were only an address, and 190 of
 # them were people the owner had written to and never heard from: the To line
 # the owner typed carried no name, so there was nothing to read. What was there
-# was the owner's own greeting -- "Hi Larry,", "Larry 你好，", "子明，" -- and,
+# was the owner's own greeting -- "Hi Fenwick,", "Fenwick 你好，", "子亚，" -- and,
 # for a few, a saved contact.
 
 def _sent(to, snippet, cc=()):
@@ -385,10 +385,10 @@ def _sent(to, snippet, cc=()):
 
 def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
     """Stripping every <...> out of a two-recipient header once handed both
-    people the name 'Ody Zhou", "Dora'."""
-    row = {"from": "me@x.y", "to": ['"Ody Zhou" <ody@g.com>, "Dora" <dora@g.com>'], "cc": []}
-    assert _display_name(row, "dora@g.com") == "Dora"
-    assert _display_name(row, "ody@g.com") == "Ody Zhou"
+    people the name 'Corin Marsh", "Briar'."""
+    row = {"from": "me@x.y", "to": ['"Corin Marsh" <corin@g.com>, "Briar" <briar@g.com>'], "cc": []}
+    assert _display_name(row, "briar@g.com") == "Briar"
+    assert _display_name(row, "corin@g.com") == "Corin Marsh"
     assert _display_name({"from": "me@x.y", "to": ['"a@b.co" <a@b.co>'], "cc": []}, "a@b.co") == ""
     # A sender whose display name is an address has no name (a real map listed
     # "no-reply@anz.greenhouse.io" as a person's name).
@@ -396,11 +396,11 @@ def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
 
 
 @pytest.mark.parametrize("snippet,name", [
-    ("Hi Larry, the new batch is ready", "Larry"),
-    ("Larry 你好， 新一批悉尼租房线索已经整理完成", "Larry"),
-    ("子明， 附件是我们整理的第一批", "子明"),
-    ("Dear Dannielle, Thanks for the call", "Dannielle"),
-    ("Hi Andrew, Here&#39;s the attachment", "Andrew"),
+    ("Hi Fenwick, the new batch is ready", "Fenwick"),
+    ("Fenwick 你好， 新一批悉尼租房线索已经整理完成", "Fenwick"),
+    ("子亚， 附件是我们整理的第一批", "子亚"),
+    ("Dear Brianna, Thanks for the call", "Brianna"),
+    ("Hi Simon, Here&#39;s the attachment", "Simon"),
     ("Hi shen, You joined one of our meetups", "Shen"),
     ("Hi everyone, Thank you for Thursday", ""),
     ("您好， 请以本邮件中的版本为准", ""),
@@ -408,7 +408,7 @@ def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
     ("check worker", ""),
     # 1.9.2b1: a one-word reply above the quote made a person called "On Fri".
     ("hi On Fri, May 8, 2026 at 5:06 PM openonion ai wrote:", ""),
-    ("Hi On 2026-05-08, Ody wrote:", ""),
+    ("Hi On 2026-05-08, Corin wrote:", ""),
 ])
 def test_the_owners_greeting_names_the_person_they_wrote_to(snippet, name):
     people = scan_people({"gmail": Box("me@x.y", [_sent(["p@q.com"], snippet)])}, days=30, own_addresses=set())
@@ -416,8 +416,8 @@ def test_the_owners_greeting_names_the_person_they_wrote_to(snippet, name):
 
 
 def test_a_greeting_to_several_people_names_none_of_them():
-    rows = [_sent(["a@q.com", "b@q.com"], "Hi Larry, both of you"),
-            _sent(["c@q.com"], "Hi Larry, you too", cc=["d@q.com"])]
+    rows = [_sent(["a@q.com", "b@q.com"], "Hi Fenwick, both of you"),
+            _sent(["c@q.com"], "Hi Fenwick, you too", cc=["d@q.com"])]
     people = {p["address"]: p["name"] for p in scan_people({"gmail": Box("me@x.y", rows)}, 30, set())}
     # Every recipient is mapped (one mail to several people is about each of
     # them); the greeting still names none, since nobody can say which it meant.
@@ -425,35 +425,35 @@ def test_a_greeting_to_several_people_names_none_of_them():
 
 
 def test_the_name_they_write_under_beats_the_owners_greeting():
-    rows = [_sent(["ody@g.com"], "Hi Od, quick one"),
-            {"id": "r", "from": "Ody Zhou <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
-    assert scan_people({"gmail": Box("me@x.y", rows)}, 30, set())[0]["name"] == "Ody Zhou"
+    rows = [_sent(["corin@g.com"], "Hi Od, quick one"),
+            {"id": "r", "from": "Corin Marsh <corin@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
+    assert scan_people({"gmail": Box("me@x.y", rows)}, 30, set())[0]["name"] == "Corin Marsh"
 
 
 class Contacts(Box):
     def contact_names(self):
-        return {"larry@q.com": "Larry Lee", "ody@g.com": "Ody (saved)"}
+        return {"fenwick@q.com": "Fenwick Kim", "corin@g.com": "Corin (saved)"}
 
 
 def test_a_saved_contact_names_someone_the_mail_does_not():
-    rows = [_sent(["larry@q.com"], "Hi Larry, the batch"),
-            {"id": "r", "from": "Ody Zhou <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
+    rows = [_sent(["fenwick@q.com"], "Hi Fenwick, the batch"),
+            {"id": "r", "from": "Corin Marsh <corin@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
     people = {p["address"]: p["name"] for p in scan_people({"gmail": Contacts("me@x.y", rows)}, 30, set())}
-    assert people == {"larry@q.com": "Larry Lee", "ody@g.com": "Ody Zhou"}
+    assert people == {"fenwick@q.com": "Fenwick Kim", "corin@g.com": "Corin Marsh"}
 
 
 def test_contacts_that_cannot_be_read_leave_the_map_to_the_mail():
     class Broken(Box):
         def contact_names(self):
             raise PermissionError("no contacts scope")
-    people = scan_people({"gmail": Broken("me@x.y", [_sent(["p@q.com"], "Hi Larry,")])}, 30, set())
-    assert people[0]["name"] == "Larry"
+    people = scan_people({"gmail": Broken("me@x.y", [_sent(["p@q.com"], "Hi Fenwick,")])}, 30, set())
+    assert people[0]["name"] == "Fenwick"
 
 
 def test_a_greeting_to_an_agents_address_does_not_name_the_agent_after_its_owner():
-    """ "Hi Ody," to 0x3c3ae74550@mail.openonion.ai titled Ody's agent "Ody", a
+    """ "Hi Corin," to 0x3c3ae74550@mail.openonion.ai titled Corin's agent "Corin", a
     second page with the person's name."""
-    people = scan_people({"gmail": Box("me@x.y", [_sent(["0x3c3ae74550@mail.openonion.ai"], "Hi Ody, confirmed")])},
+    people = scan_people({"gmail": Box("me@x.y", [_sent(["0x3c3ae74550@mail.openonion.ai"], "Hi Corin, confirmed")])},
                          30, set())
     assert people[0]["name"] == ""
 

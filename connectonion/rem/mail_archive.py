@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WRITE_WAIT_SECONDS, RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
+from .mail import _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
 
 
 def _key(value: str) -> str:
@@ -269,16 +270,44 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
 # is read for what it holds, and the mailbox is asked for the rest (#2042).
 READABLE = ("complete", "partial", "running", "paused")
 
+# 2026-10-20: parsing 1,209 observations and a 2.1 MB inventory cost ~4 s per
+# page at one worker; repeated parsing competes for the GIL at 16 workers.
+_MAIL_METADATA = {}
+_MAIL_METADATA_LOCK = threading.Lock()
+
 
 def mail_metadata(root: Path) -> list[dict]:
     """Retained observations plus initial metadata, with the initial row taking precedence."""
+    # The folder is checked once; a link check per file (state_path) cost more than
+    # the parse it saved. read_json still refuses a linked file when it is parsed.
+    paths = sorted(state_path(root, "mail/observed-metadata").glob("*/*.json"))
+    for folder in {path.parent for path in paths}:
+        state_path(root, str(folder.relative_to(root / ".state")))   # refuses a linked provider folder
+    observed = []
+    for path in paths:
+        stat = path.lstat()
+        observed.append((path.parent.name, path.name, stat.st_size, stat.st_mtime_ns))
+    inventory = state_path(root, "source-inventory.jsonl")
+    stat = inventory.stat() if inventory.is_file() else None
+    key = (tuple(observed), (stat.st_size, stat.st_mtime_ns) if stat else None)
+    resolved = root.resolve()
+    # Parsed under the lock: pages starting together each parsed the same files.
+    with _MAIL_METADATA_LOCK:
+        kept = _MAIL_METADATA.get(resolved)
+        if not kept or kept[0] != key:
+            kept = key, _parse_metadata(paths, inventory if stat else None)
+            _MAIL_METADATA[resolved] = kept
+    # person/domain material, investigation, store and review only read row dicts.
+    return list(kept[1])
+
+
+def _parse_metadata(paths: list[Path], inventory: Path | None) -> list[dict]:
     found = {}
-    for path in sorted(state_path(root, "mail/observed-metadata").glob("*/*.json")):
-        row = read_json(state_path(root, str(path.relative_to(root / ".state"))), {})
+    for path in paths:
+        row = read_json(path, {})
         if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
             found[(row["source"], row["id"])] = row
-    inventory = state_path(root, "source-inventory.jsonl")
-    for line in inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []:
+    for line in inventory.read_text(encoding="utf-8").splitlines() if inventory else []:
         row = json.loads(line) if line.strip() else {}
         if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
             found[(row["source"], row["id"])] = row
@@ -343,7 +372,7 @@ def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, l
     return _material(manifest, snapshots)
 
 
-def _domain_observations(root: Path, domains: list[str], contacts: set, snapshots: list[dict]) -> list[dict]:
+def _domain_observations(root: Path, domains: list[str], snapshots: list[dict], keep, exclude: set) -> list[dict]:
     """Saved observations add originals; the manifest still describes only init."""
     rows = mail_metadata(root)
     seen = {(saved['provider'], saved['id']) for saved in snapshots}
@@ -356,16 +385,17 @@ def _domain_observations(root: Path, domains: list[str], contacts: set, snapshot
         if not ref:
             continue
         saved = read_json(root / ref['message'], {})
-        own_domain = on_domains(saved, domains)
-        if own_domain or contacts.intersection(participants(saved)):
+        own_domain = org_member(saved, domains, exclude)
+        if keep(saved):
             output.append({**saved, 'thread': threads[(row['source'], row['id'])],
                            **({'relationship_scope': RELATED_ORG_SCOPE} if not own_domain else {})})
     return output
 
 
 def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
-                    include_observed: bool = False) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
-    """An org's mail from the complete local archive: every snapshot a domain is on.
+                    include_observed: bool = False,
+                    left_out: dict | None = None) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+    """An org's archived mail through members other than the owner or notice addresses.
 
     People get an index at init; an org has none, so UNSW's page said "0 loaded
     from private init archive" and listed 3,800 headers from the providers
@@ -380,20 +410,30 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     if manifest.get("phase") not in READABLE or not domains:
         return None
+    from .investigate import known_addresses
     contacts = {address.casefold() for address in contact_addresses}
+    own = {address.casefold() for address in manifest.get('owner_addresses', [])}
+    notices, known = notice_addresses(root), known_addresses(root)
+
+    def keep(row):
+        kept = org_mail(row, domains, own, notices, known, contacts)
+        if not kept and on_domains(row, domains) and left_out is not None:
+            left_out[(row['provider'], row['id'])] = row.get('date', '')
+        return kept
+
     snapshots = []
     for provider in manifest.get("providers", []):
         for path in sorted(state_path(root, f"mail/messages/{provider}").glob("*.json")):
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            own_domain = on_domains(snapshot, domains)
-            if own_domain or contacts.intersection(participants(snapshot)):
+            own_domain = org_member(snapshot, domains, own | notices)
+            if keep(snapshot):
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     if include_observed:
-        snapshots = _domain_observations(root, domains, contacts, snapshots)
+        snapshots = _domain_observations(root, domains, snapshots, keep, own | notices)
     return _material(manifest, snapshots)
 
 

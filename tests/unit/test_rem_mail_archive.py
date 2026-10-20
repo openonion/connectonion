@@ -11,6 +11,133 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_mail_metadata_memo_tracks_observations_and_inventory(tmp_path, monkeypatch):
+    from connectonion.rem import mail_archive as archive
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    observed = state_path(tmp_path, 'mail/observed-metadata/gmail/one.json')
+    observed.parent.mkdir(parents=True)
+    row = {'type': 'mail', 'source': 'gmail', 'id': 'one', 'subject': 'Observed'}
+    write_json(observed, row)
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text(json.dumps({**row, 'subject': 'Initial'}) + '\n')
+    reads = []
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        reads.append(path)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_text', read)
+    first = archive.mail_metadata(tmp_path)
+    second = archive.mail_metadata(tmp_path)
+    assert reads == [observed, inventory]
+    assert first == second == [{**row, 'subject': 'Initial'}]
+    assert first is not second and first[0] is second[0]
+    first.clear()
+    assert archive.mail_metadata(tmp_path) == second
+
+    stat = observed.stat()
+    os.utime(observed, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+    assert archive.mail_metadata(tmp_path) == second
+    assert reads == [observed, inventory] * 2
+
+    added = observed.with_name('two.json')
+    write_json(added, {**row, 'id': 'two'})
+    assert len(archive.mail_metadata(tmp_path)) == 2
+    assert reads[-3:] == [observed, added, inventory]
+
+    with inventory.open('a') as output:
+        output.write(json.dumps({**row, 'id': 'three'}) + '\n')
+    assert len(archive.mail_metadata(tmp_path)) == 3
+    assert reads[-3:] == [observed, added, inventory]
+    assert len(reads) == 10
+
+
+def test_mail_metadata_memo_tracks_missing_inventory(tmp_path):
+    from connectonion.rem.mail_archive import mail_metadata
+    from connectonion.rem.files import state_path
+
+    prepare(tmp_path)
+    assert mail_metadata(tmp_path) == []
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text(json.dumps({'type': 'mail', 'source': 'gmail', 'id': 'one'}) + '\n')
+    assert len(mail_metadata(tmp_path)) == 1
+    inventory.unlink()
+    assert mail_metadata(tmp_path) == []
+
+
+
+def test_org_mail_excludes_owner_and_notice_membership_in_archive_and_observations(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import domain_material, message_path, retain_message
+
+    prepare(tmp_path)
+    now = datetime.now(timezone.utc)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['owner@example.ai'],
+        'range_start': (now - timedelta(days=30)).isoformat(), 'range_end': now.isoformat()})
+    write_json(state_path(tmp_path, 'map.json'), {
+        'people': [{'name': 'Owner', 'addresses': ['owner@example.ai']},
+                   {'name': 'Mara', 'addresses': ['mara@example.ai']}],
+        'automated_correspondents': [
+            {'address': 'billing@service.example.net', 'addresses': ['alerts@example.ai']}]})
+    rows = [
+        ('billing', 'billing@service.example.net', ['owner@example.ai'], []),
+        ('owner', 'owner@example.ai', ['Avery Lin <avery@partner.example.org>'], []),
+        ('notice-member', 'avery@partner.example.org', ['alerts@example.ai'], []),
+        ('notice-sender', 'alerts@example.ai', ['staff@example.ai'], []),
+        ('mara', 'Mara <mara@example.ai>', ['owner@example.ai'], []),
+        ('notice-with-person', 'billing@service.example.net', ['owner@example.ai'], ['mara@example.ai']),
+        ('staff', 'staff@example.edu.au', ['owner@example.ai'], []),
+    ]
+    for storage in ('initial', 'observed'):
+        for native, sender, recipients, cc in rows:
+            row = {'id': f'{storage}-{native}', 'from': sender, 'to': recipients, 'cc': cc,
+                   'date': (now - timedelta(days=1)).isoformat(), 'subject': 'Pilot'}
+            retain_message(tmp_path, 'gmail', row, native, fetched_at=now.isoformat())
+            if storage == 'initial':
+                write_json(message_path(tmp_path, 'gmail', row['id']), {'provider': 'gmail', **row, 'body': native})
+
+    for observed in (False, True):
+        material, _, _ = domain_material(tmp_path, ['mail.example.ai', 'example.ai'], include_observed=observed)
+        expected = {'initial-mara', 'initial-notice-with-person'}
+        if observed:
+            expected |= {'observed-mara', 'observed-notice-with-person'}
+        assert {item['_mail_id'] for item in material['gmail']} == expected
+    material, _, _ = domain_material(tmp_path, ['example.edu.au'], include_observed=True)
+    assert {item['_mail_id'] for item in material['gmail']} == {'initial-staff', 'observed-staff'}
+    items, coverage = gather('Example', ['mail.example.ai', 'example.ai'], days=20,
+                             clients={}, subscriptions={}, archive_root=tmp_path, record='orgs/example.md')
+    assert len(items) == 4
+    assert [line for line in coverage if 'notice or owner-only messages' in line] == [
+        '10 notice or owner-only messages on the domain left out']
+
+
+def test_org_archive_exclusion_coverage_uses_the_requested_window_and_subscriptions(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+
+    prepare(tmp_path)
+    now = datetime.now(timezone.utc)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['gmail', 'outlook'], 'owner_addresses': ['owner@example.ai'],
+        'range_start': (now - timedelta(days=100)).isoformat(), 'range_end': now.isoformat()})
+    write_json(state_path(tmp_path, 'map.json'), {
+        'automated_correspondents': [{'address': 'billing@service.example.net'}]})
+    for provider, native, age in [('gmail', 'current', 1), ('gmail', 'old', 90), ('outlook', 'unsubscribed', 1)]:
+        write_json(message_path(tmp_path, provider, native), {
+            'provider': provider, 'id': native, 'from': 'billing@service.example.net',
+            'to': ['owner@example.ai'], 'date': (now - timedelta(days=age)).isoformat(), 'body': 'Invoice'})
+    items, coverage = gather('Example', ['example.ai'], days=20, clients={},
+                             subscriptions={'outlook': {'unsubscribed': True}},
+                             archive_root=tmp_path, record='orgs/example.md')
+    assert items == []
+    assert [line for line in coverage if 'notice or owner-only messages' in line] == [
+        '1 notice or owner-only messages on the domain left out']
+    assert 'outlook: unsubscribed by the user; not searched' in coverage
+
 def test_retained_domain_and_shared_contact_mail_reach_org_gather_without_extending_init(tmp_path):
     import hashlib
     from connectonion.rem.files import read_json, state_path, write_json

@@ -33,7 +33,10 @@ history says what was committed and when. Join them:
 - A plan is a plan; a reversed decision is both decisions, dated, the later
   marked current. Exploration that settles nothing is said as exploration.
 - The product is what the repository is for, as its README or the owner
-  describes it, not the loudest thread. A side feature or tooling detour is a
+  describes it, not the loudest thread. Messages about building, testing and
+  releasing it set `What it is`, `Where it stands` and `Key decisions`; a run of
+  launch, video or outreach messages is one line in `Where it stands`, however
+  many there are. A side feature or tooling detour is a
   thread, never `What it is`.
 - A session's folder only says where the assistant ran. Use a message for
   this project only when it names a distinctive project, package, file,

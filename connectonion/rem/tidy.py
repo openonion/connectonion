@@ -424,7 +424,7 @@ def _lines(notebook: Notebook) -> list[dict]:
     """Lines about the run rather than the subject, and model-written coverage citations, removed line by line.
 
     `web: not searched` at first; then any bullet `page_review.TOOL_TEXT`
-    recognises above Sources, such as Tamara's "The current collector reports
+    recognises above Sources, such as Greta's "The current collector reports
     50 matching Outlook messages" (#2058). A contact field keeps its label."""
     from .page_review import CONTACT_LINE, TOOL_TEXT
     removed = []

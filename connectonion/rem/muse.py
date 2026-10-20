@@ -11,12 +11,16 @@ from .config import read_config
 from .evidence import INDEX, write_evidence
 from .files import Notebook, RemError, read_json, state_path, write_json
 from .investigate import gather, page_handles, project_paths
-from .page_review import _listed_sources, quotes
+from .page_review import prose
 from .reader_model import _source_ids, cited_context
 from .project_material import stored
 from .service import now, run_logs, subscriptions
 
 ENRICH_DAYS = 3650
+# 2026-10-20: gh paginated 1,346 PRs with comments in 36 s; 400 hid older history.
+GITHUB_LIST_LIMIT = 5000
+PERIOD_CHARS = 15_000
+MAX_PERIODS = 6
 INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
@@ -25,7 +29,8 @@ MUSE_TURNS = ("Now do Turn 1 only.",
 
 
 def ledger_dir(root, record) -> Path:
-    return state_path(root, f"enrich/{Path(record).stem}")
+    # 2026-10-20: pages deepened in parallel in different categories can share a stem.
+    return state_path(root, f"enrich/{Path(record).with_suffix('')}")
 
 
 def _archive_note(root) -> str:
@@ -52,6 +57,19 @@ def _page_item(root: Path, record: str, page: str) -> dict:
                     "(people/, projects/, orgs/): read them for context, never edit them.\n\n" + page}
 
 
+def _earlier_insights(page: str) -> list[dict]:
+    """2026-10-21: a second muse round must add to the insights already on the page."""
+    section = re.search(r'(?ms)^## Insight[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(page))
+    bullets = re.findall(r'(?m)^[-*] .*(?:\n[ \t]+\S.*)*', section[1] if section else '')
+    bullets = [bullet for bullet in bullets if not re.fullmatch(r'[-*] Unknown(?: — not investigated yet)?', bullet)]
+    if not bullets:
+        return []
+    return [{"role": "earlier-insights", "source": "investigation:earlier-insights", "timestamp": now().isoformat(),
+             "text": "These Insight bullets are already on the page. Do not reword them. A new insight must "
+                     "contradict, resolve or extend one of them with a fact it lacks, or be about something "
+                     "none of them covers; say which in your reply.\n\n" + '\n'.join(bullets)}]
+
+
 def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
     # An attachment's or a GitHub item's context has no time or sender; only mail rows do.
     return [{"role": "cited-original", "source": source, "timestamp": context.get("time", ""),
@@ -62,6 +80,9 @@ def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
 
 def _ledger_items(root, record) -> list[dict]:
     directory = ledger_dir(root, record)
+    # A ledger written before category paths still serves a standalone muse.
+    if not directory.exists():
+        directory = state_path(root, f"enrich/{Path(record).stem}")
     index, originals = directory / INDEX, directory / "items.json"
     if not index.is_file() or not originals.is_file():
         return []
@@ -126,9 +147,9 @@ def _github_items(page, title="") -> tuple[list[dict], list[str]]:
             continue
         rows = []
         for kind in ("issue", "pr"):
-            result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", "400",
+            result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", str(GITHUB_LIST_LIMIT),
                                      "--json", "number,title,body,author,createdAt,state,url,comments"],
-                                    capture_output=True, text=True, timeout=120)
+                                    capture_output=True, text=True, timeout=600)
             if result.returncode:
                 coverage.append(f"github {repo}: not read ({result.stderr.strip()[:200]})")
                 break
@@ -213,17 +234,59 @@ def _history_rows(page, github, title="") -> list[dict]:
     return list({(row["date"], row["line"]): row for row in rows}.values())
 
 
-def _timeline_text(rows) -> str:
-    """Keep every period visible even when a busy history needs fewer examples."""
+def _history_months(rows) -> list[tuple[str, list[dict]]]:
     months = defaultdict(list)
     for row in rows:
         months[row["date"][:7]].append(row)
+    return sorted(months.items())
+
+
+def _periods(rows) -> list[tuple[str, str]]:
+    """2026-10-20: four enrich rounds found only October decisions in a history since 2025-08.
+
+    Budget consecutive months, leaving a busy month whole; beyond six periods,
+    merge the smallest neighbours, allowing the merged periods to exceed the budget.
+    """
+    periods = []
+    for month, entries in _history_months(rows):
+        size = len(_timeline_text(entries))
+        if periods and periods[-1][2] + size <= PERIOD_CHARS:
+            first, _, previous_size = periods.pop()
+            periods.append((first, month, previous_size + size))
+        else:
+            periods.append((month, month, size))
+    while len(periods) > MAX_PERIODS:
+        at = min(range(len(periods) - 1), key=lambda i: periods[i][2] + periods[i + 1][2])
+        first, last = periods[at:at + 2]
+        periods[at:at + 2] = [(first[0], last[1], first[2] + last[2])]
+    return [(first, last) for first, last, _ in periods]
+
+
+def _enrich_turns(periods) -> tuple[str, ...]:
+    """2026-10-20: a 15k-character page had 12 quotes; its history never quoted the owner."""
+    first, last = periods[0]
+    own_words = ("for the period's most important decision, quote the user's own words from that period "
+                 "if a session message or mail the user wrote says it (copy it exactly, in its language, "
+                 "and cite it); if none exists, say so in your reply.")
+    return (f"Read the page, the coverage and ledger items, and the skill; then study period 1 of "
+            f"{len(periods)}: {first}–{last}. Read only this period of the timeline: read the originals its lines point to "
+            "and add that period's turning points as dated, cited Key decisions lines. "
+            f"Do not follow other leads yet. Also, {own_words}",
+            *(f"Period {k} of {len(periods)}: {first}–{last}. Same as before; "
+              f"do not repeat lines already on the page. Also, {own_words}"
+              for k, (first, last) in enumerate(periods[1:], 2)),
+            "Now follow the remaining leads as the skill says, check what you must not drop, and give the final reply.")
+
+
+def _timeline_text(rows) -> str:
+    """Keep every period visible even when a busy history needs fewer examples."""
+    months = _history_months(rows)
     header = ("Project history, oldest first. Reading guide only: cite the `github:` ids; "
               "cite a commit as `git:<full sha>` (look it up with `git -C <path> show`).")
     # Every line while the whole history fits: a 6.5k timeline cut October's 40 handoff PRs to 12.
     for count in (None, 30, 12, 8, 5, 3, 1):
         lines = [header]
-        for month, entries in sorted(months.items()):
+        for month, entries in months:
             commits = sum(row["kind"] == "commit" for row in entries)
             prs = sum(row["kind"] == "pr" for row in entries)
             issues = sum(row["kind"] == "issue" for row in entries)
@@ -259,13 +322,15 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
         title, handles, days=ENRICH_DAYS, clients={}, subscriptions=subscriptions(root), attachments_dir=None,
         mail_skipped="live mail is not searched by enrich; the saved mail archive was read",
         stage_progress=stage_progress, archive_root=root, record=record)
-    timeline = []
+    timeline, periods = [], []
     if record.startswith("projects/"):
         sessions = _mapped_sessions(root, record)
         github, github_coverage = _github_items(page, title)
         logs = _git_log_items(page)
+        rows = _history_rows(page, github, title)
+        periods = _periods(rows)
         timeline = [{"role": "timeline", "source": "investigation:timeline", "timestamp": now().isoformat(),
-                     "text": _timeline_text(_history_rows(page, github, title))}]
+                     "text": _timeline_text(rows)}]
         gathered = list({item["source"]: item for item in [*gathered, *sessions, *github, *logs]}.values())
         coverage += [f"mapped sessions: {len(sessions)} owner messages", *github_coverage,
                      f"git log: {len(logs)} checkouts read (reading guide only)"]
@@ -280,9 +345,10 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
              *_cited_originals(root, page, set(ledger[0]["sources"])), *_prior_runs(root, record)]
     if stage_progress:
         stage_progress("following leads")
-    result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress)
-    restored = _restore(notebook, record, page, stage="Enrich")
-    return {**_outcome(notebook, record, page, result, items=len(gathered), coverage=coverage), "restored": restored}
+    turns = {"turns": _enrich_turns(periods)} if len(periods) > 1 else {}
+    result = runner(notebook, items, read_config(root), stage="enrich", stage_progress=stage_progress, **turns)
+    return {**_outcome(notebook, record, page, result, items=len(gathered), coverage=coverage),
+            "periods": len(periods)}
 
 
 def _prior_runs(root: Path, record: str) -> list[dict]:
@@ -297,17 +363,6 @@ def _prior_runs(root: Path, record: str) -> list[dict]:
              "text": "\n\n".join(reports)}] if reports else []
 
 
-def _restore(notebook: Notebook, record: str, before: str, *, stage="Muse") -> str:
-    after = notebook.read(record)
-    lost_quotes = len(quotes(before) - quotes(after))
-    sources = len(_listed_sources(before) - _listed_sources(after))
-    if not lost_quotes and not sources:
-        return ""
-    notebook.write(record, before)
-    return (f"{stage} lost {lost_quotes} quote{'s' if lost_quotes != 1 else ''} and "
-            f"{sources} source id{'s' if sources != 1 else ''}; restored the page from the start of the run")
-
-
 def muse(root, record, *, runner=None, stage_progress=None) -> dict:
     notebook, page, runner = _page(root, record, "muse", runner)
     originals = _cited_originals(root, page)
@@ -315,9 +370,10 @@ def muse(root, record, *, runner=None, stage_progress=None) -> dict:
         "role": "evidence-index", "source": "investigation:evidence", "timestamp": now().isoformat(),
         "text": "No enrich ledger exists for this page yet."}]
     ledger[0]["text"] += "\n" + _archive_note(root)
-    items = [_page_item(root, record, page), *ledger, *originals, *_prior_runs(root, record)]
+    items = [_page_item(root, record, page), *_earlier_insights(page), *ledger, *originals, *_prior_runs(root, record)]
     result = runner(notebook, items, read_config(root), stage="muse", turns=MUSE_TURNS, stage_progress=stage_progress)
-    restored = _restore(notebook, record, page)
+    # What the page had is guarded at promotion (page_review.dropped); a second, whole-page restore
+    # here reverted accepted rounds on 2026-10-20, comparing a page re-numbered on save.
     return {**_outcome(notebook, record, page, result, items=len(originals)),
-            "restored": restored, "turns": len(MUSE_TURNS),
+            "turns": len(MUSE_TURNS),
             "insights": sum(bool(INSIGHT.search(reply)) for reply in result.get("turn_replies", [])[1:-1])}

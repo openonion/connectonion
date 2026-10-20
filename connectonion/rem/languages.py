@@ -23,6 +23,9 @@ SCRIPTS = {"ja": r"[぀-ヿ]", "ko": r"[가-힯]", "zh": r"[一-鿿]",
            "ru": r"[Ѐ-ӿ]+", "ar": r"[؀-ۿ]+", "en": r"[A-Za-z]+"}
 SCRIPTS = {language: re.compile(pattern) for language, pattern in SCRIPTS.items()}
 MIN_WORDS = 3
+ENGLISH_TERMS = set("capstone pr repo agent demo invoice api cli sdk issue issues release review draft deploy "
+                    "commit branch merge prompt token skill email markdown readme docs ai ml crm workflow "
+                    "dashboard onboarding startup pitch mvp ui ux saas cofounder linkedin github pypi".split())
 # Where a reply's own words end and the quoted thread begins.
 QUOTED = re.compile(r"^(?:On .{4,200} wrote:|在.{2,200}写道[:：]|-----\s*Original Message|_{8,}|"
                     r"From: .+|发件人[:：].+|>.*)$", re.M)
@@ -88,6 +91,16 @@ def detect(root: Path, addresses: list[str]) -> dict:
             "shares": shares, "messages": total}
 
 
+def english_terms(root: Path, addresses: list[str]) -> list[str]:
+    """Vocabulary the owner keeps in English in at least two distinct Chinese messages."""
+    counts = Counter()
+    for message in set(sent_mail(root, addresses) + typed(root)):
+        if language_of(message) == "zh":
+            words = set(re.findall(r"(?<![A-Za-z0-9_])[A-Za-z]+(?![A-Za-z0-9_])", message.casefold()))
+            counts.update(words & ENGLISH_TERMS)
+    return sorted(term for term, count in counts.items() if count >= 2)
+
+
 def refresh(root: Path, report: dict | None = None) -> dict | None:
     """Detect again and keep it on map.json's owner; the owner page's empty Language line is filled.
     The caller holds the maintenance lock (map, daily round). A map passes the
@@ -98,6 +111,7 @@ def refresh(root: Path, report: dict | None = None) -> dict | None:
     if not owner:
         return None
     owner["languages"] = detect(root, owner.get("addresses") or [])
+    owner["languages"]["english_terms"] = english_terms(root, owner.get("addresses") or [])
     if report is None:
         write_json(path, saved)
     _fill_language_fact(root, owner["record"], owner["languages"]["languages"])
@@ -142,10 +156,16 @@ def owner_languages(root: Path) -> dict:
     """What the reader offers first: the configured list, else the detected one."""
     from .config import read_config
     configured = read_config(root, validated=False).get("languages") or []
-    detected = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("languages") or {}
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    detected = owner.get("languages") or {}
+    terms = detected.get("english_terms")
+    if terms is None:
+        terms = english_terms(root, owner.get("addresses") or [])
     if configured:
         return {"languages": list(configured), "from": "set (co rem config set languages)",
-                "detected": detected.get("languages", [])}
+                "detected": detected.get("languages", []), "english_terms": terms}
+    if "languages" not in owner:
+        detected = detect(root, owner.get("addresses") or [])
     return {"languages": detected.get("languages", []),
             "from": "detected from your own mail and sessions" if detected else "not detected yet",
-            "shares": detected.get("shares", {})}
+            "shares": detected.get("shares", {}), "english_terms": terms}

@@ -83,7 +83,7 @@ def _raw_display_name(row: dict, address: str) -> str:
 
     For mail the user sent, the correspondent is a recipient, so reading the
     From header returns the user's own display name; a real census filed
-    Ody, Dora and the user's private Gmail all under "openonion ai".
+    Corin, Briar and the user's private Gmail all under "openonion ai".
     """
     # The providers split the sender into a bare `from` and a `from_name`; for
     # mail the correspondent sent, the name is there and nowhere else.
@@ -91,7 +91,7 @@ def _raw_display_name(row: dict, address: str) -> str:
         name = str(row["from_name"]).strip(' "')
         return "" if "@" in name else name
     # Each recipient is parsed on its own: stripping every <...> out of
-    # '"Ody Zhou" <o@g>, "Dora" <d@g>' once named both of them 'Ody Zhou", "Dora'.
+    # '"Corin Marsh" <o@g>, "Briar" <d@g>' once named both of them 'Corin Marsh", "Briar'.
     headers = [str(h) for h in [row.get("from", "")] + list(row.get("to") or []) + list(row.get("cc") or [])]
     for name, found in getaddresses(headers):
         if found.lower() == address and name.strip() and "@" not in name:
@@ -102,7 +102,7 @@ def _raw_display_name(row: dict, address: str) -> str:
 # The owner's greeting is where the name of someone they only ever wrote to
 # lives. On the owner's map 190 of 195 nameless people were recipients whose To
 # line the owner typed as a bare address, and nearly every one of those mails
-# opened "Hi Larry," or "Larry 你好，" or "子明，".
+# opened "Hi Fenwick," or "Fenwick 你好，" or "子亚，".
 _GREETING = re.compile(
     r"^\s*(?:(?:hi|hello|hey|dear|morning|g'day)\s+([A-Za-z][A-Za-z'-]{1,20}(?:\s[A-Z][A-Za-z'-]{1,20})?)\s*[,，!！]"
     r"|([A-Za-z][A-Za-z'-]{1,20}|[\u4e00-\u9fff]{2,3})\s*(?:你好|您好)?\s*[,，])", re.IGNORECASE)
@@ -113,7 +113,7 @@ _NOT_A_NAME = {"everyone", "all", "team", "there", "guys", "folks", "both", "aga
 def _greeting_name(row: dict, address: str, mine: set) -> str:
     """The name the owner greeted the one person a mail went to, or ''.
 
-    Only the owner's own mail to a single recipient: "Hi Larry," to three
+    Only the owner's own mail to a single recipient: "Hi Fenwick," to three
     people names one of them, and nobody can say which.
     """
     if _address(str(row.get("from", ""))) not in mine:

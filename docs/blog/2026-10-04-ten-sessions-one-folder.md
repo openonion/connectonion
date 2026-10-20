@@ -2,7 +2,7 @@
 
 The owner's Codex week reached 100% on a Pro plan, so the first `co rem init`
 had to run on the other runner the notebook already supports: Claude Code,
-through `co ai --harness claude-code`, on Haiku. One page worked. Sasha's took
+through `co ai --harness claude-code`, on Haiku. One page worked. Tess's took
 230 seconds. Then we asked for four people at once, and two of them waited 120
 seconds before failing with the same line:
 

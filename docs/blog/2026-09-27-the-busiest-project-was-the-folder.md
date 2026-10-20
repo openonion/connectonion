@@ -8,7 +8,7 @@ one queue over people, projects and organisations, with a check of the week
 before every page.
 
 Every test passed. Then we asked the real notebook for its order, with
-`--list`, which runs no model. Second and third were Ody Zhou, 185 mails, and
+`--list`, which runs no model. Second and third were Corin Marsh, 185 mails, and
 the ConnectOnion project, 92 sessions, which is exactly who and what the owner
 works with. First, with 813 sessions, was a project called "projects".
 

@@ -2,11 +2,12 @@
 
 The Markdown page stays the one canonical record. A translation lives at
 `.state/translations/<language>/<record>` and starts with a line naming the
-record and the hash of the text it was made from; once the page changes, the
-hash no longer matches and the translation is stale, so it is made again on the
-next request instead of being shown.
+record and the hash of the prompt version and text it was made from; once either
+changes, the hash no longer matches and the translation is stale, so it is made
+again on the next request instead of being shown.
 """
 
+from collections import Counter
 import hashlib
 import re
 import shutil
@@ -16,8 +17,12 @@ from pathlib import Path
 from .config import LANGUAGE
 from .files import Notebook, RemError, atomic_write, state_path
 
+# Owner glossary changes apply to new translations without invalidating every cached page.
+PROMPT_VERSION = 2
 HEADER = re.compile(r"<!-- co rem translation of (\S+) sha256:([0-9a-f]{64}) -->\n")
-CITATION = re.compile(r"\[(W?\d{1,3})\]")
+CITATION = re.compile(r"[\[［](W?\d{1,3})[\]］]")
+# Keep this set in step with reader.html hasPrivacy/privatePassages.
+PRIVACY_TAG = re.compile(r"[\[［](personal|sensitive)[\]］]", re.I)
 # English phrases the reader parses inside prose; translated, a closed thread reads as open.
 MARKERS = ("Unknown", "None as of", "Nothing open as of", "Now:", "Changed:", "At stake:", "Pattern:")
 # The page's last line, which the reader reads for its status. Not prose: it is
@@ -26,7 +31,7 @@ STAMP = re.compile(r"^Investigation:[^\n]*$", re.M)
 
 
 def digest(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{PROMPT_VERSION}\n{text}".encode("utf-8")).hexdigest()
 
 
 def checked_language(language: str) -> str:
@@ -64,24 +69,54 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
     return found
 
 
-def prompt(language: str) -> str:
+def prompt(language: str, quotes=(), terms=()) -> str:
     from .runner import language_rules
+    # Named one by one: told only the rule, the model still translated “zero-risk things”.
+    keep = "".join(f"\n- {quote}" for quote in dict.fromkeys(quotes))
     return ("Translate page.md, a Markdown notebook page, into the language tagged "
             f"`{language}` and write the result to translation.md in this folder. Do not edit "
             "page.md and do not read anything else. Translate the prose only: add nothing, drop "
             "nothing, keep every line's Markdown, every link target and every source id like [3] "
-            "where it is." + language_rules() + "These stay in English even mid-sentence: "
+            "where it is. Keep every privacy label such as [personal] and [sensitive] on the same line, "
+            "following the same passage; never add, drop or translate a label. "
+            "This page is about the reader's own work. Translate \"the user\", \"the owner\" and \"you\" "
+            "referring to the notebook owner as the second person of the target language "
+            "(Chinese: 你; never 用户). This applies only to surrounding prose; quotes stay untouched. "
+            "Keep every quoted passage (text inside “…”, \"…\", 「…」, and Markdown "
+            "> blockquote lines) exactly as written, in its original language; translate only the "
+            "surrounding prose; keep the ASCII colon after a leading date like `2026-10-15:`. " + language_rules() + "These stay in English even mid-sentence: "
             "`Nothing open as of 2026-09-29; Jordan canceled` becomes `Nothing open as of 2026-09-29；"
-            "Jordan 取消了` in Chinese. Then reply DONE.")
+            "Jordan 取消了` in Chinese." + (f" These quoted words must appear unchanged:{keep}\n" if keep else "")
+            + (" Keep these terms in English, as the owner writes them: " + ", ".join(terms) + "." if terms else "")
+            + " Then reply DONE.")
+
+
+def quoted_passages(text: str) -> Counter:
+    """The reader's six-character quotations, including Markdown evidence lines."""
+    # The words, not the marks: “Hi Mara,” may come back as “Hi Mara”, in Chinese punctuation.
+    quotes = [quote[1:-1].rstrip(",.;:!?，。；：！？ ")
+              for quote in re.findall(r'“[^”\n]{6,}”|"[^"\n]{6,}"|「[^」\n]{6,}」', text)]
+    quotes += re.findall(r"^[ \t]*>[^\n]{6,}$", text, re.M)
+    return Counter(quotes)
 
 
 def checked(original: str, translation: str) -> str:
-    """What the reader parses must survive: headings, cited sources and markers."""
+    """Keep headings, sources, privacy labels and reader markers intact."""
     headings = [line for line in original.splitlines() if line.startswith("#")]
     if [line for line in translation.splitlines() if line.startswith("#")] != headings:
         raise RemError("The translation changed the page's headings; nothing was cached. Translate again")
     if sorted(CITATION.findall(translation)) != sorted(CITATION.findall(original)):
         raise RemError("The translation changed the page's source ids; nothing was cached. Translate again")
+
+    def privacy_lines(text):
+        return [(number, Counter(tag.lower() for tag in PRIVACY_TAG.findall(line)))
+                for number, line in enumerate(text.splitlines()) if PRIVACY_TAG.search(line)]
+
+    if privacy_lines(original) != privacy_lines(translation):
+        raise RemError("The translation changed privacy tags or moved them between lines; nothing was cached. "
+                       "Translate again")
+    if quoted_passages(original) - quoted_passages(translation):
+        raise RemError("The translation changed or dropped a quoted passage; nothing was cached. Translate again")
     for marker in MARKERS:
         if translation.count(marker) < original.count(marker):
             raise RemError(f"The translation dropped `{marker}`, which the reader reads; nothing was cached. "
@@ -92,6 +127,7 @@ def checked(original: str, translation: str) -> str:
 def translate(root: Path, record: str, language: str) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
+    from .languages import owner_languages
     from .runner import ready, run_task
     text = Notebook(root).read(record)
     if (hit := cached(root, record, language)) is not None:
@@ -105,7 +141,8 @@ def translate(root: Path, record: str, language: str) -> str:
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     prose, stamp = STAMP.sub("", text).rstrip() + "\n", STAMP.search(text)
     (workspace / "page.md").write_text(prose, encoding="utf-8")
-    run_task(workspace, prompt(language), config, "abstract")
+    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
     output = workspace / "translation.md"
     answer = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
     shutil.rmtree(workspace)

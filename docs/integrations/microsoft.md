@@ -165,9 +165,9 @@ outlook.reply(email_id, body="Signed copy attached.",
               attachments=["signed.pdf"])              # threaded, same limit as send
 
 # Contacts
-outlook.add_contact("Zhou Yifei", "zhou@example.com")
+outlook.add_contact("Nadia Marsh", "marsh@example.com")
 outlook.list_contacts(max_results=25)
-outlook.search_contacts("yifei")
+outlook.search_contacts("nadia")
 
 # Actions
 outlook.mark_read(email_id)     # Mark email as read

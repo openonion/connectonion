@@ -1,9 +1,9 @@
 ---
-description: co handoff (experimental): say "hand this to Ody" in Codex, and Ody's Codex continues with the decisions, the rejected options and the discussion itself.
+description: co handoff (experimental): say "hand this to Corin" in Codex, and Corin's Codex continues with the decisions, the rejected options and the discussion itself.
 tags: [Handoff, Codex, Experimental]
 ---
 
-# "Hand this to Ody"
+# "Hand this to Corin"
 
 The expensive part of passing a task on is not the task. It is the afternoon
 of discussion behind it: we compared two ways to store the login token, threw
@@ -12,7 +12,7 @@ colleague and you write it all down again, or they ask you again, or they pick
 the option you already rejected.
 
 The discussion already exists. It is sitting in Codex's session file. So
-`co handoff send ody` reads the end of the session you are in, makes one
+`co handoff send corin` reads the end of the session you are in, makes one
 model call to pull out the goal, each decision with the options that lost and
 why, where things stand, the next step and the open questions, and keeps the
 last forty turns of the conversation verbatim as evidence.
@@ -23,7 +23,7 @@ sent until you say so, and what you say yes to is a file with a content hash;
 the copy that arrives carries the same hash. A bundle with anything that looks
 like a key or token in it is refused.
 
-On the other side, Ody runs `co handoff inbox`, reads the summary, and
+On the other side, Corin runs `co handoff inbox`, reads the summary, and
 `co handoff open` starts a Codex session on his machine that has already read
 the handoff. We asked that session the question a new owner always asks:
 

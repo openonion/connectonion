@@ -14,14 +14,14 @@ ELEMENTS:
 Answer: index=1, reasoning="Sign In is the login button"
 
 ### Example 2: Exact text match
-DESCRIPTION: "Ryan Tan KK"
+DESCRIPTION: "Rory Ashby"
 ELEMENTS:
 [0] div "Messages" pos=(0,100)
-[1] a "Priyanshu Mishra" pos=(100,200)
-[2] a "Ryan Tan KK" pos=(100,280)
+[1] a "Kiran Shah" pos=(100,200)
+[2] a "Rory Ashby" pos=(100,280)
 [3] a "Sijin Wang" pos=(100,360)
 
-Answer: index=2, reasoning="Exact text match for Ryan Tan KK"
+Answer: index=2, reasoning="Exact text match for Rory Ashby"
 
 ### Example 3: Position-based matching
 DESCRIPTION: "the first conversation"

@@ -501,7 +501,7 @@ def language_rules() -> str:
 
 
 def today_note(root: Path) -> str:
-    """The date a turn writes on. Without it, Ody's page kept a 13 October event
+    """The date a turn writes on. Without it, Corin's page kept a 13 October event
     as an open thread on the 15th: nothing told the writer the day had passed."""
     from .config import read_config
     from .service import notebook_zone
@@ -550,7 +550,7 @@ def _followup_prompt(prompt: str, instruction: str) -> str:
     return prompt + "\n\n## Follow-up\n" + instruction
 
 
-def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone):
+def _searched_turn(workdir, prompt, config, stage, directory, search, items, first, zone, run=None):
     """Run the mail searches the model asked for, read-only, and give it one more turn with the results.
 
     The model has no network: its sandbox is the defence against mail that
@@ -580,7 +580,7 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
          + (f" ({item['local_time']})" if item.get("local_time") else "") + f"\nSubject: {item['subject']}\n"
          f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
         + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
-    again = run_task(workdir, _followup_prompt(
+    again = (run or run_task)(workdir, _followup_prompt(
         prompt, f"Your searches {json.dumps(queries, ensure_ascii=False)} found "
                 f"{len(found)} new message(s), in {results}. Update the candidate with what "
                 "they show and cite their ids; keep everything else."), config, stage)
@@ -614,8 +614,14 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 # A misquote or a claim the audit refuted goes with its line at the end, like a
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
+               "Key decision without the owner's words:",
+               "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
+# 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
+# 40–55 min enrich/muse stages. Last resort restores drops and removes refuted
+# claims mechanically, so a second deepening repair buys little.
+DEEPEN_REPAIRS = 1
 # Skill pages describe installed files and their runs, read from code; the
 # pages about people and work are where a wrong claim is acted on.
 AUDITED = ("people/", "orgs/", "projects/")
@@ -640,19 +646,45 @@ def _usage_delta(config, before, after) -> dict | None:
     return {key: max(0, (value or 0) - (before.get(key) or 0)) for key, value in after.items()}
 
 
-def _repair_thread(session, usage):
+def _retry_timeouts(metrics):
+    """Retry a timed-out call once, preserving its usage and resumed thread."""
+    # 2026-10-20: one enrich period hit the 1,200s limit and failed the stage.
+    # Codex usage is cumulative; keep retry charges on subsequent resumed turns.
+    thread_extras = {}
+
+    def run(workdir, text, config, stage, **options):
+        failed_usage = None
+        extra = thread_extras.get(options.get("session")) if config["runner"] == "codex" else None
+        for attempt in range(2):
+            try:
+                result = run_task(workdir, text, config, stage, **options)
+            except RunFailed as error:
+                failed_usage = _add_usage(failed_usage, error.usage)
+                if "timed out" not in str(error) or attempt == 1:
+                    error.usage = _add_usage(extra, failed_usage) if failed_usage else None
+                    raise
+                metrics["timeouts_retried"] += 1
+                continue
+            result["usage"] = _add_usage(extra, failed_usage, result.get("usage"))
+            if config["runner"] == "codex" and result.get("session_id"):
+                thread_extras[result["session_id"]] = _add_usage(extra, failed_usage)
+            return result
+    return run
+
+
+def _repair_thread(session, usage, run=None):
     """Reuse the originals already read; charge only the resumed repair (#2533)."""
-    def run(workdir, text, config, stage):
+    def resume(workdir, text, config, stage):
         nonlocal usage
         try:
-            result = run_task(workdir, text, config, stage, session=session)
+            result = (run or run_task)(workdir, text, config, stage, session=session)
         except RunFailed as error:
             raise RunFailed(str(error), _usage_delta(config, usage, error.usage)) from error
         current = result.get("usage")
         result["usage"] = _usage_delta(config, usage, current)
         usage = current or usage
         return result
-    return run
+    return resume
 
 
 def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path) -> str:
@@ -678,23 +710,29 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
-                         stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS):
-    """Review the page; let its writer fix what review names, twice; then keep what is sound.
+                         stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
+                         stage_progress=None):
+    """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
-    section or one citation was lost whole: hamish-mcfarlane and two skill
+    section or one citation was lost whole: callum-reid and two skill
     pages stayed unwritten after 1.9.2b3's first run.
     """
     run = run or run_task
     result.update(repairs=0, repair_usage={})
     # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
     # not written; a person page lost a quarter of its text in one round.
-    carried = original if stage in ("enrich", "muse") else ""
+    # Upkeep too: one-page upkeep rewrote a page with twelve quotes into one with none (2026-10-20 A/B).
+    # An update of a page already investigated keeps what it had too: people-page upkeep on
+    # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
+    updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
+    carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
     for attempt in range(repairs + 1):
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
-                                       carried=carried)
+                                       carried=carried, ask_quotes=attempt < repairs and stage == "investigate",
+                                       stage_progress=stage_progress)
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -711,6 +749,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                 break
             try:
                 result["repairs"] += 1
+                if stage_progress:
+                    stage_progress(f"repair {result['repairs']}")
                 repair = run(workdir, f"Edit the existing page at {candidate}. "
                              + repair_instruction(record, errors, directory, workdir), config, stage)
             except RunFailed as error:
@@ -722,7 +762,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
-                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried)
+                       lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
+                       stage_progress=stage_progress)
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -734,6 +775,33 @@ def _owner_phones(notebook, record) -> list[str]:
             if "unknown" not in part.casefold() and part.strip()]
 
 
+def _owner_names(notebook, record) -> list[str]:
+    """2026-10-21: page titles cannot disambiguate an uncatalogued correspondent."""
+    if not record or not notebook.exists(record):
+        return []
+    title = lambda page: next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')  # noqa: E731
+    full = title(notebook.read(record))
+    if not full:
+        return []
+    return list(dict.fromkeys([full, full.split()[0]]))
+
+
+def _owner_tied_lines(notebook, text, owner, names) -> set[str]:
+    """2026-10-21: resolve each line's citations against the page's current numbering."""
+    from .reader_model import SOURCE, cited_context
+    if not names:
+        return set()
+    addresses = {address.casefold() for address in owner.get('addresses', [])}
+    full = re.compile(r'\b' + re.escape(names[0]) + r'\b', re.I)
+    contexts = cited_context(notebook.root, [{'text': text}], private=True)
+    sources = {source for source, context in contexts.items()
+               if context.get('sender', '').casefold() in addresses or full.search(context['excerpt'])}
+    definitions = re.search(r'(?ms)^## Sources[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    numbers = {number for number, source in SOURCE.findall(definitions[1] if definitions else '')
+               if source in sources}
+    return {line for line in text.splitlines() if numbers.intersection(re.findall(r'\[(W?\d+)\](?!\()', line))}
+
+
 def _lead(text: str) -> str:
     """The prose between a page's title and its first section."""
     body = re.split(r"(?m)^## ", text.partition("\n")[2], maxsplit=1)[0]
@@ -743,7 +811,7 @@ def _lead(text: str) -> str:
 def _keep_identity(record: str, before: str, after: str) -> str:
     """A lead whose first sentence the last resort dropped opens with who they are, from Facts.
 
-    Tamara's and Nina's after-pages (2026-10-15) lost "who this is to the user"
+    Greta's and Petra's after-pages (2026-10-15) lost "who this is to the user"
     to an audit finding that a citation was missing beside it; the lead then
     opened on an HR ticket. Role and Company are cited fields on the same page.
     """
@@ -758,20 +826,27 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None, last_resort=False, carried=""):
+                       investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
+                       stage_progress=None):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
-                              drop_others_phones, fold_history, link_company, sort_history, normalize_numbered_sources,
-                              repair_project_overview, repair_run_citations, resolve_sources, restore_runner_fields,
+                              drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
+                              sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
+                              repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
-                              restore_dropped, dropped as dropped_content)
+                              restore_dropped, dropped as dropped_content, unverified_quotes)
+    # 2026-10-20: last enrich turns measured 730–1,690s with review folded in.
+    if stage_progress:
+        stage_progress("reviewing")
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
     from .fact_extract import OTHERS_PHONE
+    text = sources_before_footer(candidate.read_text(encoding="utf-8"))
+    text = merge_duplicate_definitions(text)
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
-    text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
+    text = facts.upgrade(record, restore_missing_facts(record, restore_runner_fields(record, text, original), original))
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
@@ -792,7 +867,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items, root=notebook.root)
-        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
+        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Maren, 1.9.2b3).
         text, more = facts.drop_uncited(record, text, original)
         uncited = [*uncited, *more]
     # The last resort has no repair turn after it: a finding on an untraceable
@@ -820,7 +895,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, unverified = verify_contacts(notebook.root, record, text, items, original)
         removed = sorted({*removed, *again, *borrowed})
         if again or borrowed or unverified:
-            # The number's own source, cited nowhere else now: Dannielle's page was refused for it.
+            # The number's own source, cited nowhere else now: Brianna's page was refused for it.
             text = drop_uncited_sources(text)
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
@@ -848,18 +923,34 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, again = facts.keep_extracted(record, text, extracted)
         restored = [*restored, *again]
         text = drop_uncited_sources(text)
+    exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
     if last_resort and carried:
         before_restore = text
-        text = restore_dropped(carried, text)
+        text = restore_dropped(carried, text, exempt)
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
+    # 2026-10-21: restored carried lines must follow the owner's naming rule too.
+    if carried:
+        names = _owner_names(notebook, owner.get("record"))
+        tied = _owner_tied_lines(notebook, text, owner, names)
+        text = owner_name_to_user(text, names, tied=tied.__contains__)
+    text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
+    if record == owner.get("record") and (not ask_quotes or last_resort):
+        text = move_agent_threads(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
-        errors += dropped_content(carried, text)
+        errors += dropped_content(carried, text, exempt)
+    if ask_quotes and record.startswith("projects/"):
+        # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
+        errors += unquoted_decisions(text)
+    if ask_quotes and not last_resort and record == owner.get("record"):
+        errors += [f"Open thread rests only on coding sessions: {line[:160]} -- a task the user gave a coding "
+                   "agent is work in progress: move it to Who they are, or cite the person it is owed to"
+                   for line in agent_threads(text)]
     if last_resort and record.startswith("people/") and not _lead(text):
-        # Ody Zhou (2026-10-15) was kept with no lead at all: the audit refuted a
+        # Corin Marsh (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
         errors.append("Audit removed the whole lead; the page before this turn is kept")
     # A refuted claim no line holds any more is already gone: a repair turn
@@ -875,6 +966,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
+        if stage_progress:
+            stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
         # First-run backfill holds the lock per saved message (2026-10-16 trial).
         with _promotion_lock(notebook.root, candidate, usage, lock_held):
@@ -901,7 +994,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "restored_lines": restored_lines,
-                   "overview_replaced": overview_replaced,
+                   "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                    "facts_uncited_dropped": uncited, "facts_labels_dropped": foreign,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "contacts_unverified": unverified, "company_from_domain": company,
@@ -943,8 +1036,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, sort_history, headings, normalize_numbered_sources,
-                              repair_project_overview, resolve_sources, restore_runner_fields, shrinkage, single_title, validate,
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, lead_without_last_contact, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
+                              repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
@@ -956,7 +1049,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             continue
         from . import facts
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_runner_fields(record, after[record], before.get(record, '')))))
+            restore_missing_facts(record, restore_runner_fields(record, after[record], before.get(record, '')), before.get(record, '')))))
         text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
                                         root=notebook.root)
         unverified = []
@@ -964,16 +1057,23 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
         text, overview_replaced = repair_project_overview(record, text)
         text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
-        text = fold_history(sort_history(single_title(text)))
+        text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
+        # Upkeep has no repair turn: a quote or source the page had and this
+        # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
+        # A gutted page is still refused on what the turn wrote, before anything is put back.
+        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
+        written = text
+        text = restore_dropped(before.get(record, ''), text) if before.get(record) and not shrunk else text
+        restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
                            "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
-                           "overview_replaced": overview_replaced}
+                           "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
+                           "restored_lines": restored_lines}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = (validate(record, text, before.get(record, ''), items, pages=set(before), root=notebook.root)
                   if headings(record) else [])
-        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         errors += [shrunk] if shrunk else []
         if errors:
             refusals.append({"record": record, "errors": errors})
@@ -1032,6 +1132,9 @@ def scrub_task(directory: Path) -> None:
 # longest run (three routed turns at the largest timeout) is well inside it.
 ABANDONED_TASK_SECONDS = 6 * 3600
 FINISHED_TASK_GRACE_SECONDS = 60
+# 2026-10-20: re-scrubbing ~650 old folders cost ~1.4 s plus lock waits per
+# model stage. Callers hold _TASK_CLEANUP_LOCK while checking and adding folders.
+_SCRUBBED_TASKS = set()
 
 
 def scrub_finished_tasks(workdir: Path) -> None:
@@ -1040,11 +1143,12 @@ def scrub_finished_tasks(workdir: Path) -> None:
     stale = time.time() - ABANDONED_TASK_SECONDS
     finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
-        if not folder.is_dir() or folder.is_symlink():
+        if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
         if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
             scrub_task(folder)
+            _SCRUBBED_TASKS.add(folder)
 
 
 _TASK_MASK_LOCK = threading.Lock()
@@ -1238,6 +1342,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate and record.startswith("projects/"):
         prompt += (" Before saving the Project page, check every Sources entry: "
                    "investigation:coverage, investigation:project-scope, investigation:timeline, "
+                   "investigation:earlier-insights, "
                    "investigation:project-inventory, investigation:project-repositories and "
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
@@ -1268,7 +1373,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         after = {r: notebook.read(r) for r in notebook.list()}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
-    metrics = {"stage": stage, "harness": config["runner"], "model": config["model"],
+    metrics = {"stage": stage, "harness": config["runner"], "model": config["model"], "timeouts_retried": 0,
                "speed": config["speed"],
                "tier": "summary" if summary else "agent",
                "instructions_chars": len((directory / "instructions.md").read_text()),
@@ -1280,7 +1385,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if stage == "investigate" and candidate and search and not quick_first_pass:
-        # Richard Lai's #2443-#2446 (2026-10-12) were missed by adding "Richard BREAD".
+        # Emrys Brandt's #2443-#2446 (2026-10-12) were missed by adding "Emrys BREAD".
         prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
                    "a person or company named in a thread, an attachment, how they met -- write up to "
                    f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
@@ -1293,16 +1398,18 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     started = time.monotonic()
     result = {}
     prior_turn_usage = None
+    resuming = False
     turn_replies = []
     inquiry_usage = {}
     refusals = []
+    run_turn = _retry_timeouts(metrics)
     try:
         from .inquiry import routing, stage_config
         from .inquiry import run as inquiry_run
         if stage == "investigate" and candidate and routing(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,
-                lambda _task_directory, text, route, phase: run_task(workdir, text, route, phase))
+                lambda _task_directory, text, route, phase: run_turn(workdir, text, route, phase))
             inquiry_usage = inquiry_result.get("usage") or {}
             prompt += f"\n\n## Inquiry findings\nRead {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         if "<co_rem_task>" in prompt:
@@ -1313,7 +1420,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         selected_config = stage_config(notebook.root, config, "render") if candidate and stage == "investigate" else config
         if turns and stage_progress:
             stage_progress(f"turn 1 of {len(turns)}")
-        result = run_task(workdir, prompt, selected_config, stage)
+        result = run_turn(workdir, prompt, selected_config, stage)
         if turns:
             turn_replies.append(str(result.get("result") or ""))
         session = result.get("session_id")
@@ -1323,18 +1430,24 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             if stage_progress:
                 stage_progress(f"turn {number} of {len(turns)}")
             prior_turn_usage = result.get("usage")
-            result = run_task(workdir, text, selected_config, stage, session=session)
+            resuming = True
+            result = run_turn(workdir, text, selected_config, stage, session=session)
             turn_replies.append(str(result.get("result") or ""))
             result["usage"] = _thread_usage(selected_config, prior_turn_usage, result.get("usage"))
             prior_turn_usage = None
+            resuming = False
         untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
         if candidate and not summary and (not candidate.is_file()
                                           or untouched and stage not in ("enrich", "muse")
                                           and "NO CHANGE" not in str(result.get("result") or "")):
-            result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
+            prior_turn_usage = result.get("usage")
+            result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result, run=run_turn)
+            prior_turn_usage = None
         if stage == "investigate" and candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
+            prior_turn_usage = result.get("usage")
             result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result,
-                                    notebook_zone(read_config(notebook.root, validated=False)))
+                                    notebook_zone(read_config(notebook.root, validated=False)), run=run_turn)
+            prior_turn_usage = None
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")
@@ -1345,16 +1458,17 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
             and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
         if candidate and not no_change:
-            repair_run = (_repair_thread(result["session_id"], result.get("usage"))
-                          if stage in ("enrich", "muse") and result.get("session_id") else None)
+            repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
+                          if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
-                                 run=repair_run,
+                                 run=repair_run, stage_progress=stage_progress,
                                  investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
                                  # A model that only replies, or never wrote the page, will not edit
                                  # the file a repair names.
                                  repairs=0 if summary or not candidate.is_file()
-                                 or candidate.read_text(encoding="utf-8") == before[record] else MAX_REPAIRS)
+                                 or candidate.read_text(encoding="utf-8") == before[record]
+                                 else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS)
             metrics["render_usage"] = result.get("usage")
         elif stage in ("maintain", "abstract") and not candidate:
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
@@ -1375,8 +1489,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 prepare_promotion(notebook.root, record, before[record], items, changed=False)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
-        if prior_turn_usage:
-            usage = _thread_usage(selected_config, prior_turn_usage, usage)
+        if prior_turn_usage and isinstance(error, RunFailed):
+            usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
+                     else _add_usage(prior_turn_usage, usage))
         if isinstance(error, RunFailed) and inquiry_usage and not result:
             usage = {key: (usage or {}).get(key, 0) + inquiry_usage.get(key, 0)
                      for key in (usage or {}).keys() | inquiry_usage.keys()}

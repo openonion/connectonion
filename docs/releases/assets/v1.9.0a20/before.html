@@ -1225,7 +1225,7 @@ function threads(r) {
 }
 function historyItems(text) {
   return listItems(text).map(t => {
-    // A range is one date: Ody's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
+    // A range is one date: Corin's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
     const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?(?:\s*[–-]\s*(?:\d{2}-)?\d{2})?)(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
     return m ? { day: m[1], text: m[2] } : { day: "", text: t };
   });

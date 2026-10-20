@@ -221,7 +221,7 @@ def trust_test_agents():
         """Mock translator tool."""
         translations = {
             "Hello": {"es": "Hola", "fr": "Bonjour"},
-            "Goodbye": {"es": "Adiós", "fr": "Au revoir"}
+            "Goodbye": {"es": "Anselmós", "fr": "Au revoir"}
         }
         return translations.get(text, {}).get(to_lang, f"[{text}]")
     

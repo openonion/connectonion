@@ -28,18 +28,18 @@ def _person_row(record, address, mails, last, **extra):
 
 def _pages(root):
     notebook = Notebook(root)
-    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody@acme.test"], email="ody@acme.test")
-    page = notebook.read("people/ody.md").replace("- Company: Unknown", "- Company: Acme [2]").replace(
+    notebook.stub_person("people/corin.md", "Cori Mar", ["corin@acme.test"], email="corin@acme.test")
+    page = notebook.read("people/corin.md").replace("- Company: Unknown", "- Company: Acme [2]").replace(
         "- Phone: Unknown", "- Phone: +61 400 000 000 [3]").replace(
         "## Open threads\n- Unknown — not investigated yet",
-        "## Open threads\n- Ody owes the contract [4]\n- We owe the invoice [5]")
+        "## Open threads\n- Corin owes the contract [4]\n- We owe the invoice [5]")
     page = page.replace("not investigated yet", "investigated 2026-09-27")
     page = page.replace("## Who they are\n", "## Who they are\nPartner on [Atlas](../projects/atlas.md). "
                         "Last contact: 2026-09-21. [1]\n")
-    notebook.write("people/ody.md", page)
-    notebook.stub_person("people/tam.md", "Tamara", ["tam@uni.test"], email="tam@uni.test")
+    notebook.write("people/corin.md", page)
+    notebook.stub_person("people/gret.md", "Greta", ["gret@uni.test"], email="gret@uni.test")
     notebook.stub_person("people/me.md", "Me", [OWNER], email=OWNER)
-    notebook.stub_org("orgs/acme.md", "Acme", ["acme.test"], ["people/ody.md"])
+    notebook.stub_org("orgs/acme.md", "Acme", ["acme.test"], ["people/corin.md"])
     notebook.stub_project("projects/atlas.md", "Atlas", ["/repo/atlas"])
     return notebook
 
@@ -48,10 +48,10 @@ def _map(root):
     write_json(state_path(root, "map.json"), {
         "phase": "mapped", "owner": {"record": "people/me.md", "addresses": [OWNER]},
         "people": [{"record": "people/me.md", "classification": "account owner"},
-                   _person_row("people/ody.md", "ody@acme.test", 3, "2026-09-20"),
-                   _person_row("people/tam.md", "tam@uni.test", 1, "2026-08-02")],
+                   _person_row("people/corin.md", "corin@acme.test", 3, "2026-09-20"),
+                   _person_row("people/gret.md", "gret@uni.test", 1, "2026-08-02")],
         "orgs": [{"record": "orgs/acme.md", "domain": "acme.test", "domains": ["acme.test"],
-                  "people": ["people/ody.md"], "classification": "unassessed"}],
+                  "people": ["people/corin.md"], "classification": "unassessed"}],
         "projects": [{"record": "projects/atlas.md", "name": "Atlas", "paths": ["/repo/atlas"],
                       "worktrees": [], "sessions": 2, "first": "2026-08-01", "last": "2026-09-19"}],
         "automated_correspondents": []})
@@ -61,13 +61,13 @@ def _mail(root):
     from connectonion.rem.mail_archive import message_path
     rows = [
         {"type": "mail", "source": "gmail", "id": "m1", "date": "2026-09-18T09:00:00+00:00",
-         "from": "Ody Zhou <ody@acme.test>", "to": [OWNER], "cc": [], "subject": "Contract"},
+         "from": "Cori Mar <corin@acme.test>", "to": [OWNER], "cc": [], "subject": "Contract"},
         {"type": "mail", "source": "gmail", "id": "m2", "date": "2026-09-19T09:00:00+00:00",
-         "from": OWNER, "to": ["ody@acme.test"], "cc": ["tam@uni.test"], "subject": "Re: Contract"},
+         "from": OWNER, "to": ["corin@acme.test"], "cc": ["gret@uni.test"], "subject": "Re: Contract"},
         {"type": "mail", "source": "gmail", "id": "m3", "date": "2026-09-20T09:00:00+00:00",
-         "from": "ody@acme.test", "to": [OWNER], "cc": [], "subject": "RE: Fwd: contract"},
+         "from": "corin@acme.test", "to": [OWNER], "cc": [], "subject": "RE: Fwd: contract"},
         {"type": "mail", "source": "gmail", "id": "m4", "date": "2026-08-02T09:00:00+00:00",
-         "from": "tam@uni.test", "to": [OWNER], "cc": [], "subject": "Contract"},
+         "from": "gret@uni.test", "to": [OWNER], "cc": [], "subject": "Contract"},
         {"type": "session", "source": "codex", "path": "/s/1.jsonl", "cwd": "/repo/atlas",
          "modified": "2026-09-19T00:00:00+00:00"},
     ]
@@ -89,7 +89,7 @@ def _sessions(root):
 
 def _runs(root):
     write_json(state_path(root, "runs/run_1.json"), {
-        "id": "run_1", "record": "people/ody.md", "stage": "write", "outcome": "written", "model": "m",
+        "id": "run_1", "record": "people/corin.md", "stage": "write", "outcome": "written", "model": "m",
         "started_at": "2026-09-27T01:00:00+00:00", "finished_at": "2026-09-27T01:05:00+00:00",
         "seconds": 300.0, "usage": {"input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 50}})
 
@@ -111,13 +111,13 @@ def test_the_people_table_has_the_crm_columns_and_the_census_count(tmp_path):
     store.refresh(root)
     rows = store.people_table(root)
     assert len(rows) == counts(root)["people"]["mapped"]
-    ody = next(row for row in rows if row["record"] == "people/ody.md")
-    assert ody["name"] == "Ody Zhou" and ody["emails"] == ["ody@acme.test"]
-    assert (ody["company"], ody["phone"], ody["role"]) == ("Acme", "+61 400 000 000", "")   # cited, Unknown is empty
-    assert ody["mails"] == 3 and ody["first_contact"] == ""
-    assert ody["last_contact"] == "2026-09-21"          # the page's own, later than the map's 2026-09-20
-    assert ody["open_threads"] == 2 and ody["written"] and ody["listed"]
-    assert [row["record"] for row in rows][0] == "people/ody.md"        # most recent contact first
+    corin = next(row for row in rows if row["record"] == "people/corin.md")
+    assert corin["name"] == "Cori Mar" and corin["emails"] == ["corin@acme.test"]
+    assert (corin["company"], corin["phone"], corin["role"]) == ("Acme", "+61 400 000 000", "")   # cited, Unknown is empty
+    assert corin["mails"] == 3 and corin["first_contact"] == ""
+    assert corin["last_contact"] == "2026-09-21"          # the page's own, later than the map's 2026-09-20
+    assert corin["open_threads"] == 2 and corin["written"] and corin["listed"]
+    assert [row["record"] for row in rows][0] == "people/corin.md"        # most recent contact first
     assert os.stat(state_path(root, "rem.db")).st_mode & 0o777 == 0o600
 
 
@@ -126,11 +126,11 @@ def test_first_contact_column_needs_a_written_fact_not_the_earliest_mapped_mail(
     root = notebook(tmp_path)
     page = Notebook(root)
     store.refresh(root)
-    assert store.person(root, "people/ody.md")["first_contact"] == ""
-    page.write("people/ody.md", page.read("people/ody.md").replace(
+    assert store.person(root, "people/corin.md")["first_contact"] == ""
+    page.write("people/corin.md", page.read("people/corin.md").replace(
         "- First contact: Unknown", "- First contact: 2026-06-20 [1]"))
     store.refresh(root)
-    assert store.person(root, "people/ody.md")["first_contact"] == "2026-06-20"
+    assert store.person(root, "people/corin.md")["first_contact"] == "2026-06-20"
 
 
 def test_an_older_index_cannot_reintroduce_a_false_first_contact(tmp_path):
@@ -138,10 +138,10 @@ def test_an_older_index_cannot_reintroduce_a_false_first_contact(tmp_path):
     root = notebook(tmp_path)
     store.refresh(root)
     with sqlite3.connect(store.db_path(root)) as db:
-        db.execute("update people set first_contact = '2026-07-01' where record = 'people/ody.md'")
-    assert store.person(root, "people/ody.md")["first_contact"] == ""
+        db.execute("update people set first_contact = '2026-07-01' where record = 'people/corin.md'")
+    assert store.person(root, "people/corin.md")["first_contact"] == ""
     assert next(row for row in store.people_table(root, sort="first_contact")
-                if row["record"] == "people/ody.md")["first_contact"] == ""
+                if row["record"] == "people/corin.md")["first_contact"] == ""
 
 
 def test_a_facts_block_wins_and_every_labelled_fact_is_kept(tmp_path):
@@ -149,25 +149,25 @@ def test_a_facts_block_wins_and_every_labelled_fact_is_kept(tmp_path):
     root = notebook(tmp_path)
     pages = Notebook(root)
     # A stub opens on `## Facts` since #2068; a legacy `## Contact` below it loses to it.
-    pages.write("people/tam.md", pages.read("people/tam.md").replace("- Role: Unknown", "- Role: Lecturer [1]")
+    pages.write("people/gret.md", pages.read("people/gret.md").replace("- Role: Unknown", "- Role: Lecturer [1]")
                 .replace("- Location: Unknown", "- Location: Sydney [2]\n- Pronouns: she/her [3]")
                 .replace("## Insight", "## Contact\n- Role: Tutor [4]\n\n## Insight"))
     store.refresh(root)
-    tam = store.person(root, "people/tam.md")
-    assert tam["role"] == "Lecturer" and tam["location"] == "Sydney"
-    assert tam["facts"]["Pronouns"] == "she/her"           # a field with no column yet is still readable
-    assert tam["facts"]["Email"] == "tam@uni.test"
+    gret = store.person(root, "people/gret.md")
+    assert gret["role"] == "Lecturer" and gret["location"] == "Sydney"
+    assert gret["facts"]["Pronouns"] == "she/her"           # a field with no column yet is still readable
+    assert gret["facts"]["Email"] == "gret@uni.test"
 
 
 def test_filters_and_sorting(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
     store.refresh(root)
-    assert [r["record"] for r in store.people_table(root, company="acme")] == ["people/ody.md"]
-    assert [r["record"] for r in store.people_table(root, open_only=True)] == ["people/ody.md"]
-    assert [r["record"] for r in store.people_table(root, query="tamara")] == ["people/tam.md"]
+    assert [r["record"] for r in store.people_table(root, company="acme")] == ["people/corin.md"]
+    assert [r["record"] for r in store.people_table(root, open_only=True)] == ["people/corin.md"]
+    assert [r["record"] for r in store.people_table(root, query="greta")] == ["people/gret.md"]
     recent = store.people_table(root, recent_days=10, today="2026-09-25")
-    assert [r["record"] for r in recent] == ["people/ody.md"]
+    assert [r["record"] for r in recent] == ["people/corin.md"]
     by_name = store.people_table(root, sort="name", descending=False)
     assert [r["name"] for r in by_name] == sorted(r["name"] for r in by_name)
 
@@ -176,7 +176,7 @@ def test_a_mail_thread_reads_in_order_and_bodies_load_on_demand(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
     store.refresh(root)
-    contract = store.threads(root, "people/ody.md")[0]
+    contract = store.threads(root, "people/corin.md")[0]
     messages = store.thread(root, contract["thread"])
     assert [m["id"] for m in messages] == ["gmail:m1", "gmail:m2", "gmail:m3"]   # Re:/Fwd: folded, time order
     assert "body" not in messages[0]
@@ -216,12 +216,12 @@ def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
     store.refresh(root)
-    found = {(e["kind"], e["other"]): e for e in store.edges(root, "people/ody.md")}
+    found = {(e["kind"], e["other"]): e for e in store.edges(root, "people/corin.md")}
     assert found[("org", "orgs/acme.md")]["count"] == 3
     assert found[("org", "orgs/acme.md")]["last_contact"] == "2026-09-21"
     assert found[("project", "projects/atlas.md")]["via"] == "page link"
-    assert [e["person"] for e in store.edges(root, "orgs/acme.md")] == ["people/ody.md"]
-    assert store.person(root, "people/ody.md")["edges"]
+    assert [e["person"] for e in store.edges(root, "orgs/acme.md")] == ["people/corin.md"]
+    assert store.person(root, "people/corin.md")["edges"]
 
 
 def test_runs_carry_their_tokens(tmp_path):
@@ -235,8 +235,8 @@ def test_runs_carry_their_tokens(tmp_path):
 
 def _everything(root):
     from connectonion.rem import store
-    return (store.people_table(root, include_unlisted=True), store.threads(root, "people/ody.md"),
-            store.edges(root, "people/ody.md"))
+    return (store.people_table(root, include_unlisted=True), store.threads(root, "people/corin.md"),
+            store.edges(root, "people/corin.md"))
 
 
 def test_a_build_is_incremental_and_the_same_from_scratch(tmp_path):
@@ -245,7 +245,7 @@ def test_a_build_is_incremental_and_the_same_from_scratch(tmp_path):
     assert set(store.refresh(root)["rebuilt"]) == {"pages", "mail", "sessions", "runs"}
     assert store.refresh(root)["rebuilt"] == []                   # nothing changed, nothing written
     pages = Notebook(root)
-    pages.write("people/tam.md", pages.read("people/tam.md").replace("- Role: Unknown", "- Role: Dean"))
+    pages.write("people/gret.md", pages.read("people/gret.md").replace("- Role: Unknown", "- Role: Dean"))
     assert store.refresh(root)["rebuilt"] == ["pages"]
     built = _everything(root)
     state_path(root, "rem.db").unlink()
@@ -310,9 +310,9 @@ def test_co_rem_list_people_table_prints_the_crm_columns(tmp_path):
     header = plain.output.splitlines()[0]
     for column in ("Name", "Company", "Role", "Email", "Phone", "Last contact", "Mails", "Open", "Status"):
         assert column in header
-    assert "Ody Zhou" in plain.output and "Acme" in plain.output and "Next:" in plain.output
+    assert "Cori Mar" in plain.output and "Acme" in plain.output and "Next:" in plain.output
     data = json.loads(runner.invoke(app, ["rem", "--root", str(root), "--json", "list", "people", "--table"]).output)
-    assert data["data"][0]["record"] == "people/ody.md" and data["data"][0]["company"] == "Acme"
+    assert data["data"][0]["record"] == "people/corin.md" and data["data"][0]["company"] == "Acme"
     assert data["data"][0]["first_contact"] == ""
 
 
@@ -390,11 +390,11 @@ def test_a_provider_thread_id_wins_over_the_subject(tmp_path):
     root = notebook(tmp_path)
     path = state_path(root, "source-inventory.jsonl")
     rows = [json.loads(line) for line in path.read_text().splitlines()]
-    rows[0]["thread"] = rows[3]["thread"] = "T9"      # m1 (Ody) and m4 (Tamara) are one provider thread
+    rows[0]["thread"] = rows[3]["thread"] = "T9"      # m1 (Corin) and m4 (Greta) are one provider thread
     _jsonl(path, rows)
     store.refresh(root)
     assert [m["id"] for m in store.thread(root, "mail:gmail:T9")] == ["gmail:m4", "gmail:m1"]
-    contract = [t["thread"] for t in store.threads(root, "people/ody.md")]
+    contract = [t["thread"] for t in store.threads(root, "people/corin.md")]
     assert "mail:gmail:T9" in contract and len(contract) == 2   # m2, m3 have no id yet: still the subject hash
 
 

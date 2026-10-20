@@ -79,6 +79,7 @@ You owe Mara the signed data-sharing addendum — 9 days [4]. She runs partnersh
 
 ## Uncertainties
 - Whether the fourth seat is budgeted or a wish.
+- The fourth seat budget is unknown [6].
 
 ## Sources
 - [1] outlook:5c1e0a9b72d4 — address and signature; confidence high; observed {d(40)}.
@@ -125,7 +126,7 @@ Inès is the accountant who files the user's company returns [1]. Last contact: 
 - Email: ines@ledgerline.example [1]
 
 ## Open threads
-- She is waiting on the user for the Q3 receipts; the user has owed them since {d(12)} [1].
+- She is waiting on the user for the Q3 receipts; the user has owed them since {d(12)} and she files the return by {d(-2)} [1].
 
 ## Sources
 - [1] outlook:3d5f7b9e1a0c — receipts request; confidence high; observed {d(12)}.
@@ -300,13 +301,166 @@ def _runs(now: datetime) -> list[dict]:
     return runs
 
 
-def build(root: Path, now: datetime | None = None) -> Path:
+def _chinese_pages(now: datetime) -> dict:
+    """Cached prose translations; source lines and investigation stamps stay canonical."""
+    d = lambda n: _day(now, n)  # noqa: E731
+    return {
+        "people/mara-ostrowski.md": f'''# Mara Ostrowski
+
+你还欠 Mara 一份签好的数据共享补充协议，已过 9 天 [4]。她负责 [Fernhill Labs](../orgs/fernhill-labs.md) 的合作事务，也是试点的主要联系人 [1][2]；她还欠你试点的用量导出 [5]。最近联系：{d(1)} [6]。
+
+## Facts
+- Email: mara@fernhill.example (work); mara.ostrowski@mailbox.example (personal) [1]
+- Phone: Unknown
+- Company: [Fernhill Labs](../orgs/fernhill-labs.md) [2]
+- Role: 合作负责人 [2]
+- Location: 新西兰惠灵顿 [2]
+- Time zone: Unknown
+- Links: https://fernhill.example/team/mara [2]
+- How we know them: 你在聚会上分享智能体记忆后，她提出开展试点 [3]
+- First contact: {d(40)} [3]
+- Last contact: {d(1)} [6]
+- Signing entity: Unknown
+- Handles: mara@fernhill.example
+- Language: 英语；与同事交流时用波兰语 [3]
+- Also known as: M. Ostrowski
+
+## Insight
+- Now: 试点能否续约，取决于你们各自欠对方的两件事 [4][5]。
+- At stake: 季末的续约通话，以及可能增加的第四个席位 [6]。
+- Changed: 五周内，她从反馈使用体验转向询问扩容 [4][6]。
+- Pattern: 她会在邮件主题中写明截止日期，并在四天内跟进 [4][5][6]。
+
+## Who they are
+- Fernhill Labs 的合作负责人；这家位于惠灵顿的气候数据初创公司有十二名成员 [2]。
+
+## Why they are here
+- 你在聚会上分享智能体记忆后，她主动联系，希望在 Fernhill 的研究团队中试用 co rem [3]。
+
+## Our relationship
+- 从 {d(40)} 开始的付费试点：三个席位，按月开票，季末决定是否续约 [3][4]。她沟通直接，遇到问题会迅速提出，也很乐于反馈。
+
+## History
+- {d(40)}: 确认试点，从下周一开始使用三个席位 [3]。
+- {d(26)}: 第一次反馈通话；提出让团队共用一个笔记本 [4]。
+- {d(9)}: 发来数据共享补充协议，请你签署 [4]。
+- {d(4)}: 承诺在 "by Friday" 前提供用量导出 [5]。
+- {d(1)}: 询问续约时能否增加第四个席位 [6]。
+
+## Open threads
+- **数据共享补充协议** — 你还没签；从 {d(9)} 起等你处理 [4]。
+- **用量导出** — 她承诺周五（{d(4)}）前提供；仍未回复 [5]。
+
+## How they communicate
+- 邮件简短，使用要点，主题中写明截止日期 [4][5]。
+
+## How the user writes to them
+- 语气温和、简短；你通常在一天内回复 [6]。
+
+## Cadence
+- 大约每周联系，临近开票时更频繁 [4][6]。
+
+## Uncertainties
+- 第四个席位是否已有预算，还是仅有意向。
+- 第四个席位的预算尚不清楚 [6]。
+''',
+        "people/ines-halvorsen.md": f'''# Inès Halvorsen
+
+Inès 是负责申报你公司报表的会计 [1]。最近联系：{d(12)}，邮件 [1]。
+
+## Contact
+- Email: ines@ledgerline.example [1]
+
+## Open threads
+- 她在等你提供第三季度的收据；从 {d(12)} 起尚未交齐，她将在 {d(-2)} 前报税 [1]。
+''',
+        "people/avery-lin.md": f'''# Avery Lin
+
+这是你：一名开发智能体工具的独立工程师，有一个付费试点，今年秋天有两场演讲 [1]。最近联系：{d(0)} [1]。
+
+## Facts
+- Email: avery@lin.example [1]
+- Phone: +64 21 555 0142 (mobile) [1]
+- Company: Unknown
+- Role: 独立工程师 [1]
+- Location: 新西兰惠灵顿 [1]
+- Time zone: Pacific/Auckland [1]
+- Links: https://lin.example [1]
+- How we know them: Unknown
+- First contact: Unknown
+- Last contact: {d(0)} [1]
+
+## Insight
+- Now: 本月你上线了 Harbour 的夜间读取功能，并写了两份演讲摘要 [2]。
+- At stake: 两个人在等你，最久的一位已等了十二天 [3]。
+''',
+        "orgs/fernhill-labs.md": '''# Fernhill Labs
+
+一家位于惠灵顿的气候数据初创公司，也是你的第一个付费试点客户 [1]。
+
+## Domains
+- fernhill.example [1]
+
+## Who they are
+- 十二名成员；从事研究和数据工程 [1]。
+
+## People here
+- [Mara Ostrowski](../people/mara-ostrowski.md) — 合作负责人；负责试点 [1]
+
+## Open threads
+- 季末决定是否续约；你应先发一份方案 [2]。
+''',
+        "projects/harbour.md": f'''# Harbour
+
+## What it is
+- 一款将团队共享收件箱整理成每周简报的命令行工具，为 Fernhill 的试点开发 [1]。
+
+## Overview
+每晚读取一次邮件，按会话分组，为每个团队汇总成一份简报 [1][2]。
+
+```text
+ shared inbox ──read──> threads ──group──> team briefs
+      │                                        │
+      └──── attachments ──> extract ──┐        v
+                                      └──> weekly brief ──> email
+```
+
+## Where it stands
+- 观察于 {d(1)}。夜间读取和会话分组已能处理试点收件箱；简报仍会重复较长的会话 [2][3]。
+- 三位试点用户中，有两位打开了上周的简报 [3]。
+
+## Open threads
+- 决定长会话要截短还是概括；你欠 Mara 一个答复，需在续约通话前给出 [3]。
+- 等 Fernhill 提供第二个测试收件箱；承诺于 {d(6)} [4]。
+
+## Key decisions
+- **{d(20)}:** 每个团队一份简报，而非每人一份，让邮件保持简短 [2]。
+
+## Paths
+- /home/user/code/harbour [1]
+- Sessions: 31
+- First seen: {d(45)}
+- Last seen: {d(1)}
+''',
+    }
+
+
+def build(root: Path, now: datetime | None = None, zh: bool = False) -> Path:
     """Write the invented notebook at root and return it."""
     now = now or datetime.now(timezone.utc)
     prepare(root)
     notebook = Notebook(root)
-    for record, text in {**_people(now), **_projects(now), **_orgs_and_skills(now)}.items():
+    pages = {**_people(now), **_projects(now), **_orgs_and_skills(now)}
+    for record, text in pages.items():
         notebook.write(record, text)
+    if zh:
+        from connectonion.rem import translate
+        for record, prose in _chinese_pages(now).items():
+            original = notebook.read(record)
+            translated = prose.rstrip() + "\n\n## Sources" + original.partition("\n## Sources")[2]
+            path = translate.translation_path(root, record, "zh")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"<!-- co rem translation of {record} sha256:{translate.digest(original)} -->\n" + translated, encoding="utf-8")
     notebook.stub_person("people/quinn-alder.md", "Quinn Alder", handles=["quinn@alder.example"])
     notebook.stub_person("people/noor-bakhtiar.md", "Noor Bakhtiar", handles=["noor@bakhtiar.example"])
     # The map's correspondent rows: where the People table's mail columns come from.
@@ -326,7 +480,7 @@ def build(root: Path, now: datetime | None = None) -> Path:
     (root / ".state" / "map.json").write_text(json.dumps({
         "people": rows, "without_page": other, "all_history": True,
         "automated_correspondents": [{"address": "notice@robot.example"}],
-        "owner": {"record": "people/avery-lin.md"}}))
+        "owner": {"record": "people/avery-lin.md", "languages": {"languages": ["zh", "en"] if zh else ["en"], "english_terms": []}}}))
     runs = root / ".state" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     for i, run in enumerate(_runs(now)):

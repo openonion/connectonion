@@ -115,6 +115,8 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
         return logged(root, row["record"], "investigate", lambda update: investigate_person(
             root, row, clients=clients, subscriptions=sources, stage_progress=update))
 
+    from ...rem.investigate import warm_session_windows
+    warm_session_windows(root, sources)
     result = write_pages(chosen, write=one, gate=gate, on_page=on_page, workers=workers)
     result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):

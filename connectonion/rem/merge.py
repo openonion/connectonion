@@ -237,7 +237,7 @@ def _identity(page: str) -> tuple[str, set[str], set[str]]:
 
 
 def _distinctive(name: str) -> bool:
-    """A full name or one not in Latin script: a first name alone ("David") is many people."""
+    """A full name or one not in Latin script: a first name alone ("Colin") is many people."""
     return len(name.split()) >= 2 or (len(name) >= 2 and not name.isascii())
 
 
@@ -250,7 +250,7 @@ def _why(a: tuple, b: tuple) -> str:
     if other.casefold() in names and _distinctive(other):
         return f"{title} is also known as {other}"
     local = {re.sub(r"[\d._-]+$", "", address.split("@")[0]): address for address in others}
-    own = set(title.casefold().split())   # "David" on David Burt's page is his first name, not a handle
+    own = set(title.casefold().split())   # "Colin" on Colin Drake's page is his first name, not a handle
     handle = next((name for name in sorted(names) if len(name) >= 4 and name in local and name not in own), "")
     return f"{title} lists the handle {handle}, as in {local[handle]}" if handle else ""
 
@@ -258,8 +258,8 @@ def _why(a: tuple, b: tuple) -> str:
 def likely_pairs(notebook: Notebook) -> list[dict]:
     """People pages that are probably one person, with the evidence; never merged here (#2349).
 
-    A real first run gave Ody two pages on one Gmail, Ziming Gong and 子明 one
-    shared address, and Lee Larry the handle of liqingyong0507@gmail.com. Names
+    A real first run gave Corin two pages on one Gmail, Zia Tanaka and 子亚 one
+    shared address, and Kim Fenwick the handle of linmu0507@example.com. Names
     alone are not evidence enough to merge, so the owner confirms each with
     `co rem merge KEPT OTHER`; the page with more written is the one to keep.
     """

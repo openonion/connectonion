@@ -161,3 +161,17 @@ def test_cli_shows_and_sets_workers(tmp_path):
     shown = runner.invoke(app, command)
     assert shown.exit_code == 0, shown.output
     assert json.loads(shown.stdout)["data"]["config"]["limits"]["workers"] == 8
+
+
+def test_daily_translations_limit_defaults_and_validates(tmp_path):
+    import pytest
+    import yaml
+    from connectonion.rem.config import default_config, read_config, set_config
+    from connectonion.rem.files import RemError
+    old = default_config()
+    del old['limits']['translations_per_day']
+    (tmp_path / 'config.yaml').write_text(yaml.safe_dump(old))
+    assert read_config(tmp_path)['limits']['translations_per_day'] == 10
+    assert set_config(tmp_path, ['limits.translations_per_day', '3'])['limits']['translations_per_day'] == 3
+    with pytest.raises(RemError, match='positive integers'):
+        set_config(tmp_path, ['limits.translations_per_day', '0'])

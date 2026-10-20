@@ -24,6 +24,7 @@ you, so do not reread what you already read.
 ## Turn 1 — ask, then choose
 
 Read the page, then every cited original whole. Do not edit the page.
+Read the `earlier-insights` item, when supplied, as a reading guide, never a citable source, and follow its rule for what a new insight must add.
 Questions the last run left open come first among candidates when still open.
 Do not re-ask a question it settled.
 
@@ -86,7 +87,9 @@ Decide one of:
   pattern, a contradiction, a thread that is really closed, a sentence on the
   page that is wrong. Test it before you call it one: if a single message
   says it, or the page already says it, it is not an insight. Your reply
-  names the two or more sources it needed. **Only now edit the page**: put it, cited, in the right
+  names the two or more sources it needed. Strike every citation but one:
+  if the claim still stands, it is that one message's summary, not an
+  insight — each source must add a fact the others lack. **Only now edit the page**: put it, cited, in the right
   place (`Insight` as `At stake:`/`Changed:`/`Pattern:`, a turn in `History`,
   a closed thread out of `Open threads`, a correction where the error was).
   If it changes who they are, what is live or what the user does next,
@@ -119,6 +122,19 @@ ready. `Insight` keeps at most four bullets, so a new one
 replaces the weakest (move that one's fact, quotes and citations where they
 belong). An insight adds a sentence or two, not a
 paragraph of supporting quotes. The owner is `the user`, never their name.
+A `Pattern:` names a recurrence and what it causes, not a dated list of
+requests. `Changed:` needs the same subject with a before and an after;
+two kinds of content handled differently is not a change. A new bullet
+must contradict, resolve or add a fact to the bullet it replaces, never
+reword it, and never replace a bullet with one its own sources contradict.
+
+Who said it is the original's author. An agent's or scheduler's prompt, a
+bot message, an issue or pull-request title, and a client's text the user
+forwarded are not the user's words: give each speaker their own verb.
+Quote a sentence only when it carries an ask, a decision, a commitment or
+a reason; never a command, a title, a greeting or a sign-off, and each
+sentence once per page. A thread is `open` only while a reply is owed, and
+a status you state after a quote cites the record that shows it.
 
 Reply each turn:
 

@@ -54,10 +54,10 @@ Material about other subjects is left for their own passes.
 Recognising a person is judgement, not a string match. A name in a coding
 session is whatever the user typed at the time: a first name, a nickname, a
 typo, or what dictation heard. Measured: a session said "odi" and the notebook
-already held "Ody Zhou" -- a literal search for "odi" finds nothing, because
+already held "Corin Marsh" -- a literal search for "odi" finds nothing, because
 literal search cannot bridge a changed letter, and a second page for the same
 person was created. The context that settles it is the kind only the model can
-weigh: "odi" asked for the pricing analysis in the same week Ody Zhou was sent
+weigh: "odi" asked for the pricing analysis in the same week Corin Marsh was sent
 the pricing analysis.
 
 Adding the new spelling to `Also known as:` means the next batch matches it
@@ -165,7 +165,7 @@ In the 1.9.0a1 acceptance run (2026-09-30), four `sync --all` batches grew `proj
 **The size is enforced, at every stage that writes a page (#2019).** The rule
 lived only in this Skill, and a daily update is an investigation, not upkeep:
 in the 1.9.0a5 acceptance run (2026-10-01) one daily-update pass took
-`projects/connectonion` from 13,421 to 25,255 characters and `ody-zhou` from
+`projects/connectonion` from 13,421 to 25,255 characters and `corin-marsh` from
 18,910 to 21,690. The same rule is now in `rem-investigate`, and the runner's
 review refuses any page candidate -- investigation, daily update or upkeep --
 over **20,000 characters that is longer than the page it replaces**; the
@@ -175,3 +175,10 @@ largest page a person had grown by hand-read material was 18.9k; both growths
 above end over 20k. A page already over the limit is not stuck: a candidate
 that shrinks it is accepted, so it can come down across runs. Every run's
 outcome already carries `page_chars` (before, after) for the page it wrote.
+
+## Carry the notes' quotes (2026-10-20)
+
+A one-page upkeep turn puts each `Quote:` the notes hold for its subject on the
+line that uses it and keeps every quote already on the page. Before this, the
+quote-first rule reached upkeep only through the page skills, and the notes
+rarely had words to quote.

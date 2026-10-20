@@ -17,13 +17,21 @@ FIRST_PEOPLE = None    # None: every eligible page of the kind; init's flags cap
 FIRST_PROJECTS = None
 FIRST_ORGS = None
 
-# Planning rates from the 1.9.2b1 first run on a real 180-day notebook
-# (2026-10-09, 16 workers, Codex): each kind's total work over its pages, so a
-# person includes its second pass (141 runs for 84 people). The 2026-10-03
-# sample before it was interrupted and announced ~70 minutes for a run of 129.
-# An owner's first page takes two turns: quick and full. Completed
-# notebook-local runs replace these defaults as soon as they exist.
-DEFAULTS = {"owner": {"input_tokens": 7_300_000, "seconds": 1236},
+# Planning rates, before a notebook has runs of its own. Queues run most active
+# first, so a kind's first pages are its heaviest and the rest are lighter.
+# HEAVIEST: the 2026-10-20 release check -- a fresh 180-day notebook, 16 workers,
+# Codex gpt-6-luna at fast speed, three rounds a page, its ten most active people
+# (each with its deepening pass), three projects and two organisations. With
+# only the full-run medians below it announced ~42 minutes and ~50M input
+# tokens, and took 82 minutes and 102M.
+# DEFAULTS: every other page, from the 1.9.2b1 full first run on a real 180-day
+# notebook (2026-10-09, 16 workers): 141 runs for 84 people. The owner is one
+# turn's average from the release check: quick 696 s and 2.7M, full 3,515 s
+# and 10.2M. Completed notebook-local runs replace both as soon as they exist.
+HEAVIEST = {"person": {"pages": 10, "input_tokens": 6_250_000, "seconds": 2099},
+            "project": {"pages": 3, "input_tokens": 2_680_000, "seconds": 639},
+            "org": {"pages": 2, "input_tokens": 8_040_000, "seconds": 3556}}
+DEFAULTS = {"owner": {"input_tokens": 6_500_000, "seconds": 2105},
             "person": {"input_tokens": 2_850_000, "seconds": 658},
             "project": {"input_tokens": 630_000, "seconds": 133},
             "org": {"input_tokens": 2_030_000, "seconds": 510},
@@ -58,6 +66,13 @@ def per_page(runs: list[dict], kind: str) -> dict:
             "measured": len(done)}
 
 
+def page_costs(rate: dict, kind: str, count: int) -> list[dict]:
+    """Each selected page's cost: the heaviest first pages at their own rate until measured."""
+    heavy = HEAVIEST.get(kind) if not rate["measured"] else None
+    first = min(count, heavy["pages"]) if heavy else 0
+    return [heavy] * first + [rate] * (count - first)
+
+
 def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0, skills: int = 0,
          workers: int) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
@@ -70,17 +85,16 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
     if skills:
         counts["skill"] = skills
     rates = {kind: per_page(runs, kind) for kind in counts}
+    pages = {kind: page_costs(rates[kind], kind, counts[kind]) for kind in counts if kind != "owner"}
     queue = ([rates["owner"]["seconds"]] if owner else []) + [
-        seconds for group in zip_longest(*(
-            [rates[kind]["seconds"]] * counts[kind] for kind in counts if kind != "owner"))
-        for seconds in group if seconds is not None]
+        page["seconds"] for group in zip_longest(*pages.values()) for page in group if page is not None]
     lanes = [0] * max(min(workers, PACE), 1)
     for seconds in queue:
         lane = min(range(len(lanes)), key=lanes.__getitem__)
         lanes[lane] += seconds
     return {"pages": sum(counts.values()), "counts": counts,
             "input_tokens": (2 * counts["owner"] * rates["owner"]["input_tokens"]
-                             + sum(counts[k] * rates[k]["input_tokens"] for k in counts if k != "owner")),
+                             + sum(page["input_tokens"] for kind in pages for page in pages[kind])),
             "minutes": ceil((counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 

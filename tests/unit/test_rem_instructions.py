@@ -202,7 +202,7 @@ def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
 
 def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_under_15k():
     """A real owner page took "Partner at OpenOnion, running marketing" from a mail
-    where the owner listed Ody's roles, and followed the person template."""
+    where the owner listed Corin's roles, and followed the person template."""
     owner = instructions("investigate", page_kind="person", owner=True)
     person = instructions("investigate", page_kind="person")
     assert "# Your own page" in owner and "# Your own page" not in person
@@ -239,8 +239,8 @@ def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projec
     owner = instructions("investigate", page_kind="person", owner=True)
     assert len(owner) <= INSTRUCTION_BUDGET
     for rule in ("Coding agents are the user's tools, not people",
-                 "never a counterparty in `Open threads`",
-                 "never `Last contact`",
+                 "never an `Open\nthreads` line",
+                 "`Last contact` or `Cadence`",
                  "`recent-projects`"):
         assert rule in owner, rule
 
@@ -273,7 +273,7 @@ def test_both_page_writers_carry_the_quote_first_page_rule(stage, kind):
 
 
 def test_every_pass_may_delete_not_only_add():
-    """Owner, 2026-10-09: rounds only ever added. Ody's page carried sixteen
+    """Owner, 2026-10-09: rounds only ever added. Corin's page carried sixteen
     "not established" hedges because every prompt said keep, none said delete.
     A pass edits the page like code: add, change and delete."""
     from connectonion.rem.investigate import ROUND_NOTE, SYNTHESIS_NOTE
@@ -291,3 +291,11 @@ def test_shared_history_rule_only_applies_to_shapes_with_history():
         assert ('`History`, on a page whose shape has one: one dated line per thread, '
                 'how it ended; at most sixteen.') in text
         assert len(text) <= INSTRUCTION_BUDGET
+
+
+def test_the_owner_page_keeps_private_life_out_of_insight_and_debts_to_what_was_agreed():
+    """#2128 / #2233 reruns: an Insight bullet about a purchase; 'The user owes' for a status question."""
+    owner = instructions("investigate", page_kind="person", owner=True)
+    assert "Work only: never a `[personal]`" in owner
+    assert "owes only what the user agreed to" in owner
+    assert len(owner) <= INSTRUCTION_BUDGET

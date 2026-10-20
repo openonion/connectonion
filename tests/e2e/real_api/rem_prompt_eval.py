@@ -120,12 +120,12 @@ def check_question_is_not_maintenance(nb):
 def check_chinese(nb):
     f = structure_failures(nb, language="zh")
     text = "\n".join(pages(nb).values())
-    if "Emma" not in text and "emma" not in text.lower():
-        f.append("Emma not recorded")
+    if "Elodie" not in text and "elodie" not in text.lower():
+        f.append("Elodie not recorded")
     if "355" not in text:
         f.append("floor price 355 not recorded")
-    if not any(word in text for word in ("不再", "自己改价", "自己定价", "自行定价", "自行改价", "手动", "Emma 自")):
-        f.append("the rule that Emma prices herself now is missing")
+    if not any(word in text for word in ("不再", "自己改价", "自己定价", "自行定价", "自行改价", "手动", "Elodie 自")):
+        f.append("the rule that Elodie prices herself now is missing")
     if "清洁" not in text and "cleaning" not in text.lower():
         f.append("the 'net of cleaning fee' qualification was dropped")
     return f
@@ -225,9 +225,9 @@ SCENARIOS = [
              seed={"decisions/aurora-storage.md": "# Aurora stores notes as Markdown, not SQLite\n\n"
                                                   "Decided 2026-09-02 for inspectability.\n\nSources: codex:seed:0 (2026-09-02)\n"}),
     Scenario("chinese", [[("s1", [
-        ("user", "客户 Emma 的 6 Portman 房源，我们定的地板价是每晚 355 澳元，这是净额，不含清洁费。"
+        ("user", "客户 Elodie 的 6 Portman 房源，我们定的地板价是每晚 355 澳元，这是净额，不含清洁费。"
                  "她从 9 月 7 日起自己改价，我们不再主动调价，只按她拍板的执行。"),
-        ("assistant", "记下了：地板价 355 澳元/晚（净额），9 月 7 日起 Emma 自己定价。")])]], check_chinese),
+        ("assistant", "记下了：地板价 355 澳元/晚（净额），9 月 7 日起 Elodie 自己定价。")])]], check_chinese),
     Scenario("dedupe_across_sessions", [
         [("s1", [("user", "Alice Chen from Example Co prefers email over calls, she said so."),
                  ("assistant", "Noted.")])],

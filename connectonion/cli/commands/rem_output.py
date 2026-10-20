@@ -419,7 +419,11 @@ def _pages_line(pages: list, left) -> str:
 def depth_summary(value):
     """Keep a deepening round's gains and losses visible beside its cost."""
     columns = ("record", "round", "chars", "quotes", "sources", "insights", "lost quotes", "outcomes", "points")
-    rows = [" | ".join(columns)]
+    rows = []
+    for row in value["picked"]:
+        rows.append(f"picked {row['record']}: value {row['value']}, recent ×{row['recent']}, "
+                    f"{row['quotes']} quotes, {row['sources']} sources, round {row['rounds'] + 1}")
+    rows.append(" | ".join(columns))
     for row in value["rounds"]:
         cells = [row["record"], str(row["round"])]
         cells += [f"{row[key][0]} -> {row[key][1]}" for key in ("chars", "quotes", "sources")]

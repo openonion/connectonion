@@ -23,9 +23,14 @@ maintainer can tell a request received from a commitment made.
 import hashlib
 import json
 import re
+import ssl
+import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from .files import RemError
+import httpx
+
+from .files import RemError, read_json, state_path
 
 RELATED_ORG_SCOPE = ("Related contact outside the target mail domains; verify person/company/domain identity "
                      "from primary messages before attributing this exchange to the organization.")
@@ -48,7 +53,7 @@ SELF = "me"                          # the correspondent of a mail the user sent
 # their own day; carrying them again turned a 17-mail batch into 370k tokens.
 # Outlook's HTML-to-text collapses a mail into one line, so none of these may
 # rely on line starts or ends; each is the first sign of the quoted thread.
-# No word boundaries either: flattened text runs "…Program ManagerFrom: Vern…"
+# No word boundaries either: flattened text runs "…Program ManagerFrom: Rowan…"
 # straight through, so the header words themselves are the only signal.
 # Unflattened, `Sent:` or `Date:` starts the line after `From:` with no rule above it (#2349).
 QUOTED_REPLY = re.compile(
@@ -101,6 +106,28 @@ def on_domains(row: dict, domains: list[str]) -> bool:
     return bool(suffixes) and any(address.endswith(suffixes) for address in participants(row))
 
 
+def org_member(row: dict, domains: list[str], exclude: set) -> bool:
+    """Domain membership through someone other than the owner or a notice address."""
+    return on_domains({'to': [a for a in participants(row) if a not in exclude]}, domains)
+
+
+def notice_addresses(root: Path) -> set:
+    state = read_json(state_path(root, 'map.json'), {})
+    return {address.casefold() for row in state.get('automated_correspondents', [])
+            for address in [row.get('address', ''), *row.get('addresses', [])] if address}
+
+
+def org_mail(row: dict, domains: list[str], own: set, notices: set, known: set, contacts: set) -> bool:
+    # 2026-10-20: the owner's company gathered 983 items in 505–816 s for 0–4
+    # quotes; most of 577 resolved sources were notices to the owner's address.
+    addresses = set(participants(row))
+    if _address(row.get('from', '')) in notices and not (known - own).intersection(addresses):
+        return False
+    if on_domains(row, domains):
+        return org_member(row, domains, own | notices)
+    return bool(contacts.intersection(addresses) - own - notices)
+
+
 def is_own(sender: str, mine: set) -> bool:
     """The user's own mail. Exchange lists the owner's Sent Items under a legacy DN
     (`/o=first organization/…/cn=recipients/cn=…`) instead of an address -- 64 of the
@@ -129,7 +156,7 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                  now=None, only: str = "") -> Batch:
     """`only` narrows the batch to one correspondent, named by address or part of one.
 
-    "Sync my mail with Vern" is the most natural thing to ask of a notebook and there
+    "Sync my mail with Rowan" is the most natural thing to ask of a notebook and there
     was no way to say it. Everyone else keeps their place in the queue: this passes
     over them, it does not consume them.
     """
@@ -196,6 +223,24 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     return updated
 
 
+# A dropped connection is retried; a timeout still splits the window (below).
+# On 2026-10-20 one Gmail SSLError in the 13th listed week stopped a first init
+# after 33 minutes, before any page was investigated.
+TRANSIENT = (ssl.SSLError, ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError)
+LISTING_ATTEMPTS = 4
+
+
+def _listed(listing, start: datetime, end: datetime) -> list:
+    """One window's listing, asked again after a dropped connection, with backoff."""
+    for attempt in range(LISTING_ATTEMPTS):
+        try:
+            return listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+        except TRANSIENT as error:
+            if attempt == LISTING_ATTEMPTS - 1 or 'timeout' in type(error).__name__.lower():
+                raise
+            time.sleep(2 ** (attempt + 1))
+
+
 def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """Every mail in [start, end), however many there are.
 
@@ -208,7 +253,7 @@ def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """
     listing = getattr(client, 'list_between_for_rem', client.list_between)
     try:
-        rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+        rows = _listed(listing, start, end)
     except Exception as error:
         # A real all-history Outlook scan reached 2010 and lost its whole map
         # when a year-wide listing timed out. Smaller queries often succeed.

@@ -139,7 +139,7 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
 
 
 def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
-              maintain=None, investigate_one=None, person_one=None, project_one=None, say=None) -> dict | None:
+              maintain=None, investigate_one=None, person_one=None, project_one=None, translate_one=None, say=None) -> dict | None:
     """One scheduled run. `investigate_one`, `person_one` and `project_one` replace
     the model calls in tests; `investigate_one` given alone takes every page the
     older way, as before this stage.
@@ -165,13 +165,15 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if not ready(config)[0]:
         maintenance["sessions_summary"] = summarise_sessions(root, limit=40, say=say)
         say(summarise_line(maintenance["sessions_summary"]))
-    if maintenance['outcome'] not in ('completed', 'no_change'):
-        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
-                                                'investigation': None}, scheduled)
     with maintenance_lock(root):
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+    if maintenance['outcome'] not in ('completed', 'no_change'):
+        _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
+        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
+                                                'investigation': None}, scheduled)
+    with maintenance_lock(root):
         state = status(root)
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         logs = run_logs(root)
@@ -189,7 +191,52 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     else:
         result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
                              investigate_one=investigate_one, person_one=person_one, say=say)
+    changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
+    _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
+
+
+def _translate_changed(root, config, maintenance, changed, translate_one, say):
+    """Cache this run's changed pages, sharing the existing maintenance lock."""
+    from .languages import owner_languages
+    from .runner import ready
+    from .translate import cached, translate
+    language = next((tag for tag in owner_languages(root)['languages'] if tag.split('-')[0].lower() != 'en'), None)
+    if not language or not changed or ready(config)[0]:
+        return
+    with maintenance_lock(root):
+        zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
+        today = now().astimezone(zone).date()
+        spent = sum(log.get('runner_attempts', 0) for log in run_logs(root)
+                    if log.get('phase') == 'daily-translation'
+                    and datetime.fromisoformat(log['started_at']).astimezone(zone).date() == today)
+        remaining = min(config['limits']['translations_per_day'] - spent,
+                        config['limits']['runner_calls_per_day'] - status(root)['runner_attempts_today'])
+        rows, attempts = [], 0
+        record, path = _reserve(root, 'daily-translation', 0, {})
+        for page in dict.fromkeys(changed):
+            if cached(root, page, language) is not None:
+                rows.append({'page': page, 'outcome': 'cached'})
+                continue
+            if attempts >= remaining:
+                continue
+            attempts += 1
+            record.update(runner_attempts=attempts)
+            write_json(path, record)
+            say(f"Translating {page} into {language}…")
+            try:
+                (translate_one or translate)(root, page, language)
+                rows.append({'page': page, 'outcome': 'translated'})
+            except RemError as error:
+                rows.append({'page': page, 'outcome': 'failed', 'error': str(error)})
+                say(f"Translation failed for {page}: {error}")
+            record['pages'] = rows
+            write_json(path, record)
+        report = {'language': language, 'pages': rows, 'runner_attempts': attempts}
+        maintenance['translations'] = report
+        record.update(**report, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
+                      finished_at=now().isoformat())
+        write_json(path, record)
 
 
 def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, investigate_one, person_one,
@@ -323,7 +370,7 @@ def _investigate_unfinished(root, route, page, *, clients, sources, days, calls,
 
 def _accepted_row(page: str, result: dict) -> dict:
     """An accepted page, with any round of it that was refused: those were dropped from
-    the daily rows, so Dora's refused round (2026-10-12) showed as plainly accepted."""
+    the daily rows, so Briar's refused round (2026-10-12) showed as plainly accepted."""
     return {'page': page, 'outcome': 'accepted', 'evidence': result.get('evidence', []),
             'report': result.get('report', ''),
             **({'refused_rounds': result['refused_rounds']} if result.get('refused_rounds') else {})}
