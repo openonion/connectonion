@@ -121,8 +121,9 @@ Rules:
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its
   people and object finds nothing later (an access grant came in another thread). Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
-  due date and any permission to proceed without a reply. Closure:
-  `Nothing open as of <date>`.
+  due date and any permission to proceed without a reply. Every ask or
+  promise under 60 days old with no reply about it and no delivery is a line
+  here, its due date passed or not; only then `Nothing open as of <date>`.
 - **Say each thing once, plainly.** A fact lives in one section; the lead and
   `Insight` point to it. Status is a dated fact (`no reply since 2026-10-12`),
   never "is not established", "it is unclear whether" or "无法确认是否完成":
