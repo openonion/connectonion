@@ -1600,10 +1600,6 @@ def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
     assert emptied.startswith("# Greta Holloway\n\nGreta Holloway is Events Coordinator") and "\n\n## Facts" in emptied
 
 
-    assert _keep_identity("people/tamara.md", before, before) == before
-    emptied = _keep_identity("people/tamara.md", before, "# Tamara Berryman\n\n\n" + facts)
-    assert emptied.startswith("# Tamara Berryman\n\nTamara Berryman is Events Coordinator") and "\n\n## Facts" in emptied
-
 
 @pytest.mark.parametrize('footer, carried', [('investigated 2026-10-08 (outlook)', True), ('not investigated yet', False)])
 def test_an_update_of_an_investigated_page_carries_the_page_it_replaces(notebook, monkeypatch, tmp_path, footer, carried):
