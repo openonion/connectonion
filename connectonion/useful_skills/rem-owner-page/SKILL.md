@@ -52,7 +52,7 @@ never a correspondent in `Cadence`.
   sources when possible and cite the dependency. Summarized requests alone are
   not insight. A coding request proves no shipment or passing test; only
   artifact evidence proves shipping. Work only: never a `[personal]` or
-  `[sensitive]` item (a purchase, health, family); those live in `Who they are`.
+  `[sensitive]` item (a purchase, health, family).
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,
