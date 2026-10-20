@@ -1462,14 +1462,52 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["doctor"])
 
     @rem.command("translate", cls=V("co rem translate"))
-    def translate_page(ctx: typer.Context, page: str = typer.Argument(...),
-                       to: str = typer.Option(..., "--to", help="Language tag: zh, zh-TW, ja, en ...")):
-        from ...rem.files import Notebook
-        from ...rem.translate import translate
+    def translate_page(ctx: typer.Context, page: str = typer.Argument(""),
+                       to: str = typer.Option("", "--to", help="Language tag; defaults to your first non-English language"),
+                       all_pages: bool = typer.Option(False, "--all", help="Backfill all reader records, skipping current caches"),
+                       category: str = typer.Option("", "--category", help="With --all: people, orgs, projects, decisions, principles or skills")):
+        from ...rem.census import listed, pages
+        from ...rem.files import Notebook, RemError
+        from ...rem.languages import owner_languages
+        from ...rem.translate import cached, checked_language, translate
 
         def operation(root):
-            record = _resolve_page(Notebook(root), page)
-            return translate(root, record, to), ["show", record]
+            if bool(page) == all_pages or (category and not all_pages):
+                raise RemError("Choose PAGE or --all; --category goes with --all")
+            language = to or next((tag for tag in owner_languages(root)["languages"]
+                                   if tag.split("-")[0].lower() != "en"), "")
+            if not language:
+                raise RemError("No non-English owner language; choose --to LANGUAGE or set co rem config set languages zh,en")
+            checked_language(language)
+            if not all_pages:
+                record = _resolve_page(Notebook(root), page)
+                return translate(root, record, language), ["show", record]
+            categories = ("people", "orgs", "projects", "decisions", "principles", "skills")
+            if category and category not in categories:
+                raise RemError("--category must be one of " + ", ".join(categories))
+            rows, counts = [], {"translated": 0, "cached": 0, "failed": 0}
+            found = pages(root)
+            for record in Notebook(root).list():
+                kind = record.split("/")[0]
+                if kind not in ((category,) if category else categories):
+                    continue
+                if record == "skills/catalog/index.md" or (record in found and not listed(found[record])):
+                    continue
+                row = {"page": record, "outcome": "cached"}
+                if cached(root, record, language) is None:
+                    try:
+                        translate(root, record, language)
+                    except RemError as error:
+                        row.update(outcome="failed", error=str(error))
+                    else:
+                        row["outcome"] = "translated"
+                counts[row["outcome"]] += 1
+                rows.append(row)
+                if not ctx.obj["json"]:
+                    typer.echo(f"{record}: {row['outcome']}" + (f": {row['error']}" if "error" in row else ""))
+            result = {"language": language, "pages": rows, **counts}
+            summary = ", ".join(f"{count} {outcome}" for outcome, count in counts.items())
+            return result if ctx.obj["json"] else summary, ["open"], bool(counts["failed"])
         _handle(ctx, operation, ["list"])
 
     @rem.command("list", cls=V("co rem list"))

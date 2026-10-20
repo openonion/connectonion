@@ -352,11 +352,21 @@ Back:     co rem --help
 ## co rem translate
 
 ```
-Translate one page with co ai, on the notebook's runner, and print it.
+Translate one page, or backfill reader records with co ai on the notebook's runner.
 
-Usage:    co rem translate PAGE --to LANGUAGE
+Usage:    co rem translate [PAGE | --all] [--to LANGUAGE] [--category CATEGORY]
 Example:  co rem translate people/alice-chen.md --to zh
           co rem translate "Alice Chen" --to ja
+          co rem translate --all --to zh
+          co rem translate --all --category people
+Options:  --to defaults to your first configured or detected non-English language.
+          Put --root PATH before translate to select another notebook.
+          --all processes people, orgs, projects, decisions, principles and skills,
+          one at a time. --category limits it to one of those categories.
+          Current caches are skipped; logs, activity, catalog indexes, duplicate
+          installations and unlisted pages are excluded. Prints translated /
+          cached / failed: reason for each page, then counts; failures continue
+          and give exit 1. --json returns the page outcomes and counts.
 Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
           the page it was made from. The page itself never changes. Asked
           again, a current translation is printed with no model call; once the

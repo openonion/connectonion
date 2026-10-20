@@ -140,3 +140,84 @@ def test_partial_maintenance_still_saves_the_owners_detected_languages(root):
     result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"})
     assert result["outcome"] == "partial" and result["investigation"] is None
     assert read_json(root / ".state" / "map.json", {})["owner"]["languages"]["languages"] == ["zh"]
+
+
+@pytest.fixture
+def translation_root(tmp_path, monkeypatch):
+    import sys
+    from pathlib import Path
+    from connectonion.rem.config import set_config
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+    root = build(tmp_path / 'rem')
+    monkeypatch.setattr(daily, 'subscriptions', lambda root: {})
+    monkeypatch.setattr(daily, '_clients', lambda sources: {})
+    monkeypatch.setattr(daily.quota, 'read', lambda config, request=None: {'unknown': 'no meter'})
+    set_config(root, ['languages', 'en,zh,ja', 'limits.translations_per_day', '2'])
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', ''))
+    monkeypatch.setattr('connectonion.rem.sessions.summarise_sessions', lambda *a, **kw: {})
+    monkeypatch.setattr('connectonion.rem.sessions.summarise_line', lambda result: '')
+    monkeypatch.setattr(daily, 'unfinished_by_recency', lambda root: [])
+    return root
+
+
+def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failures(translation_root, monkeypatch):
+    from connectonion.rem.files import RemError
+    root = translation_root
+    pages = ['skills/catalog/weekly-brief.md', 'projects/harbour.md', 'orgs/fernhill-labs.md']
+    monkeypatch.setattr('connectonion.rem.translate.cached', lambda root, page, language: 'current' if page == pages[0] else None)
+    calls, messages = [], []
+
+    def translator(root, page, language):
+        calls.append((page, language))
+        if page == pages[1]:
+            raise RemError('A quoted passage changed')
+        return '译文'
+
+    maintain = lambda root: {'outcome': 'completed', 'changed': [*pages, pages[1]]}
+    result = daily.run_daily(root, maintain=maintain, translate_one=translator, say=messages.append)
+    report = result['maintenance']['translations']
+    assert calls == [(pages[1], 'zh'), (pages[2], 'zh')]
+    assert [row['outcome'] for row in report['pages']] == ['cached', 'failed', 'translated']
+    assert report['runner_attempts'] == 2
+    assert report['pages'][1]['error'] == 'A quoted passage changed'
+    assert any('Translation failed' in message for message in messages)
+    log = next(log for log in daily.run_logs(root) if log['phase'] == 'daily-translation')
+    assert log['outcome'] == 'partial' and log['pages'] == report['pages']
+    daily.run_daily(root, maintain=maintain, translate_one=translator)
+    assert len(calls) == 2  # Another scheduled slot shares today's allowance.
+
+
+def test_daily_translates_investigation_changes_after_refresh(translation_root, monkeypatch):
+    root = translation_root
+    calls = []
+    monkeypatch.setattr(daily, 'unfinished_by_recency', lambda root: [{'path': 'projects/harbour.md'}])
+    monkeypatch.setattr('connectonion.rem.languages.refresh', lambda root: calls.append('refresh'))
+    result = daily.run_daily(root, maintain=no_change,
+                             investigate_one=lambda *a, **kw: {'changed': ['projects/harbour.md']},
+                             translate_one=lambda root, page, language: calls.append((page, language)))
+    assert calls == ['refresh', ('projects/harbour.md', 'zh')]
+    assert result['maintenance']['translations']['pages'][0]['outcome'] == 'translated'
+
+
+@pytest.mark.parametrize('languages, ready', [('en', True), ('zh', False)])
+def test_daily_translation_skips_english_or_unready_runner(translation_root, monkeypatch, languages, ready):
+    from connectonion.rem.config import set_config
+    set_config(translation_root, ['languages', languages])
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', '') if ready else ('unavailable', 'sign in'))
+    result = daily.run_daily(translation_root,
+                             maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
+                             translate_one=lambda *a: pytest.fail('translator called'))
+    assert 'translations' not in result['maintenance']
+
+
+def test_daily_translation_respects_total_runner_cap(translation_root, monkeypatch):
+    from connectonion.rem.config import set_config
+    from connectonion.rem.files import write_json, state_path
+    set_config(translation_root, ['limits.runner_calls_per_day', '1'])
+    write_json(state_path(translation_root, 'runs/run_' + 'f' * 32 + '.json'), {
+        'started_at': daily.now().isoformat(), 'runner_attempts': 1, 'outcome': 'completed'})
+    result = daily.run_daily(translation_root,
+                             maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
+                             translate_one=lambda *a: pytest.fail('daily cap exceeded'))
+    assert result['maintenance']['translations']['runner_attempts'] == 0

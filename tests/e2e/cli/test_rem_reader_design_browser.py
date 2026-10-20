@@ -1628,7 +1628,9 @@ def test_skill_roster_links_are_touch_sized_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#c=skills')
-    for link in page.locator('.hits.skills .t a').all():
+    links = page.locator('.hits.skills .t a:visible')
+    assert links.count() > 0
+    for link in links.all():
         box = link.bounding_box()
         assert box['width'] >= 44 and box['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -2243,10 +2245,10 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
     }""", isolated_context=False)
     home = page.locator('.waiting-ledger > li').filter(has_text='Letter of Support draft')
     assert home.count() == 1
-    assert home.locator('.waiting-person a').inner_text() == 'Tomás Reyes'
-    assert home.locator('.also-on').inner_text() == 'Also on Mara Ostrowski'
+    assert home.locator('.waiting-person a').inner_text() == 'Mara Ostrowski'
+    assert home.locator('.also-on').inner_text() == 'Also on Tomás Reyes'
     also = home.locator('.also-on a')
-    assert also.get_attribute('href') == '#r=people%2Fmara-ostrowski.md'
+    assert also.get_attribute('href') == '#r=people%2Ftomas-reyes.md'
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(tmp_path / 'deduped-home.png'), full_page=True)
     # Hash navigation preserves the injected notebook records.
@@ -2255,13 +2257,13 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
     rows = page.locator('.task-band .thread.mine')
     shared = rows.filter(has_text='Letter of Support draft')
     assert shared.count() == 1
-    assert shared.locator('.who a').inner_text() == 'Tomás Reyes'
-    assert shared.locator('.also-on').inner_text() == 'Also on Mara Ostrowski'
+    assert shared.locator('.who a').inner_text() == 'Mara Ostrowski'
+    assert shared.locator('.also-on').inner_text() == 'Also on Tomás Reyes'
     assert page.locator('#nav a[href="#view=open"] .n.waiting').inner_text() == str(rows.count())
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(tmp_path / 'deduped-open.png'), full_page=True)
     shared.locator('.also-on a').click()
-    page.get_by_role('heading', name='Mara Ostrowski', exact=True).wait_for()
+    page.get_by_role('heading', name='Tomás Reyes', exact=True).wait_for()
 
 def test_morning_keeps_separate_people_with_the_same_kind_of_request(reader):
     page, _ = reader
@@ -3564,3 +3566,249 @@ def test_memory_markers_enter_once_per_page_view_and_respect_reduced_motion(read
     assert marker.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
     page.locator('.sheet-find').fill('Mara')
     assert page.locator('.fresh-label').first.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_cached_prose_follows_interface_and_page_override(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r'''() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.index = {...r.index, how_known: 'Original indexed relationship'};
+      r.translations = {zh: r.text
+        .replace(/(^#[^\n]*\n)[\s\S]*?(?=\n## )/, '$1\n中文人物摘要 [1].\n')
+        .replace(/## Why they are here\n[^#]+/, '## Why they are here\n- 中文相识经过 [3].\n\n')
+        .replace(/(## History\n)- [^\n]*/, '$1- 2026-09-30：Arthur Chen 发来中文合同 [3].')
+        .replace(/Now:/g, 'Now：')
+        .replace(/- \*\*Data-sharing addendum\*\*[^\n]*/, '- 你需要签署中文待办摘要；since 2026-09-22 [4].')};
+      setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    assert '中文人物摘要' in page.locator('#main').inner_text()
+    assert 'Arthur Chen 发来中文合同' in page.locator('.person-focus .activity-list').inner_text()
+    assert page.locator('.person-focus .recent-activity h2').inner_text() == '最近'
+    page.locator('details.deep-note > summary').click()
+    assert '中文相识经过' in page.locator('.deep-note').inner_text()
+    assert 'Original indexed relationship' not in page.locator('#main').inner_text()
+    assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').count() == 0
+    assert page.locator('.page-head .lang-bar').count() == 0
+    assert page.locator('.page-foot .lang-bar select').is_visible()
+    page.locator('.page-foot select').select_option('')
+    assert '中文人物摘要' not in page.locator('#main').inner_text()
+    assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').count() == 0
+    page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
+    assert '中文人物摘要' not in page.locator('#main').inner_text()
+    page.evaluate(r'''() => { setInterfaceLanguage('zh'); location.hash = 'c=people'; }''', isolated_context=False)
+    assert '中文人物摘要' in page.locator('#main').inner_text()
+    page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
+    assert '中文待办摘要' in page.locator('.waiting-ledger').inner_text()
+    assert '中文人物摘要' in page.locator('.week').inner_text()
+    page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
+    assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
+    page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
+    assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').inner_text() == '原文'
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_skills_group_recent_families_and_collapse_rare_search_matches(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#c=skills')
+    assert page.locator('.skill-family h2').first.text_content() == 'Used in the last 30 days2'
+    rare = page.locator('.rare-skills')
+    assert rare.locator('summary').inner_text() == 'Rarely used (1)'
+    assert rare.get_attribute('open') is None
+    page.evaluate(r'''() => {
+      const base = byPath('skills/catalog/weekly-brief.md');
+      for (let i = 0; i < 36; i++) {
+        const name = i < 3 ? 'lark-fixture-' + i : 'archive-fixture-' + i;
+        REM.records.push({...base, path: 'skills/catalog/' + name + '.md', title: name,
+          text: base.text.replace(/last on \d{4}-\d{2}-\d{2}/, 'last on ' + (i < 3 ? '2026-08-15' : '2026-01-01'))});
+      }
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    assert page.locator('.skill-family h2').filter(has_text='lark').text_content() == 'lark3'
+    assert rare.locator('summary').inner_text() == 'Rarely used (34)'
+    assert rare.get_attribute('open') is None
+    page.locator('.skill-groups input').fill('archive-fixture-35')
+    assert rare.get_attribute('open') is not None
+    assert rare.locator('a').filter(has_text='archive-fixture-35').is_visible()
+    page.locator('.skill-groups input').fill('')
+    assert rare.get_attribute('open') is None
+    page.evaluate(r'''() => setInterfaceLanguage('zh')''', isolated_context=False)
+    assert page.locator('.skill-family h2').first.text_content() == '最近 30 天用过2'
+    assert rare.locator('summary').inner_text() == '很少使用 (34)'
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_skills_recent_cap_and_headings_share_the_list_column(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#c=skills')
+    page.evaluate(r'''() => {
+      const base = byPath('skills/catalog/weekly-brief.md');
+      REM.records = REM.records.filter(r => r.category !== 'skills');
+      for (let i = 0; i < 59; i++) {
+        const name = 'lark-fixture-' + i, day = String(1 + i % 29).padStart(2, '0');
+        REM.records.push({...base, path: 'skills/catalog/' + name + '.md', title: name,
+          text: base.text.replace(/last on \d{4}-\d{2}-\d{2}/, 'last on 2026-09-' + day)});
+      }
+      KNOWN.clear(); FACTS.clear(); render();
+    }''', isolated_context=False)
+    groups = page.locator('.skill-family')
+    assert groups.first.locator('h2').text_content() == 'Used in the last 30 days10'
+    assert groups.first.locator('.hits > li').count() == 10
+    assert groups.nth(1).locator('h2').text_content() == 'lark49'
+    assert page.locator('.hits.skills > li').count() == 59
+    for group in groups.all():
+        assert group.evaluate(r'''node => {
+          const heading = node.querySelector('h2').getBoundingClientRect();
+          const list = node.querySelector('ul').getBoundingClientRect();
+          const count = node.querySelector('.n').getBoundingClientRect();
+          return Math.abs(heading.right - list.right) < 1 && count.right <= list.right + 1;
+        }''')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [375, 1440])
+def test_chinese_cached_translation_never_exposes_labelled_words(tmp_path, monkeypatch, width):
+    """A real cached fixture translation, including adjacent Chinese sentences."""
+    from patchright.sync_api import sync_playwright
+    from rem_reader_notebook import build
+    from connectonion.rem import reader as rem_reader
+    from connectonion.rem.files import Notebook, atomic_write
+    from connectonion.rem.translate import checked, digest, translation_path
+
+    now = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+    root = build(tmp_path / 'rem', now)
+    path = 'people/mara-ostrowski.md'
+    original = '''# Mara Ostrowski
+
+Public pilot context [1]. Secret proposed dates [personal] [1]. The user owes a secret follow-up [personal]. Public ending.
+
+## Facts
+- Email: mara@fernhill.example [1]
+- Role: Partnerships lead [1]
+
+## Insight
+- Now: Public pilot status [1]. Secret status [sensitive].
+
+## History
+- 2026-09-30: Secret history [personal] [1].
+- 2026-09-29: Public history [1].
+
+## Open threads
+- The user owes a public pilot reply; since 2026-09-30 [1]. Secret proposed dates [personal] [1]. The user owes a secret follow-up [personal].
+- The user owes an entirely secret action [sensitive] [1].
+
+## Private context
+Public start. Secret question [personal]! Secret exclamation [personal]? Secret clause [personal]; Secret colon [personal]: Secret comma [personal], Secret final [personal]. Public end.
+Secret amount 3.5 and secret@example.test [personal]. “秘密引语。秘密引语下半句” [sensitive].
+
+## Sources
+- [1] outlook:5c1e0a9b72d4 — invented pilot mail
+
+Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
+'''
+    translated = '''# Mara Ostrowski
+
+公开试点背景 [1]。秘密提议日期[personal] [1]。用户还需进行秘密后续联系[personal]。公开结尾。
+
+## Facts
+- Email: mara@fernhill.example [1]
+- Role: 合作负责人 [1]
+
+## Insight
+- Now: 公开试点状态 [1]。秘密状态［sensitive］。
+
+## History
+- 2026-09-30：秘密历史［personal］ [1]。
+- 2026-09-29：公开历史 [1]。
+
+## Open threads
+- 用户需回复公开试点；since 2026-09-30 [1]。秘密提议日期[personal] [1]。用户还需进行秘密后续联系[personal]。
+- 用户需执行全秘密行动[sensitive] [1]。
+
+## Private context
+公开开头。秘密问句[personal]！秘密感叹[personal]？秘密分句[personal]；秘密冒号[personal]：秘密逗号[personal]，秘密终句[personal]。公开结束。
+秘密金额3.5和秘密地址secret@example.test[personal]。“秘密引语。秘密引语下半句”［sensitive］。
+
+## Sources
+- [1] outlook:5c1e0a9b72d4 — 虚构试点邮件
+
+Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
+'''
+    Notebook(root).write(path, original)
+    atomic_write(translation_path(root, path, 'zh'),
+                 f'<!-- co rem translation of {path} sha256:{digest(original)} -->\n' + checked(original, translated))
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en']})
+    snapshot = rem_reader.snapshot
+
+    def frozen_snapshot(root, local=False):
+        data = snapshot(root, local)
+        data['as_of'] = now.isoformat()
+        data['shared'] = True  # Default hidden-labelled mode, without a local storage override.
+        return data
+
+    monkeypatch.setattr(rem_reader, 'snapshot', frozen_snapshot)
+    html = tmp_path / 'reader.html'
+    html.write_text(rem_reader.render(root, local=True))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(html.as_uri())
+        page.locator('.morning-primary h1').wait_for()
+
+        def no_private_words():
+            visible = page.locator('body').inner_text()
+            assert '秘密' not in visible
+            assert '[personal]' not in visible and '［personal］' not in visible
+            assert '[sensitive]' not in visible and '［sensitive］' not in visible
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+        assert page.evaluate("document.documentElement.classList.contains('hide-private')")
+        assert '公开试点' in page.locator('.waiting-ledger').inner_text()
+        no_private_words()
+        # Missing translations have no note in either home row type.
+        for selector in ('.waiting-ledger', '.week'):
+            assert page.locator(selector).locator('.lang-status').count() == 0
+            assert '原文' not in page.locator(selector).inner_text()
+        page.goto(html.as_uri() + '#view=open')
+        page.locator('.task-band').first.wait_for()
+        assert '公开试点' in page.locator('.task-band').first.inner_text()
+        assert page.locator('.task-band .lang-status').count() == 0
+        no_private_words()
+        page.goto(html.as_uri() + '#r=people%2Fmara-ostrowski.md')
+        page.locator('details.deep-note > summary').click()
+        assert '公开历史' in page.locator('.timeline').inner_text()
+        assert page.locator('.timeline .private-entry').count() == 1
+        assert page.locator('.page-head .lang-bar').count() == 0
+        assert page.locator('.page-foot .lang-bar select').is_visible()
+        no_private_words()
+        # Footer override remains functional for both original and cached prose.
+        page.locator('.page-foot select').select_option('')
+        assert 'Public pilot context' in page.locator('.person-lead').inner_text()
+        page.locator('details.deep-note > summary').click()
+        page.locator('.page-foot select').select_option('zh')
+        assert '公开试点背景' in page.locator('.person-lead').inner_text()
+        no_private_words()
+        page.goto(html.as_uri() + '#q=' + '公开试点')
+        assert page.locator('.search-group .hit').count() > 0
+        no_private_words()
+        page.goto(html.as_uri() + '#q=' + '秘密')
+        assert page.locator('.search-group').count() == 0
+        # The query itself is visible in the heading; it must have no result.
+        assert '[personal]' not in page.locator('body').inner_text()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert page.locator('.search-group .hit').count() > 0
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert page.locator('.search-group').count() == 0
+        page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
+        assert page.locator('.eyebrow .lang-status').inner_text() == '原文'
+        assert not errors, errors
+        browser.close()

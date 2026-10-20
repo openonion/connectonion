@@ -1574,3 +1574,36 @@ Repeated mapping refreshes generated project counts, dates and paths while prese
 
 See [co rem memory workflows](rem-memory.md) for `reflect`, `review`, `capture`,
 `route` and `daily`, including provider, retention and budget limits.
+
+### Cached page languages
+
+After refreshing the owner's languages, each daily run translates pages changed
+by maintenance or investigation into the first non-English language in
+`co rem languages` (configured or detected), when the runner is ready.
+`limits.translations_per_day` defaults to **10** new translation attempts across
+all daily slots; current cached translations use no attempts. Set it with
+`co rem config set limits.translations_per_day 5`. Failures are reported per page
+in the maintenance result and daily translation run log, and the next page continues.
+
+The reader uses current cached prose for its selected interface language and
+shows the original when no translation is available. Rendering never starts a
+translation. The per-page Read in menu still allows an explicit language choice.
+Quoted evidence stays exactly in its original language.
+
+To backfill existing pages once (the English pages remain the audited source):
+
+```bash
+co rem translate --all --to zh
+co rem --root /path/to/rem translate --all --category people
+co rem translate people/alice-chen.md --to zh
+```
+
+Omit `--to` to use the owner's first configured or detected non-English language.
+`--all` translates people, orgs, projects, decisions, principles and skills, one
+page at a time. It skips current caches, logs/activity, catalog indexes, duplicate
+installations and unlisted records. `--category` selects one of those six types.
+Each page prints `translated`, `cached`, or `failed: reason`, followed by counts.
+A page's reported translation failure does not stop the next page; any failures
+make the command exit 1. `--json` returns the outcomes and counts instead.
+Open or refresh the reader afterward: 中文 mode shows current cached prose, with
+quotes in their original language. An untranslated record still shows **原文**.

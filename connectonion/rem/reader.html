@@ -292,6 +292,12 @@
   .week .w a { color: var(--ink); font-weight: 600; }
   .week .meta { font-size: 12px; color: var(--ink-3); }
   .week .s { flex-basis: 100%; font: 14px/1.45 var(--text); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rare-skills > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--ink-2); font: 13px var(--ui); }
+  .rare-skills > summary::before { content: "▸"; margin-right: 8px; }
+  .rare-skills[open] > summary::before { content: "▾"; }
+  .skill-groups { max-width: 80ch; }
+  .skill-groups > input { max-width: 100%; margin-bottom: 16px; }
+
   /* ---- open threads: who owes whom ---- */
   .bands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; margin-top: 12px; }
   .bands > .band:last-child:nth-child(3) { grid-column: 1 / -1; }
@@ -1075,7 +1081,7 @@
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
   }
   /* Languages: read a page in another language (languageBar below). */
-  .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font: 13px var(--ui); color: var(--ink-2); }
+  .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 13px var(--ui); color: var(--ink-2); }
   .lang-bar select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13px var(--ui); min-height: 24px; }
   /* Storage paths and commands keep a code face; prose keeps its own voice. */
   .note pre, .run-trace pre, pre, kbd, .missing code, .empty code, .cmd code, .note code, .night code, .eyebrow-path, .path-hint,
@@ -1393,6 +1399,9 @@ const UI = {
   en: {},
   zh: {
     "More columns": "更多列",
+    "Used in the last 30 days": "最近 30 天用过",
+    "Rarely used": "很少使用",
+    "Other": "其他",
     "Fewer columns": "收起更多列",
     "updated last night": "昨夜更新",
     "last night": "昨夜",
@@ -2029,6 +2038,7 @@ function t(key, values = {}) {
 function uiLocale() { return uiLanguage === "zh" ? "zh-CN" : undefined; }
 function setInterfaceLanguage(language) {
   uiLanguage = language;
+  for (const r of REM.records) delete r.readLanguage;
   readerStorage("co-rem-ui-language", language);
   closeEvidence();
   render();
@@ -2041,6 +2051,8 @@ function togglePrivate() {
   button.classList.toggle("active", hidden);
   button.setAttribute("aria-pressed", String(hidden));
   button.textContent = t(hidden ? "Show labelled passages" : "Hide labelled passages");
+  const query = new URLSearchParams(location.hash.slice(1)).get("q");
+  if (query) search(query);
 }
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme;
@@ -2241,7 +2253,7 @@ function plural(verb) {
 // "the user" opening a clause is its subject, so a second verb after "and"/"but"
 // agrees too: "the user runs events and has asked" reads "you run events and have
 // asked" (1.9.2b1). Only verbs that are never plural nouns: "invoices and receipts" stays.
-const CLAUSE_START = /(?:^|[.;:!?(—–,>]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
+const CLAUSE_START = /(?:^|[.;:!?(—–,>。！？；：，（]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
 const ALSO_VERBS = new Set([...Object.keys(YOU_VERBS), "owes", "says", "asks", "wants", "expects", "prefers", "agrees", "replies", "writes", "thinks", "knows", "seems"]);
 function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
@@ -2252,10 +2264,35 @@ function youify(text) {
       const subject = CLAUSE_START.test(all.slice(0, at)) ? "\u0004" : "";
       return cap(t, "you") + subject + " " + (adverb ? adverb + " " : "") + (verb || word);
     })
-    .replace(/\u0004((?:(?!\b(?:and|but|or|yet)\b)[^.;!?\u0004])*?\b(?:and|but|or|yet) (?:(?:still|also|now|then|already|never|[a-z]+ly) )?)([a-z]+(?:['’]t)?)\b/g,
+    .replace(/\u0004((?:(?!\b(?:and|but|or|yet)\b)[^.;!?。！？；\u0004])*?\b(?:and|but|or|yet) (?:(?:still|also|now|then|already|never|[a-z]+ly) )?)([a-z]+(?:['’]t)?)\b/g,
       (m, between, word) => between + (ALSO_VERBS.has(word.replace("’", "'").toLowerCase()) ? plural(word.replace("’", "'")) : word))
     .replace(/\u0004/g, "")
     .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
+}
+// Privacy labels trail a sentence or clause in either writing system. Keep
+// code and link targets atomic so a filename's dot cannot expose its prefix.
+function privatePassages(text, replace) {
+  const protectedParts = [];
+  const protect = part => {
+    protectedParts.push(part);
+    return "\u0005" + (protectedParts.length - 1) + "\u0005";
+  };
+  const restore = value => value.replace(/\u0005(\d+)\u0005/g, (_, i) => protectedParts[i]);
+  let value = String(text).replace(/`[^`\n]*`|\[[^\]\n]+\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, protect);
+  value = value.replace(/“[^”\n]*”|「[^」\n]*」|"[^"\n]*"|&quot;(?:(?!&quot;)[^\n])*&quot;/g,
+    quote => quote.replace(/[.!?;:,。！？；：，]/g, protect));
+  value = value.replace(/&(?:#\d+|#x[\da-f]+|\w+);/g, protect);
+  // Decimal numbers, email addresses and domains do not start a new sentence.
+  value = value.replace(/(?<=[\p{L}\p{N}])\.(?=[\p{L}\p{N}])/gu, protect);
+  value = value.replace(/(?<=^|[\n.!?;:,。！？；：，](?:\s*[\[［](?:personal|sensitive|W?\d+)[\]］])*\s*)(?!\s|[\[［](?:personal|sensitive|W?\d+)[\]］])([^\n.!?。！？]*?[.!?;:,。！？；：，]?)\s*[\[［](personal|sensitive)[\]］]((?:\s*[\[［](?:personal|sensitive|W?\d+)[\]］])*)([.!?;:,。！？；：，]?)/gi,
+    (passage, sentence, level) => replace(restore(passage), level.toLowerCase()));
+  return restore(value);
+}
+function unlabelled(text) {
+  return privatePassages(text, () => "");
+}
+function hasPrivacy(text) {
+  return /[\[［](?:personal|sensitive)[\]］]/i.test(text);
 }
 function inline(text, from) {
   let s = esc(text);
@@ -2270,11 +2307,10 @@ function inline(text, from) {
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
   });
-  // Link targets and inline code can contain dots without ending a sentence.
-  // Do not consume the preceding boundary: adjacent labelled sentences share it.
-  s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)([.!?。]?)/g,
-    (m, sentence, level, cites, ending) => '<span class="private" data-level="' + level + '">' + sentence +
-      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + ending + '</span>');
+  s = privatePassages(s, (passage, level) => '<span class="private" data-level="' + level + '">' +
+    passage.replace(/[\[［](personal|sensitive)[\]］]/gi, (_, tag) => '<span class="privacy-tag ' + tag.toLowerCase() + '">' + tag.toLowerCase() + '</span>') + '</span>');
+  // Full-width citation brackets carry the same source ids.
+  s = s.replace(/［(W?\d{1,3})］/g, "[$1]");
   // Adjacent claim numbers share one quiet marker: one chip says how many, and names them on hover.
   s = youify(s);
   const runs = [];
@@ -2331,7 +2367,7 @@ function tetherCitations(html) {
     if (!before) continue;
     const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(before.textContent);
     const word = cjk || /\S+\s*$/.exec(before.textContent);
-    const after = cite.nextSibling, punctuation = after?.nodeType === Node.TEXT_NODE && /^\s*([.!?,;:。！？])/u.exec(after.textContent);
+    const after = cite.nextSibling, punctuation = after?.nodeType === Node.TEXT_NODE && /^\s*([.!?,;:。！？；：，])/u.exec(after.textContent);
     if (punctuation) after.textContent = after.textContent.replace(/^\s+/, "");
     // A joiner preserves nested emphasis, links and quoted spans without splitting their markup.
     if (before.parentElement !== cite.parentElement) {
@@ -2354,7 +2390,7 @@ function tetherCitations(html) {
 // Ranges retain links, citation chips and privacy spans inside a quotation.
 function quoteSpans(html) {
   // Attribute quotes are markup; escaped straight quotes can be prose.
-  if (!/“|&quot;|"/.test(html.replace(/<[^>]*>/g, ""))) return html;
+  if (!/“|「|&quot;|"/.test(html.replace(/<[^>]*>/g, ""))) return html;
   const body = document.createElement("span");
   body.innerHTML = html;
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT), nodes = [];
@@ -2366,7 +2402,7 @@ function quoteSpans(html) {
     nodes.push({ node, start: text.length, end: text.length + node.length });
     text += node.data;
   }
-  const quotes = [...text.matchAll(/“[^”\n]{6,}”|"[^"\n]{6,}"/g)];
+  const quotes = [...text.matchAll(/“[^”\n]{6,}”|"[^"\n]{6,}"|「[^」\n]{6,}」/g)];
   for (const quote of quotes.reverse()) {
     const start = quote.index, end = start + quote[0].length;
     const first = nodes.find(n => n.start <= start && n.end > start);
@@ -2547,7 +2583,7 @@ function sourceChips(text) {
 // that fills it, and lists rank by last contact instead of by the first
 // character of an email address. An unknown answer written as a bare line
 // (a mapped skill's sections) is dropped the same as one written as a bullet.
-const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$/i;
+const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:：\n]{1,40}[:：]\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
 const MECHANICAL = new Set(["facts", "contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
@@ -2556,7 +2592,7 @@ const STAMP = /^Investigation:[^\n]*$/m;
 // Markers the notebook's own tools leave in a page (<!-- rem-usage -->): not text.
 const COMMENT = /<!--[\s\S]*?-->/g;
 // A person page's lead as mapping writes it (files.py PERSON_LEAD, #1974): a slot, not a finding.
-const UNFILLED_LEAD = /^Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact:\s*Unknown\.?)?$/i;
+const UNFILLED_LEAD = /^Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact[:：]\s*Unknown\.?)?$/i;
 const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
@@ -2564,7 +2600,7 @@ function known(r) {
   const body = (r.category === "sessions" ? r.text : splitTrailers(r.text).body.replace(COMMENT, ""))
     .replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
   const title = r.title.trim().toLowerCase();
-  const repeatsTitle = line => (/^\s*[-*]\s*[^:\n]{1,40}:\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
+  const repeatsTitle = line => (/^\s*[-*]\s*[^:：\n]{1,40}[:：]\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
   const kept = [], missing = [];
   let intro = "";
   for (const part of body.split(/^(?=## )/m)) {
@@ -2593,7 +2629,7 @@ function known(r) {
   // rewrites every project page, and "Recently active" dated them all today.
   const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
   const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
-    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
+    : (/\blast(?: contact)?[:：]\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
   const summary = r.category === "sessions" ? [parseFacts(r).get("Agent")?.[0]?.value, r.session_time,
     plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
     : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
@@ -2603,9 +2639,9 @@ function known(r) {
 }
 function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
 // The first readable line of some Markdown, without its markup or claim numbers.
-function plainLine(text) {
-  const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean);
+function plainLine(text, keepPrivate = false) {
+  const line = String(keepPrivate ? text : unlabelled(text)).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean);
   return line ? youify(line) : "";
 }
 function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
@@ -2652,8 +2688,8 @@ function direction(text) {
   const prefix = text.replace(/^\s*(?:[-*+]\s+)?/, "").replaceAll("**", "");
   const own = new RegExp("^" + me + "\\s+(owes?|asked)\\b", "i").exec(prefix);
   if (own) return own[1].toLowerCase() === "asked" ? "theirs" : "mine";
-  const debt = /^([^:;!?]+?)\s+owes?\s+(.+)/i.exec(prefix);
-  if (debt && /^[A-Z]/.test(debt[1]) && debt[1].split(/\s+/).length <= 6 && !/,|\b(?:said|would|that|what)\b/i.test(debt[1]))
+  const debt = /^([^:;!?：；！？]+?)\s+owes?\s+(.+)/i.exec(prefix);
+  if (debt && /^[A-Z]/.test(debt[1]) && debt[1].split(/\s+/).length <= 6 && !/[，,]|\b(?:said|would|that|what)\b/i.test(debt[1]))
     return new RegExp("^" + me + "\\b", "i").test(debt[2]) ? "theirs" : "third";
   const { mine, theirs } = owing();
   const a = text.search(mine), b = text.search(theirs);
@@ -2686,34 +2722,37 @@ function isCalm(t) {
     .test(t.replace(/\*/g, "").trim());
 }
 function threads(r) {
-  const s = section(r, "open threads");
-  if (!s) return { items: [], calm: "" };
-  const all = listItems(s.text);
-  const calm = all.find(isCalm) || "";
+  const original = rawSection({ ...r, text: r.original ?? r.text }, "Open threads");
+  if (!original) return { items: [], calm: "" };
+  const all = listItems(original);
+  const displayed = listItems(rawSection(r, "Open threads"));
+  const calmAt = all.findIndex(isCalm);
+  const calm = calmAt < 0 ? "" : displayed[calmAt] || all[calmAt];
   const today = calendarDay(REM.as_of);
-  const items = all.filter(t => !isCalm(t) && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
+  const items = all.map((text, i) => ({ text, displayed: displayed[i] || text })).filter(({ text: t }) => !isCalm(t) && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(({ text, displayed }) => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
-    const due = /\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1] || "";
-    const requested = /\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
-    const moved = /\blast moved(?:\s+on)?\s*:?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
+    const due = /\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1] || "";
+    const requested = /\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
+    const moved = /\blast moved(?:\s+on)?\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i.exec(text)?.[1];
     const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
     const quiet = !!since && daysSince(since) > 60 && (!due || due <= today);
-    return { text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
+    return { text: displayed, originalText: text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
   return { items, calm };
 }
-// One row set for home, Open threads and the rail; census.py mirrors the count.
+// One merged row set for home, Open threads and the rail.
 function threadEntries() {
   const order = (a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
     || (b.t.since || "").localeCompare(a.t.since || "");
   const entries = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
-    .flatMap(r => threads(r).items.filter(t => t.dir !== "third").map(t => ({ r, t })))
+    .flatMap(r => threads(r).items.filter(t => t.dir !== "third" && /[\p{L}\p{N}]/u.test(plainLine(threadWords(t.text, r)))).map(t => ({ r, t })))
     .sort(order);
   return threadGroups(entries).map(group => {
-    const chosen = group.find(entry => group.some(other => threadCounterpart(other, entry.r))) || group[0];
-    const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
+    const chosen = [...group].sort((a, b) => (b.t.since || b.t.due || "").localeCompare(a.t.since || a.t.due || "")
+      || (b.t.originalText || b.t.text).length - (a.t.originalText || a.t.text).length)[0];
+    const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path && obligationWords(entry.r.title) !== obligationWords(chosen.r.title)).map(entry => [entry.r.path, entry.r])).values()];
     return { ...chosen, also };
   }).sort(order);
 }
@@ -2722,20 +2761,41 @@ function obligationWords(text) {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 function obligationEvidence({ r, t }) {
-  const sources = new Map([...rawSection(r, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
-  const ids = new Set([...t.text.matchAll(/\[(W?\d+)\]/g)].map(m => sources.get(m[1])).filter(Boolean));
-  const quotes = [...t.text.matchAll(/“([^”\n]{6,})”|"([^"\n]{6,})"/g)];
-  return { ids, quotes: quotes.map(m => obligationWords(m[1] || m[2])).filter(Boolean),
-    text: obligationWords(t.text.replace(/“([^”\n]{6,})”|"([^"\n]{6,})"/g, "").replace(/\[W?\d+\]/g, "")) };
+  const text = t.originalText || t.text;
+  const sources = new Map([...rawSection({ ...r, text: r.original ?? r.text }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+  const ids = new Set([...text.matchAll(/\[(W?\d+)\]/g)].map(m => sources.get(m[1])).filter(Boolean));
+  for (const id of [...ids]) {
+    const context = REM.source_context?.[id];
+    if (context?.thread) ids.add("thread:" + context.source + ":" + context.thread);
+  }
+  const quotes = [...text.matchAll(/“([^”\n]{6,})”|"([^"\n]{6,})"|「([^」\n]{6,})」/g)];
+  const content = obligationWords(text.replace(/\d{4}-\d{2}-\d{2}|\[W?\d+\]/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"));
+  const stop = new Set("a an the and or to of in on for with from by as at is are was were be been you your user owes owe asked requested since due has have had still please this that it".split(" "));
+  const words = new Set(content.split(/\s+/).filter(word => word.length > 2 && !stop.has(word)));
+  return { ids, quotes: quotes.map(m => obligationWords(m[1] || m[2] || m[3])), words,
+    text: content, dir: t.dir, day: t.since || t.due || "" };
 }
 function sameObligation(a, b) {
-  return [...a.ids].some(id => b.ids.has(id)) && (a.text === b.text ||
-    a.quotes.some(x => b.quotes.some(y => x.includes(y) || y.includes(x))));
+  if (a.dir !== b.dir) return false;
+  const shared = [...a.ids].some(id => b.ids.has(id));
+  const quoted = a.quotes.some(x => b.quotes.some(y => x.includes(y) || y.includes(x)));
+  // Undated copies still use the existing evidence-backed quote merge.
+  if (!a.day || !b.day) return shared && (a.text === b.text || quoted);
+  if (Math.abs(new Date(a.day) - new Date(b.day)) > 7 * DAY_MS) return false;
+  const overlap = [...a.words].filter(word => b.words.has(word)).length;
+  const union = new Set([...a.words, ...b.words]).size;
+  return shared || (union > 0 && overlap / union >= 0.6);
 }
 function threadGroups(entries) {
   const groups = [], evidence = entries.map(obligationEvidence);
   entries.forEach((entry, i) => {
-    const matches = groups.filter(group => group.some(j => sameObligation(evidence[i], evidence[j])));
+    const matches = [];
+    for (const group of groups) {
+      const combined = [i, ...matches.flat(), ...group].map(j => evidence[j].day).filter(Boolean).sort();
+      const withinWeek = !combined.length || new Date(combined.at(-1)) - new Date(combined[0]) <= 7 * DAY_MS;
+      if (withinWeek && group.some(j => sameObligation(evidence[i], evidence[j]))) matches.push(group);
+    }
     if (!matches.length) groups.push([i]);
     else {
       matches[0].push(i, ...matches.slice(1).flat());
@@ -2768,7 +2828,7 @@ function historyItems(text) {
   return listItems(text).map(t => {
     // A range is one entry dated by its start: "2026-07-05–17", "2026-07-29–08-04" (#2059),
     // "2026-08-26–2026-08-28" and "2026-09-23 to 2026-10-09" (1.9.2b1).
-    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\s*(?:[–-]|to)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?!\d))?(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\s*(?:[–-]|to)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?!\d))?(?:\*\*)?\s*(?:[:：]|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
     if (!m) return { day: "", end: "", text: t };
     return { day: m[1], end: m[2] ? m[1].slice(0, m[1].length - m[2].length) + m[2] : "", text: m[3] };
   });
@@ -2790,7 +2850,7 @@ function rawSection(r, name) {
 function sourceList(r) {
   const out = [];
   for (const item of listItems(rawSection(r, "Sources"))) {
-    const m = /^\[(W?\d{1,3})\]\s*(.*)$/.exec(item);
+    const m = /^[\[［](W?\d{1,3})[\]］]\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
     else if (r.category === "sessions" && /^(codex|claude-code):[^\s:]+:\d+$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
@@ -2807,18 +2867,18 @@ function parseFacts(r) {
   const out = new Map();
   const raw = rawSection(r, "Facts") || rawSection(r, "Contact");
   for (const line of raw.split("\n")) {
-    const m = /^\s*[-*]\s+([^:\n]{1,40}):\s*(.*)$/.exec(line);
+    const m = /^\s*[-*]\s+([^:：\n]{1,40})[:：]\s*(.*)$/.exec(line);
     if (!m) continue;
     const value = m[2].trim();
     const items = [];
     if (value && !/^(unknown|not known)\b/i.test(value)) {
-      for (const part of value.split(/;\s+/)) {
-        const cites = /((?:\s*\[W?\d{1,3}\])+)\s*$/.exec(part);
+      for (const part of value.split(/;\s+|；\s*/)) {
+        const cites = /((?:\s*[\[［]W?\d{1,3}[\]］])+)\s*$/.exec(part);
         let v = cites ? part.slice(0, cites.index) : part;
         // "(mobile)" after a space is a qualifier; "[UNSW](../orgs/unsw.md)" is a link, not one.
-        const q = /\s+\(([^()]{1,30})\)\s*$/.exec(v);
+        const q = /(?:\s+\(([^()]{1,30})\)|（([^（）]{1,30})）)\s*$/.exec(v);
         if (q) v = v.slice(0, q.index);
-        if (v.trim()) items.push({ value: v.trim(), qualifier: q ? q[1] : "", citations: cites ? cites[1].match(/W?\d{1,3}/g) : [] });
+        if (v.trim()) items.push({ value: v.trim(), qualifier: q ? q[1] || q[2] : "", citations: cites ? cites[1].match(/W?\d{1,3}/g) : [] });
       }
     }
     out.set(m[1].trim(), items);
@@ -2830,10 +2890,10 @@ function contactFields(r) {
 }
 // A skill's Usage history line (skill_usage.py usage_line).
 function skillUsage(r) {
-  const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.text);
+  const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.original ?? r.text);
   if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4],
     tools: (m[5] || "").replace(/\b(Claude Code|Codex|co ai) (\d+)\b/g, (_, tool, n) => n + " matches in " + tool) };
-  const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
+  const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.original ?? r.text);
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
 }
 function usageCaption(u) {
@@ -2866,9 +2926,9 @@ function facts(r) {
   // Preserve qualifications, especially historical roles and affiliations.
   for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
   const text = r.text.replace(COMMENT, "");
-  const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
+  const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text, true) : ""; };
   const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.end || i.day).sort();
-  const observed = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2})/.exec(text);
+  const observed = /Observed mail count[:：]\s*(\d+);\s*first[:：]\s*(\d{4}-\d{2}-\d{2})/.exec(text);
   const paths = listItems(rawSection(r, "Paths"));
   const field = re => (paths.map(p => re.exec(p)).find(Boolean) || [])[1] || "";
   const t = threads(r);
@@ -2879,7 +2939,7 @@ function facts(r) {
     links: [...new Set((rawSection(r, "Contact").match(/https?:\/\/[^\s)\]]+/g) || []))].join(", "),
     language: contact.language || "",
     how: lineOf("why they are here") || lineOf("our relationship"),
-    first: (r.mail && r.mail.first) || (observed && observed[2]) || history[0] || field(/^First seen:\s*(\S+)/),
+    first: (r.mail && r.mail.first) || (observed && observed[2]) || history[0] || field(/^First seen[:：]\s*(\S+)/),
     last: k.last || (r.mail && r.mail.last) || "", mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
@@ -2888,7 +2948,7 @@ function facts(r) {
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
-    sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
+    sessions: Number(field(/^Sessions[:：]\s*(\d+)/)) || null
   };
   // The index (#2067) supplies derived columns; explicit page Company/Role fields
   // remain authoritative, including Unknown and historical qualifications.
@@ -2902,7 +2962,8 @@ function facts(r) {
     if (!parsed.has("Role")) take("role", x.role);
     take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
     take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
-    take("how", x.how_known); take("first", x.first_contact);
+    if (!r.shown || !f.how) take("how", x.how_known);
+    take("first", x.first_contact);
     // The page census owns activity dates; an older index must not contradict it.
     take("last", r.last_activity === undefined ? x.last_contact : k.last);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
@@ -2934,7 +2995,7 @@ function privateFallback(node) {
   return node;
 }
 function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
-  title: /\[(?:personal|sensitive)\]/i.test(v) ? "" : plainLine(v),
+  title: hasPrivacy(v) ? "" : plainLine(v),
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
 function peopleCardMeta(r, f) {
   const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && textCell(f.role), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
@@ -3356,7 +3417,7 @@ function alsoOn(records = []) {
     [i ? ", " : "", el("a", { href: href(r), text: r.title })])]);
 }
 function threadRow(r, thread, withPage, also = [], grouped = false) {
-  const text = thread.text.replace(/^(\d{4}-\d{2}-\d{2}):\s+/, (prefix, day) => day === thread.since ? "" : prefix);
+  const text = thread.text.replace(/^(\d{4}-\d{2}-\d{2})[:：]\s*/, (prefix, day) => day === thread.since ? "" : prefix);
   return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
@@ -3376,7 +3437,7 @@ function capFirst(text) {
 function newestStanding(r) {
   if (r.category !== "projects" || r.path === REM.owner) return "";
   const lines = (section(r, "where it stands")?.text || "").split("\n")
-    .map(line => /^\s*-\s+(\d{4}-\d{2}-\d{2})\s*[—–-]\s+(.+)/.exec(line))
+    .map(line => /^\s*-\s+(\d{4}-\d{2}-\d{2})\s*[:：—–-]\s*(.+)/.exec(line))
     .filter(line => line && !/^Unknown\b/i.test(line[2].trim()));
   lines.sort((a, b) => b[1].localeCompare(a[1]));
   return lines[0]?.[2] || "";
@@ -3387,12 +3448,12 @@ function memoryStatement(r) {
   // Lead project pages with the current finding; the full note preserves patterns.
   const preferred = r.path === REM.owner ? ["Changed", "Now"]
     : r.category === "projects" ? ["Now", "At stake", "Changed", "Pattern"] : ["Now", "Changed"];
-  const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
-    || lines.find(item => /^At stake:/i.test(item)) || lines[0];
+  const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + "[:：]", "i").test(item))).find(Boolean)
+    || lines.find(item => /^At stake[:：]/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
-  const statement = newestStanding(r) || (line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
-  const first = statement.split("\n").find(line => plainLine(line)) || "";
-  return plainLine(capFirst(listItems(first)[0] || ""));
+  const statement = newestStanding(r) || (line ? line.replace(/^(?:Changed|Now|At stake|Pattern|现在|变化|利害|模式)[:：]\s*/i, "") : current?.text || known(r).summary);
+  const first = statement.split("\n").find(line => plainLine(line, true)) || "";
+  return plainLine(capFirst(listItems(first)[0] || ""), true);
 }
 function memoryConnection(records) {
   const visible = new Set(listedRecords().map(r => r.path));
@@ -3467,13 +3528,14 @@ function failureSummary(pass) {
 }
 // Quotes stay verbatim; a summary never acquires someone's quotation marks.
 function morningWords(text, r) {
+  text = unlabelled(text);
   const quote = /“([^”\n]{6,})”|"([^"\n]{6,})"/.exec(text);
   if (quote) return { words: "“" + (quote[1] || quote[2]).replace(/\s*\[W?\d{1,3}\]/g, "") + "”",
     context: [text.replace(quote[0], "").replace(/[:—–]\s*([.;]|$)/g, "$1").trim(),
       (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
   const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
   const summary = plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, "")));
-  const clause = summary.split(/;|(?<=[.!?])\s/)[0];
+  const clause = summary.split(/[;；]|(?<=[.!?])\s|(?<=[。！？])\s*/)[0];
   const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
   return { words, context: [summary.slice(words.length).replace(/^[;\s]+/, ""), cites].filter(Boolean).join(" ") };
 }
@@ -3483,11 +3545,11 @@ function morningEntries(entries) {
   for (const entry of entries) {
     const { r, t } = entry;
     if (t.dir !== "mine" || t.quiet || pages.has(r.path)) continue;
-    const prefix = /^you owe\s+(.+)/i.exec(plainLine(t.text));
+    const prefix = /^you owe\s+(.+)/i.exec(plainLine(t.originalText || t.text));
     const names = person => [person.title.trim(), person.title.trim().split(/\s+/)[0]];
     const addressed = person => names(person).some(n => prefix?.[1].toLowerCase().startsWith(n.toLowerCase() + " ") || prefix?.[1].toLowerCase().startsWith(n.toLowerCase() + ":"));
     const counterpart = prefix && people.find(addressed);
-    if (r.category === "people" && counterpart && !addressed(r)) continue;
+    if (r.category === "people" && counterpart && !addressed(r) && !entry.also?.length) continue;
     const obligation = (counterpart?.path || r.path) + ":" + morningWords(t.text, r).words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (obligations.has(obligation)) continue;
     chosen.push(entry); pages.add(r.path); obligations.add(obligation);
@@ -3638,7 +3700,7 @@ function overview() {
     main.appendChild(el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
       el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
       el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-        known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?Now:(?:\*\*)?\s*/i, "") }) : null])]))));
+        known(r).summary ? el("span", { class: "s", text: known(r).summary.replace(/^(?:\*\*)?(?:Now|现在)[:：](?:\*\*)?\s*/i, "") }) : null])]))));
   }
 
   const processing = el("details", { class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
@@ -3863,8 +3925,53 @@ function category(c) {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
-  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  if (c === "skills" && items.length) main.appendChild(skillGroups(items));
+  else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// Recent use comes first; old and unobserved skills stay one disclosure away.
+function skillGroups(items) {
+  const box = el("div", { class: "skill-groups" });
+  const find = el("input", { type: "search", class: "sheet-find", placeholder: t("Search"), "aria-label": t("Filter {category}", { category: label("skills").toLowerCase() }) });
+  const content = el("div");
+  const group = (name, rows) => el("section", { class: "skill-family" }, [
+    el("h2", { class: "section" }, [t(name), el("span", { class: "n", text: String(rows.length) })]),
+    el("ul", { class: "hits skills" }, rows.map(r => row(r)))]);
+  const draw = () => {
+    content.textContent = "";
+    const needle = find.value.trim().toLowerCase();
+    const matched = items.filter(r => !needle || (r.title + " " + r.text).toLowerCase().includes(needle));
+    const used = r => { const u = skillUsage(r); return u?.count && u.last ? daysSince(u.last) : Infinity; };
+    const recent = matched.filter(r => used(r) <= 30).sort((a, b) => skillUsage(b).last.localeCompare(skillUsage(a).last)).slice(0, 10);
+    const recentPaths = new Set(recent.map(r => r.path));
+    const active = matched.filter(r => !recentPaths.has(r.path) && used(r) <= 90).sort((a, b) => a.title.localeCompare(b.title));
+    const rare = matched.filter(r => used(r) > 90).sort((a, b) => a.title.localeCompare(b.title));
+    if (recent.length) content.appendChild(group("Used in the last 30 days", recent));
+    const families = new Map();
+    for (const r of items) {
+      const prefix = r.title.includes("-") ? r.title.split("-")[0] : "";
+      if (prefix) families.set(prefix, (families.get(prefix) || 0) + 1);
+    }
+    const grouped = new Map();
+    for (const r of active) {
+      const prefix = r.title.split("-")[0], name = families.get(prefix) >= 3 ? prefix : "Other";
+      if (!grouped.has(name)) grouped.set(name, []);
+      grouped.get(name).push(r);
+    }
+    for (const name of [...grouped.keys()].filter(name => name !== "Other").sort()) content.appendChild(group(name, grouped.get(name)));
+    if (grouped.has("Other")) content.appendChild(group("Other", grouped.get("Other")));
+    if (rare.length) {
+      const details = el("details", { class: "rare-skills" }, [el("summary", { text: t("Rarely used") + " (" + rare.length + ")" }),
+        el("ul", { class: "hits skills" }, rare.map(r => row(r)))]);
+      details.open = !!needle;
+      content.appendChild(details);
+    }
+    if (!matched.length) content.appendChild(el("p", { class: "none", text: t("Nothing matches. Clear the filter to see every page.") }));
+  };
+  find.oninput = draw;
+  box.append(find, content); draw();
+  return box;
 }
 
 // ---------- sessions: structure first, conversations searchable ----------
@@ -3874,7 +3981,7 @@ const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "by", "p
 const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
 function sessionText(r) {
   if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
-  const clean = text => String(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
+  const clean = text => unlabelled(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
   const fields = { title: clean(r.session_title || r.title), summary: clean(r.session_summary),
     tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
@@ -4140,7 +4247,7 @@ function sessionOrder(a, b) {
 function sessionContextRow(r, find = "") {
   return el("li", { class: "session-context-row" }, [
     el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: r.title }),
-    el("span", { class: "session-context-summary", text: r.session_summary || r.session_reply || sessionText(r).agent }),
+    el("span", { class: "session-context-summary", text: unlabelled(r.session_summary || r.session_reply || sessionText(r).agent) }),
     el("time", { text: fmtDate(r.session_date) }),
     el("span", { class: "session-tags" }, (r.session_tags || []).slice(0, 3).map(tag => el("a", {
       href: sessionHash({ project: r.session_project, tag }), text: tag })))]);
@@ -4189,12 +4296,13 @@ function sessionMessageLink(r, message, text) {
   return link;
 }
 function sessionQuote(text) {
-  return el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(text) ? " private" : ""), text });
+  return el("blockquote", { class: "session-quote" + (hasPrivacy(text) ? " private" : ""), text });
 }
 function sessionFinalReply(r) {
   const text = sessionUnquote(sessionSection(r, "Final reply"));
   if (!text) return null;
-  const quote = sessionQuote(text.length > 1200 ? text.slice(0, 600) + "…" : text);
+  const quote = sessionQuote(text);
+  if (text.length > 1200) quote.textContent = text.slice(0, 600) + "…";
   quote.sessionFullText = text;
   const out = el("section", { class: "session-final", id: "session-final" }, [el("h3", { text: t("Final reply") }), quote]);
   if (text.length > 1200) {
@@ -4259,7 +4367,7 @@ function sessionAttachment(r, messages) {
     text: t("Original conversation · {n} messages", { n: messages.length }) + (reply ? t(" · final reply") : "") })]);
   const outline = el("nav", { class: "session-outline", "aria-label": t("Conversation outline") }, [
     el("span", { text: t("Messages") }), el("ol", {}, messages.map(message => el("li", {}, [sessionMessageLink(r, message,
-      message.time + " · " + message.text.replace(/\s+/g, " ").slice(0, 60))])))]);
+      message.time + " · " + unlabelled(message.text).replace(/\s+/g, " ").slice(0, 60))])))]);
   const body = el("div", { class: "session-messages" }, messages.map(message => el("section", { class: "session-message", id: message.id }, [
     el("h3", { text: message.time }), sessionQuote(message.text)])));
   if (reply) body.appendChild(reply);
@@ -4268,7 +4376,7 @@ function sessionAttachment(r, messages) {
   return { node: attachment, find };
 }
 function sessionDecisions(r, messages) {
-  const text = sessionSection(r, "Decisions");
+  const text = unlabelled(sessionSection(r, "Decisions"));
   if (!text) return null;
   return el("section", { class: "session-structure session-decisions" }, [el("h2", { text: t("Decisions") }),
     el("ul", {}, listItems(text).map(line => {
@@ -4280,7 +4388,7 @@ function sessionDecisions(r, messages) {
     }))]);
 }
 function sessionArtifact(line) {
-  const match = /^([^:]+):\s*(.*)$/.exec(line);
+  const match = /^([^:：]+)[:：]\s*(.*)$/.exec(line);
   if (!match) return el("li", { text: line });
   const [, name, value] = match;
   if (/^Files changed \(\d+\)$/.test(name) || name === "Commands") {
@@ -4298,7 +4406,7 @@ function sessionArtifact(line) {
   return el("li", {}, [el("span", { class: "session-artifact-label", text: t(name) }), el(name === "Branches" ? "code" : "span", { text: value })]);
 }
 function sessionArtifacts(r) {
-  const text = sessionSection(r, "Artifacts");
+  const text = unlabelled(sessionSection(r, "Artifacts"));
   return text ? el("section", { class: "session-structure session-artifacts" }, [el("h2", { text: t("Artifacts") }),
     el("ul", {}, listItems(text).map(sessionArtifact))]) : null;
 }
@@ -4328,14 +4436,14 @@ function sessionRecord(r, heading) {
   const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
   const attachment = sessionAttachment(r, messages);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
-  const summary = r.session_summary || sessionSection(r, "Summary"), followups = sessionSection(r, "Follow-ups");
+  const summary = unlabelled(r.session_summary || sessionSection(r, "Summary")), followups = sessionSection(r, "Follow-ups");
   const page = el("article", { class: "session-page" }, [
     el("div", { class: "eyebrow" }, [el("a", { href: lastSessionListHash, text: label("sessions") }),
       project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
     el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
       el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
     el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
-      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + (r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + unlabelled(r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
     sessionDecisions(r, messages),
     followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: t("Follow-ups") }),
       el("ul", {}, listItems(followups).map(text => el("li", { html: inline(text, r.path) })))]) : null,
@@ -4368,7 +4476,7 @@ function sectionBody(r, s) {
     const out = el("div", { class: "block" });
     let quoted = [];
     const flush = () => {
-      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (/\[(personal|sensitive)\]/i.test(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
+      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (hasPrivacy(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
       quoted = [];
     };
     for (const line of s.text.split("\n")) {
@@ -4380,7 +4488,7 @@ function sectionBody(r, s) {
   }
   // Insight (#2068): each line starts Now / Changed / At stake / Pattern; the label becomes a badge.
   if (name === "insight") {
-    const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern):\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
+    const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern|现在|变化|利害|模式)[:：]\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
     if (items.length && items.every(Boolean)) {
       return el("div", { class: "block-insight" }, [el("ul", { class: "insight" }, items.map(m => el("li", { class: "ins-" + m[1].toLowerCase().replace(/\s+/g, "-") }, [
         el("span", { class: "badge", text: t(m[1]) }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
@@ -4525,7 +4633,7 @@ function leadRow(r) {
   const purpose = r.category === "projects" && k.status !== "Mapped" && hasProjectFinding ? section(r, "what it is") : null;
   const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
   if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead)) {
-    const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
+    const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?。！？])?\s*$/, "$1").trim();
     row.appendChild(privateFallback(el("span", { id: "what-it-is", class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
@@ -4545,15 +4653,15 @@ function sidePanels(r, k) {
   const add = (dt, dd) => glance.append(el("dt", { text: t(dt) }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
   if (k.last && r.category !== "skills") add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
-  const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
+  const mail = /Observed mail count[:：]\s*(\d+);\s*first[:：]\s*(\d{4}-\d{2}-\d{2});\s*last[:：]\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
-  const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
+  const sessions = /^- Sessions[:：]\s*(\d+)/m.exec(r.text), first = /^- First seen[:：]\s*(\S+)/m.exec(r.text);
   if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: t("Sessions in the mapping window; archived input coverage can differ."), text: sessions[1] + (first ? t(" since ") + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
     if (r.installation) {
       const file = el("dl", {});
       file.append(el("dt", { text: t("File") }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
-      const disc = /^- Discovery:\s*(.+)$/m.exec(r.text);
+      const disc = /^- Discovery[:：]\s*(.+)$/m.exec(r.text);
       if (disc) file.append(el("dt", { text: t("Found by") }), el("dd", { class: "mono", text: disc[1] }));
       panels.push(panel("Source", [file]));
     }
@@ -4572,14 +4680,15 @@ function refreshFocusExpansion() {
 }
 function relationCard(link, currentPath = "") {
   const other = byPath(link.path), origin = byPath(link.via);
+  const labelled = link.private || hasPrivacy(link.basis || "");
   const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
     "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
   const entry = el("div", { class: "relation-entry" }, [
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
-      link.basis ? el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis) }) : null])]);
-  if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
+      link.basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(link.basis) }) : null])]);
+  if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, ["On ", el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
   return entry;
@@ -4596,7 +4705,7 @@ function dedupeRelationSnippets(links) {
     if (duplicate(normal(basis))) {
       const page = byPath(link.path), k = known(page);
       const own = k.intro || facts(page).role || k.summary;
-      basis = /\[(personal|sensitive)\]/i.test(own) ? "" : plainLine(own).split(/(?<=[.!?。])\s/)[0].slice(0, 160);
+      basis = hasPrivacy(own) ? "" : plainLine(own).split(/(?<=[.!?])\s|(?<=[。！？])\s*/)[0].slice(0, 160);
       if (duplicate(normal(basis))) basis = "";
     }
     if (normal(basis)) seen.push(normal(basis));
@@ -4669,17 +4778,20 @@ function contactStrip(r) {
 // folder: "WHERE THE WORK STANDS /Users/…/LayeredVisions" on the busiest project (#2349).
 function mappedProjectLine(r) {
   const paths = section(r, "paths")?.text || "";
-  const sessions = (/^-\s*Sessions:\s*(\d+)/m.exec(paths) || [])[1];
-  const last = (/^-\s*Last seen:\s*([0-9-]+)/m.exec(paths) || [])[1];
+  const sessions = (/^-\s*Sessions[:：]\s*(\d+)/m.exec(paths) || [])[1];
+  const last = (/^-\s*Last seen[:：]\s*([0-9-]+)/m.exec(paths) || [])[1];
   return t("Not written yet") + (sessions ? t(sessions === "1" ? ": {n} session" : ": {n} sessions", { n: sessions }) +
     (last ? t(", last on {day}", { day: last }) : "") : "") + (uiLanguage === "zh" ? "。" : ".");
 }
 function personLead(r) {
-  const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^Now:/i.test(t));
-  const text = (known(r).intro || now?.replace(/^Now:\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
+  const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^(?:Now|现在)[:：]/i.test(t));
+  const text = (known(r).intro || now?.replace(/^(?:Now|现在)[:：]\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
   // A quotation is one unit: Tamara's lead ended at the "!" inside “That's great news, thank you! …”.
-  const sentences = text.match(/(?:[^“.!?]|“[^”]*”)*?[.!?](?:\s*\[W?\d{1,3}\])*(?=\s|$)|.+$/g) || [];
-  return privateFallback(el("p", { class: "person-lead", html: inline(sentences.slice(0, 2).join(" "), r.path) }));
+  const passages = [];
+  const protectedText = privatePassages(text, passage => { passages.push(passage); return "\u0006" + (passages.length - 1) + "\u0006"; });
+  const sentences = protectedText.match(/(?:[^“「.!?。！？]|“[^”]*”|「[^」]*」)*?(?:[.!?](?:\s*[\[［]W?\d{1,3}[\]］])*(?=\s|$)|[。！？](?:\s*[\[［]W?\d{1,3}[\]］])*)|.+$/g) || [];
+  const lead = sentences.slice(0, 2).join(" ").replace(/\u0006(\d+)\u0006/g, (_, i) => passages[i]);
+  return privateFallback(el("p", { class: "person-lead", html: inline(lead, r.path) }));
 }
 function contactLine(r) {
   const f = facts(r);
@@ -4697,7 +4809,7 @@ function threadWords(text, r) {
   const names = [r, ...inCategory("people")].filter(Boolean)
     .flatMap(person => [person.title.trim(), person.title.trim().split(/\s+/)[0]]).sort((a, b) => b.length - a.length);
   const name = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  const words = text.replaceAll("**", "").replace(/^[^:;!?]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
+  const words = text.replaceAll("**", "").replace(/^[^:;!?：；！？]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
   return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
 }
 function ledgerRow(r, thread) {
@@ -4726,7 +4838,7 @@ function personInsight(r) {
   if (!items.length) return null;
   return el("section", { class: "person-insight", id: "insight" }, [el("h2", { text: t("Where it stands") }),
     el("dl", {}, items.map(item => {
-      const match = /^([^:]+):\s*(.*)$/.exec(item.replace(/^\*\*([^*]+)\*\*/, "$1")), label = match?.[1] || "Now";
+      const match = /^([^:：]+)[:：]\s*(.*)$/.exec(item.replace(/^\*\*([^*]+)\*\*/, "$1")), label = match?.[1] || "Now";
       return el("div", {}, [el("dt", { class: label === "At stake" ? "at-stake" : label === "Changed" ? "changed" : "", text: t(label) }),
         privateFallback(el("dd", { html: inline(match ? match[2] : item, r.path) }))]);
     }))]);
@@ -4748,15 +4860,15 @@ function recordFocus(r) {
   const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
   const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
-  const projectDescription = plainLine(projectPurposeLine);
+  const projectDescription = plainLine(projectPurposeLine, true);
   const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" && !newestStanding(r) &&
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
-  const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
-  const finding = plainLine(findingLine);
+  const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line, true)) || "" : "";
+  const finding = plainLine(findingLine, true);
   const statement = privateMapped ? t("Automatic investigations skip this private project. Name this page to request a write.")
     : projectMapped ? mappedProjectLine(r)
     : projectNeedsContext ? projectDescription || t("Current project work is unconfirmed in the supplied evidence.")
-    : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
+    : finding || plainLine(purpose?.text || "", true) || memoryStatement(r) || facts(r).what || k.summary;
   const question = privateMapped ? "Needs your explicit request" : projectMapped ? "Mapped from your sessions" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
@@ -4778,7 +4890,7 @@ function recordFocus(r) {
   }
   if (finding) {
     const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
-    if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
+    if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (hasPrivacy(findingLine) ? " private" : ""),
       role: "group", "aria-label": t("Finding sources") },
       [el("span", { text: t(findingSources.length === 1 ? "Finding source" : "Finding sources") }),
         ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
@@ -4797,10 +4909,10 @@ function recordFocus(r) {
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
-    const changed = items.some(item => /^Changed:/i.test(item));
-    const next = changed && items.find(item => /^Now:/i.test(item));
+    const changed = items.some(item => /^(?:Changed|变化)[:：]/i.test(item));
+    const next = changed && items.find(item => /^(?:Now|现在)[:：]/i.test(item));
     if (next) {
-      const step = next.replace(/^Now:\s*/i, "");
+      const step = next.replace(/^(?:Now|现在)[:：]\s*/i, "");
       focusHead.appendChild(el("div", { class: "focus-next" }, [
         el("span", { class: "k", text: t("Next step") }),
         el("p", { html: inline(capFirst(step), r.path) })]));
@@ -4996,6 +5108,7 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
     updatedMarker(r, true),
+    uiLanguage !== "en" && !r.translations?.[uiLanguage] ? el("span", { class: "lang-status", text: "原文", title: "尚无中文译文，显示原文" }) : null,
     ...(person ? [] : [el("span", { class: "sep", text: "/" }), statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) && r.category !== "skills" ? t(r.category === "projects" ? "last mapped session" : "last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) })])]));
   const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
   if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
@@ -5003,8 +5116,6 @@ function record(path, heading) {
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
   if (person) head.append(personLead(r), contactLine(r)); else head.appendChild(leadRow(r));
-  const languages = languageBar(r);
-  if (languages && !person) head.appendChild(languages);
   main.appendChild(head);
   main.appendChild(recordFocus(r));
   if (r.category === "projects") {
@@ -5060,7 +5171,7 @@ function record(path, heading) {
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null, person ? languages : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
   const sections = toc.length + (note.firstElementChild && note.firstElementChild.tagName !== "H2" ? 1 : 0)
     + grid.querySelectorAll(".deep-context .focus-section, .side .panel:not(.toc-panel)").length
     + Number(!!parts.related) + Number(!!parts.sources);
@@ -5118,7 +5229,10 @@ function record(path, heading) {
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, t("Path copied"));
   const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, t("Markdown copied"));
-  foot.append(pathBtn, copyMd, el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
+  foot.append(pathBtn, copyMd);
+  const languages = languageBar(r);
+  if (languages) foot.appendChild(languages);
+  foot.append(el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
   (deep.parentNode ? column : main).appendChild(foot);
 
   if (heading) {
@@ -5166,14 +5280,14 @@ function search(q) {
   const needle = q.toLowerCase();
   const hits = [];
   const grouped = new Map();
-  const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
+  const plain = l => (document.documentElement.classList.contains("hide-private") ? unlabelled(l) : l).replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
     if (r.path === "skills/catalog/index.md" || skillReport(r)) continue;
     if (r.category === "sessions") {
       if (sessionText(r).lower.includes(needle)) hits.push({ r, lines: [sessionExcerpt(r, [needle]).text.slice(0, 240)] });
       continue;
     }
-    const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
+    const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain).map(l => l.replace(/[\[［](?:personal|sensitive)[\]］]/gi, ""))
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
       const primary = r.catalog_parent ? byPath(r.catalog_parent) : r;
@@ -5203,7 +5317,7 @@ function search(q) {
     if (!groups.has(hit.r.category)) groups.set(hit.r.category, []);
     groups.get(hit.r.category).push(hit);
   }
-  const isPath = l => /^(?:\/|~\/|[A-Z]:\\)\S+/.test(l) || /^(?:File|Path):\s*[/~]/.test(l);
+  const isPath = l => /^(?:\/|~\/|[A-Z]:\\)\S+/.test(l) || /^(?:File|Path)[:：]\s*[/~]/.test(l);
   for (const [c, list] of groups) {
     const group = el("section", { class: "search-group" });
     main.appendChild(group);
@@ -5271,6 +5385,7 @@ function reviewPage() {
 let entranceView = "";
 function render() {
   if (!REM) return;
+  for (const r of REM.records) swapLanguage(r, r.readLanguage ?? (uiLanguage === "en" ? "" : uiLanguage));
   memoryPass = lastPass();
   document.documentElement.lang = uiLanguage;
   document.getElementById("nav").setAttribute("aria-label", t("Categories"));
@@ -5425,7 +5540,7 @@ function evidenceText(range) {
 function sentenceEnds(text) {
   const ends = [0];
   // Quotes and parentheticals are units, including a quote's closing full stop.
-  for (const match of text.matchAll(/“[^”]*”|"[^"\n]*"|\([^)]*\)|[.!?;](?=\s)/g)) {
+  for (const match of text.matchAll(/“[^”]*”|「[^」]*」|"[^"\n]*"|\([^)]*\)|（[^）]*）|[.!?;](?=\s)|[。！？；]/g)) {
     if (match[0].length !== 1) continue;
     if (match[0] === "." && /\b(?:[a-z]\.){2,}$|\b(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr|St|vs|etc)\.$/i.test(text.slice(0, match.index + 1))) continue;
     ends.push(match.index + 1);
@@ -5689,11 +5804,19 @@ function askHost(body) {
     .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run co rem open again" } : response.json())
     .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run co rem open again" }));
 }
-function showLanguage(r, tag) {
+function swapLanguage(r, tag) {
+  const shown = tag && r.translations?.[tag] ? tag : "";
+  if ((r.shown || "") === shown) return;
   r.original ??= r.text;
-  r.text = tag ? r.translations[tag] : r.original;
-  r.shown = tag;
+  r.text = shown ? r.translations[shown] : r.original;
+  r.shown = shown;
   KNOWN.delete(r.path);
+  FACTS.delete(r.path);
+  SESSION_TEXT.delete(r.path);
+}
+function showLanguage(r, tag) {
+  r.readLanguage = tag;
+  swapLanguage(r, tag);
   render();
 }
 
