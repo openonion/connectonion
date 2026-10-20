@@ -18,8 +18,9 @@ The posts from 2026-10-20 tell each step, starting with
 One handoff change comes along: a handoff pasted into a conversation that was
 already about something else now stops and asks for a new one.
 
-A full first run with everything combined has not finished yet, so treat this
-as a preview.
+A real first run of sixteen subjects and the owner wrote all 17 pages in 109 minutes. It also
+showed what is still rough: the time estimate is about half the real figure, a transient Gmail SSL
+error stops a run until you rerun it, and organisation pages finish last. Those are next.
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc9'
