@@ -1214,8 +1214,7 @@ def test_init_builds_the_session_cache_while_the_map_is_made(first_run, monkeypa
         raise SystemExit(0)   # stop init here: only the order matters
 
     monkeypatch.setattr('connectonion.rem.map.build_map', mapped)
+    before = set(threading.enumerate())
     init('--yes', '--no-start')
-    for thread in threading.enumerate():
-        if thread is not threading.main_thread() and thread.daemon:
-            thread.join(timeout=5)
     assert ('warm', False) in order and ('map', None) in order
+    assert set(threading.enumerate()) <= before   # joined when mapping ends, even when it stops
