@@ -2044,3 +2044,42 @@ def lead_without_last_contact(record: str, text: str) -> str:
     cut = re.sub(r"(?m)(?<=[.!?。）)\]])" + LEAD_LAST_CONTACT.pattern, "", lead, flags=re.I)
     cut = re.sub(r"(?m)^" + LEAD_LAST_CONTACT.pattern + r"\n?", "", cut, flags=re.I)
     return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
+
+
+CLAUSE = re.compile(r"(?<=[.;!?])\s+|\s+[—–]\s+|,\s+(?=(?:but|and|so|while|though)\b)")
+DATED_SILENCE = re.compile(r"\bno (reply|outcome|response|answer)s? (?:is |was |has been )?(?:documented|found|recorded|"
+                           r"established|shown)(?: in the supplied (?:mail|messages|material))?\s+"
+                           r"(?:through|as of|by|since|until)\s+(\d{4}-\d{2}-\d{2})", re.I)
+MARKS = re.compile(r"\[(?:W?\d+|personal|sensitive)\]")
+
+
+def strip_hedge(line: str) -> str:
+    """The line with its clauses about what is not known rewritten or removed; evidence stays.
+
+    "no reply is recorded through 2026-10-20" is a dated fact and becomes "no reply as of
+    2026-10-20"; any other clause about what is not known goes, and its citations and
+    privacy labels move to the line's end. A clause holding a quote is kept; a line that
+    is nothing but hedge is left for the editing turn (2026-10-20: the turn deleted 0-11
+    sources with the hedges, or left 25-43 of 60 hedges when they were put back whole).
+    """
+    line = DATED_SILENCE.sub(lambda m: f"no {m[1].lower()} as of {m[2]}", line)
+    parts, seps = CLAUSE.split(line), CLAUSE.findall(line)
+    kept, moved = [], []
+    for n, part in enumerate(parts):
+        if HEDGE.search(part) and not QUOTE.search(part):
+            moved += MARKS.findall(part)
+            continue
+        kept.append((seps[n - 1] if n and kept else "", part))
+    if not kept or len(kept) == len(parts):
+        return line
+    text = "".join(sep + part for sep, part in kept).rstrip(" ,;—–")
+    # The joins a removed clause leaves: "…2026-10-23; [48]" and "…meetings; The user…".
+    text = re.sub(r"\s*[;,—–]\s+(?=\[)", " ", re.sub(r";\s+(?=[A-Z])", ". ", text))
+    extra = "".join(mark for mark in dict.fromkeys(moved) if mark not in text)
+    if not extra:
+        return text
+    body = re.sub(r"[ \t]*(?:\[(?:W?\d+|personal|sensitive)\][ \t]*)*[.]?$", "", text).rstrip(" ,;")
+    tail = "".join(MARKS.findall(text[len(body):]))
+    privacy = "".join(m for m in dict.fromkeys(MARKS.findall(tail + extra)) if m in ("[personal]", "[sensitive]"))
+    cites = "".join(m for m in dict.fromkeys(MARKS.findall(tail + extra)) if m not in ("[personal]", "[sensitive]"))
+    return f"{body} {privacy + ' ' if privacy else ''}{cites}".rstrip() + ("." if text.rstrip().endswith(".") else "")

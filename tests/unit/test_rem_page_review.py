@@ -1950,3 +1950,31 @@ def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
         assert max(LAST_CONTACT.findall(page)) == "2026-10-17"
     stub = "# Avery\n\nUnknown — not investigated yet. Last contact: 2026-10-01; 3 mails (gmail).\n\n## Facts\n"
     assert lead_without_last_contact("people/avery.md", stub) == stub
+
+
+@pytest.mark.parametrize("line, stripped", [
+    ("- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2]; whether it was reviewed is unknown [3].",
+     "- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2][3]"),
+    ("- At stake: Avery asked the user to sign before 2026-10-23 [5]; completion is unknown.",
+     "- At stake: Avery asked the user to sign before 2026-10-23 [5]"),
+    ("- Whether it was reviewed is unknown [3].", "- Whether it was reviewed is unknown [3]."),
+    ("- 2026-02-23: Avery asked how the user was; no reply is recorded through 2026-10-20 [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was; no reply as of 2026-10-20 [sensitive] [9]."),
+    ("- 2026-02-23: Avery asked how the user was; it is unclear whether Theo replied [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was [sensitive] [9]"),
+])
+def test_a_hedge_clause_goes_and_its_citations_stay(line, stripped):
+    from connectonion.rem.page_review import strip_hedge
+    assert strip_hedge(line) == stripped
+
+
+def test_restored_history_lines_are_folded_back_under_sixteen():
+    """2026-10-21: lines put back took History from 11 to 17 lines and the update was refused."""
+    from connectonion.rem.page_review import fold_history, history_errors, restore_dropped
+    old = [f"- 2025-0{m}-01: Thread {m} — closed, “ok {m}” [{m}]" for m in range(1, 7)]
+    new = [f"- 2026-{m:02d}-01: Thread {m} — closed [{m + 6}]" for m in range(1, 12)]
+    sources = "".join(f"- [{n}] gmail:{n:012x} — 2026-01-01\n" for n in range(1, 18))
+    before = "# Avery Lin\n\n## History\n" + "\n".join(new + old) + "\n\n## Sources\n" + sources
+    after = "# Avery Lin\n\n## History\n" + "\n".join(new) + "\n\n## Sources\n" + sources
+    restored = fold_history(restore_dropped(before, after))
+    assert not history_errors(restored, after) and "“ok 3”" in restored

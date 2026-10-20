@@ -1554,8 +1554,13 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     else:
         # A hedge is rewritten, never deleted with what it cited: three trial runs of
         # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
-        from .page_review import restore_dropped
-        kept = restore_dropped(page, notebook.read(record))
+        from .page_review import fold_history, restore_dropped, strip_hedge
+        edited = notebook.read(record)
+        kept = restore_dropped(page, edited)
+        # Then every hedged line outside Uncertainties loses only its hedge clause, in code.
+        hedged = {line for _, line in hedged_lines(kept)}
+        kept = fold_history("\n".join(strip_hedge(line) if line.strip() in hedged else line
+                                       for line in kept.split("\n")))
         if kept != notebook.read(record):
             notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
