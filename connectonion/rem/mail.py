@@ -26,10 +26,11 @@ import re
 import ssl
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 
-from .files import RemError
+from .files import RemError, read_json, state_path
 
 RELATED_ORG_SCOPE = ("Related contact outside the target mail domains; verify person/company/domain identity "
                      "from primary messages before attributing this exchange to the organization.")
@@ -103,6 +104,28 @@ def on_domains(row: dict, domains: list[str]) -> bool:
     """Header domain membership; a name or a domain mentioned in prose is not membership."""
     suffixes = tuple(f"{sep}{domain.casefold()}" for domain in domains if domain for sep in ("@", "."))
     return bool(suffixes) and any(address.endswith(suffixes) for address in participants(row))
+
+
+def org_member(row: dict, domains: list[str], exclude: set) -> bool:
+    """Domain membership through someone other than the owner or a notice address."""
+    return on_domains({'to': [a for a in participants(row) if a not in exclude]}, domains)
+
+
+def notice_addresses(root: Path) -> set:
+    state = read_json(state_path(root, 'map.json'), {})
+    return {address.casefold() for row in state.get('automated_correspondents', [])
+            for address in [row.get('address', ''), *row.get('addresses', [])] if address}
+
+
+def org_mail(row: dict, domains: list[str], own: set, notices: set, known: set, contacts: set) -> bool:
+    # 2026-10-20: the owner's company gathered 983 items in 505–816 s for 0–4
+    # quotes; most of 577 resolved sources were notices to the owner's address.
+    addresses = set(participants(row))
+    if _address(row.get('from', '')) in notices and not (known - own).intersection(addresses):
+        return False
+    if on_domains(row, domains):
+        return org_member(row, domains, own | notices)
+    return bool(contacts.intersection(addresses) - own - notices)
 
 
 def is_own(sender: str, mine: set) -> bool:

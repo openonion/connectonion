@@ -23,7 +23,7 @@ from ..provider_credentials import ProviderCredentialError
 from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
-from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
+from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -617,7 +617,10 @@ def _server_term(kind: str, domain: str) -> str:
     investigation in 1.9.0a3 fail (#1981), while `participants:unsw` answers.
     The label is looser; `_matches` keeps only mail on the domain itself.
     """
-    return domain.split(".")[0] if kind == "outlook" else domain
+    from .org_map import organisation
+    # 2026-10-20: participants:mail returned 352 rows and gathering took 816 s
+    # for four quotes. Search the organisation, not a sending subdomain.
+    return organisation(domain).split(".")[0] if kind == "outlook" else domain
 
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
@@ -637,11 +640,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
     items, coverage = [], []
-    own_addresses = set()
+    mailbox_addresses = {kind: {a.lower() for a in client.my_addresses()} for kind, client in clients.items()}
+    own_addresses = set().union(*mailbox_addresses.values())
     # An org is its domain: "unsw.edu.au" or "@unsw.edu.au" on the page. Only
     # for org pages -- a person's "vern.chan" alias is shaped like a domain too.
     domains = sorted({match[1] for h in handles if (match := DOMAIN_HANDLE.match(h))}) \
         if record.startswith("orgs/") else []
+    left_out, archived_left_out = set(), {}
+    notices = notice_addresses(archive_root) if domains and archive_root is not None else set()
+    known = known_addresses(archive_root) if domains and archive_root is not None else set()
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
@@ -649,8 +656,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
-                                   include_observed=True)
+                                   include_observed=True, left_out=archived_left_out)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
+    # Count exclusions through the same date and subscription checks as kept mail.
+    for (kind, native), when in archived_left_out.items() if archived else []:
+        cached_by_provider.setdefault(kind, []).append({
+            'timestamp': when, '_mail_id': native, '_org_excluded': True})
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
                           if not subscriptions.get(kind, {}).get("unsubscribed")}
@@ -672,7 +683,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             share = f" ({on_disk:,} of {target:,} bodies saved so far)"
     for kind in dict.fromkeys([*clients, *cached_by_provider]):
         client = clients.get(kind)
-        mine = {a.lower() for a in client.my_addresses()} if client else set()
+        mine = mailbox_addresses.get(kind, set())
         if sent_only:
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
@@ -688,7 +699,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             except RemError:
                 undated += 1
                 continue
-            if start <= when < end and (not sent_only or item["role"] == "user"):
+            if not start <= when < end:
+                continue
+            if item.get('_org_excluded'):
+                left_out.add((kind, item['_mail_id']))
+            elif not sent_only or item['role'] == 'user':
                 local.append(item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
@@ -748,12 +763,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 # window. The server may match loosely; the handles still decide
                 # what is kept. A university's mail runs past list_with's
                 # 1,000-row default.
-                terms = [_server_term(kind, domain) for domain in domains] + emails
+                terms = list(dict.fromkeys([_server_term(kind, domain) for domain in domains] + emails))
                 try:
                     rows = [r for term in terms
                             for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
-                                               term, begin.isoformat(), finish.isoformat()) or [])
-                            if on_domains(r, domains) or set(participants(r)).intersection(emails)]
+                                               term, begin.isoformat(), finish.isoformat()) or [])]
                 except ProviderCredentialError as error:
                     # One mailbox failing is that mailbox's gap, not the page's:
                     # a Graph 500 used to end the whole investigation before
@@ -777,10 +791,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     if progress:
                         progress(kind, stop, len(rows))
                     cursor = stop
-                rows = [r for r in rows if (on_domains(r, domains) or set(participants(r)).intersection(emails)
-                        if domains else _matches(r, handles, mine))]
-                searched += f"; scanned {len(rows)} matched mails"
+                if not domains:
+                    rows = [r for r in rows if _matches(r, handles, mine)]
+                searched += f"; scanned {len(rows)} candidate mails"
             for row in rows:
+                if domains and not org_mail(row, domains, own_addresses, notices, known, set(emails)):
+                    if on_domains(row, domains):
+                        left_out.add((kind, row['id']))
+                    continue
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
                     taken.add(row["id"])
                     hit.append(row)
@@ -810,7 +828,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-                scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
                 thread = r.get("thread_id") or r.get("thread") or ""
                 items.append({"role": "user" if own else "other", "speaker": r["from"],
                               "text": body, "timestamp": str(r["date"]),
@@ -836,6 +854,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
                    else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
+    if domains:
+        coverage.append(f"{len(left_out)} notice or owner-only messages on the domain left out")
     from .chat import CHAT_KINDS, collect_chat
     for name, sub in subscriptions.items():
         chat = sub.get("kind") in CHAT_KINDS
@@ -1001,8 +1021,8 @@ def warm_session_windows(root: Path, subscriptions: dict) -> None:
     """Scan the session stores once, before page workers start.
 
     Every worker's first gather waited on _WINDOWS_LOCK behind this scan, and
-    each page counted the wait as its own gathering (2026-10-20). Run alone first,
-    the scan has the interpreter to itself and the pages find it in memory.
+    each page counted the wait as its own gathering (2026-10-20). A spawned
+    warm-up has its own interpreter; later gathers reuse the on-disk window.
     """
     since = (datetime.now(timezone.utc) - timedelta(days=SESSION_WIDEST_DAYS)).isoformat()
     for name, sub in subscriptions.items():
@@ -1355,11 +1375,15 @@ def known_addresses(root: Path) -> set:
 
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
               "in full, each thread together, the most recently active last. Read all of it. Improve the page "
-              "with it, as you would improve code: add new facts, how threads ended and decisions; change what it "
-              "corrects; delete what it supersedes, repeats or settles. Keep what earlier rounds established from "
-              "sources this round does not hold: a decision quoted from an earlier part is still a decision. "
-              "The page should get better, not only longer. Quote what you add: an ask, offer, term, refusal or "
-              "decision goes on the page in the speaker's exact words with its date. Then follow the leads it raises.")
+              "with new facts, outcomes and decisions; correct what changed. Every quote already on the page "
+              "stays word for word, with its date and citation. If this part supersedes or settles it, keep the "
+              "quote and add the outcome; move the line to History where appropriate. Never replace an earlier "
+              "quote with a newer one: add new quotes beside the old ones; delete only unquoted repetition. "
+              "Keep earlier findings whose sources this part does not hold. Quote each new ask, offer, term, "
+              "refusal or decision in the speaker's exact words with its date. Then follow the leads it raises.")
+REPAIR_NOTE = ("Repair round: put each dropped quote below back word for word, with its date and citation, "
+               "in the section it belongs to. The prior lines give its context. Keep every other change; "
+               "add nothing else.\n\n{quotes}")
 # A person page's editor shapes the lead and who owes whom; a project's keeps its own shape.
 PERSON_SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Edit the page whole into one account, as an editor would, starting from what the "
@@ -1474,9 +1498,10 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
         return None
     page = notebook.read(record)
     out = quote_turn(runner, notebook, record, parts, counts, config, stage_progress, context)
-    reason = _keep_unless_lost(notebook, record, page, out.get("refuted_claims", []))
+    reason, _ = _keep_unless_lost(notebook, record, page, out.get("refuted_claims", []))
     refused = [out["refused"]] if out.get("refused") else []
     if reason:
+        _restore_page(notebook, record, page, out.get("refuted_claims", []))
         refused.append(f"Quote round rejected: {reason}")
     quotes_after, insight_after = _quote_counts(notebook.read(record))
     return {**out, "refused": refused, "changed": [] if reason else out.get("changed", []),
@@ -1537,24 +1562,54 @@ def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
     return max(INLINE_LIMIT - used, 20_000)
 
 
-def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> str:
+def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) -> tuple[str, list[str]]:
     """Keep carried evidence: connectonion's sixth round paraphrased all fifteen
     owner quotes away; oo-api's synthesis gutted eight rounds' work (2026-10-15)."""
     from .page_review import KEEP_SHARE, QUOTE, drop_claims, enumeration_only, prose, shrinkage
     # 2026-10-16 trial: orgs/unsw-edu-au's people links put its mapped stub
     # over the floor; all four rounds lost to replacing enumeration metadata.
     if enumeration_only(before):
-        return ''
+        return '', []
     if refuted:
         before, _ = drop_claims(record, before, refuted)
     after = notebook.read(record)
-    old = set(QUOTE.findall(prose(before)))
-    kept = old & set(QUOTE.findall(prose(after)))
+
+    def normalise(text):
+        return ' '.join(re.sub(r'''\\+(["'“”‘’])''', r'\1', text).split()).casefold()
+
+    # 2026-10-20: 2 of 4 parts were refused in each of 3 owner runs; one
+    # carried quote only differed by JSON-escaped quotation marks.
+    old = {normalise(quote): quote for quote in QUOTE.findall(prose(before))}
+    kept = set(old) & {normalise(quote) for quote in QUOTE.findall(prose(after))}
     reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
               if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
-    if reason:
-        notebook.write(record, before)
-    return reason
+    return reason, [old[key] for key in old if key not in kept] if reason.startswith('Turn kept') else []
+
+
+def _restore_page(notebook: Notebook, record: str, before: str, refuted=()) -> None:
+    from .page_review import drop_claims
+    if refuted:
+        before, _ = drop_claims(record, before, refuted)
+    notebook.write(record, before)
+
+
+def _repair_quotes(runner, notebook, record, page_item, context, before, lost, out, config, stage_progress):
+    """One repair on the candidate: the refused owner turns cost 7–15 min each (2026-10-20)."""
+    from .runner import RunFailed, _add_usage
+    quotes = '\n'.join(f'- “{quote}”\n  Prior line: '
+                       + next((line for line in before.splitlines() if quote in line), '') for quote in lost)
+    items = [page_item(notebook.read(record)), *context,
+             {"role": "round", "source": "investigation:round", "text": REPAIR_NOTE.format(quotes=quotes)}]
+    if stage_progress:
+        stage_progress("repair round")
+    try:
+        repair = runner(notebook, items, config, stage="investigate")
+    except RunFailed as error:
+        repair = {"usage": error.usage}
+    return {**out, "usage": _add_usage(out.get("usage"), repair.get("usage")),
+            "threads": out.get("threads", []) + repair.get("threads", []),
+            "changed": sorted({*out.get("changed", []), *repair.get("changed", [])}),
+            "refuted_claims": [*out.get("refuted_claims", []), *repair.get("refuted_claims", [])]}
 
 
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
@@ -1570,7 +1625,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     from .refusals import material_sources
     from .runner import RunFailed
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
-    total, edited = len(rounds), False
+    total, edited, repaired = len(rounds), False, 0
     for number, part in enumerate([*rounds, []], 1):
         if not part and not edited:
             # Nothing to bring together: every part round answered NO CHANGE or was
@@ -1597,11 +1652,22 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             for key, value in (error.usage or {}).items():
                 usage[key] = usage.get(key, 0) + value
             continue
+        reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
+        if lost:
+            # First put the dropped quoted lines back beside the rewrite, as project
+            # quote turns and upkeep do; only what that cannot place costs a turn.
+            from .page_review import restore_dropped
+            notebook.write(record, restore_dropped(before, notebook.read(record)))
+            reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
+        if lost:
+            repaired += 1
+            out = _repair_quotes(runner, notebook, record, page_item, context, before, lost, out, config, stage_progress)
+            reason, _ = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         threads += out.get("threads", [])
-        reason = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         if reason:
+            _restore_page(notebook, record, before, out.get("refuted_claims", []))
             refused.append(f"Round {number} rejected: {reason}")
             unread += material_sources(part)
             continue
@@ -1614,13 +1680,14 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     page = notebook.read(record)
     before, after, edit = editing_turn(runner, notebook, record, config, stage_progress, context)
     if edit is not None:
-        reason = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
+        reason, _ = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         if edit.get("refused"):
             refused.append(edit["refused"])
         threads += edit.get("threads", [])
         if reason:
+            _restore_page(notebook, record, page, edit.get("refuted_claims", []))
             from .page_review import hedged_lines
             refused.append(f"Editing round rejected: {reason}")
             after = hedged_lines(notebook.read(record))
@@ -1638,7 +1705,8 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
         if quote.get("report"):
             ledgers.append(f"Quote round: {str(quote['report']).strip()}")
     return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
-            "rounds": total + 1, "refused_rounds": refused, "refused_sources": sorted(set(unread)),
+            "rounds": total + 1, "repaired_rounds": repaired,
+            "refused_rounds": refused, "refused_sources": sorted(set(unread)),
             "hedged_lines": [len(before), len(after)], "quote_turn": quote and quote["counts"]}
 
 
@@ -2250,6 +2318,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""), "threads": result.get("threads", []),
             "hedged_lines": result.get("hedged_lines"), "quote_turn": result.get("quote_turn"),
             "rounds": result.get("rounds"),
+            "repaired_rounds": result.get("repaired_rounds", 0),
             "refused_rounds": result.get("refused_rounds"),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
