@@ -3,8 +3,8 @@
 The material is `project_material`'s: per page, what the user typed to Codex
 and Claude Code in its folders. A page is written once from all of it, and
 afterwards updated from only what is new -- the daily round's unit of work.
-One model call per page, through the configured runner, reviewed exactly like
-an investigated page before it replaces the old one.
+Through the configured runner, reviewed exactly like an investigated page
+before it replaces the old one, with one optional quote edit after acceptance.
 """
 
 from __future__ import annotations
@@ -638,9 +638,78 @@ def prompt(directory: Path, items: list[dict], candidate: Path, page_chars: int 
         "with one line: how many messages you read and the dates they span.")
 
 
+PROJECT_QUOTE_NOTE = ("Quote round: an edit, not a rewrite. The page has {quotes} quotes and {decisions} "
+                      "Key decisions without the owner's words. Put the owner's exact sentence that carries "
+                      "each decision, the purpose in Why it exists, and each open ask as “…” cited to the "
+                      "message it comes from, character for character in the original language, replacing "
+                      "the paraphrase. Keep every section, fact and citation. Add no new claim. Then stop.")
+
+
+def _project_quote_counts(page: str) -> tuple[int, int]:
+    from .page_review import QUOTE, prose, unquoted_decisions
+    return len(QUOTE.findall(prose(page).partition('\n## Sources\n')[0])), len(unquoted_decisions(page))
+
+
+def project_falls_short(page: str, messages: int) -> tuple[int, int] | None:
+    """Quote and unquoted-decision counts when this write has enough owner material for an edit."""
+    quotes, decisions = _project_quote_counts(page)
+    if messages > 10 and (quotes < 8 or decisions):
+        return quotes, decisions
+    return None
+
+
+def _project_quote_turn(notebook, record, page, items, counts, config, run, workdir, turn, progress):
+    """Edit the saved page once, without repair calls, and remove the task's private material."""
+    from .investigate import _keep_unless_lost
+    from .page_review import quotes
+    from .runner import language_note, promote_with_repairs, scrub_task, today_note
+    directory = Path(tempfile.mkdtemp(prefix="projects-quotes-", dir=workdir))
+    try:
+        candidate = directory / "candidate.md"
+        candidate.write_text(page, encoding="utf-8")
+        quote_items = [{**items[0], "text": f"The page as it stands, at {record}:\n\n{page}"},
+                       {"role": "round", "source": "investigation:round",
+                        "text": PROJECT_QUOTE_NOTE.format(quotes=counts[0], decisions=counts[1])},
+                       *[item for item in items if item.get("role") == "user"]]
+        text = prompt(directory, quote_items, candidate, len(page)) + today_note(notebook.root) + language_note(notebook.root)
+        if progress:
+            progress("quote round")
+        turn.update(run(workdir, text, config, "investigate"))
+        promote_with_repairs(notebook, record, candidate, page, quote_items, directory, turn,
+                             workdir=workdir, config=config, stage="investigate", run=run, repairs=0)
+        reason = _keep_unless_lost(notebook, record, page)
+        # A quote edit must keep even the small losses the general maintenance guard tolerates.
+        lost = bool(reason or quotes(page) - quotes(notebook.read(record)))
+        if lost:
+            notebook.write(record, page)
+        write_json(directory / "result.json", {"stage": "projects-quotes", "record": record,
+                                                "status": "restored" if lost else "candidate_accepted",
+                                                "usage": turn.get("usage")})
+    finally:
+        scrub_task(directory)
+
+
+def _project_quote_round(notebook, record, items, config, run, workdir, result, progress):
+    """One optional edit; a failed or lossy edit leaves the accepted write intact."""
+    from .runner import RunFailed, _add_usage
+    page = notebook.read(record)
+    counts = project_falls_short(page, sum(item.get("role") == "user" for item in items))
+    if counts is None:
+        return None
+    turn, after = {}, counts
+    try:
+        _project_quote_turn(notebook, record, page, items, counts, config, run, workdir, turn, progress)
+        after = _project_quote_counts(notebook.read(record))
+    except (RemError, OSError) as error:
+        notebook.write(record, page)
+        turn["usage"] = error.usage if isinstance(error, RunFailed) else turn.get("usage")
+    result["usage"] = _add_usage(result.get("usage"), turn.get("usage"))
+    return {"quotes": [counts[0], after[0]], "unquoted_decisions": [counts[1], after[1]]}
+
+
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
-    """One call: write the page from its pending messages; save it only if it passes review."""
+    """Write pending messages, then optionally edit quotes; save only pages that pass review."""
     from .runner import RunFailed, _one_more_turn, promote_with_repairs, run_task
     config = config or read_config(root)
     run = run or run_task
@@ -678,6 +747,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         # A refused page left its material.json/material.md behind (#2029).
         from .runner import scrub_task
         scrub_task(directory)
+    quote_round = _project_quote_round(notebook, record, items, config, run, workdir, result, progress)
+    metrics["quote_round"] = quote_round
     messages = sum(1 for item in items if item["role"] == "user")
     tools = sorted({i["tool"] for i in items if i.get("tool")})
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
@@ -694,7 +765,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                                             "duration_seconds": time.monotonic() - started})
     return {"record": record, "changed": [record], "items": messages, "through": through,
             "usage": result.get("usage"), "chars_gathered": sum(len(i["text"]) for i in items),
-            "report": str(result.get("result") or "")[:1000]}
+            "report": str(result.get("result") or "")[:1000], "quote_round": quote_round}
 
 
 def write_pages(root: Path, *, limit: int = 5, recent_days: int = RECENT_DAYS, write=None,
