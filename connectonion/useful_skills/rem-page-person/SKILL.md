@@ -124,7 +124,8 @@ Rules:
   `Nothing open as of <date>`.
 - **Say each thing once, plainly.** A fact lives in one section; the lead and
   `Insight` point to it. Status is a dated fact (`no reply since 2026-10-12`),
-  never "is not established", "unconfirmed" or "in the supplied mail".
+  never "is not established", "it is unclear whether" or "无法确认是否完成":
+  write what is known with its date, and the open part as an `Open threads` line.
 - **`Uncertainties`: at most five questions, each ending `?`** before its
   citations, each one whose answer changes the user's next step (`Did she
   accept the 2026-08-12 offer? [3]`), never where you searched; none: `Unknown`.

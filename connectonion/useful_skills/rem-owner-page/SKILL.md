@@ -51,7 +51,8 @@ never a correspondent in `Cadence`.
   question; `At stake:` names a firm due-soon commitment or blocker. Compare
   sources when possible and cite the dependency. Summarized requests alone are
   not insight. A coding request proves no shipment or passing test; only
-  artifact evidence proves shipping.
+  artifact evidence proves shipping. Work only: never a `[personal]` or
+  `[sensitive]` item (a purchase, health, family); those live in `Who they are`.
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,
@@ -59,7 +60,10 @@ never a correspondent in `Cadence`.
   map mail counts go to `Cadence`.
 - `Open threads`: mandatory. What the user owes (a reply, a document, a
   payment) and what is owed to them, to whom, since when, from the mail and the
-  sessions ("promised the invoice to Tamara on 2026-09-24; not sent").
+  sessions ("promised the invoice to Tamara on 2026-09-24; not sent"). The user
+  owes only what the user agreed to, quoted; someone's unanswered request to
+  the user is `<Name> asked the user`, and the user's unanswered request is
+  `The user asked <Name>`.
 - `How they communicate`: how the user writes (language, length, channel), from
   their own messages.
 - `Cadence`, `Uncertainties`: as on a person's page.
