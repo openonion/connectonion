@@ -60,7 +60,7 @@ never a correspondent in `Cadence`.
   map mail counts go to `Cadence`.
 - `Open threads`: mandatory. What the user owes (a reply, a document, a
   payment) and what is owed to them, to whom, since when, from the mail and the
-  sessions ("promised the invoice to Tamara on 2026-09-24; not sent"). The user
+  sessions ("promised the invoice to Mia Chen on 2026-09-24; not sent"). The user
   owes only what the user agreed to, quoted; someone's unanswered request to
   the user is `<Name> asked the user`, and the user's unanswered request is
   `The user asked <Name>`.
