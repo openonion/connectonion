@@ -458,8 +458,6 @@ def _deepen_page(ctx, page, stage):
         before, after = result["page_chars"]
         value = {"page": record, "changed": "yes" if result["changed"] else "no",
                  "page_chars": f"{before:,} -> {after:,}"}
-        if result.get("restored"):
-            value["restored"] = result["restored"]
         value["leads" if stage == "enrich" else "result"] = result["report"]
         return value, ["show", record]
 

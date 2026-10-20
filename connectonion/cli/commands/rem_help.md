@@ -308,8 +308,8 @@ Read one existing people, projects or orgs page, its cited originals, other
 notebook pages for context, and this page's latest completed enrich and muse
 reports. One thread of seven turns: ask twenty questions and pick five; study
 one per turn; look back. Edit only on insight. The same review gate as investigate
-decides whether the page is saved. A page that lost a quote or a source id is
-put back as it was at the start of the run, with the reason reported.
+decides whether the page is saved. A quote or source id the page had is sent
+back for repair, then its line is put back as it was if two repairs cannot.
 
 Usage:    co rem muse PAGE
 Example:  co rem muse people/avery-lin.md
