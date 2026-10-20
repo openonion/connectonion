@@ -19,7 +19,8 @@ def _run_reader_js(script):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -159,13 +160,14 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         "const result = {}, pathBtn = {};",
         "const copyToClipboard = path => result.path = path;",
         "const el = (tag, attrs) => attrs.text;",
-        "const foot = {appendChild: text => result.footer = text};",
+        "const settings = {appendChild: text => result.footer = text};",
         command, copy, footer, "pathBtn.onclick(); console.log(JSON.stringify(result));",
     ])
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)
+    # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
     assert json.loads(result.stdout) == {
@@ -296,3 +298,148 @@ def test_open_reader_launches_the_file_uri_only_when_asked(tmp_path, monkeypatch
     page = open_reader(tmp_path, launch=True)
     assert opened == [page.as_uri()]
     assert opened[0].startswith("file://")
+
+
+def test_summary_values_hide_only_empty_placeholders():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
+                          for name in ["plainLine", "knownValue"])
+    unfilled = next(line for line in page.splitlines() if line.startswith("const UNFILLED_LINE ="))
+    cases = [None, "", "  ", "Unknown", "unknown", "Unknown.", "—", "Unknown — not verified.",
+             "Unknown — not verified. The latest session confirms a changed owner.", "Avery Lin", 0]
+    result = _run_reader_js("\n".join([functions, unfilled, "const youify = text => text;",
+                                     "console.log(JSON.stringify(" + json.dumps(cases) + ".map(knownValue))); "]))
+    assert result == [False] * 8 + [True] * 3
+
+
+def test_empty_between_you_has_no_section_but_real_threads_remain():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    function = re.search(r"function betweenYou\(.*?\n\}", page, re.S).group(0)
+    result = _run_reader_js("\n".join([
+        function, 'const threads = r => r;',
+        'const el = (tag, attrs, children) => ({tag, ...attrs, children});',
+        'const ledgerColumn = (r, items, dir) => ({dir, count: items.length});',
+        'console.log(JSON.stringify([betweenYou({items: [], calm: "Nothing open as of 2026-10-20"}),',
+        'betweenYou({items: [{dir: "mine"}], calm: ""})]));',
+    ]))
+    assert result[0] is None
+    assert result[1]["children"][1]["children"] == [{"dir": "mine", "count": 1}, {"dir": "theirs", "count": 0}]
+
+
+def test_source_focus_candidates_exclude_unreachable_controls():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    function = re.search(r"function evidenceControls\(.*?\n\}", page, re.S).group(0)
+    result = _run_reader_js("\n".join([
+        function,
+        'const getComputedStyle = node => ({visibility: node.visibility || "visible"});',
+        'const cases = [{id: "close"}, {id: "disabled", disabled: true}, {id: "negative", tab: -1},',
+        '{id: "aria-hidden", hidden: true}, {id: "hidden-ancestor", hidden: true},',
+        '{id: "no-layout", rects: []}, {id: "invisible", visibility: "hidden"}, {id: "last"}];',
+        'const controls = cases.map(c => ({...c, tabIndex: c.tab ?? 0, matches: () => !!c.disabled,',
+        'closest: () => c.hidden ? {} : null, getClientRects: () => c.rects || [{}]}));',
+        'console.log(JSON.stringify(evidenceControls({querySelectorAll: () => controls}).map(c => c.id)));',
+    ]))
+    assert result == ["close", "last"]
+
+
+def test_reader_template_javascript_compiles():
+    script = TEMPLATE.read_text(encoding="utf-8").split("<script>", 1)[1].split("</script>", 1)[0]
+    assert _run_reader_js("new Function(" + json.dumps(script) + "); console.log(true);") is True
+
+
+def test_project_thread_direction_requires_an_explicit_debtor():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    functions = page[page.index('let OWING = null;'):page.index('const DIRECTION_LABEL =')]
+    cases = {
+        '2026-10-13: You asked to revisit a title.': 'plain',
+        '2026-10-13: Requested confirmation of the plan.': 'plain',
+        'Avery promised to send a draft.': 'mine',
+        'The user owes Mara an answer.': 'mine',
+        'Mara owes you feedback.': 'theirs',
+        'Waiting on Fernhill for a test inbox; promised 2026-09-12.': 'theirs',
+        'Promised a draft; owner is unclear.': 'plain',
+    }
+    script = '\n'.join([
+        'const REM = {owner: "people/avery.md"};',
+        'const byPath = () => ({title: "Avery Lin"});', functions,
+        'console.log(JSON.stringify(' + json.dumps(list(cases)) + '.map(projectDirection)));',
+    ])
+    assert _run_reader_js(script) == list(cases.values())
+
+
+def test_activity_disclosure_filters_and_refreshes_private_rows():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    activity = page[page.index('function activityDisclosure('):page.index('\nfunction record(')]
+    script = r'''
+      let hidePrivate = false;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        dataset: {type: attrs['data-type']},
+        classList: {contains: name => (attrs.class || '').split(' ').includes(name), toggle() {}},
+        appendChild(child) { this.children.push(child); },
+        append(...nodes) { this.children.push(...nodes); },
+        setAttribute(key, value) { this[key] = value; },
+        querySelectorAll() { return this.children; }
+      });
+      const document = {documentElement: {classList: {contains: () => hidePrivate}}};
+      const section = () => ({text: ''});
+      const historyItems = () => Array.from({length: 9}, (_, i) => ({day: '2026-09-0' + (9-i), text: String(i)}));
+      const historyRowContent = text => el('p', {class: Number(text) < 2 ? 'privacy-only' : ''});
+      const activityType = text => Number(text) < 7 ? 'Decision' : 'Conversation';
+      const threadDate = day => day;
+      const privateHistoryNotice = () => el('p', {class: 'private-history-notice'});
+    ''' + activity + r'''
+      const panel = activityPanel({path: 'orgs/example.md'});
+      const filters = panel.children.find(n => n.class === 'activity-filters');
+      const list = panel.children.find(n => n.class === 'activity-list');
+      const more = panel.children.find(n => n.class === 'btn-action activity-more');
+      const shown = () => list.children.filter(n => !n.hidden).length;
+      const states = [[shown(), more.textContent, more.hidden]];
+      more.onclick(); states.push([shown(), more.textContent, more.hidden]);
+      hidePrivate = true; list.refreshActivity();
+      states.push([shown(), more.textContent, more.hidden]);
+      more.onclick(); states.push([shown(), more.textContent, more.hidden]);
+      filters.children.find(b => b.text === 'Conversation 2').onclick();
+      states.push([shown(), more.textContent, more.hidden]);
+      console.log(JSON.stringify({states, noticeNext: panel.children[panel.children.indexOf(list)+1].class}));
+    '''
+    assert _run_reader_js(script) == {
+        'states': [[5, 'Show all 9', False], [9, 'Show less', False],
+                   [7, 'Show less', False], [5, 'Show all 7', False], [2, 'Show all 2', True]],
+        'noticeNext': 'private-history-notice',
+    }
+
+
+def test_unquoted_inline_html_never_parses_a_dom():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    function = re.search(r"function quoteSpans\(.*?\n\}", page, re.S).group(0)
+    inputs = ["plain prose", "<em>formatted prose</em>", "", "a &amp; b",
+              '<a href="#r=sessions%2Fexample.md">Session</a>',
+              '<span class="private" data-level="personal">Labelled prose</span>',
+              '<code title="a long identifier">identifier</code>']
+    # No document exists in Node: even attempting to build a DOM fails this test.
+    assert _run_reader_js(function + "\nconsole.log(JSON.stringify(" + json.dumps(inputs)
+                          + ".map(quoteSpans)));") == inputs
+
+
+def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
+                          for name in ["blockerTag", "threadAge", "dueLabel", "threadDate", "age", "daysSince"])
+    cases = [
+        {"text": "Please review the draft.", "since": "2026-10-17"},
+        {"text": "This blocks the launch.", "since": "2026-10-17"},
+        {"text": "The launch is blocked.", "since": "2026-10-17"},
+        {"text": "Blocking the export.", "since": "2026-10-17"},
+        {"text": "Review before we can launch.", "since": "2026-10-17"},
+        {"text": "Review before lunch.", "since": "2026-10-17", "due": "2026-10-23"},
+        {"text": "Unblocked already.", "since": "2026-09-01", "due": "2026-09-10"},
+    ]
+    result = _run_reader_js("\n".join([
+        functions, 'const REM = {as_of: "2026-10-20"}, DAY_MS = 86400000;',
+        'const calendarDay = text => text.slice(0, 10);',
+        'const el = (tag, attrs) => attrs;',
+        'console.log(JSON.stringify(' + json.dumps(cases)
+        + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
+    ]))
+    assert [row["age"] for row in result] == ["3 days"] * 5 + ["due 23 Oct", "overdue · 10 Sep"]
+    assert [bool(row["tag"]) for row in result] == [False, True, True, True, True, False, False]

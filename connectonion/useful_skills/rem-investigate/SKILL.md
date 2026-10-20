@@ -32,12 +32,12 @@ settled; longer is not better.
 keep the lead and current state. Growth beyond 20,000 characters is refused.
 `History`, on a page whose shape has one: one dated line per thread, how it ended; at most sixteen.
 
-## Quote or summarise
+## Quote first, summarise last
 
-Words the user may act on are quoted, never retold: a request, offer or
-promise; a price, number, date or condition; a decision, correction or
-instruction; how someone asks to be reached; who someone says they are.
-Write `“<exact words>” (YYYY-MM-DD) [n]`: one or two whole sentences copied
+Read each original whole, then quote it. Words the user may act on are
+quoted, never retold: a request, offer or promise; a price, number, date or
+condition; a decision, correction or instruction; how someone asks to be
+reached; who someone says they are. Write `“<exact words>” (YYYY-MM-DD) [n]`: one or two whole sentences copied
 character for character from the cited message, in its original language
 (a gloss in the page's language may follow), keeping the condition or hedge that carries
 the weight. The runner checks every `“…”` against its cited source and
@@ -45,7 +45,6 @@ refuses a quote it cannot find there.
 
 - The speaker is the cited message's `From`. In a thread, check who wrote
   which line before "X confirmed" or "X approved"; a cc is not a party.
-- Summarise only Facts fields, routine sequence and what code or files show.
 - Inference is labelled and rests on quotes; one incident is not a pattern.
 - An old open item keeps its date ("on 2026-08-02 he said he would send the
   deck"); an event whose date has passed is not open.
@@ -58,13 +57,10 @@ refuses a quote it cannot find there.
 - `Unknown — not investigated yet`: find it in the material, or write bare
   `Unknown`; a leftover one becomes bare `Unknown`, the page has not been
   investigated otherwise. The runner-owned `Investigation:` footer stays unchanged.
-- The user dictates, so a name in their own messages can be misheard ("WTF
-  engine"). Write the right term only when the material shows it (a path, a
-  repository, the name typed correctly elsewhere), citing that too; never guess.
-- Coverage (what was searched, counts, unread attachments, empty searches)
-  goes in your final reply, never on the page (`- Phone: Unknown`, not where
-  you looked).
-- **Never cite an `Unknown`**; write it bare.
+- A dictated name can be misheard ("WTF engine"): correct it only where the
+  material shows the right term, citing that too.
+- Coverage (what was searched, counts, empty searches) goes in your final
+  reply, never on the page. **Never cite an `Unknown`**; write it bare.
 - **Label private life; never drop it.** End such a sentence, before its claim
   number, with `[personal]` (family, home, trips, hobbies, private plans) or
   `[sensitive]` (health, private money, legal, intimate, mental state, ID

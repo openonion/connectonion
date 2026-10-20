@@ -5,7 +5,9 @@ description: A project page a new teammate understands in one screen: what it is
 
 # A project's page
 
-Write for a teammate who has one minute. The first screen answers, dated and
+Write for a teammate who has one minute. Say what is, dated; never what the
+evidence lacks ("no test result is reported", "unverified"): a gap that
+changes the next step is one question under `Uncertainties`. The first screen answers, dated and
 cited: what the project is, why it exists in the owner's words, where it
 stands now, and what is still open. Reference detail follows. A page that
 tours files and hedges every line fails even when every line is true.
@@ -60,20 +62,36 @@ Keep this order for those shown:
 `Started`, `Last activity`, and no other label. Several values `; ` between, each
 `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
 - `Status`: a phrase the evidence earns: `active — commits weekly on
-  origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`.
+  origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`;
+  never a licence, language or README topic, and never `Unknown` while
+  commits or messages are dated.
 - `Last activity`: the newer of the latest commit on the current line and
   the latest message that names this project, with what it was:
   `2026-10-15 — Gemini 4 Argon made selectable (commit e25df6e) [n]`.
-- `Started`: the first commit or the owner's words that began it; the first
-  observed session is not a start.
+- `Started`: the history packet's `First commit` line (`2026-10-14 — first
+  commit ee2ca3d [n]`) or the owner's words that began it; the first observed
+  session is not a start.
+- `People`: `the user (sessions in these folders)`, cited to one of the
+  user's messages (never `investigation:page`), and anyone the messages or
+  commits name working on it; `Unknown` only with neither.
 
 **Insight**: 2–4 cited bullets of at most 30 words, starting `Now:`,
 `Changed:`, `At stake:` or `Pattern:`: what changes a teammate's next
 decision. Compare the owner's words with the repository first: a requirement
 the code contradicts or has not caught up with (the owner says 8% of net, the
-PDF says gross), a reversed choice, a requirement that moved. What the code
+PDF says gross), a reversed choice, a requirement that moved, what keeps
+being reworked (README rewritten six times in two days), where the effort
+went (80 of 111 messages on the launch video). What the code
 does belongs in `What it is`; a branch, commit date, README topic or a quote
-alone is not an insight. None: `- Unknown`.
+alone is not an insight. Each is about the project, not one message's
+wording; a finding, never advice (`should`, `verify`) and never a hedge about
+what the evidence lacks (`unverified`, `not established`). None: `- Unknown`.
+
+**Quote first, paraphrase last.** `Why it exists`, each `Key decisions` line
+and each `Open threads` ask quote the owner's words: the one sentence that
+carries the choice, not the whole message. With more than ten owner
+messages, fewer than five quotes means you retold. The owner is `the user`,
+never their name, `he` or `his`.
 
 **What it is**: one or two sentences: the product, who it serves, what it
 does, from the README or the owner's description of the whole project, never
@@ -85,10 +103,11 @@ words that started it or best state its purpose:
 exists; without such words, quote the README's purpose, dated by its revision.
 
 **Where it stands**: 3–5 bullets about now, newest first, each dated: the
-latest finished work (commit subjects on the current line, the owner's
+latest finished work and milestones (releases, features shipped: commit
+subjects on the current line with short sha, the owner's
 latest messages; quiet for weeks — say so); work in flight (recent unmerged
 branches, by name and date); the phase and goal; the latest run, test or
-deploy result someone reported, or none found. History goes in `Key decisions`.
+deploy result someone reported. History goes in `Key decisions`.
 
 **Open threads**: only what is pending now, newest first:
 `- YYYY-MM-DD — <who> asked: “<exact words>” [n] — open|blocked on <what>`.
@@ -102,7 +121,8 @@ Nothing open: bare `Unknown`, never a line about what the material does not show
 status with its evidence. Check the history for a fix before calling one
 open. A report is not a diagnosis; a proposed fix is not a resolution.
 
-**Key decisions**: the choices the owner made, newest first, at most sixteen:
+**Key decisions**: the choices the owner made, newest first by date (check
+the order before you finish), at most sixteen:
 price, scope, audience, positioning, architecture, what to drop.
 `- YYYY-MM-DD — <choice, under 12 words>: “<the owner's exact words>” [n]`.
 A reversal is its own line quoting the reversal. A request alone or current
@@ -127,8 +147,8 @@ from built. Short: a page is not a code tour.
 **Paths**: the project's own folders (repository, data or design locations
 outside it) with their purpose; modules belong in `How it is built`. Never guess.
 
-**Uncertainties**: at most five, each one that would change the next step;
-provenance limits are said once here, not on every bullet.
+**Uncertainties**: at most five questions, each ending `?` before its
+citations, each one that would change the next step.
 
 **Sources**: numbered, `- [n] <source id> — <date>`, nothing more; each
 inspected file its own entry. Use supplied `source` IDs; `git:` origins and

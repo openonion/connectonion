@@ -14,6 +14,23 @@ Enrich is discovery. The page was written from what init happened to read;
 your job is to find **what else exists** and where it points. Finding a
 direction to investigate is worth more than polishing a sentence.
 
+## Leads from the last round
+
+The prior-runs item holds the last enrich's open leads and the last muse's
+open questions. Follow those first. Mark each followed, open or blocked again;
+do not repeat a lead already followed.
+
+## A project's history
+
+The timeline item is the project's whole history, oldest first, month by month.
+Walk it from the first month and read the originals at its `github:` ids;
+look up commits for their full `git:` ids. The timeline itself is a reading guide.
+Add the turning points — the start, what was merged, what was decided and why —
+as dated, cited `Key decisions` lines spread across the whole history, not only
+the latest weeks. For a monorepo sub-project, its history is the pull requests
+in the timeline whose titles name it. Follow those through the older months
+before following the latest session.
+
 ## 1. Find the leads
 
 Read every cited original whole, then list what it points to that the page has
@@ -89,6 +106,7 @@ other findings go in your reply as followed leads, so muse can use them.
 Before you finish, compare your page with the page you were given: every
 `“…”` quote and every `Sources` id it had must still be on the page, and every
 `[n]` in the text must be defined under `Sources`. Restore any you dropped.
+A dropped quote or source id is refused and sent back for repair.
 
 ## Final reply
 

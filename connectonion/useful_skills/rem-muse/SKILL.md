@@ -24,6 +24,8 @@ you, so do not reread what you already read.
 ## Turn 1 — ask, then choose
 
 Read the page, then every cited original whole. Do not edit the page.
+Questions the last run left open come first among candidates when still open.
+Do not re-ask a question it settled.
 
 Write at least twenty questions this material raises. A good question:
 

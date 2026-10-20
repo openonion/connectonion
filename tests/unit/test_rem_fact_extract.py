@@ -107,26 +107,31 @@ def test_a_role_only_in_a_calendar_invite_is_handed_over_as_the_invite_line():
     assert any("Procurement Lead" in line for line in lines)
 
 
-def test_earliest_retained_mail_does_not_become_first_contact():
-    rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", "hi"),
+def test_earliest_direct_mail_becomes_first_contact_with_its_qualifier_and_source():
+    rows = extract([mail("gmail:unrelated", "2025-08-01T01:00:00Z", "hello", speaker="Sam <sam@example.com>"),
+                    mail("gmail:a1", "2025-08-04T01:00:00+00:00", "hi"),
                     mail("gmail:a2", "2026-09-10T01:00:00+00:00", "ok", role="user", speaker="Alex <a@r.example>")],
                    HANDLES)
-    assert not found(rows, "First contact")
+    assert found(rows, "First contact") == [
+        {"field": "First contact", "value": "2025-08-04", "qualifier": "earliest mail found",
+         "source": "gmail:a1", "date": "2025-08-04"}]
     assert found(rows, "Last contact")[0]["value"] == "2026-09-10"
     assert found(rows, "Last contact")[0]["source"] == "gmail:a2"
 
 
-@pytest.mark.parametrize("zone, last", [
-    ("Australia/Sydney", "2026-08-01"),
-    ("America/Los_Angeles", "2026-07-31"),
-    ("UTC", "2026-07-31"),
+@pytest.mark.parametrize("zone, first, last", [
+    ("Australia/Sydney", "2026-07-31", "2026-08-01"),
+    ("America/Los_Angeles", "2026-07-30", "2026-07-31"),
+    ("UTC", "2026-07-31", "2026-07-31"),
 ])
-def test_last_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, last):
+def test_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, first, last):
     # Same UTC day, reverse input order: source choice needs full instants.
     rows = extract([mail("outlook:late", "2026-07-31T23:03:58Z", SIGNED),
                     mail("outlook:early", "2026-07-31T00:23:51Z", "hello")],
                    HANDLES, timezone=zone)
-    assert not found(rows, "First contact")
+    assert found(rows, "First contact")[0]["value"] == first
+    assert found(rows, "First contact")[0]["source"] == "outlook:early"
+    assert found(rows, "First contact")[0]["qualifier"] == "earliest mail found"
     assert found(rows, "Last contact")[0]["value"] == last
     assert found(rows, "Last contact")[0]["source"] == "outlook:late"
     assert all(row["date"] == last for row in found(rows, "Phone") + found(rows, "Signature"))
@@ -148,6 +153,7 @@ def test_the_item_tells_the_turn_to_cite_the_source_not_the_item():
     item = facts_item(rows)
     assert item["role"] == "facts" and item["source"] == "investigation:facts"
     assert "Phone: +61 2 5550 0142 (work) — gmail:a1, 2026-08-04" in item["text"]
+    assert item["text"].index("- First contact:") < item["text"].index("- Last contact:")
     assert item["facts"] == rows
 
 
@@ -173,8 +179,9 @@ def test_a_phone_the_model_dropped_is_put_back_with_its_source():
     assert {r["field"] for r in restored} == {"Phone"}           # no Links line: nothing to fill
     assert facts.keep_extracted("people/mia.md", kept, rows)[1] == []
     upgraded, restored = facts.keep_extracted("people/mia.md", facts.upgrade("people/mia.md", PAGE), rows)
-    assert {r["field"] for r in restored} == {"Phone", "Links"}
-    assert "- First contact: Unknown" in upgraded and "- Last contact: 2026-09-10 [1]" in upgraded
+    assert {r["field"] for r in restored} == {"Phone", "Links", "First contact"}
+    assert "- First contact: 2026-08-04 (earliest mail found) [2]" in upgraded
+    assert "- Last contact: 2026-09-10 [1]" in upgraded
 
 
 def test_a_phone_already_on_the_page_in_another_format_is_not_added_twice():
@@ -274,7 +281,9 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     assert "Phone: +61 412 000 111 (mobile)" in seen["facts"]["text"]
     assert found(seen["facts"]["facts"], "Last contact")[0]["value"] == "2026-10-01"
     assert "Dates use Australia/Sydney" in seen["facts"]["text"]
-    assert "earliest retained mail does not establish first contact" in seen["facts"]["text"]
+    assert ("First contact is the earliest mail found in this material; keep a page's earlier First contact, "
+            "and write an earlier start a message states (hired, met, introduced) instead when there is one."
+            in seen["facts"]["text"])
     page = notebook.read("people/vern.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
@@ -555,20 +564,24 @@ def test_org_domain_last_contact_uses_human_mail_and_reaches_the_page(tmp_path, 
     assert not found(extract([broadcast], [handle]), "Last contact")
     unaddressed = mail("gmail:unaddressed", "2026-10-07T01:00:00Z", "Hello", speaker="Me <me@x.example>", role="user")
     assert not found(extract([unaddressed], [handle]), "Last contact")
-    assert rows == [{"field": "Last contact", "value": "2026-09-03", "qualifier": "",
+    assert rows == [{"field": "First contact", "value": "2026-08-22", "qualifier": "earliest mail found",
+                     "source": "gmail:sent", "date": "2026-08-22"},
+                    {"field": "Last contact", "value": "2026-09-03", "qualifier": "",
                      "source": "gmail:reply", "date": "2026-09-03"}]
 
     notebook = Notebook(tmp_path)
     record = "orgs/agentmail.md"
     notebook.stub_org(record, "AgentMail", ["agentmail.cc"])
     page, restored = facts.keep_extracted(record, notebook.read(record), rows)
-    assert "- Last contact: 2026-09-03 [1]" in page
-    assert "- [1] gmail:reply — 2026-09-03" in page
-    assert "- First contact: Unknown" in page
+    assert "- Last contact: 2026-09-03 [2]" in page
+    assert "- [2] gmail:reply — 2026-09-03" in page
+    assert "- First contact: 2026-08-22 (earliest mail found) [1]" in page
     assert restored == rows
     audit, missing = packet(notebook, page, items=[facts_item(rows), *items])
     assert not missing
-    assert audit["runner_facts"] == [{"field": "Last contact", "value": "2026-09-03", "source": "gmail:reply"}]
+    assert audit["runner_facts"] == [
+        {"field": "First contact", "value": "2026-08-22", "source": "gmail:sent"},
+        {"field": "Last contact", "value": "2026-09-03", "source": "gmail:reply"}]
 
 
 @pytest.mark.parametrize("speaker, role, recipients, subject", [

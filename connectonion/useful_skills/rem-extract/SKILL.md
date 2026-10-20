@@ -88,6 +88,8 @@ supports it and `Unknown` when the batch touches the question without answering 
     co-hosting in August. Wants revenue per property. (outlook:9f2c1a4b7e30)
   - Relationship state: pricing client and contract counterparty; agreement signed
     2026-08-07 — 8% of Net Booking Revenue. (outlook:92634a3a8c50)
+  - First seen: 2026-07-10, earliest message here; an earlier start a message
+    states (hired, met) with its date. (outlook:9f2c1a4b7e30)
   - History:
     - 2026-08-06 — the user sent v9; she replied ~1.5h later with 7 clause
       changes. (outlook:7c8e2d10a4f5, outlook:bf2cd2898fb3)

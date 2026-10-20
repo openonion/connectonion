@@ -1464,6 +1464,31 @@ def _investigated(root, record, days_ago):
     return day
 
 
+@pytest.mark.parametrize("investigated", [False, True])
+def test_first_contact_is_only_supplied_for_a_first_investigation(tmp_path, monkeypatch, investigated):
+    root = tmp_path / "rem"
+    prepare(root)
+    set_config(root, ["schedule.timezone", "UTC"])
+    record = "people/avery.md"
+    inv.Notebook(root).stub_person(record, "Avery Lin", ["avery@example.com"], email="avery@example.com")
+    if investigated:
+        _investigated(root, record, 3)
+    mail = {"role": "other", "source": "gmail:avery-new", "timestamp": "2026-10-19T01:00:00Z",
+            "speaker": "Avery Lin <avery@example.com>", "subject": "Pilot", "text": "The scope looks right."}
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([mail], ["gmail: 1 body read"]))
+    received = []
+
+    def runner(notebook, items, config, stage):
+        received.extend(items)
+        return {"changed": [], "usage": None}
+
+    inv.investigate(root, record, "Avery Lin", ["avery@example.com"], days=4,
+                    clients={}, subscriptions={}, runner=runner)
+    rows = next(item["facts"] for item in received if item.get("role") == "facts")
+    assert any(row["field"] == "First contact" for row in rows) == (not investigated)
+    assert next(row for row in rows if row["field"] == "Last contact")["source"] == mail["source"]
+
+
 def test_a_since_window_that_gathered_nothing_calls_no_model_and_says_nothing_new(tmp_path, monkeypatch):
     """1.9.0a3: Tamara's window since her last investigation gathered 0 items,
     0 mails and 0 sessions, and still made a 92k-token turn that deleted one line."""

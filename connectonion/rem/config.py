@@ -74,10 +74,21 @@ def default_config() -> dict:
             "limits": {"runner_calls_per_day": 50, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Pages at once for init's first run and investigate CATEGORY;
+                       # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
+                       # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
+                       # failures and no 429s; a model round slowed only 430s -> 530s.
+                       # 48 (2026-10-09) slowed each turn 2.5x for no more pages than 16.
+                       "workers": 16,
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
                        "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # Deepening's share of the Codex week, separate from investigation's
+                       # 35; the owner agreed 30% on #2533.
+                       "depth_quota_points": 30,
+                       # Pages one scheduled slot deepens; a round is about 25 minutes.
+                       "depth_pages_per_slot": 2,
                        # A page whose evidence is more than one turn can hold is read in
                        # rounds, each part whole, then one synthesis turn (#2314).
                        "investigation_rounds": 8}}
@@ -114,8 +125,10 @@ def validate(config: dict) -> dict:
         raise RemError("Invalid limit keys")
     if any(type(value) is not int or value < 1 for value in limits.values()):
         raise RemError("Limits must be positive integers")
-    if limits["quota_floor_percent"] > 100 or limits["investigation_quota_points"] > 100:
-        raise RemError("quota_floor_percent and investigation_quota_points are percents: 1 to 100")
+    if limits["workers"] > 32:
+        raise RemError("workers must be 1 to 32")
+    if any(limits[key] > 100 for key in ("quota_floor_percent", "investigation_quota_points", "depth_quota_points")):
+        raise RemError("quota_floor_percent, investigation_quota_points and depth_quota_points are percents: 1 to 100")
     return config
 
 

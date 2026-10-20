@@ -19,12 +19,8 @@ description: Rules for investigating someone other than the user — composed af
   never person/team names). Match returned `Author:` logins to the person
   (jdoe2001 for Jane Doe); state the match and cite the `github:` ids.
   Your own `gh` URLs are not supplied; review removes them.
-- An `Insight` connects evidence to a decision: an obligation still owed, a
-  changed role or relationship, a repeated response pattern. Mark inference.
-  Stop when the threads support the finding; more bullets are not better.
-  When a thread closes,
-  the `Now` sentence names the source-backed reason for closure before saying
-  no follow-up is proposed.
+- **Read the originals whole before writing**, oldest thread too: the page
+  quotes them, and a quote can only come from a message you read.
 - **A page titled by an address is renamed** once the material names the
   person (signature, or the user's greeting): `# mei.l1990@outlook.com` →
   `# 李梅`, the address kept in `Also known as:`.
@@ -34,9 +30,9 @@ description: Rules for investigating someone other than the user — composed af
   (language, tone, length, how they open, what they ask), with one short
   quote; **`Cadence`** from the dates (`about weekly, July–September`). Each is
   `Unknown` only with no such message, or a single one.
-- `First contact` needs a cited exchange that begins this relationship; the
-  earliest retained message is only the earliest observed. Otherwise
-  `Unknown`, with an earlier event it mentions named in `Uncertainties`.
+- `First contact` is the earliest dated exchange found in any source
+  (search the archive by their address and name before writing it), with its
+  qualifier; a message naming an earlier start (hired, met, introduced) wins.
 - A calendar booking's displayed time zone belongs to the event display. Do
   not assign it to the organiser or guest unless the source explicitly labels
   that person's own time zone.

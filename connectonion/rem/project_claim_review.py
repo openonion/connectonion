@@ -1,6 +1,7 @@
 """Read a page's cited originals before accepting its claims."""
 
 import json
+import re
 from pathlib import Path
 
 from .files import read_json
@@ -89,6 +90,14 @@ PEOPLE = (
     "The packet holds only what the page cites: its earliest and latest dates are not the relationship's "
     "first and last contact. Code computes First contact and Last contact from the whole archive "
     "(runner_facts); judge such a claim against those, not against the packet. ")
+# A first-run handoff page (2026-10-20 trial) lost Status, People, Last activity, a
+# Pattern Insight and both open threads to findings that the session inputs are only
+# requests: true of a feature, wrong for who works on the project and what is asked.
+PROJECTS = (
+    "On a project page every session input is the user's own message in this project's folders: it supports "
+    "'the user' in People and dates the user's activity (Status, Last activity), though not a result. "
+    "A Pattern or Changed bullet is supported when each cited message shows its part. A request no later "
+    "supplied input answers is an open thread; its past date alone does not close it. ")
 BOUND = 250_000
 
 
@@ -109,8 +118,13 @@ def fit(material: dict, bound: int) -> dict:
                                     if len(s["context"]["excerpt"]) > each else s for s in sources]}
 
 
+def _claim_text(text: str) -> str:
+    """Compare carried prose without citation markers or whitespace."""
+    return re.sub(r"\[W?\d+\]|\s+", "", text)
+
+
 def review(notebook, candidate: str, config: dict, workspace: Path, run,
-           *, record: str | None = None, items=()) -> tuple[dict, dict]:
+           *, record: str | None = None, items=(), carried: str = "") -> tuple[dict, dict]:
     """One read-only model turn; an uncertain verdict keeps the prior page."""
     material, missing = packet(notebook, candidate, record, items)
     # One citation without a readable original (a carried page, a URL) left
@@ -141,7 +155,7 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         "so do not demand prose citations for those rows. The runner-owned Investigation: status "
         "line is also structurally checked; do not audit it as a prose claim. Audit other claims outside Paths. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
-        + (PEOPLE if kind in ("people", "orgs") else "") +
+        + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "") +
         "Return only JSON with verdict PASS, FAIL or INSUFFICIENT and findings containing claim (the failing "
         "sentence copied exactly from the candidate, without its citation markers), issue, evidence and "
         "required_correction. No markdown fences.\n\n"
@@ -157,11 +171,21 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
     else:
         report["verdict"] = verdict
         # The audit must not buy repairs or erase Vern Chan's map address (2026-10-16 trial).
-        findings = [f for f in report["findings"] if not uncited_field(f.get("claim", ""))]
-        if findings != report["findings"]:
-            report["findings"] = findings
-            if verdict == "fail" and not findings:
-                report["verdict"] = "pass"
+        findings, carried_findings = [], []
+        carried = _claim_text(carried)
+        for finding in report["findings"]:
+            claim = finding.get("claim", "")
+            if uncited_field(claim):
+                continue
+            claim = _claim_text(claim)
+            if claim and claim in carried:
+                carried_findings.append(finding)
+            else:
+                findings.append(finding)
+        report["findings"] = findings
+        report["carried_findings"] = carried_findings
+        if verdict == "fail" and not findings:
+            report["verdict"] = "pass"
     report["sources_supplied"] = len(material["sources"])
     report["missing_citations"] = missing
     report["scope"] = "Cited originals only; not all Project inputs or live deployment"

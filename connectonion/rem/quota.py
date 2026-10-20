@@ -15,6 +15,7 @@ from pathlib import Path
 # Runs whose points count against the investigation budget. Maintenance is the
 # incremental daily pass and is bounded by the call cap instead.
 INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write")
+DEPTH_PHASES = ("enrich", "muse")
 
 
 def _codex_auth() -> Path:
@@ -60,23 +61,20 @@ def read(config: dict, request=None) -> dict:
         return {"unknown": f"Codex did not report its quota ({type(error).__name__}: {error})"}
 
 
-# What one point is taken to cost when the meter cannot see a run (#1990):
-# tokens the model read fresh or wrote. Cached input is left out; Codex
-# charges it at a small fraction. On the 1.9.0a7 acceptance notebook 3.4M
-# input tokens, mostly cached, left the whole-percent week at 29% before and
-# after; a million fresh tokens a point keeps that pass under one point, as
-# the meter measured it.
-TOKENS_PER_POINT = 1_000_000
+# Seven Codex pro batches (gpt-6-luna, 2026-10-08..11) measured 11.6M–13.6M
+# fresh tokens per point at standard speed. Fast bills twice as much;
+# fresh tokens are input minus cached input, plus output.
+TOKENS_PER_POINT = {"standard": 12_000_000, "fast": 6_000_000}
 
 
-def _token_points(usage) -> float:
+def _token_points(usage, speed) -> float:
     usage = usage if isinstance(usage, dict) else {}
 
     def number(key):
         value = usage.get(key)
         return value if isinstance(value, (int, float)) else 0
     fresh = max(0, number("input_tokens") - number("cached_input_tokens")) + number("output_tokens")
-    return fresh / TOKENS_PER_POINT
+    return fresh / TOKENS_PER_POINT[speed]
 
 
 def run_points(run: dict) -> float:
@@ -87,31 +85,61 @@ def run_points(run: dict) -> float:
     never moved (#1990). A reading that moved is measured and wins. A reset
     mid-run reads lower after than before; that run counts its tokens, never a refund.
     """
-    quota = run.get("quota") or {}
-    before, after = quota.get("before") or {}, quota.get("after") or {}
-    if "used_percent" in before and "used_percent" in after and after["used_percent"] > before["used_percent"]:
-        return after["used_percent"] - before["used_percent"]
-    return _token_points(run.get("usage"))
+    return group_points([run])
 
 
-def points_spent(logs: list[dict], now: dict) -> float:
-    """Points this window's investigation runs cost, summed per run, to one decimal.
+def group_points(runs: list[dict]) -> float:
+    """Overlapping runs see the same spend: count their meter movement only once.
 
-    Summed per run, not "now minus the first reading", because the owner's own
-    coding moves the same meter between runs.
+    Flat or missing readings, or a weekly reset, leave tokens as the measure.
+    Reset timestamps jitter, so readings within an hour belong to one week.
+    """
+    quotas = [run.get("quota") or {} for run in runs]
+    before = [quota["before"] for quota in quotas if "used_percent" in (quota.get("before") or {})]
+    after = [quota["after"] for quota in quotas if "used_percent" in (quota.get("after") or {})]
+    resets = [reading.get("resets_at") for reading in before + after]
+    if before and after and None not in resets and max(resets) - min(resets) <= 3600:
+        moved = max(reading["used_percent"] for reading in after) - min(reading["used_percent"] for reading in before)
+        if moved > 0:
+            return moved
+    return sum(_token_points(run.get("usage"), run.get("speed") or "standard") for run in runs)
+
+
+def _groups(runs: list[dict]):
+    """Join overlapping intervals so parallel investigations cannot multiply spend."""
+    group, end = [], None
+    for run in sorted(runs, key=lambda run: datetime.fromisoformat(run["started_at"])):
+        start = datetime.fromisoformat(run["started_at"])
+        finish = datetime.fromisoformat(run.get("finished_at") or run["started_at"])
+        if group and start > end:
+            yield group
+            group = []
+        end = max(end, finish) if group else finish
+        group.append(run)
+    if group:
+        yield group
+
+
+def points_spent(logs: list[dict], now: dict, phases=INVESTIGATION_PHASES) -> float:
+    """Points this window's investigation runs cost, grouped by overlap, to one decimal.
+
+    Gaps between groups do not count: the owner's own coding moves the same meter.
     """
     if "unknown" in now or "resets_at" not in now:
         return 0
     window_start = now["resets_at"] - now["window_minutes"] * 60
-    spent = 0.0
-    for run in logs:
-        if run.get("phase") not in INVESTIGATION_PHASES:
-            continue
-        if datetime.fromisoformat(run["started_at"]).timestamp() < window_start:
-            continue
-        spent += run_points(run)
-    spent = round(spent, 1)
+    runs = [run for run in logs if run.get("phase") in phases
+            and datetime.fromisoformat(run["started_at"]).timestamp() >= window_start]
+    spent = round(sum(group_points(group) for group in _groups(runs)), 1)
     return int(spent) if spent == int(spent) else spent
+
+
+def depth_points(logs: list[dict], now: dict) -> float:
+    """Deepening keeps its own weekly bound even without a readable meter."""
+    if "resets_at" not in now:
+        from . import service
+        now = {"resets_at": service.now().timestamp(), "window_minutes": 7 * 24 * 60}
+    return points_spent(logs, now, phases=DEPTH_PHASES)
 
 
 def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:
@@ -121,8 +149,9 @@ def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:
     whole acceptance pass (#1990), so a `--budget 10` never stopped anything.
     """
     moved = now["used_percent"] - start["used_percent"] if "used_percent" in now and "used_percent" in start else 0
-    counted = sum(run_points(run) for run in logs if run.get("phase") in INVESTIGATION_PHASES
-                  and datetime.fromisoformat(run["started_at"]) >= datetime.fromisoformat(began))
+    runs = [run for run in logs if run.get("phase") in INVESTIGATION_PHASES
+            and datetime.fromisoformat(run["started_at"]) >= datetime.fromisoformat(began)]
+    counted = sum(group_points(group) for group in _groups(runs))
     spent = round(max(moved, counted), 1)
     return int(spent) if spent == int(spent) else spent
 

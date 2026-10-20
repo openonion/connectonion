@@ -36,8 +36,7 @@ def test_a_page_that_left_the_phones_off_is_reported():
                                   check_pages.material_items(BENCH / "fixtures" / "person-phones" / "material.md"),
                                   page)
     fields = {r["field"] for r in lost}
-    assert fields >= {"Phone", "Links", "Last contact"}
-    assert "First contact" not in fields
+    assert fields >= {"Phone", "Links", "First contact", "Last contact"}
 
 
 def test_generic_or_unlabelled_insight_is_refused_and_a_labelled_one_passes():
