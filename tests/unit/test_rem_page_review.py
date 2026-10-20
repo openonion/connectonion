@@ -1747,24 +1747,49 @@ def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed)
 def test_owner_names_become_the_user_outside_quotes_code_and_sources():
     """2026-10-21: a new Changed bullet named the owner by first name."""
     from connectonion.rem.page_review import owner_name_to_user
-    page = ('# Mara Ostrowski\n\nAvery Lin handed Mara the deck. Avery\'s reply arrived.\n'
-            'On October 14 Avery handed it over; avery and Averyson stayed.\n'
-            '- Changed: Avery Lin\'s deck reached Mara.\n'
-            '**Avery Lin** agreed; Avery’s deck arrived.\n'
-            'Mara quoted “Avery sent it” and "Avery Lin agreed" and `Avery`.\n'
-            "Mara quoted 'Avery agreed' and ‘Avery Lin agreed’.\n"
-            '``Avery Lin `Avery` `` stays code.\n'
-            '```python\nAvery Lin\n```\n\n## Sources\n- [1] https://example.com/Avery\n')
-    expected = (page.replace('Avery Lin handed', 'The user handed')
-                .replace("Avery's reply", "The user's reply")
-                .replace('October 14 Avery handed', 'October 14 the user handed')
-                .replace("Changed: Avery Lin's deck", "Changed: The user's deck")
-                .replace('**Avery Lin** agreed; Avery’s deck', "**The user** agreed; the user's deck"))
-    assert owner_name_to_user(page, ['Avery Lin', 'Avery']) == expected
-    assert owner_name_to_user(expected, ['Avery Lin', 'Avery']) == expected
+    page = ('# Avery Lin\n\nMara Ostrowski handed Avery the deck. Mara\'s reply arrived.\n'
+            'On October 14 Mara handed it over; mara and Marason stayed.\n'
+            '- Changed: Mara Ostrowski\'s deck reached Avery.\n'
+            '**Mara Ostrowski** agreed; Mara’s deck arrived.\n'
+            'Avery quoted “Mara sent it” and "Mara Ostrowski agreed" and `Mara`.\n'
+            "Avery quoted 'Mara agreed' and ‘Mara Ostrowski agreed’.\n"
+            '``Mara Ostrowski `Mara` `` stays code.\n'
+            '```python\nMara Ostrowski\n```\n\n## Sources\n- [1] https://example.com/Mara\n')
+    expected = (page.replace('Mara Ostrowski handed', 'The user handed')
+                .replace("Mara's reply", "The user's reply")
+                .replace('October 14 Mara handed', 'October 14 the user handed')
+                .replace("Changed: Mara Ostrowski's deck", "Changed: The user's deck")
+                .replace('**Mara Ostrowski** agreed; Mara’s deck', "**The user** agreed; the user's deck"))
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
+    assert owner_name_to_user(expected, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
     assert owner_name_to_user(page, []) == page
-    assert owner_name_to_user(page.replace('## Sources\n', '## Sources \n'), ['Avery Lin', 'Avery']) == \
+    assert owner_name_to_user(page.replace('## Sources\n', '## Sources \n'), ['Mara Ostrowski', 'Mara'],
+                              tied=lambda line: True) == \
         expected.replace('## Sources\n', '## Sources \n')
+
+
+@pytest.mark.parametrize('tied', [None, lambda line: '[1]' in line])
+def test_owner_first_name_needs_a_tied_line_but_full_name_does_not(tied):
+    """2026-10-21: Mara Chen has no page; her first name must survive."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Avery Lin\n\nMara asked [1].\nMara asked [2].\nMara asked without a citation.\n'
+            'Mara Ostrowski agreed; Mara Ostrowski’s deck arrived.\n'
+            '“Mara Ostrowski agreed” and `Mara Ostrowski` stay.\n\n'
+            '## Sources\n- [1] gmail:owner\n- [2] gmail:correspondent\n')
+    expected = page.replace('Mara Ostrowski agreed;', 'The user agreed;').replace(
+        'Mara Ostrowski’s deck', "the user's deck")
+    if tied:
+        expected = expected.replace('Mara asked [1]', 'The user asked [1]')
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=tied) == expected
+
+
+@pytest.mark.parametrize('record', ['people/avery.md', 'projects/lantern.md', 'orgs/lantern.md'])
+def test_earlier_insights_are_never_a_citable_original(record):
+    """2026-10-21: the muse reminder must not corroborate its own page."""
+    candidate = '# Avery Lin\n\nAn existing finding. [1]\n\n## Sources\n- [1] investigation:earlier-insights\n'
+    items = [{'role': 'earlier-insights', 'source': 'investigation:earlier-insights', 'text': 'A finding'}]
+    errors = validate(record, candidate, '# Avery Lin\n', items)
+    assert 'Earlier insights are a reading guide, not a citable original: 1' in errors
 
 
 def test_a_qualified_first_contact_is_put_back_over_unknown():

@@ -825,55 +825,92 @@ def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
 @pytest.mark.parametrize('collision', [False, True])
-def test_deepening_replaces_only_unambiguous_owner_names(notebook, tmp_path, monkeypatch, stage, collision):
-    """2026-10-21: a deepened person page named its owner in a new Changed bullet."""
+@pytest.mark.parametrize('sender,excerpt,tied', [
+    ('MARA@EXAMPLE.COM', 'Mara asked', True),
+    ('mara.chen@example.net', 'Mara asked', False),
+    ('mara.chen@example.net', 'Mara Ostrowski asked', True),
+    ('', 'Mara Ostrowski asked', True),
+    ('', 'Mara asked', False),
+])
+def test_deepening_replaces_owner_first_name_only_with_cited_ties(
+        notebook, tmp_path, monkeypatch, stage, collision, sender, excerpt, tied):
+    """2026-10-21: a shared first name needs its cited sender or full name, never a page-title guess."""
     from connectonion.rem.files import state_path, write_json
-    from connectonion.rem import project_claim_review
-    owner, record = 'people/avery.md', 'people/mara.md'
-    notebook.stub_person(owner, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
-    notebook.stub_person(record, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    from connectonion.rem import project_claim_review, reader_model
+    owner, record = 'people/mara.md', 'people/avery.md'
+    notebook.stub_person(owner, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
     if collision:
-        notebook.stub_person('people/another-avery.md', 'Avery', ['another@example.com'], email='another@example.com')
-    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner}})
+        notebook.stub_person('people/mara-chen.md', 'Mara Chen', ['mara.chen@example.net'], email='mara.chen@example.net')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner, 'addresses': ['MARA@EXAMPLE.COM']}})
     original = notebook.read(record)
-    short = '- Now: Mara Ostrowski reviewed the Lantern interface. [1]'
-    long = '- Now: Mara Ostrowski reviewed the smaller Lantern interface. [1]'
-    line = "- Changed: On October 14 Avery handed Mara Avery Lin's deck [1]."
+    short = '- Now: Avery Lin reviewed the Lantern interface. [1]'
+    long = '- Now: Avery Lin reviewed the smaller Lantern interface. [1]'
+    line = "- Changed: Mara asked Avery Lin for Mara Ostrowski's deck [1]."
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(original.replace('## Insight\n- Unknown — not investigated yet',
                                           f'## Insight\n{short}\n{long}\n{line}')
                          .replace('- (none yet)', '- [1] gmail:mara-deck')
                          .replace('- Unknown — not investigated yet', '- Unknown'))
     monkeypatch.setattr(project_claim_review, 'review', lambda *a, **kw: ({'verdict': 'pass', 'findings': []}, {}))
+    private_reads = []
+    def context(root, records, *, private=False):
+        assert root == notebook.root
+        if private:
+            private_reads.append(records[0]['text'])
+        return {'gmail:mara-deck': {'sender': sender, 'excerpt': excerpt}}
+    monkeypatch.setattr(reader_model, 'cited_context', context)
     runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:mara-deck'}],
                                 tmp_path, {}, workdir=tmp_path, config={}, stage=stage)
     page = notebook.read(record)
-    first = 'Avery' if collision else 'the user'
-    assert f"- Changed: On October 14 {first} handed Mara the user's deck [1]." in page
+    first = 'The user' if tied else 'Mara'
+    assert f"- Changed: {first} asked Avery Lin for the user's deck [1]." in page
     assert long in page and short not in page
+    assert private_reads and all(line in text for text in private_reads)
 
 
-def test_a_restored_carried_line_also_replaces_the_owner_name(notebook, tmp_path):
+def test_owner_ties_use_only_each_lines_numbered_originals(notebook, monkeypatch):
+    """2026-10-21: another line's owner citation and the Sources caption cannot lend a tie."""
+    from connectonion.rem import reader_model
+    lines = ['Mara asked [7].', 'Mara asked [2].', 'Mara asked [3].', 'Mara asked [2][7].',
+             'Mara asked without citations.', 'Mara asked [4].', 'Mara asked [1].']
+    text = ('# Avery Lin\n\n' + '\n'.join(lines) + '\n\n## Sources\n'
+            '- [7] gmail:owner\n- [2] gmail:correspondent — Mara Ostrowski\n'
+            '- [3] gmail:mention\n- [4] gmail:unavailable\n')
+    monkeypatch.setattr(reader_model, 'cited_context', lambda *a, **kw: {
+        'gmail:owner': {'sender': 'mara@example.com', 'excerpt': 'Mara asked'},
+        'gmail:correspondent': {'sender': 'mara.chen@example.net', 'excerpt': 'Mara asked'},
+        'gmail:mention': {'excerpt': 'Mara Ostrowski asked'},
+    })
+    tied = runner._owner_tied_lines(notebook, text, {'addresses': ['MARA@EXAMPLE.COM']},
+                                    ['Mara Ostrowski', 'Mara'])
+    assert tied.intersection(lines) == {lines[0], lines[2], lines[3]}
+
+
+def test_a_restored_carried_line_also_replaces_the_owner_name(notebook, tmp_path, monkeypatch):
     """2026-10-21: last-resort evidence restoration must not reintroduce the owner's name."""
     from connectonion.rem.files import state_path, write_json
-    owner, record = 'people/avery.md', 'people/mara.md'
-    notebook.stub_person(owner, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
-    notebook.stub_person(record, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
-    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner}})
+    from connectonion.rem import reader_model
+    owner, record = 'people/mara.md', 'people/avery.md'
+    notebook.stub_person(owner, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner, 'addresses': ['mara@example.com']}})
+    monkeypatch.setattr(reader_model, 'cited_context', lambda *a, **kw: {
+        'gmail:mara-deck': {'sender': 'mara@example.com', 'excerpt': 'Mara asked'}})
     original = (notebook.read(record).replace('## Insight\n- Unknown — not investigated yet',
-                                             '## Insight\n- Changed: Avery handed Mara the deck. [1]')
+                                             '## Insight\n- Changed: Mara handed Avery Lin the deck. [1]')
                 .replace('- (none yet)', '- [1] gmail:mara-deck')
                 .replace('- Unknown — not investigated yet', '- Unknown'))
     notebook.write(record, original)
     candidate = tmp_path / 'candidate.md'
-    candidate.write_text(original.replace('- Changed: Avery handed Mara the deck. [1]',
-                                          '- Now: Mara reviewed the Lantern interface. [2]')
+    candidate.write_text(original.replace('- Changed: Mara handed Avery Lin the deck. [1]',
+                                          '- Now: Avery Lin reviewed the Lantern interface. [2]')
                          .replace('- [1] gmail:mara-deck', '- [2] github:acme/lantern#12'))
     runner._promote_candidate(notebook, record, candidate, original,
                               [{'source': 'gmail:mara-deck'}, {'source': 'github:acme/lantern#12'}],
                               tmp_path, None, carried=original, last_resort=True)
     page = notebook.read(record)
-    assert '- Changed: The user handed Mara the deck.' in page
+    assert '- Changed: The user handed Avery Lin the deck.' in page
     assert 'gmail:mara-deck' in page and 'github:acme/lantern#12' in page
 
 

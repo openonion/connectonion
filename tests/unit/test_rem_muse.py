@@ -139,6 +139,27 @@ def test_muse_preserves_quotes_when_markdown_link_markup_changes(notebook):
     assert notebook.read(RECORD) == PAGE
 
 
+@pytest.mark.parametrize('insights', ['', '## Insight\n\n', '## Insight\n- Unknown\n',
+                                      '## Insight\n- Unknown — not investigated yet\n',
+                                      '## Insight\n- Changed: Avery Lin ended the pilot. [1]\n'
+                                      '- At stake: The renewal is still owed. [2]\n'])
+def test_muse_supplies_existing_insight_bullets_as_a_separate_reading_guide(notebook, insights):
+    """2026-10-21: second rounds compare new findings with the page's current insights."""
+    notebook.write(RECORD, PAGE.replace('## Sources', insights + '\n## Sources'))
+    items = []
+    feature.muse(notebook.root, RECORD, runner=lambda book, supplied, config, **kw: items.extend(supplied) or {})
+    earlier = [item for item in items if item['role'] == 'earlier-insights']
+    if 'Changed:' not in insights:
+        assert earlier == []
+        return
+    assert len(earlier) == 1
+    assert earlier[0]['source'] == 'investigation:earlier-insights'
+    assert earlier[0]['text'] == (
+        'These Insight bullets are already on the page. Do not reword them. A new insight must contradict, '
+        'resolve or extend one of them with a fact it lacks, or be about something none of them covers; '
+        'say which in your reply.\n\n' + insights.partition('\n')[2].strip())
+
+
 def test_enrich_keeps_evidence_when_runner_refuses(notebook, monkeypatch):
     monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
     directories = []

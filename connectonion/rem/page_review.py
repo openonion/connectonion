@@ -741,7 +741,7 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
-                   "investigation:original-evidence", "investigation:timeline",
+                   "investigation:original-evidence", "investigation:timeline", "investigation:earlier-insights",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
@@ -1194,6 +1194,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Project input scope is not a citable original: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:timeline'):
             errors.append(f'Project timeline is a reading guide, not a citable original: {key}')
+        if value.strip().startswith('investigation:earlier-insights'):
+            errors.append(f'Earlier insights are a reading guide, not a citable original: {key}')
         if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
             errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
@@ -1900,11 +1902,11 @@ def _owner_pronouns(sentence: str, skip: str = "") -> tuple[str, int]:
     return "".join(out), changed
 
 
-def owner_name_to_user(text: str, names: list[str]) -> str:
-    """2026-10-21: deepening named the owner instead of saying "the user"."""
+def owner_name_to_user(text: str, names: list[str], tied=None) -> str:
+    """2026-10-21: only a line's cited originals can tie a first name to the owner."""
     if not names:
         return text
-    name = re.compile(r"\b(?:" + '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    name = re.compile(r"\b(?P<name>" + '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
                       + r")\b(['’]s)?")
     head, *sources = re.split(r'(?m)(^## Sources[ \t]*\n)', text, maxsplit=1)
     protected = re.compile(r'(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)|“[^”]*”|"[^"\n]*"|‘[^’]*’'
@@ -1915,10 +1917,13 @@ def owner_name_to_user(text: str, names: list[str]) -> str:
             lines.append(line)
             continue
         parts, at = [], 0
+        tied_line = tied(line) if tied else False
         def replace(match):
+            if ' ' not in match['name'] and not tied_line:
+                return match[0]
             prefix = line[:at + match.start()]
             initial = re.search(r'(^|[.!?]\s+|^[-*] (?:[^:\n]+:\s*)?)[*_]*$', prefix)
-            return ('The user' if initial else 'the user') + ("'s" if match[1] else '')
+            return ('The user' if initial else 'the user') + ("'s" if match[2] else '')
         for span in protected.finditer(line):
             parts.extend([name.sub(replace, line[at:span.start()]), span[0]])
             at = span.end()
