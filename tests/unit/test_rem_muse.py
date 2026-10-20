@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
-from connectonion.rem import muse as feature, page_review, project_claim_review, runner
+from connectonion.rem import insight_critic, muse as feature, page_review, project_claim_review, runner
 from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook, RemError, state_path, write_json
 from connectonion.rem.investigate import GITHUB_SOURCE
@@ -25,6 +25,156 @@ def notebook(tmp_path):
     book = Notebook(tmp_path)
     book.write(RECORD, PAGE)
     return book
+
+
+def test_new_insight_bullets_ignore_changed_citations_and_whitespace():
+    before = '# Avery Lin\n\n## Insight\n- Pattern: Avery reads before replying. [1]\n'
+    carried = '- Pattern: Avery  reads before replying. [W2][3]'
+    added = '- Changed: Avery now tests Lantern before sending feedback. [2][3]'
+    assert insight_critic.new_bullets(before, f'## Insight\n{carried}\n{added}\n') == [added]
+
+
+def test_new_insights_include_duplicate_sections_and_remove_only_exact_bullets(notebook, tmp_path):
+    weak = '- Now: Avery received the Lantern deck. [1]'
+    good = '- Changed: Avery described ' + weak
+    other = '- Pattern: Avery reviews Lantern each quarter. [1][2]'
+    candidate = f'## Insight\n{good}\n{other}\n\n## Insight\n{weak}\n'
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+    assert insight_critic.new_bullets('', candidate) == [good, other, weak]
+    decisions = [{'bullet': bullet, 'verdict': verdict, 'reason': 'Invented review.', 'open_thread': ''}
+                 for bullet, verdict in [(good, 'good'), (other, 'good'), (weak, 'weak')]]
+    insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+                         lambda *args: {'result': json.dumps({'bullets': decisions})})
+    assert path.read_text() == candidate.replace(f'## Insight\n{weak}\n', '## Insight\n')
+
+
+def test_critic_removal_never_edits_a_fenced_insight_example(notebook, tmp_path):
+    weak = '- Now: Avery received the Lantern deck. [1]'
+    example = f'```markdown\n## Insight\n{weak}\n```\n'
+    path = tmp_path / 'candidate.md'
+    path.write_text(f'# Avery Lin\n\n## Insight\n{example}\n{weak}\n')
+    insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [{'bullet': weak, 'verdict': 'weak',
+                                 'reason': 'One message.', 'open_thread': ''}]})})
+    assert path.read_text() == f'# Avery Lin\n\n## Insight\n{example}\n'
+
+
+def test_insight_packet_never_accepts_a_cited_writer_reply_or_reading_guide(notebook):
+    bullets = ['- Now: Avery received the Lantern deck. [1][2]']
+    candidate = '\n'.join(bullets) + '\n\n## Sources\n- [1] investigation:prior-runs\n- [2] gmail:reply\n'
+    items = [{'role': 'prior-runs', 'source': 'investigation:prior-runs', 'text': 'WRITER_REASONING_MARKER'},
+             {'role': 'turn-reply', 'source': 'gmail:reply', 'text': 'WRITER_REASONING_MARKER'}]
+    packet = insight_critic.critic_packet(notebook, candidate, RECORD, items, bullets)
+    assert packet['sources'] == []
+    assert 'WRITER_REASONING_MARKER' not in json.dumps(packet)
+
+
+def test_omitted_critic_verdicts_reject_unrated_proposals(notebook, tmp_path):
+    bullet = '- Now: Avery received the Lantern deck. [1]'
+    path = tmp_path / 'candidate.md'
+    path.write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
+    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+        lambda *args: {'result': '{"bullets": []}'})
+    assert bullet not in path.read_text() and report['bullets'][0]['verdict'] == 'weak'
+
+
+def test_duplicate_critic_decisions_fail_without_editing_the_candidate(notebook, tmp_path):
+    bullet = '- Now: Avery received the Lantern deck. [1]'
+    path = tmp_path / 'candidate.md'
+    candidate = f'# Avery Lin\n\n## Insight\n{bullet}\n'
+    path.write_text(candidate)
+    decisions = [{'bullet': bullet, 'verdict': verdict, 'reason': 'Invented review.', 'open_thread': ''}
+                 for verdict in ('good', 'weak')]
+    with pytest.raises(runner.RunFailed, match='duplicate decisions') as error:
+        insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+            lambda *args: {'result': json.dumps({'bullets': decisions}), 'usage': {'input_tokens': 3}})
+    assert error.value.usage == {'input_tokens': 3} and path.read_text() == candidate
+
+
+@pytest.mark.parametrize('reply', ['[]', 'null', '"Avery Lin"', '{invalid', '{"bullets": "good"}'])
+def test_invalid_critic_json_preserves_usage_and_candidate(notebook, tmp_path, reply):
+    path = tmp_path / 'candidate.md'
+    candidate = '# Avery Lin\n\n## Insight\n- Now: Avery received the Lantern deck. [1]\n'
+    path.write_text(candidate)
+    with pytest.raises(runner.RunFailed, match='Insight critic returned') as error:
+        insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+            lambda *args: {'result': reply, 'usage': {'input_tokens': 3}})
+    assert error.value.usage == {'input_tokens': 3} and path.read_text() == candidate
+
+
+@pytest.mark.parametrize('open_section', ['', '## Open threads\nUnknown\n\n',
+                                          '## Open threads\n- An earlier obligation. [1]\n\n'])
+def test_insight_critic_edits_only_new_bullets_from_independent_originals(notebook, tmp_path, open_section):
+    """2026-10-21: only 6 of 18 proposals survived an independent source audit."""
+    existing = '- Pattern: Avery tests Lantern before replying. [1][2]'
+    before = PAGE.replace('## Sources', f'## Insight\n{existing}\n\n{open_section}## Sources')
+    notebook.write(RECORD, before)
+    bullets = ['- Changed: Avery moved from free testing to a paid pilot. [1][2]',
+               '- Now: Avery received the Lantern deck. [1]',
+               '- At stake: The user owes Avery a pilot price. [2]',
+               '- Changed: Avery promised to buy Lantern. [1][2]']
+    path = tmp_path / 'candidate.md'
+    path.write_text(before.replace(existing, existing + '\n' + '\n'.join(bullets))
+                    + '- [2] gmail:bbbbbbbbbbbb\n- [3] gmail:cccccccccccc\n')
+    originals = [{'source': 'gmail:aaaaaaaaaaaa', 'text': 'Avery Lin: I can test Lantern for free.'},
+                 {'source': 'gmail:bbbbbbbbbbbb', 'text': 'Avery Lin: Please send the paid pilot price.'},
+                 {'source': 'gmail:cccccccccccc', 'text': 'UNRELATED_ORIGINAL'},
+                 {'role': 'turn-reply', 'text': 'WRITER_REASONING_MARKER'}]
+    decisions = [{'bullet': bullet, 'verdict': verdict, 'reason': reason, 'open_thread': thread}
+                 for bullet, verdict, reason, thread in zip(
+                     bullets, ['good', 'weak', 'weak', 'wrong'],
+                     ['Connects the two terms.', 'One message.', 'An obligation.', 'No purchase promise.'],
+                     ['', '', 'The user owes Avery a pilot price. [2]', ''])]
+
+    def run(workspace, prompt, config, stage):
+        assert workspace == tmp_path and stage == 'insight-critic'
+        packet = json.loads(prompt[len(insight_critic.RUBRIC):])
+        assert packet['bullets'] == bullets and packet['existing_bullets'] == [existing]
+        assert packet['record'] == RECORD and packet['title'] == 'Avery Lin'
+        assert {row['context']['excerpt'] for row in packet['sources']} == {row['text'] for row in originals[:2]}
+        assert 'WRITER_REASONING_MARKER' not in prompt and 'UNRELATED_ORIGINAL' not in prompt
+        return {'result': json.dumps({'bullets': decisions}), 'usage': {'input_tokens': 31}}
+
+    report = insight_critic.judge(notebook, RECORD, before, path, originals, {}, tmp_path, run)
+    text = path.read_text()
+    assert existing in text and bullets[0] in text
+    assert all(bullet not in text for bullet in bullets[1:])
+    assert '## Open threads\n' in text and '- The user owes Avery a pilot price. [2]' in text
+    assert text.index('## Open threads') < text.index('## Sources')
+    assert '\nUnknown\n' not in text
+    assert ('- An earlier obligation. [1]' in text) == ('earlier obligation' in open_section)
+    assert report == {'bullets': decisions, 'unmatched': [], 'usage': {'input_tokens': 31}}
+    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == report
+    assert notebook.read(RECORD) == before
+
+
+def test_insight_critic_skips_model_when_there_are_no_new_bullets(notebook, tmp_path):
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE)
+    def no_call(*args):
+        pytest.fail('No proposed insights need a model call')
+    assert insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, no_call) == {
+        'bullets': [], 'usage': {}}
+
+
+def test_insight_critic_records_unmatched_bullet_and_leaves_it_in_place(notebook, tmp_path):
+    bullet = '- Now: Avery received the Lantern deck. [1]'
+    path = tmp_path / 'candidate.md'
+    path.write_text(PAGE.replace('## Sources', f'## Insight\n{bullet}\n\n## Sources'))
+    decision = {'bullet': bullet.replace('deck', 'draft'), 'verdict': 'weak', 'reason': 'One message.', 'open_thread': ''}
+    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path,
+        lambda *args: {'result': json.dumps({'bullets': [decision]})})
+    assert bullet in path.read_text() and decision['bullet'] in report['unmatched']
+
+
+@pytest.mark.parametrize('kept', [0, 1])
+def test_muse_counts_kept_insights_instead_of_writer_verdicts(notebook, kept):
+    rejected = [{'bullet': '- Now: Avery received the deck. [1]', 'verdict': 'weak', 'reason': 'One message.'}]
+    result = feature.muse(notebook.root, RECORD, runner=lambda *args, **kw: {
+        'insights_proposed': 2, 'insights_kept': kept, 'insights_rejected': rejected,
+        'turn_replies': ['Questions', *['verdict: insight'] * 5, 'Done']})
+    assert result['insights'] == kept and result['insights_rejected'] == rejected
 
 
 @pytest.mark.parametrize("stage", ["enrich", "muse"])

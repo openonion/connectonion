@@ -163,6 +163,7 @@ def deepen(root, record, *, stage=None) -> dict:
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
+           "insights_rejected": len(thought.get("insights_rejected", [])),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
     with _HISTORY_LOCK:

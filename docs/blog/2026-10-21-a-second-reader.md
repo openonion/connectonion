@@ -1,0 +1,9 @@
+# A second reader
+
+Two rounds of sharper rules in the writer's prompt did not move the share of good insights. Each time, an independent reader checked every new Insight bullet against the messages it cites, and each time a third were good. The rest were weak: a single message already said it, it reworded a bullet the page already had, it was about someone else, or it filed two unrelated facts under "At stake". Only one, in the earlier round, was wrong.
+
+The writer had all of these rules in front of it and broke them anyway. The independent reader, which never saw the writer's reasoning, caught every one. So that reader is now part of muse. Before a page is saved, each new Insight bullet goes to a fresh turn. That turn has the rubric, the bullets already on the page and the cited originals, and nothing else. Only bullets it rates good are kept. A weak one that names something the user still owes becomes an Open thread. The rest are dropped.
+
+Fewer insights is the expected result. A page that gains one true, non-obvious finding is better off than one that gains three summaries of a single email.
+
+Two cheaper fixes came with it. Near-duplicate lines now merge in every section, not only History, Key decisions and Insight. A second round had left the same status line, open thread and quote twice on one page. Muse's rules also say who is speaking: a broadcast mail is never an ask, a sentence the owner wrote is the owner's, and an AI-written draft to someone else is not evidence about this person.

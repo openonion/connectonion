@@ -1024,20 +1024,26 @@ def history_note(page: str) -> str:
 DATED = re.compile(r'^- \**(?P<date>(?P<year>\d{4})(?:-\d{2}){0,2})\**[ \t]*[:—–-][ \t]*(?P<text>.*)$')
 
 
-def _dedupe_history(lines: list[str], key=DATED) -> list[str]:
+def _dedupe_history(lines: list[str], key=DATED, minimum=0) -> list[str]:
     """2026-10-20: one date's near-duplicate decisions survived four deepening rounds.
 
     Keep the longer same-key line, with the shorter one's citations.
     2026-10-21: Insight repeats the same finding under one label after deepening.
     """
-    keys = {i: match[1].strip('* ') for i, line in enumerate(lines) if (match := key.match(line))}
+    visible = iter(prose('\n'.join(lines)).split('\n'))
+    keys = {}
+    for i, line in enumerate(lines):
+        masked = '\n'.join(next(visible) for _ in line.split('\n'))
+        if match := key.match(masked):
+            keys[i] = match[1].strip('* ')
     clean = {i: re.sub(r'\[W?\d+\](?!\()', '', line).strip()
              for i, line in enumerate(lines) if i in keys}
     kept, removed = {}, set()
     for i in sorted(clean, key=lambda i: len(clean[i]), reverse=True):
         # A line with a quote the longer one lacks stays: glued on, a quote reads as nonsense.
         same = next((j for j in kept if keys[j] == keys[i]
-                     and _contained(clean[i], clean[j]) >= 0.8
+                     and (clean[i] == clean[j] or len(clean[i]) >= minimum
+                          and _contained(clean[i], clean[j]) >= 0.8)
                      and quotes(lines[i]) <= quotes(kept[j])), None)
         if same is None:
             kept[i] = lines[i]
@@ -1050,26 +1056,50 @@ def _dedupe_history(lines: list[str], key=DATED) -> list[str]:
     return [kept.get(i, line) for i, line in enumerate(lines) if i not in removed]
 
 
+def _paragraph_rows(body: str) -> list[str]:
+    """2026-10-21: dedupe whole paragraphs without splicing their surviving halves."""
+    rows, continuing = [], False
+    for line, visible in zip(body.split('\n'), prose(body).split('\n')):
+        paragraph = bool(visible.strip()) and not re.match(r'^\s*(?:[-+*] |[#>`~])', visible)
+        if continuing and paragraph:
+            rows[-1] += '\n' + line
+        else:
+            rows.append(line)
+        continuing = paragraph
+    return rows
+
+
 def sort_history(text: str) -> str:
-    """History and Key decisions newest first; Insight duplicates merge by label.
+    """Sort dated history, then merge near-duplicate list lines and paragraphs by section.
 
     2026-10-20 trial: three of five first-run person pages put one line out of
     order although the Skill says newest first. Undated lines keep their place
     after the dated ones; distinct lines of one date keep the turn's order.
     Same-date duplicates merge citations, and blank lines cannot split the list.
+    2026-10-21: round two repeated Now, status, Open threads and a quote on one page.
     """
     for heading in ('History', 'Key decisions', 'Insight'):
-        span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+        span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
         if not span:
             continue
         key = re.compile(r'^- ([^:]+):') if heading == 'Insight' else DATED
-        lines = _dedupe_history(span[1].split('\n'), key)
+        lines = _dedupe_history(text[span.start(1):span.end(1)].split('\n'), key)
         if heading != 'Insight':
             dated = [line for line in lines if DATED.match(line)]
             ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
             lines = [next(ordered) if DATED.match(line) else line for line in lines]
         body = re.sub(r'(?m)(^- [^\n]+)\n(?:[ \t]*\n)+(?=- )', r'\1\n', '\n'.join(lines))
         text = text[:span.start(1)] + body + text[span.end(1):]
+    # 2026-10-21: a second round repeated Now, status, Open threads and a quote.
+    for span in reversed(list(re.finditer(r'(?ms)^## ([^\n]+)\n(.*?)(?=^## |^Investigation:|\Z)', prose(text)))):
+        if span[1].strip() in ('Sources', 'Paths', 'Facts', 'Contact', 'Domains'):
+            continue
+        # All prose shares one key; headings and fenced code are not prose.
+        key = re.compile(r'^()(?=[-+*] \S|[^\s#`>~+*-])')
+        rows = ['\n'.join(_dedupe_history(row.split('\n'), key, minimum=float('inf')))
+                for row in _paragraph_rows(text[span.start(2):span.end(2)])]
+        body = '\n'.join(_dedupe_history(rows, key, minimum=40))
+        text = text[:span.start(2)] + body + text[span.end(2):]
     return text
 
 
