@@ -1091,14 +1091,17 @@ def sort_history(text: str) -> str:
         body = re.sub(r'(?m)(^- [^\n]+)\n(?:[ \t]*\n)+(?=- )', r'\1\n', '\n'.join(lines))
         text = text[:span.start(1)] + body + text[span.end(1):]
     # 2026-10-21: a second round repeated Now, status, Open threads and a quote.
+    # Exact repeats only (citations aside): a near-match pass merged two weekly reports a
+    # week apart and a March invoice into an April one. The keyed pass above owns
+    # History, Key decisions and Insight.
     for span in reversed(list(re.finditer(r'(?ms)^## ([^\n]+)\n(.*?)(?=^## |^Investigation:|\Z)', prose(text)))):
-        if span[1].strip() in ('Sources', 'Paths', 'Facts', 'Contact', 'Domains'):
+        if span[1].strip() in ('Sources', 'Paths', 'Facts', 'Contact', 'Domains', 'History', 'Key decisions', 'Insight'):
             continue
         # All prose shares one key; headings and fenced code are not prose.
         key = re.compile(r'^()(?=[-+*] \S|[^\s#`>~+*-])')
         rows = ['\n'.join(_dedupe_history(row.split('\n'), key, minimum=float('inf')))
                 for row in _paragraph_rows(text[span.start(2):span.end(2)])]
-        body = '\n'.join(_dedupe_history(rows, key, minimum=40))
+        body = '\n'.join(_dedupe_history(rows, key, minimum=float('inf')))
         text = text[:span.start(2)] + body + text[span.end(2):]
     return text
 

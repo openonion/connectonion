@@ -23,7 +23,9 @@ def test_section_wide_duplicates_keep_longer_prose_and_all_citations(heading, pr
     rows = [short, long, short] if not reverse else [long, short, short]
     page = f'# Avery Lin\n\n## {heading}\n' + ('\n' if prefix else '\n\n').join(rows) + '\n'
     result = sort_history(page)
-    assert result.partition(f'## {heading}\n')[2].strip() == long + ' [1]'
+    # Exact repeats collapse; a longer near-match is a different line and stays (2026-10-21 review).
+    body = result.partition(f'## {heading}\n')[2]
+    assert body.count(short) == 1 and body.count(long) == 1
     assert sort_history(result) == result
 
 
@@ -42,10 +44,10 @@ def test_section_dedupe_keeps_short_similar_lines_but_collapses_exact_duplicates
     assert sort_history(page) == page.replace('- Send price. [1]', '- Send price. [1] [3]').replace('- Send price. [3]\n', '')
 
 
-def test_section_dedupe_groups_different_list_markers_together():
+def test_section_dedupe_merges_an_exact_repeated_list_line():
     from connectonion.rem.page_review import sort_history
     line = 'The user owes Avery Lin the detailed Lantern pilot price.'
-    page = f'# Avery Lin\n\n## Open threads\n- {line} [1]\n* {line} [2]\n'
+    page = f'# Avery Lin\n\n## Open threads\n- {line} [1]\n- {line} [2]\n'
     assert sort_history(page) == f'# Avery Lin\n\n## Open threads\n- {line} [1] [2]\n'
 
 
@@ -55,8 +57,8 @@ def test_section_dedupe_keeps_multiline_paragraphs_whole():
     second = 'Avery Lin reads the Lantern pilot outline carefully before starting.\nThen asks for the price before Friday. [2]'
     page = f'# Avery Lin\n\n## Who they are\n{first}\n\n{second}\n'
     result = sort_history(page)
-    assert second + ' [1]' in result and first not in result
-    assert result.count('Avery Lin reads') == 1 and sort_history(result) == result
+    # Near-matching paragraphs are different statements; only exact repeats merge (2026-10-21 review).
+    assert first in result and second in result and sort_history(result) == result
 
 
 def test_exact_repeated_prose_lines_always_collapse_even_inside_one_paragraph():
@@ -1978,3 +1980,31 @@ def test_restored_history_lines_are_folded_back_under_sixteen():
     after = "# Avery Lin\n\n## History\n" + "\n".join(new) + "\n\n## Sources\n" + sources
     restored = fold_history(restore_dropped(before, after))
     assert not history_errors(restored, after) and "“ok 3”" in restored
+
+
+def test_section_dedupe_keeps_entries_that_differ_only_by_date_or_month():
+    """2026-10-21 review: near-matches merged a week-apart report and a March invoice into April."""
+    from connectonion.rem.page_review import sort_history
+    page = ('# Lantern\n\n## History\n'
+            '- 2026-09-08 — Avery sent the weekly Lantern status report to the team. [1]\n'
+            '- 2026-09-01 — Avery sent the weekly Lantern status report to the team. [2]\n\n'
+            '## Open threads\n'
+            '- Mara Ostrowski has not paid the Lantern March invoice yet. [5]\n'
+            '- Mara Ostrowski has not paid the Lantern April invoice yet. [6]\n\n'
+            '## Uncertainties\n'
+            '- Did Theo Park approve the Lantern pricing for the first quarter? [3]\n'
+            '- Did Theo Park approve the Lantern pricing for the second quarter? [4]\n\n'
+            '## Sources\n' + ''.join(f'- [{n}] gmail:{n:012x}\n' for n in range(1, 7)))
+    result = sort_history(page)
+    for line in page.splitlines():
+        if line.startswith('- ') and '## Sources' not in line and 'gmail:' not in line:
+            assert line in result
+
+
+def test_section_dedupe_still_collapses_an_exact_repeat():
+    from connectonion.rem.page_review import sort_history
+    page = ('# Lantern\n\n## Open threads\n- Mara Ostrowski owes the signed Lantern contract. [1]\n'
+            '- Mara Ostrowski owes the signed Lantern contract. [2]\n\n## Sources\n'
+            '- [1] gmail:000000000001\n- [2] gmail:000000000002\n')
+    result = sort_history(page)
+    assert result.count('owes the signed Lantern contract') == 1 and '[1] [2]' in result
