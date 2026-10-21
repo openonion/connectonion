@@ -161,3 +161,32 @@ def test_fallback_requires_a_nonempty_native_identity(tmp_path):
     write_json(state_path(tmp_path, 'mail/messages/gmail/' + digest + '.json'),
                {'provider': 'gmail', 'id': '', 'body': 'No native identity.'})
     assert not context(tmp_path, 'gmail:' + digest[:12])
+
+
+@pytest.mark.parametrize('native_handle', [False, True])
+def test_indexed_mail_metadata_without_a_body_pointer_can_use_retained_original(tmp_path, native_handle):
+    import sqlite3
+    prepare(tmp_path)
+    refresh(tmp_path)
+    source, _, saved = retained(tmp_path, 'gmail')
+    native_source = 'gmail:' + saved['id']
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        db.execute('insert into messages (id,source,thread,body_path) values (?,?,?,?)',
+                   (native_source, 'gmail', 'mail:gmail:known-thread', None))
+    handle = native_source if native_handle else source
+    result = context(tmp_path, handle)[handle]
+    assert result['excerpt'] == saved['body']
+    assert result['thread'] == 'mail:gmail:known-thread'
+
+
+def test_verified_archive_does_not_override_a_conflicting_native_index_pointer(tmp_path):
+    import sqlite3
+    prepare(tmp_path)
+    refresh(tmp_path)
+    source, _, saved = retained(tmp_path, 'gmail')
+    wrong = message_path(tmp_path, 'gmail', 'different-native')
+    write_json(wrong, {'provider': 'gmail', 'id': 'different-native', 'body': 'Other statement.'})
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        db.execute('insert into messages (id,source,body_path) values (?,?,?)',
+                   ('gmail:' + saved['id'], 'gmail', str(wrong.relative_to(tmp_path / '.state'))))
+    assert not context(tmp_path, source)

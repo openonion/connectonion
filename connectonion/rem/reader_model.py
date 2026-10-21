@@ -171,7 +171,15 @@ def _retained_mail_row(root: Path, source: str, db):
             matches.setdefault(native, {"id": f"{provider}:{native}", "source": provider,
                 "body_path": str(path.relative_to(root / ".state")), "body_line": None,
                 "time": saved.get("date") or "", "sender": saved.get("from") or "", "thread": ""})
-    return next(iter(matches.values())) if len(matches) == 1 else None
+    if len(matches) != 1:
+        return None
+    row = next(iter(matches.values()))
+    indexed = db.execute("select * from messages where id = ?", (row["id"],)).fetchone() if db is not None else None
+    if indexed is not None:
+        if indexed["source"] != provider or (indexed["body_path"] and indexed["body_path"] != row["body_path"]):
+            return None
+        row["thread"] = indexed["thread"] or ""
+    return row
 
 
 def input_scope(saved: dict, message: dict) -> str:
@@ -201,8 +209,10 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             if budget <= 0:
                 break
             row = _cited_row(db, source) if db is not None else None
-            if row is None:
-                row = _retained_mail_row(root, source, db)
+            if row is None or not row["body_path"]:
+                retained = _retained_mail_row(root, source, db)
+                if retained is not None:
+                    row = retained
             if row is None:
                 from .attachments import attachment_context
                 from .investigate import github_context

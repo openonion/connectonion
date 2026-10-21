@@ -36,7 +36,11 @@ Full filename, provider, nonempty-ID, symlink, indexed-conflict and simulated sh
 hash collision controls remain. Native and hashed citations, private markers,
 header-only mail, canonical/observed precedence and excerpt budgets are covered.
 Initial related suite546 passed in8.81s; ambiguity fix548 passed in8.10s. Final
-reader/model/store/archive/page-review subset:550 passed in8.17s.
+reader/model/store/archive/page-review subset initially550 passed in8.17s.
+A further metadata-only indexed row exposed the same gap for a native citation
+whose body pointer was not filled: red1 failed/1 passed. Fallback now preserves
+an existing thread only after its native ID/provider agree, and refuses a
+conflicting indexed body pointer. Final related subset:553 passed in17.29s.
 
 The reader preserves archive bytes and does not rebuild or migrate the index.
 SQLite may maintain its normal transient locks. An absent indexed conversation
