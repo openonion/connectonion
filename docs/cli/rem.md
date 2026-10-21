@@ -1701,3 +1701,15 @@ the selected root, shortening a root under your home to `~/…` with shell-safe
 quoting. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
+
+### Codex history during maintenance
+
+REM archives its internal Codex threads after each model call, including failed
+calls when the provider remains responsive. A forced cancellation or process
+crash can leave a thread active; existing history is not bulk-archived. They leave the active conversation list while their trace and session ID
+remain available for explicit resume and `co rem logs`. Before resuming, REM
+unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
+threads are unchanged.
+This is separate from scheduling: REM still uses launchd on macOS. Codex App
+Scheduled is not a public App Server scheduling API; native schedule migration
+has not been enabled by this change.
