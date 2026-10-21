@@ -64,3 +64,22 @@ separately; this is not an all-pages UI pass.
   vulnerabilities, fixed in 13.0.0; that version needs Python ≥3.11, whereas
   ConnectOnion supports 3.10. No security gate or compatibility requirement
   has been bypassed.
+
+## Final recheck
+
+The actual-adapter trial was repeated from an isolated environment installed
+from `connectonion-1.9.3rc13-py3-none-any.whl`, outside the source checkout.
+The imported package reported 1.9.3rc13 from that environment's site-packages;
+both calls succeeded, kept one thread ID and its invented context, and ended
+with the trace present only in archived results.
+
+The independent final AI review received the complete relevant adapter excerpt,
+unit tests and wheel-trial output directly. It found no correctness blocker in
+that narrow scope. A prior suspicion that `chunks` was uninitialized was
+rejected against the full excerpt: it is initialized before `on_event` and the
+try block. This does not certify native desktop UI or native scheduling.
+
+The docs-site production build's article checks passed: 145 generated articles
+and 169 feed/sitemap entries. The rendered journal was also opened at phone
+width. All docs-site changes remain on a local preparation branch; no package,
+release tag or production docs publication has been made.
