@@ -47,3 +47,12 @@ active and archived lists, not an all-page UI pass.
 See the [acceptance record](../acceptance/rem-codex-history-2026-10-22.md) and
 [candidate notes](../releases/1.9.3rc13.md). Publication depends on the release
 checks; a locally working candidate is not a published package.
+
+A follow-up native registration probe kept that boundary honest. It created one
+paused legacy definition, then a one-shot whose only effect was writing an
+isolated marker. After 190 seconds (100 seconds past its scheduled time), the
+running desktop installation had no registration for its ID, no run record and
+no marker. The probe and its temporary directory were removed. This does not
+show that native Scheduled is broken; it shows that writing an old-format file
+is not a validated integration here. The [native probe record](../acceptance/rem-native-scheduled-2026-10-22.md)
+keeps that result separate from the successful archive/resume trial.
