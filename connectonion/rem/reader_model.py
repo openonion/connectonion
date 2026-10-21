@@ -12,7 +12,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .files import state_path
+from .files import read_json, state_path
 from .store_messages import archived_message
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
@@ -119,6 +119,16 @@ def _source_ids(records: list[dict]) -> set[str]:
     return numbered | sessions
 
 
+def _mail_pointer_rows(db, source: str):
+    match = re.fullmatch(r"(gmail|outlook):([0-9a-f]{12})", source)
+    if not match:
+        return []
+    provider, digest = match.groups()
+    return db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
+                      (provider, f"mail/messages/{provider}/{digest}%.json",
+                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
+
+
 def _cited_row(db, source: str):
     row = db.execute("select * from messages where id = ?", (source,)).fetchone()
     if row is not None:
@@ -127,12 +137,49 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
-                      (provider, f"mail/messages/{provider}/{digest}%.json",
-                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
+    rows = _mail_pointer_rows(db, source)
     if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
         return rows[0]
     return None
+
+
+def _retained_mail_row(root: Path, source: str, db):
+    """A cited, verified original does not depend on a complete derived index."""
+    match = re.fullmatch(r"(gmail|outlook):([^\s:]+)", source)
+    if not match or (db is not None and _mail_pointer_rows(db, source)):
+        return None  # Do not bypass an ambiguous or rejected indexed identity.
+    provider, handle = match.groups()
+    native_digest = hashlib.sha256(handle.encode()).hexdigest()
+    hashed = bool(re.fullmatch(r"[0-9a-f]{12}", handle))
+    matches = {}
+    for folder in ("messages", "observed"):
+        directory = state_path(root, f"mail/{folder}/{provider}")
+        paths = {directory / (native_digest + ".json")}
+        if hashed:
+            paths.update(directory.glob(handle + "*.json"))
+        for candidate in sorted(paths):
+            path = state_path(root, str(candidate.relative_to(root / ".state")))
+            if not path.is_file():
+                continue
+            saved = read_json(path, {})
+            if not isinstance(saved, dict) or saved.get("provider") != provider or not isinstance(saved.get("id"), str) or not saved["id"]:
+                continue
+            native = saved["id"]
+            digest = hashlib.sha256(native.encode()).hexdigest()
+            if path.name != digest + ".json" or not (native == handle or hashed and digest.startswith(handle)):
+                continue
+            matches.setdefault(native, {"id": f"{provider}:{native}", "source": provider,
+                "body_path": str(path.relative_to(root / ".state")), "body_line": None,
+                "time": saved.get("date") or "", "sender": saved.get("from") or "", "thread": ""})
+    if len(matches) != 1:
+        return None
+    row = next(iter(matches.values()))
+    indexed = db.execute("select * from messages where id = ?", (row["id"],)).fetchone() if db is not None else None
+    if indexed is not None:
+        if indexed["source"] != provider or (indexed["body_path"] and indexed["body_path"] != row["body_path"]):
+            return None
+        row["thread"] = indexed["thread"] or ""
+    return row
 
 
 def input_scope(saved: dict, message: dict) -> str:
@@ -162,6 +209,10 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             if budget <= 0:
                 break
             row = _cited_row(db, source) if db is not None else None
+            if row is None or not row["body_path"]:
+                retained = _retained_mail_row(root, source, db)
+                if retained is not None:
+                    row = retained
             if row is None:
                 from .attachments import attachment_context
                 from .investigate import github_context
