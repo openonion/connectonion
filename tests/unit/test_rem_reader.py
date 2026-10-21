@@ -1772,7 +1772,7 @@ def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback()
         assert result[fallback]['children'][0]['children'][3]['text'] == '原文'
 
 
-def test_chinese_connected_context_deduplicates_translated_snippets_before_fallbacks():
+def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_claims():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
@@ -1794,8 +1794,11 @@ def test_chinese_connected_context_deduplicates_translated_snippets_before_fallb
       console.log(JSON.stringify(connectedContext(origin)));
     ''')
     cards = result['children'][2]['children']
-    snippets = [card['children'][0]['children'][2]['text'] for card in cards]
-    assert snippets == ['Theo Park 和 Mia Chen 共同审阅了试点计划 .', '负责核对试点团队的下一步安排。']
+    snippets = [card['children'][0]['children'][2] for card in cards]
+    assert snippets[0]['text'] == 'Theo Park 和 Mia Chen 共同审阅了试点计划 .'
+    assert snippets[1] is None
+    assert cards[1]['children'][1]['children'][1]['html'] == '[2]'
+    assert '负责核对试点团队的下一步安排' not in str(cards)
     assert all(card['children'][0]['children'][3] is None for card in cards)
 
 
