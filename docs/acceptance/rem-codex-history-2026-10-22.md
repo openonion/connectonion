@@ -44,3 +44,23 @@ Protocol-level active/archived lists were checked. The native desktop sidebar,
 remote project UI, device-off behavior and native Scheduled adoption were not
 inspected or certified by this trial. Documentation rendering is checked
 separately; this is not an all-pages UI pass.
+
+## Local validation and release status
+
+- 245 adapter/runner tests passed after the cleanup fix; 37 release checks and
+  53 import/version checks passed against the prepared docs-site branch.
+- Full suite: 16,964 passed, 329 skipped, 16 failed. Seven version-related failures
+  were caused by changing the version while that suite was running; stopped
+  editing and reran the affected import/version files (53 passed). The remaining
+  nine failures reproduce on untouched main: six terminal-colour expectations
+  under this environment and three Neonize imports that require `typing.Self`
+  in the local Python 3.10 installation. None is presented as a passing check.
+- Wheel/sdist build and exact-artifact twine checks passed.
+- Docs-site lint: zero errors, 155 existing warnings; production build passed.
+- Rendered local desktop `/cli/rem` at 1440×1000 and phone
+  `/releases/1.9.3rc13` at 390×844. Preview scope and unchanged launchd schedule
+  are explicit; these two screenshots are sample coverage only.
+- Release blocked by dependency audit: Pillow 12.3.0 has eight reported
+  vulnerabilities, fixed in 13.0.0; that version needs Python ≥3.11, whereas
+  ConnectOnion supports 3.10. No security gate or compatibility requirement
+  has been bypassed.
