@@ -80,3 +80,13 @@ missing callable methods and the failed legacy-file probe are kept distinct
 from native Scheduled availability. It confirmed that cleanup, unchanged REM
 trigger, required next evidence and uninspected native UI are stated. This was
 a report review, not a human review or a rendered native-desktop inspection.
+
+## Follow-up: source-level compatibility proved
+
+The [source investigation](rem-native-source-2026-10-22/README.md) subsequently
+ran the installed native functions in isolation. It proved that legacy TOML is
+accepted, can rebuild its SQLite index, and is selected when due. It also proved
+the separate scheduler capability gate and owner-migration filtering/pruning.
+The prior live file probe must not be treated as evidence that these structures
+cannot be used; its failure to trigger did not inspect the gate or native mode.
+No live desktop model-turn pass is claimed by the follow-up.

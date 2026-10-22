@@ -56,3 +56,16 @@ no marker. The probe and its temporary directory were removed. This does not
 show that native Scheduled is broken; it shows that writing an old-format file
 is not a validated integration here. The [native probe record](../acceptance/rem-native-scheduled-2026-10-22.md)
 keeps that result separate from the successful archive/resume trial.
+
+Reading the creation and load paths changed the next step. The desktop bundle
+has its own storage and clock; the public CLI tree only carries a dynamic-tool
+example for `automation_update`. Running the installed storage functions against
+a temporary home proved that a valid legacy TOML can rebuild its missing SQLite
+index. Writing both stores is what creation does, but it is not a universal
+requirement for loading a task. A separate capability flag gates the actual
+clock. In migrated mode the canonical definition is saved remotely and then
+cached locally; synchronization removes an owner-scoped row that was never
+registered there. The [source-level checks](../acceptance/rem-native-source-2026-10-22/README.md)
+therefore show a path to reuse native structures, rather than a reason to build
+another scheduler. They still do not certify the running desktop's model-turn
+execution: the isolated tick test replaced that last boundary with a marker.
