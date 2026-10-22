@@ -83,3 +83,22 @@ The docs-site production build's article checks passed: 145 generated articles
 and 169 feed/sitemap entries. The rendered journal was also opened at phone
 width. All docs-site changes remain on a local preparation branch; no package,
 release tag or production docs publication has been made.
+
+## Release-floor and live-desktop recheck
+
+The latest CI matrix exposed one shared failure: handoff still pinned rc12
+while the candidate package reports rc13. The release floor now matches rc13;
+all 75 handoff acceptance tests pass locally. An independent AI reviewer found
+the narrow change correct and requires the CI matrix and published tag URL to
+be checked again. No native UI was inspected in this review.
+
+The local REM status still reports its enabled launchd job and a completed
+06:00 scheduled slot. No migration has been performed. The running Codex main
+process started October 3, whereas the inspected installed bundle is newer;
+this does not establish the running scheduler's version or capability state.
+The earlier live native probe produced no registration, run or result marker.
+Opening the actual Automations page is the outstanding desktop check; isolated
+native-code tests are not a substitute for a live scheduled execution.
+
+PyPI was checked again: Pillow 13.0.0 requires Python >=3.11 and there is no
+newer 12.x release than 12.3.0. The dependency audit remains unresolved.
