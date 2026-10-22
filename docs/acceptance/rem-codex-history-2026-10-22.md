@@ -107,7 +107,7 @@ newer 12.x release than 12.3.0. The dependency audit remains unresolved.
 
 The candidate now requires Python >=3.11, Pillow >=13.0.0, pypdf >=6.21.2 and
 cryptography >=50.0.2. The former Intel-only cryptography <49 cap was removed
-because it retained reported vulnerabilities. Local full-lock pip-audit
+because it retained reported vulnerabilities. Local default-runtime lock-export pip-audit
 2.10.1 reports `No known vulnerabilities found`, with no ignored advisories.
 The first Python 3.11 focused run passed 309 tests (installer, file reading,
 attachments, scrolling, REM runner, Codex adapter and version consistency).
@@ -133,3 +133,7 @@ preview requirement. Recheck criterion: current installation guidance must not
 suggest that rc13 supports Python 3.10. Review did not inspect native desktop UI.
 Rendered local release notes were inspected at desktop width; security and
 Python requirements are visible beside the opt-in installation commands.
+
+The default-only audit did not cover the optional Synology extra. Its Paramiko
+4.0.0 SHA-1 advisory is addressed by rc14; see
+[expanded optional-dependency acceptance](rc14-optional-security-2026-10-22.md).

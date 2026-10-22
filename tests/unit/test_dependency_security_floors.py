@@ -1,6 +1,7 @@
 """Security-sensitive dependencies must not regress below patched releases."""
 
 import re
+import tomllib
 from pathlib import Path
 
 from packaging.version import Version
@@ -81,3 +82,20 @@ def test_pytest_dev_floor_is_patched(monkeypatch, tmp_path):
     assert Version(locked["pytest"]) >= Version(floor), (
         f"pytest {locked['pytest']} regressed below patched {floor}"
     )
+
+
+def test_synology_does_not_retain_sha1_paramiko():
+    from packaging.requirements import Requirement
+
+    project = tomllib.loads((REPO / "pyproject.toml").read_text())
+    requirements = map(Requirement, project["project"]["optional-dependencies"]["synology"])
+    (dependency,) = [item for item in requirements if item.name == "paramiko"]
+    assert not dependency.specifier.contains("4.0.0")
+    assert dependency.specifier.contains("5.1.0")
+    locked = _locked_versions((REPO / "uv.lock").read_text())
+    assert Version(locked["paramiko"]) >= Version("5.1.0")
+
+
+def test_security_audit_includes_optional_features():
+    workflow = (REPO / ".github/workflows/tests.yml").read_text()
+    assert "uv export --quiet --frozen --all-extras" in workflow
