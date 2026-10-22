@@ -193,8 +193,10 @@ def snapshot(root: Path, local: bool = False) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
-    from .reader_model import cited_context, cited_conversations, relationships
-    links = relationships(records)
+    from .reader_model import canonical_aliases, cited_context, cited_conversations, relationships
+    from .merge import aliases
+    redirects = canonical_aliases(records, aliases(root), local=local)
+    links = relationships(records, aliases=redirects)
     for record in records:
         record["relations"] = links.get(record["path"], [])
     contexts = cited_context(root, records, private=local)
@@ -231,7 +233,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
-            "categories": list(CATEGORIES), "records": records,
+            "categories": list(CATEGORIES), "records": records, "aliases": redirects,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,

@@ -460,7 +460,8 @@
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
   .block-sources li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
   .block-sources li:target, .block-sources li.flash { background: var(--mark); }
-  .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
+  .dead-link { color: var(--ink-3); text-decoration: underline dotted; cursor: help; }
+  .missing-page-label { color: var(--ink-2); font: 12px/1.5 var(--ui); }
   .block-sources .n { font: 600 11px/1.9 var(--ui); color: var(--blue); }
   .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; justify-self: start; vertical-align: baseline; font: 500 11px var(--ui); }
   .block-sources .id { font: 11.5px var(--ui); color: var(--ink); }
@@ -2179,7 +2180,8 @@ const UI = {
     "Select and copy": "请选中并复制",
     "Copied": "已复制",
     "Copy failed": "复制失败",
-    "This page is no longer in the notebook": "此页面已不在笔记库中",
+    "This page is unavailable in this snapshot.": "此页面在当前快照中不可用。",
+    "Page unavailable": "页面不可用",
     "Some sections are filled from sources; the rest are not investigated yet.": "部分章节已有来源支持，其余尚未调查。",
     "{n} from them, {m} from you": "对方发来 {n} 封，你发出 {m} 封",
     "{name} table": "{name}表格",
@@ -2297,6 +2299,13 @@ function categoryName(c) { return ACTIVITY.has(c) ? t("Activity") : label(c); }
 function label(c) { return t(CATEGORY_LABEL[c] || c); }
 function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
+function navigationRecord(path, heading = "") {
+  const exact = byPath(path);
+  // Merge redirects carry no old-to-new numbered-source map.
+  if (exact || /^src-(?:w?\d+)$/i.test(heading)) return exact;
+  const canonical = REM.aliases?.[path];
+  return typeof canonical === "string" ? byPath(canonical) : undefined;
+}
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
@@ -2344,17 +2353,39 @@ function resolve(from, path) {
   }
   return base.join("/");
 }
+function notebookPath(from, raw) {
+  if (typeof from !== "string") return "";
+  let path;
+  try { path = decodeURIComponent(raw.split("#")[0]); if (raw.includes("#")) decodeURIComponent(raw.slice(raw.indexOf("#") + 1)); } catch { return ""; }
+  if (!/\.md$/i.test(path) || path.startsWith("/") || path.includes("\\") || /[\x00-\x1f\x7f]/.test(path) || /^[a-z][\w+.-]*:/i.test(path)) return "";
+  const parts = from.split("/").slice(0, -1);
+  for (const part of path.split("/")) {
+    if (part === "..") { if (!parts.length) return ""; parts.pop(); }
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
+}
 function safeHref(from, raw) {
   const target = raw.trim();
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
   if (target.startsWith("/") && !target.startsWith("//"))
     return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
-  if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
-  if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
-    const path = resolve(from, target.split("#")[0]);
-    if (byPath(path)) return { href: "#r=" + encodeURIComponent(path) + (target.includes("#") ? "&h=" + encodeURIComponent(target.split("#")[1]) : ""), external: false };
-  }
+  let fragment;
+  try { fragment = target.includes("#") ? decodeURIComponent(target.slice(target.indexOf("#") + 1)) : ""; } catch { return null; }
+  const path = target.startsWith("#") ? from : notebookPath(from, target);
+  const record = path && navigationRecord(path, fragment);
+  if (record) return { href: "#r=" + encodeURIComponent(record.path) + (fragment ? "&h=" + encodeURIComponent(fragment) : ""), external: false };
   return null;
+}
+function isNotebookLink(from, raw) {
+  return !!notebookPath(from, raw) || (!/^[a-z][\w+.-]*:|^\//i.test(raw) && /\.md(#.*)?$/i.test(raw));
+}
+function pageReference(from, text, raw) {
+  const link = safeHref(from, raw);
+  if (link) return el("a", { href: link.href, text, ...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {}) });
+  if (!isNotebookLink(from, raw)) return el("span", { text });
+  return el("span", { class: "dead-link", title: t("This page is unavailable in this snapshot.") },
+    [text, el("span", { class: "missing-page-label", text: " · " + t("Page unavailable") })]);
 }
 function copyToClipboard(text, btn, successMsg) {
   const original = btn.textContent;
@@ -2497,7 +2528,7 @@ function inline(text, from) {
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
     // A page that is not in the notebook: say so, rather than look like a link that does nothing (#2054).
-    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title=t("This page is no longer in the notebook")>' + lbl + "</span>" : lbl;
+    if (!link) return isNotebookLink(from, url) ? '<span class="dead-link" title="' + esc(t("This page is unavailable in this snapshot.")) + '">' + lbl + '<span class="missing-page-label"> · ' + esc(t("Page unavailable")) + "</span></span>" : lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
@@ -3640,7 +3671,8 @@ function nightBand(showActivityLink = true) {
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
-  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
+  const requested = params.get("r"), selected = navigationRecord(requested, params.get("h") || "");
+  return { record: selected?.path || requested, category: params.get("c"), query: params.get("q"), heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
     ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
@@ -5697,8 +5729,7 @@ function record(path, heading) {
       const box = el("div", { class: "related" });
       if (links.length) {
         for (const [, lbl, url] of links) {
-          const link = safeHref(r.path, url);
-          box.appendChild(link ? el("a", { href: link.href, text: lbl }) : el("span", { text: lbl }));
+          box.appendChild(pageReference(r.path, lbl, url));
         }
       } else box.innerHTML = inline(parts.related, r.path);
       aside.appendChild(box);
