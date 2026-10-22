@@ -42,3 +42,9 @@ replacement cleanup. The pin does not prove an account, secure an endpoint or
 identify a paid session. Those checks still belong to the surrounding service.
 It gives that service one narrower guarantee: losing its browser will not make
 the next tool quietly create another one.
+
+The real CLI trial kept the browser unopened. The correct pin listed zero
+tabs; after that daemon exited, a navigation command failed. A new daemon on
+the same private endpoint was left untouched by the old pin and answered its
+own pin. Both trial processes then exited. This checks the process boundary
+without claiming a paid browser session or production migration succeeded.

@@ -332,7 +332,9 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
   environment local to the supervised job and use a private endpoint/profile;
   the PID is a lifecycle constraint, not authentication or a paid-session ID.
   Explicit Host private targets ignore this local pin. Without it, ordinary
-  first-command startup works as before.
+  first-command startup works as before. Pinned ordinary commands also skip
+  automatic paid-client installation; an explicit `install-onion` command
+  remains an installation request.
 
 ## Importing logins from Chrome
 

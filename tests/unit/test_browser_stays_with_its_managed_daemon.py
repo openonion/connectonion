@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from connectonion.cli.browser_agent import client
+from connectonion.cli.commands import browser_commands
 from connectonion.network.oip import browser_daemon_pb2 as wire
 from connectonion.network.oip.framing import decode_frame, encode_frame
 
@@ -197,3 +198,11 @@ def test_explicit_host_target_ignores_local_pin(monkeypatch):
     target = SimpleNamespace(address="other-endpoint", authkey_path="test-key", remote_egress=False)
     assert request(target=target) == (0, "Browser ready")
     assert connection.sent == [["go_to", "https://example.com"]]
+
+
+def test_managed_cli_does_not_bootstrap_a_missing_paid_client(monkeypatch):
+    calls = []
+    monkeypatch.setattr(browser_commands, "_ensure_paid_client", forbidden)
+    monkeypatch.setattr(browser_commands, "send", lambda *args, **kwargs: calls.append((args,kwargs)) or 1)
+    assert browser_commands.handle_browser(["go_to", "https://example.com"], engine_mode="onion") == 1
+    assert calls[0][1]['engine_mode'] == 'onion'
