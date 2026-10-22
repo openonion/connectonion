@@ -178,3 +178,50 @@ native scheduling before exact-id registration, scheduled execution and marker
 creation are observed. Reviewer assessed observations through 90 seconds and
 requested the final check; the completed 150-second result remains negative.
 No definitive cause or native UI pass was claimed.
+
+## Native creation entrypoint and transport authorization
+
+The installed desktop exposes the bundled `codex-app-tools` MCP plugin
+(version 0.1.5 is present locally). Its unmodified `server.mjs` forwards
+`tools/list` and `tools/call` through `CODEX_APP_TOOLS_PIPE_PATH`. The
+`automation_update` tool reaches the desktop automations service; it is a
+better candidate than reproducing private SQLite mutations. Source inspection
+confirms that service creation uses native storage in legacy mode, or
+canonical save-and-verify followed by local caching in owned mode.
+
+The running desktop's startup log identifies its tool pipe. A read-only
+`tools/list` request to that exact pipe was closed without a response; the
+matching desktop log at 2026-10-22T07:07:44.086Z reports
+`dynamic_app_tools_peer_rejected reason=untrusted-process-ancestry`.
+`native-entrypoint-result.json` records the result. No mutation request was
+sent and no peer authorization was bypassed. This establishes why this
+external process cannot call the native tool transport; it does not establish
+why the earlier file-only smoke test was not adopted.
+
+Available routes and decisions:
+
+- Desktop-native `automation_update`: preferred registration path. Requires a
+  desktop-authorized caller and still needs real scheduled execution testing.
+- Legacy TOML: native source compatibility is established, but two live probes
+  failed. Do not make this the default installer without adoption verification.
+- Direct owned SQLite insertion: rejected as an integration strategy because
+  canonical synchronization can remove rows that were never registered.
+- Public CLI/App Server: the inspected protocol has no scheduling CRUD method;
+  reuse it for execution, not as an assumed native scheduler API.
+- Maintaining a copied/forked scheduler: technically separate work, but adds a
+  scheduler to maintain and does not validate the running desktop's Scheduled.
+- Existing launchd trigger plus archived REM execution: retain for continuity
+  until native registration and execution pass; do not label it native.
+
+An isolated acceptance workspace and a ready-to-use desktop-native task prompt
+are prepared at `~/.co/rem-trials/native-schedule-acceptance`. The probe script
+was syntax-checked but deliberately not executed by hand, so a future marker
+can provide useful scheduled-run evidence. Creating that task in a normal
+desktop chat is the next supported live test. Current tools have no native UI
+control or authorized desktop tool transport, so this last step remains open.
+
+Independent AI role review (founder, marketing and UI; supplied evidence only)
+found the claims bounded correctly. P1: scheduled handoff remains unverified;
+recheck exact-id registration, scheduled execution and marker before changing
+REM defaults. P2: syntax checks are not execution evidence, and native desktop
+flow remains uninspected. No product UI or release pass is claimed.
