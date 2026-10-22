@@ -35,3 +35,12 @@ The isolated browser's actual acknowledgements were fast. A sparse path is also
 a real tradeoff, including at ordinary latency, and one blocked browser call can
 still wait. In this delayed-dispatch fixture, skipping stale waypoints avoided replaying
 most of that minute. The investigation into the production cadence remains open.
+
+We also put the installed candidate through the current O Chat production
+build. A real model requested two one-time tool approvals, clicked the static
+fixture once and sent its screenshot through native Host image IO. The phone
+reload check initially accepted cached completion text too soon; independent
+review caught the still-reconnecting state. The corrected test now waits for a
+new connection, the Send control and the same loaded image, while checking that
+neither input nor click was replayed. [The scoped consumer acceptance](../acceptance/click-pacing-2026-10-23/README.md)
+records the exact coverage and the remaining production boundary.
