@@ -1567,17 +1567,39 @@ def _plain(text: str) -> str:
     return re.sub(r'\s+', '', text).casefold()
 
 
-def _quoted_in(quote: str, original: str) -> bool:
+# Unspaced scripts allow phrase boundaries within a run of characters. A word
+# in a spaced script must not be accepted from inside another word/compound.
+QUOTE_UNSPACED = r'\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uf900-\ufaff\U00020000-\U000323af'
+QUOTE_WORD = rf'[^\W{QUOTE_UNSPACED}]'
+
+
+def _quote_plain(text: str) -> str:
+    """Fold layout without turning 'not able' into 'notable'."""
+    text = re.sub(r'(?m)^[ \t]*>+', '', text.translate(FOLD))
+    text = re.sub(r'\*\*|__|\\(?=[^\s\w])', '', text)
+    text = re.sub(r'\s+', ' ', text).casefold()
+    return re.sub(rf'(?<=[{QUOTE_UNSPACED}]) (?=[{QUOTE_UNSPACED}])', '', text).strip()
+
+
+def _quoted_in(quote: str, original: str, *, whole_words: bool = False) -> bool:
     """Each part between ellipses appears, in order, in the original."""
     # “Best.” and “sounds great,”: punctuation the page put inside the marks,
     # and a link the page added to a name, are not the speaker's.
     quote = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', quote).rstrip(' ,.;:!?，。；：！？')
     at = 0
-    for part in filter(None, (_plain(part) for part in re.split(r'…|\.\.\.', quote))):
-        at = original.find(part, at)
-        if at < 0:
+    for part in filter(None, (_quote_plain(part) for part in re.split(r'…|\.\.\.', quote))):
+        start = rf'(?<!{QUOTE_WORD})(?<!{QUOTE_WORD}[\x27-])' if whole_words and re.fullmatch(QUOTE_WORD, part[0]) else ''
+        end = rf'(?!{QUOTE_WORD}|[\x27-]{QUOTE_WORD})' if whole_words and re.fullmatch(QUOTE_WORD, part[-1]) else ''
+        # Punctuation can sit on either side of a mail line wrap. Match its
+        # spacing flexibly without deleting separators from the source text.
+        pieces = re.split(r'(\s*[,.;:!?()\[\]]\s*)', part)
+        pattern = ''.join(r'\s*' + re.escape(piece.strip()) + r'\s*'
+                          if re.fullmatch(r'\s*[,.;:!?()\[\]]\s*', piece) else re.escape(piece)
+                          for piece in pieces)
+        match = re.compile(start + pattern + end).search(original, at)
+        if match is None:
             return False
-        at += len(part)
+        at = match.end()
     return True
 
 
@@ -1613,7 +1635,7 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
         return []
     head, _, sources = prose(text).partition('\n## Sources\n')
     numbers = dict(SOURCE.findall('\n' + sources))
-    originals = {source: (_plain(body), whole) for source, (body, whole) in cited_texts(root, text, items).items()}
+    originals = {source: (_quote_plain(body), whole) for source, (body, whole) in cited_texts(root, text, items).items()}
     errors = []
     for line in head.splitlines():
         cited = [numbers[n] for n in CITATION.findall(line) if n in numbers]
@@ -1622,6 +1644,41 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
             if not any(_quoted_in(quote, originals[source][0]) for source in cited):
                 errors.append(f'Quote is not in its cited source: “{quote[:120]}”')
     return errors
+
+
+def quote_boundary_warnings(root: Path, text: str, items: list[dict]) -> list[dict]:
+    """Layout can join words in provider renderings; this needs source judgment."""
+    from .reader_model import SOURCE
+    head, _, sources = prose(text).partition('\n## Sources\n')
+    numbers = dict(SOURCE.findall('\n' + sources))
+    saved = cited_texts(root, text, items)
+    originals = {source: (_quote_plain(body), whole) for source, (body, whole) in saved.items()}
+    warnings = []
+    for line in head.splitlines():
+        cited = [numbers[n] for n in CITATION.findall(line) if n in numbers]
+        if not cited or not all(originals.get(source, ('', False))[1] for source in cited):
+            continue
+        for quote in QUOTE.findall(line):
+            if (any(_quoted_in(quote, originals[source][0]) for source in cited)
+                    and not any(_quoted_in(quote, originals[source][0], whole_words=True) for source in cited)):
+                matches = [source for source in dict.fromkeys(cited) if _quoted_in(quote, originals[source][0])]
+                warnings.append({'quote': quote, 'citations': list(dict.fromkeys(CITATION.findall(line))),
+                                 'sources': [{'source_id': source, **_quote_context(quote, saved[source][0])} for source in matches],
+                                 'reason': 'Literal text matches, but word edges are ambiguous in rendered originals.'})
+    return warnings
+
+
+def _quote_context(quote: str, body: str) -> dict:
+    """A bounded retained rendering around the first fragment, never guessed text."""
+    fragment = re.split(r'…|\.\.\.', quote)[0].strip()
+    fragment = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', fragment)
+    pattern = r'\s+'.join(re.escape(word) for word in fragment.split())
+    match = re.search(pattern, body, re.I) if pattern else None
+    if match is None:
+        return {'excerpt': '', 'scope': 'No raw span located; inspect the supplied source rendering.'}
+    start, end = max(0, match.start() - 80), min(len(body), match.start() + 560)
+    return {'excerpt': body[start:end], 'truncated': bool(start or end < len(body)),
+            'scope': 'Retained rendering around the first fragment; not original MIME or a segmentation verdict.'}
 
 
 def _claim_key(text: str) -> str:

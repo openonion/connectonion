@@ -18,7 +18,7 @@ from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
 from .scan import WORKTREE_FOLDER, main_checkout, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
-from .page_review import _plain, _quoted_in
+from .page_review import _plain, _quote_plain, _quoted_in
 
 AGENTS = {"codex": "Codex", "claude-code": "Claude Code"}
 PR_URL = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/\d+\b")
@@ -332,11 +332,11 @@ def read_summary(root: Path, key: str) -> dict:
 
 
 def _decision_lines(saved: dict, messages: list[dict], zone) -> list[str]:
-    originals = [(source.timestamp(m["timestamp"]).astimezone(zone).strftime("%H:%M"), _plain(m["text"]))
+    originals = [(source.timestamp(m["timestamp"]).astimezone(zone).strftime("%H:%M"), _quote_plain(m["text"]))
                  for m in messages]
     return [f"- “{decision['quote']}” ({decision['time']})" for decision in saved.get("decisions", [])
             if decision.get("quote", "").strip() and any(
-                clock == decision.get("time") and _quoted_in(decision["quote"], text)
+                clock == decision.get("time") and _quoted_in(decision["quote"], text, whole_words=True)
                 for clock, text in originals)]
 
 
@@ -681,7 +681,7 @@ def _validated_summary(value: dict, row: dict) -> tuple[dict, int]:
         quote = decision.get("quote") if isinstance(decision, dict) else None
         visible = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", quote) if isinstance(quote, str) else ""
         if (re.search(r"[^\W_]", _plain(visible)) and any(
-                message["time"] == decision.get("time") and _quoted_in(quote, _plain(message["text"]))
+                message["time"] == decision.get("time") and _quoted_in(quote, _quote_plain(message["text"]), whole_words=True)
                 for message in row["messages"])):
             decisions.append({"time": decision["time"], "quote": quote})
         else:

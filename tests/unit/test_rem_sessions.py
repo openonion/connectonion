@@ -909,3 +909,22 @@ def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, su
     assert result["outcome"] == "completed" and investigated == ["people/corin.md"]
     assert service.status(root)["runner_attempts_today"] == 1
     assert any(line.startswith("Summarised") and "left for next time" in line for line in lines)
+
+
+def test_session_summary_never_accepts_joined_or_partial_words(notebook,summary_ready):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex('We are nowhere to help. Unable to pay today. Send the drafts.')])
+    import_sessions(root, now=NOW)
+    answer = summary_answer('s1')
+    data = json.loads(answer['result'])
+    data['sessions'][0]['decisions'] = [
+        {'time':'09:12','quote':'now here to help'},
+        {'time':'09:12','quote':'able to pay today'},
+        {'time':'09:12','quote':'Send the draft'},
+        {'time':'09:12','quote':'Unable to pay today'},
+    ]
+    answer['result'] = json.dumps(data)
+    report = summarise_sessions(root,run=lambda *a:answer)
+    assert report['dropped_quotes'] == 3
+    assert read_summary(root,'codex:3456-abcdef12')['decisions'] == [
+        {'time':'09:12','quote':'Unable to pay today'}]
