@@ -71,7 +71,8 @@ def canonical_aliases(records: list[dict], table: dict, *, local: bool = False) 
     """Navigation redirects only; shared views expose no unreferenced history."""
     paths = {row["path"] for row in records}
     referenced = {_destination(row["path"], raw) for row in records
-                  for _, raw in REFERENCE.findall(row["text"])} if not local else set()
+                  for _, _, line in _reference_lines(_not_sources(row["text"]))
+                  for _, raw in REFERENCE.findall(line)} if not local else set()
     result = {}
     for old in table if isinstance(table, dict) else {}:
         if old in paths or not _record_path(old) or (not local and old not in referenced):
@@ -96,23 +97,45 @@ def _relation(origin: str, target: str, line: str, kind: str) -> dict:
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 
 
+def _reference_lines(text: str):
+    """Original line numbers survive code exclusion; examples are not links."""
+    fence = ""
+    for number, line in enumerate(text.replace("\r\n", "\n").replace("\r", "\n").split("\n"), 1):
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            if re.fullmatch(r"\s{0,3}" + fence[0] + "{" + str(len(fence)) + r",}\s*", line):
+                fence = ""
+            continue
+        if marker:
+            fence = marker[1]
+            continue
+        # Inline code is protected by the reader before Markdown links expand.
+        visible = re.sub(r"(`+).*?\1", "", line)
+        yield number, line, visible
+
+
 def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]], aliases: dict) -> dict:
     body = _not_sources(text)
     found = {}
     # An exact notebook path does not depend on its label or the target's title.
-    for line in body.splitlines():
-        for _, raw in REFERENCE.findall(line):
+    for number, line, visible in _reference_lines(body):
+        for _, raw in REFERENCE.findall(visible):
             target = _destination(origin, raw)
             if target not in paths:
                 fragment = unquote(raw.partition("#")[2])
                 if target in aliases and re.fullmatch(r"src-(?:w?[0-9]+)", fragment, re.I):
                     continue  # A merge carries no numbered-source remapping ledger.
                 target = aliases.get(target, target)
-            if isinstance(target, str) and target in paths and target != origin and target not in found:
-                found[target] = _relation(origin, target, line.strip(), "linked")
+            if isinstance(target, str) and target in paths and target != origin:
+                relation = found.setdefault(target, _relation(origin, target, line.strip(), "linked"))
+                key = hashlib.sha256(f"{origin}\n{number}\n{line}".encode()).hexdigest()[:20]
+                references = relation.setdefault("references", [])
+                if not references or references[-1]["id"] != key:
+                    references.append({"id": key, "line": number})
     # Match visible prose once per name, never Markdown URLs. Replacing link
     # markup preserves line boundaries, citation numbers and privacy markers.
-    prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+    visible = "\n".join(line for _, _, line in _reference_lines(body))
+    prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", visible)
     folded = prose.casefold() if names else ""
     for pattern, target, name in names:
         if target == origin or target in found:
@@ -160,6 +183,9 @@ def relationships(records: list[dict], aliases: dict | None = None) -> dict[str,
     for origin, rows in forward.items():
         for target, relation in rows.items():
             kind = "linked from" if relation["kind"] == "linked" else "mentioned by"
+            existing = found[target].get(origin)
+            if existing is not None and relation.get("references"):
+                existing["backlinks"] = {"via": origin, "references": relation["references"]}
             found[target].setdefault(origin, {**relation, "path": origin, "kind": kind})
     rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
     return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))

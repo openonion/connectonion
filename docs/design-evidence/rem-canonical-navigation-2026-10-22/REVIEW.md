@@ -56,8 +56,33 @@ lookups remain exact. A navigation redirect is not proof of identity or evidence
 - Cached translated snippet lookup still uses its previous URL matcher; encoded or
   aliased links can truthfully fall back to the marked original excerpt. Language
   completeness remains #2060. Separate snippet-provenance PR #2625 is not included.
-- Backlink scrolling to the exact originating mention, current screenshots, phone
-  layout, keyboard/focus and accessibility remain unverified. No native browser,
+- Original-reference follow-up: incoming cards open an original-line passage panel;
+  outgoing cards retain destination navigation plus a reference action. Repeated
+  references use previous/next controls; opaque per-line IDs contain no prose and
+  change when their source line changes. Removed IDs show an unavailable state.
+  Mutual page references retain a separate incoming-location action without replacing
+  the outgoing excerpt, citations or origin. Independent review found that original
+  prose alone was insufficient: rendered chips and popup labels could still consult
+  the displayed translation’s Sources. Explicit original-panel citation scope now
+  covers both chip generation and popup/dropdown lookup; normal displayed scope is
+  restored. A composed inline/chip/popup regression supplies conflicting source maps.
+  The panel uses original text/citations even under cached translations, respects
+  labelled privacy, and receives programmatic keyboard focus. Ref-bearing routes
+  never alias to a different page. Code examples are excluded from links/mentions
+  and the shared alias projection. This is a derived view, not another store.
+- Read-only real inventory of 587 visible pages: 458 explicit forward connections,
+  483 original-line locations, 25 connections with multiple locations. All page
+  hashes unchanged. The inventory does not establish semantic truth or UI acceptance.
+- Twelve new offline regressions cover per-line retention/removal, original-language
+  citations, private-panel state, generated incoming/outgoing hrefs, focus/scroll
+  dispatch, repeated controls, Windows line endings, code exclusion and aliases.
+  Five initial regressions and one shared-alias privacy regression failed first.
+  Related suites: 282 passed in 8.43s before the final whole-line popup test;
+  all twelve follow-up contracts pass in 0.63s. Full final follow-up results pending
+  in PR.
+- Exact occurrence context is implemented as a passage panel, not direct scrolling
+  to a rearranged summary. Current screenshots, phone layout, actual keyboard/focus
+  and accessibility remain unverified. No native browser,
   renderer, screenshot workaround, real init/provider/model call or notebook write.
 - Dependency security/compatibility gates still block publication; no advisory waiver,
   Python minimum change, merge, tag or package availability claim is included.

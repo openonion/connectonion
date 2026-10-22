@@ -1717,5 +1717,16 @@ it is not attached to the same number on the destination page. Ordinary section
 bookmarks preserve their heading/filter state. Shared readers expose only redirects
 already referenced in their exported notes, not the entire historical merge table.
 
-Native desktop/phone and accessibility acceptance are pending. Exact mention scroll
-for backlinks and complete translated-excerpt matching remain separate work.
+Backlinks can open the exact original line in a **Referenced passage** panel on
+the originating page, with previous/next controls for repeated references. Outgoing
+cards still open the linked page; **View reference** returns to their own original
+passage. Source numbers and privacy labels remain attached to that original page,
+including when a cached translation is being read. Citation chips and their source
+popups use the original source table. Mutual links keep separate reference actions
+for both originating pages. Link addresses contain opaque
+location IDs rather than the passage text. Changed or removed locations are marked
+unavailable instead of being redirected to a merged page or a similar sentence.
+Code examples do not create page references.
+
+Native desktop/phone, keyboard/focus and accessibility acceptance remain pending.
+Complete translated-excerpt matching remains separate work.
