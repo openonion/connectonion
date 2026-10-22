@@ -1849,3 +1849,9 @@ def test_an_update_of_an_investigated_page_carries_the_page_it_replaces(notebook
     runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:invented', 'text': 'x'}],
                                 tmp_path, {}, workdir=tmp_path, config={}, stage='investigate', run=lambda *a: {})
     assert seen == [original if carried else '']
+
+
+def test_rem_children_archive_codex_traces_without_changing_parent_environment(monkeypatch):
+    monkeypatch.delenv("CO_REM_CODEX_ARCHIVE", raising=False)
+    assert runner.child_env(default_config())["CO_REM_CODEX_ARCHIVE"] == "1"
+    assert "CO_REM_CODEX_ARCHIVE" not in os.environ
