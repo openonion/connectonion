@@ -984,6 +984,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # rewrote it. Refusing the page for it cost 10 of 28 pages and 29M tokens
     # on the v193q1 trial (2026-10-15); it is recorded instead.
     errors += misquoted(notebook.root, record, text, items)
+    from .page_review import quote_boundary_warnings
+    boundary_warnings = quote_boundary_warnings(notebook.root, text, items) if record.startswith(AUDITED) else []
     audit_usage = {}
     audit_status = "not automatically assessed"
     if last_resort and (directory / "claim-review.json").is_file():
@@ -1008,6 +1010,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # recorded, not a refusal of claims nobody has shown to be wrong.
         if report["verdict"] == "fail":
             errors.append("Cited-claim audit did not pass; see claim-review.json")
+    if boundary_warnings:
+        audit_status += f"; {len(boundary_warnings)} quote boundaries unresolved"
     total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
                    for key in (usage or {}).keys() | audit_usage.keys()} or None
     # Sync owns this same lock. Compare and write together so a completed
@@ -1027,7 +1031,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "factual_quality": audit_status})
+                   "quote_boundary_warnings": boundary_warnings, "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.

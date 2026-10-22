@@ -308,3 +308,128 @@ def test_a_source_cited_in_place_is_numbered_so_its_quote_is_checked(tmp_path):
     items = [{'source': 'codex:s:9', 'text': 'please begin', 'role': 'user'},
              {'source': 'codex:s:1', 'text': 'x', 'role': 'user'}]
     assert misquoted(tmp_path, 'projects/x.md', fixed, items)
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('now here to help', 'nowhere to help'),
+    ('notable progress', 'not able progress'),
+    ('able to pay today', 'unable to pay today'),
+    ('can approve the terms', 'cannot approve the terms'),
+    ('send the draft', 'send the drafts'),
+])
+def test_quote_verifier_separates_changed_words_from_ambiguous_edges(quoted, original):
+    text = page(f'- Corin said “{quoted}” [1]', '- [1] gmail:abc — 2026-10-01\n')
+    items = [{'source':'gmail:abc','text':original}]
+    from connectonion.rem.page_review import quote_boundary_warnings
+    if quoted in {'able to pay today', 'send the draft'}:
+        assert misquoted(NOWHERE, 'people/corin.md', text, items) == []
+        assert quote_boundary_warnings(NOWHERE, text, items)[0]['quote'] == quoted
+    else:
+        assert misquoted(NOWHERE, 'people/corin.md', text, items)
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('send the draft', 'Please send\n  the\tdraft by Friday.'),
+    ('not able to pay', 'I am NOT ABLE\nTO PAY yet.'),
+    ('可以放在 Connect 页面上，我们自己再转发一下也可以。', '可以放在 Connect 页面上，\n我们自己再转发一下也可以。'),
+    ('请发送草稿', '请发送\n草稿，周五之前。'),
+    ('send the draft', 'Do not resend the draft; send the draft instead.'),
+])
+def test_quote_verifier_retains_layout_tolerance_and_finds_later_whole_word_match(quoted, original):
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:abc — 2026-10-01\n')
+    assert misquoted(NOWHERE, 'people/corin.md', text, [{'source':'gmail:abc','text':original}]) == []
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('Could you please let us know', 'Communication preferencesCould you please let us know: your preferred time?'),
+    ('Best regards, Corin', 'Best regards, CorinFrom: Someone else'),
+    ('refundable today', 'non-refundable today'),
+])
+def test_ambiguous_edges_do_not_refute_a_quote_from_a_flattened_rendering(quoted, original):
+    from connectonion.rem.page_review import quote_boundary_warnings
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:abc — 2026-10-01\n')
+    items = [{'source':'gmail:abc','text':original}]
+    assert misquoted(NOWHERE, 'people/corin.md', text, items) == []
+    warnings = quote_boundary_warnings(NOWHERE, text, items)
+    assert len(warnings) == 1 and warnings[0]['quote'] == quoted
+    assert warnings[0]['citations'] == ['1']
+    assert warnings[0]['sources'][0]['source_id'] == 'gmail:abc'
+    assert warnings[0]['sources'][0]['excerpt'] == original
+    assert 'not original MIME' in warnings[0]['sources'][0]['scope']
+
+
+def test_boundary_uncertainty_reaches_the_actual_source_audit_prompt(tmp_path):
+    from connectonion.rem import project_claim_review
+    notebook = Notebook(tmp_path)
+    text = page('- Corin said “able to pay today” [1]', '- [1] gmail:abc — 2026-10-01\n')
+    items = [{'source':'gmail:abc','text':'Unable to pay today; please wait.'}]
+    sent = []
+
+    def audit(_workspace, prompt, *_args):
+        sent.append(prompt)
+        return {'result':json.dumps({'verdict':'INSUFFICIENT','findings':[]}), 'usage':{}}
+
+    report, _ = project_claim_review.review(notebook, text, {}, tmp_path, audit,
+                                            record='people/corin.md',items=items)
+    assert report['verdict'] == 'insufficient'
+    assert 'quote_boundary_warnings' in sent[0] and 'word edges are ambiguous' in sent[0]
+    assert 'Unable to pay today' in sent[0] and 'Check the original\'s words, negation and conditions' in sent[0]
+    assert 'not proof a quotation is wrong' in sent[0] and 'leave undecidable segmentation out' in sent[0]
+
+
+def test_truncated_or_unavailable_sources_do_not_receive_conclusive_boundary_judgments(monkeypatch):
+    from connectonion.rem import page_review
+    text = page('- “able to pay today” [1][2]', '- [1] gmail:a\n- [2] gmail:b\n')
+    monkeypatch.setattr(page_review, 'cited_texts', lambda *args: {'gmail:a':('Unable to pay today',True)})
+    assert page_review.quote_boundary_warnings(NOWHERE,text,[]) == []
+    monkeypatch.setattr(page_review, 'cited_texts', lambda *args: {'gmail:a':('Unable to pay today',True),
+                                                               'gmail:b':('unavailable',False)})
+    assert page_review.quote_boundary_warnings(NOWHERE,text,[]) == []
+
+
+def test_a_global_audit_pass_cannot_resolve_unjudged_word_edges(tmp_path):
+    from connectonion.rem import project_claim_review
+    notebook = Notebook(tmp_path)
+    text = page('- “able to pay today” [1]', '- [1] gmail:abc — 2026-10-01\n')
+    report, _ = project_claim_review.review(notebook,text,{},tmp_path,
+        lambda *args: {'result':json.dumps({'verdict':'PASS','findings':[]})},
+        record='people/corin.md',items=[{'source':'gmail:abc','text':'Unable to pay today.'}])
+    assert report['verdict'] == 'insufficient'
+    assert report['quote_boundary_warnings'][0]['sources'][0]['source_id'] == 'gmail:abc'
+    assert report['reason'] == 'Rendered-source quote boundaries remain unresolved'
+
+
+def test_no_auditor_keeps_boundary_diagnostics_without_claiming_verified_content(tmp_path,monkeypatch):
+    notebook, old, written, items = _person(tmp_path)
+    written = written.replace('“I can intro you to Jonah”','“Happy to introduce Jonah”')
+    written = written.replace('## Open threads\n', '## Open threads\n- Corin said “able to pay today” [1].\n')
+    items[1]['text'] += '\nUnable to pay today.'
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written)
+    monkeypatch.setattr(runner,'run_claim_task',lambda *args:pytest.fail('No model or auditor should run'))
+    runner._promote_candidate(notebook,'people/corin.md',candidate,old,items,tmp_path,None,claim_config=None)
+    report = json.loads((tmp_path/'review.json').read_text())
+    assert report['quote_boundary_warnings'][0]['quote'] == 'able to pay today'
+    assert report['factual_quality'] == 'not automatically assessed; 1 quote boundaries unresolved'
+    assert 'passed' not in report['factual_quality']
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('아버지가방에', '아버지 가방에'),
+    ('notable progress', 'not able progress'),
+])
+def test_meaningful_word_separations_survive_quote_normalization(quoted,original):
+    text = page(f'- “{quoted}” [1]','- [1] gmail:a\n')
+    assert misquoted(NOWHERE,'people/corin.md',text,[{'source':'gmail:a','text':original}])
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('아버지 가방에', '아버지\n가방에'),
+    ('送ってください', '送って\nください'),
+    ('Best regards, Corin', 'Best regards,\nCorin'),
+])
+def test_wrapping_and_punctuation_spacing_do_not_join_source_words(quoted,original):
+    from connectonion.rem.page_review import _quote_plain
+    assert 'regards, Corin'.casefold() in _quote_plain('Best regards,\nCorin')
+    text = page(f'- “{quoted}” [1]','- [1] gmail:a\n')
+    assert not misquoted(NOWHERE,'people/corin.md',text,[{'source':'gmail:a','text':original}])

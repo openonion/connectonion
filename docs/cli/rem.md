@@ -1701,3 +1701,25 @@ the selected root, shortening a root under your home to `~/…` with shell-safe
 quoting. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
+
+### Quotation evidence candidate (#2635)
+
+An unreleased repair preserves meaningful word spacing when comparing quotations
+with complete available cited originals. Mail wrapping and tested Han/kana layout
+remain comparable; Korean word spaces are preserved. Punctuation spacing is
+matched without deleting separators from retained text. Other claim-key matching
+is unchanged.
+
+A literal fragment that occurs only inside a larger word or next to flattened
+legacy mail headers is **unresolved**, rather than automatic support or a
+refutation. Review packets carry the quote, matching cited source IDs and bounded
+adjacent retained renderings. Promotion/audit records retain the warnings even
+when no auditor runs. A global PASS cannot resolve those word boundaries and is
+recorded as INSUFFICIENT. Existing policy records insufficient audits without
+refusing claims nobody has shown wrong.
+
+This is a bounded quotation check, not semantic proof of who spoke, what was
+promised, or whether a condition was retained. Unavailable/truncated originals
+remain unjudged. No missing separators are guessed and no real notes are rewritten.
+Actual model efficacy and current desktop/phone/source-dialog acceptance remain
+pending; no new preview is claimed available by this candidate.
