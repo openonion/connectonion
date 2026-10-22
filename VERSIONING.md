@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc15
+## Current Version: 1.9.3rc16
+
+1.9.3rc16 skips stale click-approach waypoints under slow pointer dispatch,
+adds an optional local managed-daemon PID pin, and keeps a
+project Host from starting an unrelated global handoff watcher. Ordinary
+unpinned browser startup remains unchanged. Stable remains 1.9.2; Python 3.11+
+and rc15's dependency floors are retained. See
+[1.9.3rc16 notes](docs/releases/1.9.3rc16.md).
+
+- 1.9.3rc16 (bounded click pacing and owned browser/Host lifecycles).
+
+### Previous candidate: 1.9.3rc15
 
 1.9.3rc15 preserves Feishu/Lark message kinds, resource references and typed
 sender IDs through the inbox and Host. Recovery includes already remembered
