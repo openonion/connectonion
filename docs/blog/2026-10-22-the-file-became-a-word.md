@@ -31,7 +31,7 @@ turning the intact record back into `[file]`. Its regression test failed until
 non-text messages carried their normal JSON record through that final step.
 Plain text keeps its ordinary input, and sender permissions stay unchanged.
 
-A restart exposed another small gap. The listener remembers a conversation
+A crash-recovery regression exposed another gap. The listener remembers a conversation
 before writing its first message. Recovery looked only at the journal, so a
 crash between those writes could leave a remembered conversation unqueried.
 It now includes those already recorded conversations under the same recovery
