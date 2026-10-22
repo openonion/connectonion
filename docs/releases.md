@@ -25,16 +25,16 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc14** preserves file and image references, message kinds
+Release candidate **1.9.3rc15** preserves file and image references, message kinds
 and typed sender IDs through Feishu/Lark inbox consumption and Host input.
 Recovery also queries conversations already remembered before an interrupted
 first journal write. This preview requires Python 3.11+ and retains rc13's
-security dependency floors. See [1.9.3rc14 notes](releases/1.9.3rc14.md).
+security dependency floors. See [1.9.3rc15 notes](releases/1.9.3rc15.md).
 
 After publication, install its exact pin:
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc14'
+python -m pip install --upgrade 'connectonion==1.9.3rc15'
 ```
 
 ## Previous previews
