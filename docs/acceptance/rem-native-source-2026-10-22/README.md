@@ -95,3 +95,66 @@ Its recheck criterion is live desktop capability and task visibility, actual
 model-turn execution, and migrated-mode backend registration/persistence before
 calling the integration running. It did not inspect native UI or certify an
 end-to-end pass. This is an AI role review, not a claim of human participation.
+
+## Follow-up: Python support and the renderer capability gate
+
+Python 3.10 reached upstream end of life on October 1, 2026
+(https://peps.python.org/pep-0619/). The recommended compatibility policy is to
+raise the minimum to 3.11 in a clearly documented release, update installers,
+package classifiers and the CI matrix together, and publish Pillow >=13.0.0 as
+a dependency floor as well as updating the lockfile. Existing Python 3.10
+installations are not forcibly changed; their old releases remain available,
+but must not be described as receiving current security support. Pinning an
+unpatched Pillow or maintaining a private backport is not recommended.
+
+Pillow is used by browser image tools as well as arriving through python-pptx
+and the WhatsApp extra. Making only python-pptx optional therefore does not
+remove the compatibility problem. No compatibility metadata has been changed
+by this investigation.
+
+Additional read-only local observations:
+
+- `codex features list` reports `in_app_local_automation` enabled.
+- `lsof -p 93137` confirms the running desktop main process has
+  `~/.codex/sqlite/codex-dev.db` open. This rules out checking the wrong database
+  for that process; it does not prove the scheduler is enabled.
+- The installed renderer sends `automations.local.isCapable` to
+  `localAutomationsScheduler.setCapability`. That capability combines the
+  `in_app_local_automation` feature with a native local-access policy.
+- The native policy checks allowed local access, a local host, and, when its
+  rollout is enabled, `chatgpt.workspace.feature.codex-local-automation.access`.
+- `verify-capability.cjs` executes that exact policy expression with injected
+  state, covering six combinations. These are isolated policy tests, not
+  observations of the running renderer. The prerequisite extracted shared
+  renderer bundle is `/tmp/rem-native-renderer/app-shared-36eae88777f2.js`;
+  the source bundle is not included in this repository.
+
+The policy tests pass, but the live renderer's capability, migration owner
+state and automatic execution remain unverified. Do not change enterprise
+policy or patch the desktop to force capability. The next live check is to
+open the desktop Scheduled/Automations page, create an isolated task through
+its native path, and observe both its scheduled run and output marker. The
+previous no-run probe is still a failed end-to-end check. Keep the existing
+REM launchd job until the native trigger passes.
+
+Current official scheduling documentation also requires the machine and
+app to remain running for local project tasks:
+https://learn.chatgpt.com/docs/automations?surface=app . Native scheduling
+therefore changes the availability contract compared with launchd; this
+must be stated in the migration experience, not silently hidden.
+
+Compatibility implementation touchpoints found: `pyproject.toml` requires-python,
+Python classifier and Ruff target; `uv.lock`; Python matrices and audit runtime
+in `.github/workflows/tests.yml`; and `install.sh`, whose current `uv tool
+install` does not select a Python version. The installer should deliberately
+select a supported interpreter instead of retrying an incompatible pinned RC
+as if the package had not appeared on PyPI yet. Validate both upgrade from a
+3.10 installation and a fresh install without changing system Python.
+
+Independent AI role review (technology founder, marketing and UI): the
+compatibility recommendation and distinction between isolated and live tests
+are sound. P1: synchronize interpreter/dependency floors across install, CI,
+metadata and docs, and verify fresh installation plus upgrade. P1: obtain live
+native registration, automatic execution and marker evidence before migration.
+P2: retain the isolated-policy coverage label. Review inspected the evidence
+summary, not the live renderer or native UI; it did not reproduce the runs.
