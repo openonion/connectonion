@@ -56,7 +56,10 @@ def claude(path: Path, cwd: str, rows, *, session="sess-1"):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
+    # The suite can run long after collection (or across a host sleep/clock jump).
+    # Generate relative source times against this test, not the module import.
+    monkeypatch.setitem(globals(), "NOW", datetime.now(timezone.utc))
     root = tmp_path / "rem"
     prepare(root)
     notebook = Notebook(root)

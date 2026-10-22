@@ -75,3 +75,11 @@ during the run. Pip was added as a test tool; all six isolated cases then passed
 without source changes. The failed full run is retained separately from the next
 fresh full result; no failure was waived or replaced by an isolated-only claim.
 The CLI transport case mocks send; it is not native browser/page acceptance.
+
+A second complete run after adding pip still failed the same five time-sensitive
+cases (16,997 passed,335 skipped); isolated success was not sufficient. Under
+existing test-quality issue #210, the Project `world` fixture now regenerates its
+relative NOW at each test, and the cached Calendar refresh case generates its
+one-hour token expiry at execution rather than collection. Production clocks,
+assertions, markers and selection remain unchanged. These fixture-only changes
+are separately committed; fresh complete verification follows in the PR.
