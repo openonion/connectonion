@@ -8,11 +8,14 @@ from packaging.version import Version
 REPO = Path(__file__).resolve().parents[2]
 
 PATCHED_FLOORS = {
+    "cryptography": "50.0.2",
     "click": "8.3.3",
     "httplib2": "0.32.0",
     "idna": "3.15",
+    "pillow": "13.0.0",
     "protobuf": "6.33.5",
     "pyasn1": "0.6.4",
+    "pypdf": "6.21.2",
     "pygments": "2.20.0",
     "pynacl": "1.6.2",
     "python-dotenv": "1.2.2",

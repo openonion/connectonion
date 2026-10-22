@@ -102,3 +102,17 @@ native-code tests are not a substitute for a live scheduled execution.
 
 PyPI was checked again: Pillow 13.0.0 requires Python >=3.11 and there is no
 newer 12.x release than 12.3.0. The dependency audit remains unresolved.
+
+## Security candidate update
+
+The candidate now requires Python >=3.11, Pillow >=13.0.0, pypdf >=6.21.2 and
+cryptography >=50.0.2. The former Intel-only cryptography <49 cap was removed
+because it retained reported vulnerabilities. Local full-lock pip-audit
+2.10.1 reports `No known vulnerabilities found`, with no ignored advisories.
+The first Python 3.11 focused run passed 309 tests (installer, file reading,
+attachments, scrolling, REM runner, Codex adapter and version consistency).
+That run preceded the final cryptography floor; the native Intel source build
+and post-upgrade cryptographic tests are separate outstanding checks.
+
+No native Schedule success is claimed and no migration has occurred. Security
+release readiness must not imply that the native integration is finished.

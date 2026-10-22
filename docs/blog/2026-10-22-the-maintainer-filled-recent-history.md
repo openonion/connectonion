@@ -69,3 +69,10 @@ registered there. The [source-level checks](../acceptance/rem-native-source-2026
 therefore show a path to reuse native structures, rather than a reason to build
 another scheduler. They still do not certify the running desktop's model-turn
 execution: the isolated tick test replaced that last boundary with a marker.
+
+The candidate also raises its minimum Python version to 3.11 and its Pillow,
+pypdf and cryptography security floors. Keeping Python 3.10 and an old Intel
+Mac wheel pin would retain vulnerable dependencies. The tradeoff is explicit:
+Python 3.10 users need a supported interpreter; Intel Macs need build tools
+for cryptography because upstream no longer supplies Intel wheels. This is
+separate from native scheduling, whose live acceptance has not passed.
