@@ -1701,3 +1701,24 @@ the selected root, shortening a root under your home to `~/…` with shell-safe
 quoting. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
+
+
+### Unchanged-content audit candidate (#2639)
+
+An unreleased correction narrows the protection for content inherited from an
+accepted page. It compares complete retained prose contexts, including meaningful
+word spaces, the page title and section hierarchy, and exact cited original IDs
+at their relative text positions. Renumbering or line wrapping can preserve
+continuity; removing a condition, moving evidence to another sentence or moving
+history into current context does not. A removed or reordered old paragraph or
+bullet invalidates its section's exemption, so adjacent qualifications cannot
+silently disappear. Headings, fenced examples and Sources rows do not count as
+old prose. Every occurrence of a finding must qualify, including new duplicates.
+
+Unchanged findings can remain deferred under the existing preservation policy,
+but are recorded as **insufficient**, with a deferred count in `review.json`,
+not as a factual pass. New active failures still reach ordinary repair/refusal.
+This is a deterministic continuity check, not semantic equivalence or proof the
+old content is true. Additions may still affect discourse meaning; actual model
+and current native desktop/phone/accessibility acceptance remain unverified.
+Existing notebook pages are not automatically corrected.
