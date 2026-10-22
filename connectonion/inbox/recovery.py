@@ -62,7 +62,9 @@ class HistoryRecovery:
         self.through = through
 
     def _containers(self):
-        containers = {}
+        with self.guard:
+            containers = {('chat', chat): chat for chat, kind in self.chat_types.items()
+                          if kind in ('p2p', 'group')}
         if self.inbox.received.exists():
             for line in self.inbox.received.read_text().splitlines():
                 try:

@@ -126,16 +126,69 @@ them. `sender` is still the key: a name is not unique and can change.
 the bot from a reply to somebody else in the same group, which are different
 events; `mentioned` reads the same value.
 
+The message-kind, attachment and typed-sender behavior below requires the opt-in
+**1.9.3rc15** preview. After publication, install it with
+`python -m pip install --upgrade 'connectonion==1.9.3rc15'`.
+
 `kind` says what arrived: `text` for anything readable as words, otherwise the
 platform's own word for it — `image`, `sticker`, `audio` and the rest come
-through with an empty `text`, and without `kind` they look exactly like a
-message with nothing in it.
+through with their actual type. Feishu may retain a text placeholder such as
+`[file]`; use `kind`, not the placeholder, to decide how to handle it. A rich
+post carrying files or images has `kind: post`; a text-only post is `text`.
+
+Feishu/Lark messages also include optional `attachments` and `sender_ids` when
+the platform supplied them. They survive the queue, `receive` and `consume`
+without requiring `listen --raw`:
+
+```json
+{
+  "kind": "file",
+  "attachments": [
+    {
+      "type": "file",
+      "key": "file_v3_example",
+      "name": "receipts.zip"
+    }
+  ],
+  "sender_ids": {
+    "union_id": "on_example",
+    "open_id": "ou_example"
+  }
+}
+```
+
+`attachments` contains original resource references, including the separate
+file list and embedded images in rich posts. Each item has `type` and `key`,
+plus `name` when available. Types are `file`, `image`, `audio`, `media` or
+`folder`; a folder reference is not a downloadable file. Repeated references
+to the same type/key appear once per message. Only these metadata fields are
+exposed, not unrelated provider payload. The listener records a ZIP as a file;
+it does not download, extract, upload or execute its contents. The consuming
+program owns those steps and the corresponding validation.
+
+The Host's built-in inbox consumer also passes the normalized JSON record to
+the agent for non-text messages or messages with attachments. Plain text
+messages retain their usual text input. This keeps original attachment keys
+available at the final agent-input step without exposing `raw` or changing the
+sender's permissions.
 
 `chat` is where it came from; reply there and the answer lands beside the
-question. `sender` is the person's `union_id`. `mentioned` is whether the bot
+question. `sender` keeps its existing preference for `union_id`, falling back
+to `open_id`; a history response can supply only one of these. `sender_ids`
+labels the identifiers actually supplied, so an application using app-scoped
+bindings can check `sender_ids.open_id` without changing its existing keys.
+An ID from another app must not be treated as the same app's binding.
+`mentioned` is whether the bot
 was @'d (always true in a direct message). Nothing else from Feishu is kept
 unless you start `listen --raw`, so group titles and contact cards never reach
 a prompt by accident.
+
+History recovery queries conversations already recorded by this listener,
+including a conversation remembered just before an interrupted first journal
+write. It retains the original message ID, timestamp, type and attachment
+references and uses the same inbox deduplication. A fresh inbox does not
+discover or import old chats automatically; a migration must explicitly
+establish its known conversations and recovery boundary.
 
 You do not need the commands below to consume it:
 

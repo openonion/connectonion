@@ -66,6 +66,7 @@ def test_a_group_mention_becomes_a_message_with_the_name_put_back(creds):
 
     assert message.to_dict() == {
         "id": "om_9f8e", "chat": "oc_a1b2", "thread": None, "sender": "on_7c6d",
+        "sender_ids": {"union_id": "on_7c6d", "open_id": "ou_1"},
         "sender_name": "", "text": "@OpsAgent look at the deploy", "kind": "text", "quoted": None, "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
@@ -527,3 +528,121 @@ def test_reaction_and_read_receipt_events_are_acked_and_never_become_messages(cr
 
     assert len(outcomes) == 3, "every subscribed event had a processor"
     assert box.unread() == [], "a reaction is not a message to answer"
+
+
+@pytest.mark.parametrize('kind,content', [
+    ('image', {'image_key':'img_original'}),
+    ('file', {'file_key':'file_archive','file_name':'8月发票.zip'}),
+    ('audio', {'file_key':'file_voice','duration':1200}),
+    ('media', {'file_key':'file_video','file_name':'clip.mp4'}),
+    ('sticker', {'file_key':'file_sticker'}),
+])
+def test_nontext_events_keep_their_kind(creds,kind,content):
+    message=Feishu().to_message(event(message_type=kind,text=json.dumps(content)))
+    assert message.kind==kind
+
+
+def test_file_and_image_references_reach_a_plain_inbox_consumer_without_raw(creds,tmp_path):
+    from connectonion.inbox.store import Inbox
+    box=Inbox('feishu',home=tmp_path)
+    message=Feishu().to_message(event(message_type='file',text=json.dumps({
+        'file_key':'file_archive','file_name':'8月发票.zip'})))
+    box.deliver(message)
+    claimed=box.receive(timeout=0)
+    assert claimed.kind=='file'
+    assert claimed.attachments==[{'type':'file','key':'file_archive','name':'8月发票.zip'}]
+    assert claimed.raw is None
+    assert json.loads(claimed.to_json())['attachments']==claimed.attachments
+    assert box.lookup(claimed.id).attachments==claimed.attachments
+
+
+def test_mixed_rich_post_retains_separate_files_images_and_sender_open_id(creds,tmp_path):
+    from connectonion.inbox.store import Inbox
+    # The actual post shape has attachments beside content, not inside text runs.
+    body={'content':[[{'tag':'text','text':'请处理这批发票'},
+                      {'tag':'img','image_key':'img_original'}]],
+          'files':[{'file_key':'file_pdf','file_name':'invoice.pdf','is_folder':False},
+                   {'file_key':'file_zip','file_name':'invoices.zip','is_folder':False}]}
+    message=Feishu().to_message(event(message_type='post',text=json.dumps(body)))
+    box=Inbox('feishu',home=tmp_path);box.deliver(message)
+    got=box.receive(timeout=0)
+    assert got.kind=='post'
+    assert got.text=='请处理这批发票'
+    assert got.sender=='on_7c6d'  # Preserve the existing canonical sender contract.
+    assert got.sender_ids=={'union_id':'on_7c6d','open_id':'ou_1'}
+    assert got.attachments==[{'type':'file','key':'file_pdf','name':'invoice.pdf'},
+                             {'type':'file','key':'file_zip','name':'invoices.zip'},
+                             {'type':'image','key':'img_original'}]
+    assert 'raw' not in got.to_dict()
+
+
+def test_file_only_rich_post_is_not_an_empty_text_message(creds):
+    content={'content':[[]],'files':[{'file_key':'file_pdf','file_name':'invoice.pdf'}]}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.kind=='post'
+    assert got.attachments==[{'type':'file','key':'file_pdf','name':'invoice.pdf'}]
+
+
+def test_localized_rich_post_keeps_attachment_keys_without_duplicate_references(creds):
+    content={'zh_cn':{'content':[[{'tag':'text','text':'发票'},{'tag':'img','image_key':'img_a'},
+        {'tag':'img','image_key':'img_a'}]],'files':[{'file_key':'file_a','file_name':'a.pdf'}]}}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.text=='发票'
+    assert got.attachments==[{'type':'file','key':'file_a','name':'a.pdf'},{'type':'image','key':'img_a'}]
+
+
+def test_plain_rich_text_stays_text_and_old_plain_messages_keep_optional_fields_absent(creds):
+    post=json.dumps({'content':[[{'tag':'text','text':'hello'}]]})
+    got=Feishu().to_message(event(message_type='post',text=post))
+    assert got.kind=='text'
+    assert not got.attachments
+    from connectonion.inbox.store import Message
+    old=Message.from_dict({'id':'old','chat':'chat','text':'hello'})
+    assert old.attachments is None and old.sender_ids is None
+    assert 'attachments' not in old.to_dict() and 'sender_ids' not in old.to_dict()
+
+
+def test_resource_metadata_is_whitelisted_and_folder_is_not_a_file(creds):
+    content={'content':[[]],'files':[
+        {'file_key':'folder_a','file_name':'receipts','is_folder':True,'token':'private'},
+        {'file_key':'file_a','file_name':'invoice.pdf','is_folder':False,'secret':'private','url':'https://private'}],
+        'internal':{'content':[[{'tag':'text','text':'not a localized message'}]]}}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.attachments==[{'type':'folder','key':'folder_a','name':'receipts'},
+                             {'type':'file','key':'file_a','name':'invoice.pdf'}]
+    assert 'private' not in got.to_json() and 'internal' not in got.to_json()
+    assert not got.text
+
+
+def test_multiple_locale_resources_dedupe_without_losing_distinct_originals(creds):
+    body={'content':[[{'tag':'text','text':'receipt'},{'tag':'img','image_key':'img_a'}]],
+          'files':[{'file_key':'file_a','file_name':'a.pdf'}]}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps({'en_us':body,'zh_cn':body})))
+    assert got.text=='receipt'
+    assert len(got.attachments)==2
+
+
+@pytest.mark.parametrize('brand',['feishu','lark'])
+def test_both_brands_normalize_the_same_file_payload(brand):
+    got=Feishu(brand).to_message(event(message_type='file',text='{"file_key":"file_a","file_name":"a.pdf"}'))
+    assert got.kind=='file' and got.attachments==[{'type':'file','key':'file_a','name':'a.pdf'}]
+
+
+@pytest.mark.parametrize('body',[
+    {'title':'交通费用途说明','content':[[]]},
+    {'title':'交通费用途说明','content':[[{'tag':'img','image_key':'img_a'}]]},
+    {'zh_cn':{'title':'交通费用途说明','content':[[{'tag':'img','image_key':'img_a'}]]}},
+])
+def test_post_title_carrying_expense_purpose_is_not_lost(creds,body):
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(body)))
+    assert got.text=='交通费用途说明'
+
+
+@pytest.mark.parametrize('localized',[False,True])
+def test_embedded_media_keeps_original_file_reference_without_treating_cover_as_original(creds,localized):
+    body={'content':[[{'tag':'media','file_key':'file_video','image_key':'img_cover'},
+                      {'tag':'media','file_key':'file_video','image_key':'img_cover'}]]}
+    content={'zh_cn':body} if localized else body
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.kind=='post'
+    assert got.attachments==[{'type':'media','key':'file_video'}]

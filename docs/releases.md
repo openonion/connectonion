@@ -25,6 +25,28 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc15** preserves file and image references, message kinds
+and typed sender IDs through Feishu/Lark inbox consumption and Host input.
+Recovery also queries conversations already remembered before an interrupted
+first journal write. This preview requires Python 3.11+ and retains rc14's
+security dependency floors. See [1.9.3rc15 notes](releases/1.9.3rc15.md).
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc15'
+```
+
+## Previous previews
+
+Release candidate **1.9.3rc14** updates the optional Synology dependency to
+Paramiko 5.1.0+ and audits all extras, retaining rc13 security and compatibility
+requirements. See [1.9.3rc14 notes](releases/1.9.3rc14.md).
+
+Release candidate **1.9.3rc13** archives REM's internal Codex calls while preserving
+explicit resume and raises the Python floor to 3.11 with updated security
+dependencies. See [1.9.3rc13 notes](releases/1.9.3rc13.md).
+
 Release candidate **1.9.3rc12**: rounds keep what they had. A round keeps every quote the page
 already had and repairs a dropped quote before it is refused; open threads say who owes whom and
 keep overdue promises open; a dropped mail connection no longer stops the first run; the reader's
@@ -34,8 +56,6 @@ only. See [1.9.3rc12 notes](releases/1.9.3rc12.md).
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc12'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc11**: upkeep keeps its quotes. Daily upkeep checks a rewrite against
 the page it replaces and asks for dropped quotes back; pronoun repair only touches the owner; project

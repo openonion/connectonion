@@ -245,3 +245,18 @@ class TestTheHostWatchesTheListener:
             assert wait(lambda: provider.sent), "the Host stopped answering after restarting its listener"
         finally:
             asyncio.run(shutdown())
+
+
+def test_host_turn_keeps_attachment_references_and_typed_source_identity_without_raw(tmp_path,rig,monkeypatch):
+    import json
+    box,provider,turns=rig
+    item=Message(id='om_zip',chat='c1',sender='on_client',text='[file]',kind='file',
+        at='2026-10-22T00:00:00Z',attachments=[{'type':'file','key':'file_zip','name':'receipts.zip'}],
+        sender_ids={'open_id':'ou_client'},raw={'private':'not Agent input'})
+    box.deliver(item,raw=True)
+    startup,shutdown=lifespan(tmp_path,provider,monkeypatch)
+    run_until(startup,shutdown,until=lambda:provider.sent)
+    got=json.loads(turns[0]['prompt'])
+    assert got['kind']=='file' and got['attachments']==item.attachments
+    assert got['sender_ids']==item.sender_ids and 'raw' not in got
+    assert turns[0]['session']['requester']=={'address':'feishu:on_client','level':'open'}

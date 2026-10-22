@@ -2,7 +2,7 @@
 Purpose: The Host answers inbox messages, the way it answers a socket or a clock — one more ingress, one existing turn
 LLM-Note:
   Dependencies: imports from [threading, uuid, pathlib, inbox/ (Inbox, provider, settings), host/http_router.py] | imported by [network/host/server.py via create_inbox_lifespan()] | tested by [tests/unit/test_host_inbox.py]
-  Data flow: Inbox.serve(handler) → channel.answers(message)? → input_handler(create_agent, storage, text, session=uuid5(provider:chat:thread)) → provider.send(reply) → Inbox.record_sent + done
+  Data flow: Inbox.serve(handler) → channel.answers(message)? → input_handler(create_agent, storage, text or normalized media record, session=uuid5(provider:chat:thread)) → provider.send(reply) → Inbox.record_sent + done
   State/Effects: one background listener process per channel, one consumer thread per channel, turns recorded in .co/session_results.jsonl with via and requester | sends replies through the provider
   Integration: exposes create_inbox_lifespan(), returning the (on_startup, on_shutdown) pair server.py already composes for the relay and the schedule
   Performance: a turn runs in the consumer's own thread, so the event loop and the heartbeat are untouched by a four-minute answer
@@ -67,8 +67,11 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
             from .http_router import input_handler
 
             session_id = session_id_for(channel.provider, message)
+            prompt = message.text
+            if message.attachments or message.kind != "text":
+                prompt = message.to_json()  # Normalized source metadata, never raw.
             result = input_handler(
-                create_agent, storage, message.text, result_ttl,
+                create_agent, storage, prompt, result_ttl,
                 session={
                     "session_id": session_id,
                     # Recorded, not checked: 1.8.5 answers anyone who can
