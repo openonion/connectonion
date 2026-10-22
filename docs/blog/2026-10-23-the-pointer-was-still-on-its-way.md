@@ -42,5 +42,27 @@ fixture once and sent its screenshot through native Host image IO. The phone
 reload check initially accepted cached completion text too soon; independent
 review caught the still-reconnecting state. The corrected test now waits for a
 new connection, the Send control and the same loaded image, while checking that
-neither input nor click was replayed. [The scoped consumer acceptance](../acceptance/click-pacing-2026-10-23/README.md)
+neither input nor click was replayed. [The scoped consumer acceptance](https://github.com/openonion/connectonion/blob/fa48f52885e7fea1d9b8c3b061e47f5c6da1f0a5/docs/acceptance/click-pacing-2026-10-23/README.md)
 records the exact coverage and the remaining production boundary.
+
+Getting the faster path into a working service exposed a second kind of wait.
+The existing browser belonged to more than one task. Restarting it to load a
+small input fix would have stopped someone else's work, so the reimbursement
+worker needed a separately owned runtime. A healthy preflight was not enough:
+the next CLI command could quietly start a replacement if that daemon died.
+The supervisor's no-restart policy did not govern the client's startup path.
+
+An optional daemon PID pin gives the managed worker a different contract from
+an interactive terminal. Missing or changed ownership becomes a visible error,
+including after an engine probe, rather than a request to create another
+browser. Independent review followed the same boundary through close, where
+force cleanup must not adopt a replacement process. A real CLI trial exercised
+that boundary without opening a page or a paid session. The ordinary unpinned
+CLI still starts a browser on demand.
+
+The candidate packages both changes, but they have separate evidence. A bounded
+gesture demonstrates less accumulated dispatch delay. A daemon pin identifies
+which process the worker may use or clean up. Neither result proves the remaining
+business queue is complete, or that copying a version number into a running
+service has upgraded its live browser. That last step still needs a published
+artifact, fresh runtime checks and an actual bounded business trial.
