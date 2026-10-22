@@ -141,7 +141,20 @@ the platform supplied them. They survive the queue, `receive` and `consume`
 without requiring `listen --raw`:
 
 ```json
-{"kind":"file","attachments":[{"type":"file","key":"file_v3_example","name":"receipts.zip"}],"sender_ids":{"union_id":"on_example","open_id":"ou_example"}}
+{
+  "kind": "file",
+  "attachments": [
+    {
+      "type": "file",
+      "key": "file_v3_example",
+      "name": "receipts.zip"
+    }
+  ],
+  "sender_ids": {
+    "union_id": "on_example",
+    "open_id": "ou_example"
+  }
+}
 ```
 
 `attachments` contains original resource references, including the separate

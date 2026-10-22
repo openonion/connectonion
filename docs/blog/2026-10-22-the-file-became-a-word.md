@@ -42,3 +42,6 @@ preserved all 135 references through claims, matched live and history
 normalization, and accepted no duplicate redeliveries. That checks the message
 path. Downloading those originals, extracting an archive and submitting an
 expense still need their own acceptance evidence on the application server.
+
+After publication, see the [Feishu and Lark consumer contract](https://docs.connectonion.com/cli/feishu)
+and [rc15 installation and release scope](https://docs.connectonion.com/releases/1.9.3rc15).
