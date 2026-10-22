@@ -126,6 +126,10 @@ them. `sender` is still the key: a name is not unique and can change.
 the bot from a reply to somebody else in the same group, which are different
 events; `mentioned` reads the same value.
 
+The message-kind, attachment and typed-sender behavior below requires the opt-in
+**1.9.3rc15** preview. After publication, install it with
+`python -m pip install --upgrade 'connectonion==1.9.3rc15'`.
+
 `kind` says what arrived: `text` for anything readable as words, otherwise the
 platform's own word for it — `image`, `sticker`, `audio` and the rest come
 through with their actual type. Feishu may retain a text placeholder such as
