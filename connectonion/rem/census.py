@@ -184,21 +184,46 @@ def threads(page: str) -> list[str]:
             and not NOT_A_THREAD.match(item)]
 
 
+WRITTEN_MONTH = "January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec"
+WRITTEN_DATE = rf"\b(?:(\d{{1,2}})\s+({WRITTEN_MONTH})|({WRITTEN_MONTH})\s+(\d{{1,2}}))(?:,?\s+(\d{{4}}))?\b"
+
+
+def _written_dates(text: str, today: date) -> list[str]:
+    """English written dates, using the reader's snapshot year/rollover rule."""
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    result = []
+    for match in re.finditer(WRITTEN_DATE, text, re.I):
+        month = months.index((match[2] or match[3])[:3].lower()) + 1
+        try:
+            value = date(int(match[5] or today.year), month, int(match[1] or match[4]))
+            if not match[5] and (value - today).days > 30:
+                value = value.replace(year=value.year - 1)
+        except ValueError:
+            continue  # An impossible calendar date is not a deadline.
+        result.append(value.isoformat())
+    return result
+
+
+def _after_date(text: str, words: str, today: date) -> str:
+    match = re.search(rf"\b(?:{words})\s*[:：]?\s*({DAY}|{WRITTEN_DATE})", text, re.I)
+    raw = match[1] if match else ""
+    return raw if re.fullmatch(DAY, raw) else next(iter(_written_dates(raw, today)), "")
+
+
 def _thread_dates(text: str, today: date) -> tuple[str, str]:
     # Dates and the 60-day boundary mirror reader.html threads().
-    days = re.findall(DAY, text)
-    due = re.search(rf"\b(?:due(?:\s+(?:on|is))?|deadline(?:\s+is)?|by)\s*:?\s*{DAY}", text, re.I)
-    due = due[1] if due else ""
-    since = re.search(rf"\b(?:since|requested(?:\s+on)?|asked(?:\s+on)?)\s*:?\s*{DAY}", text, re.I)
-    moved = re.search(rf"\blast moved(?:\s+on)?\s*:?\s*{DAY}", text, re.I)
-    since = moved[1] if moved else since[1] if since else next((day for day in days if day != due and day <= today.isoformat()), "")
+    days = re.findall(DAY, text) + _written_dates(text, today)
+    due = _after_date(text, r"due(?:\s+(?:on|is))?|deadline(?:\s+(?:on|is))?|by", today)
+    since = _after_date(text, r"since|requested(?:\s+on)?|asked(?:\s+on)?", today)
+    moved = _after_date(text, r"last moved(?:\s+on)?", today)
+    since = moved or since or next((day for day in days if day != due and day <= today.isoformat()), "")
     return since, due
 
 
 def _quiet(text: str, today: date) -> bool:
     since, due = _thread_dates(text, today)
-    return bool(since and (today - date.fromisoformat(since)).days > 60
-                and (not due or due <= today.isoformat()))
+    # A written deadline stays visible, including today and overdue. Age is not resolution.
+    return bool(since and not due and (today - date.fromisoformat(since)).days > 60)
 
 
 # Source numbers belong to their page; copied promises share the resolved id.

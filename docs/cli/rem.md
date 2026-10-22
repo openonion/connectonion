@@ -1701,3 +1701,25 @@ the selected root, shortening a root under your home to `~/…` with shell-safe
 quoting. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
+
+### Deadline and quiet-state candidate (#2464, #2207)
+
+An unreleased repair keeps a recorded explicit deadline in the active waiting
+queues even when its request date is more than 60 days old. Today and overdue
+items remain eligible for the morning brief; the heading counts **overdue**
+separately from **due soon**. This reports the note's dates, not a fresh finding
+that the commitment remains current or a new priority judgment.
+
+Old items without an explicit deadline can still appear under **Gone quiet**.
+That grouping does not establish resolution. The empty waiting summary points
+to those older items rather than saying nothing is open. Python counts and the
+reader recognize English written deadlines as well as ISO dates; impossible
+written calendar dates are not promoted to deadlines. Existing snapshot-year
+inference for omitted years remains a limitation, not proof of the intended year.
+
+The person synthesis instruction no longer treats 60 days of silence or a passed
+meeting date as proof an ask was settled. It asks for evidence matching the ask
+before recording completion, and distinguishes an unanswered ask from an agreed
+promise. This prompt repair has offline dispatch tests; real model behavior and
+current desktop/phone/accessibility acceptance remain unverified. It does not
+rewrite existing notes or reopen facts automatically.

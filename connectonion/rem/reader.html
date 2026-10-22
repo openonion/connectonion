@@ -1548,6 +1548,9 @@ const UI = {
     "{n} change overnight": "昨夜 {n} 项变化",
     "{n} changes overnight": "昨夜 {n} 项变化",
     "{n} due soon": "{n} 项即将到期",
+    "{n} overdue": "{n} 项已逾期",
+    "No active waiting items. {n} older threads remain to review.": "暂无活跃的等待事项，另有 {n} 条较早的事项待核实。",
+    "Grouped by their recorded dates, not verified as resolved.": "按笔记中记录的日期分组，不表示已确认解决。",
     "A quiet morning": "一个安静的早晨",
     "details": "详情",
     "Last night: read {n} items · rewrote {m} pages · ": "昨夜：读取 {n} 条内容 · 重写 {m} 页 · ",
@@ -2932,12 +2935,13 @@ function writtenDatePattern() {
 function writtenDates(text) {
   const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
   const snapshot = calendarDay(REM.as_of), year = Number(snapshot.slice(0, 4));
-  return [...text.matchAll(new RegExp(writtenDatePattern(), "gi"))].map(m => {
+  return [...text.matchAll(new RegExp(writtenDatePattern(), "gi"))].flatMap(m => {
     const month = months.indexOf((m[2] || m[3]).slice(0, 3).toLowerCase()) + 1;
     const day = String(m[1] || m[4]).padStart(2, "0"), mm = String(month).padStart(2, "0");
     let date = (m[5] || year) + "-" + mm + "-" + day;
     if (!m[5] && new Date(date) - new Date(snapshot) > 30 * DAY_MS) date = (year - 1) + "-" + mm + "-" + day;
-    return date;
+    const parsed = new Date(date + "T00:00:00Z");
+    return !isNaN(parsed) && parsed.toISOString().slice(0, 10) === date ? [date] : [];
   });
 }
 function threads(r) {
@@ -2959,7 +2963,7 @@ function threads(r) {
     const requested = after("since|requested(?:\\s+on)?|asked(?:\\s+on)?");
     const moved = after("last moved(?:\\s+on)?");
     const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
-    const quiet = !!since && daysSince(since) > 60 && (!due || due <= today);
+    const quiet = !!since && !due && daysSince(since) > 60;
     return { text: displayed, originalText: text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
   return { items, calm };
@@ -3952,6 +3956,7 @@ function quietThreads(entries, count, home = false) {
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
+    el("p", { class: "quiet-line", text: t("Grouped by their recorded dates, not verified as resolved.") }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
       el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
@@ -4031,6 +4036,7 @@ function connectionReview() {
       el("a", { href: "#reviews=1", text: t("Review the evidence →") })])]);
 }
 function waitingMore(counts) {
+  if (!counts.mine && !counts.theirs && counts.quiet) return el("p", { class: "quiet-line", text: t("No active waiting items. {n} older threads remain to review.", { n: counts.quiet }) });
   if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: t("Nothing is open between you and anyone right now.") });
   // Only nonzero counts: "0 waiting on you" reads as a task.
   const parts = [counts.mine ? t("{n} waiting on you", { n: counts.mine }) : "", counts.theirs ? t("{n} on others", { n: counts.theirs }) : ""];
@@ -4062,12 +4068,13 @@ function todayBrief(entries, counts) {
 }
 function briefHeader(counts, today) {
   const pass = lastPass(), day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
-  const due = today.filter(entry => entry.t.due).length;
+  const overdue = today.filter(entry => entry.t.due && entry.t.due < day).length;
+  const due = today.filter(entry => entry.t.due && entry.t.due >= day).length;
   const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
   const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
   const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
   const parts = [!firstBuild() && pass?.claims.length ? t(pass.claims.length === 1 ? "{n} change overnight" : "{n} changes overnight", { n: pass.claims.length }) : "",
-    due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
+    overdue ? t("{n} overdue", { n: overdue }) : "", due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
     el("h1", { text: parts.join(" · ") || t("A quiet morning") })]);
