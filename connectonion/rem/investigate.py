@@ -25,7 +25,7 @@ from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, R
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .mail import SERVER_ERRORS, error_status
-from .source import KINDS, collect, timestamp, with_local_times
+from .source import KINDS, collect, local_path, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
 SESSION_WIDEST_DAYS = 730
@@ -321,10 +321,19 @@ def page_handles(notebook: Notebook, record: str, handle=()) -> tuple[str, list[
 
 
 def _listed_path(line: str) -> str:
-    quoted = re.match(r"^- `(/[^`]+)`(?:\s|$)", line)
+    if not line.startswith("- "):
+        return ""
+    value = line[2:].strip()
+    quoted = re.match(r"`([^`]+)`(?:\s|$)", value)
     if quoted:
-        return quoted[1]
-    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip().split(" — ", 1)[0]) if line.startswith("- /") else ""
+        value = quoted[1]
+    else:
+        value = re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", value).split(" — ", 1)[0].strip()
+    if value.startswith("/"):
+        return value
+    if re.match(r"^[A-Za-z]:[\\/]", value):
+        return local_path(value)
+    return ""
 
 
 def collapse_worktree_paths(page: str) -> str:

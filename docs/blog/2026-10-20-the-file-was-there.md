@@ -1,0 +1,9 @@
+# The file was there
+
+A developer copied Windows Codex sessions into WSL2 and saw the project appear in REM. Sync could read the sessions, and the project directory was a regular local folder. Then the investigation rejected its page. The report included a file citation whose SHA-256 matched the README, but the validator still said the source could not be identified.
+
+The confusing part was that both paths were right. The session recorded `D:\Projects\PROJECT_NAME`; the same folder was available to the Linux process at `/mnt/d/Projects/PROJECT_NAME`. The importer kept the Windows spelling while the evidence reader checked Linux paths. A valid hash could not bridge two path strings that the process treated as unrelated. The fix had to translate the imported working directory and project paths, while keeping file evidence pinned to the current bytes. A non-Git project can use that evidence; a Git citation still has to name the repository's actual root and an exact commit.
+
+That distinction also changed how a refusal is handled. A missing hash, a stale hash, an unmapped file, and a mismatched Git root now produce different reasons. When the same deterministic citation error comes back unchanged, REM stops spending another repair turn on it. The report recorded eight runner attempts and 195,230 input tokens before the page was rejected. Those are the reporter's figures, not a benchmark, but they show why an error the program can prove should not be sent around the model loop again.
+
+The regression fixtures now exercise Windows-to-WSL path conversion, a hash-pinned file under a non-Git project, a stale hash, and a Git citation that points at a nested directory instead of the repository root. They run without a live Windows session or model call. A native Windows-to-WSL sync remains the useful next check; the local test runner can verify the path-conversion contract, but it does not recreate that user's installation.

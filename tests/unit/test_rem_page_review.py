@@ -1023,10 +1023,116 @@ def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
     path.write_text(candidate)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
              {'source': 'codex:abc', 'text': 'Collect first.'}]
-    with pytest.raises(runner.RunFailed, match='Cited file needs a hash or exact Git commit in a mapped repository'):
+    with pytest.raises(runner.RunFailed, match='File path is not associated with any mapped project'):
         runner._promote_candidate(nb, 'projects/atlas.md', path, old, items, tmp_path, None)
     assert nb.read('projects/atlas.md') == old
     assert path.read_text() == candidate
+
+
+@pytest.mark.parametrize(('source', 'expected'), [
+    ('file:/tmp/notes.md', 'Missing SHA-256 file hash'),
+    ('file:/tmp/notes.md@not-a-hash', 'Unsupported file citation format'),
+    ('git:/tmp/outside:0123456789abcdef0123456789abcdef01234567:README.md',
+     'Repository identity mismatch'),
+    ('mystery:unrecognized', 'Unrecognized evidence source'),
+])
+def test_project_citation_errors_name_the_failed_condition(tmp_path, source, expected):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import validate
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/atlas.md', 'Atlas', paths=[str(tmp_path / 'mapped')])
+    original = notebook.read('projects/atlas.md')
+    candidate = (original.replace('## Overview\n- Unknown', '## Overview\nA local system. [1]')
+                 .replace('- (none yet)', f'- [1] {source} — evidence'))
+
+    errors = validate('projects/atlas.md', candidate, original, [])
+
+    assert any(expected in error for error in errors)
+
+
+def test_project_citation_hash_mismatch_is_reported_separately(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import validate
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    project = tmp_path / 'mapped'
+    project.mkdir()
+    readme = project / 'README.md'
+    readme.write_text('A mapped project.\n')
+    notebook.stub_project('projects/atlas.md', 'Atlas', paths=[str(project)])
+    original = notebook.read('projects/atlas.md')
+    candidate = (original.replace('## Overview\n- Unknown', '## Overview\nA local system. [1]')
+                 .replace('- (none yet)', f'- [1] file:{readme}@{"0" * 64} — evidence'))
+
+    errors = validate('projects/atlas.md', candidate, original, [])
+
+    assert any('SHA-256 does not match the current file' in error for error in errors)
+
+
+def test_unknown_project_citation_error_is_bounded_and_single_line(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import validate
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/atlas.md', 'Atlas', paths=[str(tmp_path / 'mapped')])
+    original = notebook.read('projects/atlas.md')
+    source = 'mystery:' + 'x' * 400 + '\x1b[31m'
+    candidate = (original.replace('## Overview\n- Unknown', '## Overview\nA local system. [1]')
+                 .replace('- (none yet)', f'- [1] {source} — evidence'))
+
+    errors = validate('projects/atlas.md', candidate, original, [])
+    diagnostic = next(error for error in errors if error == 'Unrecognized evidence source')
+
+    assert len(diagnostic) < 300
+    assert '\x1b' not in diagnostic
+    assert '\n' not in diagnostic
+
+
+def test_local_citation_diagnostic_sanitizes_and_bounds_untrusted_source():
+    from connectonion.rem.project_pages import inspect_live_source
+
+    source = 'file:/' + 'project-path-' * 40 + '\x1b\ninjected@not-a-hash'
+
+    snapshot, reason = inspect_live_source('', source)
+
+    assert snapshot is None
+    assert reason.startswith('Unsupported file citation format')
+    assert len(reason) < 400
+    assert '\x1b' not in reason
+    assert '\n' not in reason
+
+
+def test_valid_hashed_file_in_a_windows_mapped_non_git_project_passes_validation(monkeypatch, tmp_path):
+    import hashlib
+
+    from connectonion.rem import investigate
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import validate
+
+    prepare(tmp_path)
+    project = tmp_path / 'Projects' / 'PROJECT_NAME'
+    project.mkdir(parents=True)
+    readme = project / 'README.md'
+    readme.write_text('A local project without Git metadata.\n')
+    monkeypatch.setattr(investigate, 'local_path', lambda value: str(project))
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/atlas.md', 'Atlas', paths=[r'D:\Projects\PROJECT_NAME'])
+    original = notebook.read('projects/atlas.md')
+    citation = f'file:{readme}@{hashlib.sha256(readme.read_bytes()).hexdigest()}'
+    candidate = (original.replace('## Overview\n- Unknown', '## Overview\nA local project. [1]')
+                 .replace('- (none yet)', f'- [1] {citation} — project README'))
+
+    errors = validate('projects/atlas.md', candidate, original, [])
+
+    assert not any('citation' in error.lower() or 'mapped project' in error.lower() for error in errors)
 
 
 def test_the_project_skills_require_evidence_for_overview_and_no_placeholder_or_guessed_name():
