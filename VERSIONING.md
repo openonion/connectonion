@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc13
+## Current Version: 1.9.3rc14
+
+1.9.3rc14 preserves Feishu/Lark message kinds, resource references and typed
+sender IDs through the inbox and Host. Recovery includes already remembered
+conversations after an interrupted first journal write. Stable remains 1.9.2;
+Python 3.11+ and the rc13 security dependency floors are retained. See
+[1.9.3rc14 notes](docs/releases/1.9.3rc14.md).
+
+- 1.9.3rc14 (keep file references through inbox consumption).
+
+### Previous candidate: 1.9.3rc13
 
 1.9.3rc13 keeps completed REM Codex calls out of active history by archiving their
 threads, unarchiving them before explicit resume, and retaining their trace IDs.
