@@ -30,7 +30,11 @@ changes. Source: https://pypi.org/pypi/pypdf/6.21.1/json
 - The same 64 related tests pass on **Python 3.10.21 with installed pypdf
   6.21.1**, in 22.11s (one upstream Google Python-support warning). This is a
   separate frozen-lock disposable environment, not metadata-only compatibility.
-- Full offline tests and independent committed head review pending. No real mail, model, provider or init run, no notebook write,
+- Full offline suite under patched pypdf 6.21.1: **16,969 passed, 334 skipped,
+  7 warnings in 182.80s** (Python 3.11, four workers, excluding slow, real_api
+  and network markers).
+- Independent AI source/copy review approved 62f37c1; final committed-head
+  confirmation pending after the requested extraction-code wording clarification. No real mail, model, provider or init run, no notebook write,
   and no browser/render/screenshot attempt.
 
 Pillow compatibility, native desktop/phone evidence and the normal reviewed

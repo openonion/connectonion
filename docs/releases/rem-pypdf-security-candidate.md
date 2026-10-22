@@ -3,7 +3,8 @@
 Issue #2631 raises the minimum pypdf version from 6.19.0 to 6.21.1 and updates
 its resolver-generated lock entry. This addresses the five pypdf advisories
 reported by the current release audit while preserving Python >=3.10 support.
-PDF body/annotation extraction and unreadable-file policy are unchanged.
+REM's PDF extraction and unreadable-file handling code is unchanged; the
+updated parser's behavior on all possible documents is not established.
 
 The candidate is not a published release and has not been installed over the
 user's preview. The complete dependency audit still fails on Pillow; no advisory
