@@ -41,7 +41,13 @@ archive migration or real note rewrite is used.
 - Four-suite related quote/source-audit/page-review/runner regression: **462 passed
   in 8.68s**. Tests exercise actual audit dispatch, conflicting word/negation and
   compound edges, legacy flattened controls, bounded cited contexts, no-auditor
-  records and global-PASS handling. Final full results follow in the PR.
+  records and global-PASS handling. First full run: two session-summary regressions
+  failed, 16,989 passed, 334 skipped in 157.41s. Global caller search then found two
+  native-session paths still passing whitespace-erased source text. Both now use
+  spacing-preserving original input and whole-word checking, including saved-summary
+  display. Raw attachments and exact message/time binding remain covered. After
+  this production correction, five related suites pass **611 tests in 9.70s**;
+  the final fresh full result follows in the PR.
 - Read-only inventory: 587 visible pages, 49 with checked-style quotes, 122 cited
   quotations; 63 had complete available originals and 59 did not. Final classifier
   reports two preexisting literal mismatches and two legacy-layout boundary warnings.

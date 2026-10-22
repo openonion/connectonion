@@ -1721,5 +1721,8 @@ refusing claims nobody has shown wrong.
 This is a bounded quotation check, not semantic proof of who spoke, what was
 promised, or whether a condition was retained. Unavailable/truncated originals
 remain unjudged. No missing separators are guessed and no real notes are rewritten.
+Native session decisions use their retained typed-user originals for whole-word
+comparison, both when saving a summary and when displaying a saved summary; raw
+attachments are preserved. This is distinct from ambiguous legacy mail rendering.
 Actual model efficacy and current desktop/phone/source-dialog acceptance remain
 pending; no new preview is claimed available by this candidate.

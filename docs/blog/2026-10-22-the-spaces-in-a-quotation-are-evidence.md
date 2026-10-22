@@ -27,6 +27,12 @@ insufficient-audit policy keeps the candidate inspectable without describing its
 factual quality as passed. No valid quote is erased solely because an old
 rendering lost a separator.
 
+The full regression exposed two session-summary failures: those callers still
+removed spaces before invoking the new matcher. Both now use spacing-preserving
+comparison against retained native typed-user input, where whole-word boundaries
+can be checked directly. Summary creation and saved-summary display both validate
+the quote and its message time; raw attachments stay intact.
+
 A read-only inventory found 122 cited quotations across 49 pages in a 587-page
 notebook. Sixty-three had complete available originals for this check; 59 did
 not. The final candidate retained the two legacy-layout cases as unresolved
