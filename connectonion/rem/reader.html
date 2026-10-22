@@ -1482,8 +1482,8 @@ const UI = {
     "Copy import command": "复制导入命令",
     "Copy setup command": "复制初始化命令",
     "Copy update command": "复制更新命令",
-    "Built today: read {n} items · wrote {m} pages · ": "今天建立：读取 {n} 条内容 · 撰写 {m} 页 · ",
-    "Your notebook was just built. Overnight changes appear here after the next update.": "笔记本刚刚建立。下次更新后，这里会显示夜间变化。",
+    "First build: read {n} items · wrote {m} pages · ": "首次建立：读取 {n} 条内容 · 撰写 {m} 页 · ",
+    "This is your first recorded build. Later recorded changes appear here after another update.": "这是首次有记录的建立。再次更新后，这里会显示后续记录的变化。",
     "Nightly updates are off.": "夜间更新已关闭。",
     "No changes yet — this is the first build.": "暂无变化 — 这是首次建立。",
     "Most pages have no Chinese version yet; showing the English originals.": "大部分页面还没有中文版本，目前显示英文原文。",
@@ -1492,7 +1492,7 @@ const UI = {
     "Background needs attention": "后台更新需要处理",
 
     "Find": "查找",
-    "Overnight": "昨夜",
+    "Latest recorded pass": "最近有记录的整理",
     "Supported by the cited source": "有引用来源支持",
     "Original": "原文",
     "No Chinese translation yet; showing original": "尚无中文译文，显示原文",
@@ -1545,12 +1545,12 @@ const UI = {
     "they owe": "对方待办",
     "Nothing is due in the next three days.": "未来三天没有到期的待办。",
     "All open threads →": "查看全部待办 →",
-    "{n} change overnight": "昨夜 {n} 项变化",
-    "{n} changes overnight": "昨夜 {n} 项变化",
+    "{n} recorded change": "记录到 {n} 项变化",
+    "{n} recorded changes": "记录到 {n} 项变化",
     "{n} due soon": "{n} 项即将到期",
     "A quiet morning": "一个安静的早晨",
     "details": "详情",
-    "Last night: read {n} items · rewrote {m} pages · ": "昨夜：读取 {n} 条内容 · 重写 {m} 页 · ",
+    "Latest recorded pass: read {n} items · rewrote {m} pages · ": "最近有记录的整理：读取 {n} 条内容 · 重写 {m} 页 · ",
     "Search people, projects, mail…": "搜索人物、项目、邮件…",
     "Who do I owe?": "我欠谁一个回复？",
     "What changed this week?": "本周有什么变化？",
@@ -1565,15 +1565,15 @@ const UI = {
     "Rarely used": "很少使用",
     "Other": "其他",
     "Fewer columns": "收起更多列",
-    "updated last night": "昨夜更新",
-    "last night": "昨夜",
-    "Updated in last night's pass": "昨夜整理时更新",
+    "updated in latest pass": "最近整理时更新",
+    "latest pass": "最近整理",
+    "Updated in latest recorded pass": "最近有记录的整理时更新",
     "last activity": "最近动态",
     "file updated": "文件更新于",
     "last mapped session": "最近映射的会话",
     "last name match": "最近名称匹配",
     "archived messages": "条存档消息",
-    "Changed last night: {before} → {now}": "昨夜变更：{before} → {now}",
+    "Changed in latest recorded pass: {before} → {now}": "最近有记录的整理中变更：{before} → {now}",
     "Not confirmed by the sources": "来源未确认",
     "not confirmed by sources": "来源未确认",
     "Your day": "你的一天",
@@ -2079,9 +2079,9 @@ const UI = {
     "0 memories written": "尚未撰写记忆",
     "Browse {n} people →": "浏览 {n} 人 →",
     "{n} possible contacts are held for review and excluded from the People count.": "{n} 位可能的联系人待审核，暂未计入人物数量。",
-    "Nothing about your people or projects changed last night.": "昨夜没有记录到人物或项目的新变化。",
-    " {n} page was reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
-    " {n} pages were reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
+    "No supported changes to people or projects were recorded in this pass.": "本次整理没有记录到有来源支持的人物或项目变化。",
+    " {n} page rewrite was recorded.": " 记录到 {n} 页重写。",
+    " {n} page rewrites were recorded.": " 记录到 {n} 页重写。",
     "Model access was refused. Restore access before retrying.": "模型访问被拒绝，请恢复访问后再试。",
     "A request timed out.": "一次请求超时。",
     "A model usage limit was reached.": "已达到模型用量限制。",
@@ -2322,10 +2322,10 @@ function fmtDate(iso) {
   const day = calendarDay(iso), d = new Date(day + "T00:00:00Z");
   return isNaN(d) ? iso : d.toLocaleDateString(uiLocale(), { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
 }
-function fmtTime(iso) {
+function fmtTime(iso, withYear = false) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString(uiLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
+  return isNaN(d) ? iso : d.toLocaleString(uiLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", ...(withYear ? { year: "numeric", timeZoneName: "short" } : {}), timeZone: REM.status?.timezone || undefined });
 }
 function shortDate(day) {
   if (!day) return "";
@@ -2825,7 +2825,7 @@ function known(r) {
   // rewrites every project page, and "Recently active" dated them all today.
   const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
   const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
-    : (/\blast(?: contact)?[:：]\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
+    : (/\blast(?: contact)?[:：]\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || "";
   const summary = r.category === "sessions" ? [parseFacts(r).get("Agent")?.[0]?.value, r.session_time,
     plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
     : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
@@ -3489,12 +3489,7 @@ function lastPass() {
   const runs = logs.filter(run => runTime(run) >= latest - 18 * HOUR);
   const changed = new Set();
   for (const run of runs) for (const path of run.changed || []) if (byPath(path) && path !== "skills/catalog/index.md") changed.add(path);
-  // Investigations write the page's stamp; count those of the pass's day as changed too.
-  const day = new Date(latest - 18 * HOUR).toISOString().slice(0, 10);
-  for (const r of listedRecords()) {
-    const m = /\b(?:investigated|updated)\s+(\d{4}-\d{2}-\d{2})/.exec((STAMP.exec(r.text) || [""])[0]);
-    if (m && m[1] >= day) changed.add(r.path);
-  }
+  // A date-only page footer cannot establish membership in this recorded pass.
   const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
   // A failed translation is not a failed investigation; the translation notice reports it.
   const failed = runs.filter(run => FAILED.test(String(run.outcome || "")) && !/translat/.test(run.phase || ""));
@@ -3512,9 +3507,9 @@ let memoryPass = null;
 function updatedMarker(r, withLabel = false) {
   if (firstBuild(memoryPass)) return null;
   if (!memoryPass?.changed.some(page => page.path === r.path)) return null;
-  if (!withLabel) return el("span", { class: "fresh-label", text: t("last night"), title: t("Updated in last night's pass") });
-  const dot = el("span", { class: "fresh-dot", role: "img", text: "●", title: t("updated last night"), "aria-label": t("updated last night") });
-  return el("span", { class: "updated-label" }, [dot, t("updated last night")]);
+  if (!withLabel) return el("span", { class: "fresh-label", text: t("latest pass"), title: t("Updated in latest recorded pass") });
+  const dot = el("span", { class: "fresh-dot", role: "img", text: "●", title: t("updated in latest pass"), "aria-label": t("updated in latest pass") });
+  return el("span", { class: "updated-label" }, [dot, t("updated in latest pass")]);
 }
 function factText(r, label) {
   const items = [...parseFacts(r)].find(([key]) => key.toLowerCase() === label.toLowerCase())?.[1] || [];
@@ -3527,7 +3522,7 @@ function changedValue(node, r, label) {
     && plainLine(current) === plainLine(claim.after));
   if (change && !firstBuild(memoryPass)) {
     node.classList.add("changed-value");
-    node.title = t("Changed last night: {before} → {now}", { before: change.before, now: change.after });
+    node.title = t("Changed in latest recorded pass: {before} → {now}", { before: change.before, now: change.after });
   }
   return node;
 }
@@ -3614,9 +3609,8 @@ function nightBand(showActivityLink = true) {
     return band;
   }
   const asOf = new Date(REM.as_of).getTime() || Date.now();
-  const ago = Math.max(0, Math.round((asOf - pass.latest) / HOUR));
   band.appendChild(el("div", { class: "night-head" }, [
-    el("h2", { class: "night-title", text: t(firstBuild(pass) ? "First build" : ago < 24 ? "Last night" : "The last pass") }),
+    el("h2", { class: "night-title", text: t(firstBuild(pass) ? "First build" : "Latest recorded pass") }),
     el("span", { class: "when", text: fmtTime(new Date(pass.latest).toISOString()) }),
     showActivityLink ? el("a", { href: "#view=activity", text: t("See all activity") }) : null]));
   band.insertAdjacentHTML("beforeend", hypnogram(asOf));
@@ -3716,7 +3710,7 @@ function renderRail(active) {
     : t(scheduleState(s) || "No pass scheduled");
   settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "").replace("co rem start", () => remCommand("start")) }));
   settings.appendChild(el("code", { text: location.protocol === "about:" ? t("Reload for latest") : remCommand("open") + " " + t("re-renders") }));
-  settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
+  settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated in latest pass") + "  ",
     el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
   foot.appendChild(settings);
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
@@ -3868,10 +3862,12 @@ function overnightChange(claim) {
 }
 function morningBrief() {
   const pass = lastPass(), claims = pass?.claims || [];
-  const first = firstBuild(), title = first ? "First build" : "Overnight";
+  const first = firstBuild(), title = first ? "First build" : "Latest recorded pass";
   const brief = el("section", { class: "overnight", "aria-label": t(title) }, [sectionHead(title)]);
-  if (first) {
-    if (pass.changed.length) brief.appendChild(el("p", { class: "quiet-line", text: t("Your notebook was just built. Overnight changes appear here after the next update.") }));
+  if (!pass) {
+    brief.appendChild(el("p", { class: "quiet-line", text: t("No pass yet") }));
+  } else if (first) {
+    if (pass.changed.length) brief.appendChild(el("p", { class: "quiet-line", text: t("This is your first recorded build. Later recorded changes appear here after another update.") }));
     if (!pass.failed.length && nightlyUpdatesOff()) brief.appendChild(el("div", { class: "translation-note" }, [
       el("p", { text: t("Nightly updates are off.") }), commandChip(remCommand("start"))]));
   } else if (claims.length) {
@@ -3879,8 +3875,8 @@ function morningBrief() {
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
   } else {
     const n = pass?.changed?.length || 0;
-    brief.appendChild(el("p", { class: "quiet-line", text: t("Nothing about your people or projects changed last night.") +
-      (n ? t(n === 1 ? " {n} page was reworded; nothing new." : " {n} pages were reworded; nothing new.", { n }) : "") }));
+    brief.appendChild(el("p", { class: "quiet-line", text: t("No supported changes to people or projects were recorded in this pass.") +
+      (n ? t(n === 1 ? " {n} page rewrite was recorded." : " {n} page rewrites were recorded.", { n }) : "") }));
   }
   if (pass?.failed?.length) brief.append(failureSummary(pass), el("a", { class: "brief-more", href: "#view=activity", text: t("Review failed runs →") }));
   return brief;
@@ -4066,7 +4062,7 @@ function briefHeader(counts, today) {
   const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
   const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
   const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
-  const parts = [!firstBuild() && pass?.claims.length ? t(pass.claims.length === 1 ? "{n} change overnight" : "{n} changes overnight", { n: pass.claims.length }) : "",
+  const parts = [!firstBuild() && pass?.claims.length ? t(pass.claims.length === 1 ? "{n} recorded change" : "{n} recorded changes", { n: pass.claims.length }) : "",
     due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
@@ -4080,7 +4076,7 @@ function briefHeader(counts, today) {
       processing.scrollIntoView({ block: "start" });
       processing.querySelector("summary").focus();
     };
-    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: read {n} items · wrote {m} pages · " : "Last night: read {n} items · rewrote {m} pages · ", { n: pass.items, m: pass.changed.length }), details]));
+    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "First build: read {n} items · wrote {m} pages · " : "Latest recorded pass: read {n} items · rewrote {m} pages · ", { n: pass.items, m: pass.changed.length }), fmtTime(new Date(pass.latest).toISOString(), true) + " · ", details]));
   }
   return header;
 }

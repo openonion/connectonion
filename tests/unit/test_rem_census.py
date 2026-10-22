@@ -264,3 +264,16 @@ def test_direction_only_treats_short_name_phrases_as_debt_prefixes():
     assert direction("liesel owes the bank") == "plain"
     assert direction("Yu at Heidi Health owes Corin the reimbursement") == "third"
     assert direction("Liesel owes you the draft") == "theirs"
+
+
+def test_maintenance_is_not_contact_or_source_activity(tmp_path):
+    from connectonion.rem.census import last_activity
+    from connectonion.rem.reader import snapshot
+    prepare(tmp_path)
+    text = ("# Corin\n\n## Facts\n- Last contact: Unknown\n\n"
+            "Investigation: mapped 2026-10-01 · investigated 2026-10-03 · updated 2026-10-20\n")
+    Notebook(tmp_path).write("people/corin.md", text)
+    assert last_activity(text) == ""
+    record = next(r for r in snapshot(tmp_path)["records"] if r["path"] == "people/corin.md")
+    assert record["last_activity"] == ""
+    assert last_activity(text.replace("Last contact: Unknown", "Last contact: 2026-09-01 [1]")) == "2026-09-01"
