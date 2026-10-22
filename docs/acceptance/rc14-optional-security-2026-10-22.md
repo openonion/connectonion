@@ -25,3 +25,14 @@ Focused validation passed 99 tests covering security floors, optional audit
 scope, Synology adapters, handoff release pinning and version consistency.
 The rc14 wheel and sdist passed twine checks. Native Schedule acceptance is
 unchanged and remains unverified. Full CI and publication are separate gates.
+
+Independent AI code review (founder/marketing/UI role) found no code blocker
+for the scoped dependency update, while requiring the legacy SHA-1 NAS
+compatibility boundary to be documented. Independent rendered-phone/trial
+review flagged P1 hardware-coverage ambiguity: release notes now explicitly
+state loopback-only validation and no NAS-model certification. P1 native
+scheduling acceptance stays open and is explicitly excluded from this
+release. P2 dense italic callout text is readable at 390px, though only this
+page and viewport were inspected. Recheck: modern SSH requirements and the
+no-native-migration boundary must appear before installation; do not infer a
+NAS or native scheduler pass from the loopback or MCP initialization tests.
