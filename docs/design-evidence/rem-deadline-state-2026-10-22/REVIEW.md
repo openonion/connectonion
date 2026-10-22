@@ -50,3 +50,20 @@ migration is introduced.
   No browser/renderer/screenshot workaround, provider call or notebook write.
 - Dependency security/compatibility gates remain required. No Python minimum change,
   advisory waiver, version bump, merge, tag or publication.
+
+## Follow-up: shared date/audit contradiction
+
+The shared `runner.today_note` still declared that any event or deadline before
+today was history, never an open thread; it even implied that a scheduled event
+had occurred. `project_claim_review.PEOPLE`, also used for organisations, closed
+an event-related thread when its date passed. Both conflicted with matching-ask
+closure and the candidate synthesis repair. Four actual dispatch regressions
+failed before correcting these two production instructions, then all four passed.
+Maintenance receives the updated shared note; person/org/project audit packets
+retain both unanswered-request and undelivered-promise source controls. A past
+schedule is not proof of occurrence, fulfilment or cancellation; matching
+resolution evidence still closes the ask, and an unaccepted request is not debt.
+No model decision was simulated as semantic acceptance. Final related/full results
+and exact-head source/copy review are recorded in the updated PR; original counts
+above refer only to the first candidate. Current native/model acceptance remains
+unverified, real notebook content unchanged, release/security gates unchanged.

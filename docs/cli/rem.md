@@ -1333,9 +1333,10 @@ before it refuses anything.
   dated from its original in the notebook's timezone; the audit had found one
   mail cited as `[1]` and `[2]` with two dates, and dates the writer typed that
   matched no message.
-- **Every turn is told today's date** (`Today is 2026-10-15 (Australia/Sydney)`),
-  and that an event before it is history, never an open thread. Corin's page kept
-  13 and 14 October events open on the 15th.
+- **Every turn is told today's date** (`Today is 2026-10-15 (Australia/Sydney)`).
+  The deadline candidate below separates past scheduled dates from evidence of
+  occurrence or completion; preparation, follow-up and promises need matching
+  resolution evidence. A past event is not presented as upcoming.
 - A one-page sync turn that keeps less than 60% of a page's characters, or of
   its cited sources, keeps the old page (pages under 1,000 characters are
   exempt): projects/connectonion went 14,356 → 4,132 characters in one
@@ -1720,6 +1721,10 @@ inference for omitted years remains a limitation, not proof of the intended year
 The person synthesis instruction no longer treats 60 days of silence or a passed
 meeting date as proof an ask was settled. It asks for evidence matching the ask
 before recording completion, and distinguishes an unanswered ask from an agreed
-promise. This prompt repair has offline dispatch tests; real model behavior and
-current desktop/phone/accessibility acceptance remain unverified. It does not
+promise. The shared date note used by maintenance, investigation, project writing
+and source audits follows the same rule. A past scheduled date does not prove
+that the event occurred, that a deadline was met or that follow-up was delivered.
+The people/organisation audit no longer contradicts that rule. These instruction
+repairs have offline dispatch tests; real model behavior and current
+desktop/phone/accessibility acceptance remain unverified. It does not
 rewrite existing notes or reopen facts automatically.

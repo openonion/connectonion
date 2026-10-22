@@ -24,6 +24,17 @@ for 60 days to History. The candidate removes that age-only closure rule. An
 unanswered request is not an agreed debt, and an old meeting date does not
 establish that preparation or follow-up was delivered.
 
+A follow-up source audit found two remaining contradictions: the shared date
+note told every writer and auditor that past events or deadlines were never
+open threads, and the people/organisation audit closed event-related threads
+when their date passed. Removing only the synthesis rule left both paths in
+place. The candidate now aligns the shared date note and source audit too.
+A past schedule is no proof an event occurred; an unresolved ask retains its
+date and unknown outcome, and an undelivered promise stays overdue. Matching
+answers, delivery, cancellation or withdrawal can still resolve the ask.
+Dispatch tests exercise maintenance and people, organisation and project audits;
+they verify the supplied instructions, not a model's compliance with them.
+
 Aligning Python counts with the reader also exposed a calendar boundary: written
 English deadlines worked in the reader but not the census. Both now recognize
 the same valid written dates and reject impossible ones. Omitted years still use

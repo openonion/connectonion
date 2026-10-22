@@ -1736,13 +1736,20 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
     set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
     today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
-    assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    assert f"Today is {today} (Australia/Sydney)" in note
+    assert "A past scheduled date alone does not establish occurrence or completion" in note
+    assert "never an open thread" not in note
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
     handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
     assert f"Today is {today}" in handed
+    assert "an unanswered request remains dated with its outcome unknown" in handed
+    assert "a promise past its due date with no delivery stays overdue and open" in handed
+    assert "answer, delivery, cancellation or withdrawal for the matching ask" in handed
+    assert "do not present a past scheduled event as upcoming" in handed
+    assert "has happened or passed" not in handed
 
 
 def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):

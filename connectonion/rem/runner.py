@@ -502,13 +502,17 @@ def language_rules() -> str:
 
 
 def today_note(root: Path) -> str:
-    """The date a turn writes on. Without it, Corin's page kept a 13 October event
-    as an open thread on the 15th: nothing told the writer the day had passed."""
+    """Ground a turn in the notebook calendar without treating elapsed time as resolution."""
     from .config import read_config
     from .service import notebook_zone
     zone = notebook_zone(read_config(root, validated=False))
-    return (f"\n\nToday is {datetime.now(zone).date().isoformat()} ({zone}). An event or deadline before "
-            "today has happened or passed: it is history, never an open thread. "
+    return (f"\n\nToday is {datetime.now(zone).date().isoformat()} ({zone}). "
+            "A past scheduled date alone does not establish occurrence or completion; "
+            "do not present a past scheduled event as upcoming or say it happened without evidence. "
+            "Close a thread only on evidence of an answer, delivery, cancellation or withdrawal for the matching ask. "
+            "Without that evidence, an unanswered request remains dated with its outcome unknown, "
+            "and a promise past its due date with no delivery stays overdue and open. "
+            "A request nobody agreed to is not an agreed debt. "
             "Dates on the page are local dates: use each item's local_time, not its UTC timestamp. ")
 
 
