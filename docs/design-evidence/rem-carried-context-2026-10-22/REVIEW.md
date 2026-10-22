@@ -1,8 +1,11 @@
 # Carried finding continuity — candidate, 22 October 2026
 
-Base main e9bc54d1285d104715bcfa62b985f0f4cd5b8191; issue #2639. Latest public and
-installed preview remains 1.9.3rc12. Its actual CLI interpreter, inspected outside
-the checkout, still has whitespace-erasing/global-substring exemption code.
+Original base main e9bc54d1285d104715bcfa62b985f0f4cd5b8191; issue #2639.
+The initial installed-CLI observation used rc12. After the main integration below,
+the latest public preview rc13 was verified against its immutable tag and official
+package hashes, then installed in both the CLI and scheduled Python environment.
+Its actual CLI interpreter, inspected outside this checkout, still has the old
+whitespace-erasing/global-substring exemption. This candidate is not in rc13.
 
 ## Source failure and chosen boundary
 
@@ -56,7 +59,19 @@ Codex-history and security repair #2627, including its Python3.11 minimum and
 patched dependency floors. This candidate merges that actual main without
 rewriting published commits; both appended CLI sections are retained. Prior
 Pillow/pypdf failures describe the old base, not a current audit of this merged
-candidate. Fresh frozen-environment, regression, security and exact-head review
-results are recorded in the PR. The published/latest-installed preview remains
-rc12 until a newer actual immutable release is available; no native/model or
-scheduling-migration acceptance is inferred from this integration.
+candidate. The fresh frozen Python3.11 environment has patched Pillow13.0.0,
+pypdf6.21.2 and cryptography50.0.2; its exact-lock audit found no known advisories.
+Public rc13 tag points to bdc8c43 and its release workflow39750719191 passed all
+jobs. Both installed Python environments import rc13 and pass dependency checks;
+the existing co wrapper hash is unchanged. No scheduler or model run was started.
+Fresh regression/security/exact-head results are recorded in the PR; no native,
+model, scheduling-migration or publication of this candidate is inferred.
+
+The first full regression after integration used a fresh uv environment without
+pip and failed six tests: one CLI driver prerequisite and five clock-sensitive
+fixtures. The project fixtures capture NOW at module import; Calendar expiry is
+only an hour after collection. Tool-clock observations crossed multiple hours
+during the run. Pip was added as a test tool; all six isolated cases then passed
+without source changes. The failed full run is retained separately from the next
+fresh full result; no failure was waived or replaced by an isolated-only claim.
+The CLI transport case mocks send; it is not native browser/page acceptance.
