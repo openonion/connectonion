@@ -158,3 +158,23 @@ metadata and docs, and verify fresh installation plus upgrade. P1: obtain live
 native registration, automatic execution and marker evidence before migration.
 P2: retain the isolated-policy coverage label. Review inspected the evidence
 summary, not the live renderer or native UI; it did not reproduce the runs.
+
+## Second live smoke test
+
+The owner's request to test automatic scheduling was followed by a fresh
+150-second live test. A unique ACTIVE legacy definition used
+`FREQ=MINUTELY;INTERVAL=1` and a temporary local workspace. Its prompt permitted
+only a Python script writing an execution marker. The running desktop's
+read-only SQLite connection was queried every ten seconds for that exact id.
+All 16 observations had no automation row, no run and no marker. The test
+failed; see `live-retest-result.json`. Test definition and workspace were
+removed; existing tasks were not modified and no database writes were made.
+This verifies failure of this registration path, not that every native
+scheduling path is broken. No native rendered UI was inspected.
+
+Independent AI trial review (founder/marketing/UI role, evidence summary only)
+classifies this as a high-priority release blocker: users must not be promised
+native scheduling before exact-id registration, scheduled execution and marker
+creation are observed. Reviewer assessed observations through 90 seconds and
+requested the final check; the completed 150-second result remains negative.
+No definitive cause or native UI pass was claimed.
