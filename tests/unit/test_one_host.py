@@ -136,10 +136,13 @@ def test_co_ai_answers_each_channel_once_through_the_host(monkeypatch):
     assert {t.name for t in threading.enumerate()} - before == set()
 
 
-def test_any_host_answers_questions_on_handoffs_it_sent(project, monkeypatch):
-    """#2453: only co ai ran the handoff watcher, so a sender on co host, python agent.py or co deploy
-    never answered; the recipient's `status --wait` waited until the sender happened to run status."""
+@pytest.mark.parametrize('owns_handoff_config', [False, True])
+def test_host_only_answers_handoffs_from_its_configuration(project, monkeypatch, owns_handoff_config):
+    """Keep #2453's sender watcher without giving a project the operator's queue (#2646)."""
     from connectonion.handoff import watch
+    configured = project if owns_handoff_config else project.parent / 'operator-config'
+    configured.mkdir(exist_ok=True)
+    monkeypatch.setenv('AGENT_CONFIG_PATH', str(configured))
     started, stopped = [], []
 
     class Stop:
@@ -149,7 +152,8 @@ def test_any_host_answers_questions_on_handoffs_it_sent(project, monkeypatch):
     built = _host(project, monkeypatch, "")
     asyncio.run(built["on_startup"]())
     asyncio.run(built["on_shutdown"]())
-    assert started == [True] and stopped == [True]
+    expected = [True] if owns_handoff_config else []
+    assert started == expected and stopped == expected
 
 
 def test_co_ai_does_not_start_a_second_handoff_watcher(monkeypatch):
