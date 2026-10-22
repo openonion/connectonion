@@ -705,7 +705,7 @@ def _rotated(selected: dict, last: str) -> dict:
 
 
 def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str],
-                    say=None) -> dict:
+                    say=None, *, runner=None, on_page=None, on_start=None) -> dict:
     """Update each page the material concerns in its own turn, and keep going when one fails.
 
     One turn over the whole notebook edited eight pages at once, spent twenty
@@ -719,11 +719,13 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     from .leads import remember_no_change
     from .page_review import shrinkage
     from .runner import RunFailed, run_stage
+    execute = runner or run_stage
     notebook = Notebook(root)
     usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
     say = say or (lambda text: None)
-    material = [item for item in items if item.get("role") != "page"]
     for record in leads:
+        material = [item for item in items if item.get("role") != "page" and
+                    (not item.get("feedback_revision") or record in item.get("feedback_pending_targets", []))]
         before = notebook.read(record)
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -731,7 +733,13 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
                                f"subject; keep what is right. Cite only source ids that are on this page or in "
                                f"the material; never make one up:\n\n{before}"}, *material]
         try:
-            result = run_stage(notebook, page_items, config, kind=kind, stage="maintain", maintenance_lock_held=True)
+            if on_start:
+                on_start(record)
+            # Trusted custom callbacks keep their material-first convention;
+            # each call still names one explicit target page.
+            supplied = page_items if execute is run_stage else [*material, page_items[0]]
+            options = {"stage": "maintain", "maintenance_lock_held": True} if execute is run_stage else {}
+            result = execute(notebook, supplied, config, kind=kind, **options)
         except RunFailed as error:
             result = {"usage": error.usage, "refused": str(error)}
         shrunk = shrinkage(before, notebook.read(record)) if record in result.get("changed", []) else ""
@@ -747,6 +755,8 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             if result.get("page_chars"):
                 growth[record] = result["page_chars"]
             remember_no_change(root, record, record not in changed)
+        if on_page:
+            on_page(record, result)
         # Each page's outcome as it finishes; it was only in the dump at the end (#2044).
         say(outcome_line({"page": record, "outcome": "refused", "why": result["refused"]} if result.get("refused")
                          else {"page": record, "outcome": "accepted" if record in changed else "nothing_new"}))
@@ -956,20 +966,50 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     widest = max(len(extraction_instructions(k)) for k in ("", *READABLE))
     remaining = max(limits["extract_chars_per_batch"] - widest - 1000, maintain_room * 2 // 3)
     max_items = limits["extract_items_per_batch"]
-    from .reflections import context as reflection_context
+    from . import feedback
     from .capture import pending as captured_pending
     processed = progress.get("rem_local_material", [])
-    from .reviews import context as review_context
-    local = reflection_context(root) + review_context(root) + captured_pending(root, list(set(processed) | set(progress.get("rem_seen_source_ids", []))), max_items, remaining)
-    local = [item for item in local if item["source"] not in processed]
+    feedback_items, feedback_deferred = feedback.plan(root, progress) if include_local and not with_person else ([], [])
+    # Planning can recover an accepted native promotion interrupted before its
+    # callback. Carry that persisted receipt into this batch's checkpoint too.
+    updated, processed = dict(progress), progress.get("rem_local_material", [])
+    local = feedback_items or captured_pending(root, list(set(processed) | set(progress.get("rem_seen_source_ids", []))), max_items, remaining)
+    local = [item for item in local if item.get("feedback_revision") or item["source"] not in processed]
+    selected_feedback = []
     if not with_person and include_local:
+        extraction_room = remaining
+        if feedback_items:
+            remaining = maintain_room
+        page_room = 0
         for item in local:
             size = len(json.dumps(item, ensure_ascii=False))
-            if len(items) >= max_items or size > remaining:
+            target_room = max((len(Notebook(root).read(page)) + 1000
+                               for page in item.get("feedback_pending_targets", [])), default=0)
+            if len(items) >= max_items or size + max(page_room, target_room) > remaining:
+                if item.get("feedback_revision"):
+                    feedback_deferred.extend({"source": item["source"], "record": page,
+                                              "reason": "Feedback exceeds this batch's input budget"}
+                                             for page in item["feedback_pending_targets"])
+                    continue
                 break
             items.append(item)
+            page_room = max(page_room, target_room)
+            if item.get("feedback_revision"):
+                selected_feedback.append(item)
             seen.add(item["source"])
             remaining -= size
+        if feedback_items and not selected_feedback:
+            # Oversized feedback remains pending; captures still get their turn.
+            remaining = extraction_room
+            local = captured_pending(root, list(set(processed) | set(progress.get("rem_seen_source_ids", []))),
+                                     max_items, remaining)
+            for item in local:
+                size = len(json.dumps(item, ensure_ascii=False))
+                if len(items) >= max_items or size > remaining:
+                    break
+                items.append(item)
+                seen.add(item["source"])
+                remaining -= size
         if items:
             counts["local_material"] = len(items)
             updated["rem_local_material"] = sorted(set(processed) | seen)
@@ -1021,11 +1061,13 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             break
     if seen:
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
+    if selected_feedback:
+        feedback.synchronize(updated, selected_feedback)
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
               "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
-              "extracted": len(items) > limits["items_per_batch"],
+              "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a
               # model can be computed later from the records rather than remembered.
               # Reading only what the user typed fails closed when a client changes its
@@ -1038,13 +1080,16 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                                     *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "
                                        "other sessions continue; inspect co rem logs"] if source_skips else [])]),
               "usage_by_stage": {}, "items_by_source": counts,
-              "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None}
+              "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None,
+              **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
+        if feedback_deferred:
+            record.update(outcome="deferred", report="Local feedback remains pending; no eligible page turn")
         write_json(state_path(root, "progress.json"), updated)
         # Nothing new was read and no model ran, so there is no run to list
         # (#1846). Messages passed over in an unfamiliar format are still said.
-        if record["warning"]:
+        if record["warning"] or feedback_deferred:
             write_json(path, record)
         return record
     from .extract import finished_digest, forget_digest, remember_digest
@@ -1055,7 +1100,10 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     # whole-notebook call. A page that has already read what points at it gets
     # no call at all (#1846).
     leads, current, passed = [], [], []
-    if runner is None or runner is run_stage:
+    if selected_feedback:
+        leads = list(dict.fromkeys(page for item in selected_feedback
+                                  for page in item["feedback_pending_targets"]))
+    elif runner is None or runner is run_stage:
         from .leads import cooling, nothing_new, page_leads, project_writer_pages
         found = page_leads(Notebook(root), items)
         writer, resting = project_writer_pages(Notebook(root), found), cooling(root, found)
@@ -1083,6 +1131,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         record.update(outcome="refused", reason=reason, finished_at=now().isoformat())
         write_json(path, record)
         raise RemError(reason)
+    if selected_feedback:
+        deferred_targets = leads[min(room, PAGES_PER_BATCH):]
+        leads = leads[:PAGES_PER_BATCH]
+        if deferred_targets:
+            record.setdefault("feedback_deferred", []).extend(
+                {"record": page, "reason": "Page or daily runner budget reached"} for page in deferred_targets)
     leads = leads[:room]
     attempts = extract_calls + (len(leads) or 1)
     runner = runner or run_stage
@@ -1100,6 +1154,20 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     # still has to advance the cursor, or the same material is paid for daily.
     notebook = Notebook(root)
     before = {page: notebook.read(page) for page in notebook.list()}
+    feedback_progress = 0
+
+    def feedback_result(page, result):
+        nonlocal feedback_progress
+        feedback.finish(root, updated, selected_feedback, page, result)
+        if not result.get("refused"):
+            feedback_progress += 1
+
+    def feedback_start(page):
+        from .refusals import mark_retried, refused_for
+        held = refused_for(root, page)
+        relevant = [item for item in selected_feedback if page in item["feedback_pending_targets"]]
+        if relevant and all(feedback.same_revision(held, item) for item in relevant):
+            mark_retried(root, page)
     try:
         if digested is not None:
             record["extract_reused"] = True
@@ -1140,7 +1208,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         if items:
             stage = "maintain"
             if leads:
-                result = _maintain_pages(root, items, config, kind, leads, say=say)
+                options = {"runner": runner, "on_page": feedback_result,
+                           "on_start": feedback_start} if selected_feedback else {}
+                result = _maintain_pages(root, items, config, kind, leads, say=say, **options)
             else:
                 options = {"maintenance_lock_held": True} if runner is run_stage else {}
                 result = runner(Notebook(root), items, config, kind=kind, **options)
@@ -1164,7 +1234,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         # for it, from every source: the cursor moves on, and browser, handoff and
         # startup never saw theirs again (2026-10-11, 10-14). The daily round
         # retries the page from the ledger.
-        _hold_for_refused(root, result, items)
+        if selected_feedback:
+            feedback.synchronize(updated, selected_feedback)
+            if not feedback_progress:
+                record.update(outcome="deferred", report="Local feedback remains pending; no target accepted")
+        else:
+            _hold_for_refused(root, result, items)
         # The user's own correction to that page is not marked done either: it waits for the next pass.
         refused_pages = {row["record"] for row in result.get("refusals", [])}
         waiting = {item["source"] for item in local if item.get("record") in refused_pages}
@@ -1297,4 +1372,4 @@ INSTRUCTIONS_TARGET_CHARS = 15_000
 # predates its own split is mostly people, so investigate.
 PHASE_STAGES = {"investigate": "investigate", "investigate me": "investigate",
                 "daily-investigation": "investigate", "daily-update": "investigate",
-                "projects write": "projects"}
+                "projects write": "projects", "translate": "translate"}

@@ -135,6 +135,9 @@ def child_env(config: dict | None = None) -> dict:
     after minutes of gathering (#1974).
     """
     environment = os.environ.copy()
+    # Keep resumable traces, without promoting every maintenance page to a
+    # recent Codex conversation. This is private to the REM child process.
+    environment["CO_REM_CODEX_ARCHIVE"] = "1"
     pythonpath = child_pythonpath()
     if pythonpath:
         environment["PYTHONPATH"] = pythonpath
@@ -339,19 +342,21 @@ def model_denial(error: Exception) -> bool:
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
+    prefix = "insight-critic" if stage == "insight-critic" else "claim"
     if config["runner"] != "codex":
-        packet = workspace / "claim-input.txt"
+        packet = workspace / f"{prefix}-input.txt"
         packet.write_text(prompt, encoding="utf-8")
         return run_task(workspace, f"Read {packet} fully and return its requested JSON decision. "
                         "Do not edit the packet or any page.", config, stage)
     from ..useful_tools.codex import _base_command
     from .project_claim_review import SCHEMA
+    from .insight_critic import CRITIC_SCHEMA
     binary = _base_command()
     if not binary:
         raise RunFailed("Codex is not installed; cited-claim audit could not run")
-    schema = workspace / "claim-schema.json"
-    answer = workspace / "claim-answer.json"
-    schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+    schema = workspace / f"{prefix}-schema.json"
+    answer = workspace / f"{prefix}-answer.json"
+    schema.write_text(json.dumps(CRITIC_SCHEMA if stage == "insight-critic" else SCHEMA), encoding="utf-8")
     command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                "--json", "--output-schema", str(schema), "-o", str(answer)]
     if config["speed"] == "fast":
@@ -621,6 +626,7 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unrecognized evidence 
 # citation that traces nowhere: the rest of a paid-for page is still sound.
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
                "Key decision without the owner's words:",
+               "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
 MAX_REPAIRS = 2
 # 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
@@ -728,9 +734,14 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     # 2026-10-20 depth trial: 11 of 12 runs paid two repairs for lines they had
     # not written; a person page lost a quarter of its text in one round.
     # Upkeep too: one-page upkeep rewrote a page with twelve quotes into one with none (2026-10-20 A/B).
-    carried = original if stage in ("enrich", "muse", "maintain") else ""
+    # An update of a page already investigated keeps what it had too: people-page upkeep on
+    # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
+    updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
+    carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
     previous_citation_errors = None
     for attempt in range(repairs + 1):
+        if attempt and stage == "muse" and candidate.is_file():
+            _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress)
         try:
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
@@ -774,6 +785,29 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                        stage_progress=stage_progress)
 
 
+def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):
+    """2026-10-21: independent audit kept 6/18 proposals; repairs must pass it too."""
+    from .insight_critic import judge, new_bullets
+    proposed = new_bullets(original, candidate.read_text(encoding="utf-8"))
+    if stage_progress:
+        stage_progress("insight critic")
+    result["critic_usage_pending"] = True
+    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task)
+    result["critic_usage_pending"] = False
+    result["usage"] = _add_usage(result.get("usage"), decision["usage"])
+    proposals = list(dict.fromkeys([*result.get("insight_proposals", []), *proposed]))
+    rejected = {row["bullet"]: row for row in result.get("insights_rejected", [])}
+    rejected.update({row["bullet"]: {key: row[key] for key in ("bullet", "verdict", "reason")}
+                     for row in decision["bullets"] if row["bullet"] in proposed and row["verdict"] != "good"
+                     and row["bullet"] not in decision.get("unmatched", [])})
+    for row in decision["bullets"]:
+        if row["verdict"] == "good":
+            rejected.pop(row["bullet"], None)
+    result.update(insight_proposals=proposals, insights_proposed=len(proposals),
+                  insights_kept=sum(row["bullet"] in proposed and row["verdict"] == "good"
+                                    for row in decision["bullets"]), insights_rejected=list(rejected.values()))
+
+
 def _owner_phones(notebook, record) -> list[str]:
     """The phones on the owner's own page, which no one else's page may carry."""
     if not record or not notebook.path(record).is_file():
@@ -781,6 +815,33 @@ def _owner_phones(notebook, record) -> list[str]:
     line = next((line for line in notebook.read(record).splitlines() if line.startswith("- Phone:")), "")
     return [part for part in re.split(r"[;,]", re.sub(r"\[W?\d+\]", "", line[len("- Phone:"):]))
             if "unknown" not in part.casefold() and part.strip()]
+
+
+def _owner_names(notebook, record) -> list[str]:
+    """2026-10-21: page titles cannot disambiguate an uncatalogued correspondent."""
+    if not record or not notebook.exists(record):
+        return []
+    title = lambda page: next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')  # noqa: E731
+    full = title(notebook.read(record))
+    if not full:
+        return []
+    return list(dict.fromkeys([full, full.split()[0]]))
+
+
+def _owner_tied_lines(notebook, text, owner, names) -> set[str]:
+    """2026-10-21: resolve each line's citations against the page's current numbering."""
+    from .reader_model import SOURCE, cited_context
+    if not names:
+        return set()
+    addresses = {address.casefold() for address in owner.get('addresses', [])}
+    full = re.compile(r'\b' + re.escape(names[0]) + r'\b', re.I)
+    contexts = cited_context(notebook.root, [{'text': text}], private=True)
+    sources = {source for source, context in contexts.items()
+               if context.get('sender', '').casefold() in addresses or full.search(context['excerpt'])}
+    definitions = re.search(r'(?ms)^## Sources[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    numbers = {number for number, source in SOURCE.findall(definitions[1] if definitions else '')
+               if source in sources}
+    return {line for line in text.splitlines() if numbers.intersection(re.findall(r'\[(W?\d+)\](?!\()', line))}
 
 
 def _lead(text: str) -> str:
@@ -811,8 +872,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        stage_progress=None):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
                               drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
-                              drop_others_phones, fold_history, link_company, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
-                              sources_before_footer, merge_duplicate_definitions,
+                              drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
+                              sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
                               single_title, subject_scope_changed, unresolved_findings, validate, verify_contacts,
                               restore_dropped, dropped as dropped_content, unverified_quotes)
@@ -888,7 +949,6 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Repair them first; the next promotion still runs the complete validator.
     from .page_review import drop_claims, merge_duplicate_sections, misquoted
     text = fold_history(sort_history(single_title(merge_duplicate_sections(record, text, owner=record == owner.get("record")))))
-    text, pronouns = owner_pronouns(text)
     if investigation:
         text = clear_placeholders(add_missing_sections(record, text, owner=record == owner.get("record")))
     refuted, unlocated, restored_lines = [], [], 0
@@ -908,10 +968,19 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
     if last_resort and carried:
         before_restore = text
-        text = restore_dropped(carried, text, exempt)
+        # A restored History line can take it past sixteen: fold again (2026-10-21, 17 lines refused an update).
+        text = fold_history(restore_dropped(carried, text, exempt))
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
+    # 2026-10-21: restored carried lines must follow the owner's naming rule too.
+    if carried:
+        names = _owner_names(notebook, owner.get("record"))
+        tied = _owner_tied_lines(notebook, text, owner, names)
+        text = owner_name_to_user(text, names, tied=tied.__contains__)
+    text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
+    if record == owner.get("record") and (not ask_quotes or last_resort):
+        text = move_agent_threads(text)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
@@ -919,6 +988,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
+    if ask_quotes and not last_resort and record == owner.get("record"):
+        errors += [f"Open thread rests only on coding sessions: {line[:160]} -- a task the user gave a coding "
+                   "agent is work in progress: move it to Who they are, or cite the person it is owed to"
+                   for line in agent_threads(text)]
     if last_resort and record.startswith("people/") and not _lead(text):
         # Corin Marsh (2026-10-15) was kept with no lead at all: the audit refuted a
         # claim in each of its sentences. The page before this turn had one.
@@ -989,8 +1062,10 @@ def _write_page(notebook, record, text, items):
     from .service import notebook_zone
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    notebook.write(record, collapse_repeated_markers(
-        renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates))))
+    saved = collapse_repeated_markers(renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
+    from .feedback import prepare_promotion
+    prepare_promotion(notebook.root, record, saved, items)
+    notebook.write(record, saved)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -1004,7 +1079,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
+    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, lead_without_last_contact, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
                               repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
@@ -1025,13 +1100,13 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
         text, overview_replaced = repair_project_overview(record, text)
         text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
-        text, pronouns = owner_pronouns(fold_history(sort_history(single_title(text))))
+        text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
         # Upkeep has no repair turn: a quote or source the page had and this
         # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
         # A gutted page is still refused on what the turn wrote, before anything is put back.
         shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
         written = text
-        text = restore_dropped(before.get(record, ''), text) if before.get(record) and not shrunk else text
+        text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
@@ -1069,7 +1144,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # questions, rejection reasons and the Skill text it was given. The rest is a
 # private copy of the owner's mail and pages.
 TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
-              "review-candidates.json", "instructions.md", "refused")
+              "insight-critic.json", "review-candidates.json", "instructions.md", "refused")
 
 
 def scrub_task(directory: Path) -> None:
@@ -1307,6 +1382,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate and record.startswith("projects/"):
         prompt += (" Before saving the Project page, check every Sources entry: "
                    "investigation:coverage, investigation:project-scope, investigation:timeline, "
+                   "investigation:earlier-insights, "
                    "investigation:project-inventory, investigation:project-repositories and "
                    "investigation:page are reading guides, never citable originals. "
                    "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
@@ -1424,6 +1500,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if candidate and not no_change:
             repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
                           if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
+            if stage == "muse" and candidate.is_file():
+                _review_insights(notebook, record, before[record], candidate, items, selected_config,
+                                 directory, result, stage_progress)
             promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
                                  workdir=workdir, config=selected_config, stage=stage,
                                  run=repair_run, stage_progress=stage_progress,
@@ -1444,6 +1523,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 _verify_no_change(directory, items, result.get("usage"))
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
+        if result.get("critic_usage_pending") and isinstance(error, RunFailed):
+            usage = _add_usage(result.get("usage"), usage)
+            # 2026-10-21: failed critic calls belong beside completed attempts in the run's audit trail.
+            history = directory / "insight-critic.json"
+            write_json(history, [*read_json(history, []), {"error": str(error), "usage": error.usage or {}}])
         if prior_turn_usage and isinstance(error, RunFailed):
             usage = (_thread_usage(selected_config, prior_turn_usage, usage) if resuming
                      else _add_usage(prior_turn_usage, usage))
@@ -1454,7 +1538,16 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
+    if candidate and no_change:
+        from .feedback import prepare_promotion
+        prepare_promotion(notebook.root, record, notebook.read(record), items, changed=False)
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
+    insight_counts = {key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}
+    if "insights_kept" in insight_counts:
+        from .insight_critic import new_bullets
+        insight_counts["insights_kept"] = min(insight_counts["insights_kept"],
+                                             len(new_bullets(before[record], notebook.read(record))))
+    metrics.update(insight_counts)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
@@ -1464,6 +1557,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "review_candidates": read_json(directory / "review-candidates.json", [])}
     outcome["refuted_claims"] = result.get("refuted_claims", [])
     outcome.update(repairs=metrics["repairs"], repair_usage=metrics["repair_usage"])
+    outcome.update(insight_counts)
     if turns:
         outcome["turn_replies"] = turn_replies
     if record and record in before and notebook.path(record).is_file():

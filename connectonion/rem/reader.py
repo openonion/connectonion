@@ -150,7 +150,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
     held = needs_review(root)
     # What is counted, written, and when it was last active comes from one
     # place (`census`), the same that `co rem status` counts with (#2008).
-    from .census import counts, pages
+    from .census import counts, pages, written
     found = pages(root)
     mail, index = mail_facts(root), index_rows(root)
     for record in records:
@@ -167,6 +167,8 @@ def snapshot(root: Path, local: bool = False) -> dict:
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
+        if record["category"] in ("decisions", "principles"):
+            record["written"] = written(record["text"])
         if record["category"] == "projects":
             record["private_project"] = private(record["path"], record["text"])
             from .project_material import page_state
@@ -214,15 +216,27 @@ def snapshot(root: Path, local: bool = False) -> dict:
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = contact_candidates(root)
+    logs = run_logs(root)
+    shown_logs = logs[:20]
+    translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
+    if translation and translation not in shown_logs:
+        shown_logs.append(translation)
+    languages = owner_languages(root)
+    absolute = root.resolve()
+    home = Path.home().resolve()
+    display = ("~" if absolute == home else "~/" + absolute.relative_to(home).as_posix()
+               if absolute.is_relative_to(home) else str(absolute))
     return {"language": read_config(root, validated=False).get("language") or "en",
-            "your_languages": owner_languages(root)["languages"], "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "your_languages": languages["languages"],
+            "languages_from": "set" if languages["from"].startswith("set") else "detected",
+            "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": [{**log, "outcome": seen_outcome(log)} for log in run_logs(root)[:20]],
+            "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "reviews": listing(root), "counts": counts(root, found),
             "owner": owner}
 

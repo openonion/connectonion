@@ -3,6 +3,7 @@
 import copy
 import fnmatch
 import hashlib
+import io
 import json
 import os
 import re
@@ -407,25 +408,38 @@ def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
 
 @contextmanager
 def _read_rollout(path: Path, old: dict, kind: str):
+    with path.open("rb") as source:
+        with _rollout(source, old, kind) as opened:
+            yield opened
+
+
+@contextmanager
+def _read_rollout_data(data: bytes, old: dict, kind: str):
+    with io.BytesIO(data) as source:
+        with _rollout(source, old, kind) as opened:
+            yield opened
+
+
+@contextmanager
+def _rollout(source, old: dict, kind: str):
     offset = old.get("offset", 0)
     if type(offset) is not int or offset < 0:
         raise RemError("Invalid source progress; preserve it for diagnosis")
-    with path.open("rb") as source:
-        try:
-            digest = _verify_prefix(source, offset, old.get("digest"))
-        except ChangedPrefix:
-            yield None, {}, offset, None
-            return
-        source.seek(0)
-        try:
-            first = json.loads(source.readline(1_000_000))
-        except (ValueError, UnicodeError) as error:
-            raise RemError("Invalid session metadata") from error
-        if not isinstance(first, dict):
-            raise RemError("Unrecognized session transcript format")
-        meta = KINDS[kind]["meta"](first)
-        source.seek(offset)
-        yield source, meta, offset, digest
+    try:
+        digest = _verify_prefix(source, offset, old.get("digest"))
+    except ChangedPrefix:
+        yield None, {}, offset, None
+        return
+    source.seek(0)
+    try:
+        first = json.loads(source.readline(1_000_000))
+    except (ValueError, UnicodeError) as error:
+        raise RemError("Invalid session metadata") from error
+    if not isinstance(first, dict):
+        raise RemError("Unrecognized session transcript format")
+    meta = KINDS[kind]["meta"](first)
+    source.seek(offset)
+    yield source, meta, offset, digest
 
 
 def _fit(item: dict, max_chars: int) -> dict:
@@ -447,6 +461,21 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     kind = subscription.get("kind", "codex")
     if kind not in KINDS:
         raise RemError(f"No importer for source kind {kind!r}")
+    files = sorted(((path, path.stat()) for path in source_files(subscription)),
+                   key=lambda pair: pair[1].st_mtime_ns)
+    return _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout, _digest_to)
+
+
+def collect_data(data: bytes, path: Path, stat, subscription: dict, progress: dict,
+                 max_items: int = 4_000, max_chars: int = 20_000_000, *, unfamiliar=None) -> Batch:
+    """The same checkpoints and batch limits, over one already-read transcript."""
+    return _collect_files(subscription, progress, max_items, max_chars, [(path, stat)],
+                          lambda path, old, kind: _read_rollout_data(data, old, kind),
+                          lambda path, offset: hashlib.sha256(memoryview(data)[:offset]).hexdigest(), unfamiliar)
+
+
+def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, digest_to, unfamiliar=None):
+    kind = subscription.get("kind", "codex")
     parse = KINDS[kind]["message"]
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
@@ -460,8 +489,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     # One stat per file, and names cut from the root's prefix: Path.relative_to on
     # 15,000 rollouts was half of a warm scan (2026-10-20).
     prefix = len(str(root).rstrip("/")) + 1
-    for path, stat in sorted(((path, path.stat()) for path in source_files(subscription)),
-                             key=lambda pair: pair[1].st_mtime_ns):
+    for path, stat in files:
         name = str(path)[prefix:].replace("\\", "/")
         old = progress.get(name, {})
         if stat.st_size == old.get("offset") and stat.st_mtime_ns == old.get("mtime_ns"):
@@ -475,7 +503,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
         # lookback cannot hold one inside it. On first start this is most of the store.
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
             continue
-        with _read_rollout(path, old, kind) as (source, meta, offset, digest):
+        with read_rollout(path, old, kind) as (source, meta, offset, digest):
             if source is None:
                 changed_files.append(name)
                 continue
@@ -506,6 +534,8 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                     except (ValueError, UnicodeError, AttributeError, TypeError) as error:
                         raise RemError("Invalid complete source line; progress was not advanced") from error
                 if item is SKIPPED or item is UNFAMILIAR:
+                    if item is UNFAMILIAR and unfamiliar is not None:
+                        unfamiliar.append(offset)
                     skipped += 1
                     unrecognised += item is UNFAMILIAR
                     item = None
@@ -537,7 +567,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                     if len(result) >= max_items or used + size > max_chars:
                         # Stop before this message and leave the file's cursor on it, so
                         # the rest of the session is the next batch rather than lost.
-                        updated[name] = {**updated[name], "offset": at, "digest": _digest_to(path, at)}
+                        updated[name] = {**updated[name], "offset": at, "digest": digest_to(path, at)}
                         return Batch(result, updated, skipped, unrecognised, changed_files)
                     result.append(item)
                     used += size

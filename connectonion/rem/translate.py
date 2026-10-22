@@ -8,14 +8,19 @@ again on the next request instead of being shown.
 """
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
 import tempfile
+import sys
+from time import monotonic
+from uuid import uuid4
 from pathlib import Path
 
 from .config import LANGUAGE
-from .files import Notebook, RemError, atomic_write, state_path
+from .files import Notebook, RemError, atomic_write, state_path, write_json
 
 # Owner glossary changes apply to new translations without invalidating every cached page.
 PROMPT_VERSION = 2
@@ -85,8 +90,8 @@ def prompt(language: str, quotes=(), terms=()) -> str:
             "Keep every quoted passage (text inside “…”, \"…\", 「…」, and Markdown "
             "> blockquote lines) exactly as written, in its original language; translate only the "
             "surrounding prose; keep the ASCII colon after a leading date like `2026-10-15:`. " + language_rules() + "These stay in English even mid-sentence: "
-            "`Nothing open as of 2026-09-29; Jordan canceled` becomes `Nothing open as of 2026-09-29；"
-            "Jordan 取消了` in Chinese." + (f" These quoted words must appear unchanged:{keep}\n" if keep else "")
+            "`Nothing open as of 2026-09-29; Theo canceled` becomes `Nothing open as of 2026-09-29；"
+            "Theo 取消了` in Chinese." + (f" These quoted words must appear unchanged:{keep}\n" if keep else "")
             + (" Keep these terms in English, as the owner writes them: " + ", ".join(terms) + "." if terms else "")
             + " Then reply DONE.")
 
@@ -127,8 +132,7 @@ def checked(original: str, translation: str) -> str:
 def translate(root: Path, record: str, language: str) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
-    from .languages import owner_languages
-    from .runner import ready, run_task
+    from .runner import ready
     text = Notebook(root).read(record)
     if (hit := cached(root, record, language)) is not None:
         return hit
@@ -136,19 +140,78 @@ def translate(root: Path, record: str, language: str) -> str:
     problem, fix = ready(config)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and translate again")
+    return _run_translation(root, record, language, config, text)
+
+
+def _run_translation(root, record, language, config, text):
+    from .languages import owner_languages
+    from .runner import run_task
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     prose, stamp = STAMP.sub("", text).rstrip() + "\n", STAMP.search(text)
     (workspace / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
-    run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
+    run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
+           "phase": "translate", "record": record, "language": language, "outcome": "failed",
+           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+    started = monotonic()
+    try:
+        envelope = run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
+        run["usage"] = envelope.get("usage")
+        translation = _read_translation(workspace, prose, stamp)
+        atomic_write(translation_path(root, record, language),
+                     f"<!-- co rem translation of {record} sha256:{digest(text)} -->\n" + translation)
+        run["outcome"] = "completed"
+        return translation
+    finally:
+        error = sys.exc_info()[1]
+        if error:
+            run.update(error=str(error), usage=getattr(error, "usage", None) or run["usage"])
+        run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
+        write_json(state_path(root, f"runs/{run['id']}.json"), run)
+        shutil.rmtree(workspace)
+
+
+def _read_translation(workspace, prose, stamp):
     output = workspace / "translation.md"
     answer = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
-    shutil.rmtree(workspace)
     if not answer:
         raise RemError("co ai finished without writing a translation; nothing was cached. Translate again")
-    translation = checked(prose, answer + "\n") + (f"\n{stamp.group(0)}\n" if stamp else "")
-    atomic_write(translation_path(root, record, language),
-                 f"<!-- co rem translation of {record} sha256:{digest(text)} -->\n" + translation)
-    return translation
+    return checked(prose, answer + "\n") + (f"\n{stamp.group(0)}\n" if stamp else "")
+
+
+def translate_pages(root: Path, language: str, records, say=None, workers=1, *, translate_one=None) -> dict:
+    """Translate independent pages in input order; a failed page does not stop the queue."""
+    checked_language(language)
+
+    def one(record):
+        row = {"page": record, "outcome": "cached"}
+        try:
+            if cached(root, record, language) is None:
+                (translate_one or translate)(root, record, language)
+                row["outcome"] = "translated"
+        except RemError as error:
+            row.update(outcome="failed", error=str(error))
+        return row
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for row in pool.map(one, records):
+            rows.append(row)
+            if say:
+                say(f"{row['page']}: {row['outcome']}" + (f": {row['error']}" if "error" in row else ""))
+    counts = Counter(row["outcome"] for row in rows)
+    return {"language": language, "pages": rows,
+            **{outcome: counts[outcome] for outcome in ("translated", "cached", "failed")}}
+
+
+def written_pages(root: Path) -> list[str]:
+    """Listed reader pages with prose, including decisions and principles outside the census."""
+    from .census import listed, pages, written
+    found = pages(root)
+    notebook = Notebook(root)
+    return [record for record in notebook.list()
+            if (record in found and found[record]["category"] != "sessions"
+                and listed(found[record]) and found[record]["written"])
+            or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]

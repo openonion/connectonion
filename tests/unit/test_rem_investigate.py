@@ -38,6 +38,28 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
+@pytest.mark.parametrize('status', [500, 502, 503, 504, 403, 404])
+def test_http_body_errors_retry_only_transient_server_statuses(monkeypatch, status):
+    slept, calls = [], []
+    monkeypatch.setattr('time.sleep', slept.append)
+    error = Exception('provider failure')
+    error.resp = types.SimpleNamespace(status=status)
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            raise error
+        return 'body'
+
+    if status in (403, 404):
+        with pytest.raises(Exception, match='provider failure'):
+            inv._patient(fetch)
+        assert len(calls) == 1 and slept == []
+    else:
+        assert inv._patient(fetch) == 'body'
+        assert len(calls) == 2 and slept == [1]
+
+
 def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
     import threading
     from datetime import datetime, timedelta, timezone
@@ -3195,3 +3217,20 @@ def test_a_round_that_paraphrases_carried_quotes_gets_them_put_back_without_anot
     assert all(line.split(' (')[0][2:] in page for line in lines)
     assert out['refused_rounds'] == [] and out['repaired_rounds'] == 0
     assert not any(note.startswith('Repair') for note in notes)
+
+
+def test_the_editing_turn_puts_back_a_quote_and_source_it_deleted_with_a_hedge(tmp_path):
+    """2026-10-20: three runs of the editing turn on real pages lost 0-4 quotes and 3-11 sources."""
+    notebook = inv.Notebook(tmp_path)
+    record = "people/avery-lin.md"
+    hedged = "- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2]; whether it was reviewed is unknown."
+    page = ("# Avery Lin\n\nAvery is a tester [1].\n\n## History\n" + hedged + "\n\n## Uncertainties\n- Unknown\n\n"
+            "## Sources\n- [1] gmail:a — 2026-09-01\n- [2] gmail:b — 2026-09-12\n")
+    notebook.write(record, page)
+
+    def runner(nb, items, _config, stage):
+        nb.write(record, page.replace(hedged + "\n", "").replace("- [2] gmail:b — 2026-09-12\n", ""))
+        return {"changed": [record], "usage": {}}
+
+    inv.editing_turn(runner, notebook, record, {})
+    assert "“Can you review it?”" in notebook.read(record) and "gmail:b" in notebook.read(record)

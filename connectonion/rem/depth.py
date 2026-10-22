@@ -6,9 +6,12 @@ its own share of the Codex week, 30 points by default (the owner's #2533 decisio
 """
 
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from math import log2
+from queue import Queue
 
 from . import muse, quota, runner, service
 from .config import read_config
@@ -17,6 +20,8 @@ from .page_review import _listed_sources, quotes as page_quotes
 
 REST_DAYS = 30
 DEPTH_PHASES = quota.DEPTH_PHASES
+# 2026-10-20: pages finish together within a slot; keep every history append.
+_HISTORY_LOCK = threading.Lock()
 
 
 def page_metrics(text) -> dict:
@@ -154,23 +159,57 @@ def deepen(root, record, *, stage=None) -> dict:
     thought = _run(root, record, "muse", stage or _stage)
     text = notebook.read(record)
     after = page_metrics(text)
-    history = read_json(state_path(root, "depth.json"), {})
-    rounds = history.setdefault(record, [])
-    row = {"round": len(rounds) + 1, "at": service.now().isoformat(),
+    row = {"at": service.now().isoformat(),
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
+           "insights_rejected": len(thought.get("insights_rejected", [])),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
-    rounds.append(row)
-    write_json(state_path(root, "depth.json"), history)
+    with _HISTORY_LOCK:
+        history = read_json(state_path(root, "depth.json"), {})
+        rounds = history.setdefault(record, [])
+        row["round"] = len(rounds) + 1
+        rounds.append(row)
+        write_json(state_path(root, "depth.json"), history)
     return {"record": record, **row}
+
+
+def _deepen_choices(root, choices, config, started, stage, say):
+    workers = config["limits"]["depth_workers"]
+    limit = config["limits"]["depth_slot_minutes"]
+    # 2026-10-20: queue callbacks so a batch of finished pages keeps completion order.
+    pending, running, finished = iter(choices), set(), Queue()
+    rounds, picked, reason = [], [], ""
+    choice = next(pending, None)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while choice is not None or running:
+            while choice is not None and len(running) < workers and not reason:
+                minutes = (time.monotonic() - started) / 60
+                reason = (f"the slot has run {int(minutes)} of its {limit} minutes" if minutes >= limit
+                          else stop_reason(root, config))
+                if reason:
+                    break
+                record = choice["record"]
+                if say:
+                    say(f"{record}: Deepening (round {choice['rounds'] + 1})…")
+                future = pool.submit(deepen, root, record, stage=stage)
+                running.add(future)
+                future.add_done_callback(finished.put)
+                picked.append({key: choice[key] for key in
+                               ("record", "priority", "value", "recent", "quotes", "sources", "rounds")})
+                choice = next(pending, None)
+            if not running:
+                break
+            future = finished.get()
+            running.remove(future)
+            rounds.append(future.result())
+    return rounds, picked, reason
 
 
 def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
     started = time.monotonic()
     config = read_config(root)
-    limit = config["limits"]["depth_slot_minutes"]
     if records is None:
         choices = candidates(root)
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
@@ -178,24 +217,11 @@ def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
         history = read_json(state_path(root, "depth.json"), {})
         mapped_rows = _mapped_rows(read_json(state_path(root, "map.json"), {}))
         notebook, today = Notebook(root), service.now()
-        choices = [_candidate(notebook, record, mapped_rows, history.get(record, []), today) for record in records]
+        choices = [_candidate(notebook, record, mapped_rows, history.get(record, []), today)
+                   for record in dict.fromkeys(records)]
         pages = len(choices)
     problem, _ = runner.ready(config)
     if problem:
         return {"rounds": [], "picked": [], "stopped": problem, "left": len(choices)}
-    rounds, picked, reason = [], [], ""
-    for choice in choices[:pages]:
-        if rounds:
-            minutes = (time.monotonic() - started) / 60
-            if minutes > limit:
-                reason = f"the slot has run {int(minutes)} of its {limit} minutes"
-                break
-        reason = stop_reason(root, config)
-        if reason:
-            break
-        record = choice["record"]
-        if say:
-            say(f"Deepening {record} (round {choice['rounds'] + 1})…")
-        rounds.append(deepen(root, record, stage=stage))
-        picked.append({key: choice[key] for key in ("record", "priority", "value", "recent", "quotes", "sources", "rounds")})
+    rounds, picked, reason = _deepen_choices(root, choices[:pages], config, started, stage, say)
     return {"rounds": rounds, "picked": picked, "stopped": reason, "left": len(choices) - len(rounds)}

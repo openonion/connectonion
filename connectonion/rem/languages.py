@@ -168,4 +168,5 @@ def owner_languages(root: Path) -> dict:
         detected = detect(root, owner.get("addresses") or [])
     return {"languages": detected.get("languages", []),
             "from": "detected from your own mail and sessions" if detected else "not detected yet",
+            "detected": detected.get("languages", []),
             "shares": detected.get("shares", {}), "english_terms": terms}

@@ -9,6 +9,7 @@ judgement the Skill makes; this only hands it the signals.
 
 import collections
 import html
+import io
 import json
 import os
 import re
@@ -441,38 +442,68 @@ def session_turns(path: Path, kind: str, limit: int = SHORT_SESSION_TURNS + 1) -
     Claude Code: messages the user typed (the same reading `sync` does). Codex:
     `turn_context` records, one per turn, except in program-written sessions.
     """
-    from .source import KINDS
-    since = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    turns = 0
     try:
         with path.open("rb") as handle:
-            if kind == "codex":
-                meta = KINDS[kind]["meta"](json.loads(handle.readline(1_000_000)))
-                if meta.get("skip") or meta.get("subagent"):
-                    return 0
-            for line in handle:
-                if kind == "codex":
-                    turns += b'"turn_context"' in line[:200]
-                elif b'"user"' in line:
-                    try:
-                        item = KINDS[kind]["message"](json.loads(line), since)
-                    except (ValueError, UnicodeError, RemError, AttributeError, TypeError):
-                        continue
-                    turns += isinstance(item, dict)
-                if turns >= limit:
-                    break
+            return _session_turns(handle, kind, limit)
     except OSError:
         return limit
+
+
+def _session_turns(handle, kind: str, limit: int) -> int:
+    since = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    turns = 0
+    if kind == "codex":
+        meta = KINDS[kind]["meta"](json.loads(handle.readline(1_000_000)))
+        if meta.get("skip") or meta.get("subagent"):
+            return 0
+    for line in handle:
+        if kind == "codex":
+            turns += b'"turn_context"' in line[:200]
+        elif b'"user"' in line:
+            try:
+                item = KINDS[kind]["message"](json.loads(line), since)
+            except (ValueError, UnicodeError, RemError, AttributeError, TypeError):
+                continue
+            turns += isinstance(item, dict)
+        if turns >= limit:
+            break
     return turns
 
 
+def _project_meta(handle, kind: str) -> dict:
+    try:
+        meta, remaining = {}, 1_000_000
+        # Claude Code can put mode/queue records before the first cwd.
+        for _ in range(256 if kind == "claude-code" else 1):
+            line = handle.readline(remaining)
+            if not line:
+                break
+            remaining -= len(line)
+            first = json.loads(line)
+            meta = KINDS[kind]["meta"](first) if isinstance(first, dict) else {}
+            if kind != "claude-code" or meta.get("cwd") or not remaining:
+                break
+        return meta
+    except (ValueError, UnicodeError, RemError):
+        return {}
+
+
+def project_session_data(data: bytes, kind: str) -> tuple[dict, int]:
+    with io.BytesIO(data) as handle:
+        meta = _project_meta(handle, kind)
+        handle.seek(0)
+        turns = _session_turns(handle, kind, SHORT_SESSION_TURNS + 1) if meta else 0
+    return meta, turns
+
+
 def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
-                  on_session=None, progress=None) -> list[dict]:
+                  on_session=None, progress=None, sessions=None) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently.
 
     `progress(message, "i/N")` every 25 session files, so init can draw a bar.
     """
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    now = sessions.now if sessions is not None else datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set(),
                                                 "files": []})
     for name, sub in subscriptions.items():
@@ -480,29 +511,19 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
         if (sub.get("enabled") is False or not sub.get("consented")
                 or kind not in KINDS or not Path(sub.get("root", "")).is_dir()):
             continue
-        files = source_files(sub)
+        files = sessions.files[name] if sessions is not None else source_files(sub)
         for number, path in enumerate(files, 1):
             if progress and (number == 1 or number % 25 == 0 or number == len(files)):
                 progress(f"scanning local projects ({name} sessions)", f"{number}/{len(files)}")
-            stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            stat = sessions.stats[str(path)] if sessions is not None else path.stat()
+            stamp = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
             if stamp < since:
                 continue
-            try:
+            if sessions is None:
                 with path.open("rb") as handle:
-                    meta, remaining = {}, 1_000_000
-                    # Claude Code can put mode/queue records before the first cwd.
-                    # Bound discovery without guessing from lossy folder names.
-                    for _ in range(256 if kind == "claude-code" else 1):
-                        line = handle.readline(remaining)
-                        if not line:
-                            break
-                        remaining -= len(line)
-                        first = json.loads(line)
-                        meta = KINDS[kind]["meta"](first) if isinstance(first, dict) else {}
-                        if kind != "claude-code" or meta.get("cwd") or not remaining:
-                            break
-            except (ValueError, UnicodeError, RemError):
-                continue
+                    meta = _project_meta(handle, kind)
+            else:
+                meta = sessions.projects[str(path)][0]
             cwd = (meta or {}).get("cwd") or ""
             if sub.get("project") and cwd != sub["project"]:
                 continue
@@ -524,8 +545,10 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
         repo = _repo_identity(Path(cwd))
         # Only a lone session outside a repository can be a one-off chat, so only
         # its file is read past the first line.
-        turns = session_turns(e["files"][0][1], e["files"][0][0]) \
-            if e["sessions"] == 1 and not repo.get("toplevel") else None
+        turns = None
+        if e["sessions"] == 1 and not repo.get("toplevel"):
+            kind, path = e["files"][0]
+            turns = sessions.projects[str(path)][1] if sessions is not None else session_turns(path, kind)
         out.append({"path": cwd, "name": Path(cwd).name or cwd, "sessions": e["sessions"], "turns": turns,
                     "first": e["first"], "last": e["last"], "tools": sorted(e["tools"]),
                     # A worktree is not a second project. 33 paths on one machine

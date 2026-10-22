@@ -185,3 +185,35 @@ def test_a_missing_scope_is_logged_once_and_not_retried(tmp_path, monkeypatch):
     assert 'im:message.group_msg' in lines[-1] and 'restart' in lines[-1]
     assert 'im:message.group_msg' in (box.root / 'recovery-error.txt').read_text()
     recovery.stop()
+
+
+def test_remembered_chat_recovers_after_interrupted_first_journal_write(tmp_path,monkeypatch):
+    bot=Feishu('lark');bot._bot_open_id='bot'
+    box=Inbox('lark',home=tmp_path)
+    recovery=HistoryRecovery(bot,box,started_at=100)
+    # Listener saves this before durable deliver. A crash can leave no journal.
+    recovery.note_chat('chat','p2p')
+    resumed=HistoryRecovery(bot,box,started_at=999)
+    monkeypatch.setattr(bot,'_get',lambda path:{'items':[history('gap')], 'has_more':False})
+    assert resumed.reconcile(until=210)==1
+    assert box.lookup('gap').mentioned is True
+
+
+def test_recovered_file_preserves_normalized_resources_and_original_sender_id(tmp_path,monkeypatch):
+    bot,box,recovery=setup(tmp_path)
+    row=history('archive') | {'msg_type':'file','body':{'content':json.dumps({
+        'file_key':'file_zip','file_name':'8月发票.zip'})}}
+    monkeypatch.setattr(bot,'_get',lambda path:{'items':[row], 'has_more':False})
+    recovery.reconcile(until=210)
+    got=box.lookup('archive')
+    assert got.kind=='file'
+    assert got.sender_ids=={'open_id':'user'}
+    assert got.attachments==[{'type':'file','key':'file_zip','name':'8月发票.zip'}]
+
+
+def test_new_empty_inbox_still_does_not_discover_any_conversations(tmp_path,monkeypatch):
+    bot=Feishu('lark');box=Inbox('lark',home=tmp_path)
+    recovery=HistoryRecovery(bot,box,started_at=100)
+    monkeypatch.setattr(bot,'_get',lambda path:pytest.fail('unknown conversation discovery'))
+    assert recovery.reconcile(until=210)==0
+    assert json.loads(recovery.state.read_text())['through']==210

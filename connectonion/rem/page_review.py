@@ -741,7 +741,7 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
-                   "investigation:original-evidence", "investigation:timeline",
+                   "investigation:original-evidence", "investigation:timeline", "investigation:earlier-insights",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
@@ -1024,19 +1024,26 @@ def history_note(page: str) -> str:
 DATED = re.compile(r'^- \**(?P<date>(?P<year>\d{4})(?:-\d{2}){0,2})\**[ \t]*[:—–-][ \t]*(?P<text>.*)$')
 
 
-def _dedupe_history(lines: list[str]) -> list[str]:
+def _dedupe_history(lines: list[str], key=DATED, minimum=0) -> list[str]:
     """2026-10-20: one date's near-duplicate decisions survived four deepening rounds.
 
-    Keep the longer same-date line, with the shorter one's citations.
+    Keep the longer same-key line, with the shorter one's citations.
+    2026-10-21: Insight repeats the same finding under one label after deepening.
     """
+    visible = iter(prose('\n'.join(lines)).split('\n'))
+    keys = {}
+    for i, line in enumerate(lines):
+        masked = '\n'.join(next(visible) for _ in line.split('\n'))
+        if match := key.match(masked):
+            keys[i] = match[1].strip('* ')
     clean = {i: re.sub(r'\[W?\d+\](?!\()', '', line).strip()
-             for i, line in enumerate(lines) if DATED.match(line)}
+             for i, line in enumerate(lines) if i in keys}
     kept, removed = {}, set()
     for i in sorted(clean, key=lambda i: len(clean[i]), reverse=True):
-        date = DATED.match(lines[i])['date']
         # A line with a quote the longer one lacks stays: glued on, a quote reads as nonsense.
-        same = next((j for j in kept if DATED.match(lines[j])['date'] == date
-                     and _contained(clean[i], clean[j]) >= 0.8
+        same = next((j for j in kept if keys[j] == keys[i]
+                     and (clean[i] == clean[j] or len(clean[i]) >= minimum
+                          and _contained(clean[i], clean[j]) >= 0.8)
                      and quotes(lines[i]) <= quotes(kept[j])), None)
         if same is None:
             kept[i] = lines[i]
@@ -1049,24 +1056,53 @@ def _dedupe_history(lines: list[str]) -> list[str]:
     return [kept.get(i, line) for i, line in enumerate(lines) if i not in removed]
 
 
+def _paragraph_rows(body: str) -> list[str]:
+    """2026-10-21: dedupe whole paragraphs without splicing their surviving halves."""
+    rows, continuing = [], False
+    for line, visible in zip(body.split('\n'), prose(body).split('\n')):
+        paragraph = bool(visible.strip()) and not re.match(r'^\s*(?:[-+*] |[#>`~])', visible)
+        if continuing and paragraph:
+            rows[-1] += '\n' + line
+        else:
+            rows.append(line)
+        continuing = paragraph
+    return rows
+
+
 def sort_history(text: str) -> str:
-    """History and Key decisions newest first, in code: a dated story read out of order misleads.
+    """Sort dated history, then merge near-duplicate list lines and paragraphs by section.
 
     2026-10-20 trial: three of five first-run person pages put one line out of
     order although the Skill says newest first. Undated lines keep their place
     after the dated ones; distinct lines of one date keep the turn's order.
     Same-date duplicates merge citations, and blank lines cannot split the list.
+    2026-10-21: round two repeated Now, status, Open threads and a quote on one page.
     """
-    for heading in ('History', 'Key decisions'):
-        span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    for heading in ('History', 'Key decisions', 'Insight'):
+        span = re.search(rf'(?ms)^## {heading}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
         if not span:
             continue
-        lines = _dedupe_history(span[1].split('\n'))
-        dated = [line for line in lines if DATED.match(line)]
-        ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
-        lines = [next(ordered) if DATED.match(line) else line for line in lines]
+        key = re.compile(r'^- ([^:]+):') if heading == 'Insight' else DATED
+        lines = _dedupe_history(text[span.start(1):span.end(1)].split('\n'), key)
+        if heading != 'Insight':
+            dated = [line for line in lines if DATED.match(line)]
+            ordered = iter(sorted(dated, key=lambda line: DATED.match(line)['date'], reverse=True))
+            lines = [next(ordered) if DATED.match(line) else line for line in lines]
         body = re.sub(r'(?m)(^- [^\n]+)\n(?:[ \t]*\n)+(?=- )', r'\1\n', '\n'.join(lines))
         text = text[:span.start(1)] + body + text[span.end(1):]
+    # 2026-10-21: a second round repeated Now, status, Open threads and a quote.
+    # Exact repeats only (citations aside): a near-match pass merged two weekly reports a
+    # week apart and a March invoice into an April one. The keyed pass above owns
+    # History, Key decisions and Insight.
+    for span in reversed(list(re.finditer(r'(?ms)^## ([^\n]+)\n(.*?)(?=^## |^Investigation:|\Z)', prose(text)))):
+        if span[1].strip() in ('Sources', 'Paths', 'Facts', 'Contact', 'Domains', 'History', 'Key decisions', 'Insight'):
+            continue
+        # All prose shares one key; headings and fenced code are not prose.
+        key = re.compile(r'^()(?=[-+*] \S|[^\s#`>~+*-])')
+        rows = ['\n'.join(_dedupe_history(row.split('\n'), key, minimum=float('inf')))
+                for row in _paragraph_rows(text[span.start(2):span.end(2)])]
+        body = '\n'.join(_dedupe_history(rows, key, minimum=float('inf')))
+        text = text[:span.start(2)] + body + text[span.end(2):]
     return text
 
 
@@ -1196,6 +1232,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Project input scope is not a citable original: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:timeline'):
             errors.append(f'Project timeline is a reading guide, not a citable original: {key}')
+        if value.strip().startswith('investigation:earlier-insights'):
+            errors.append(f'Earlier insights are a reading guide, not a citable original: {key}')
         if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
             errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
@@ -1765,6 +1803,10 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)
+        # A quote the cited source does not hold comes back as plain words: restored in
+        # quotation marks, it refused the whole update ("Quote is not in its cited source").
+        for quote in exempt:
+            restored = restored.replace(f'“{quote}”', quote)
         if restored and restored not in after.splitlines():
             after = _insert_restored_line(after, section, restored, lost_quotes, lost_sources)
     return after
@@ -1910,6 +1952,35 @@ def _owner_pronouns(sentence: str, skip: str = "") -> tuple[str, int]:
     return "".join(out), changed
 
 
+def owner_name_to_user(text: str, names: list[str], tied=None) -> str:
+    """2026-10-21: only a line's cited originals can tie a first name to the owner."""
+    if not names:
+        return text
+    name = re.compile(r"\b(?P<name>" + '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+                      + r")\b(['’]s)?")
+    head, *sources = re.split(r'(?m)(^## Sources[ \t]*\n)', text, maxsplit=1)
+    protected = re.compile(r'(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)|“[^”]*”|"[^"\n]*"|‘[^’]*’'
+                           r"|(?<!\w)'[^'\n]+'(?!\w)")
+    lines = []
+    for line, visible in zip(head.split('\n'), prose(head).split('\n')):
+        if not visible.strip() or line.startswith('#'):
+            lines.append(line)
+            continue
+        parts, at = [], 0
+        tied_line = tied(line) if tied else False
+        def replace(match):
+            if ' ' not in match['name'] and not tied_line:
+                return match[0]
+            prefix = line[:at + match.start()]
+            initial = re.search(r'(^|[.!?]\s+|^[-*] (?:[^:\n]+:\s*)?)[*_]*$', prefix)
+            return ('The user' if initial else 'the user') + ("'s" if match[2] else '')
+        for span in protected.finditer(line):
+            parts.extend([name.sub(replace, line[at:span.start()]), span[0]])
+            at = span.end()
+        lines.append(''.join(parts) + name.sub(replace, line[at:]))
+    return '\n'.join(lines) + ''.join(sources)
+
+
 def owner_pronouns(text: str) -> tuple[str, int]:
     """Replace pronouns that stand for the owner with "the user", outside quotes and Sources."""
     head, marker, tail = text.partition("\n## Sources\n")
@@ -1930,6 +2001,41 @@ def owner_pronouns(text: str) -> tuple[str, int]:
     return "\n".join(lines) + marker + tail, total
 
 
+def agent_threads(text: str) -> list[str]:
+    """Open threads supported exclusively by coding-session originals."""
+    from .reader_model import SOURCE
+    visible = prose(text).replace('\r\n', '\n')
+    section = r'(?ms)^## {}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)'
+    definitions = re.search(section.format('Sources'), visible)
+    sources = dict(SOURCE.findall(definitions[1] if definitions else ''))
+    span = re.search(section.format('Open threads'), visible)
+    lines = []
+    for line in span[1].splitlines() if span else []:
+        citations = re.findall(r'\[(W?\d+)\](?!\()', line)
+        if (re.match(r'^[-*] +\S', line) and citations
+                and all(sources.get(number, '').startswith(('codex:', 'claude-code:')) for number in citations)):
+            lines.append(line)
+    return lines
+
+
+def move_agent_threads(text: str) -> str:
+    """Keep session-only work on the owner's profile rather than as an obligation."""
+    lines = agent_threads(text)
+    if not lines:
+        return text
+    section = r'(?ms)^## {}[ \t]*\r?\n(.*?)(?=^## |^Investigation:|\Z)'
+    threads = re.search(section.format('Open threads'), prose(text))
+    body = text[threads.start(1):threads.end(1)]
+    kept = '\n'.join(line for line, visible in zip(body.splitlines(), threads[1].splitlines())
+                     if visible not in lines).strip()
+    text = text[:threads.start(1)] + (kept or '- Unknown') + '\n\n' + text[threads.end(1):]
+    who = re.search(section.format('Who they are'), prose(text))
+    if who:
+        return text[:who.end(1)].rstrip('\n') + '\n' + '\n'.join(lines) + '\n\n' + text[who.end(1):]
+    at = re.search(r'^## Sources', prose(text), re.M).start()
+    return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
+
+
 def unquoted_decisions(text: str) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
@@ -1940,3 +2046,82 @@ def unquoted_decisions(text: str) -> list[str]:
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "
             "copied from the message the line cites" for line in lines]
+
+
+LEAD_LAST_CONTACT = re.compile(r"[ \t]*Last contact:[^\n]*?\d{4}-\d{2}-\d{2}[^\n]*$", re.I)
+
+
+def lead_without_last_contact(record: str, text: str) -> str:
+    """An investigated person's lead ends with its sentences, not the date `Facts` and the reader already show.
+
+    2026-10-20: the last contact date appeared three times on one screen. A mapped
+    stub keeps its "Last contact: <date>; N mails" lead until it is investigated.
+    """
+    if not record.startswith("people/") or "not investigated yet" in text.partition("\n## ")[0]:
+        return text
+    title, _, rest = text.partition("\n")
+    lead, marker, tail = rest.partition("\n## ")
+    cut = re.sub(r"(?m)(?<=[.!?。）)\]])" + LEAD_LAST_CONTACT.pattern, "", lead, flags=re.I)
+    cut = re.sub(r"(?m)^" + LEAD_LAST_CONTACT.pattern + r"\n?", "", cut, flags=re.I)
+    return title + "\n" + cut.rstrip() + "\n" + marker + tail if marker and cut.strip() else text
+
+
+# Never after an abbreviation or an initial: "Dr. Lin said …" is one clause.
+CLAUSE = re.compile(r"(?<![A-Z]\.)(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)(?<!\bProf\.)(?<!\bSt\.)"
+                    r"(?<!\bvs\.)(?<!\be\.g\.)(?<!\bi\.e\.)(?<!\betc\.)(?<=[.;!?])\s+"
+                    r"|\s+[—–]\s+|,\s+(?=(?:but|and|so|while|though)\b)")
+QUOTED = re.compile(r"“[^”\n]*”|\"[^\"\n]*\"")
+BULLET_DATE = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?(?:\d{4}-\d{2}(?:-\d{2})?(?:\*\*)?\s*[:—–-]\s*)?")
+DATED_SILENCE = re.compile(r"\bno (reply|outcome|response|answer)s? (?:is |was |has been )?(?:documented|found|recorded|"
+                           r"established|shown)(?: in the supplied (?:mail|messages|material))?\s+"
+                           r"(?:through|as of|by|since|until)\s+(\d{4}-\d{2}-\d{2})", re.I)
+MARKS = re.compile(r"\[(?:W?\d+|personal|sensitive)\]")
+
+
+def strip_hedge(line: str) -> str:
+    """The line with its clauses about what is not known rewritten or removed; evidence stays.
+
+    "no reply is recorded through 2026-10-20" is a dated fact and becomes "no reply as of
+    2026-10-20"; any other clause about what is not known goes, and its citations and
+    privacy labels move to the line's end. A clause holding a quote is kept; a line that
+    is nothing but hedge is left for the editing turn (2026-10-20: the turn deleted 0-11
+    sources with the hedges, or left 25-43 of 60 hedges when they were put back whole).
+    """
+    line = DATED_SILENCE.sub(lambda m: f"no {m[1].lower()} as of {m[2]}", line)
+    # The bullet and its date are never a clause; quoted words are never split
+    # (2026-10-21 review: “The budget is not confirmed. I will know Friday.” lost its first half).
+    if line.count("“") != line.count("”") or line.count('"') % 2:
+        return line   # quotes that do not pair cannot be kept whole
+    prefix = BULLET_DATE.match(line)[0]
+    rest = line[len(prefix):]
+    quoted = QUOTED.findall(rest)
+    masked = QUOTED.sub(lambda m: f"\0{quoted.index(m[0])}\0", rest)
+    unmask = lambda text: re.sub(r"\0(\d+)\0", lambda m: quoted[int(m[1])], text)  # noqa: E731
+    raw = CLAUSE.split(masked)
+    parts = [unmask(part) for part in raw]
+    seps = CLAUSE.findall(masked)
+    kept, moved = [], []
+    for n, part in enumerate(parts):
+        # Hedge wording inside a quote is the speaker's, and a quoted clause always stays.
+        if HEDGE.search(QUOTED.sub("", part)) and "\0" not in raw[n]:
+            moved += MARKS.findall(part)
+            continue
+        kept.append((seps[n - 1] if n and kept else "", part))
+    if not kept or len(kept) == len(parts):
+        return line
+    body_text = "".join(sep + part for sep, part in kept).rstrip(" ,;—–")
+    if kept[0][1] is not parts[0]:   # the first clause went: the next one starts the sentence
+        body_text = body_text[:1].upper() + body_text[1:]
+    text = prefix + body_text
+    # The joins a removed clause leaves: "…2026-10-23; [48]" and "…meetings; The user…".
+    text = re.sub(r"\s*[;,—–]\s+(?=\[)", " ", re.sub(r";\s+(?=[A-Z])", ". ", text))
+    if text.count("“") != text.count("”") or text.count('"') % 2:
+        return line
+    extra = "".join(mark for mark in dict.fromkeys(moved) if mark not in text)
+    if not extra:
+        return text
+    body = re.sub(r"[ \t]*(?:\[(?:W?\d+|personal|sensitive)\][ \t]*)*[.]?$", "", text).rstrip(" ,;")
+    tail = "".join(MARKS.findall(text[len(body):]))
+    privacy = "".join(m for m in dict.fromkeys(MARKS.findall(tail + extra)) if m in ("[personal]", "[sensitive]"))
+    cites = "".join(m for m in dict.fromkeys(MARKS.findall(tail + extra)) if m not in ("[personal]", "[sensitive]"))
+    return f"{body} {privacy + ' ' if privacy else ''}{cites}".rstrip() + ("." if text.rstrip().endswith(".") else "")

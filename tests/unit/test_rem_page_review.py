@@ -12,6 +12,78 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+@pytest.mark.parametrize('heading', ['Open threads', 'Where it stands', 'Who they are'])
+@pytest.mark.parametrize('prefix', ['- ', ''])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_section_wide_duplicates_keep_longer_prose_and_all_citations(heading, prefix, reverse):
+    """2026-10-21: round two repeated an Open threads line and a status paragraph."""
+    from connectonion.rem.page_review import sort_history
+    short = prefix + 'The user owes Avery Lin the Lantern pilot price. [1]'
+    long = prefix + 'The user owes Avery Lin the Lantern pilot price before Friday. [2]'
+    rows = [short, long, short] if not reverse else [long, short, short]
+    page = f'# Avery Lin\n\n## {heading}\n' + ('\n' if prefix else '\n\n').join(rows) + '\n'
+    result = sort_history(page)
+    # Exact repeats collapse; a longer near-match is a different line and stays (2026-10-21 review).
+    body = result.partition(f'## {heading}\n')[2]
+    assert body.count(short) == 1 and body.count(long) == 1
+    assert sort_history(result) == result
+
+
+@pytest.mark.parametrize('heading', ['Sources', 'Paths', 'Facts', 'Contact', 'Domains'])
+def test_section_dedupe_leaves_excluded_sections_untouched(heading):
+    from connectonion.rem.page_review import sort_history
+    line = '- Avery Lin leads the Lantern pilot and needs the price. [1]'
+    page = f'# Avery Lin\n\n## {heading}\n{line}\n{line}\n'
+    assert sort_history(page) == page
+
+
+def test_section_dedupe_keeps_short_similar_lines_but_collapses_exact_duplicates():
+    from connectonion.rem.page_review import sort_history
+    lines = '- Send price. [1]\n- Send pilot price. [2]\n- Send price. [3]\n'
+    page = '# Avery Lin\n\n## Open threads\n' + lines
+    assert sort_history(page) == page.replace('- Send price. [1]', '- Send price. [1] [3]').replace('- Send price. [3]\n', '')
+
+
+def test_section_dedupe_merges_an_exact_repeated_list_line():
+    from connectonion.rem.page_review import sort_history
+    line = 'The user owes Avery Lin the detailed Lantern pilot price.'
+    page = f'# Avery Lin\n\n## Open threads\n- {line} [1]\n- {line} [2]\n'
+    assert sort_history(page) == f'# Avery Lin\n\n## Open threads\n- {line} [1] [2]\n'
+
+
+def test_section_dedupe_keeps_multiline_paragraphs_whole():
+    from connectonion.rem.page_review import sort_history
+    first = 'Avery Lin reads the Lantern pilot outline before starting.\nThen asks for the price. [1]'
+    second = 'Avery Lin reads the Lantern pilot outline carefully before starting.\nThen asks for the price before Friday. [2]'
+    page = f'# Avery Lin\n\n## Who they are\n{first}\n\n{second}\n'
+    result = sort_history(page)
+    # Near-matching paragraphs are different statements; only exact repeats merge (2026-10-21 review).
+    assert first in result and second in result and sort_history(result) == result
+
+
+def test_exact_repeated_prose_lines_always_collapse_even_inside_one_paragraph():
+    from connectonion.rem.page_review import sort_history
+    page = '# Avery Lin\n\n## Open threads\nPrice owed. [1]\nPrice owed. [2]\n'
+    assert sort_history(page) == '# Avery Lin\n\n## Open threads\nPrice owed. [1] [2]\n'
+
+
+def test_section_dedupe_preserves_fenced_code_and_quotes_the_longer_line_lacks():
+    from connectonion.rem.page_review import sort_history
+    code = '```text\nAvery Lin owes a detailed Lantern pilot price.\nAvery Lin owes a detailed Lantern pilot price.\n```\n'
+    short = '- Avery Lin said “Send the pilot price” about Lantern. [1]'
+    long = '- Avery Lin said Send the pilot price about Lantern before Friday. [2]'
+    page = f'# Avery Lin\n\n## Open threads\n{code}\n{short}\n{long}\n'
+    assert sort_history(page) == page
+
+
+def test_section_dedupe_ignores_section_headings_inside_fenced_examples():
+    from connectonion.rem.page_review import sort_history
+    code = ('```markdown\n## Insight\n- Avery Lin needs the detailed Lantern pilot price. [1]\n'
+            '- Avery Lin needs the detailed Lantern pilot price. [1]\n```\n')
+    page = f'# Avery Lin\n\n## Open threads\n{code}'
+    assert sort_history(page) == page
+
+
 def test_a_fact_restored_from_mail_outside_the_quick_sample_keeps_its_source():
     candidate = '# Owner\n\nA dated fact [1].\n\n## Sources\n- [1] outlook:older — 2026-09-29\n'
     items = [{'role': 'facts', 'source': 'investigation:facts',
@@ -599,9 +671,9 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
         return {'usage': {'input_tokens': 9}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     result = run_sync(tmp_path)
-    # A malformed page no longer refuses the batch (#1670): it is kept as it
-    # was, and the correction to it stays pending for the next pass.
-    assert result['outcome'] == 'completed' and result['refused'] == 1
+    # With no accepted feedback target, report deferral and stop all-pending;
+    # preserve the page and correction for a later eligible retry.
+    assert result['outcome'] == 'deferred' and result['refused'] == 1
     assert result['refusals'][0]['record'] == 'projects/atlas.md'
     # The first turn and its repair turns are all paid for.
     assert result['usage']['input_tokens'] == 9 * (1 + MAX_REPAIRS)
@@ -1687,13 +1759,13 @@ def test_same_date_history_duplicates_keep_longer_line_and_merge_all_citations(h
     short = '- 2026-10-20: Avery Lin shipped Lantern. [1][W1]'
     long = '- **2026-10-20** — Avery Lin shipped Lantern with a smaller interface. [2]'
     lines = [short, long, short] if not reverse else [long, short, short]
-    other = '- 2026-10-19: Avery Lin shipped Lantern. [3]'
+    other = '- 2026-10-19: Mara Ostrowski ended the Lantern pilot. [3]'
     page = (f'# Lantern\n\n## {heading}\n' + '\n\n'.join([*lines, other])
             + '\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n- [2] github:acme/lantern#12\n'
             '- [3] github:acme/lantern#13\n- [W1] https://example.com/lantern\n')
     result = sort_history(page)
     assert long + ' [1][W1]\n' + other in result
-    assert result.count('Avery Lin shipped Lantern') == 2
+    assert result.count('Avery Lin shipped Lantern') == 1
     assert not re.search(r'^- [^\n]+\n(?:[ \t]*\n)+- ', result.partition('\n## Sources')[0], re.M)
     assert sort_history(result) == result
 
@@ -1704,6 +1776,39 @@ def test_exact_history_duplicates_collapse_but_distinct_same_date_decisions_rema
     second = '- 2026-10-20: Archive the abandoned database migration. [2]'
     page = f'# Lantern\n\n## Key decisions\n{first}\n{first}\n{second}\n'
     assert sort_history(page) == page.replace(f'{first}\n{first}', first)
+
+
+@pytest.mark.parametrize('label', ['Now', 'Changed', 'Pattern', 'At stake'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_insight_duplicates_merge_by_label_without_reordering_or_limiting_bullets(label, reverse):
+    """2026-10-21: a second deepening left two near-identical Now bullets among five."""
+    from connectonion.rem.page_review import sort_history
+    short = f'- {label}: Avery Lin shipped the Lantern interface. [1][W1]'
+    long = f'- {label}: Avery Lin shipped the smaller Lantern interface. [2]'
+    other = '- Different: Mara Ostrowski renewed the Lantern pilot. [3]'
+    distinct = [f'- {label}: Theo Park archived the abandoned database migration. [3]',
+                '- Changed: Mara Ostrowski declined the invitation. [3]',
+                '- Pattern: Theo Park prefers written replies. [3]']
+    lines = [short, long] if not reverse else [long, short]
+    page = ('# Lantern\n\n## Insight\n' + '\n'.join([*lines, other, *distinct])
+            + '\n\n## Sources\n- [1] gmail:avery\n- [2] github:acme/lantern#12\n'
+            '- [3] gmail:theo\n- [W1] https://example.com/lantern\n')
+    expected = page.replace('\n' + short, '').replace(long, long + ' [1][W1]')
+    assert sort_history(page) == expected
+    assert sort_history(expected) == expected
+
+
+@pytest.mark.parametrize('wording,count', [('“Keep small tools”', 1), ('Keep small tools', 2)])
+def test_insight_dedupe_keeps_a_quote_missing_from_the_longer_bullet(wording, count):
+    """2026-10-21: Insight uses the same quote guard as dated decisions."""
+    from connectonion.rem.page_review import sort_history
+    short = '- Now: Avery Lin said “Keep small tools” for Lantern. [1]'
+    long = f'- Now: Avery Lin said {wording} for Lantern and shipped the smaller interface. [2]'
+    page = f'# Lantern\n\n## Insight\n{short}\n{long}\n'
+    result = sort_history(page)
+    assert result.count('- Now:') == count
+    assert '“Keep small tools”' in result
+    assert sort_history(result) == result
 
 
 def test_restore_keeps_rewrite_with_new_sources_and_restores_lost_evidence():
@@ -1817,6 +1922,54 @@ def test_a_pronoun_the_page_uses_for_its_subject_is_never_the_users(page, fixed)
     assert owner_pronouns(page)[0] == fixed
 
 
+def test_owner_names_become_the_user_outside_quotes_code_and_sources():
+    """2026-10-21: a new Changed bullet named the owner by first name."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Avery Lin\n\nMara Ostrowski handed Avery the deck. Mara\'s reply arrived.\n'
+            'On October 14 Mara handed it over; mara and Marason stayed.\n'
+            '- Changed: Mara Ostrowski\'s deck reached Avery.\n'
+            '**Mara Ostrowski** agreed; Mara’s deck arrived.\n'
+            'Avery quoted “Mara sent it” and "Mara Ostrowski agreed" and `Mara`.\n'
+            "Avery quoted 'Mara agreed' and ‘Mara Ostrowski agreed’.\n"
+            '``Mara Ostrowski `Mara` `` stays code.\n'
+            '```python\nMara Ostrowski\n```\n\n## Sources\n- [1] https://example.com/Mara\n')
+    expected = (page.replace('Mara Ostrowski handed', 'The user handed')
+                .replace("Mara's reply", "The user's reply")
+                .replace('October 14 Mara handed', 'October 14 the user handed')
+                .replace("Changed: Mara Ostrowski's deck", "Changed: The user's deck")
+                .replace('**Mara Ostrowski** agreed; Mara’s deck', "**The user** agreed; the user's deck"))
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
+    assert owner_name_to_user(expected, ['Mara Ostrowski', 'Mara'], tied=lambda line: True) == expected
+    assert owner_name_to_user(page, []) == page
+    assert owner_name_to_user(page.replace('## Sources\n', '## Sources \n'), ['Mara Ostrowski', 'Mara'],
+                              tied=lambda line: True) == \
+        expected.replace('## Sources\n', '## Sources \n')
+
+
+@pytest.mark.parametrize('tied', [None, lambda line: '[1]' in line])
+def test_owner_first_name_needs_a_tied_line_but_full_name_does_not(tied):
+    """2026-10-21: Mara Chen has no page; her first name must survive."""
+    from connectonion.rem.page_review import owner_name_to_user
+    page = ('# Avery Lin\n\nMara asked [1].\nMara asked [2].\nMara asked without a citation.\n'
+            'Mara Ostrowski agreed; Mara Ostrowski’s deck arrived.\n'
+            '“Mara Ostrowski agreed” and `Mara Ostrowski` stay.\n\n'
+            '## Sources\n- [1] gmail:owner\n- [2] gmail:correspondent\n')
+    expected = page.replace('Mara Ostrowski agreed;', 'The user agreed;').replace(
+        'Mara Ostrowski’s deck', "the user's deck")
+    if tied:
+        expected = expected.replace('Mara asked [1]', 'The user asked [1]')
+    assert owner_name_to_user(page, ['Mara Ostrowski', 'Mara'], tied=tied) == expected
+
+
+@pytest.mark.parametrize('record', ['people/avery.md', 'projects/lantern.md', 'orgs/lantern.md'])
+def test_earlier_insights_are_never_a_citable_original(record):
+    """2026-10-21: the muse reminder must not corroborate its own page."""
+    candidate = '# Avery Lin\n\nAn existing finding. [1]\n\n## Sources\n- [1] investigation:earlier-insights\n'
+    items = [{'role': 'earlier-insights', 'source': 'investigation:earlier-insights', 'text': 'A finding'}]
+    errors = validate(record, candidate, '# Avery Lin\n', items)
+    assert 'Earlier insights are a reading guide, not a citable original: 1' in errors
+
+
 def test_a_qualified_first_contact_is_put_back_over_unknown():
     from connectonion.rem.page_review import restore_runner_fields
     original = ("# Avery Lin\n\n## Facts\n- First contact: 2026-08-11 (earliest mail found) [2]\n\n"
@@ -1879,3 +2032,112 @@ def test_unclear_whether_and_its_chinese_forms_are_hedges_the_editing_turn_remov
     from connectonion.rem.page_review import hedged_lines
     page = f"# Avery Lin\n\nAvery is a tester [1].\n\n## History\n{line}\n\n## Uncertainties\n- Unknown\n"
     assert hedged_lines(page)
+
+
+def test_a_restored_line_keeps_an_unverifiable_quote_as_plain_words():
+    """2026-10-20 upkeep: a restored line carried a name quote its source did not hold; the update was refused."""
+    from connectonion.rem.page_review import restore_dropped
+    line = "- Theo writes as “Theo P.” and asks “Could you review it?” (2026-10-01) [1]"
+    before = f"# Theo Park\n\n## How they communicate\n{line}\n\n## Sources\n- [1] gmail:a — 2026-10-01\n"
+    after = before.replace(line + "\n", "").replace("- [1] gmail:a — 2026-10-01\n", "")
+    restored = restore_dropped(before, after, frozenset({"Theo P."}))
+    assert "as Theo P. and asks “Could you review it?”" in restored
+
+
+def test_the_lead_ends_with_its_sentences_and_old_pages_still_date_the_person():
+    """The last contact date showed three times on one screen (lead, Facts, reader meta)."""
+    from connectonion.rem.census import last_activity
+    from connectonion.rem.page_review import lead_without_last_contact
+    from connectonion.rem.store_build import LAST_CONTACT
+    old = ("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2]. Last contact: 2026-10-17, email [2].\n\n"
+           "## Facts\n- Last contact: 2026-10-17 [2]\n")
+    new = lead_without_last_contact("people/avery-lin.md", old)
+    assert new.startswith("# Avery Lin\n\nAvery tests pilots [1]. Nothing open as of 2026-10-20 [2].\n\n## Facts\n")
+    for page in (old, new):          # old pages stay parseable; new ones are read from Facts
+        assert last_activity(page) == "2026-10-20" or "2026-10-17" in LAST_CONTACT.findall(page)
+        assert max(LAST_CONTACT.findall(page)) == "2026-10-17"
+    stub = "# Avery\n\nUnknown — not investigated yet. Last contact: 2026-10-01; 3 mails (gmail).\n\n## Facts\n"
+    assert lead_without_last_contact("people/avery.md", stub) == stub
+
+
+@pytest.mark.parametrize("line, stripped", [
+    ("- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2]; whether it was reviewed is unknown [3].",
+     "- 2026-09-12: Avery asked “Can you review it?” (2026-09-12) [2][3]"),
+    ("- At stake: Avery asked the user to sign before 2026-10-23 [5]; completion is unknown.",
+     "- At stake: Avery asked the user to sign before 2026-10-23 [5]"),
+    ("- Whether it was reviewed is unknown [3].", "- Whether it was reviewed is unknown [3]."),
+    ("- 2026-02-23: Avery asked how the user was; no reply is recorded through 2026-10-20 [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was; no reply as of 2026-10-20 [sensitive] [9]."),
+    ("- 2026-02-23: Avery asked how the user was; it is unclear whether Theo replied [sensitive] [9].",
+     "- 2026-02-23: Avery asked how the user was [sensitive] [9]"),
+])
+def test_a_hedge_clause_goes_and_its_citations_stay(line, stripped):
+    from connectonion.rem.page_review import strip_hedge
+    assert strip_hedge(line) == stripped
+
+
+def test_restored_history_lines_are_folded_back_under_sixteen():
+    """2026-10-21: lines put back took History from 11 to 17 lines and the update was refused."""
+    from connectonion.rem.page_review import fold_history, history_errors, restore_dropped
+    old = [f"- 2025-0{m}-01: Thread {m} — closed, “ok {m}” [{m}]" for m in range(1, 7)]
+    new = [f"- 2026-{m:02d}-01: Thread {m} — closed [{m + 6}]" for m in range(1, 12)]
+    sources = "".join(f"- [{n}] gmail:{n:012x} — 2026-01-01\n" for n in range(1, 18))
+    before = "# Avery Lin\n\n## History\n" + "\n".join(new + old) + "\n\n## Sources\n" + sources
+    after = "# Avery Lin\n\n## History\n" + "\n".join(new) + "\n\n## Sources\n" + sources
+    restored = fold_history(restore_dropped(before, after))
+    assert not history_errors(restored, after) and "“ok 3”" in restored
+
+
+def test_section_dedupe_keeps_entries_that_differ_only_by_date_or_month():
+    """2026-10-21 review: near-matches merged a week-apart report and a March invoice into April."""
+    from connectonion.rem.page_review import sort_history
+    page = ('# Lantern\n\n## History\n'
+            '- 2026-09-08 — Avery sent the weekly Lantern status report to the team. [1]\n'
+            '- 2026-09-01 — Avery sent the weekly Lantern status report to the team. [2]\n\n'
+            '## Open threads\n'
+            '- Mara Ostrowski has not paid the Lantern March invoice yet. [5]\n'
+            '- Mara Ostrowski has not paid the Lantern April invoice yet. [6]\n\n'
+            '## Uncertainties\n'
+            '- Did Theo Park approve the Lantern pricing for the first quarter? [3]\n'
+            '- Did Theo Park approve the Lantern pricing for the second quarter? [4]\n\n'
+            '## Sources\n' + ''.join(f'- [{n}] gmail:{n:012x}\n' for n in range(1, 7)))
+    result = sort_history(page)
+    for line in page.splitlines():
+        if line.startswith('- ') and '## Sources' not in line and 'gmail:' not in line:
+            assert line in result
+
+
+def test_section_dedupe_still_collapses_an_exact_repeat():
+    from connectonion.rem.page_review import sort_history
+    page = ('# Lantern\n\n## Open threads\n- Mara Ostrowski owes the signed Lantern contract. [1]\n'
+            '- Mara Ostrowski owes the signed Lantern contract. [2]\n\n## Sources\n'
+            '- [1] gmail:000000000001\n- [2] gmail:000000000002\n')
+    result = sort_history(page)
+    assert result.count('owes the signed Lantern contract') == 1 and '[1] [2]' in result
+
+
+@pytest.mark.parametrize("line, stripped", [
+    # 2026-10-21 review: a quote holding hedge words was split at its full stop and half of it deleted.
+    ("- 2026-09-12: Avery wrote “The budget is not confirmed. I will know Friday.” [2]",
+     "- 2026-09-12: Avery wrote “The budget is not confirmed. I will know Friday.” [2]"),
+    ('- 2026-09-12: Avery wrote "The budget is not confirmed. Friday." [2]; whether it moved is unknown [3].',
+     '- 2026-09-12: Avery wrote "The budget is not confirmed. Friday." [2][3]'),
+    # "Dr. Lin said … unknown; …" became "- Dr. the contract…".
+    ("- Dr. Lin said the outcome is unknown; the contract was signed on 2026-09-01 [3].",
+     "- The contract was signed on 2026-09-01 [3]."),
+    ("- 2026-09-12: completion is unknown; Mr. Park sent the deck [4].",
+     "- 2026-09-12: Mr. Park sent the deck [4]."),
+    ("- **2026-09-12** — completion is unknown; the user sent the deck [4].",
+     "- **2026-09-12** — The user sent the deck [4]."),
+])
+def test_strip_hedge_never_splits_a_quote_an_abbreviation_or_the_bullet_date(line, stripped):
+    from connectonion.rem.page_review import strip_hedge
+    out = strip_hedge(line)
+    assert out == stripped
+    assert out.count("“") == out.count("”") and out.count('"') % 2 == 0
+
+
+def test_strip_hedge_leaves_a_line_whose_quote_marks_do_not_pair():
+    from connectonion.rem.page_review import strip_hedge
+    line = "- 2026-09-12: Avery wrote “not confirmed. Friday [2]; whether it moved is unknown [3]."
+    assert strip_hedge(line) == line

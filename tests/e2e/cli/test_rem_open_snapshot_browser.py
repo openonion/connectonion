@@ -109,7 +109,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             assert status.is_visible()
             assert status.evaluate('e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().bottom <= innerHeight')
             assert page.locator('details.deep-note').get_attribute('open') is None
-            assert "Not investigated yet: Insight, Who they are" in text   # #2068
+            assert page.locator('.missing.primary .names').inner_text() == '8 sections will be written when it is investigated.'
             assert "co rem --root '" in text and "investigate 'people/quiet.md'" in text
 
             page.goto(link + "#c=people")

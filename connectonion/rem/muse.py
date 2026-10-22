@@ -11,6 +11,7 @@ from .config import read_config
 from .evidence import INDEX, write_evidence
 from .files import Notebook, RemError, read_json, state_path, write_json
 from .investigate import gather, page_handles, project_paths
+from .page_review import prose
 from .reader_model import _source_ids, cited_context
 from .project_material import stored
 from .service import now, run_logs, subscriptions
@@ -28,7 +29,8 @@ MUSE_TURNS = ("Now do Turn 1 only.",
 
 
 def ledger_dir(root, record) -> Path:
-    return state_path(root, f"enrich/{Path(record).stem}")
+    # 2026-10-20: pages deepened in parallel in different categories can share a stem.
+    return state_path(root, f"enrich/{Path(record).with_suffix('')}")
 
 
 def _archive_note(root) -> str:
@@ -55,6 +57,19 @@ def _page_item(root: Path, record: str, page: str) -> dict:
                     "(people/, projects/, orgs/): read them for context, never edit them.\n\n" + page}
 
 
+def _earlier_insights(page: str) -> list[dict]:
+    """2026-10-21: a second muse round must add to the insights already on the page."""
+    section = re.search(r'(?ms)^## Insight[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(page))
+    bullets = re.findall(r'(?m)^[-*] .*(?:\n[ \t]+\S.*)*', section[1] if section else '')
+    bullets = [bullet for bullet in bullets if not re.fullmatch(r'[-*] Unknown(?: — not investigated yet)?', bullet)]
+    if not bullets:
+        return []
+    return [{"role": "earlier-insights", "source": "investigation:earlier-insights", "timestamp": now().isoformat(),
+             "text": "These Insight bullets are already on the page. Do not reword them. A new insight must "
+                     "contradict, resolve or extend one of them with a fact it lacks, or be about something "
+                     "none of them covers; say which in your reply.\n\n" + '\n'.join(bullets)}]
+
+
 def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
     # An attachment's or a GitHub item's context has no time or sender; only mail rows do.
     return [{"role": "cited-original", "source": source, "timestamp": context.get("time", ""),
@@ -65,6 +80,9 @@ def _cited_originals(root: Path, page: str, supplied=()) -> list[dict]:
 
 def _ledger_items(root, record) -> list[dict]:
     directory = ledger_dir(root, record)
+    # A ledger written before category paths still serves a standalone muse.
+    if not directory.exists():
+        directory = state_path(root, f"enrich/{Path(record).stem}")
     index, originals = directory / INDEX, directory / "items.json"
     if not index.is_file() or not originals.is_file():
         return []
@@ -352,10 +370,12 @@ def muse(root, record, *, runner=None, stage_progress=None) -> dict:
         "role": "evidence-index", "source": "investigation:evidence", "timestamp": now().isoformat(),
         "text": "No enrich ledger exists for this page yet."}]
     ledger[0]["text"] += "\n" + _archive_note(root)
-    items = [_page_item(root, record, page), *ledger, *originals, *_prior_runs(root, record)]
+    items = [_page_item(root, record, page), *_earlier_insights(page), *ledger, *originals, *_prior_runs(root, record)]
     result = runner(notebook, items, read_config(root), stage="muse", turns=MUSE_TURNS, stage_progress=stage_progress)
     # What the page had is guarded at promotion (page_review.dropped); a second, whole-page restore
     # here reverted accepted rounds on 2026-10-20, comparing a page re-numbered on save.
     return {**_outcome(notebook, record, page, result, items=len(originals)),
             "turns": len(MUSE_TURNS),
-            "insights": sum(bool(INSIGHT.search(reply)) for reply in result.get("turn_replies", [])[1:-1])}
+            "insights": result.get("insights_kept", sum(bool(INSIGHT.search(reply))
+                            for reply in result.get("turn_replies", [])[1:-1])),
+            **{key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}}

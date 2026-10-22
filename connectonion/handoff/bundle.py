@@ -273,7 +273,7 @@ def rem_names(keep_names=(), to: str = "") -> list[str]:
             continue   # an address, an acronym ("GIF"), or the sender or recipient
         named.add(title)
         if len(words) == 2 and all(re.fullmatch(r"[\u4e00-\u9fff]+", w) for w in words):
-            named |= {words[1], "".join(words)} if len(words[1]) >= 2 else {"".join(words)}   # 林 晓雯: 晓雯, 谢晓雯
+            named |= {words[1], "".join(words)} if len(words[1]) >= 2 else {"".join(words)}   # 林 晓雯: 晓雯, 林晓雯
         # A session says "Tess" or "Fenwick" as often as the whole title: each name-like word goes too.
         named |= {w for w in words if len(words) > 1 and re.fullmatch(r"[A-Z][a-z]{3,}", w)}
     return sorted(named, key=len, reverse=True)

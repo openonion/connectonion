@@ -1,9 +1,7 @@
-"""A fresh install on an Intel Mac must not compile cryptography from source.
+"""Platform-specific wheel preferences must not retain vulnerable cryptography.
 
-cryptography 49+ ships macOS wheels for arm64 only. On an Intel Mac pip picked
-50.0.2's sdist and sat in "Preparing metadata (pyproject.toml): still running"
-for over thirty minutes installing 1.9.2b3 (2026-10-11). 48.0.1 has a
-universal2 wheel.
+Upstream 50.x has no Intel macOS wheel. Security takes precedence over the
+former <49 pin; Intel builds need the documented native build dependencies.
 """
 
 try:
@@ -24,10 +22,12 @@ def _cryptography(environment):
     return [dep for dep in deps if dep.name == "cryptography" and (dep.marker is None or dep.marker.evaluate(environment))]
 
 
-def test_an_intel_mac_resolves_cryptography_with_a_wheel():
+def test_an_intel_mac_does_not_retain_vulnerable_cryptography():
     intel = {**default_environment(), "sys_platform": "darwin", "platform_machine": "x86_64"}
     (dep,) = _cryptography(intel)
-    assert not dep.specifier.contains(Version("49.0.0")) and dep.specifier.contains(Version("48.0.1"))
+    assert not dep.specifier.contains(Version("48.0.1"))
+    assert not dep.specifier.contains(Version("49.0.0"))
+    assert dep.specifier.contains(Version("50.0.2"))
 
 
 def test_other_platforms_keep_the_current_cryptography():

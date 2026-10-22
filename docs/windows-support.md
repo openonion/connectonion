@@ -305,7 +305,9 @@ ConnectOnion now supports ALL Unicode characters in usernames and file paths:
 
 ### Q: What if I'm using Python 2.7?
 
-**A:** Python 2.7 is not supported. ConnectOnion requires Python 3.10+.
+**A:** Python 2.7 is not supported. Stable 1.9.2 supports Python 3.10+,
+while preview 1.9.3rc13 and newer require Python 3.11+. Upgrade the
+interpreter before installing that preview.
 
 ### Q: Does this work on Windows 7?
 

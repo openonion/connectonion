@@ -12,14 +12,14 @@ from connectonion.rem import translate as tr
 from connectonion.rem.config import prepare
 from connectonion.rem.files import RemError
 
-PAGE = "# Alice Chen\n\n## Facts\n- Role: founder [1]\n\n## Sources\n- [1] gmail:abc — intro mail\n"
-CHINESE = "# Alice Chen\n\n## Facts\n- Role: 创始人 [1]\n\n## Sources\n- [1] gmail:abc — 介绍邮件\n"
+PAGE = "# Avery Lin\n\n## Facts\n- Role: founder [1]\n\n## Sources\n- [1] gmail:abc — intro mail\n"
+CHINESE = "# Avery Lin\n\n## Facts\n- Role: 创始人 [1]\n\n## Sources\n- [1] gmail:abc — 介绍邮件\n"
 
 
 @pytest.fixture
 def notebook(tmp_path, monkeypatch):
     prepare(tmp_path)
-    (tmp_path / "people" / "alice-chen.md").write_text(PAGE)
+    (tmp_path / "people" / "avery-lin.md").write_text(PAGE)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     return tmp_path
 
@@ -35,24 +35,24 @@ def model(answer, calls):
 def test_a_translation_is_made_once_and_then_read_from_the_cache(notebook, monkeypatch):
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE, calls))
-    assert tr.translate(notebook, "people/alice-chen.md", "zh") == CHINESE
-    assert tr.translate(notebook, "people/alice-chen.md", "zh") == CHINESE
+    assert tr.translate(notebook, "people/avery-lin.md", "zh") == CHINESE
+    assert tr.translate(notebook, "people/avery-lin.md", "zh") == CHINESE
     assert len(calls) == 1 and calls[0]["page"] == PAGE and "`zh`" in calls[0]["prompt"]
     assert "a quote stays in its original language" in calls[0]["prompt"]
-    assert (notebook / "people" / "alice-chen.md").read_text() == PAGE
-    saved = notebook / ".state" / "translations" / "zh" / "people" / "alice-chen.md"
-    assert saved.read_text().startswith("<!-- co rem translation of people/alice-chen.md sha256:")
-    assert tr.cached_languages(notebook, "people/alice-chen.md") == {"zh": CHINESE}
+    assert (notebook / "people" / "avery-lin.md").read_text() == PAGE
+    saved = notebook / ".state" / "translations" / "zh" / "people" / "avery-lin.md"
+    assert saved.read_text().startswith("<!-- co rem translation of people/avery-lin.md sha256:")
+    assert tr.cached_languages(notebook, "people/avery-lin.md") == {"zh": CHINESE}
 
 
 def test_a_changed_page_makes_its_translation_stale_and_it_is_made_again(notebook, monkeypatch):
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE, calls))
-    tr.translate(notebook, "people/alice-chen.md", "zh")
-    (notebook / "people" / "alice-chen.md").write_text(PAGE.replace("founder", "CEO"))
-    assert tr.cached(notebook, "people/alice-chen.md", "zh") is None
-    assert tr.cached_languages(notebook, "people/alice-chen.md") == {}
-    tr.translate(notebook, "people/alice-chen.md", "zh")
+    tr.translate(notebook, "people/avery-lin.md", "zh")
+    (notebook / "people" / "avery-lin.md").write_text(PAGE.replace("founder", "CEO"))
+    assert tr.cached(notebook, "people/avery-lin.md", "zh") is None
+    assert tr.cached_languages(notebook, "people/avery-lin.md") == {}
+    tr.translate(notebook, "people/avery-lin.md", "zh")
     assert len(calls) == 2 and "CEO" in calls[1]["page"]
 
 
@@ -65,48 +65,48 @@ def test_an_old_prompt_cache_is_stale_and_regenerated(notebook, monkeypatch, old
         with monkeypatch.context() as old_prompt:
             old_prompt.setattr(tr, 'PROMPT_VERSION', old_version)
             old_digest = tr.digest(PAGE)
-    atomic_write(tr.translation_path(notebook, 'people/alice-chen.md', 'zh'),
-                 f'<!-- co rem translation of people/alice-chen.md sha256:{old_digest} -->\n' + CHINESE)
-    assert tr.cached(notebook, 'people/alice-chen.md', 'zh') is None
-    assert tr.cached_languages(notebook, 'people/alice-chen.md') == {}
+    atomic_write(tr.translation_path(notebook, 'people/avery-lin.md', 'zh'),
+                 f'<!-- co rem translation of people/avery-lin.md sha256:{old_digest} -->\n' + CHINESE)
+    assert tr.cached(notebook, 'people/avery-lin.md', 'zh') is None
+    assert tr.cached_languages(notebook, 'people/avery-lin.md') == {}
     calls = []
     monkeypatch.setattr('connectonion.rem.runner.run_task', model(CHINESE, calls))
-    assert tr.translate(notebook, 'people/alice-chen.md', 'zh') == CHINESE
-    assert tr.cached(notebook, 'people/alice-chen.md', 'zh') == CHINESE
+    assert tr.translate(notebook, 'people/avery-lin.md', 'zh') == CHINESE
+    assert tr.cached(notebook, 'people/avery-lin.md', 'zh') == CHINESE
     assert len(calls) == 1
 
 
 def test_a_translation_that_breaks_headings_or_sources_is_not_cached(notebook, monkeypatch):
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE.replace("## Facts", "## 事实"), []))
     with pytest.raises(RemError, match="headings"):
-        tr.translate(notebook, "people/alice-chen.md", "zh")
+        tr.translate(notebook, "people/avery-lin.md", "zh")
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE.replace(" [1]\n\n", "\n\n"), []))
     with pytest.raises(RemError, match="source ids"):
-        tr.translate(notebook, "people/alice-chen.md", "zh")
-    assert tr.cached(notebook, "people/alice-chen.md", "zh") is None
+        tr.translate(notebook, "people/avery-lin.md", "zh")
+    assert tr.cached(notebook, "people/avery-lin.md", "zh") is None
 
 
 def test_a_translated_marker_is_refused_because_the_reader_would_misread_it(notebook, monkeypatch):
     """Codex turned `Nothing open as of 2026-09-29` into Chinese and the reader
     showed a closed conversation as an open thread (live check, 2026-10-15)."""
     page = PAGE + "\n## Open threads\nNothing open as of 2026-09-29; the role was filled [1].\n"
-    (notebook / "people" / "alice-chen.md").write_text(page)
+    (notebook / "people" / "avery-lin.md").write_text(page)
     translated = CHINESE + "\n## Open threads\n截至 2026-09-29，没有待处理事项 [1]。\n"
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(translated, []))
     with pytest.raises(RemError, match="Nothing open as of"):
-        tr.translate(notebook, "people/alice-chen.md", "zh")
+        tr.translate(notebook, "people/avery-lin.md", "zh")
     kept = CHINESE + "\n## Open threads\nNothing open as of 2026-09-29；职位已招满 [1]。\n"
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(kept, []))
-    assert tr.translate(notebook, "people/alice-chen.md", "zh") == kept
+    assert tr.translate(notebook, "people/avery-lin.md", "zh") == kept
 
 
 def test_the_investigation_stamp_is_never_sent_and_comes_back_as_written(notebook, monkeypatch):
     """Codex translated the stamp's label, and the reader lost the page's status."""
     stamp = "Investigation: mapped 2026-10-10 · investigated 2026-10-10 (outlook)"
-    (notebook / "people" / "alice-chen.md").write_text(PAGE + "\n" + stamp + "\n")
+    (notebook / "people" / "avery-lin.md").write_text(PAGE + "\n" + stamp + "\n")
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE, calls))
-    assert tr.translate(notebook, "people/alice-chen.md", "zh") == CHINESE + "\n" + stamp + "\n"
+    assert tr.translate(notebook, "people/avery-lin.md", "zh") == CHINESE + "\n" + stamp + "\n"
     assert "Investigation:" not in calls[0]["page"]
 
 
@@ -114,20 +114,20 @@ def test_a_runner_that_cannot_run_is_named_before_any_model_call(notebook, monke
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
     monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a: pytest.fail("model called"))
     with pytest.raises(RemError, match="codex login"):
-        tr.translate(notebook, "people/alice-chen.md", "zh")
+        tr.translate(notebook, "people/avery-lin.md", "zh")
 
 
 def test_a_language_is_a_tag_not_a_path(notebook):
     for bad in ("../people", "zh/../../x", "", "中文"):
         with pytest.raises(RemError, match="language"):
-            tr.translation_path(notebook, "people/alice-chen.md", bad)
+            tr.translation_path(notebook, "people/avery-lin.md", bad)
 
 
 def test_the_snapshot_carries_only_current_translations(notebook, monkeypatch):
     from connectonion.rem.reader import snapshot
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE, []))
-    tr.translate(notebook, "people/alice-chen.md", "zh")
-    record = next(r for r in snapshot(notebook)["records"] if r["path"] == "people/alice-chen.md")
+    tr.translate(notebook, "people/avery-lin.md", "zh")
+    record = next(r for r in snapshot(notebook)["records"] if r["path"] == "people/avery-lin.md")
     assert record["translations"] == {"zh": CHINESE} and record["text"] == PAGE
 
 
@@ -135,11 +135,11 @@ def test_cli_translate_prints_the_translation(notebook, monkeypatch):
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", model(CHINESE, calls))
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "--json", "translate",
-                                      "people/alice-chen.md", "--to", "zh"])
+                                      "people/avery-lin.md", "--to", "zh"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["data"] == CHINESE
     bad = CliRunner().invoke(app, ["rem", "--root", str(notebook), "--json", "translate",
-                                   "people/alice-chen.md", "--to", "../x"])
+                                   "people/avery-lin.md", "--to", "../x"])
     assert bad.exit_code != 0 and "language" in bad.output
     assert len(calls) == 1
 
@@ -201,7 +201,7 @@ def test_translate_passes_owner_glossary_only_for_chinese(notebook, monkeypatch,
     calls = []
     monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'english_terms': ['capstone', 'pr']})
     monkeypatch.setattr('connectonion.rem.runner.run_task', model(CHINESE, calls))
-    tr.translate(notebook, 'people/alice-chen.md', language)
+    tr.translate(notebook, 'people/avery-lin.md', language)
     assert ('as the owner writes them: capstone, pr.' in calls[0]['prompt']) == language.startswith('zh')
 
 
@@ -213,36 +213,36 @@ def test_translate_prompt_keeps_date_prefix_punctuation():
 def test_cli_backfill_skips_current_cache_and_nonrecords_and_continues(notebook, monkeypatch):
     from connectonion.rem.files import atomic_write
     calls = []
-    for category, name in [('people', 'bob'), ('people', 'carol'), ('orgs', 'company'),
+    for category, name in [('people', 'mara-ostrowski'), ('people', 'theo-park'), ('orgs', 'company'),
                            ('projects', 'launch'), ('decisions', 'format'), ('principles', 'simple'),
                            ('logs', 'run'), ('notes', 'activity'), ('knowledge', 'topic'),
                            ('skills/catalog', 'index'), ('skills/catalog', 'mail')]:
         folder = notebook / category
         folder.mkdir(parents=True, exist_ok=True)
         (folder / (name + '.md')).write_text('# ' + name + '\n\nA source finding.\n')
-    atomic_write(tr.translation_path(notebook, 'people/alice-chen.md', 'zh'),
-                 '<!-- co rem translation of people/alice-chen.md sha256:' + tr.digest(PAGE) + ' -->\n' + CHINESE)
+    atomic_write(tr.translation_path(notebook, 'people/avery-lin.md', 'zh'),
+                 '<!-- co rem translation of people/avery-lin.md sha256:' + tr.digest(PAGE) + ' -->\n' + CHINESE)
 
-    atomic_write(tr.translation_path(notebook, 'people/carol.md', 'zh'),
-                 '<!-- co rem translation of people/carol.md sha256:' + tr.digest('# Old page') + ' -->\n旧缓存')
+    atomic_write(tr.translation_path(notebook, 'people/theo-park.md', 'zh'),
+                 '<!-- co rem translation of people/theo-park.md sha256:' + tr.digest('# Old page') + ' -->\n旧缓存')
 
     def translate(root, record, language):
         assert root == notebook and language == 'zh'
         calls.append(record)
-        if record == 'people/bob.md':
+        if record == 'people/mara-ostrowski.md':
             raise RemError('fixture translation refused')
         return 'translated prose'
 
     monkeypatch.setattr(tr, 'translate', translate)
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', '--all', '--to', 'zh'])
     assert result.exit_code == 1, result.output
-    assert 'people/alice-chen.md: cached' in result.output
-    assert 'people/bob.md: failed: fixture translation refused' in result.output
-    assert 'people/carol.md: translated' in result.output
+    assert 'people/avery-lin.md: cached' in result.output
+    assert 'people/mara-ostrowski.md: failed: fixture translation refused' in result.output
+    assert 'people/theo-park.md: translated' in result.output
     assert '6 translated, 1 cached, 1 failed' in result.output
-    assert calls == ['people/bob.md', 'people/carol.md', 'orgs/company.md', 'projects/launch.md',
-                     'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md']
-    assert (notebook / 'people/alice-chen.md').read_text() == PAGE
+    assert sorted(calls) == sorted(['people/mara-ostrowski.md', 'people/theo-park.md', 'orgs/company.md', 'projects/launch.md',
+                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md'])
+    assert (notebook / 'people/avery-lin.md').read_text() == PAGE
 
 
 def test_cli_backfill_category_and_owner_language_default(notebook, monkeypatch):
@@ -255,13 +255,13 @@ def test_cli_backfill_category_and_owner_language_default(notebook, monkeypatch)
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)['data']
     assert data['language'] == 'zh-TW' and data['translated'] == 1 and data['failed'] == 0
-    assert calls == [(notebook, 'people/alice-chen.md', 'zh-TW')]
-    result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', 'Alice Chen'])
+    assert calls == [(notebook, 'people/avery-lin.md', 'zh-TW')]
+    result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', 'Avery Lin'])
     assert result.exit_code == 0, result.output
-    assert calls[-1] == (notebook, 'people/alice-chen.md', 'zh-TW')
+    assert calls[-1] == (notebook, 'people/avery-lin.md', 'zh-TW')
 
 
-@pytest.mark.parametrize('args', [[], ['--all', 'Alice Chen'], ['Alice Chen', '--category', 'people'],
+@pytest.mark.parametrize('args', [[], ['--all', 'Avery Lin'], ['Avery Lin', '--category', 'people'],
                                   ['--all', '--category', 'logs']])
 def test_cli_backfill_rejects_invalid_selection_before_translating(notebook, monkeypatch, args):
     monkeypatch.setattr(tr, 'translate', lambda *a: pytest.fail('translator called'))
@@ -298,8 +298,94 @@ def test_translation_checks_each_privacy_label_per_line_and_accepts_fullwidth_br
 
 def test_translation_with_lost_privacy_tag_is_never_cached(notebook, monkeypatch):
     page = PAGE.replace('founder', 'founder [personal]')
-    (notebook / 'people/alice-chen.md').write_text(page)
+    (notebook / 'people/avery-lin.md').write_text(page)
     monkeypatch.setattr('connectonion.rem.runner.run_task', model(CHINESE, []))
     with pytest.raises(RemError, match='privacy tags'):
-        tr.translate(notebook, 'people/alice-chen.md', 'zh')
-    assert tr.cached(notebook, 'people/alice-chen.md', 'zh') is None
+        tr.translate(notebook, 'people/avery-lin.md', 'zh')
+    assert tr.cached(notebook, 'people/avery-lin.md', 'zh') is None
+
+
+def test_translate_pages_runs_in_parallel_and_keeps_input_order(notebook):
+    from threading import Barrier
+    from connectonion.rem.runner import RunFailed
+    records = ['people/avery-lin.md', 'people/mara-ostrowski.md', 'people/theo-park.md']
+    for record in records:
+        (notebook / record).write_text('# Invented page\n')
+    barrier = Barrier(3)
+    calls, said = [], []
+
+    def translate_one(root, record, language):
+        calls.append(record)
+        barrier.wait(timeout=5)
+        if record == records[1]:
+            raise RunFailed('fixture translation refused', {'input_tokens': 12})
+
+    result = tr.translate_pages(notebook, 'zh', records, said.append, workers=3, translate_one=translate_one)
+    assert sorted(calls) == sorted(records)
+    assert result == {'language': 'zh', 'pages': [
+        {'page': records[0], 'outcome': 'translated'},
+        {'page': records[1], 'outcome': 'failed', 'error': 'fixture translation refused'},
+        {'page': records[2], 'outcome': 'translated'}], 'translated': 2, 'cached': 0, 'failed': 1}
+    assert [line.split(':')[0] for line in said] == records
+
+
+def test_translate_pages_skips_current_cache_and_handles_empty_input(notebook, monkeypatch):
+    record = 'people/avery-lin.md'
+    (notebook / record).write_text('# Avery Lin\n')
+    monkeypatch.setattr(tr, 'cached', lambda *args: '# Avery Lin\n')
+    report = tr.translate_pages(notebook, 'zh', [record], translate_one=lambda *args: pytest.fail('cache missed'))
+    assert report['cached'] == 1 and report['translated'] == report['failed'] == 0
+    assert tr.translate_pages(notebook, 'zh', [])['pages'] == []
+
+
+@pytest.mark.parametrize('failure', ['none', 'runner', 'validation'])
+def test_each_model_translation_logs_usage_even_on_failure(notebook, monkeypatch, failure):
+    from connectonion.rem.runner import RunFailed
+    from connectonion.rem.service import run_logs, usage_report
+    record = 'people/avery-lin.md'
+    (notebook / record).write_text('# Avery Lin\n\n## Facts\nA draft.\n')
+    usage = {'input_tokens': 80000, 'output_tokens': 50, 'cached_input_tokens': 70000}
+
+    def run(workspace, prompt, config, stage):
+        if failure == 'runner':
+            raise RunFailed('fixture model refused', usage)
+        (workspace / 'translation.md').write_text('# Avery Lin\n\n## Facts\n草稿。\n' if failure == 'none' else '# Changed\n')
+        return {'outcome': 'natural', 'usage': usage}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    if failure == 'none':
+        tr.translate(notebook, record, 'zh')
+        tr.translate(notebook, record, 'zh')  # A cache hit spends nothing and adds no model run.
+    else:
+        with pytest.raises(RemError):
+            tr.translate(notebook, record, 'zh')
+    [log] = run_logs(notebook)
+    assert log['phase'] == 'translate' and log['record'] == record and log['language'] == 'zh'
+    assert log['outcome'] == ('completed' if failure == 'none' else 'failed')
+    from connectonion.rem.config import read_config
+    assert log['usage'] == usage and log['harness'] == read_config(notebook)['runner'] and log['model']
+    assert log['finished_at'] >= log['started_at'] and log['seconds'] >= 0
+    assert usage_report(notebook)['by_stage']['translate'] == usage
+    assert not list((notebook / '.state/tasks').iterdir())
+
+
+def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkeypatch):
+    from connectonion.rem.config import read_config, set_config
+    from connectonion.rem.daily import _translate_changed
+    from connectonion.rem.service import run_logs, usage_report
+    record = 'people/avery-lin.md'
+    (notebook / record).write_text('# Avery Lin\n\nA draft.\n')
+    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '1'])
+
+    def run(workspace, *args):
+        (workspace / 'translation.md').write_text('# Avery Lin\n\n草稿。\n')
+        return {'outcome': 'natural', 'usage': {'input_tokens': 80000}}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    maintenance = {}
+    _translate_changed(notebook, read_config(notebook), maintenance, [record], None, lambda text: None)
+    assert maintenance['translations']['pages'] == [{'page': record, 'outcome': 'translated'}]
+    logs = run_logs(notebook)
+    assert {log['phase'] for log in logs} == {'translate', 'daily-translation'}
+    assert usage_report(notebook)['total']['input_tokens'] == 80000
+    assert sum(log.get('runner_attempts', 0) for log in logs) == 1

@@ -22,6 +22,7 @@ times are kept there, never message text.
 
 from __future__ import annotations
 
+import io
 import json
 import re
 from itertools import chain
@@ -44,8 +45,12 @@ LABELS = {"claude-code": "Claude Code", "codex": "Codex", "co-ai": "co ai"}
 
 
 def _claude_events(path: Path) -> list[list]:
+    return _claude_events_data(path.read_bytes())
+
+
+def _claude_events_data(data: bytes) -> list[list]:
     events, seen = [], set()
-    with path.open("rb") as handle:
+    with io.BytesIO(data) as handle:
         for line in handle:
             if b'"Skill"' not in line and b"<command-name>" not in line:
                 continue
@@ -73,8 +78,12 @@ def _claude_events(path: Path) -> list[list]:
 
 
 def _codex_events(path: Path) -> list[list]:
+    return _codex_events_data(path.read_bytes())
+
+
+def _codex_events_data(data: bytes) -> list[list]:
     events, seen, turn, cwd = [], set(), 0, ""
-    with path.open("rb") as handle:
+    with io.BytesIO(data) as handle:
         first = handle.readline(1_000_000)
         try:
             meta = KINDS["codex"]["meta"](json.loads(first))
@@ -122,7 +131,7 @@ READERS = {"claude-code": _claude_events, "codex": _codex_events, "co-ai": eval_
 
 
 def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 180,
-          now: datetime | None = None, evals: Path | None = None) -> dict:
+          now: datetime | None = None, evals: Path | None = None, sessions=None) -> dict:
     """Invocations of each name in `names` over the last `days` days of sessions.
 
     Returns {"counts": {name: {"count", "last", "by_tool": {tool: n}}}, "files",
@@ -131,7 +140,7 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     `evals` is co ai's summary folder (`~/.co/evals`): its `/name` runs are
     the ones a skill page lists under Usage history, read by skill_runs.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
     since = now - timedelta(days=days)
     cache_path = state_path(root, CACHE) if root else None
     cache = read_json(cache_path, {}) if cache_path else {}
@@ -139,14 +148,14 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     wanted = {name.casefold(): name for name in names}
     counts = {name: {"count": 0, "last": "", "by_tool": {}} for name in names}
     fresh, read, sources = {}, 0, []
-    for kind, paths in _sources(subscriptions, evals):
+    for kind, paths in _sources(subscriptions, evals, sessions):
         sources.append(LABELS[kind])
         for path in paths:
-            stat = path.stat()
+            stat = sessions.stats[str(path)] if sessions is not None and kind in SESSIONS else path.stat()
             if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
                 continue
             key, stamp = str(path), [stat.st_size, stat.st_mtime_ns]
-            entry = files.get(key)
+            entry = sessions.skills[key] if sessions is not None and kind in SESSIONS else files.get(key)
             if not entry or entry.get("stamp") != stamp:
                 entry = {"stamp": stamp, "events": READERS[kind](path)}
             fresh[key] = entry
@@ -166,12 +175,12 @@ def usage(subscriptions: dict, names, *, root: Path | None = None, days: int = 1
     return {"counts": counts, "files": read, "days": days, "sources": sources}
 
 
-def _sources(subscriptions: dict, evals: Path | None):
+def _sources(subscriptions: dict, evals: Path | None, sessions=None):
     """(kind, files) per enabled session source, then co ai's summaries."""
-    for sub in subscriptions.values():
+    for name, sub in subscriptions.items():
         kind = sub.get("kind")
         if kind in READERS and sub.get("enabled") is not False and Path(sub.get("root") or "").is_dir():
-            yield kind, source_files(sub)
+            yield kind, sessions.files[name] if sessions is not None and kind in SESSIONS else source_files(sub)
     if evals and evals.is_dir():
         yield "co-ai", sorted(evals.glob("*.yaml"))
 

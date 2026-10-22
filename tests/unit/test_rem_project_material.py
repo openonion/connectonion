@@ -179,3 +179,33 @@ def test_worktree_evidence_counts_each_call_once_and_ignores_output(material):
         rem_root=material.rem, folders=material.folders)
     assert [m["cwd"] for m in kept] == [str(material.atlas), str(material.repo), str(material.repo),
                                       str(material.repo), str(material.repo)]
+
+
+def test_an_exec_session_is_not_read_for_the_owners_words(material, monkeypatch):
+    """2026-10-20: a fresh map read 2,561 exec and subagent sessions in full for nothing."""
+    import json
+    path = material.sessions / "rollout-exec.jsonl"
+    codex_session(path, str(material.repo), [("A program-written prompt.", 1, [])])
+    rows = path.read_text().splitlines()
+    meta = json.loads(rows[0])
+    meta["payload"].update(source="exec", originator="codex_exec")
+    path.write_text("\n".join([json.dumps(meta), *rows[1:]]) + "\n")
+    lines = []
+    monkeypatch.setattr(project_material.json, "loads", lambda text, real=json.loads: lines.append(1) or real(text))
+    found, _ = project_material.session_messages({"source": {"kind": "codex", "root": str(material.sessions)}},
+                                                 since=NOW - timedelta(days=7), rem_root=material.rem,
+                                                 folders=material.folders)
+    assert found == [] and len(lines) == 1   # the first line only
+
+
+def test_each_folder_is_asked_for_git_once(material, monkeypatch):
+    """2026-10-20: 37,742 named paths walked their parents with two stats each (517k stats, 617 s)."""
+    from pathlib import Path
+    owners = project_material._Owners(material.folders, material.rem)
+    asked = []
+    real = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda self: asked.append(self) or real(self))
+    for name in ("a.py", "b.py", "c/d.py"):
+        owners.worktree(str(material.repo / "src" / name))
+    gits = [path for path in asked if path.name == ".git"]
+    assert len(gits) == len(set(gits))

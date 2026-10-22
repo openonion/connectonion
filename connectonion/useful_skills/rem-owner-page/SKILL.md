@@ -26,8 +26,8 @@ Before `Facts`, write 2–4 cited sentences:
 
 Claude Code and Codex are tools. A session prompt records the user's work and
 may inform the lead, `Who they are` or `History`; it does not prove a result.
-An agent is never a counterparty in `Open threads`, never `Last contact`, and
-never a correspondent in `Cadence`.
+A task the user typed to an agent is work for `Who they are`, never an `Open
+threads` line, `Last contact` or `Cadence`.
 
 ## Roles are stated, not collected
 
@@ -43,7 +43,7 @@ never a correspondent in `Cadence`.
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
-- `Insight`: 2–4 cited bullets connecting projects and commitments to the next
+- `Insight`: 3–4 cited bullets connecting projects and commitments to the next
   decision: what must happen first, who waits, or a recurring tradeoff.
   Lead with `Changed:` when a dated reversal is
   evidenced; otherwise `Now:` joins repeated work to a decision or exact
@@ -52,7 +52,7 @@ never a correspondent in `Cadence`.
   sources when possible and cite the dependency. Summarized requests alone are
   not insight. A coding request proves no shipment or passing test; only
   artifact evidence proves shipping. Work only: never a `[personal]` or
-  `[sensitive]` item (a purchase, health, family).
+  `[sensitive]` item (a purchase, health).
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,

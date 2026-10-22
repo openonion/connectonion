@@ -13,7 +13,142 @@ from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
-from connectonion.rem.runner import RunFailed, run_stage, task_prompt
+from connectonion.rem.runner import RunFailed, run_claim_task, run_stage, task_prompt
+
+
+@pytest.mark.parametrize('stage', ['muse', 'enrich', 'investigate'])
+def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, monkeypatch, stage):
+    import re
+    from connectonion.rem import insight_critic
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin')
+    calls, progress = [], []
+    bullet = '- Changed: Avery now pays for Lantern testing. [1][2]'
+
+    def run(workdir, prompt, config, phase, **options):
+        next(workdir.glob(f'{stage}-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': 10}}
+
+    def judge(book, page, before, candidate, items, config, directory, independent_run):
+        calls.append('critic')
+        assert page == record and independent_run is runner.run_claim_task
+        assert candidate.read_text().endswith(bullet + '\n')
+        candidate.write_text('# Avery Lin\n\n## Insight\n')
+        return {'bullets': [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}],
+                'usage': {'input_tokens': 3}}
+
+    def promote(book, page, candidate, *args, **options):
+        calls.append('promote')
+        assert (bullet not in candidate.read_text()) == (stage == 'muse')
+        book.write(page, candidate.read_text())
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(insight_critic, 'judge', judge)
+    monkeypatch.setattr(runner, 'promote_with_repairs', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(),
+                       stage=stage, turns=('first', 'second'), stage_progress=progress.append)
+    assert calls == (['critic', 'promote'] if stage == 'muse' else ['promote'])
+    assert ('insight critic' in progress) == (stage == 'muse')
+    assert result['usage'] == {'input_tokens': 13 if stage == 'muse' else 10}
+    if stage == 'muse':
+        assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
+    else:
+        assert 'insights_kept' not in result
+
+
+@pytest.mark.parametrize('critic_fails', [False, True, 'invalid-root', 'invalid-json'])
+def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch, critic_fails):
+    from connectonion.rem.files import write_json
+    record, bullet = 'people/avery-lin.md', '- Now: Avery received the Lantern deck. [1]'
+    notebook.stub_person(record, 'Avery Lin')
+    turns, critics, promotions = [], [], []
+
+    def run(workdir, prompt, config, stage, **options):
+        turns.append(prompt)
+        next(workdir.glob('muse-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': len(turns) * 10}}
+
+    def critic(*args):
+        critics.append(args)
+        if critic_fails and len(critics) == 2:
+            if critic_fails is True:
+                raise RunFailed('Critic failed', {'input_tokens': 3})
+            return {'result': '[]' if critic_fails == 'invalid-root' else '{invalid', 'usage': {'input_tokens': 3}}
+        return {'result': json.dumps({'bullets': [{'bullet': bullet, 'verdict': 'weak',
+                    'reason': 'One message.', 'open_thread': ''}]}), 'usage': {'input_tokens': 3}}
+
+    def promote(book, page, candidate, original, items, directory, usage, **options):
+        promotions.append(candidate.read_text())
+        assert bullet not in candidate.read_text()
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'errors': ['Cited-claim audit did not pass']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(page, candidate.read_text())
+        return {}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, 'run_claim_task', critic)
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    if critic_fails:
+        with pytest.raises(RunFailed, match='Critic failed|Insight critic returned') as error:
+            run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+        assert error.value.usage == {'input_tokens': 26}
+    else:
+        result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+        assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
+        assert result['usage'] == {'input_tokens': 26}
+        assert bullet not in notebook.read(record)
+        logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+        assert logged['insights_rejected'] == result['insights_rejected']
+    assert len(turns) == len(critics) == 2
+    attempts = json.loads(next((notebook.root / '.state/tasks').glob('*/insight-critic.json')).read_text())
+    assert len(attempts) == 2 and attempts[0]['bullets'][0]['verdict'] == 'weak'
+    if critic_fails:
+        assert attempts[1]['error'].startswith(('Critic failed', 'Insight critic returned'))
+        assert attempts[1]['usage'] == {'input_tokens': 3}
+    else:
+        assert attempts[1]['bullets'][0]['verdict'] == 'weak'
+
+
+def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path, monkeypatch):
+    record, bullet = 'people/avery-lin.md', '- Changed: Avery now pays for Lantern testing. [1][2]'
+    notebook.stub_person(record, 'Avery Lin')
+    original = notebook.read(record)
+    candidate = tmp_path / 'candidate.md'
+    text = f'# Avery Lin\n\n## Insight\n{bullet}\n'
+    result = {}
+    verdicts = iter(['weak', 'good'])
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {'result': json.dumps({'bullets': [
+        {'bullet': bullet, 'verdict': next(verdicts), 'reason': 'Invented review.', 'open_thread': ''}]})})
+    for _ in range(2):
+        candidate.write_text(text)
+        runner._review_insights(notebook, record, original, candidate, [], {}, tmp_path, result, None)
+    assert result['insights_proposed'] == result['insights_kept'] == 1
+    assert result['insights_rejected'] == [] and bullet in candidate.read_text()
+    attempts = json.loads((tmp_path / 'insight-critic.json').read_text())
+    assert [attempt['bullets'][0]['verdict'] for attempt in attempts] == ['weak', 'good']
+
+
+def test_independent_critic_uses_its_own_read_only_output_schema(tmp_path, monkeypatch):
+    import importlib
+    from connectonion.rem.insight_critic import CRITIC_SCHEMA
+    codex = importlib.import_module('connectonion.useful_tools.codex')
+    monkeypatch.setattr(codex, '_base_command', lambda: ['codex', 'app-server'])
+
+    def completed(command, **options):
+        assert json.loads(Path(command[command.index('--output-schema') + 1]).read_text()) == CRITIC_SCHEMA
+        assert command[command.index('--sandbox') + 1] == 'read-only'
+        assert '--ephemeral' in command and '--resume' not in command
+        assert options['input'] == 'INDEPENDENT_PACKET' and 'INDEPENDENT_PACKET' not in command
+        Path(command[command.index('-o') + 1]).write_text('{"bullets": []}')
+        return SimpleNamespace(returncode=0, stdout=json.dumps({'type': 'turn.completed',
+                               'usage': {'input_tokens': 3}}), stderr='')
+
+    monkeypatch.setattr(runner.subprocess, 'run', completed)
+    result = run_claim_task(tmp_path, 'INDEPENDENT_PACKET', default_config(), 'insight-critic')
+    assert result['result'] == '{"bullets": []}' and result['usage']['input_tokens'] == 3
 
 
 @pytest.mark.parametrize('timeouts', [1, 2])
@@ -823,6 +958,97 @@ def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     assert line not in notebook.read(record)
 
 
+@pytest.mark.parametrize('stage', ['enrich', 'muse'])
+@pytest.mark.parametrize('collision', [False, True])
+@pytest.mark.parametrize('sender,excerpt,tied', [
+    ('MARA@EXAMPLE.COM', 'Mara asked', True),
+    ('mara.chen@example.net', 'Mara asked', False),
+    ('mara.chen@example.net', 'Mara Ostrowski asked', True),
+    ('', 'Mara Ostrowski asked', True),
+    ('', 'Mara asked', False),
+])
+def test_deepening_replaces_owner_first_name_only_with_cited_ties(
+        notebook, tmp_path, monkeypatch, stage, collision, sender, excerpt, tied):
+    """2026-10-21: a shared first name needs its cited sender or full name, never a page-title guess."""
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem import project_claim_review, reader_model
+    owner, record = 'people/mara.md', 'people/avery.md'
+    notebook.stub_person(owner, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    if collision:
+        notebook.stub_person('people/mara-chen.md', 'Mara Chen', ['mara.chen@example.net'], email='mara.chen@example.net')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner, 'addresses': ['MARA@EXAMPLE.COM']}})
+    original = notebook.read(record)
+    short = '- Now: Avery Lin reviewed the Lantern interface. [1]'
+    long = '- Now: Avery Lin reviewed the smaller Lantern interface. [1]'
+    line = "- Changed: Mara asked Avery Lin for Mara Ostrowski's deck [1]."
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('## Insight\n- Unknown — not investigated yet',
+                                          f'## Insight\n{short}\n{long}\n{line}')
+                         .replace('- (none yet)', '- [1] gmail:mara-deck')
+                         .replace('- Unknown — not investigated yet', '- Unknown'))
+    monkeypatch.setattr(project_claim_review, 'review', lambda *a, **kw: ({'verdict': 'pass', 'findings': []}, {}))
+    private_reads = []
+    def context(root, records, *, private=False):
+        assert root == notebook.root
+        if private:
+            private_reads.append(records[0]['text'])
+        return {'gmail:mara-deck': {'sender': sender, 'excerpt': excerpt}}
+    monkeypatch.setattr(reader_model, 'cited_context', context)
+    runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:mara-deck'}],
+                                tmp_path, {}, workdir=tmp_path, config={}, stage=stage)
+    page = notebook.read(record)
+    first = 'The user' if tied else 'Mara'
+    assert f"- Changed: {first} asked Avery Lin for the user's deck [1]." in page
+    assert long in page and short not in page
+    assert private_reads and all(line in text for text in private_reads)
+
+
+def test_owner_ties_use_only_each_lines_numbered_originals(notebook, monkeypatch):
+    """2026-10-21: another line's owner citation and the Sources caption cannot lend a tie."""
+    from connectonion.rem import reader_model
+    lines = ['Mara asked [7].', 'Mara asked [2].', 'Mara asked [3].', 'Mara asked [2][7].',
+             'Mara asked without citations.', 'Mara asked [4].', 'Mara asked [1].']
+    text = ('# Avery Lin\n\n' + '\n'.join(lines) + '\n\n## Sources\n'
+            '- [7] gmail:owner\n- [2] gmail:correspondent — Mara Ostrowski\n'
+            '- [3] gmail:mention\n- [4] gmail:unavailable\n')
+    monkeypatch.setattr(reader_model, 'cited_context', lambda *a, **kw: {
+        'gmail:owner': {'sender': 'mara@example.com', 'excerpt': 'Mara asked'},
+        'gmail:correspondent': {'sender': 'mara.chen@example.net', 'excerpt': 'Mara asked'},
+        'gmail:mention': {'excerpt': 'Mara Ostrowski asked'},
+    })
+    tied = runner._owner_tied_lines(notebook, text, {'addresses': ['MARA@EXAMPLE.COM']},
+                                    ['Mara Ostrowski', 'Mara'])
+    assert tied.intersection(lines) == {lines[0], lines[2], lines[3]}
+
+
+def test_a_restored_carried_line_also_replaces_the_owner_name(notebook, tmp_path, monkeypatch):
+    """2026-10-21: last-resort evidence restoration must not reintroduce the owner's name."""
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem import reader_model
+    owner, record = 'people/mara.md', 'people/avery.md'
+    notebook.stub_person(owner, 'Mara Ostrowski', ['mara@example.com'], email='mara@example.com')
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': owner, 'addresses': ['mara@example.com']}})
+    monkeypatch.setattr(reader_model, 'cited_context', lambda *a, **kw: {
+        'gmail:mara-deck': {'sender': 'mara@example.com', 'excerpt': 'Mara asked'}})
+    original = (notebook.read(record).replace('## Insight\n- Unknown — not investigated yet',
+                                             '## Insight\n- Changed: Mara handed Avery Lin the deck. [1]')
+                .replace('- (none yet)', '- [1] gmail:mara-deck')
+                .replace('- Unknown — not investigated yet', '- Unknown'))
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Changed: Mara handed Avery Lin the deck. [1]',
+                                          '- Now: Avery Lin reviewed the Lantern interface. [2]')
+                         .replace('- [1] gmail:mara-deck', '- [2] github:acme/lantern#12'))
+    runner._promote_candidate(notebook, record, candidate, original,
+                              [{'source': 'gmail:mara-deck'}, {'source': 'github:acme/lantern#12'}],
+                              tmp_path, None, carried=original, last_resort=True)
+    page = notebook.read(record)
+    assert '- Changed: The user handed Avery Lin the deck.' in page
+    assert 'gmail:mara-deck' in page and 'github:acme/lantern#12' in page
+
+
 def test_upkeep_puts_back_a_quote_the_turn_dropped(notebook, tmp_path):
     """2026-10-20 upkeep A/B: one-page upkeep dropped 1-2 of a page's quotes per run, with no repair turn."""
     record = 'people/avery.md'
@@ -1603,3 +1829,34 @@ def test_a_lead_that_lost_who_they_are_opens_with_their_cited_role():
     assert _keep_identity("people/greta.md", before, before) == before
     emptied = _keep_identity("people/greta.md", before, "# Greta Holloway\n\n\n" + facts)
     assert emptied.startswith("# Greta Holloway\n\nGreta Holloway is Events Coordinator") and "\n\n## Facts" in emptied
+
+
+
+@pytest.mark.parametrize('footer, carried', [('investigated 2026-10-08 (outlook)', True), ('not investigated yet', False)])
+def test_an_update_of_an_investigated_page_carries_the_page_it_replaces(notebook, monkeypatch, tmp_path, footer, carried):
+    """2026-10-20: 15 people-page updates on real mail lost 22 quotes and 40-70 sources."""
+    from connectonion.rem import project_claim_review
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'], email='avery@example.com')
+    original = notebook.read(record).replace('not investigated yet', footer)
+    notebook.write(record, original)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Unknown — not investigated yet', '- Unknown')
+                         .replace('## Who they are\n- Unknown', '## Who they are\nAvery tests pilots. [1]')
+                         .replace('- (none yet)', '- [1] gmail:invented — 2026-10-01'))
+    seen = []
+
+    def review(*args, **kwargs):
+        seen.append(kwargs['carried'])
+        return {'verdict': 'pass', 'findings': []}, {}
+
+    monkeypatch.setattr(project_claim_review, 'review', review)
+    runner.promote_with_repairs(notebook, record, candidate, original, [{'source': 'gmail:invented', 'text': 'x'}],
+                                tmp_path, {}, workdir=tmp_path, config={}, stage='investigate', run=lambda *a: {})
+    assert seen == [original if carried else '']
+
+
+def test_rem_children_archive_codex_traces_without_changing_parent_environment(monkeypatch):
+    monkeypatch.delenv("CO_REM_CODEX_ARCHIVE", raising=False)
+    assert runner.child_env(default_config())["CO_REM_CODEX_ARCHIVE"] == "1"
+    assert "CO_REM_CODEX_ARCHIVE" not in os.environ

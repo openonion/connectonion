@@ -400,7 +400,45 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc11
+## Current Version: 1.9.3rc15
+
+1.9.3rc15 preserves Feishu/Lark message kinds, resource references and typed
+sender IDs through the inbox and Host. Recovery includes already remembered
+conversations after an interrupted first journal write. Stable remains 1.9.2;
+Python 3.11+ and all rc14 security dependency floors are retained. See
+[1.9.3rc15 notes](docs/releases/1.9.3rc15.md).
+
+- 1.9.3rc15 (keep file references through inbox consumption).
+
+### Previous candidate: 1.9.3rc14
+
+1.9.3rc14 removes the obsolete Paramiko <5 upper bound in the optional Synology
+extra, requiring patched Paramiko >=5.1.0. It retains the rc13 security floors
+and Python >=3.11 requirement. See [rc14 notes](docs/releases/1.9.3rc14.md).
+
+- 1.9.3rc14 (patch optional Synology Paramiko dependency).
+
+### Previous candidate: 1.9.3rc13
+
+
+1.9.3rc13 keeps completed REM Codex calls out of active history by archiving their
+threads, unarchiving them before explicit resume, and retaining their trace IDs.
+Normal interactive calls are unchanged. Native Scheduled migration is not included;
+macOS upkeep still uses launchd. See [1.9.3rc13 notes](docs/releases/1.9.3rc13.md).
+
+- 1.9.3rc13 (archive internal REM Codex threads; preserve explicit resume).
+
+### Previous candidate: 1.9.3rc12
+
+1.9.3rc12 is a REM candidate; stable remains 1.9.2. Rounds keep the quotes a page already had and
+repair a dropped quote before refusing a round; open threads say who owes whom and keep overdue
+promises open; a dropped mail connection no longer stops the first run, and its estimate matches
+the release check; the reader's home is a morning brief with Copy prompt and Mark done; docs and
+blog posts use invented names only. See [1.9.3rc12 notes](docs/releases/1.9.3rc12.md).
+
+- 1.9.3rc12 (rounds keep what they had).
+
+## Previous preview: 1.9.3rc11
 
 1.9.3rc11 is a REM fix candidate; stable remains 1.9.2. Daily upkeep no longer drops a page's quotes
 (it now checks a rewrite against the page it replaces), pronoun repair only touches the owner,
@@ -410,7 +448,7 @@ Chinese page content. See
 
 - 1.9.3rc11 (upkeep keeps its quotes).
 
-## Previous preview: 1.9.3rc10
+## Earlier preview: 1.9.3rc10
 
 1.9.3rc10 is 1.9.3rc9 with one correction; stable remains 1.9.2. The packaged handoff blog post
 told its story with a real person and their business; it now uses a fictional sender. The code is
