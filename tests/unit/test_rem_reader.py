@@ -94,7 +94,7 @@ def test_first_build_keeps_failures_and_written_pages_visible(written):
     paragraphs = [node.get('text', '') for node in result['children']]
     assert any('2 investigations failed' in text and 'Model access was refused' in text
                and 'A request timed out' in text for text in paragraphs)
-    assert any('Your notebook was just built' in text for text in paragraphs) is written
+    assert any('This is your first recorded build' in text for text in paragraphs) is written
     assert any('No memory pages were written' in text for text in paragraphs) is not written
     assert 'private payload' not in json.dumps(result)
     assert result['children'][-1]['href'] == '#view=activity'
@@ -684,7 +684,7 @@ def test_changed_field_matches_raw_facts_before_display_formatting():
         'console.log(JSON.stringify({date, superseded, multiple, older})); })();',
     ])
     result = _run_reader_js(script)
-    assert result['date'] == {'classes': ['changed-value'], 'title': 'Changed last night: 2026-09-01 → 2026-10-01'}
+    assert result['date'] == {'classes': ['changed-value'], 'title': 'Changed in latest recorded pass: 2026-09-01 → 2026-10-01'}
     assert result['multiple']['classes'] == ['changed-value']
     assert result['superseded'] == result['older'] == {'classes': []}
 
@@ -715,12 +715,11 @@ def test_update_markers_follow_latest_pass_in_the_invented_notebook(tmp_path, mo
         'eyebrow: updatedMarker(byPath("people/mara-ostrowski.md"), true),',
         'tomas: updatedMarker(byPath("people/tomas-reyes.md"))})); })();',
     ]))
-    assert result['changed'] == ['orgs/fernhill-labs.md', 'people/avery-lin.md',
-                                 'people/mara-ostrowski.md', 'projects/harbour.md']
-    assert result['mara'] == {'class': 'fresh-label', 'text': 'last night',
-                              'title': "Updated in last night's pass"}
+    assert result['changed'] == ['orgs/fernhill-labs.md', 'people/mara-ostrowski.md', 'projects/harbour.md']
+    assert result['mara'] == {'class': 'fresh-label', 'text': 'latest pass',
+                              'title': "Updated in latest recorded pass"}
     assert result['eyebrow']['children'][0]['text'] == '●'
-    assert result['eyebrow']['children'][1] == 'updated last night'
+    assert result['eyebrow']['children'][1] == 'updated in latest pass'
     assert result['tomas'] is None
 
 
@@ -728,7 +727,7 @@ def test_record_freshness_labels_translate_without_changing_english():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     labels = ['last activity', 'file updated', 'last mapped session', 'last name match',
-              'archived messages', 'last night', "Updated in last night's pass"]
+              'archived messages', 'latest pass', "Updated in latest recorded pass"]
     result = _run_reader_js('\n'.join([
         '(() => { let uiLanguage = "en";', interface,
         'const labels = ' + json.dumps(labels) + ';',
@@ -737,7 +736,7 @@ def test_record_freshness_labels_translate_without_changing_english():
     ]))
     assert result['en'] == labels
     assert result['zh'] == ['最近动态', '文件更新于', '最近映射的会话', '最近名称匹配',
-                            '条存档消息', '昨夜', '昨夜整理时更新']
+                            '条存档消息', '最近整理', '最近有记录的整理时更新']
 
 
 def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
@@ -1546,7 +1545,7 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     ''')
     changed = result['children'][0]['children'][0]
     compact_role = changed['children'][0]
-    assert changed['title'].startswith('Changed last night:')
+    assert changed['title'].startswith('Changed in latest recorded pass:')
     assert compact_role['title'] == '合作负责人; 试点负责人; 研究联络人'
     assert compact_role['children'][0]['html'] == '合作负责人'
     assert compact_role['children'][1]['text'] == ' +2'
@@ -1822,7 +1821,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
-      const byActivity = () => 0, sourceName = value => value, calendarDay = value => value.slice(0, 10);
+      const byActivity = () => 0, sourceName = value => value, calendarDay = value => value.slice(0, 10), fmtTime = value => value;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
@@ -1845,13 +1844,13 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
         returning, noPass: firstBuild()}));
     ''')
     assert result['first'] is True and result['returning'] is False and result['noPass'] is False
-    assert result['header']['children'][2]['children'][0].startswith('Built today: read ')
+    assert result['header']['children'][2]['children'][0].startswith('First build: read ')
     assert 'overnight' not in result['header']['children'][1]['text']
-    assert result['brief']['children'][1]['text'] == 'Your notebook was just built. Overnight changes appear here after the next update.'
+    assert result['brief']['children'][1]['text'] == 'This is your first recorded build. Later recorded changes appear here after another update.'
     assert result['brief']['children'][2]['children'][1]['command'] == 'co rem start'
     assert len(result['scheduled']['children']) == 2
     assert result['recall'] is None
-    assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：读取 ')
+    assert result['zhHeader']['children'][2]['children'][0].startswith('首次建立：读取 ')
     assert result['notice']['children'][0] == '大部分页面还没有中文版本，目前显示英文原文。'
     assert result['notice']['children'][1]['command'] == 'co rem translate --all'
     assert result['enough'] is None
@@ -2033,3 +2032,73 @@ def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
     assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+
+
+def test_latest_pass_requires_recorded_rewrites_not_footer_dates():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['lastPass', 'runTime', 'sameClaim'])
+    result = _run_reader_js(functions + r'''
+      const HOUR = 3600e3, FAILED = /failed/, STAMP = /^Investigation:[^\n]*$/m;
+      const REM = {records: [
+        {path: 'people/recorded.md', text: 'Investigation: investigated 2026-09-01'},
+        {path: 'people/unrecorded.md', text: 'Investigation: investigated 2026-10-20'},
+        {path: 'people/future.md', text: 'Investigation: updated 2026-12-01'}],
+        logs: [{started_at: '2026-10-20T12:00:00Z', changed: ['people/recorded.md']}]};
+      const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
+      const byActivity = () => 0, sourceName = x => x;
+      console.log(JSON.stringify(lastPass().changed.map(r => r.path)));
+    ''')
+    assert result == ['people/recorded.md']
+
+
+@pytest.mark.parametrize('started', ['2026-10-01T02:00:00Z', '2026-10-20T12:00:00Z'])
+def test_pass_copy_names_recorded_time_for_stale_and_daytime_runs(started):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['briefHeader', 'morningBrief'])
+    result = _run_reader_js(functions + 'const started = ' + json.dumps(started) + ';' + r'''
+      const REM = {as_of: '2026-10-22', status: {timezone: 'UTC'}};
+      const calendarDay = value => value.slice(0, 10), sectionHead = text => ({text});
+      let pass = {latest: new Date(started).getTime(), items: 2, changed: [{path: 'people/corin.md'}], claims: [], failed: []};
+      const lastPass = () => pass, firstBuild = () => false, fmtTime = value => value;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+        appendChild(node) { this.children.push(node); }});
+      const header = briefHeader({mine: 0}, []), quiet = morningBrief();
+      pass = null;
+      const empty = morningBrief();
+      console.log(JSON.stringify({header, quiet, empty}));
+    ''')
+    assert result['header']['children'][2]['children'][0].startswith('Latest recorded pass:')
+    assert started[:10] in result['header']['children'][2]['children'][1]
+    assert 'No supported changes' in result['quiet']['children'][1]['text']
+    assert 'page rewrite was recorded' in result['quiet']['children'][1]['text']
+    assert result['empty']['children'][1]['text'] == 'No pass yet'
+    assert 'last night' not in json.dumps(result)
+    assert 'nothing new' not in json.dumps(result)
+
+
+def test_unknown_legacy_activity_does_not_fall_back_to_file_mtime():
+    page = TEMPLATE.read_text()
+    parsing = page[page.index('const UNKNOWN_LINE ='):page.index('function mappedContact(')]
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['splitTrailers', 'plainLine'])
+    result = _run_reader_js(parsing + functions + r'''
+      const youify = text => text;
+      const r = {path: 'people/corin.md', category: 'people', title: 'Corin',
+        updated: '2026-10-22T09:00:00Z', text: '# Corin\n\n## Facts\n- Last contact: Unknown\n\nInvestigation: investigated 2026-10-20'};
+      const unknown = known(r).last;
+      KNOWN.clear(); r.mail = {last: '2026-09-01'};
+      console.log(JSON.stringify([unknown, known(r).last]));
+    ''')
+    assert result == ['', '2026-09-01']
+
+
+def test_pass_time_includes_year_and_timezone_when_requested():
+    page = TEMPLATE.read_text()
+    function = re.search(r'function fmtTime\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {status: {timezone: 'UTC'}};
+      console.log(JSON.stringify(fmtTime('2025-12-31T23:30:00Z', true)));
+    ''')
+    assert '2025' in result and 'UTC' in result and '11:30' in result and 'PM' in result

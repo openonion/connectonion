@@ -1901,7 +1901,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     assert 'A request timed out' in brief.inner_text()
     assert 'private payload' not in brief.inner_text()
     assert 'No memory pages were written' in brief.inner_text()
-    assert 'Your notebook was just built' not in brief.inner_text()
+    assert 'This is your first recorded build' not in brief.inner_text()
     assert brief.locator('.cmd').count() == 0
     stopped = page.locator('.night-details .hypno .dot.woke')
     assert stopped.count() == 1
@@ -1932,7 +1932,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     page.goto(path.as_uri())
     brief = page.locator('.overnight')
     assert '1 investigation failed' in brief.inner_text()
-    assert 'Your notebook was just built.' in brief.inner_text()
+    assert 'This is your first recorded build.' in brief.inner_text()
     assert 'reworded; nothing new.' not in brief.inner_text()
     assert page.locator('.week-details summary').inner_text().startswith('Pages written in the first build (')
     page.locator('.week-details summary').click()
@@ -3430,12 +3430,12 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.set_viewport_size({'width': width, 'height': 900})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''language => setInterfaceLanguage(language)''', language, isolated_context=False)
-    label = '昨夜更新' if language == 'zh' else 'updated last night'
+    label = '最近整理时更新' if language == 'zh' else 'updated in latest pass'
     assert page.locator('.eyebrow .updated-label').inner_text() == '●' + label
     role = page.locator('.page-head .changed-value, .contact-strip .changed-value').filter(has_text='Head of Partnerships')
     assert 'Head of Partnerships' in role.inner_text()
-    assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
-                                         else 'Changed last night: Partnerships lead → Head of Partnerships')
+    assert role.get_attribute('title') == ('最近有记录的整理中变更：Partnerships lead → Head of Partnerships' if language == 'zh'
+                                         else 'Changed in latest recorded pass: Partnerships lead → Head of Partnerships')
     page.locator('details.deep-note > summary').click()
     assert page.locator('.factlist .changed-value').filter(has_text='Head of Partnerships').is_visible()
     marker = page.locator('.note .uncertain-marker')
@@ -3450,13 +3450,13 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.goto(uri + '#c=people')
     fresh = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.fresh-label')
     assert fresh.is_visible()
-    assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
-    assert fresh.get_attribute('title') == ('昨夜整理时更新' if language == 'zh' else "Updated in last night's pass")
+    assert fresh.inner_text() == ('最近整理' if language == 'zh' else 'latest pass')
+    assert fresh.get_attribute('title') == ('最近有记录的整理时更新' if language == 'zh' else "Updated in latest recorded pass")
     assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
-    assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
+    assert page.locator('.fresh-label').filter(has_text='最近整理' if language == 'zh' else 'latest pass').first.is_visible()
     page.goto(uri)
     page.locator('.week-details summary').click()
     assert page.locator('.week li').filter(has_text='Mara Ostrowski').locator('.fresh-label').is_visible()
@@ -4413,12 +4413,12 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       copyToClipboard = command => { window.copiedCommand = command; };
     }''', language, isolated_context=False)
     summary = page.locator('.pass-summary').inner_text()
-    assert summary.startswith('今天建立：读取 ' if language == 'zh' else 'Built today: read ')
+    assert summary.startswith('首次建立：读取 ' if language == 'zh' else 'First build: read ')
     assert ('夜间变化' if language == 'zh' else 'change overnight') not in page.locator('h1').inner_text()
     assert page.locator('.recall').count() == 0
     assert page.locator('.overnight .quiet-line').inner_text() == (
-        '笔记本刚刚建立。下次更新后，这里会显示夜间变化。' if language == 'zh'
-        else 'Your notebook was just built. Overnight changes appear here after the next update.')
+        '这是首次有记录的建立。再次更新后，这里会显示后续记录的变化。' if language == 'zh'
+        else 'This is your first recorded build. Later recorded changes appear here after another update.')
     page.locator('.overnight .cmd button').click()
     assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem start'
     notice = page.locator('#main > .translation-note')
@@ -4432,7 +4432,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
         assert notice.count() == 0
     page.locator('.pass-summary a').click()
     assert page.locator('.night-title').inner_text() == ('首次建立' if language == 'zh' else 'First build')
-    assert ('昨夜' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
+    assert ('最近整理' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
     page.goto(uri + '#view=changes')
     assert page.locator('.empty .lead').inner_text() == (
         '暂无变化 — 这是首次建立。' if language == 'zh' else 'No changes yet — this is the first build.')
