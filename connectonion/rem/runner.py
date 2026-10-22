@@ -135,6 +135,9 @@ def child_env(config: dict | None = None) -> dict:
     after minutes of gathering (#1974).
     """
     environment = os.environ.copy()
+    # Keep resumable traces, without promoting every maintenance page to a
+    # recent Codex conversation. This is private to the REM child process.
+    environment["CO_REM_CODEX_ARCHIVE"] = "1"
     pythonpath = child_pythonpath()
     if pythonpath:
         environment["PYTHONPATH"] = pythonpath

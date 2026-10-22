@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc12
+## Current Version: 1.9.3rc13
+
+1.9.3rc13 keeps completed REM Codex calls out of active history by archiving their
+threads, unarchiving them before explicit resume, and retaining their trace IDs.
+Normal interactive calls are unchanged. Native Scheduled migration is not included;
+macOS upkeep still uses launchd. See [1.9.3rc13 notes](docs/releases/1.9.3rc13.md).
+
+- 1.9.3rc13 (archive internal REM Codex threads; preserve explicit resume).
+
+### Previous candidate: 1.9.3rc12
 
 1.9.3rc12 is a REM candidate; stable remains 1.9.2. Rounds keep the quotes a page already had and
 repair a dropped quote before refusing a round; open threads say who owes whom and keep overdue

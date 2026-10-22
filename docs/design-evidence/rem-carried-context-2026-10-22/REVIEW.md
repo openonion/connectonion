@@ -48,3 +48,15 @@ an active finding. Three actual promotion regressions failed before normalizing
 active findings to FAIL and deferred-only findings to INSUFFICIENT independently
 of the top-level model label. The initial full run on the preceding source head
 is retained separately; a fresh complete run verifies the final correction.
+
+## Integration after main advanced
+
+Main bdc8c4316a0e4b1d47e14cd222ebc08b0ea61bb0 merged the separately reviewed
+Codex-history and security repair #2627, including its Python3.11 minimum and
+patched dependency floors. This candidate merges that actual main without
+rewriting published commits; both appended CLI sections are retained. Prior
+Pillow/pypdf failures describe the old base, not a current audit of this merged
+candidate. Fresh frozen-environment, regression, security and exact-head review
+results are recorded in the PR. The published/latest-installed preview remains
+rc12 until a newer actual immutable release is available; no native/model or
+scheduling-migration acceptance is inferred from this integration.
