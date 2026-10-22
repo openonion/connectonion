@@ -116,3 +116,20 @@ and post-upgrade cryptographic tests are separate outstanding checks.
 
 No native Schedule success is claimed and no migration has occurred. Security
 release readiness must not imply that the native integration is finished.
+
+Post-upgrade recheck: Intel macOS successfully compiled and installed
+cryptography 50.0.2 with the existing Rust toolchain and Homebrew OpenSSL.
+The final focused Python 3.11 suite passed 403 tests, including Chrome cookie
+cryptography, encrypted handoff, dependency floors, installation, PDF/attachment
+reading and REM. Wheel and sdist passed twine checks. A clean isolated uv tool
+installation of the built wheel selected Python 3.14.7, installed its full
+dependencies, and `co --version` reported 1.9.3rc13. This did not replace the
+owner's installed co or its REM scheduler.
+
+Independent AI release review inspected committed change 38c23b91. It found a
+P1 stale Python 3.10 claim in the Windows FAQ; that FAQ now distinguishes stable
+1.9.2 from preview rc13. The installation skill documentation also explains the
+preview requirement. Recheck criterion: current installation guidance must not
+suggest that rc13 supports Python 3.10. Review did not inspect native desktop UI.
+Rendered local release notes were inspected at desktop width; security and
+Python requirements are visible beside the opt-in installation commands.

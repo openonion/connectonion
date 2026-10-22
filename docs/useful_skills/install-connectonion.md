@@ -22,6 +22,9 @@ environment through the whole setup.)
 /install-connectonion
 ```
 
+Stable 1.9.2 supports Python 3.10+. Preview 1.9.3rc13 and newer require
+Python 3.11+; select that interpreter before installing a preview.
+
 The skill walks these steps, each verified before the next, and self-corrects on failure:
 
 0. **Know the machine** — detect the OS; resolve the Python command (`python3` / `python` /
