@@ -34,7 +34,7 @@ jobs:
         run: |
           python -m pip install uv==0.6.16 pip-audit==2.10.1
           uv lock --check
-          uv export --quiet --frozen --no-dev --no-emit-project \
+          uv export --quiet --frozen --all-extras --no-dev --no-emit-project \
             --output-file "$RUNNER_TEMP/connectonion-audit-requirements.txt"
           python -m pip_audit \
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \

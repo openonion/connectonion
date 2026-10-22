@@ -110,7 +110,7 @@ wtf = [
 synology = [
     "keyring>=25,<26",
     "pysnmp>=7.1,<8",
-    "paramiko>=4,<5",
+    "paramiko>=5.1.0",
 ]
 # WhatsApp as an inbox. An extra because the cost is not shared: neonize is a
 # 21MB compiled Go library (whatsmeow) plus pillow, python-magic and four more

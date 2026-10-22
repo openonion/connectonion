@@ -76,3 +76,10 @@ Mac wheel pin would retain vulnerable dependencies. The tradeoff is explicit:
 Python 3.10 users need a supported interpreter; Intel Macs need build tools
 for cryptography because upstream no longer supplies Intel wheels. This is
 separate from native scheduling, whose live acceptance has not passed.
+
+A follow-up audit exposed a scope gap: the default installation was clean,
+but the optional Synology extra still capped Paramiko below 5. rc14 removes
+that obsolete cap, requires Paramiko 5.1.0+, and extends CI auditing to all
+extras. Upstream removes SHA-1-era SSH algorithms, so legacy NAS setups may
+need modern SSH configuration. An empty patched-version field in an advisory
+is not evidence that no current upstream release exists.

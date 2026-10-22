@@ -225,3 +225,14 @@ found the claims bounded correctly. P1: scheduled handoff remains unverified;
 recheck exact-id registration, scheduled execution and marker before changing
 REM defaults. P2: syntax checks are not execution evidence, and native desktop
 flow remains uninspected. No product UI or release pass is claimed.
+
+### Official MCP launcher recheck
+
+The unchanged bundled codex-app-tools 0.1.5 launcher was then tested over its
+normal stdio MCP protocol, with its documented tools-pipe environment variable.
+MCP initialization succeeded, but tools/list returned `Codex app tools pipe
+closed`; the matching desktop log at 2026-10-22T09:18:59.223Z again reports
+`untrusted-process-ancestry`. This confirms that switching from a direct pipe
+probe to the official client did not authorize this execution environment.
+No automation mutation was attempted, no App permissions were changed, and no
+native scheduling success is claimed. See `official-mcp-result.json`.

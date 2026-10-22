@@ -405,12 +405,21 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.9.3rc15 preserves Feishu/Lark message kinds, resource references and typed
 sender IDs through the inbox and Host. Recovery includes already remembered
 conversations after an interrupted first journal write. Stable remains 1.9.2;
-Python 3.11+ and the rc13 security dependency floors are retained. See
+Python 3.11+ and all rc14 security dependency floors are retained. See
 [1.9.3rc15 notes](docs/releases/1.9.3rc15.md).
 
 - 1.9.3rc15 (keep file references through inbox consumption).
 
+### Previous candidate: 1.9.3rc14
+
+1.9.3rc14 removes the obsolete Paramiko <5 upper bound in the optional Synology
+extra, requiring patched Paramiko >=5.1.0. It retains the rc13 security floors
+and Python >=3.11 requirement. See [rc14 notes](docs/releases/1.9.3rc14.md).
+
+- 1.9.3rc14 (patch optional Synology Paramiko dependency).
+
 ### Previous candidate: 1.9.3rc13
+
 
 1.9.3rc13 keeps completed REM Codex calls out of active history by archiving their
 threads, unarchiving them before explicit resume, and retaining their trace IDs.
