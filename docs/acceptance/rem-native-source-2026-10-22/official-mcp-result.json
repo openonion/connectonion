@@ -1,0 +1,12 @@
+{
+  "official_plugin_version": "0.1.5",
+  "official_launcher_unmodified": true,
+  "permission_checks_unchanged": true,
+  "mcp_initialize_succeeded": true,
+  "tools_list_error": {"code": -32603, "message": "Codex app tools pipe closed"},
+  "desktop_log_timestamp_utc": "2026-10-22T09:18:59.223Z",
+  "desktop_rejection": "untrusted-process-ancestry",
+  "native_tool_catalog_obtained": false,
+  "automation_mutation_attempted": false,
+  "native_execution_verified": false
+}
