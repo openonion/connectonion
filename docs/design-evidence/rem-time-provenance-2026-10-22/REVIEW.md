@@ -44,7 +44,8 @@ archived/deleted logs limit chronology.
 - Full offline run and exact-head CI pending; no browser involved.
 - Browser assertion strings are updated for future authorized native acceptance;
   updating them is not evidence of having run them.
-- Independent AI source/product review pending.
+- Independent AI source/product/copy review approved source d16c7b84 and
+  inspected docs candidate; review did not include rendered/native acceptance.
 - Current screenshots, desktop/phone layout, focus, contrast and screen-reader
   behavior remain pending. Preview access was previously denied; no alternative
   browser, HTTP/CDP/Playwright, CI screenshot or renderer workaround was used.
