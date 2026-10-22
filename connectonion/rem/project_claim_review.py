@@ -272,10 +272,13 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
                 findings.append(finding)
         report["findings"] = findings
         report["carried_findings"] = carried_findings
-        if verdict == "fail" and not findings:
-            report["verdict"] = "insufficient" if carried_findings else "pass"
-            if carried_findings:
-                report["reason"] = "Unchanged-content findings were deferred, not verified"
+        if findings:
+            report["verdict"] = "fail"
+        elif carried_findings:
+            report["verdict"] = "insufficient"
+            report["reason"] = "Unchanged-content findings were deferred, not verified"
+        elif verdict == "fail":
+            report["verdict"] = "pass"
     report["sources_supplied"] = len(material["sources"])
     report["missing_citations"] = missing
     report["scope"] = "Cited originals only; not all Project inputs or live deployment"

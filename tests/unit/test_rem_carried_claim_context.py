@@ -98,7 +98,8 @@ def test_unchanged_context_can_remain_before_a_new_sentence(tmp_path):
     assert report['verdict'] == 'insufficient' and report['carried_findings'] == [finding]
 
 
-def test_changed_condition_cannot_promote_a_candidate_after_a_failed_audit(tmp_path, monkeypatch):
+@pytest.mark.parametrize('verdict', ['FAIL', 'PASS', 'INSUFFICIENT'])
+def test_changed_condition_cannot_promote_a_candidate_after_a_failed_audit(tmp_path, monkeypatch, verdict):
     from connectonion.rem import runner
     from connectonion.rem.config import prepare
 
@@ -119,7 +120,7 @@ def test_changed_condition_cannot_promote_a_candidate_after_a_failed_audit(tmp_p
                'evidence': 'Approval is conditional on safety checks.',
                'required_correction': 'Restore the safety condition'}
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
-        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})})
+        'result': json.dumps({'verdict': verdict, 'findings': [finding]})})
     with pytest.raises(runner.RunFailed, match='claim audit did not pass'):
         runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
                                   claim_config={}, carried=original)
@@ -158,7 +159,8 @@ def test_removing_an_adjacent_old_qualification_requires_review(tmp_path, qualif
     assert report['carried_findings'] == []
 
 
-def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_path, monkeypatch):
+@pytest.mark.parametrize('verdict', ['FAIL', 'PASS'])
+def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_path, monkeypatch, verdict):
     from connectonion.rem import runner
     from connectonion.rem.config import prepare
 
@@ -177,7 +179,7 @@ def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_pa
     finding = {'claim': 'An existing description.', 'issue': 'Not established in this packet',
                'evidence': '', 'required_correction': 'Remove'}
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
-        'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})})
+        'result': json.dumps({'verdict': verdict, 'findings': [finding]})})
     runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
                               claim_config={}, carried=original)
     report = json.loads((tmp_path / 'claim-review.json').read_text())

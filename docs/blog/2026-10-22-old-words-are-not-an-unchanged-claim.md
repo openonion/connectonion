@@ -29,8 +29,12 @@ nine failing controls and the later adjacent-qualification cases.
 
 Protection is not verification. An unchanged finding retained under the existing
 policy now leaves an insufficient report and a visible deferred count in the
-promotion record. It does not become a factual pass. Active new failures still
-reach the ordinary repair and refusal path. Missing or ambiguous source bindings
+promotion record. It does not become a factual pass. A further review found that an inconsistent
+model response could label itself PASS while listing a deferred finding. Three
+promotion regressions reproduced this and active findings paired with PASS or
+INSUFFICIENT. Report normalization now keeps active findings failed and deferred
+ones insufficient regardless of that headline. Active new failures still reach
+the ordinary repair and refusal path. Missing or ambiguous source bindings
 cannot establish continuity. A conservative unmatched rewrite receives ordinary
 review; there is no fuzzy claim-equivalence model in this change.
 

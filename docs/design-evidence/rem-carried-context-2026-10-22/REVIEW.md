@@ -41,3 +41,10 @@ surrounding discourse. Actual model and native desktop/phone/privacy/focus/
 accessibility acceptance remain pending. Security/compatibility and exact-head CI
 remain mandatory; no advisory waiver, Python minimum change, version bump, merge,
 tag or publication. Other unmerged source candidates are not integrated.
+
+A later exact-head review found inconsistent verdict/finding pairs could still
+produce a factual PASS: PASS with a deferred finding, or PASS/INSUFFICIENT with
+an active finding. Three actual promotion regressions failed before normalizing
+active findings to FAIL and deferred-only findings to INSUFFICIENT independently
+of the top-level model label. The initial full run on the preceding source head
+is retained separately; a fresh complete run verifies the final correction.

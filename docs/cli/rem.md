@@ -1717,7 +1717,8 @@ old prose. Every occurrence of a finding must qualify, including new duplicates.
 
 Unchanged findings can remain deferred under the existing preservation policy,
 but are recorded as **insufficient**, with a deferred count in `review.json`,
-not as a factual pass. New active failures still reach ordinary repair/refusal.
+not as a factual pass. Active findings reach ordinary repair/refusal even if the
+model labels its top-level verdict PASS or INSUFFICIENT.
 This is a deterministic continuity check, not semantic equivalence or proof the
 old content is true. Additions may still affect discourse meaning; actual model
 and current native desktop/phone/accessibility acceptance remain unverified.
