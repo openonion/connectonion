@@ -1341,7 +1341,7 @@ def test_thread_prompt_keeps_citations_root_and_public_text_only_in_both_languag
         assert "co rem --root '/fixture/notebook' search" in prompt
 
 
-def test_brief_header_counts_due_soon_including_overdue_and_translates_find():
+def test_brief_header_distinguishes_overdue_from_due_soon_and_translates_find():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     function = re.search(r'function briefHeader\(.*?\n\}', page, re.S).group(0)
@@ -1357,10 +1357,10 @@ def test_brief_header_counts_due_soon_including_overdue_and_translates_find():
       console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
     })();''')
     assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
-    assert result['header']['children'][1]['text'] == '3 due soon · 4 waiting on you'
+    assert result['header']['children'][1]['text'] == '1 overdue · 2 due soon · 4 waiting on you'
     assert result['noDeadline']['children'][1]['text'] == '1 waiting on you'
     assert result['quiet']['children'][1]['text'] == 'A quiet morning'
-    assert result['zh']['children'][1]['text'] == '3 项即将到期 · 4 件等你处理'
+    assert result['zh']['children'][1]['text'] == '1 项已逾期 · 2 项即将到期 · 4 件等你处理'
     assert result['find'] == '查找'
 
 

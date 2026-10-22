@@ -71,12 +71,14 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
 
 # Who said and who owes: the errors a person page made on a real first run
 # (Corin "approved" a scope Aaron approved; a cc'd person became a party; a
-# February check-in became a current debt; a passed event stayed open).
+# February check-in became a current debt; a past schedule looked upcoming).
 PEOPLE = (
     "Who did something is the sender of the cited message: a claim that someone asked, approved, "
     "confirmed, offered or promised fails unless their own message says so; a cc'd person is not a party. "
-    "An open thread fails when a later message (later_messages: what came after the cited mail in its thread) "
-    "resolves it or when the date of a meeting or event it is about has passed. A dated ask or promise that no "
+    "An open thread fails when supplied evidence (including later_messages: what came after the cited mail "
+    "in its thread) establishes an answer, delivery, cancellation or withdrawal for that matching ask. "
+    "A passed meeting date alone does not settle preparation, follow-up or related promises. "
+    "A dated ask or promise that no "
     "later message answers is open, however old (\"open as of <date>\" is correct); a promise past its due date "
     "with no delivery is overdue, still open. An ask the other side never agreed to is not their debt. "
     # Rowan Ashdown's email and a quote's final period failed the audit (2026-10-16 trial).

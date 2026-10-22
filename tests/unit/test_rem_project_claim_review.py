@@ -353,3 +353,37 @@ def test_people_audit_keeps_an_unanswered_ask_open_and_an_overdue_promise_open(t
     assert "A dated ask or promise that no later message answers is open, however old" in seen[0]
     assert "overdue, still open" in seen[0]
     assert "a past ask is not a current debt" not in seen[0]
+
+
+@pytest.mark.parametrize('kind', ['people', 'orgs', 'projects'])
+def test_audit_date_context_never_resolves_followup_by_event_date_alone(tmp_path, kind):
+    """Verify actual dispatch contracts, not a mock model's semantic compliance."""
+    candidate = ('# Atlas\n\n## Open threads\n'
+                 '- The user asked Avery for the workshop notes on 2026-01-03; outcome unknown [1].\n'
+                 '- Avery promised the report by 2026-01-05; delivery unconfirmed [2].\n\n'
+                 '## Sources\n- [1] gmail:request\n- [2] gmail:promise\n')
+    seen = []
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"INSUFFICIENT","findings":[]}'}
+
+    report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+        record=f'{kind}/atlas.md', items=[
+            {'source': 'gmail:request', 'text': 'Please send the workshop notes.',
+             'timestamp': '2026-01-03T00:00:00Z'},
+            {'source': 'gmail:promise', 'text': 'I will send the report by January 5.',
+             'timestamp': '2026-01-03T00:00:00Z'}])
+    prompt = seen[0]
+    assert 'A past scheduled date alone does not establish occurrence or completion' in prompt
+    assert 'a promise past its due date with no delivery stays overdue and open' in prompt
+    assert 'answer, delivery, cancellation or withdrawal for the matching ask' in prompt
+    assert 'do not present a past scheduled event as upcoming' in prompt
+    assert 'history, never an open thread' not in prompt
+    assert 'resolves it or when the date of a meeting or event it is about has passed' not in prompt
+    if kind in ('people', 'orgs'):
+        assert 'A passed meeting date alone does not settle preparation, follow-up or related promises' in prompt
+        assert 'An ask the other side never agreed to is not their debt' in prompt
+    material = json.loads(prompt[prompt.index('{"candidate"'):])
+    assert {row['source_id'] for row in material['sources']} == {'gmail:request', 'gmail:promise'}
+    assert report['verdict'] == 'insufficient'
