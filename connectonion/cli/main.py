@@ -1780,6 +1780,7 @@ _INBOX_IDS = {
     "telegram": ("-1001234567890", "-1001234567890.42"),  # "<chat>.<message_id>"
     "discord": ("1180123456789012345", "1180123987654321098"),
     "slack": ("C0123456789", "C0123456789:1727500000.123456"),  # "<channel>:<ts>"
+    "outlook": ("AAQkADAwATM3ZmYAZS0xYmMyLWM2Y2MALTAwAi0wMAoAEAA=", "AQMkADAwATM3ZmYAZS0xYmMyLWM2Y2MALTAwAi0wMAoARgAAA"),
 }
 
 
@@ -1787,7 +1788,7 @@ _INBOX_IDS = {
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, with_reply: bool = True, writes: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
@@ -1844,8 +1845,6 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
-    @group.command("reply", cls=NegativeIds,
-                   epilog=f'Example:  {co} reply {msg} "On it"  |  {co} reply {msg} "One more thing" --again')
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1859,6 +1858,12 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain, image=image, file=file)
+
+    # Outlook keeps the `reply` it shipped with (by listing index, #1247's Cc rules);
+    # an inbox consumer answers through the provider's send(reply_to=...) either way.
+    if with_reply:
+        group.command("reply", cls=NegativeIds,
+                      epilog=f'Example:  {co} reply {msg} "On it"  |  {co} reply {msg} "One more thing" --again')(_reply)
 
     @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
@@ -2602,6 +2607,10 @@ outlook_app.add_typer(outlook_contact_app, name="contact", rich_help_panel="Cont
 # name an agent would have to guess (#816). Its leaves mirror `co gcalendar`.
 from .commands.outlook_calendar_commands import outlook_calendar_app
 outlook_app.add_typer(outlook_calendar_app, name="calendar", rich_help_panel="Calendar")
+
+# Outlook as an inbox (#1733): listen, receive, consume and the rest, beside the
+# mail commands it already has. `send` and `reply` stay the Outlook tool's own.
+_inbox_group("outlook", "", group=outlook_app, with_send=False, with_reply=False)
 
 
 @outlook_contact_app.command("add", epilog="Example:  co outlook contact add \"Sam Lee\" sam@example.com")

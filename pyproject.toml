@@ -121,6 +121,12 @@ synology = [
 whatsapp = [
     "neonize==0.4.3.post0",
 ]
+# Outlook as an inbox (#1733). Charter declares Graph's delta query, its paging
+# by URL and the delta link, so the listener follows them instead of guessing a
+# window; it needs only pydantic and httpx, which are already here.
+outlook = [
+    "charter-ai>=0.5.2",
+]
 # Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few
 # who investigate mail with spreadsheets attached. Without it an XLSX
