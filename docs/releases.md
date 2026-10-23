@@ -61,9 +61,9 @@ examples. Stable remains **1.9.2**; Python 3.11+ is required.
 python -m pip install --upgrade 'connectonion==1.9.3rc19'
 ```
 
-See [the preview notes](releases/1.9.3rc19.md). Incoming routing for
-steadmail.com and oakinbox.com still requires Cloudflare permissions and delivery
-acceptance. The cloud lists the domains currently ready for new addresses.
+See [the preview notes](releases/1.9.3rc19.md). At rc19 publication,
+steadmail.com and oakinbox.com had not passed incoming delivery. They were
+enabled after live tests on 2026-10-23; the cloud lists all four hosted domains.
 
 Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
 additional email aliases on the same cloud account. It retains sender selection,

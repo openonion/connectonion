@@ -114,3 +114,29 @@ CLI domain discovery and price preview use the new list without a purchase.
 steadmail.com and oakinbox.com remain gated: the dedicated token still receives
 403 on settings/enable operations. The operator token-selection fix passed all
 908 backend tests (201 skipped) and independent review; its PR is merged.
+
+## Final hosted-domain activation and owned-inbox acceptance
+
+The dedicated email token still received 403 on the Zone Settings endpoint, but
+it could update catch-all rules. The ordinary DNS token added the same three
+Cloudflare receiving MX records and root SPF as the already working trust zone
+to steadmail.com and oakinbox.com. Both enabled catch-alls now target
+`openonion-email-worker`. Public DNS returned the new records. A real provider
+message to a checked unclaimed internal recipient on each domain created one
+matching `email_received` row. No other account's mailbox was used.
+
+Production `EMAIL_ADDRESS_DOMAINS` and the oo-api repository variable now both
+list `mail.openonion.ai,steadmail.com,trustxmail.com,oakinbox.com`. The restarted
+service was healthy; the authenticated address API and `co email domains` showed
+all four. Aaron's account owns `aaron@trustxmail.com`,
+`aaron@steadmail.com`, and `aaron@oakinbox.com` alongside its primary
+`aaron.xie@mail.openonion.ai`. The last two purchases cost $9.90 each and kept
+the primary address as default.
+
+One real provider message to each branded owned address produced three results
+in Aaron's authenticated merged inbox. Filtering separately by each address
+returned exactly its matching message and echoed the applied address filter.
+The source CLI listed all four owned addresses and read the oakinbox test
+through `co email inbox --address`. This acceptance covers real incoming
+delivery and shared ownership; the exhausted account monthly send quota still
+prevents claiming a successful account CLI send. No quota upgrade was bought.

@@ -47,8 +47,8 @@ Zone Settings Write. Inspecting the existing routes mattered too:
 trustxmail.com was already serving a separate verification-code worker. The
 owner chose to move all of that domain's mail to Agent Mail. Its original rule
 was backed up, the catch-all was changed, and a real test reached the mail store.
-It now joins mail.openonion.ai in the enabled choices. steadmail.com and
-oakinbox.com still need their routing enabled before they can be offered.
+At that point, it joined mail.openonion.ai in the enabled choices. steadmail.com
+and oakinbox.com still needed their routing enabled before they could be offered.
 
 A real self-test subsequently reached the owner's existing primary inbox through
 the deployed mail Worker and signed backend webhook. It was sent with the
@@ -66,6 +66,17 @@ filtering by one address narrowed the list, while another account's message
 stayed outside it. That was exercised against real PostgreSQL, so the check
 covered the address lookup and inbox query together. It still did not prove
 that an outside sender could reach an unconfigured domain.
+
+Later the same day, both remaining zones received Cloudflare MX/SPF records
+through the DNS token and catch-all rules through the dedicated email token.
+That avoided the zone-settings endpoint, which the dedicated token could not
+call. A real provider message reached an internal test recipient on each
+domain. Aaron then added `aaron@steadmail.com` and `aaron@oakinbox.com` beside
+his existing `aaron@trustxmail.com` and primary address. A real message to each
+branded owned address appeared in the same authenticated inbox, with one result
+per address filter. All four domains are now offered. The account's monthly
+send quota remained exhausted, so these provider-to-inbox tests do not claim a
+successful account CLI send.
 
 The useful boundary turned out to be the purchase. A domain belongs in the
 public choice list when the deployment can provide the mailbox behind it.

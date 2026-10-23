@@ -149,7 +149,8 @@ backend, so the CLI does not maintain a separate list.
 
 The reserved pool is `mail.openonion.ai`, `steadmail.com`, `trustxmail.com`, and
 `oakinbox.com`. Only currently enabled domains appear in `co email domains`;
-repeat setup with another listed domain to keep the same alias on both.
+as of 2026-10-23, all four are enabled after live incoming tests. Repeat setup
+with another listed domain to keep the same alias on both.
 An arbitrary external domain such as `mail.com` cannot be
 claimed with this command. Account addresses and the default sender live in
 the cloud: the same account uses them from every machine and deployed agent.
