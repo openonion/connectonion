@@ -1,3 +1,9 @@
+---
+title: A saved schedule still has to run
+date: 2026-10-23
+tags: [Codex, Scheduling, Testing]
+---
+
 # A saved schedule still has to run
 
 *2026-10-23*

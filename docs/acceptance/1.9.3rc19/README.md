@@ -1,7 +1,7 @@
 # REM native scheduling acceptance — 1.9.3rc19
 
-The implementation base was reviewed maincb872f23 (rc17). Preview rc19 avoids
-concurrent rc18 mailbox work. Runtime dependency floors and stable1.9.2 remain.
+The implementation base was reviewed maincb872f23 (rc17). The final base includes reviewed main332132b8 (rc18 mailbox CLI); the native
+scheduling delta remains separate. Runtime dependency floors and stable1.9.2 remain.
 
 ## Actual desktop acceptance
 
