@@ -218,6 +218,48 @@ def test_quick_owner_fetches_all_matching_mail_bodies():
     assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
+@pytest.mark.parametrize('quick', [True, False])
+def test_indexed_project_sessions_are_readable_during_promotion(tmp_path, monkeypatch, quick):
+    from connectonion.rem import project_claim_review
+
+    root = tmp_path / 'rem'
+    prepare(root)
+    set_config(root, ['runner', 'codex'])
+    repo = tmp_path / 'atlas'
+    repo.mkdir()
+    record = 'projects/atlas.md'
+    inv.Notebook(root).stub_project(record, 'Atlas', [str(repo)])
+    rows = [{'role': 'user', 'source': f'codex:session-atlas:{i}', 'project': str(repo),
+             'timestamp': f'2026-10-{i + 1:02d}T00:00:00Z',
+             'text': f'Atlas request {i}: ' + 'x' * 30_000} for i in range(12)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (rows, ['codex: 12 inputs']))
+    candidate = ('# Atlas\n\nThe user requested Atlas changes [1][2].\n\n## Sources\n'
+                 '- [1] codex:session-atlas:0\n- [2] codex:session-atlas:1\n')
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        index = next((item for item in items if item.get('role') == 'evidence-index'), None)
+        if index is None:  # Later rounds may not carry the overflow index.
+            return {'changed': []}
+        assert not any(item.get('role') == 'original_evidence' for item in items)
+        originals = project_claim_review.original_items([index])
+        assert {row['source'] for row in rows[:2]} <= {item['source'] for item in originals}
+        project_claim_review.retain_cited_originals(notebook, candidate, items)
+        material, missing = project_claim_review.packet(notebook, candidate, record, items)
+        assert missing == [] and material['unretained_citations'] == []
+        assert {row['source_id'] for row in material['sources']} == {row['source'] for row in rows[:2]}
+        # Retention must also make them readable without the temporary index.
+        retained, missing = project_claim_review.packet(notebook, candidate, record)
+        assert missing == [] and len(retained['sources']) == 2
+        seen.append(Path(index['originals']))
+        return {'changed': []}
+
+    inv.investigate(root, record, 'Atlas', [str(repo)], days=30, clients={}, subscriptions={},
+                    runner=runner, quick=quick, rounds=2,
+                    extractor=lambda *a: pytest.fail('Index evidence must not be digested'))
+    assert seen and all(not path.exists() for path in seen)
+
+
 @pytest.fixture
 def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""

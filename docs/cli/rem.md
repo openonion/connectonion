@@ -1297,6 +1297,11 @@ before it refuses anything.
   First and Last contact code computed from the whole archive: the packet's
   date range is not the relationship's. A claim a truncated excerpt neither
   supports nor contradicts is left out, not failed.
+  Evidence indexes preserve the original items for retention and auditing, including
+  overflow from capped rounds. In `claim-review.json`, `unretained_citations` lists
+  handed citation numbers with no readable excerpt and `unverified_lines` lists
+  prose citing only those originals (unverified, not refuted); `missing_citations`
+  lists citations never handed to the turn and unavailable in the archive.
 - **Up to two repair turns for every page type; one for enrich and muse.**
   What review names goes back to the writer with where to read the originals.
   Only project pages had repairs before; callum-reid and two skill pages

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .files import read_json, write_json
 from .page_review import _contained, _restore_citations, prose
-from .project_claim_review import BOUND, fit, packet, retain_cited_originals
+from .project_claim_review import BOUND, fit, original_items, packet, retain_cited_originals
 from .reader_model import SOURCE
 
 
@@ -95,10 +95,7 @@ def critic_packet(notebook, candidate, record, items, bullets) -> dict:
     definitions = [line for line in candidate.splitlines()
                    if (match := SOURCE.match(line)) and match[1] in numbers]
     cited_page = '\n'.join(bullets) + '\n\n## Sources\n' + '\n'.join(definitions) + '\n'
-    originals = []
-    for item in items:
-        originals.extend(read_json(Path(item['file']), []) if item.get('role') == 'original_evidence' else [item])
-    originals = [item for item in originals if not item.get('source', '').startswith('investigation:')
+    originals = [item for item in original_items(items) if not item.get('source', '').startswith('investigation:')
                  and item.get('role') not in ('page', 'prior-runs', 'earlier-insights', 'turn-reply', 'assistant')]
     material, missing = packet(notebook, cited_page, record, originals)
     # 2026-10-21: only unresolved sources cited by judged bullets need a network lookup.
