@@ -407,7 +407,19 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
   missing; injected runtime arguments remain excluded. Tool execution, traces
   and permissions are unchanged (#2652). This fix is not in published rc16.
 
-## Current Version: 1.9.3rc16
+## Current Version: 1.9.3rc17
+
+The email CLI exposes the existing cloud multi-address API: `co email domains`
+reads domain choices and current prices, and `co email setup <alias> --domain
+<domain>` shows the price before `--buy` adds another address. Existing addresses
+and the account default are preserved. Cloud DNS/sender verification and inbound
+routing have separate operational acceptance; the command alone does not prove
+mail delivery. Stable remains 1.9.2. See
+[1.9.3rc17 notes](docs/releases/1.9.3rc17.md).
+
+- 1.9.3rc17 (discover hosted domains and add mailbox aliases on the same account).
+
+### Previous candidate: 1.9.3rc16
 
 1.9.3rc16 skips stale click-approach waypoints under slow pointer dispatch,
 adds an optional local managed-daemon PID pin, and keeps a
