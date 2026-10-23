@@ -1,0 +1,12 @@
+{
+  "bundle_sha256": "bc90bb198f29b62bd745aa99dbfae6a81719d9739c22811a12a810f9813d6c43",
+  "exact_native_access_policy_executed": true,
+  "cases_passed": 6,
+  "native_policy_requires_local_host": true,
+  "native_policy_requires_allowed_local_access": true,
+  "workspace_entitlement_checked_when_rollout_enabled": true,
+  "renderer_also_checks_feature": "in_app_local_automation",
+  "cli_feature_observed_enabled": true,
+  "running_desktop_capability_observed": false,
+  "live_trigger_verified": false
+}

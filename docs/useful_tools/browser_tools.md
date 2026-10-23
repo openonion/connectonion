@@ -162,6 +162,12 @@ pointer input when an element exposes a bounding box and retain a forced locator
 fallback for elements without one. Use `frame_url_contains` or `frame_name` when
 the target lives in an iframe; the index applies across all matching frames.
 
+The async driver's click approach may skip stale intermediate curve points when
+input dispatch, pauses or scheduling fall behind. It still awaits the final
+coordinate before pressing the button and retains the final overshoot correction.
+The resulting path can be sparser, even with ordinary dispatch latency; this is
+not a timeout on an individual browser call. Hover motion keeps every planned point.
+
 ### System Info
 
 ```python
