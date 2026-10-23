@@ -32,7 +32,7 @@ def cloud():
 def test_domains_come_from_the_cloud(cloud):
     result = CliRunner().invoke(app, ['email', 'domains'])
     assert result.exit_code == 0, result.output
-    assert 'steadmail.com' in result.output.splitlines()
+    assert result.output.splitlines()[:2] == SETTINGS['domains']
     assert '$9.90' in result.output
     cloud[1].assert_not_called()
 
