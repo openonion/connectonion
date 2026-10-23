@@ -193,31 +193,26 @@ $ co email name aaron --buy
 
 ### `co email upgrade <tier>` — Raise your sending quota
 
-The paid tiers (`plus`, `pro`) lift the monthly quota and are billed from your
-credits. An existing `@mail.openonion.ai` mailbox can keep its exact address;
-otherwise select the domain and alias offered by the tier:
+Paid tiers raise the monthly send quota and deduct the price from credits.
+An existing `@mail.openonion.ai` mailbox can keep its exact address on Plus:
 
 ```bash
-co email upgrade plus --keep-address                          # keep the current hosted address
-co email upgrade plus --domain steadmail.com --alias support  # plus, new hosted address
-co email upgrade pro  --domain mail.acme.com --alias support  # pro + a mailbox alias
+co email upgrade plus --keep-address
 ```
+
+Adding another mailbox uses `co email setup`, independently of the quota tier.
+For a new hosted tier address, first check `co email domains`: only enabled
+domains can be selected. An upgrade does not provision DNS for an arbitrary
+external domain.
 
 **Options**
-- `--keep-address` — preserve the current `@mail.openonion.ai` address (plus only)
-- `--domain, -d` — sending domain (required unless `--keep-address` is used)
-- `--alias, -a` — mailbox alias, e.g. `support` → `support@mail.acme.com`
+- `--keep-address` — preserve the current `@mail.openonion.ai` tier address (Plus only)
+- `--domain, -d` — enabled sending domain; Plus requires one unless keeping the address
+- `--alias, -a` — mailbox alias to use with a domain
 
-Leave out both the domain and `--keep-address` and the upgrade is rejected
-before anything is charged:
-
-```bash
-$ co email upgrade plus
-✗ Domain required for plus tier
-```
-
-On success the server returns your tier address, monthly quota, and remaining
-balance — values that reflect your account, not fixed doc numbers.
+The response includes the tier address, monthly quota and remaining balance.
+An existing selected default sender stays in place; change it explicitly with
+`co email default <address>`.
 
 ## Setup
 
