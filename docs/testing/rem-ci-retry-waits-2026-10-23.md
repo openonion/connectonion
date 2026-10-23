@@ -42,7 +42,13 @@ PYTHONPATH=. TERM=xterm-256color OPENONION_API_KEY=test-key python -m pytest \
 ```
 
 The key is a fixed non-secret test fixture value. No provider or model is called.
-Related/full regression, independent exact-head review and remote CI: pending.
+The full affected files passed 240 tests in 3.76 seconds. Full documented offline
+CI scope on frozen370f402420a201d92654517a0056dd7dac6ae5f0 passed 17,093 tests,
+334 skipped, 7 warnings, 159.54 seconds. Independent AI review approved that exact
+head. The subsequent journal/evidence update changes no test or production bytes.
+Remote exact-head CI remains required. The initial blog-gate failed because it
+requires a docs/blog change for every PR. The existing performance journal is
+updated with the measured lesson; no waiver or new standalone thin post is used.
 
 ## Limits and remaining work
 
