@@ -260,6 +260,7 @@ def _logged(root, record, phase, call, quiet=False):
                    instructions_chars=_by_stage(result.get("instructions_chars"), phase),
                    evidence=result.get("evidence") or [], report=result.get("report") or "",
                    **{key: result[key] for key in ("hedged_lines", "rounds", "refused_rounds") if result.get(key)})
+        run.update({key: result[key] for key in ("mode", "feedback_items", "feedback_deferred") if key in result})
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
         if not quiet:

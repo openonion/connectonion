@@ -2040,6 +2040,90 @@ def prefill_project_dates(page: str, line_items: list[dict]) -> str:
     return head + marker + f'- [{number}] {history["source"]} — {history["timestamp"][:10]}\n' + sources
 
 
+def _feedback_without_new_raw(root: Path, record: str, config: dict, coverage: list[str], *,
+                              runner=None, max_calls=None, read_before="", retry_refused=False,
+                              stage_progress=None) -> dict | None:
+    """One explicit target's pending assertions, without claiming new research.
+
+    Select/checkpoint under lock, but leave native model reasoning outside it;
+    run_stage compares its page snapshot while holding the promotion lock.
+    """
+    if read_before:
+        return None  # A historical deepen keeps its requested date boundary.
+    from . import feedback
+    from . import facts
+    from .refusals import mark_retried, refused_for
+    from .runner import RunFailed, maintenance_instructions, run_stage
+
+    notebook = Notebook(root)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        progress = read_json(state_path(root, "progress.json"), {})
+        candidates, deferred = feedback.plan(root, progress, retry_pages=[record] if retry_refused else ())
+        candidates = [{**item, "feedback_pending_targets": [record]} for item in candidates
+                      if record in item["feedback_pending_targets"]]
+        deferred = [row for row in deferred if row["record"] == record]
+        if not candidates:
+            if deferred:
+                raise RemError("Feedback remains pending for " + record + ": " + deferred[0]["reason"] +
+                               ". No new raw material was found and no model was called.")
+            return None
+        if max_calls is not None and max_calls < 1:
+            raise RemError("Insufficient call budget for pending feedback; page and feedback preserved")
+        original = notebook.read(record)
+        facts_before = facts.coverage(original, record)
+        page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
+                "expected_page_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                "text": "The page as it stands. Assess the attributed assertions; preserve supported facts.\n\n" +
+                        original}
+        room = config["limits"]["input_chars_per_batch"] - len(maintenance_instructions("")) - 1000
+        used = len(json.dumps(page, ensure_ascii=False))
+        selected = []
+        for item in candidates:
+            size = len(json.dumps(item, ensure_ascii=False)) + 2
+            if used + size > room or len(selected) >= config["limits"]["extract_items_per_batch"]:
+                deferred.append({"record": record, "source": item["source"],
+                                 "reason": "Feedback exceeds this turn's input budget"})
+                continue
+            selected.append(item)
+            used += size
+        if not selected:
+            raise RemError("Pending feedback exceeds the maintenance input budget; page and feedback preserved")
+        execute = runner or run_stage
+        getattr(execute, "preflight", lambda: None)()
+        held = refused_for(root, record)
+        if all(feedback.same_revision(held, item) for item in selected):
+            mark_retried(root, record)
+    try:
+        if stage_progress:
+            stage_progress("processing attributed feedback")
+        # Default native promotion obtains its own lock and checks the snapshot.
+        # Custom investigation callbacks keep the existing stage keyword contract.
+        result = execute(notebook, [page, *selected], config, stage="maintain")
+    except RunFailed as error:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            progress = read_json(state_path(root, "progress.json"), {})
+            feedback.finish(root, progress, selected, record, {"refused": str(error)})
+        raise
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        progress = read_json(state_path(root, "progress.json"), {})
+        feedback.finish(root, progress, selected, record, result)
+    if result.get("refused"):
+        raise RunFailed(str(result["refused"]), result.get("usage"))
+    current = facts.coverage(notebook.read(record), record)
+    return {"record": record, "mode": "feedback_only", "items": 0, "items_available": 0,
+            "feedback_items": len(selected), "feedback_deferred": deferred,
+            "quick": False, "chars_gathered": 0, "tokens_estimated_in": 0,
+            "coverage": [*coverage, "Attributed feedback processed; no new original-source investigation"],
+            "changed": result.get("changed", []), "usage": result.get("usage"),
+            "usage_by_stage": {"maintain": result.get("usage")},
+            "report": "Feedback only; no new originals investigated. " + str(result.get("report") or ""),
+            "threads": result.get("threads", []),
+            "evidence": [{key: item[key] for key in ("source", "timestamp") if key in item}
+                         for item in selected],
+            "facts": {"before": facts_before, "after": current, "extracted": 0},
+            "instructions_chars": {"maintain": result.get("instructions_chars")}}
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -2143,6 +2227,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                 "provider-thread comparison; comparison is old evidence, not new contact")
             items = [*fresh, *comparison]
     if last and not items and not record.startswith("projects/"):
+        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                    max_calls=max_calls, read_before=read_before,
+                                                    retry_refused=retry_refused, stage_progress=stage_progress)
+        if feedback_result is not None:
+            return feedback_result
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
@@ -2191,6 +2280,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads and not project_roots:
+        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                    max_calls=max_calls, read_before=read_before,
+                                                    retry_refused=retry_refused, stage_progress=stage_progress)
+        if feedback_result is not None:
+            return feedback_result
         # Nothing about the subject, so nothing to write from: the page and the
         # coverage note are not material (#1974).
         raise _nothing_found(record, subject, coverage, me=sent_only)
@@ -2241,6 +2335,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
                 item["source"] in cited for item in repository_items)
             if same:
+                feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                            max_calls=max_calls, read_before=read_before,
+                                                            retry_refused=retry_refused, stage_progress=stage_progress)
+                if feedback_result is not None:
+                    return feedback_result
                 raise _nothing_new(record, subject, coverage, last)
         items += repository_items[len(line_items):]
     gathered_sources.update(item["source"] for item in repository_items)
