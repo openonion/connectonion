@@ -40,3 +40,23 @@ process restart, real notebook mutation or denied-preview workaround. Logical
 reader contracts are not native desktop/phone/focus/accessibility acceptance.
 Provider request count, actual cancellation of subprocess children and factual
 memory quality remain unmeasured. Issue1990 is not closed on this candidate.
+
+
+The first exact-head full run on f7bb reported2failures/17112passed/334skipped:
+the CLI exact-key contract needed to cover the new additive execution_today field;
+the unrelated Lark lifetime test rejected600 in an arbitrary pytest-5600 config
+path. The latter reproduced with a dedicated600-named test root. Its assertion
+now normalizes only the fixture path, preserving all lifetime checks; no product
+auth behavior, test marker, timeout or gate is waived. The CLI contract now also
+asserts unknown execution for the legacy fixture rather than inferring from tokens.
+
+Persisting translations while running also requires the existing pid/host marker
+for normal dead-process diagnosis. A new native-boundary live-record regression
+failed before adding running_marker; this does not prove actual subprocess child
+cancellation. Final head needs its own affected/full and independent review.
+
+A storage-failure control found the new outer OSError conversion could call a
+post-harness receipt-write error a start failure. Its synthetic regression failed;
+conversion now surrounds only preparation/subprocess start, preserving the storage
+error after a returned harness. No automatic retry or invocation success is inferred
+from a missing final receipt. The repaired789-suite precedes this final narrow fix.

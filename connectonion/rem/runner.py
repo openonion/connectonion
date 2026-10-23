@@ -283,17 +283,17 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: st
         command = [*preflight(), "ai", "--json", *harness_flags(config, stage),
                    *(["--resume", session] if session else []), prompt]
         env = child_env(config)
-        with harness_attempt(stage):
-            try:
-                completed = subprocess.run(command, cwd=str(workspace.resolve()), capture_output=True,
-                                           text=True, timeout=process_timeout, env=env)
-            except subprocess.TimeoutExpired as error:
-                raise RunFailed(f"co ai timed out after {timeout}s; source progress was preserved") from error
-            except OSError as error:
-                raise RunFailed(f"co ai could not start: {error}") from error
-            return _task_result(completed, config)
     except OSError as error:
         raise RunFailed(f"co ai could not start: {error}") from error
+    with harness_attempt(stage):
+        try:
+            completed = subprocess.run(command, cwd=str(workspace.resolve()), capture_output=True,
+                                       text=True, timeout=process_timeout, env=env)
+        except subprocess.TimeoutExpired as error:
+            raise RunFailed(f"co ai timed out after {timeout}s; source progress was preserved") from error
+        except OSError as error:
+            raise RunFailed(f"co ai could not start: {error}") from error
+        return _task_result(completed, config)
 
 
 def _task_result(completed, config):

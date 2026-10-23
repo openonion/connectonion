@@ -190,3 +190,35 @@ def test_interrupt_records_failed_wrapper_attempt_and_restores_scope(notebook, m
     other = {'id':'run_other'}
     with capture(other, state_path(notebook, 'runs/run_other.json')):
         assert 'parent_run_id' not in other
+
+
+def test_running_translation_uses_existing_process_liveness_marker(notebook, monkeypatch):
+    import os
+    boundary(monkeypatch)
+    def process(command, **options):
+        [log] = service.run_logs(notebook)
+        assert log['pid'] == os.getpid() and log['host']
+        assert service.seen_outcome(log) == 'running' and log['execution']['in_flight'] == 1
+        from pathlib import Path
+        (Path(options['cwd'])/'translation.md').write_text(CHINESE)
+        return SimpleNamespace(returncode=0, stderr='', stdout='{"outcome":"natural"}')
+    monkeypatch.setattr(runner.subprocess, 'run', process)
+    tr.translate(notebook, 'people/avery-lin.md', 'zh')
+
+
+def test_receipt_write_failure_after_harness_return_does_not_claim_start_failure(notebook, monkeypatch):
+    from connectonion.rem import execution
+    from connectonion.rem.files import state_path
+    calls = boundary(monkeypatch)
+    actual_write, writes = execution.write_json, []
+    def fail_receipt(path, record):
+        writes.append(True)
+        if len(writes) == 2:
+            raise OSError('fixture receipt write unavailable')
+        return actual_write(path, record)
+    monkeypatch.setattr(execution, 'write_json', fail_receipt)
+    record = {'id':'run_storage'}
+    with pytest.raises(OSError, match='receipt write'), execution.capture(
+            record, state_path(notebook, 'runs/run_storage.json')):
+        runner.run_task(notebook, 'fixture', read_config(notebook), 'maintain')
+    assert len(calls) == 1 and record['execution']['completed'] == 1

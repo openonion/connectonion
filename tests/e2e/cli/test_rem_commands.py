@@ -811,9 +811,12 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
     data = json.loads(invoke(tmp_path, '--json', 'status').output)
     assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' investigate people')
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
-                                 'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
+                                 'worker', 'batches_today', 'runner_attempts_today', 'execution_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota'}
+    evidence = data['data']['execution_today']
+    assert evidence['attempts'] == 0 and evidence['records_without_evidence'] == 1
+    assert evidence['records_with_evidence'] == 0 and evidence['provider_model_calls'] is None
 
 
 @pytest.mark.parametrize('ordinary_pending', [False, True])

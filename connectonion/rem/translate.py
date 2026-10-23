@@ -146,6 +146,7 @@ def translate(root: Path, record: str, language: str) -> str:
 def _run_translation(root, record, language, config, text):
     from .languages import owner_languages
     from .runner import run_task
+    from .service import running_marker
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
@@ -154,7 +155,7 @@ def _run_translation(root, record, language, config, text):
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
     run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "running",
-           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0, **running_marker()}
     started = monotonic()
     from . import execution
     token = execution.begin(run, state_path(root, f"runs/{run['id']}.json"))
