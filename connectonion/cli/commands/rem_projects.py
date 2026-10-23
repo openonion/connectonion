@@ -53,6 +53,9 @@ def _refresh(root, full: bool, recent_days: int) -> dict:
     if report["created"]:
         rem_look.line(f"co rem projects: made {_count(len(report['created']), 'project page')} for folders active "
                    f"in the last {recent_days} days: " + ", ".join(report["created"]), err=True)
+    if report.get("conflicts"):
+        rem_look.line("co rem projects: conflicting content; kept stored messages: "
+                      + ", ".join(report["conflicts"]), err=True)
     return report
 
 
@@ -94,7 +97,8 @@ def add_projects_app(rem, factory, handle, logged) -> None:
             rows = queue(root, recent_days=recent_days)
             if ctx.obj["json"]:
                 return ({"order": rows, "estimate": estimate(rows), "workspace": report["workspace"],
-                         "created": report["created"], "unmapped": report["unmapped"]},
+                         "created": report["created"], "unmapped": report["unmapped"],
+                         "conflicts": report.get("conflicts", [])},
                         ["projects", "write"] if rows else ["list", "projects"])
             if not rows:
                 return "\n".join([NOTHING, *_left_line(report, recent_days)]), ["list", "projects"]
