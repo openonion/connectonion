@@ -1,4 +1,4 @@
-# co rem — 1.9.0 stable guide
+# co rem — command guide
 
 **Start in one command:** `co rem init` maps the last 180 days and investigates
 every eligible page. Run `co rem status` to see coverage and `co rem open` to
@@ -8,7 +8,7 @@ Jump to [Start here](#start-here) · [Commands](#commands) ·
 [Source controls](#source) · [Scheduling](#scheduling-and-accounting) ·
 [Reader layout](#what-the-reader-shows).
 
-Updated 2026-10-07 for stable **1.9.0**. The exact commands are
+Check your installed release. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
@@ -866,7 +866,7 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-On macOS, Codex notebooks default to **Codex desktop Scheduled** when the app
+In opt-in preview **1.9.3rc19**, Codex notebooks default to **Codex desktop Scheduled** when the app
 is installed and the notebook timezone matches this computer. The desktop
 adopts a private local automation definition; there is no public App Server
 schedule RPC in the tested version. Keep the app open and computer awake.
