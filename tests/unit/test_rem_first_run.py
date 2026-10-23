@@ -258,7 +258,7 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
 
     monkeypatch.setattr(rem_commands, '_start_consent', consent)
     monkeypatch.setattr('typer.confirm', lambda *args, **kwargs: prompts.append(args) or True)
-    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda: SimpleNamespace(
+    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda *args, **kwargs: SimpleNamespace(
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output

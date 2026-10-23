@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc20
+## Current Version: 1.9.3rc21
+
+1.9.3rc21 moves eligible Codex notebooks on macOS to Codex desktop Scheduled.
+The native file must be adopted before an old timer is removed; failed adoption,
+failed unload and a running old batch retain the prior clock. The native wrapper
+and internal REM conversations archive after completion. The tested desktop uses
+its local wall clock; other timezones, headless Macs and other runners retain
+launchd with that boundary stated. Status distinguishes configuration, native
+adoption, trigger evidence and REM outcomes. Stable remains 1.9.2 and Python
+3.11+ is required. See [1.9.3rc21 notes](docs/releases/1.9.3rc21.md).
+
+- 1.9.3rc21 (native Codex REM clock, verified handoff, archival and scheduling diagnostics).
+
+### Previous candidate: 1.9.3rc20
 
 Repeat email setup recognizes an address the account already owns before
 checking which domains currently accept new purchases. A closed setup domain

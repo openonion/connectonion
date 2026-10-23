@@ -431,8 +431,13 @@ Usage:    co rem start [--yes]
 Example:  co rem start
           --yes approves without the prompt. Use it only after you have read the summary once.
 
-Effects:  Installs a launchd job (macOS) that runs `co rem sync --scheduled` at the
-          times in co rem config (default 03:00 04:00 06:00 17:00 18:00 19:00 local).
+Effects:  On macOS, Codex notebooks use Codex desktop Scheduled when the app is
+          installed and the saved timezone matches this computer. Keep the app
+          open and computer awake. Other runners, headless Macs and different
+          saved timezones use launchd. Both run `co rem sync --scheduled` at the
+          saved times (default 03:00 04:00 06:00 17:00 18:00 19:00 local).
+          Native registration is checked before removing an old timer; a running
+          old batch is kept. Status distinguishes registration from execution.
           Each run reads new mail bodies and sessions and calls the model, at most
           `runner_calls_per_day` times a day. Nobody watches those runs, so the
           model is confined: Codex gets --sandbox workspace-write, Claude Code
@@ -449,7 +454,7 @@ Back:     co rem --help
 ## co rem stop
 
 ```
-Turn daily upkeep off by removing the schedule. Pages, source approvals and manual
+Turn daily upkeep off by pausing its native task or removing its OS job. Pages, source approvals and manual
 co rem sync all stay.
 
 Usage:    co rem stop

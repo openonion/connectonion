@@ -25,6 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc21** moves eligible Codex notebooks on macOS to
+Codex desktop Scheduled, verifies registration before replacing the old clock,
+and archives completed maintenance conversations. Other timezones, headless Macs
+and other runners retain launchd. Keep the app open and computer awake.
+Stable remains **1.9.2**; this preview requires Python **3.11+**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc21'
+```
+
+See [the preview notes](releases/1.9.3rc21.md) and their native execution evidence.
+
+## Previous previews
+
 Release candidate **1.9.3rc20** recognizes already-owned addresses during
 repeat email setup even if that domain no longer accepts new purchases. It
 retains multi-address setup, domain discovery, account-wide defaults and the
@@ -37,7 +51,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc20'
 See [the preview notes](releases/1.9.3rc20.md). Currently enabled choices come
 from the cloud; unready reserved domains are not offered for new purchases.
 
-## Previous previews
 
 Release candidate **1.9.3rc19** strengthens mailbox setup regression coverage:
 no purchase after authentication/settings failures or for domains the backend

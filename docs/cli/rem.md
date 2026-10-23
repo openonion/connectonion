@@ -1,4 +1,4 @@
-# co rem — 1.9.0 stable guide
+# co rem — command guide
 
 **Start in one command:** `co rem init` maps the last 180 days and investigates
 every eligible page. Run `co rem status` to see coverage and `co rem open` to
@@ -8,7 +8,7 @@ Jump to [Start here](#start-here) · [Commands](#commands) ·
 [Source controls](#source) · [Scheduling](#scheduling-and-accounting) ·
 [Reader layout](#what-the-reader-shows).
 
-Updated 2026-10-07 for stable **1.9.0**. The exact commands are
+Check your installed release. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
@@ -866,10 +866,29 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-launchd invokes the resolved `co rem --root ... sync --scheduled` CLI every
-five minutes, with PATH entries for co and installed delegates. Saved local
-time slots determine whether a batch is due. Repeated start reloads one job;
-missed slots coalesce into one catch-up. No permanent co rem daemon is added.
+In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Scheduled** when the app
+is installed and the notebook timezone matches this computer. The desktop
+adopts a private local automation definition; there is no public App Server
+schedule RPC in the tested version. Keep the app open and computer awake.
+Completed native wrapper conversations and REM's internal Codex calls are
+archived, retaining their trace IDs without filling active project history.
+
+`co rem start` stages a paused task and verifies native index adoption before
+removing an old launchd clock. A running old batch or failed registration leaves
+the previous clock intact. Run start again after that batch finishes or Codex
+initializes. `status` distinguishes registration, first execution, a stopped app,
+an overdue trigger and a failed REM pass; a file alone is not a working schedule.
+`stop` pauses the native task and retains its history. It does not cancel a native
+model turn already in progress.
+
+Other runners, headless Macs and saved timezones different from the desktop retain
+launchd. Its five-minute tick keeps the saved timezone and coalesces missed slots.
+The native desktop uses its own local wall clock and startup/missed-run behavior;
+REM coalesces overdue saved slots when the next native trigger reaches the CLI.
+Exact time pairs use one rule with position selection, avoiding extra combinations.
+Spring DST gaps move forward by the gap; a repeated hour is served once, at its
+first occurrence. Moving the computer to another timezone needs `co rem start`
+to select the matching scheduler. No REM timer daemon is added.
 
 The job imports the checkout that ran `co rem start` when that is a source
 checkout, and nothing for an installed package; it never copies the shell's
@@ -1710,9 +1729,10 @@ crash can leave a thread active; existing history is not bulk-archived. They lea
 remain available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
-This is separate from scheduling: REM still uses launchd on macOS. Codex App
-Scheduled is not a public App Server scheduling API; native schedule migration
-has not been enabled by this change.
+History archiving also applies when launchd owns the timer. In rc21, eligible
+Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
+for eligibility and fallback. Registration uses the desktop's task file format;
+Scheduled is not a public App Server scheduling API.
 
 ### Unchanged-content audit continuity (1.9.3rc17, #2639)
 

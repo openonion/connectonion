@@ -1,0 +1,56 @@
+{
+  "observed_at": "2026-10-23T07:56:56.614052+00:00",
+  "native_app_version": "26.924.22138",
+  "candidate_runtime_source": "dc91cbe28bdd85a0c14f0f88a85251c9f2858071",
+  "file_adapter": "legacy local automation.toml",
+  "native_database_registration_writes": 0,
+  "manual_marker_or_sync_invocations": 0,
+  "marker_runs": [
+    {
+      "thread_id": "01a16782-7d4d-7a12-a9fa-0bb9a209dde8",
+      "status": "ARCHIVED",
+      "archived_reason": "auto"
+    },
+    {
+      "thread_id": "01a16785-9209-7901-83db-25091bfd4ed1",
+      "status": "ARCHIVED",
+      "archived_reason": "auto"
+    },
+    {
+      "thread_id": "01a16787-284b-7a81-951e-770fbb896581",
+      "status": "ARCHIVED",
+      "archived_reason": "auto"
+    }
+  ],
+  "final_candidate_native_cli": {
+    "task_id": "co-rem-caa27247babf",
+    "target": "2026-10-23T18:53:34.980037+11:00",
+    "passed": true,
+    "outcome": "no_change",
+    "native_runs": [
+      {
+        "thread_id": "01a167c1-0c0a-7242-973f-3ebb5cef56ec",
+        "status": "ARCHIVED",
+        "archived_reason": "auto"
+      }
+    ],
+    "authorized_body_sources": 0,
+    "paused_after_success": true
+  },
+  "production_migration": {
+    "legacy_unloaded": true,
+    "native_active_adopted": true,
+    "served_slot_history_preserved": true,
+    "active_batch_graceful_interrupt_exit": 130,
+    "native_triggered_at_ms": 1792742517096,
+    "native_run_status": "IN_PROGRESS",
+    "native_thread_id": "01a167c7-e9be-7770-8398-c954d846db43",
+    "maintenance_completion_claimed": false
+  },
+  "limitations": [
+    "Native desktop UI not inspected",
+    "Remote-project presentation not inspected",
+    "Sleep/wake not tested",
+    "Next production pass separate from isolated CLI trial"
+  ]
+}
