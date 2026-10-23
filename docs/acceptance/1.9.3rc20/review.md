@@ -33,3 +33,9 @@ Five replacement production captures visibly identify rc20; the earlier rc19
 prototype captures were replaced. A final rule-bound check rejects unsupported
 BYSETPOS values before altering either clock; its focused regression is covered
 in the final227-case CLI/version/scheduler/handoff selection, which passed.
+
+The final waiting-instruction review found no new code blocker. The monitored
+180-second native probe returned terminal exit0 and archived after completion;
+full production completion remains unverified. A subsequent docs review caught
+an inherited paragraph claiming native scheduling was disabled. Both guide
+copies now describe rc20 eligibility and link the scheduling section.

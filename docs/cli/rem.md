@@ -1729,9 +1729,10 @@ crash can leave a thread active; existing history is not bulk-archived. They lea
 remain available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
-This is separate from scheduling: REM still uses launchd on macOS. Codex App
-Scheduled is not a public App Server scheduling API; native schedule migration
-has not been enabled by this change.
+History archiving also applies when launchd owns the timer. In rc20, eligible
+Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
+for eligibility and fallback. Registration uses the desktop's task file format;
+Scheduled is not a public App Server scheduling API.
 
 ### Unchanged-content audit continuity (1.9.3rc17, #2639)
 
