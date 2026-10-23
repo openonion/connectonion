@@ -988,11 +988,15 @@ class LikeGraph(Quiet):
     def get_email_body(self, i): return f"--- Email Body ---\nbody {i}"
 
 
-def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_still_read():
+def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_still_read(monkeypatch):
     """#1981: one Graph 500 ended every org investigation before Gmail was asked."""
+    slept = []
+    monkeypatch.setattr("time.sleep", slept.append)
+
     class Broken(LikeGraph):
         def list_with(self, address, start, end, **kw):
             from connectonion.provider_credentials import ProviderCredentialError
+            self.asked.append(address)
             raise ProviderCredentialError("provider_unavailable", "Microsoft Graph API error (HTTP 500).",
                                           "co outlook inbox", status=500)
 
@@ -1001,9 +1005,11 @@ def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_stil
             self.asked.append(address)
             return LikeGraph.list_with(self, "unsw", start, end)
 
-    gmail = Gmail()
-    items, coverage = inv.gather("UNSW", ["unsw.edu.au"], days=90, clients={"outlook": Broken(), "gmail": gmail},
+    gmail, broken = Gmail(), Broken()
+    items, coverage = inv.gather("UNSW", ["unsw.edu.au"], days=90, clients={"outlook": broken, "gmail": gmail},
                                  subscriptions={}, record="orgs/unsw.md")
+    assert slept == [1, 2, 4, 8]  # No sleep after the fifth and final failure.
+    assert broken.asked == ["unsw"] * 5  # Graph uses its root-domain query.
     assert gmail.asked[0] == "unsw.edu.au"          # Gmail takes the bare domain
     assert any(l.startswith("outlook") and "server search failed (HTTP 500); not searched" in l for l in coverage)
     assert [i["text"].split("\n")[-1] for i in items] == ["body 1"]

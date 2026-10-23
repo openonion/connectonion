@@ -92,12 +92,16 @@ def test_all_history_finds_old_people_and_splits_full_provider_listings():
 
 
 @pytest.mark.parametrize("failure", [ssl.SSLError, ConnectionError])
-def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure):
+def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure, monkeypatch):
     from connectonion.rem.map import _mail_rows
+
+    slept, failed_windows = [], []
+    monkeypatch.setattr("connectonion.rem.mail.time.sleep", slept.append)
 
     class Interrupted(Box):
         def list_between(self, start, end, n):
             if start[:4] >= "1999":
+                failed_windows.append((start, end, n))
                 raise failure("connection lost")
             return super().list_between(start, end, n)
 
@@ -117,6 +121,8 @@ def test_all_history_keeps_completed_years_after_a_later_connection_failure(fail
                            coverage, errors, inventory=inventory, all_history=True)
     assert {person["address"]: person["mails"] for person in people} == {
         "old@example.org": 1, "other@example.org": 1}
+    assert slept == [2, 4, 8]  # No sleep after the fourth and final failure.
+    assert len(failed_windows) == 4 and len(set(failed_windows)) == 1
     assert len(errors) == 1 and errors[0]["stage"] == "metadata-window"
     assert errors[0]["start"].startswith("1999")
     assert any("outlook" in note and "incomplete" in note for note in coverage)
