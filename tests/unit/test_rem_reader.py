@@ -1817,7 +1817,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
-        'briefHeader', 'morningBrief', 'recallPrompt', 'translationNotice'])
+        'inputCoverage', 'briefHeader', 'morningBrief', 'recallPrompt', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
@@ -1825,6 +1825,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const byActivity = () => 0, sourceName = value => value, calendarDay = value => value.slice(0, 10);
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
+      const num = String;
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
       const remCommand = args => 'co rem ' + args;
       REM.status = {state: 'Stopped — background maintenance is off'};
@@ -1845,13 +1846,13 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
         returning, noPass: firstBuild()}));
     ''')
     assert result['first'] is True and result['returning'] is False and result['noPass'] is False
-    assert result['header']['children'][2]['children'][0].startswith('Built today: read ')
+    assert result['header']['children'][2]['children'][0].startswith('Built today: ')
     assert 'overnight' not in result['header']['children'][1]['text']
     assert result['brief']['children'][1]['text'] == 'Your notebook was just built. Overnight changes appear here after the next update.'
     assert result['brief']['children'][2]['children'][1]['command'] == 'co rem start'
     assert len(result['scheduled']['children']) == 2
     assert result['recall'] is None
-    assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：读取 ')
+    assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：')
     assert result['notice']['children'][0] == '大部分页面还没有中文版本，目前显示英文原文。'
     assert result['notice']['children'][1]['command'] == 'co rem translate --all'
     assert result['enough'] is None

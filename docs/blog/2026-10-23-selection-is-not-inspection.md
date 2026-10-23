@@ -37,3 +37,8 @@ This remains a candidate stacked on the partial-source repair. Public/installed
 baseline is 1.9.3rc16. No real notebook was rewritten and no provider, model or
 scheduled run was started. Native desktop/phone and accessibility, actual model
 usefulness and complete historical source coverage remain unverified.
+
+Independent review found the homepage headline still using the old “read” count.
+The headline now uses the same validated recorded-input label, including unknown
+counts, as the night summary and Activity. First-build and returning copy are
+checked in both interface languages; this is not native visual acceptance.

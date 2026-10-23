@@ -51,3 +51,10 @@ keyboard/focus or screen-reader acceptance. No native REM preview/HTTP/CDP/brows
 renderer/screenshot workaround, fresh init/provider/model/scheduler execution or
 real notebook mutation. Model inspection and mature-product usefulness remain
 unmeasured; issue2045 and native/release gates remain open.
+
+Independent review caught a missed primary consumer: the homepage header still
+said read N from pass.items. Twelve composed first/returning, partial/missing/
+daily-parent and EN/ZH header cases failed before routing that header through the
+same coverage projection. Its existing details link and focus action are retained.
+The pre-header candidate passed 17,127 tests (334 skipped); that historical run
+is not evidence for the amended head. Native acceptance remains pending.

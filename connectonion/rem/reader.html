@@ -1475,6 +1475,8 @@ const UI = {
     "No source rows recorded": "未记录来源明细",
     "Local notes": "本地笔记",
     "Feedback": "反馈",
+    "Built today: {inputs} · wrote {m} pages · ": "今天建立：{inputs} · 写入 {m} 个页面 · ",
+    "Last night: {inputs} · rewrote {m} pages · ": "昨晚：{inputs} · 更新 {m} 个页面 · ",
     "{n} recorded inputs": "{n} 项已记录输入",
     "{n} recorded input": "{n} 项已记录输入",
     "{n} recorded inputs + unknown": "{n} 项已记录输入，另有数量未知",
@@ -4179,7 +4181,7 @@ function briefHeader(counts, today) {
       processing.scrollIntoView({ block: "start" });
       processing.querySelector("summary").focus();
     };
-    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: read {n} items · wrote {m} pages · " : "Last night: read {n} items · rewrote {m} pages · ", { n: pass.items, m: pass.changed.length }), details]));
+    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: {inputs} · wrote {m} pages · " : "Last night: {inputs} · rewrote {m} pages · ", { inputs: inputCoverage(pass.runs).label, m: pass.changed.length }), details]));
   }
   return header;
 }

@@ -114,3 +114,18 @@ def test_source_names_remain_literal_table_text(source):
 def test_legacy_and_current_gathering_counts_preserve_queue_compatibility(word):
     from connectonion.rem.queue import _material_read
     assert _material_read([f"gmail: 2 bodies {word}, 1 attachments {word}"]) == 3
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("first", [True, False])
+@pytest.mark.parametrize("override,expected_en,expected_zh", [
+    ({"items_by_source":{"codex":12}}, "12 recorded inputs", "12 项已记录输入"),
+    ({"items":None}, "Input count not recorded", "未记录输入数量"),
+    ({"phase":"daily-investigation", "items":0, "sources":[]}, "Input count not recorded", "未记录输入数量"),
+])
+def test_home_header_uses_validated_coverage(language, first, override, expected_en, expected_zh):
+    result = partial_reader(language=language, first=first, run_override=override)
+    text = json.dumps(result["header"], ensure_ascii=False)
+    assert (expected_zh if language == "zh" else expected_en) in text
+    assert "read " not in text and "读取 " not in text
+    assert ("今天建立" if first else "昨晚") in text if language == "zh" else ("Built today" if first else "Last night") in text
