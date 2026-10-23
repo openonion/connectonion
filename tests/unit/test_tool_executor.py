@@ -114,6 +114,28 @@ class TestToolExecutor:
         assert trace["status"] == "success"
         assert "summary" not in trace
 
+    def test_error_hint_names_the_model_arguments_before_runtime_changes(self):
+        received = {}
+
+        def sample_tool(value: int, agent) -> int:
+            received.update(value=value, agent=agent)
+            raise ValueError("invalid input; no action performed")
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+        agent = FakeAgent()
+        arguments = {"value": 5, "summary": "Validate the sample value"}
+        trace = execute_single_tool(
+            "sample_tool", arguments, "call-error-summary", tools, agent,
+            Logger("test-agent", log=False),
+        )
+
+        assert received == {"value": 5, "agent": agent}
+        assert trace["status"] == "error"
+        assert "you_provided=['value', 'summary']" in trace["result"]
+        assert trace["summary"] == arguments["summary"]
+        assert arguments == {"value": 5, "summary": "Validate the sample value"}
+
     def test_summary_is_normalised_and_bounded_before_it_reaches_the_trace(self):
         def sample_tool() -> str:
             return "ok"
