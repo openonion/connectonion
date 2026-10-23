@@ -8,7 +8,7 @@ from connectonion.rem.reader import TEMPLATE
 from test_rem_reader import _run_reader_js
 
 
-def search_result(query, selected="", *, hidden=True, unique=False):
+def search_result(query, selected="", *, hidden=True, unique=False, no_details=False):
     page = TEMPLATE.read_text()
     names = ["search", "listedRecords", "identityChoices", "identityDetails"]
     functions = "\n".join(match.group(0) for name in names
@@ -24,6 +24,7 @@ def search_result(query, selected="", *, hidden=True, unique=False):
         {path:'people/service.md', title:'River Lane', category:'people', service:true, text:''},
       ]};
       if (UNIQUE) REM.records.splice(1, 1);
+      if (NO_DETAILS) REM.records.forEach(r => {r.text = "";});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children,
         appendChild(x) {this.children.push(x);}});
       const href = r => '#r=' + encodeURIComponent(r.path), label = c => c;
@@ -40,6 +41,7 @@ def search_result(query, selected="", *, hidden=True, unique=False):
       console.log(JSON.stringify(rows));
     '''
     script = script.replace("HIDDEN", json.dumps(hidden)).replace("UNIQUE", json.dumps(unique))
+    script = script.replace("NO_DETAILS", json.dumps(no_details))
     script = script.replace("QUERY", json.dumps(query)).replace("SELECTED", json.dumps(selected))
     return _run_reader_js(functions + script)
 
@@ -102,7 +104,7 @@ def test_identity_details_use_original_visible_facts_without_poisoning_translati
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, UNFILLED_LINE = /^not investigated$/;
       const youify = s => s;
       const document = {documentElement: {classList: {contains: () => true}}};
-      const original = '# River Lane\n\n## Facts\n- Company: [North Studio](../orgs/north.md) [1]\n- Email: secret@example.test [personal]\n- Role: Private role [sensitive]\n- Status: Unknown';
+      const original = '# River Lane\n\n## Facts\n- Company: [North Studio](../orgs/north.md) (former) [1]\n- Role: Engineer (2019)\n- Email: secret@example.test [personal]\n- Phone: Private phone [sensitive]\n- Status: Unknown';
       const translated = '# River Lane\n\n## Facts\n- Company: Wrong translated identity';
       const r = {path:'people/river.md', text:translated, original, translations:{zh:translated}, readLanguage:'zh'};
       const before = parseFacts(r).get('Company')[0].value;
@@ -110,7 +112,7 @@ def test_identity_details_use_original_visible_facts_without_poisoning_translati
       const after = parseFacts(r).get('Company')[0].value;
       console.log(JSON.stringify({before, choices, after, unchanged:r.text === translated}));
     ''')
-    assert result == {"before":"Wrong translated identity", "choices":[["Company", "North Studio"]],
+    assert result == {"before":"Wrong translated identity", "choices":[["Company", "North Studio (former)"], ["Role", "Engineer (2019)"]],
                       "after":"Wrong translated identity", "unchanged":True}
 
 
@@ -124,3 +126,14 @@ def test_related_choice_route_is_passed_to_actual_search_dispatch():
     ''')
     assert result["related"] == "people/river-b.md"
     assert "else if (query) search(query, related);" in page
+
+
+def test_candidates_without_visible_facts_are_explicit_and_descriptions_resolve():
+    result = search_result("related to River Lane", no_details=True)
+    flat = list(nodes(result))
+    links = [n for n in flat if n.get("href", "").startswith("#q=")]
+    assert len(links) == 2
+    for link in links:
+        descriptions = [n for n in flat if n.get("id") == link["aria-describedby"]]
+        assert len(descriptions) == 1
+        assert descriptions[0]["text"] == "No visible identifying details. Open the page to check its sources."

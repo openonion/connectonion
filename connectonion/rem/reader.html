@@ -5878,7 +5878,7 @@ function identityDetails(r) {
   const text = document.documentElement.classList.contains("hide-private") ? unlabelled(original) : original;
   const parsed = parseFacts({ ...r, text, original: text, translations: {}, readLanguage: "" });
   return ["Company", "Role", "Email", "What they do", "Repository", "Status"]
-    .map(name => [name, (parsed.get(name) || []).map(item => plainValue(item.value)).filter(knownValue).join("; ")])
+    .map(name => [name, (parsed.get(name) || []).map(item => plainValue(item.value + (item.qualifier ? " (" + item.qualifier + ")" : ""))).filter(knownValue).join("; ")])
     .filter(([, value]) => value);
 }
 function identityChoices(records, query, related = false) {

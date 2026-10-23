@@ -114,3 +114,10 @@ Best match and route dispatch. These run in Node with logical element stubs; the
 do not verify rendered desktop/phone, tab order, focus or screen reader output.
 No init, collection, model call, scheduled restart or real notebook write occurred.
 Full integration and independent review results are recorded in the PR.
+
+Independent AI review found one further integrity problem: the first chooser
+dropped parsed qualifiers, turning a former company or dated role into an
+unqualified hint. A real-parser regression failed for “(former)” and “(2019)”
+before retaining each qualifier. Translation/cache and private-field controls
+remain in the same regression. The first broad run was stopped for this correction;
+its partial result is not final verification.
