@@ -1271,7 +1271,7 @@ def make_rem_app(factory):
                 from ...rem.service import start
                 try:
                     background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
-                                       scheduler=rem_schedule.default_scheduler(), run_first_batch=False)
+                                       scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False)
                     if not background["started"]:
                         background["reason"] = ("Background upkeep needs approval. Run "
                                                 + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
@@ -1700,7 +1700,7 @@ def make_rem_app(factory):
             return _start_consent(ctx, summary, yes=yes)
 
         def operation(root):
-            result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler())
+            result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler(root, for_start=True))
             if not result["started"]:
                 raise RemError("Start was not confirmed; nothing was read or installed")
             first = result.get("first_batch") or {}
@@ -1723,7 +1723,7 @@ def make_rem_app(factory):
     def stop_rem(ctx: typer.Context):
         from ...rem import schedule as rem_schedule
         from ...rem.service import stop
-        _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler()), ["status"]), ["status"])
+        _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler(root)), ["status"]), ["status"])
 
     @rem.command("status", cls=V("co rem status"))
     def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")):

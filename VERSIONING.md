@@ -400,22 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc17
+## Current Version: 1.9.3rc19
 
-1.9.3rc17 is a backend maintenance release candidate: bounded explicit feedback
-processing without new raw material, stricter inherited-claim audit decisions,
-and faithful supplied-argument names in tool recovery hints. Synthetic retry
-tests record delays instead of waiting. Stable remains 1.9.2; Python 3.11+ and
-rc16's dependency floors are retained. No reader redesign or new real-data/native
-acceptance is claimed. Publication requires the normal release gates. See
-[1.9.3rc17 notes](docs/releases/1.9.3rc17.md).
+1.9.3rc19 moves eligible Codex notebooks on macOS to Codex desktop Scheduled.
+The native file must be adopted before an old timer is removed; failed adoption,
+failed unload and a running old batch retain the prior clock. The native wrapper
+and internal REM conversations archive after completion. The tested desktop uses
+its local wall clock; other timezones, headless Macs and other runners retain
+launchd with that boundary stated. Status distinguishes configuration, native
+adoption, trigger evidence and REM outcomes. Stable remains 1.9.2 and Python
+3.11+ is required. See [1.9.3rc19 notes](docs/releases/1.9.3rc19.md).
 
-Tool error hints list the arguments the model supplied before execution strips
-the presentation `summary`. A supplied summary is no longer reported as missing;
-injected runtime arguments remain excluded. Tool execution, traces and permissions
-are unchanged (#2652).
-
-- 1.9.3rc17 (feedback processing, inherited-claim integrity and faithful error hints).
+Previous candidate 1.9.3rc17 added bounded attributed-feedback processing,
+inherited-claim integrity and faithful supplied-argument error hints. Concurrent
+rc18 mailbox work is not imported unless separately reviewed and merged.
 
 ### Previous candidate: 1.9.3rc16
 
