@@ -1734,3 +1734,31 @@ This is a deterministic continuity check, not semantic equivalence or proof the
 old content is true. Additions may still affect discourse meaning; actual model
 and current native desktop/phone/accessibility acceptance remain unverified.
 Existing notebook pages are not automatically corrected.
+
+
+### Translation source-integrity candidate (#2656)
+
+An unreleased correction validates a cached translation against its canonical
+page before offering it. The record header, content digest, source definitions,
+per-line citation membership, headings, quotes, privacy labels and reader markers
+must agree. Changing `[1]` from one original to another is rejected even when
+citation counts match. Recognized Sources targets retain their literal paths,
+revisions, hashes, URL queries and fragments; only explanatory captions translate.
+Unsupported definition syntax stays literal. Duplicate numbers or multiple
+Sources sections require correction before a model translation can begin. Mixing
+legacy unnumbered session sources with numbered definitions is also refused;
+ordinary unnumbered session sources remain usable.
+
+Reader source routing, labels and evidence selectors use the canonical page.
+Translated source captions are display-only and require the same unambiguous
+identity and privacy tags; otherwise the original caption appears. Marked Sources
+captions use the existing privacy concealment class. Other privacy surfaces still
+need native review. Invalid caches remain on disk for diagnosis and are omitted
+from the reader; reading never starts a translation or rewrites the original.
+Valid version-2 caches remain usable. An explicit translation command may replace
+an invalid cache only after the new result passes validation.
+
+This protects deterministic reference structure, not semantic equivalence or the
+truth of a translated claim. Isolated synthetic validation and logical reader
+contracts do not establish current desktop, phone, keyboard, privacy-toggle or
+screen-reader acceptance. Public 1.9.3rc16 does not include this correction.
