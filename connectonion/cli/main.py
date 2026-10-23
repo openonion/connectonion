@@ -1671,6 +1671,24 @@ def email_addresses():
     handle_email_addresses()
 
 
+@email_app.command("domains", epilog="Example:  co email domains")
+def email_domains():
+    """List hosted mailbox domains and address prices. Read-only."""
+    from .commands.email_commands import handle_email_domains
+    handle_email_domains()
+
+
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+def email_setup(
+    alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
+    domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
+    buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+):
+    """Set up another mailbox on this account. Shows price; --buy Charges credits."""
+    from .commands.email_commands import handle_email_setup
+    handle_email_setup(alias, domain=domain, buy=buy)
+
+
 @email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
 def email_default(
     address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
@@ -1682,7 +1700,7 @@ def email_default(
 
 @email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
 def email_name(
-    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
+    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""

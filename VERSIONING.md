@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc17
+## Current Version: 1.9.3rc18
+
+The email CLI exposes the existing cloud multi-address API: `co email domains`
+reads enabled domain choices and current prices, and `co email setup <alias>
+--domain <domain>` shows the price before `--buy` adds another mailbox. Existing
+addresses and the selected account default are preserved. Cloud sender
+verification and inbound routing have separate operational acceptance. Stable
+remains 1.9.2. See [1.9.3rc18 notes](docs/releases/1.9.3rc18.md).
+
+- 1.9.3rc18 (discover hosted domains and add aliases on the same account).
+
+### Previous candidate: 1.9.3rc17
 
 1.9.3rc17 is a backend maintenance release candidate: bounded explicit feedback
 processing without new raw material, stricter inherited-claim audit decisions,

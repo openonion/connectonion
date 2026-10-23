@@ -310,6 +310,61 @@ def handle_email_default(address: str):
     console.print(f"\n[green]✓[/green] {address} is now the default sender\n")
 
 
+def _address_settings():
+    """Read the account's addresses, domain choices and prices from the cloud."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+    response = requests.get(
+        f"{backend_url()}/api/v1/email/addresses",
+        headers={"Authorization": f"Bearer {token}"}, timeout=10,
+    )
+    if not response.ok:
+        console.print(f"\n[red]✗ {_err(response)}[/red]\n")
+        raise typer.Exit(1)
+    return token, response.json()
+
+
+def handle_email_domains():
+    """Discover hosted domains and the current price without buying anything."""
+    _, settings = _address_settings()
+    for domain in settings["domains"]:
+        console.print(domain, markup=False)
+    console.print(f"\nAdd an address: ${settings['prices']['add']:.2f} one-time, from credits.")
+    console.print("Set one up: co email setup <alias> --domain <domain>\n")
+
+
+def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False):
+    """Add an address without replacing this account's existing mailboxes."""
+    token, settings = _address_settings()
+    alias, domain = alias.strip().lower(), domain.strip().lower()
+    if domain not in settings["domains"]:
+        console.print("Unknown hosted domain. Choose one with: co email domains")
+        raise typer.Exit(1)
+    address = f"{alias}@{domain}"
+    if any(item["address"].lower() == address for item in settings["addresses"]):
+        console.print(f"Already owned: {address}", markup=False)
+        return
+    if not buy:
+        console.print(f"{address}: ${settings['prices']['add']:.2f} one-time, from credits.", markup=False)
+        console.print("Availability is checked when you buy; a taken address is not charged.")
+        print(f"Add it: co email setup {alias} --domain {domain} --buy")
+        return
+    response = requests.post(
+        f"{backend_url()}/api/v1/email/addresses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"local_part": alias, "domain": domain}, timeout=15,
+    )
+    if not response.ok:
+        console.print(f"\n[red]✗ {_err(response)}[/red]\n")
+        raise typer.Exit(1)
+    result = response.json()
+    console.print(result["message"], markup=False)
+    print(f"Choose default: co email default {result['address']}")
+    print(f'Send once: co email send <to> "<subject>" "<body>" --from {result["address"]}')
+
+
 def handle_email_addresses():
     """List every email address this account owns, marking the default sender."""
     token = load_api_key()
@@ -337,6 +392,7 @@ def handle_email_addresses():
         # Plain print, not console.print: Rich expands \t into spaces.
         for a in addresses:
             print(f"{a['address']}\t{'default' if a.get('is_default') else ''}")
+        print('Add another: co email setup <alias> --domain <domain> (co email domains lists choices)')
         print('Send as one with: co email send <to> "<subject>" "<body>" --from <address>')
         return
 
@@ -519,7 +575,7 @@ def handle_email_upgrade(
         raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
-    console.print(f"  Address: [cyan]{data['email_address']}[/cyan]")
+    console.print(f"  Tier address: [cyan]{data['email_address']}[/cyan]")
     console.print(f"  Quota:   {data['emails_per_month']:,}/month")
     if data.get("balance") is not None:
         console.print(f"  Balance: ${data['balance']:.2f}")

@@ -220,6 +220,8 @@ NEXT = {
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
     "co email sent read": "Back to the list:  co email sent",
     "co email addresses": HANDLER,
+    "co email domains": HANDLER,
+    "co email setup": HANDLER,
     "co email default": "See every address and which is default:  co email addresses",
     "co email name": HANDLER,
     "co email share": HANDLER,

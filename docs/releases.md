@@ -25,6 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
+additional email aliases on the same cloud account. It retains sender selection,
+account defaults and mailbox filtering. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc18'
+```
+
+See [the preview notes](releases/1.9.3rc18.md). Domain infrastructure acceptance
+is recorded separately from package tests.
+
+## Previous previews
+
 Release candidate **1.9.3rc17** processes eligible explicit feedback when
 there is no new raw material, narrows inherited-claim audit exemptions and keeps
 supplied argument names in tool error hints. Synthetic retry tests avoid real
@@ -37,8 +50,6 @@ After publication, install its exact pin:
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc17'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc16** skips stale click-approach waypoints under slow
 pointer dispatch, lets supervised local browser jobs pin their existing daemon, and

@@ -125,6 +125,38 @@ co email sent read 7
 Prints the recipient, sender address, status, provider message id, date, and
 the body that was actually sent.
 
+## Several addresses and domains on one account
+
+People and AI agents use the same account model: one key can own several
+mailboxes, including the same alias on different hosted domains. Their inbox
+is combined; each message records its destination address.
+
+```bash
+co email domains                                      # cloud domain choices and current price
+co email addresses                                    # addresses you already own
+co email setup iron.share --domain mail.openonion.ai       # show price; no purchase
+co email setup iron.share --domain mail.openonion.ai --buy # add another address
+co email default iron.share@mail.openonion.ai              # choose the default sender
+co email send alice@example.com "Hello" "Hi" --from iron.share@mail.openonion.ai
+co email inbox --address iron.share@mail.openonion.ai
+```
+
+`setup` adds an address and keeps existing addresses. It does not upgrade your
+quota. The cloud checks availability and charges the current one-time price
+only when `--buy` succeeds; an address already owned by this account is not
+purchased again. `co email domains` reads the domain list from your configured
+backend, so the CLI does not maintain a separate list.
+
+The reserved pool is `mail.openonion.ai`, `steadmail.com`, `trustxmail.com`, and
+`oakinbox.com`. Only currently enabled domains appear in `co email domains`;
+repeat setup with another listed domain to keep the same alias on both.
+An arbitrary external domain such as `mail.com` cannot be
+claimed with this command. Account addresses and the default sender live in
+the cloud: the same account uses them from every machine and deployed agent.
+A send with `--from` changes that message only; a send without it uses the
+account default. The Python `send_email(..., from_address="...")` tool uses
+the same cloud ownership checks.
+
 ## Customizing your address (paid)
 
 The two commands below spend ConnectOnion credits. Each shows you the price or
@@ -136,23 +168,24 @@ By default your address is derived from your agent's key
 (`0x7a9f3b2c@mail.openonion.ai`). Claim a human-readable one instead:
 
 ```bash
-co email name aaron          # check if aaron@openonion.ai is free + its price
+co email name aaron          # check if aaron@mail.openonion.ai is free + its price
 co email name aaron --buy    # claim it (one-time charge from your credits)
 ```
 
 Without `--buy` it only **checks availability** and prints the one-time price
 (returned live by the backend, so it's always current). Add `--buy` to claim
-it — the price is deducted from your credit balance and the name becomes your
-sending address.
+it — the price is deducted from your credit balance and the address is added
+to your account. An existing selected default sender is preserved; choose a
+new default with `co email default <address>`.
 
 ```bash
 $ co email name aaron
-✓ aaron@openonion.ai is available — $5.00 one-time, from credits
+✓ aaron@mail.openonion.ai is available — $5.00 one-time, from credits
 Claim it: co email name aaron --buy
 
 $ co email name aaron --buy
-✓ Claimed aaron@openonion.ai
-  Your address: aaron@openonion.ai
+✓ Claimed aaron@mail.openonion.ai
+  Your address: aaron@mail.openonion.ai
 ```
 
 > Prices here are illustrative — the real figure is whatever the check command
@@ -183,7 +216,7 @@ $ co email upgrade plus
 ✗ Domain required for plus tier
 ```
 
-On success the server returns your new address, monthly quota, and remaining
+On success the server returns your tier address, monthly quota, and remaining
 balance — values that reflect your account, not fixed doc numbers.
 
 ## Setup
