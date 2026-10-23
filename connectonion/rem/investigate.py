@@ -932,9 +932,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                     stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
-                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
+                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies gathered"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
-                        + f", {attached} attachments read")
+                        + f", {attached} attachments gathered")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:
             # Say it. A mailbox left out used to vanish from coverage, so the model

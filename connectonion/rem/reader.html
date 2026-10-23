@@ -422,6 +422,9 @@
   .note table { border-collapse: collapse; font: 14px/1.45 var(--ui); }
   .note th, .note td { border-bottom: 1px solid var(--line); padding: 7px 14px 7px 0; text-align: left; vertical-align: top; }
   .note th { font: 600 11px var(--ui); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+  .source-coverage { margin-top: 14px; font: 13px/1.5 var(--ui); }
+  .source-coverage summary { cursor: pointer; }
+  .source-coverage summary .pill { margin-left: 8px; }
   .table-scroll { max-width: 100%; overflow-x: auto; margin-bottom: 1.2em; }
   .table-scroll table { margin-bottom: 0; min-width: 100%; }
   .table-scroll th, .table-scroll td { min-width: 120px; }
@@ -1468,6 +1471,29 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Source selection unavailable for {n} runs.": "{n} 次运行缺少可核对的来源选择记录。",
+    "No source rows recorded": "未记录来源明细",
+    "Local notes": "本地笔记",
+    "Feedback": "反馈",
+    "Built today: {inputs} · wrote {m} pages · ": "今天建立：{inputs} · 写入 {m} 个页面 · ",
+    "Last night: {inputs} · rewrote {m} pages · ": "昨晚：{inputs} · 更新 {m} 个页面 · ",
+    "{n} recorded inputs": "{n} 项已记录输入",
+    "{n} recorded input": "{n} 项已记录输入",
+    "{n} recorded inputs + unknown": "{n} 项已记录输入，另有数量未知",
+    "Input count not recorded": "未记录输入数量",
+    "Source coverage": "来源覆盖",
+    "Recorded inputs are not proof of model inspection or complete source history.": "已记录输入不代表模型已检查，也不代表来源历史已完整覆盖。",
+    "Counts total per-run inputs; repeats may occur.": "数量按每次运行累计，同一输入可能重复计数。",
+    "Per-source counts unavailable for {n} runs.": "{n} 次运行缺少可核对的分来源数量。",
+    "Source selection not recorded": "未记录来源选择",
+    "Selected in runs": "被选中的运行数",
+    "Recorded inputs": "已记录输入",
+    "Collection failures": "采集失败次数",
+    "{n} + unknown": "{n}，另有数量未知",
+    "None recorded": "未记录",
+    "{n} source failures": "{n} 次来源失败",
+    "Counts recorded in run logs; inspection not measured": "数量来自运行记录；未衡量模型检查情况",
+    "Dips reflect recorded inputs and page changes": "下探深度反映已记录输入和页面改动",
     "No recorded memory changes to show. Some work is incomplete; review the run details.": "暂无已记录的记忆变化可展示。部分工作尚未完成，请查看运行详情。",
     "Some selected sources could not be read. Check source access before retrying sync.": "部分已选来源无法读取。请检查来源访问权限后再重试同步。",
     "{n} run partially completed. ": "{n} 次运行部分完成。",
@@ -1904,7 +1930,7 @@ const UI = {
     "Read": "已阅读",
     "Rewrote": "已改写",
     "No runs yet": "暂无运行记录",
-    "What co rem did on each run: what it read, the pages it changed, and the ones it would not write.": "co rem 每次运行阅读了什么、改写了哪些页面，以及哪些页面没有写入。",
+    "Recorded inputs and page results for each run; input counts do not prove model inspection.": "每次运行记录的输入及页面结果；输入数量不代表模型已检查。",
     "Copy Markdown": "复制 Markdown",
     "File updated": "文件更新于",
     "Open the page and source →": "打开页面和来源 →",
@@ -3469,6 +3495,66 @@ function sheet(c, items) {
 // ---------- the night: what the last pass did ----------
 const HOUR = 3600e3, DAY_MS = 24 * HOUR;
 const FAILED = /^(failed|abandoned|error|refused|timeout|partial)/i;
+// These counters describe recorded input, never a model's inspection or source health.
+function inputCoverage(runs) {
+  const valid = value => Number.isSafeInteger(value) && value >= 0;
+  const named = value => typeof value === "string" && value.trim();
+  const rows = new Map();
+  let items = 0, knownRuns = 0, unknownItems = 0, unknownSources = 0, unknownSelection = 0;
+  for (const run of runs) {
+    const raw = run.items_by_source;
+    const entries = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.entries(raw) : null;
+    const sum = entries?.reduce((total, [, count]) => valid(count) && valid(total + count) ? total + count : NaN, 0);
+    const mapped = valid(run.items) && entries && entries.every(([name]) => named(name)) && sum === run.items;
+    // Daily parent records initialize counters to zero without retaining child input totals.
+    const aggregate = /^daily-/.test(String(run.phase || "")) && !mapped;
+    const counted = valid(run.items) && !aggregate && valid(items + run.items);
+    if (counted) { items += run.items; knownRuns++; } else unknownItems++;
+    const selection = Array.isArray(run.sources) ? run.sources.map(sourceName) : null;
+    const selectionKnown = !aggregate && selection && selection.every(named);
+    if (!selectionKnown) unknownSelection++;
+    const selected = new Set(selectionKnown ? selection : []);
+    const failures = new Set([...(Array.isArray(run.source_failures) ? run.source_failures.map(row => row?.source) : []), run.failed_source].filter(named));
+    const measured = counted && mapped;
+    if (!measured) unknownSources++;
+    const counts = new Map(measured ? entries : []);
+    for (const name of new Set([...selected, ...failures, ...counts.keys()])) {
+      if (!rows.has(name)) rows.set(name, { name, selected: 0, selectionUnknown: 0, failures: 0, items: 0, known: 0, unknown: 0 });
+      const row = rows.get(name), count = counts.get(name) || 0;
+      row.selected += Number(selected.has(name));
+      row.selectionUnknown += Number(!selectionKnown);
+      row.failures += Number(failures.has(name));
+      if (measured && valid(row.items + count)) { row.items += count; row.known++; } else row.unknown++;
+    }
+  }
+  const label = !knownRuns ? t("Input count not recorded") : t(unknownItems ? "{n} recorded inputs + unknown" : items === 1 ? "{n} recorded input" : "{n} recorded inputs", { n: num(items) });
+  return { items, knownRuns, unknownItems, unknownSources, unknownSelection, sources: [...rows.values()], label };
+}
+function sourceCoverage(coverage) {
+  const failures = coverage.sources.reduce((n, row) => n + row.failures, 0);
+  const details = el("details", { class: "source-coverage" }, [el("summary", {}, [t("Source coverage"),
+    failures ? el("span", { class: "pill warn", text: t("{n} source failures", { n: failures }) }) : null]),
+    el("p", { class: "k", text: t("Recorded inputs are not proof of model inspection or complete source history.") }),
+    el("p", { class: "k", text: t("Counts total per-run inputs; repeats may occur.") })]);
+  if (coverage.unknownSources) details.appendChild(el("p", { class: "k", text: t("Per-source counts unavailable for {n} runs.", { n: coverage.unknownSources }) }));
+  if (coverage.unknownSelection) details.appendChild(el("p", { class: "k", text: t("Source selection unavailable for {n} runs.", { n: coverage.unknownSelection }) }));
+  if (!coverage.sources.length) { details.appendChild(el("p", { text: t("No source rows recorded") })); return details; }
+  const table = el("table", { class: "sheet" }, [el("thead", {}, [el("tr", {},
+    ["Source", "Selected in runs", "Recorded inputs", "Collection failures"].map(text => el("th", { scope: "col", text: t(text) })))])]);
+  const body = el("tbody");
+  for (const row of coverage.sources) {
+    const count = row.unknown ? row.known ? t("{n} + unknown", { n: num(row.items) }) : t("Unknown") : num(row.items);
+    const aliases = new Map([["local_material", t("Local notes")], ["local_feedback", t("Feedback")], ["gmail", "Gmail"], ["outlook", "Outlook"], ["codex", "Codex"], ["claude-code", "Claude Code"]]);
+    const name = aliases.get(row.name) || row.name;
+    const selection = row.selectionUnknown ? row.selected ? t("{n} + unknown", { n: num(row.selected) }) : t("Unknown") : num(row.selected);
+    body.appendChild(el("tr", {}, [el("th", { scope: "row", text: name }), el("td", { text: selection }),
+      el("td", { text: count }), el("td", { text: row.failures ? num(row.failures) : t("None recorded") })]));
+  }
+  table.appendChild(body);
+  details.appendChild(el("div", { class: "table-scroll", role: "region", tabindex: "0", "aria-label": t("Source coverage") }, [table]));
+  details.appendChild(el("a", { href: "#view=activity", text: t("See all activity") }));
+  return details;
+}
 function runTime(run) { return new Date(run.started_at).getTime(); }
 function runEnd(run) {
   const end = run.finished_at ? new Date(run.finished_at).getTime() : runTime(run) + 1000 * (run.seconds || 0);
@@ -3562,7 +3648,7 @@ function runSegments(runs, span) {
       segments.push(segment);
     }
     segment.end = Math.max(segment.end, end);
-    segment.items += Number(run.items) || 0;
+    segment.items += Number.isSafeInteger(run.items) && run.items >= 0 ? run.items : 0;
     segment.changed += (run.changed || []).length;
     segment.runs++;
     segment.failed += Number(FAILED.test(String(run.outcome || "")));
@@ -3627,11 +3713,13 @@ function nightBand(showActivityLink = true) {
   band.insertAdjacentHTML("beforeend", hypnogram(asOf));
   const stages = el("div", { class: "stages stats" });
   const stage = (heading, detail) => stages.appendChild(el("div", { class: "stat" }, [el("b", { class: "v", text: heading }), el("span", { class: "k", text: detail })]));
-  stage(t(pass.items === 1 ? "Read {n} item" : "Read {n} items", { n: num(pass.items) }), pass.sources.length ? listWords(pass.sources) : t("items from your sources"));
+  const coverage = inputCoverage(pass.runs);
+  stage(coverage.label, t("Counts recorded in run logs; inspection not measured"));
   stage(t(firstBuild(pass) ? "Wrote {n} pages" : pass.changed.length === 1 ? "Rewrote {n} page" : "Rewrote {n} pages", { n: pass.changed.length }), t(firstBuild(pass) ? "Pages in your new notebook" : "Page rewrites; see memory changes for findings"));
-  stage(t(pass.runs.length === 1 ? "{n} run" : "{n} runs", { n: pass.runs.length }), t("Dips show how much each run read"));
+  stage(t(pass.runs.length === 1 ? "{n} run" : "{n} runs", { n: pass.runs.length }), t("Dips reflect recorded inputs and page changes"));
   stage(pass.failed.length ? t("{n} need attention", { n: pass.failed.length }) : t("Nothing needs attention"), t("White: changed · grey: needs attention · amber: run ended"));
   band.appendChild(stages);
+  band.appendChild(sourceCoverage(coverage));
   if (pass.changed.length) {
     const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: t(firstBuild(pass) ? "Pages written" : "Pages rewritten") })]);
     changes.appendChild(el("span", { class: "page-names" }, pass.changed.slice(0, 14).flatMap((r, i) =>
@@ -4093,7 +4181,7 @@ function briefHeader(counts, today) {
       processing.scrollIntoView({ block: "start" });
       processing.querySelector("summary").focus();
     };
-    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: read {n} items · wrote {m} pages · " : "Last night: read {n} items · rewrote {m} pages · ", { n: pass.items, m: pass.changed.length }), details]));
+    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: {inputs} · wrote {m} pages · " : "Last night: {inputs} · rewrote {m} pages · ", { inputs: inputCoverage(pass.runs).label, m: pass.changed.length }), details]));
   }
   return header;
 }
@@ -4241,7 +4329,7 @@ function runItem(run) {
   const li = el("li", { class: FAILED.test(outcome) ? "failed-run" : "" }, [
     el("div", { class: "run-head" }, [el("span", { class: "mono", text: fmtTime(run.started_at) }),
       el("span", { text: t(run.phase || "sync") }), el("span", { class: "pill" + tone, text: t(outcome) })]),
-    el("div", { class: "run-meta mono", text: t("{n} read", { n: run.items || 0 }) + (u.input_tokens == null ? "" : " · " + t("{n} in / {m} out tokens", { n: num(u.input_tokens), m: num(u.output_tokens) })) })]);
+    el("div", { class: "run-meta mono", text: inputCoverage([run]).label + (u.input_tokens == null ? "" : " · " + t("{n} in / {m} out tokens", { n: num(u.input_tokens), m: num(u.output_tokens) })) })]);
   if ((run.changed || []).length) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k", text: t("Changed") }), ...run.changed.map(pageLink)]));
   for (const x of unwritten(run)) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k warn", text: t(x.k) }), pageLink(x.page), el("span", { class: "why", text: x.why })]));
   if (outcome === "partial" || run.source_failures?.length) {
@@ -4263,7 +4351,7 @@ function activityView() {
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← " + t("Contents")])]));
   main.appendChild(el("div", { class: "eyebrow", text: t("Activity") }));
   main.appendChild(el("h1", { text: t("Activity") }));
-  main.appendChild(el("p", { class: "lede", text: t("What co rem did on each run: what it read, the pages it changed, and the ones it would not write.") }));
+  main.appendChild(el("p", { class: "lede", text: t("Recorded inputs and page results for each run; input counts do not prove model inspection.") }));
   main.appendChild(nightBand(false));
   const runs = REM.logs || [];
   main.appendChild(sectionHead("Runs", runs.length ? t("latest {n}", { n: runs.length }) : t("none yet")));

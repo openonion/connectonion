@@ -88,6 +88,30 @@ This describes sources attempted in that batch. It does not certify that every
 subscription is caught up, that every page is accurate, or that an unavailable
 provider has recovered. Installation does not rerun a failed real nightly pass.
 
+## Recorded input coverage — candidate (#2045)
+
+The unreleased reader candidate labels run counters **recorded inputs**, rather
+than claiming those inputs were read by a model. The night band and Activity use
+the same meaning. Totals are per run, so the same input can count more than once.
+Missing, malformed or overflowing counters stay unknown. Daily parent records
+whose zero counters are only initialization defaults are also unknown unless a
+consistent source breakdown records them.
+
+Expand **Source coverage** to compare source selection, recorded input counts and
+recorded collection failures. Selecting a source does not mean it supplied input.
+A source with no recorded failure is not certified healthy or caught up. Per-source
+counts are shown only when valid and consistent with the run total; missing or
+contradictory breakdowns are marked unavailable. Unknown selection is separate
+from an explicitly empty selection. These views derive from existing logs and do
+not start collection, model work or a telemetry migration.
+
+New investigation coverage says **bodies gathered** and **attachments gathered**.
+These are collection counts before later input selection and model work, not
+inspection receipts. The queue recognizes both these labels and historical
+**read** labels to preserve existing retry behavior; saved notebook pages and
+historical run records are not rewritten. Current native desktop/phone and
+keyboard/screen-reader acceptance remain pending.
+
 ## Investigate questions with explicit stage models
 
 ```bash

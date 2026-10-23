@@ -9,11 +9,12 @@ from tests.unit.test_rem_service import rem
 from test_rem_reader import _run_reader_js
 
 
-def partial_reader(*, language="en", mixed=False, run_override=None):
+def partial_reader(*, language="en", mixed=False, run_override=None, extra_runs=None, first=False):
     page = TEMPLATE.read_text()
     names = ["lastPass", "firstBuild", "runTime", "runEnd", "sameClaim", "sourceName", "runSegments",
-             "hypnogram", "runMarkers", "nightBand", "morningBrief", "failureSummary", "runItem", "shellArg"]
-    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0) for name in names)
+             "briefHeader", "inputCoverage", "sourceCoverage", "hypnogram", "runMarkers", "nightBand", "morningBrief", "failureSummary", "runItem", "shellArg"]
+    functions = "\n".join(match.group(0) for name in names
+                          if (match := re.search(r"function " + name + r"\(.*?\n\}", page, re.S)))
     constants = "\n".join(re.search(r"^const " + name + r" = .*$", page, re.M).group(0)
                           for name in ["HOUR", "FAILED", "STAMP"])
     zh = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -26,9 +27,12 @@ def partial_reader(*, language="en", mixed=False, run_override=None):
       Object.assign(run, OVERRIDE);
       const REM = {as_of:run.finished_at, records:[record], owner:'people/owner.md', logs:[
         run, {started_at:new Date(new Date(run.started_at).getTime() - 72 * HOUR).toISOString(), outcome:'completed', changed:[]}]};
+      if (FIRST) REM.logs = [run];
+      REM.logs.push(...EXTRA_RUNS);
       if (MIXED) REM.logs.push({started_at:'2026-10-23T07:04:00Z', outcome:'failed', error:'TimeoutError'});
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const byActivity = () => 0, known = () => ({status:'Investigated'}), esc = s => String(s);
+      const calendarDay = value => value.slice(0,10);
       const num = String, fmtTime = s => s, label = s => s, href = r => '#r=' + r.path;
       const sectionHead = text => ({text}), nightlyUpdatesOff = () => false;
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children,
@@ -38,10 +42,10 @@ def partial_reader(*, language="en", mixed=False, run_override=None):
       const pageLink = path => ({href:'#r=' + path}), remCommand = s => 'co rem ' + s;
       const commandChip = command => ({command});
       const pass = lastPass();
-      console.log(JSON.stringify({attention:pass.failed.map(r => r.outcome),
-        changed:pass.changed.map(r => r.path), brief:morningBrief(), band:nightBand(), item:runItem(run),
+      console.log(JSON.stringify({input:typeof inputCoverage === "function" ? inputCoverage(pass.runs) : null, attention:pass.failed.map(r => r.outcome),
+        header:briefHeader({mine:0}, []), changed:pass.changed.map(r => r.path), brief:morningBrief(), band:nightBand(), item:runItem(run),
         segments:runSegments([run], 2 * HOUR)}));
-    '''.replace("MIXED", json.dumps(mixed)).replace("OVERRIDE", json.dumps(run_override or {})))
+    '''.replace("FIRST", json.dumps(first)).replace("MIXED", json.dumps(mixed)).replace("OVERRIDE", json.dumps(run_override or {})).replace("EXTRA_RUNS", json.dumps(extra_runs or [])))
     return result
 
 

@@ -108,7 +108,7 @@ def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypat
     kinds = [i["role"] for i in items]
     assert kinds == ["other", "attachment"]
     assert "7.5%" in items[1]["text"] and items[1]["source"].endswith(":v9.txt")
-    assert any("1 attachments read" in c for c in coverage)
+    assert any("1 attachments gathered" in c for c in coverage)
     assert (tmp_path / "att" / "gmail").is_dir()
 
 
