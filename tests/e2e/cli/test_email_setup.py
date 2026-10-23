@@ -32,7 +32,7 @@ def cloud():
 def test_domains_come_from_the_cloud(cloud):
     result = CliRunner().invoke(app, ['email', 'domains'])
     assert result.exit_code == 0, result.output
-    assert 'steadmail.com' in result.output
+    assert 'steadmail.com' in result.output.splitlines()
     assert '$9.90' in result.output
     cloud[1].assert_not_called()
 
@@ -71,4 +71,4 @@ def test_taken_address_explains_other_domains_and_exits_nonzero(cloud):
     cloud[1].return_value = response({'detail': {'message': 'Taken; available on oakinbox.com'}}, 409)
     result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
     assert result.exit_code == 1
-    assert 'oakinbox.com' in result.output
+    assert result.output.strip() == '✗ Taken; available on oakinbox.com'
