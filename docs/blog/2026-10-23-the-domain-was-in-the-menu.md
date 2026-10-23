@@ -40,6 +40,16 @@ that permission and the catch-all route are checked, those domains must not be
 sold as ready. The application tests and rendered desktop/mobile fixtures do
 not substitute for that check, and no live email was sent for this work.
 
+The follow-up question was simpler than the original setup request: would
+these different names still be one inbox? A test account acquired five
+addresses across the four hosted domains, including the same name on two
+domains and two names on one domain. Its received-mail query returned all
+five destinations. Changing the default sender did not remove any of them;
+filtering by one address narrowed the list, while another account's message
+stayed outside it. That was exercised against real PostgreSQL, so the check
+covered the address lookup and inbox query together. It still did not prove
+that an outside sender could reach an unconfigured domain.
+
 The useful boundary turned out to be the purchase. A domain belongs in the
 public choice list when the deployment can provide the mailbox behind it.
 Being reserved, registered with a provider, or present in a table answers
