@@ -55,7 +55,7 @@ native run details/recent-project arrangement and remote desktop project flow
 were not visually inspected. Sleep/wake and an overnight production pass remain
 unverified. There is no all-page, source-quality or useful-recall pass claimed.
 
-The native prototype initially used the unreserved rc19 candidate number. A
+The native prototype initially used the rc19 candidate number. A
 parallel email release took rc19 before this PR merged; the native release is
 rc20. Runtime receipts retain their exact source commit and trial timing.
 

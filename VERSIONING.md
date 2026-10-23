@@ -413,6 +413,16 @@ adoption, trigger evidence and REM outcomes. Stable remains 1.9.2 and Python
 
 - 1.9.3rc20 (native Codex REM clock, verified handoff, archival and scheduling diagnostics).
 
+### Previous candidate: 1.9.3rc19
+
+Mailbox setup receives another regression and installation acceptance round.
+Signed-out commands and rejected account settings cannot reach a purchase;
+reserved domains stay unavailable until enabled by the backend. Existing
+multi-address behavior and the account default are unchanged. Stable remains
+1.9.2. See [1.9.3rc19 notes](docs/releases/1.9.3rc19.md).
+
+- 1.9.3rc19 (mailbox setup regression and installation acceptance).
+
 ### Previous candidate: 1.9.3rc18
 
 The email CLI exposes the existing cloud multi-address API: `co email domains`

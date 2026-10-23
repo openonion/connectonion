@@ -39,6 +39,19 @@ See [the preview notes](releases/1.9.3rc20.md) and their native execution eviden
 
 ## Previous previews
 
+Release candidate **1.9.3rc19** strengthens mailbox setup regression coverage:
+no purchase after authentication/settings failures or for domains the backend
+has not enabled. It includes rc18's multi-address setup and the corrected quota
+examples. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc19'
+```
+
+See [the preview notes](releases/1.9.3rc19.md). Branded-domain incoming routing
+still requires Cloudflare permissions and delivery acceptance.
+
+
 Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
 additional email aliases on the same cloud account. It retains sender selection,
 account defaults and mailbox filtering. Stable remains **1.9.2**.

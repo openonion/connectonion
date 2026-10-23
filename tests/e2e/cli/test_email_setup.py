@@ -72,3 +72,29 @@ def test_taken_address_explains_other_domains_and_exits_nonzero(cloud):
     result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
     assert result.exit_code == 1
     assert result.output.strip() == '✗ Taken; available on oakinbox.com'
+
+
+@pytest.mark.parametrize('command', [['domains'], ['setup', 'new.alias', '--buy']])
+def test_signed_out_commands_do_not_contact_the_cloud(cloud, command):
+    with patch.object(email_commands, 'load_api_key', return_value=None):
+        result = CliRunner().invoke(app, ['email', *command])
+    assert result.exit_code == 1
+    cloud[0].assert_not_called()
+    cloud[1].assert_not_called()
+
+
+@pytest.mark.parametrize('command', [['domains'], ['setup', 'new.alias', '--buy']])
+def test_settings_failure_stops_before_purchase(cloud, command):
+    cloud[0].return_value = response({'detail': 'Account access denied'}, 403)
+    result = CliRunner().invoke(app, ['email', *command])
+    assert result.exit_code == 1
+    assert 'Account access denied' in result.output
+    cloud[1].assert_not_called()
+
+
+def test_a_reserved_domain_is_not_sold_until_the_cloud_enables_it(cloud):
+    cloud[0].return_value = response({**SETTINGS, 'domains': ['mail.openonion.ai']})
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
+    assert result.exit_code == 1
+    assert 'co email domains' in result.output
+    cloud[1].assert_not_called()
