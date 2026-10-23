@@ -38,3 +38,23 @@ remain the same contract. Matching source and public CLI documentation must be
 reviewed together before this candidate can ship. No real model, mailbox or
 scheduled maintenance was run for this integration; synthetic acceptance cannot
 establish the factual quality of a corrected memory.
+
+
+## 23 October: a package for a manual correction trial
+
+At this preparation checkpoint the fallback had merged, while the installed
+public baseline was rc16.
+A saved page cannot show whether a changed writer will use a correction: the
+owner needs an installable version and an explicitly chosen investigation of
+that page. We are preparing rc17 for that bounded trial, together with the
+stricter inherited-claim check. Availability requires its matching public artifacts, not this preparation note.
+
+The useful question is whether the correction remains attributed and either
+produces a supported accepted page or stays pending with a reason. An available
+source can contain no new material; an unavailable source is a different case.
+If raw material is present, a normal investigation does not prove the empty-raw
+fallback. Likewise, a receipt proves processing, not that the corrected claim is
+true. The owner can compare the resulting statement with its exact original
+before judging whether the page helps. No fresh real-data or native UI trial has
+been performed in this preparation. The first-run and overnight product goals
+remain open even if this narrower manual trial succeeds.
