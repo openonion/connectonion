@@ -73,3 +73,23 @@ was found. The current public preview was rc18 at that inspection; rc19 labels
 and installation instructions require a post-publication recheck. Screenshot
 capture failed in this round; page reads and layout checks succeeded. This
 coverage does not establish every page or live delivery acceptance.
+
+## Live routing follow-up after publication
+
+The shell's dedicated CLOUDFLARE_API_TOKEN_EMAIL can read catch-all rules and
+Workers (HTTP 200). The production DNS token cannot. The dedicated token still
+receives 403 from POST `/email/routing/dns`, whose documented requirement is
+Zone Settings Write. The provisioner now selects that dedicated routing token
+while retaining the ordinary token for sender DNS.
+
+Actual catch-all inspection found openonion.ai routed to openonion-email-worker,
+steadmail.com and oakinbox.com disabled, and trustxmail.com already routed to a
+separate verify-code worker. No existing catch-all was overwritten.
+
+The deployed primary worker currently parses PostalMime and POSTs a signed
+backend webhook. A real provider self-test to the owner's existing primary
+address was returned by the authenticated received-mail API (one matching
+message). The CLI send attempt itself was rejected at the monthly 100-message
+quota, so this is provider-to-inbox acceptance, not a CLI-send pass. No quota
+upgrade or branded mailbox purchase was made. The three branded domains still
+lack accepted incoming delivery; their new-address choices remain disabled.
