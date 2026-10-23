@@ -17,6 +17,7 @@ import asyncio
 import math
 import platform
 import random
+from time import monotonic
 from weakref import WeakKeyDictionary
 
 from . import humanize as rules
@@ -33,8 +34,8 @@ async def _pause(page, base, sigma=0.45):
     await asyncio.sleep(delay)
 
 
-async def move(page, x, y):
-    """Move along the synchronous layer's curved, minimum-jerk path."""
+async def move(page, x, y, *, for_click=False):
+    """Follow the curved path; click approaches may skip stale intermediate points."""
     start = _cursor.get(page)
     if start is None:
         start = (x + random.uniform(-260, 260), y + random.uniform(-200, 200))
@@ -42,7 +43,12 @@ async def move(page, x, y):
     distance = math.hypot(x - start[0], y - start[1])
     steps = max(10, min(48, int(distance / 10)))
     control_1, control_2 = rules._control_points(start, (x, y))
+    began = monotonic()
     for index in range(1, steps + 1):
+        # Allow usual dispatch and pauses before treating a waypoint as stale.
+        # Only a click approach may skip points; always await its exact target.
+        if for_click and index < steps and index * 0.04 < monotonic() - began:
+            continue
         point_x, point_y = rules._cubic(
             start,
             control_1,
@@ -68,7 +74,7 @@ async def click(page, x, y, button="left", clicks=1, box=None):
     """Humanized click with awaited travel, dwell, and incrementing click count."""
     if box is not None:
         x, y = rules._point_in_box(box)
-    await move(page, x, y)
+    await move(page, x, y, for_click=True)
     await _pause(page, 0.06, 0.5)
     for index in range(clicks):
         click_count = index + 1

@@ -1,0 +1,7 @@
+{
+  "paramiko": "5.1.0",
+  "loopback_ssh_key_authentication": true,
+  "host_key_verified_with_reject_policy": true,
+  "default_rsa_signature": "rsa-sha2-512",
+  "nas_contacted": false
+}
