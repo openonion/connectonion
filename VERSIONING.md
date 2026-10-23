@@ -400,12 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Unreleased maintenance
+## Maintenance included in 1.9.3rc17
 
 - Tool error hints list the arguments the model supplied before execution strips
   the presentation `summary`. A supplied summary is no longer reported as
   missing; injected runtime arguments remain excluded. Tool execution, traces
-  and permissions are unchanged (#2652). This fix is not in published rc16.
+  and permissions are unchanged (#2652). This fix was merged after rc16 and is included in rc17.
 
 ## Current Version: 1.9.3rc17
 
