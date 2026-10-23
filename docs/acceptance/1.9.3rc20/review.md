@@ -27,3 +27,9 @@ release phone and journal phone. The main agent additionally inspected release
 and journal desktop/mobile entry rendering and HTML link targets. This is sample
 coverage, not all pages or full accessibility/copy behavior. Native desktop UI,
 remote project layout, sleep/wake and overnight useful findings remain gaps.
+
+The rc20 rename and merge of reviewed email rc19 were independently cleared.
+Five replacement production captures visibly identify rc20; the earlier rc19
+prototype captures were replaced. A final rule-bound check rejects unsupported
+BYSETPOS values before altering either clock; its focused regression is covered
+in the final227-case CLI/version/scheduler/handoff selection, which passed.
