@@ -400,14 +400,24 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Unreleased maintenance
+## Current Version: 1.9.3rc17
 
-- Tool error hints list the arguments the model supplied before execution strips
-  the presentation `summary`. A supplied summary is no longer reported as
-  missing; injected runtime arguments remain excluded. Tool execution, traces
-  and permissions are unchanged (#2652). This fix is not in published rc16.
+1.9.3rc17 is a backend maintenance release candidate: bounded explicit feedback
+processing without new raw material, stricter inherited-claim audit decisions,
+and faithful supplied-argument names in tool recovery hints. Synthetic retry
+tests record delays instead of waiting. Stable remains 1.9.2; Python 3.11+ and
+rc16's dependency floors are retained. No reader redesign or new real-data/native
+acceptance is claimed. Publication requires the normal release gates. See
+[1.9.3rc17 notes](docs/releases/1.9.3rc17.md).
 
-## Current Version: 1.9.3rc16
+Tool error hints list the arguments the model supplied before execution strips
+the presentation `summary`. A supplied summary is no longer reported as missing;
+injected runtime arguments remain excluded. Tool execution, traces and permissions
+are unchanged (#2652).
+
+- 1.9.3rc17 (feedback processing, inherited-claim integrity and faithful error hints).
+
+### Previous candidate: 1.9.3rc16
 
 1.9.3rc16 skips stale click-approach waypoints under slow pointer dispatch,
 adds an optional local managed-daemon PID pin, and keeps a
