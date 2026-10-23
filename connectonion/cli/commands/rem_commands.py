@@ -1773,9 +1773,9 @@ def make_rem_app(factory):
                     return record, ["status"]
                 if dry_run:
                     return record, ["sync"]
-                if record["outcome"] == "failed":
-                    # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
-                    raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
+                if record["outcome"] in ("failed", "partial"):
+                    # Incomplete coverage must not look like a successful sync to a caller.
+                    raise RemError(f"Batch {record['id']} {record['outcome']}: {record.get('error')}")
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily

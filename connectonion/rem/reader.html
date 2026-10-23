@@ -1468,6 +1468,10 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "No recorded memory changes to show. Some work is incomplete; review the run details.": "暂无已记录的记忆变化可展示。部分工作尚未完成，请查看运行详情。",
+    "Some selected sources could not be read. Check source access before retrying sync.": "部分已选来源无法读取。请检查来源访问权限后再重试同步。",
+    "{n} run partially completed. ": "{n} 次运行部分完成。",
+    "{n} runs partially completed. ": "{n} 次运行部分完成。",
     "Skip to content": "跳到正文",
     "Your page": "你的页面",
     "Nothing open.": "暂无待办。",
@@ -1941,9 +1945,9 @@ const UI = {
     "{n} run": "{n} 次运行",
     "{n} runs": "{n} 次运行",
     "Dips show how much each run read": "下探深度表示每次运行的阅读量",
-    "{n} stopped early": "{n} 次提前停止",
-    "Nothing stopped early": "均未提前停止",
-    "White: changed · grey: stopped · amber: run ended": "白：有改动 · 灰：提前停止 · 琥珀：运行结束",
+    "{n} need attention": "{n} 次需关注",
+    "Nothing needs attention": "暂无需关注的运行",
+    "White: changed · grey: needs attention · amber: run ended": "白：有改动 · 灰：需关注 · 琥珀：运行结束",
     "overdue · ": "已逾期 · ",
     "due ": "到期 ",
     "you promised": "你答应的事",
@@ -2038,7 +2042,7 @@ const UI = {
     "Copy investigation preview": "复制调查预览命令",
     "Source map": "来源映射",
     "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings.": "可以浏览人物、项目、组织与技能了。这些是元数据线索，尚未经过调查。",
-    "Review failed runs →": "查看失败的运行 →",
+    "Review runs needing attention →": "查看需关注的运行 →",
     "Maintenance": "维护",
     "Activity →": "动态 →",
     "Copy command": "复制命令",
@@ -2086,8 +2090,8 @@ const UI = {
     "A request timed out.": "一次请求超时。",
     "A model usage limit was reached.": "已达到模型用量限制。",
     "No memory pages were written in the last pass.": "上次更新未写入记忆页面。",
-    "{n} investigation failed. ": "{n} 次调查失败。",
-    "{n} investigations failed. ": "{n} 次调查失败。",
+    "{n} run failed. ": "{n} 次运行失败。",
+    "{n} runs failed. ": "{n} 次运行失败。",
     "Open {name} and its sources →": "打开 {name} 及其来源 →",
     "{n} page rewritten in 7 days": "7 天内改写了 {n} 页",
     "{n} pages rewritten in 7 days": "7 天内改写了 {n} 页",
@@ -2183,10 +2187,10 @@ const UI = {
     "Some sections are filled from sources; the rest are not investigated yet.": "部分章节已有来源支持，其余尚未调查。",
     "{n} from them, {m} from you": "对方发来 {n} 封，你发出 {m} 封",
     "{name} table": "{name}表格",
-    "{n} runs stopped early": "{n} 次运行提前停止",
+    "{n} runs need attention": "{n} 次运行需关注",
     "{n} runs · {m} pages changed": "{n} 次运行 · 改动 {m} 页",
     "Last run ended {time}": "最近一次运行结束于 {time}",
-    "{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending": "上次更新共 {n} 次运行，分为 {m} 段；白点表示页面改动，灰点表示提前停止，琥珀色表示最近运行结束",
+    "{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks runs needing attention; amber marks the last run ending": "上次更新共 {n} 次运行，分为 {m} 段；白点表示页面改动，灰点表示需关注的运行，琥珀色表示最近运行结束",
     "Not written yet": "尚未撰写",
     ": {n} session": "：{n} 个会话",
     ": {n} sessions": "：{n} 个会话",
@@ -3464,7 +3468,7 @@ function sheet(c, items) {
 
 // ---------- the night: what the last pass did ----------
 const HOUR = 3600e3, DAY_MS = 24 * HOUR;
-const FAILED = /^(failed|abandoned|error|refused|timeout)/i;
+const FAILED = /^(failed|abandoned|error|refused|timeout|partial)/i;
 function runTime(run) { return new Date(run.started_at).getTime(); }
 function runEnd(run) {
   const end = run.finished_at ? new Date(run.finished_at).getTime() : runTime(run) + 1000 * (run.seconds || 0);
@@ -3554,7 +3558,7 @@ function runSegments(runs, span) {
     const start = runTime(run), end = runEnd(run);
     let segment = segments[segments.length - 1];
     if (!segment || start >= segment.end + gap) {
-      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0 };
+      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0, partial: 0 };
       segments.push(segment);
     }
     segment.end = Math.max(segment.end, end);
@@ -3562,6 +3566,7 @@ function runSegments(runs, span) {
     segment.changed += (run.changed || []).length;
     segment.runs++;
     segment.failed += Number(FAILED.test(String(run.outcome || "")));
+    segment.partial += Number(run.outcome === "partial");
   }
   return segments;
 }
@@ -3595,16 +3600,16 @@ function hypnogram(asOf) {
   for (const segment of segments) {
     const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
     const weight = segment.items + 4 * segment.changed;
-    const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
+    const depth = segment.failed - segment.partial === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
     path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
     const range = time(segment.start) + "–" + time(segment.end);
-    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + t("{n} runs need attention", { n: segment.failed }) });
     if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
   }
   path += " L" + (W - 4) + "," + TOP;
   svg.push('<path class="trace" pathLength="1" d="' + path + '"/>', "</svg>");
   if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
-  return '<div class="hypno" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
+  return '<div class="hypno" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks runs needing attention; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 function nightBand(showActivityLink = true) {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": t("The last pass") });
@@ -3625,7 +3630,7 @@ function nightBand(showActivityLink = true) {
   stage(t(pass.items === 1 ? "Read {n} item" : "Read {n} items", { n: num(pass.items) }), pass.sources.length ? listWords(pass.sources) : t("items from your sources"));
   stage(t(firstBuild(pass) ? "Wrote {n} pages" : pass.changed.length === 1 ? "Rewrote {n} page" : "Rewrote {n} pages", { n: pass.changed.length }), t(firstBuild(pass) ? "Pages in your new notebook" : "Page rewrites; see memory changes for findings"));
   stage(t(pass.runs.length === 1 ? "{n} run" : "{n} runs", { n: pass.runs.length }), t("Dips show how much each run read"));
-  stage(pass.failed.length ? t("{n} stopped early", { n: pass.failed.length }) : t("Nothing stopped early"), t("White: changed · grey: stopped · amber: run ended"));
+  stage(pass.failed.length ? t("{n} need attention", { n: pass.failed.length }) : t("Nothing needs attention"), t("White: changed · grey: needs attention · amber: run ended"));
   band.appendChild(stages);
   if (pass.changed.length) {
     const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: t(firstBuild(pass) ? "Pages written" : "Pages rewritten") })]);
@@ -3877,22 +3882,30 @@ function morningBrief() {
   } else if (claims.length) {
     brief.appendChild(el("ul", { class: "overnight-changes" }, claims.slice(0, 3).map(overnightChange).filter(Boolean)));
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
+  } else if (pass?.failed?.length) {
+    brief.appendChild(el("p", { class: "quiet-line", text: t("No recorded memory changes to show. Some work is incomplete; review the run details.") }));
   } else {
     const n = pass?.changed?.length || 0;
     brief.appendChild(el("p", { class: "quiet-line", text: t("Nothing about your people or projects changed last night.") +
       (n ? t(n === 1 ? " {n} page was reworded; nothing new." : " {n} pages were reworded; nothing new.", { n }) : "") }));
   }
-  if (pass?.failed?.length) brief.append(failureSummary(pass), el("a", { class: "brief-more", href: "#view=activity", text: t("Review failed runs →") }));
+  if (pass?.failed?.length) brief.append(failureSummary(pass), el("a", { class: "brief-more", href: "#view=activity", text: t("Review runs needing attention →") }));
   return brief;
 }
 function failureSummary(pass) {
   // Name the recovery step without exposing private runner output.
-  const errors = pass.failed.map(run => String(run.error || "")).join("\n"), reasons = [];
+  const partial = pass.failed.filter(run => run.outcome === "partial");
+  const failed = pass.failed.filter(run => run.outcome !== "partial");
+  const sourceFailure = pass.failed.some(run => Array.isArray(run.source_failures) && run.source_failures.length);
+  const errors = failed.filter(run => !run.source_failures?.length || ["extract", "maintain"].includes(run.stage)).map(run => String(run.error || "")).join("\n"), reasons = [];
+  if (sourceFailure) reasons.push("Some selected sources could not be read. Check source access before retrying sync.");
   if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
   if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
   if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
   if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
-  return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
+  return el("p", { class: "quiet-line", text: (failed.length ? t(failed.length === 1 ? "{n} run failed. " : "{n} runs failed. ", { n: failed.length }) : "")
+    + (partial.length ? t(partial.length === 1 ? "{n} run partially completed. " : "{n} runs partially completed. ", { n: partial.length }) : "")
+    + reasons.map(reason => t(reason)).join(" ") });
 }
 // Quotes stay verbatim; a summary never acquires someone's quotation marks.
 function morningWords(text, r) {
@@ -4231,6 +4244,10 @@ function runItem(run) {
     el("div", { class: "run-meta mono", text: t("{n} read", { n: run.items || 0 }) + (u.input_tokens == null ? "" : " · " + t("{n} in / {m} out tokens", { n: num(u.input_tokens), m: num(u.output_tokens) })) })]);
   if ((run.changed || []).length) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k", text: t("Changed") }), ...run.changed.map(pageLink)]));
   for (const x of unwritten(run)) li.appendChild(el("div", { class: "run-pages" }, [el("span", { class: "k warn", text: t(x.k) }), pageLink(x.page), el("span", { class: "why", text: x.why })]));
+  if (outcome === "partial" || run.source_failures?.length) {
+    li.appendChild(failureSummary({ failed: [run], changed: (run.changed || []).map(byPath).filter(Boolean) }));
+    li.appendChild(commandChip(remCommand(run.id ? "logs " + shellArg(run.id) : "logs")));
+  }
   const trace = runTrace(run);
   if (trace) li.appendChild(trace);
   return li;

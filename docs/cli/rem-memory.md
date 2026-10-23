@@ -59,6 +59,35 @@ old assertions were applied or silently replay the whole history. No automatic
 legacy reconciliation command is included. No existing real notebook is migrated
 or rewritten by installation.
 
+## An unavailable source during sync
+
+In the next preview candidate, a read or authorization-service failure from one
+selected source keeps that source's cursor unchanged. Sync tries the remaining
+selected sources until it finds material for its normal one-source-kind batch.
+No new account, subscription or authorization is added by this fallback.
+
+When that batch completes but another source could not be read, the run reports
+`partial`, with `source_failures` and a warning in `co rem logs`. Only the healthy
+source's accepted material advances. An explicit sync exits nonzero for partial
+coverage; `sync --all` stops after that bounded batch instead of repeatedly trying
+the unavailable source. Run sync again after resolving the reported source error.
+If no material can be processed, collection reports `failed` without a model call.
+The scheduled slot is served and status retains the attention warning.
+
+The reader marks partial runs as needing attention in the night trace, morning
+brief and Activity. Accepted page changes stay visible. Partial source coverage
+does not produce an all-clear or a “nothing changed” claim, and source access
+failures are not labelled as model authentication failures. If a later extraction
+or maintenance call also fails, its separate model-access, timeout or quota
+recovery reason stays visible alongside the source failure. Activity offers a
+copyable command for the exact run log; private provider output stays out of the
+brief. These reader states still require current native desktop/phone and
+accessibility acceptance before release.
+
+This describes sources attempted in that batch. It does not certify that every
+subscription is caught up, that every page is accurate, or that an unavailable
+provider has recovered. Installation does not rerun a failed real nightly pass.
+
 ## Investigate questions with explicit stage models
 
 ```bash

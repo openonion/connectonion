@@ -929,20 +929,11 @@ def _terminate_as_interrupt():
 
 
 
-def _collection_failure(root: Path, config: dict, name: str, started: datetime, error: Exception) -> dict:
-    """A source that cannot be read is a failed pass, even before a model starts."""
-    finished = now()
-    record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
-              "finished_at": finished.isoformat(), "seconds": round((finished - started).total_seconds(), 2),
-              "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "stage": "gathering sources",
-              "sources": [name], "failed_source": name, "items": 0, "runner_attempts": 0,
-              "outcome": "failed", "usage": None, "changed": [], "progress_advanced": False,
-              "error": str(error) if isinstance(error, (RemError, ProviderCredentialError)) else
-                       f"Source collection failed ({type(error).__name__}); source progress preserved; inspect the source and retry",
-              "warning": "", "usage_by_stage": {}, "items_by_source": {}}
-    write_json(state_path(root, f"runs/{record['id']}.json"), record)
-    return record
+def _source_failure(name: str, error: Exception) -> dict:
+    """Only approved diagnostic types can contribute provider text to a run."""
+    return {"source": name,
+            "error": str(error) if isinstance(error, (RemError, ProviderCredentialError)) else
+                     f"Source collection failed ({type(error).__name__}); source progress preserved; inspect the source and retry"}
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
@@ -951,7 +942,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     from .runner import maintenance_instructions, run_stage
 
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
-    source_skips = []
+    source_skips, source_failures = [], []
+    gathering_started = now()
     kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
@@ -1018,7 +1010,6 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             break
         if len(items) >= max_items or remaining <= 0:
             break
-        gathering_started = now()
         try:
             if subscription.get("kind") in MAIL_KINDS:
                 try:
@@ -1038,7 +1029,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                 batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         except (RemError, OSError, UnicodeError, ProviderCredentialError, RequestError,
                 HttpError, GoogleAuthError, HttpLib2Error) as error:
-            return _collection_failure(root, config, name, gathering_started, error)
+            source_failures.append(_source_failure(name, error))
+            continue
         source_skips.extend({"source": name, "file": path, "reason": "processed prefix changed"}
                             for path in batch.changed_files)
         if getattr(batch, "unreadable", False):
@@ -1082,10 +1074,20 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
               "usage_by_stage": {}, "items_by_source": counts,
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None,
               **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}
+    if source_failures:
+        record.update(source_failures=source_failures, failed_source=source_failures[0]["source"],
+                      error="; ".join(row["error"] for row in source_failures))
+        record["warning"] = "; ".join(filter(None, [record["warning"], *(
+            f"{row['source']}: {row['error']} (source progress preserved)" for row in source_failures)]))
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
         if feedback_deferred:
             record.update(outcome="deferred", report="Local feedback remains pending; no eligible page turn")
+        if source_failures:
+            record.update(outcome="failed", phase="sync", stage="gathering sources",
+                          started_at=gathering_started.isoformat(), finished_at=now().isoformat(),
+                          seconds=round((now() - gathering_started).total_seconds(), 2),
+                          progress_advanced=updated != progress)
         write_json(state_path(root, "progress.json"), updated)
         # Nothing new was read and no model ran, so there is no run to list
         # (#1846). Messages passed over in an unfamiliar format are still said.
@@ -1114,7 +1116,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     if current:
         record["up_to_date"] = current
     if (current or passed) and not leads:
-        record.update(outcome="completed", report="Every page this material concerns has already read it, "
+        record.update(outcome="partial" if source_failures else "completed", report="Every page this material concerns has already read it, "
                                                   "is written by the project writer, or changed nothing a day ago")
         write_json(state_path(root, "progress.json"), updated)
         forget_digest(root)
@@ -1254,7 +1256,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         for key, value in (failed_usage or {}).items():
             usage[key] = usage.get(key, 0) + value
         record.update(outcome="interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed",
-                      usage=usage or None, changed=getattr(error, "changed", []),
+                      stage=stage, usage=usage or None, changed=getattr(error, "changed", []),
                       error=str(error) if isinstance(error, RemError) else "Runner failed; source progress preserved")
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
             raise  # stopped mid-write: what is on disk may be half a batch, so it runs again
@@ -1276,6 +1278,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             from .claim_changes import material_changes
             after = {page: notebook.read(page) for page in record["changed"] if notebook.path(page).is_file()}
             record["claim_changes"] = material_changes(before, after, record["changed"])
+        if source_failures and record["outcome"] == "completed":
+            record.update(outcome="partial", progress_advanced=True)
         record["quota"]["after"] = quota.read(config)
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
                                    - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)
