@@ -251,6 +251,8 @@ def _logged(root, record, phase, call, quiet=False):
         detail = f" ({processed}/{total})" if processed is not None and total is not None else ""
         turn.stage(f"{stage}{detail}")
 
+    from ...rem import execution
+    token = execution.begin(run, path)
     try:
         with turn:
             result = call(update)
@@ -288,6 +290,7 @@ def _logged(root, record, phase, call, quiet=False):
         failure._rem_retry_page = True
         raise failure from error
     finally:
+        execution.end(token)
         close_stage(now())
         open_stage["name"] = None
         run["finished_at"] = now().isoformat()
@@ -1747,7 +1750,7 @@ def make_rem_app(factory):
             # (#1957). One line per batch, on stderr so --json stays one document.
             finished.append(record)
             rem_look.line(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
-                       f"changed, {record.get('runner_attempts', 0)} model calls, {record.get('seconds')}s "
+                       f"changed, {record.get('runner_attempts', 0)} allowance slots, {record.get('seconds')}s "
                        f"({record['outcome']})", err=True)
 
         def operation(root):

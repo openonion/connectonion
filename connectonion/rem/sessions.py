@@ -764,7 +764,9 @@ def summarise_sessions(root: Path, *, limit: int = 40, batch: int = 8, run=None,
     for offset in range(0, len(rows), batch):
         batch_started = time.monotonic()
         chosen = rows[offset:offset + batch]
-        result = _summary_batch(root, chosen, settings, run or runner.run_task)
+        from .execution import capture
+        with capture(record, path):
+            result = _summary_batch(root, chosen, settings, run or runner.run_task)
         for key, value in result["usage"].items():
             report["usage"][key] = report["usage"].get(key, 0) + value
         report["batches"] += 1

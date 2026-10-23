@@ -2097,6 +2097,11 @@ const UI = {
     "{n} records": "{n} 条记录",
     "Batches today": "今日批次",
     "Model turns today": "今日模型轮次",
+    "Daily call allowance used": "日常调用额度已用",
+    "AI process attempts recorded": "已记录的 AI 进程启动尝试",
+    "{n} + unknown": "{n}，另有未知",
+    "Not recorded": "未记录",
+    "Recorded subprocess attempts are separate from the daily allowance. Custom runners and older logs may be unobserved. Provider model calls are unknown.": "已记录的子进程尝试与日常额度分开计算。自定义执行器和旧日志可能未被观测。模型 API 调用次数未知。",
     "Input tokens today": "今日输入 token",
     "Output tokens today": "今日输出 token",
     "Timezone": "时区",
@@ -4153,6 +4158,12 @@ function overview() {
   main.appendChild(maintenance(REM.status || {}));
 }
 
+function executionLabel(summary) {
+  const valid = value => Number.isSafeInteger(value) && value >= 0;
+  if (!summary || !valid(summary.attempts) || !valid(summary.records_with_evidence)
+      || !valid(summary.records_without_evidence) || !summary.records_with_evidence) return t("Not recorded");
+  return summary.records_without_evidence ? t("{n} + unknown", { n: num(summary.attempts) }) : num(summary.attempts);
+}
 function maintenance(s) {
   const maint = el("details", { class: "maint" });
   const state = t(scheduleState(s));
@@ -4162,11 +4173,13 @@ function maintenance(s) {
   const cells = el("div", { class: "row" });
   const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: t(k) }), el("div", { class: "v", text: v })]));
   cell("Batches today", String(s.batches_today ?? "—"));
-  cell("Model turns today", String(s.runner_attempts_today ?? "—"));
+  cell("Daily call allowance used", String(s.runner_attempts_today ?? "—"));
+  cell("AI process attempts recorded", executionLabel(s.execution_today));
   cell("Input tokens today", num(usage.input_tokens));
   cell("Output tokens today", num(usage.output_tokens));
   cell("Timezone", s.timezone || "—");
   maint.appendChild(cells);
+  maint.appendChild(el("p", { class: "state", text: t("Recorded subprocess attempts are separate from the daily allowance. Custom runners and older logs may be unobserved. Provider model calls are unknown.") }));
   const subs = Object.entries(REM.subscriptions || {});
   if (subs.length) {
     const line = el("p", { class: "state" }, [t("Sources: ")]);
