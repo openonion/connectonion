@@ -94,14 +94,14 @@ def test_company_uses_owner_sent_mail_sessions_and_context(tmp_path, monkeypatch
     assert 'avery.lin@mail.example.ai' in note and 'mia.chen@example.com' not in note
     assert 'people/mia.md: A customer.' in note and 'orgs/customer.md: A customer organisation.' in note
     assert 'projects/mia.md: An unrelated project.' in note
-    assert "owner's company: written from the owner's sent mail (3) and sessions (2)" in result['coverage']
+    assert "owner's company: written from the owner's sent mail (3 of 3) and sessions (2)" in result['coverage']
 
 
-def test_possible_own_address_can_recognise_the_company_without_a_matching_company_field(tmp_path):
+def test_possible_own_address_does_not_establish_company_ownership(tmp_path):
     book, _ = _notebook(tmp_path)
     book.write('people/avery.md', '# Avery Lin\n\n## Facts\n- Company: Mara\n')
     owner = inv.company_owner(book, ['example.ai'])
-    assert owner['addresses'] == ['avery.lin@gmail.com', 'avery.lin@mail.example.ai', 'avery.lin@outlook.com']
+    assert owner == {}
     assert inv.company_owner(book, ['example.com']) == {}
 
 
@@ -130,10 +130,10 @@ def test_archived_agent_sent_mail_is_owner_evidence_without_a_connected_mailbox(
         'range_start': (now - timedelta(days=20)).isoformat(), 'range_end': (now + timedelta(minutes=1)).isoformat()})
     retain_message(tmp_path, 'gmail', _mail('avery.lin@mail.example.ai', 'agent'), 'I will ship Mara.',
                    fetched_at=now.isoformat())
-    items, coverage = inv.company_material(book, inv.company_owner(book, ['example.ai']), [], days=10,
+    items, coverage = inv.company_material(book, inv.company_owner(book, ['example.ai']), [], record='orgs/example.md', days=10,
                                            clients={}, subscriptions={}, archive_root=tmp_path)
     assert len(items) == 1 and items[0]['role'] == 'user' and items[0]['text'] == 'I will ship Mara.'
-    assert "owner's company: written from the owner's sent mail (1) and sessions (0)" in coverage
+    assert "owner's company: written from the owner's sent mail (1 of 1) and sessions (0)" in coverage
 
 
 def test_ordinary_org_does_not_gather_owner_mail_or_get_company_note(tmp_path, monkeypatch):

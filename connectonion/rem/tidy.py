@@ -168,12 +168,14 @@ def _strangers(notebook: Notebook, state: dict) -> list[dict]:
 
 
 def _empty_orgs(notebook: Notebook, state: dict) -> list[dict]:
-    """Organisation pages the map made whose people all lost their pages, never written: archived."""
+    """Archive unwritten orgs whose people lost their pages; our company still has owner-side evidence."""
     from .census import written
+    from .queue import own_orgs
+    companies = own_orgs(notebook, state.get("owner"))
     moved = []
     for row in state.get("orgs", []):
         record = row.get("record")
-        if (not record or not row.get("people") or not notebook.path(record).is_file()
+        if (not record or record in companies or not row.get("people") or not notebook.path(record).is_file()
                 or written(notebook.read(record))
                 or any(notebook.path(person).is_file() for person in row["people"])):
             continue
@@ -182,19 +184,14 @@ def _empty_orgs(notebook: Notebook, state: dict) -> list[dict]:
 
 
 def _orgs(notebook: Notebook, state: dict) -> list[dict]:
-    """Organisation pages for a mailbox provider, an event relay or the owner's own company,
-    never investigated: archived (#2018).
+    """Unwritten organisation pages for a mailbox provider or an event relay are archived (#2018).
 
     Where someone keeps their mail is not who they work for: orgs/yahoo-com-hk
-    and orgs/luma-mail-com were on the 1.9.0a5 acceptance notebook. The owner's
-    own company is not a counterparty: orgs/connectonion-com (2026-10-10).
+    and orgs/luma-mail-com were on the 1.9.0a5 acceptance notebook.
     """
     from .census import written
     from .map import RELAY
-    from .org_map import own_domain
     from .scan import personal_mailbox
-    owner = state.get("owner")
-    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
     moved = []
     for record in notebook.list("orgs"):
         text = notebook.read(record)
@@ -202,7 +199,7 @@ def _orgs(notebook: Notebook, state: dict) -> list[dict]:
         domains = re.findall(r"^- ([A-Za-z0-9.-]+)\s*$", section, re.M)
         if written(text) or not domains:
             continue
-        if all(personal_mailbox(domain) or RELAY.search("x@" + domain) or own_domain(domain, owner, page)
+        if all(personal_mailbox(domain) or RELAY.search("x@" + domain)
                for domain in domains):
             moved.append({"action": "archived organisation", "page": record, "archived": _archive(notebook, record)})
     return moved

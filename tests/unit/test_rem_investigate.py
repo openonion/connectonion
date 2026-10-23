@@ -1,6 +1,7 @@
 """Both runners are co ai; the runner setting only picks which harness answers."""
 
 import json
+import re
 import types
 from pathlib import Path
 
@@ -22,6 +23,140 @@ class Quiet:
 def skill_found(monkeypatch):
     """The real check spawns the interpreter; its own tests are in test_rem_runner."""
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+
+
+@pytest.mark.parametrize('domain,company', [
+    ('student.example.edu.au', 'Example University'), ('bigcorp.example', 'Mara Labs'), ('gmail.com', 'Gmail'),
+])
+def test_sending_domain_does_not_get_own_company_note(tmp_path, monkeypatch, domain, company):
+    from connectonion.rem.files import Notebook, state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', f'# Avery Lin\n\n- Company: {company}\n')
+    notebook.stub_org('orgs/example.md', domain, [domain])
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': [f'avery@{domain}']}})
+    assert inv.company_owner(notebook, [domain]) == {}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([{
+        'source': 'gmail:example', 'role': 'other', 'speaker': f'mara@{domain}',
+        'timestamp': '2026-10-20T00:00:00+00:00', 'text': 'Here are the terms.'}], []))
+    monkeypatch.setattr(inv, 'website_items', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(inv, 'project_mentions', lambda *a: ([], 'project documents: none'))
+    monkeypatch.setattr(inv, 'quote_pass', lambda *a: None)
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {'changed': []}
+
+    inv.investigate(tmp_path, 'orgs/example.md', domain, [], days=10, clients={}, subscriptions={}, runner=runner)
+    assert seen and not any(item['role'] == 'own-company' or inv.OWN_COMPANY_NOTE in item['text'] for item in seen)
+
+
+@pytest.mark.parametrize('field', ['- Organisation: Mara Labs', '- Website: https://maralabs.example'])
+def test_project_can_establish_company_ownership(tmp_path, field):
+    from connectonion.rem.files import Notebook, state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', '# Avery Lin\n\n- Company: Unknown\n')
+    notebook.write('projects/mara.md', '# Mara\n\n' + field + '\n')
+    # An owned project counts when the owner also writes from its domain (#2615 review).
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com', 'avery@maralabs.example']}})
+    assert inv.company_owner(notebook, ['maralabs.example'])['name'] == 'Avery Lin'
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com']}})
+    assert inv.company_owner(notebook, ['maralabs.example']) == {}
+
+
+def test_project_ownership_without_an_owner_page_cannot_supply_owner_material(tmp_path):
+    from connectonion.rem.files import Notebook
+    notebook = Notebook(tmp_path)
+    notebook.write('projects/mara.md', '# Mara\n\n- Website: https://maralabs.example\n')
+    assert inv.company_owner(notebook, ['maralabs.example']) == {}
+
+
+@pytest.fixture(params=[False, True])
+def company_mail(tmp_path, request):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import Notebook, state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', '# Avery Lin\n\n- Company: Mara Labs\n')
+    notebook.stub_org('orgs/mara.md', 'Mara Labs', ['maralabs.example'])
+    notebook.write('orgs/mara.md', notebook.read('orgs/mara.md') + '\n## Products\n- Mara — a product\n')
+    owner = {'record': 'people/avery.md', 'name': 'Avery Lin',
+             'addresses': ['avery@gmail.com', 'avery@maralabs.example']}
+    now = datetime.now(timezone.utc)
+    rows = [{'id': key, 'from': 'avery@gmail.com', 'to': ['mara@friend.example'],
+             'subject': 'Hello', 'date': (now - timedelta(days=2)).isoformat()} for key in
+            ('body', 'subject', 'domain', 'to', 'cc', 'sender', 'project', 'unrelated', 'substring')]
+    by_id = {row['id']: row for row in rows}
+    by_id['body']['to'] = ['client@partner.example']
+    by_id['subject']['subject'] = 'MARA LABS next steps'
+    by_id['domain']['subject'] = 'Next steps for maralabs.example'
+    by_id['to']['to'] = ['Mara <mara@team.maralabs.example>']
+    by_id['cc']['cc'] = ['mara@maralabs.example']
+    by_id['sender']['from'] = 'avery@maralabs.example'
+    bodies = {key: 'Dinner tomorrow?' for key in by_id}
+    bodies.update(body='I will send the Mara Labs proposal.', project='I will ship Mara.', substring='A marathon tomorrow?')
+    attachments = []
+
+    class Mail:
+        def my_addresses(self): return {'avery@gmail.com'}
+        def list_between(self, start, end, limit):
+            return [row for row in rows if start <= row['date'] < end]
+        def get_email_body(self, key): return bodies[key]
+        def download_attachments(self, key, directory):
+            attachments.append(key)
+            return []
+
+    if request.param:
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': owner['addresses'],
+            'range_start': (now - timedelta(days=20)).isoformat(), 'range_end': (now + timedelta(minutes=1)).isoformat()})
+        for row in rows:
+            retain_message(tmp_path, 'gmail', row, bodies[row['id']], fetched_at=now.isoformat())
+    return notebook, owner, Mail(), attachments, set(by_id) - {'unrelated', 'substring'}
+
+
+def test_company_material_filters_unrelated_sent_mail_before_attachments(tmp_path, company_mail):
+    notebook, owner, client, attachments, expected = company_mail
+    items, coverage = inv.company_material(notebook, owner, [], record='orgs/mara.md',
+        days=10, clients={'gmail': client}, subscriptions={}, archive_root=tmp_path,
+        attachments_dir=tmp_path / '.state/attachments')
+    assert len(items) == 7 and all(item['role'] == 'user' for item in items)
+    assert 'Dinner tomorrow?' in {item['text'] for item in items}  # header membership is sufficient
+    assert all(item['source'].startswith('gmail:') for item in items)
+    assert set(attachments) == expected
+    assert "owner's company: written from the owner's sent mail (7 of 9) and sessions (0)" in coverage
+
+
+def test_initial_company_gather_does_not_reintroduce_private_contact_mail(tmp_path, monkeypatch, company_mail):
+    from connectonion.rem.files import state_path, write_json
+    notebook, owner, client, attachments, expected = company_mail
+    # A shared contact's personal address must not bypass the owner's sent-mail filter.
+    notebook.stub_person('people/mara.md', 'Mara', email='mara@maralabs.example, mara@friend.example')
+    notebook.stub_org('orgs/friend.md', 'friend.example', ['friend.example'])
+    write_json(state_path(tmp_path, 'map.json'), {'owner': owner, 'orgs': [
+        {'record': 'orgs/mara.md', 'domains': ['maralabs.example'], 'people': ['people/mara.md']},
+        {'record': 'orgs/friend.md', 'domains': ['friend.example'], 'people': ['people/mara.md']}]})
+    assert inv.org_contact_context(notebook, 'orgs/mara.md')['addresses'] == ['mara@friend.example']
+    monkeypatch.setattr(inv, 'website_items', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(inv, 'project_mentions', lambda *a: ([], 'project documents: none'))
+    monkeypatch.setattr(inv, 'quote_pass', lambda *a: None)
+    seen = []
+    attachments.clear()
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {'changed': []}
+
+    inv.investigate(tmp_path, 'orgs/mara.md', 'Mara Labs', [], days=10,
+                    clients={'gmail': client}, subscriptions={}, runner=runner)
+    assert len([item for item in seen if item['source'].startswith('gmail:')]) == 7
+    assert set(attachments) == expected
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -3229,3 +3364,10 @@ def test_the_editing_turn_puts_back_a_quote_and_source_it_deleted_with_a_hedge(t
 
     inv.editing_turn(runner, notebook, record, {})
     assert "“Can you review it?”" in notebook.read(record) and "gmail:b" in notebook.read(record)
+
+
+def test_short_product_names_match_only_as_written_whole_words():
+    """#2615 review: a two- or three-letter product name pulled in unrelated mail."""
+    pattern = inv.company_mentions(['Mara Labs', 'Pix', 'go'])
+    assert pattern.search('notes on mara labs pricing') and pattern.search('Pix shipped today')
+    assert not pattern.search('we should go to the pixel show') and not pattern.search('pix and Go')
