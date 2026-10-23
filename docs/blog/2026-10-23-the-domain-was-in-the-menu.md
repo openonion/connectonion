@@ -1,3 +1,7 @@
+---
+tags: [Email, API Design, Testing]
+---
+
 # The domain was in the menu
 
 The owner asked whether one account could hold several email addresses on
