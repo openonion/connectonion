@@ -25,7 +25,7 @@ the resulting context still exceeds the budget.
 
 ### When feedback is processed
 
-In the next preview candidate, normal `sync` selects attributed reflection
+Normal `sync` selects attributed reflection
 records and review decisions by their explicit target pages. It keeps raw
 records in the maintenance input; changing the compact view is not a new event.
 Fresh feedback bypasses an older page cooldown or ordinary source-current check.
@@ -61,7 +61,7 @@ or rewritten by installation.
 
 ### Explicit investigation when no new originals are found
 
-In a follow-up candidate, an explicit `co rem investigate PAGE` that finds no new
+In 1.9.3rc17, an explicit `co rem investigate PAGE` that finds no new
 raw material can process eligible attributed feedback for that page in one bounded
 maintenance turn. The log says `mode: feedback_only`, retains `feedback_items` and
 `feedback_deferred`, and reports the stage as `processing attributed feedback`.
@@ -78,8 +78,8 @@ keeps its original date boundary and does not become a feedback review.
 
 Mixed new raw evidence and multi-round investigations still receive their existing
 context; this fallback does not establish managed feedback receipts for those paths.
-It is not an external-agent instant-apply interface. This follow-up candidate is
-not included in the public 1.9.3rc16 preview.
+It is not an external-agent instant-apply interface. The direct-investigation fallback is
+part of 1.9.3rc17 and is not included in 1.9.3rc16.
 
 ## Investigate questions with explicit stage models
 

@@ -1,6 +1,7 @@
 # No new mail was not no new feedback
 
-Candidate implementation; not included in the published 1.9.3rc16 preview.
+Implementation included in 1.9.3rc17; not included in 1.9.3rc16. Availability
+requires the matching public PyPI package and GitHub prerelease.
 
 A saved correction can arrive after a page's last investigation. We asked what an
 explicit investigation would do if the mailbox and coding sessions had nothing new.
