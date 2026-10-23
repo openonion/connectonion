@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc18
+## Current Version: 1.9.3rc19
+
+Mailbox setup receives another regression and installation acceptance round.
+Signed-out commands and rejected account settings cannot reach a purchase;
+reserved domains stay unavailable until enabled by the backend. Existing
+multi-address behavior and the account default are unchanged. Stable remains
+1.9.2. See [1.9.3rc19 notes](docs/releases/1.9.3rc19.md).
+
+- 1.9.3rc19 (mailbox setup regression and installation acceptance).
+
+### Previous candidate: 1.9.3rc18
 
 The email CLI exposes the existing cloud multi-address API: `co email domains`
 reads enabled domain choices and current prices, and `co email setup <alias>

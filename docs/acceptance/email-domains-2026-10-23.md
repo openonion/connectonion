@@ -51,3 +51,17 @@ real mailbox purchases, Cloudflare routing or live mail delivery.
 ![Mail component on mobile, local fixture](email-domains-2026-10-23/mail-mobile.png)
 
 ![CLI email docs, desktop details expanded](email-domains-2026-10-23/docs-desktop.png)
+
+## Follow-up verification for 1.9.3rc19
+
+The fresh SDK/CLI email suite passed 114 tests. Backend regression passed 907
+with 200 skipped; eleven ownership contracts ran against real local PostgreSQL.
+The additional contract checks a unified inbox across different names and all
+four hosted domains; selecting a default sender does not split received mail.
+New setup checks cover signed-out access, settings authorization failure, and
+backend-disabled reserved domains without attempting a purchase.
+
+A fresh production inspection still found all three branded sender domains
+verified in Resend and Cloudflare Email Routing API requests rejected with 403.
+This round does not establish branded-domain incoming delivery. The live owner
+account was read only; no mailbox purchase or message send was used as a test.
