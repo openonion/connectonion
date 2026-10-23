@@ -98,3 +98,31 @@ this preparation.
 Product usefulness, source truth, current-model behavior, real first-run/night
 maintenance and native UI acceptance remain unverified. Do not mark the REM goal
 or broader correction/design issues complete from this preparation.
+
+
+## Preparation evidence before the version PR
+
+- Base3a75894 tree matches reviewed57ae950 exactly. Runtime changes versus rc16
+  were inspected separately from the test-only optimization.
+- Version checks:16passed1natural skip (docs-site is a separate repository and
+  is synchronized from the tag after public availability).
+- Matching CI uv0.6.16 refreshed only the root project version;115packages resolve
+  with no dependency changes. An initial offlineuv0.13 attempt lacked cached
+  patchright metadata; normal matching-tool refresh succeeded without narrowing
+  supported Python versions or waiving a dependency audit.
+- Strict audit of the all-extras frozen export: no known vulnerabilities found.
+  The forward-port issue ledger had no open blockers at preparation.
+- Full documented offline scope on frozen e734c67705cb7aa884ae2fa8b06c7f27e7524560:
+  17,093passed334skipped7warnings142.43s. Subsequent changes correct only release
+  documentation/link placement and the reviewed manifest wording.
+- Initial build/Twine checks passed. Rebuilt final artifact, isolated installed-
+  wheel, final exact-head review and remote/version/tag gates are recorded in
+  the associated PR/workflow; they are not inferred from these earlier results.
+- Independent AI scope review approved the backend exemption and identified the
+  acceptance-link problem. The link now uses the immutable tag because docs sync
+  does not copy this acceptance directory. The included tool-hint fix moved out
+  of the Unreleased heading into the rc17 section.
+
+This is a dated preparation checkpoint. Public availability, exact installed
+bytes and the manual trial must be demonstrated separately; neither a successful
+build nor this document establishes them.
