@@ -38,7 +38,18 @@ claimed fixed.
   numbers that can collide with explicit numbers. Mixed definitions now refuse
   routing/translation; ordinary legacy-only session sources remain usable.
   Regression: 1 failed, 1 legacy control passed before repair (0.66s).
-- Full CI scope, independent final exact-head review and remote CI: pending.
+- Final related suite after legacy repair: 562 passed, 11.60s.
+- Full documented offline CI scope on frozen source
+  84359a5e6ce22487bc665fc938c531a6efed11ec: 17,128 passed, 334 skipped,
+  7 warnings, 163.79s. The earlier full run was interrupted after review code
+  changed; its partial 14,118 passes are not full or exact-head acceptance.
+- Independent AI source/copy reviewer approved exact source84359a5 and
+  docsaba165cc7296d1084d0eb2486f25e6d5faf5acf7, no remaining blockers in scope.
+  This final evidence-only update changes no implementation/test/journal bytes.
+- Matching docs lint: 0 errors, 155 existing warnings; blog/build/discovery pass
+  (150 generated articles, 174 feed/sitemap entries). Production audit0 findings;
+  known transitive dev-only braces chain remains under unchanged policy.
+- Remote CI and native acceptance remain pending. Both PRs remain draft.
 
 Actual reader functions use logical element/document/panel stubs. They check
 canonical routing, source identity/label/selector/excerpt data flow, captions and
