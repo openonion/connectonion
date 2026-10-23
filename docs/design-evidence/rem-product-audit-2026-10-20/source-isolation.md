@@ -44,3 +44,28 @@ subscription history. A later batch can rotate before encountering an unavailabl
 source; retained run history describes the earlier observed failure. No source
 health certification, automatic reauthentication, generic queue or extra retry loop
 is introduced.
+
+## Current-main integration, 23 October 2026
+
+Installed/public baseline is now rc16. Current main97972c3 (including maintainer
+security/Python>=3.11 changes and the merged carried-claim repair) was merged
+without conflicts. The old Pillow audit blocker above is historical and no longer
+describes current main. Existing source/daily/collection/isolation regressions
+pass123tests in6.60s after integration. No provider/model/real notebook run.
+
+Integration review identified a product gap: the reader's failure classifier did
+not include partial, so the night trace said “Nothing stopped early” while the
+morning brief could say nothing changed. Activity also rendered partial as quiet
+and gave no source-recovery/log action. Five composed logical reader contracts
+failed first; an existing-label Chinese control passed. The repair classifies
+partial as attention, counts fully failed and partial runs separately, retains
+accepted page links and chart depth, avoids blanket negative change claims, and
+offers the exact log command. Source-access errors are described generically
+without echoing private provider text or calling them model authentication errors.
+UI strings and the trace's accessible description are translated.
+
+These are logical Node element/HTML contracts, not rendered DOM or native
+acceptance. Current desktop/phone, keyboard/focus and screen-reader acceptance
+remain pending. No denied preview/renderer/screenshot workaround was used.
+Final focused/CI-scope/exact-head review results are recorded in PR2623; broad
+product maturity and actual overnight recovery remain unverified.

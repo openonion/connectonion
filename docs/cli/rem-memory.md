@@ -74,6 +74,14 @@ the unavailable source. Run sync again after resolving the reported source error
 If no material can be processed, collection reports `failed` without a model call.
 The scheduled slot is served and status retains the attention warning.
 
+The reader marks partial runs as needing attention in the night trace, morning
+brief and Activity. Accepted page changes stay visible. Partial source coverage
+does not produce an all-clear or a “nothing changed” claim, and source access
+failures are not labelled as model authentication failures. Activity offers a
+copyable command for the exact run log; private provider output stays out of the
+brief. These reader states still require current native desktop/phone and
+accessibility acceptance before release.
+
 This describes sources attempted in that batch. It does not certify that every
 subscription is caught up, that every page is accurate, or that an unavailable
 provider has recovered. Installation does not rerun a failed real nightly pass.

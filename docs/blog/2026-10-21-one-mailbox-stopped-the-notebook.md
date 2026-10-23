@@ -20,3 +20,11 @@ costs no model call, and backfill stops rather than looping over the failure.
 This is candidate behavior for a future reviewed preview. Tests use synthetic
 material and trusted fake maintainers. They establish orchestration, not recovered
 mail access, correct generated memories or a successful real overnight run.
+
+On 23 October, integrating the repair with rc16 exposed the reader's side of the
+same contract. It treated partial as quiet and could announce no change despite
+unread sources. The candidate now shows attention while retaining accepted work,
+separates partial from fully failed runs, and links to the exact run log without
+printing private provider errors. Five logical reader cases failed before this
+correction. They do not replace current native desktop, phone or accessibility
+acceptance, which remains pending.

@@ -92,7 +92,7 @@ def test_first_build_keeps_failures_and_written_pages_visible(written):
     ''')
     assert result['aria-label'] == 'First build'
     paragraphs = [node.get('text', '') for node in result['children']]
-    assert any('2 investigations failed' in text and 'Model access was refused' in text
+    assert any('2 runs failed' in text and 'Model access was refused' in text
                and 'A request timed out' in text for text in paragraphs)
     assert any('Your notebook was just built' in text for text in paragraphs) is written
     assert any('No memory pages were written' in text for text in paragraphs) is not written
