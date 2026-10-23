@@ -1,40 +1,40 @@
-version: v1.9.3rc20
+version: v1.9.3rc21
 images:
 - file: cli-desktop.png
   alt: Native REM preview guide with page checks expanded
   caption: Native REM preview guide with page checks expanded
   scenario: Native REM preview guide with page checks expanded
   viewport: 1440x1000
-  commit: docs-site 71a10fe920462621cbc9665d289aa3d497f54f52
-  source_run: RC20 local production build, actual browser capture 2026-10-23
+  commit: docs-site 86169ca9ed8af6331c4f7f375999ec136d440598
+  source_run: RC21 local production build, actual browser capture 2026-10-23
 - file: cli-mobile.png
   alt: Native REM preview guide with details collapsed
   caption: Native REM preview guide with details collapsed
   scenario: Native REM preview guide with details collapsed
   viewport: 390x844
-  commit: docs-site 71a10fe920462621cbc9665d289aa3d497f54f52
-  source_run: RC20 local production build, actual browser capture 2026-10-23
+  commit: docs-site 86169ca9ed8af6331c4f7f375999ec136d440598
+  source_run: RC21 local production build, actual browser capture 2026-10-23
 - file: cli-mobile-expanded.png
   alt: Page-check disclosure expanded on mobile
   caption: Page-check disclosure expanded on mobile
   scenario: Page-check disclosure expanded on mobile
   viewport: 390x844
-  commit: docs-site 71a10fe920462621cbc9665d289aa3d497f54f52
-  source_run: RC20 local production build, actual browser capture 2026-10-23
+  commit: docs-site 86169ca9ed8af6331c4f7f375999ec136d440598
+  source_run: RC21 local production build, actual browser capture 2026-10-23
 - file: release-mobile.png
   alt: Exact-pin native scheduling preview release notes
   caption: Exact-pin native scheduling preview release notes
   scenario: Exact-pin native scheduling preview release notes
   viewport: 390x844
-  commit: docs-site 71a10fe920462621cbc9665d289aa3d497f54f52
-  source_run: RC20 local production build, actual browser capture 2026-10-23
+  commit: docs-site 86169ca9ed8af6331c4f7f375999ec136d440598
+  source_run: RC21 local production build, actual browser capture 2026-10-23
 - file: journal-mobile.png
   alt: Design journal with one date, specific tags and acceptance navigation
   caption: Design journal with one date, specific tags and acceptance navigation
   scenario: Design journal with one date, specific tags and acceptance navigation
   viewport: 390x844
-  commit: docs-site 71a10fe920462621cbc9665d289aa3d497f54f52
-  source_run: RC20 local production build, actual browser capture 2026-10-23
+  commit: docs-site 86169ca9ed8af6331c4f7f375999ec136d440598
+  source_run: RC21 local production build, actual browser capture 2026-10-23
 coverage: Rendered documentation entry, disclosure, release and journal. Native Codex
   desktop UI, remote project layout, sleep/wake and overnight useful findings are
   not established by these images.

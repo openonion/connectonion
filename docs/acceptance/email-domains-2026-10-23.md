@@ -73,3 +73,44 @@ was found. The current public preview was rc18 at that inspection; rc19 labels
 and installation instructions require a post-publication recheck. Screenshot
 capture failed in this round; page reads and layout checks succeeded. This
 coverage does not establish every page or live delivery acceptance.
+
+## Live routing follow-up after publication
+
+The shell's dedicated CLOUDFLARE_API_TOKEN_EMAIL can read catch-all rules and
+Workers (HTTP 200). The production DNS token cannot. The dedicated token still
+receives 403 from POST `/email/routing/dns`, whose documented requirement is
+Zone Settings Write. The provisioner now selects that dedicated routing token
+while retaining the ordinary token for sender DNS.
+
+Actual catch-all inspection found openonion.ai routed to openonion-email-worker,
+steadmail.com and oakinbox.com disabled, and trustxmail.com already routed to a
+separate verify-code worker. No existing catch-all was overwritten.
+
+The deployed primary worker currently parses PostalMime and POSTs a signed
+backend webhook. A real provider self-test to the owner's existing primary
+address was returned by the authenticated received-mail API (one matching
+message). The CLI send attempt itself was rejected at the monthly 100-message
+quota, so this is provider-to-inbox acceptance, not a CLI-send pass. No quota
+upgrade or branded mailbox purchase was made. The three branded domains still
+lack accepted incoming delivery; their new-address choices remain disabled.
+
+## Approved trustxmail.com migration and acceptance
+
+The owner explicitly selected moving all trustxmail.com mail from verify-code
+to Agent Mail. The old enabled catch-all was backed up before PUT of the new
+rule. Read-back confirmed it is enabled and targets openonion-email-worker.
+The separate verification-code worker itself was not edited or deleted.
+
+A synthetic internal recipient was checked to ensure it did not belong to
+another account. A provider test to that address produced one matching row in
+email_received. This proves the trustxmail.com incoming route into the mail
+store; the address was not purchased, so it is not an owner's API inbox test.
+The existing primary-address test independently returned one message through
+the owner's authenticated received-mail API. No account quota or tier changed.
+
+Both the live service environment and deployment repository variable now allow
+mail.openonion.ai and trustxmail.com. The service restarted successfully, and
+CLI domain discovery and price preview use the new list without a purchase.
+steadmail.com and oakinbox.com remain gated: the dedicated token still receives
+403 on settings/enable operations. The operator token-selection fix passed all
+908 backend tests (201 skipped) and independent review; its PR is merged.

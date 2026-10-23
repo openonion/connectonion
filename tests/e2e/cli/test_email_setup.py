@@ -98,3 +98,15 @@ def test_a_reserved_domain_is_not_sold_until_the_cloud_enables_it(cloud):
     assert result.exit_code == 1
     assert 'co email domains' in result.output
     cloud[1].assert_not_called()
+
+
+def test_an_owned_address_is_recognized_when_its_domain_closes_to_new_purchases(cloud):
+    cloud[0].return_value = response({
+        **SETTINGS,
+        'domains': ['mail.openonion.ai'],
+        'addresses': [*SETTINGS['addresses'], {'address': 'iron.share@steadmail.com'}],
+    })
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == 'Already owned: iron.share@steadmail.com'
+    cloud[1].assert_not_called()

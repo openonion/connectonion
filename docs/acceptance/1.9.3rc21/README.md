@@ -1,4 +1,4 @@
-# REM native scheduling acceptance — 1.9.3rc20
+# REM native scheduling acceptance — 1.9.3rc21
 
 The implementation base was reviewed maincb872f23 (rc17). The final base includes reviewed main332132b8 (rc18 mailbox CLI); the native
 scheduling delta remains separate. Runtime dependency floors and stable1.9.2 remain.
@@ -57,7 +57,7 @@ unverified. There is no all-page, source-quality or useful-recall pass claimed.
 
 The native prototype initially used the rc19 candidate number. A
 parallel email release took rc19 before this PR merged; the native release is
-rc20. Runtime receipts retain their exact source commit and trial timing.
+rc21. Runtime receipts retain their exact source commit and trial timing.
 
 ## Final ledger
 
@@ -98,3 +98,7 @@ finish marker. See [the precise receipt](native-long-wait.json). This is a
 three-minute lifecycle test, not a claim that an hour-long production round has
 been fully accepted. The live production definition received the same waiting
 instruction without changing its ID, saved times or served-slot history.
+
+During final integration, reviewed email PR2668 published/reserved rc20. Native scheduling therefore ships as rc21, inheriting that mailbox fix and preserving rc20 unchanged. Earlier runtime trials used the previously named prototype; they are not claimed as runs of the final public artifact.
+
+The merged rc21 scheduler, version, handoff, REM CLI and email setup selection passed178tests. Final docs built654routes and passed blog discovery plus472-page SEO checks; lint reported0errors and155inherited warnings. Five rc21 production captures use docs source86169ca9. Final required CI and public artifact checks remain publication gates.

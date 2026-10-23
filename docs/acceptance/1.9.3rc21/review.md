@@ -38,4 +38,6 @@ The final waiting-instruction review found no new code blocker. The monitored
 180-second native probe returned terminal exit0 and archived after completion;
 full production completion remains unverified. A subsequent docs review caught
 an inherited paragraph claiming native scheduling was disabled. Both guide
-copies now describe rc20 eligibility and link the scheduling section.
+copies now describe current eligibility and link the scheduling section.
+
+Reviewed email rc20 was subsequently merged without replacing its release notes. Native scheduling moved to rc21; final presentation captures were regenerated for rc21. All test jobs and test commands remain enabled after removing the optional pip cache restoration that stalled on account egress limits.

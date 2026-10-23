@@ -33,12 +33,29 @@ unspecified. An operator can restrict the domains offered for new purchases
 until the deployment is ready to serve them. Maintaining a second fixed list
 in the CLI would have recreated the original disagreement.
 
+Closing a domain to new purchases exposed another edge in repeat setup. The
+CLI checked the current domain menu before looking at the account's owned
+addresses, so a person with a valid mailbox could be told that its domain was
+unknown. Checking ownership first lets setup recognize that existing address
+without another purchase. New claims still have to pass the readiness gate.
+
 The three branded senders are now verified and their sending DNS records are
-installed. Incoming routing remains a separate acceptance step: the available
-Cloudflare token could edit DNS but received 403 from Email Routing. Until
-that permission and the catch-all route are checked, those domains must not be
-sold as ready. The application tests and rendered desktop/mobile fixtures do
-not substitute for that check, and no live email was sent for this work.
+installed. The first routing inspection used the production DNS token, which
+received 403. A later check of the shell's dedicated email token could read
+rules and Workers, but enabling a zone still returned 403: that operation needs
+Zone Settings Write. Inspecting the existing routes mattered too:
+trustxmail.com was already serving a separate verification-code worker. The
+owner chose to move all of that domain's mail to Agent Mail. Its original rule
+was backed up, the catch-all was changed, and a real test reached the mail store.
+It now joins mail.openonion.ai in the enabled choices. steadmail.com and
+oakinbox.com still need their routing enabled before they can be offered.
+
+A real self-test subsequently reached the owner's existing primary inbox through
+the deployed mail Worker and signed backend webhook. It was sent with the
+service's provider account because the owner's CLI send request hit its monthly
+100-message quota. That verifies the primary incoming path; the separate trustxmail.com test
+verifies that domain's path into the mail store. Neither establishes a successful
+send through the quota-limited account or delivery to the two unenabled domains.
 
 The follow-up question was simpler than the original setup request: would
 these different names still be one inbox? A test account acquired five

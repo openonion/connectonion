@@ -866,7 +866,7 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-In opt-in preview **1.9.3rc20**, Codex notebooks default to **Codex desktop Scheduled** when the app
+In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Scheduled** when the app
 is installed and the notebook timezone matches this computer. The desktop
 adopts a private local automation definition; there is no public App Server
 schedule RPC in the tested version. Keep the app open and computer awake.
@@ -1729,7 +1729,7 @@ crash can leave a thread active; existing history is not bulk-archived. They lea
 remain available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
-History archiving also applies when launchd owns the timer. In rc20, eligible
+History archiving also applies when launchd owns the timer. In rc21, eligible
 Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
 for eligibility and fallback. Registration uses the desktop's task file format;
 Scheduled is not a public App Server scheduling API.
