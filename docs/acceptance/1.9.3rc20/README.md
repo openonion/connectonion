@@ -82,3 +82,19 @@ rc20. Runtime receipts retain their exact source commit and trial timing.
   checks. Publication uses its reviewed merge commit and immutable version tag.
   The exact-tag release workflow verifies public wheel/sdist hashes and creates
   the prerelease. This record was prepared before that publication completes.
+
+## Long execution completion boundary
+
+The first production wrapper reported the CLI was still active, with no final
+exit status, and then archived. Its first maintenance batch made progress, but
+full command completion was not established. The wrapper prompt now explicitly
+requires polling the same session until an actual final exit status, including
+hour-long maintenance; it must not end or kill the process merely to finish.
+
+A real native timer then ran a controlled180-second blocking process. It stayed
+IN_PROGRESS while running; the finish marker appeared before PENDING_REVIEW and
+ARCHIVED. Independent epoch comparison confirms archive metadata followed the
+finish marker. See [the precise receipt](native-long-wait.json). This is a
+three-minute lifecycle test, not a claim that an hour-long production round has
+been fully accepted. The live production definition received the same waiting
+instruction without changing its ID, saved times or served-slot history.

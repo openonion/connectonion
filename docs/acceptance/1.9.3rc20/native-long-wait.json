@@ -1,0 +1,13 @@
+{
+  "native_thread_id": "01a16804-5724-7722-9153-aef32e9fdc0d",
+  "blocking_seconds": 180.00775289535522,
+  "started_epoch": 1792746508.990147,
+  "finished_epoch": 1792746688.9979,
+  "archived_updated_at_ms": 1792746710981,
+  "native_observed_in_progress_while_process_running": true,
+  "premature_archive": false,
+  "final_status": "ARCHIVED",
+  "passed": true,
+  "test_command_manually_executed": false,
+  "production_prompt_updated_without_changing_clock": true
+}

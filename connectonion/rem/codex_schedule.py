@@ -97,6 +97,10 @@ class CodexNative:
         data = {"version": 1, "id": automation_id(root), "kind": "cron",
                 "name": "REM notebook upkeep", "status": "ACTIVE" if active else "PAUSED",
                 "prompt": "Run this exact command once and report its result:\n" + shlex.join(command)
+                          + "\nWait for its final exit status before ending your turn. REM can run for over "
+                          "an hour: keep polling the same execution session with long waits. A running "
+                          "process is not completion. Do not finish, archive, or report merely that it "
+                          "started while the process is still running. Never kill it to finish the task."
                           + "\nLet the REM CLI handle source access, locks, quotas and missed slots. "
                           "Do not edit notebook pages yourself or start another update.",
                 "rrule": recurrence(config), "execution_environment": "local",
