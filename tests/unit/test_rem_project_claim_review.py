@@ -195,7 +195,7 @@ def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
 
 @pytest.mark.parametrize('claim,carried_claim', [
     ('Last contact: 2026-10-17', 'Last contact: 2026-10-17 [3]'),
-    ('Avery [3] leads\n the lab.', 'Avery\t leads [W2] the lab.'),
+    ('Avery [3] leads\n the lab.', 'Avery [W2]\t leads the lab.'),
 ])
 def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, carried_claim):
     finding = {'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
@@ -203,10 +203,10 @@ def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, c
     def audited(*_args):
         return {'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})}
 
-    candidate = '# Avery\n\n' + claim + '\n\n## Sources\n- [1] gmail:invented\n'
+    candidate = '# Avery\n\n' + claim + ('' if '[3]' in claim else ' [1]') + '\n\n## Sources\n- [1] gmail:invented\n- [3] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried='# Avery\n\n' + carried_claim, items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
-    assert report['findings'] == [] and report['verdict'] == 'pass'
+        carried='# Avery\n\n' + carried_claim + '\n\n## Sources\n- [3] gmail:invented\n- [W2] gmail:invented\n', items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+    assert report['findings'] == [] and report['verdict'] == 'insufficient'
     assert report['carried_findings'] == [finding]
 
 
@@ -220,7 +220,7 @@ def test_carried_findings_do_not_hide_a_new_claim(tmp_path):
 
     candidate = '# Avery\n\n' + '\n'.join(claims) + '\n\n## Sources\n- [1] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried=claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+        carried='# Avery\n\n' + claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
     assert report['verdict'] == 'fail' and report['findings'] == findings[1:]
     assert report['carried_findings'] == findings[:1]
 

@@ -151,6 +151,8 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     deadline = time.monotonic() + timeout
     force_close = False
     keep_open = False
+    sid = session_id
+    turn = {}
     try:
         has_prompt = bool(prompt.strip())
         approval_policy = "untrusted" if approval == "manual" else "never"
@@ -185,6 +187,8 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                 client.refresh_account(timeout=_remaining(deadline))
         if not reused_open_thread:
             if session_id:
+                if os.environ.get("CO_REM_CODEX_ARCHIVE") == "1":
+                    client.request("thread/unarchive", {"threadId": session_id}, timeout=_remaining(deadline))
                 sid = client.resume_thread(
                     session_id,
                     sandbox=sandbox,
@@ -237,7 +241,11 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                 agent,
                 prompt,
             )
-        turn = client.run_turn(sid, prompt, **turn_options)
+        try:
+            turn = client.run_turn(sid, prompt, **turn_options)
+        finally:
+            if os.environ.get("CO_REM_CODEX_ARCHIVE") == "1":
+                client.request("thread/archive", {"threadId": sid}, timeout=10)
     except _ProviderCancelled as e:
         # ``turn/interrupt`` is sent before this control path exits. The
         # app-server owns the persisted native thread, but its local process
@@ -245,12 +253,14 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         # execution lease could keep mutating the workspace in the background.
         force_close = True
         return _envelope(
-            session_id,
+            sid,
             status="cancelled",
             error=f"codex app-server: {e}",
         )
     except Exception as e:
-        return _envelope(session_id, error=f"codex app-server: {e}")
+        return _envelope(sid, last_message="".join(chunks),
+                         usage=(turn or {}).get("usage", {}), status=(turn or {}).get("status", ""),
+                         error=f"codex app-server: {e}")
     finally:
         if client is not None and not keep_open:
             if force_close:

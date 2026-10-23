@@ -122,6 +122,10 @@ class TestGetService:
     ):
         from connectonion.useful_tools.google_calendar import GoogleCalendar
 
+        # This tests refresh, not an expiry that was fixed at collection time.
+        os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = (
+            datetime.utcnow() + timedelta(hours=1)
+        ).isoformat() + "Z"
         tokens = iter(["initial", "after-401"])
         calendar = GoogleCalendar()
         calendar._refresh_via_backend = Mock(side_effect=lambda _rt: next(tokens))

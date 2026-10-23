@@ -11,6 +11,7 @@ LLM-Note:
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from typing import Optional
@@ -228,7 +229,12 @@ class Feishu:
             return None
 
         mentions = list(getattr(message, "mentions", None) or [])
-        text = _text_of(message, mentions)
+        content = _content_of(message)
+        text = _text_of(message, mentions, content)
+        attachments = _attachments_of(message, content)
+        kind = getattr(message, "message_type", None) or "text"
+        if kind == "post" and not attachments and text:
+            kind = "text"
         chat_type = getattr(message, "chat_type", None)
         if chat_type == "p2p":
             mentioned = True
@@ -245,6 +251,10 @@ class Feishu:
             thread=getattr(message, "thread_id", None) or getattr(message, "root_id", None) or None,
             sender=str(getattr(sender_id, "union_id", None) or getattr(sender_id, "open_id", None) or ""),
             text=text,
+            kind=kind,
+            attachments=attachments or None,
+            sender_ids={key: value for key in ("union_id", "open_id")
+                        if isinstance(value := getattr(sender_id, key, None), str) and value} or None,
             mentioned=mentioned,
             at=_iso(create_time),
             raw=_raw_of(data) if raw else None,
@@ -376,15 +386,17 @@ def _open_id(mention) -> Optional[str]:
     return getattr(getattr(mention, "id", None), "open_id", None)
 
 
-def _text_of(message, mentions) -> str:
-    """The text a person typed. @mentions arrive as placeholders like
-    `@_user_1` with the name beside them; put the name back so the text reads
-    as it did on screen. A non-text message is named by its type."""
-    message_type = getattr(message, "message_type", None) or "text"
+def _content_of(message) -> dict:
     try:
         content = json.loads(getattr(message, "content", None) or "{}")
     except ValueError:
-        content = {}
+        return {}
+    return content if isinstance(content, dict) else {}
+
+
+def _text_of(message, mentions, content) -> str:
+    """Keep typed words and readable mentions; name non-text messages by type."""
+    message_type = getattr(message, "message_type", None) or "text"
     if message_type == "text":
         text = str(content.get("text", ""))
     elif message_type == "post":
@@ -402,14 +414,54 @@ def _text_of(message, mentions) -> str:
 
 
 def _post_text(content: dict) -> str:
-    """Rich text is paragraphs of runs; keep the text runs, drop the rest."""
-    runs = []
+    """Read the selected rich-text body; resource references travel separately."""
+    content = next((body for body in _post_bodies(content) if body.get("title") or body.get("content")), content)
+    runs = [str(content.get("title") or ""), "\n"]
     for paragraph in content.get("content", []) or []:
         for run in paragraph or []:
             if isinstance(run, dict) and run.get("tag") == "text":
                 runs.append(str(run.get("text", "")))
         runs.append("\n")
     return "".join(runs).strip()
+
+
+def _post_bodies(content):
+    return [content, *(body for locale, body in content.items()
+                       if re.fullmatch(r"[a-z]{2}_[a-z]{2}", locale)
+                       and isinstance(body, dict) and any(key in body for key in ("title", "content", "files")))]
+
+
+def _attachments_of(message, content):
+    """Only resource type/key/name cross into consumer input, never arbitrary raw."""
+    kind = getattr(message, "message_type", None)
+    if kind == "image":
+        return _resource("image", content.get("image_key"))
+    if kind in {"file", "audio", "media"}:
+        return _resource(kind, content.get("file_key"), content.get("file_name"))
+    if kind != "post":
+        return []
+    resources = []
+    for body in _post_bodies(content):
+        for item in body.get("files", []) or []:
+            if isinstance(item, dict):
+                item_type = "folder" if item.get("is_folder") is True else "file"
+                resources.extend(_resource(item_type, item.get("file_key"), item.get("file_name")))
+        for row in body.get("content", []) or []:
+            for item in row or []:
+                if isinstance(item, dict) and item.get("tag") == "img":
+                    resources.extend(_resource("image", item.get("image_key")))
+                if isinstance(item, dict) and item.get("tag") == "media":
+                    resources.extend(_resource("media", item.get("file_key")))
+    return list({(item["type"], item["key"]): item for item in resources}.values())
+
+
+def _resource(kind, key, name=None):
+    if not isinstance(key, str) or not key:
+        return []
+    item = {"type": kind, "key": key}
+    if isinstance(name, str) and name:
+        item["name"] = name
+    return [item]
 
 
 def _iso(create_time) -> str:

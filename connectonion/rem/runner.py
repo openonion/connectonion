@@ -135,6 +135,9 @@ def child_env(config: dict | None = None) -> dict:
     after minutes of gathering (#1974).
     """
     environment = os.environ.copy()
+    # Keep resumable traces, without promoting every maintenance page to a
+    # recent Codex conversation. This is private to the REM child process.
+    environment["CO_REM_CODEX_ARCHIVE"] = "1"
     pythonpath = child_pythonpath()
     if pythonpath:
         environment["PYTHONPATH"] = pythonpath
@@ -1004,8 +1007,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
-        # "insufficient" means the audit could not read enough to judge; it is
-        # recorded, not a refusal of claims nobody has shown to be wrong.
+        if report.get("carried_findings"):
+            audit_status += f"; {len(report['carried_findings'])} unchanged findings deferred"
+        # Insufficient source coverage and deferred old findings stay explicit;
+        # the existing policy does not refuse unrefuted new content on that basis.
         if report["verdict"] == "fail":
             errors.append("Cited-claim audit did not pass; see claim-review.json")
     total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
