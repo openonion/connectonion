@@ -411,6 +411,8 @@ launchd with that boundary stated. Status distinguishes configuration, native
 adoption, trigger evidence and REM outcomes. Stable remains 1.9.2 and Python
 3.11+ is required. See [1.9.3rc19 notes](docs/releases/1.9.3rc19.md).
 
+- 1.9.3rc19 (native Codex REM clock, verified handoff, archival and scheduling diagnostics).
+
 ### Previous candidate: 1.9.3rc18
 
 The email CLI exposes the existing cloud multi-address API: `co email domains`

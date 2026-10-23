@@ -25,6 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc19** moves eligible Codex notebooks on macOS to
+Codex desktop Scheduled, verifies registration before replacing the old clock,
+and archives completed maintenance conversations. Other timezones, headless Macs
+and other runners retain launchd. Keep the app open and computer awake.
+Stable remains **1.9.2**; this preview requires Python **3.11+**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc19'
+```
+
+See [the preview notes](releases/1.9.3rc19.md) and their native execution evidence.
+
+## Previous previews
+
 Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
 additional email aliases on the same cloud account. It retains sender selection,
 account defaults and mailbox filtering. Stable remains **1.9.2**.
@@ -36,7 +50,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc18'
 See [the preview notes](releases/1.9.3rc18.md). Domain infrastructure acceptance
 is recorded separately from package tests.
 
-## Previous previews
 
 Release candidate **1.9.3rc17** processes eligible explicit feedback when
 there is no new raw material, narrows inherited-claim audit exemptions and keeps
