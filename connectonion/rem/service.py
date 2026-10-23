@@ -1256,7 +1256,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         for key, value in (failed_usage or {}).items():
             usage[key] = usage.get(key, 0) + value
         record.update(outcome="interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed",
-                      usage=usage or None, changed=getattr(error, "changed", []),
+                      stage=stage, usage=usage or None, changed=getattr(error, "changed", []),
                       error=str(error) if isinstance(error, RemError) else "Runner failed; source progress preserved")
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
             raise  # stopped mid-write: what is on disk may be half a batch, so it runs again

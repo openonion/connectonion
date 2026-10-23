@@ -69,3 +69,15 @@ acceptance. Current desktop/phone, keyboard/focus and screen-reader acceptance
 remain pending. No denied preview/renderer/screenshot workaround was used.
 Final focused/CI-scope/exact-head review results are recorded in PR2623; broad
 product maturity and actual overnight recovery remain unverified.
+
+Independent review found that the first reader repair suppressed a later runner
+error in the same run whenever source_failures existed. Corrected composed
+service-to-reader cases fail for runner authentication/quota/timeout (3failed,
+7controls passed) before preserving the failed extract/maintain stage and
+classifying its top-level error separately from source-only failures. An initial
+test attempt used a nonexistent error-module import; a fixed prior-run timestamp
+also hid the actual service run. Neither is product red proof. The final fixture
+places its prior run relative to the service timestamp.
+The corrected red exercises actual service output; both generic recovery reasons
+remain visible with no private payload. Collection-only errors still do not
+claim model authentication failed.

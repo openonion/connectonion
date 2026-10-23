@@ -1468,7 +1468,7 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
-    "No confirmed memory changes to show. Some work is incomplete; review the run details.": "暂无已确认的记忆变化可展示。部分工作尚未完成，请查看运行详情。",
+    "No recorded memory changes to show. Some work is incomplete; review the run details.": "暂无已记录的记忆变化可展示。部分工作尚未完成，请查看运行详情。",
     "Some selected sources could not be read. Check source access before retrying sync.": "部分已选来源无法读取。请检查来源访问权限后再重试同步。",
     "{n} run partially completed. ": "{n} 次运行部分完成。",
     "{n} runs partially completed. ": "{n} 次运行部分完成。",
@@ -3883,7 +3883,7 @@ function morningBrief() {
     brief.appendChild(el("ul", { class: "overnight-changes" }, claims.slice(0, 3).map(overnightChange).filter(Boolean)));
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
   } else if (pass?.failed?.length) {
-    brief.appendChild(el("p", { class: "quiet-line", text: t("No confirmed memory changes to show. Some work is incomplete; review the run details.") }));
+    brief.appendChild(el("p", { class: "quiet-line", text: t("No recorded memory changes to show. Some work is incomplete; review the run details.") }));
   } else {
     const n = pass?.changed?.length || 0;
     brief.appendChild(el("p", { class: "quiet-line", text: t("Nothing about your people or projects changed last night.") +
@@ -3897,7 +3897,7 @@ function failureSummary(pass) {
   const partial = pass.failed.filter(run => run.outcome === "partial");
   const failed = pass.failed.filter(run => run.outcome !== "partial");
   const sourceFailure = pass.failed.some(run => Array.isArray(run.source_failures) && run.source_failures.length);
-  const errors = failed.filter(run => !run.source_failures?.length).map(run => String(run.error || "")).join("\n"), reasons = [];
+  const errors = failed.filter(run => !run.source_failures?.length || ["extract", "maintain"].includes(run.stage)).map(run => String(run.error || "")).join("\n"), reasons = [];
   if (sourceFailure) reasons.push("Some selected sources could not be read. Check source access before retrying sync.");
   if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
   if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");

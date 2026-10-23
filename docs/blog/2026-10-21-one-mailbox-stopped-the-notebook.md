@@ -28,3 +28,11 @@ separates partial from fully failed runs, and links to the exact run log without
 printing private provider errors. Five logical reader cases failed before this
 correction. They do not replace current native desktop, phone or accessibility
 acceptance, which remains pending.
+
+Independent AI review found a further mixed-failure boundary: a source could fail,
+healthy material could continue, then the model could fail in the same run.
+Suppressing all model diagnosis whenever a source error existed hid that second
+problem. Three service-to-reader regressions failed for authentication, quota and
+timeout before retaining the failed model stage and both generic recovery reasons.
+Source-only errors still do not imply model access failure; private output is not
+echoed into the brief.

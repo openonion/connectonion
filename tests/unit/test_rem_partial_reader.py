@@ -5,10 +5,11 @@ import re
 import pytest
 
 from connectonion.rem.reader import TEMPLATE
+from tests.unit.test_rem_service import rem
 from test_rem_reader import _run_reader_js
 
 
-def partial_reader(*, language="en", mixed=False):
+def partial_reader(*, language="en", mixed=False, run_override=None):
     page = TEMPLATE.read_text()
     names = ["lastPass", "firstBuild", "runTime", "runEnd", "sameClaim", "sourceName", "runSegments",
              "hypnogram", "runMarkers", "nightBand", "morningBrief", "failureSummary", "runItem", "shellArg"]
@@ -22,8 +23,9 @@ def partial_reader(*, language="en", mixed=False):
       const run = {id:'run_partial', started_at:'2026-10-23T07:00:00Z', finished_at:'2026-10-23T07:02:00Z',
         outcome:'partial', phase:'sync', items:12, changed:[record.path], sources:['gmail','codex'],
         error:'Failed to authenticate PRIVATE_PAYLOAD', source_failures:[{source:'gmail', error:'PRIVATE_PAYLOAD'}]};
-      const REM = {as_of:'2026-10-23T08:00:00Z', records:[record], owner:'people/owner.md', logs:[
-        run, {started_at:'2026-10-20T07:00:00Z', outcome:'completed', changed:[]}]};
+      Object.assign(run, OVERRIDE);
+      const REM = {as_of:run.finished_at, records:[record], owner:'people/owner.md', logs:[
+        run, {started_at:new Date(new Date(run.started_at).getTime() - 72 * HOUR).toISOString(), outcome:'completed', changed:[]}]};
       if (MIXED) REM.logs.push({started_at:'2026-10-23T07:04:00Z', outcome:'failed', error:'TimeoutError'});
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const byActivity = () => 0, known = () => ({status:'Investigated'}), esc = s => String(s);
@@ -39,7 +41,7 @@ def partial_reader(*, language="en", mixed=False):
       console.log(JSON.stringify({attention:pass.failed.map(r => r.outcome),
         changed:pass.changed.map(r => r.path), brief:morningBrief(), band:nightBand(), item:runItem(run),
         segments:runSegments([run], 2 * HOUR)}));
-    '''.replace("MIXED", json.dumps(mixed)))
+    '''.replace("MIXED", json.dumps(mixed)).replace("OVERRIDE", json.dumps(run_override or {})))
     return result
 
 
@@ -54,6 +56,7 @@ def test_morning_partial_never_claims_no_change_or_model_auth_failure():
     result = partial_reader()
     brief = json.dumps(result["brief"])
     assert "partially completed" in brief and "Some selected sources could not be read" in brief
+    assert "No recorded memory changes to show" in brief
     assert "Nothing about your people or projects changed" not in brief
     assert "Model access was refused" not in brief and "PRIVATE_PAYLOAD" not in brief
     assert "#view=activity" in brief
@@ -85,3 +88,33 @@ def test_partial_attention_copy_is_translated():
     result = partial_reader(language="zh")
     assert "部分已选来源无法读取" in json.dumps(result, ensure_ascii=False)
     assert "partially completed" not in json.dumps(result, ensure_ascii=False)
+
+
+@pytest.mark.parametrize("error,expected", [
+    ("Failed to authenticate 403 PRIVATE_RUNNER", "Model access was refused"),
+    ("quota 429 PRIVATE_RUNNER", "A model usage limit was reached"),
+    ("request timed out PRIVATE_RUNNER", "A request timed out"),
+])
+def test_same_run_keeps_source_and_later_runner_failure_recovery(rem, monkeypatch, error, expected):
+    from connectonion.rem import service
+    from connectonion.rem.files import RemError
+    from tests.unit.test_rem_source_failure_isolation import world
+    root, _, _, received, _ = world(rem, monkeypatch)
+
+    def failed_runner(*args, **kwargs):
+        received.append(True)
+        raise RemError(error)
+
+    run = service.run_sync(root, runner=failed_runner)
+    assert received and run["outcome"] == "failed" and run["source_failures"]
+    assert run["stage"] == "maintain" and run["runner_attempts"] == 1
+    brief = json.dumps(partial_reader(run_override=run)["brief"])
+    assert "Some selected sources could not be read" in brief and expected in brief
+    assert "PRIVATE_RUNNER" not in brief and "PRIVATE_PAYLOAD" not in brief
+
+
+def test_collection_only_failure_does_not_invent_model_auth_failure():
+    brief = json.dumps(partial_reader(run_override={"outcome":"failed", "runner_attempts":0,
+                        "stage":"gathering sources", "changed":[]})["brief"])
+    assert "Some selected sources could not be read" in brief
+    assert "Model access was refused" not in brief and "PRIVATE_PAYLOAD" not in brief
