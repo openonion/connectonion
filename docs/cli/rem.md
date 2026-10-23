@@ -1761,5 +1761,15 @@ location IDs rather than the passage text. Changed or removed locations are mark
 unavailable instead of being redirected to a merged page or a similar sentence.
 Code examples do not create page references.
 
+
+Name searches also preserve record identity. When more than one eligible page
+matches a name, **Choose a page** lists the candidates with available original
+Company, Role, Email or other identifying facts, subject to the privacy filter.
+No candidate is promoted to a factual **Best match**. “Related to …” queries
+require an exact page choice before showing connections; a unique name still opens
+directly. The choice URL retains the exact record path. A removed, held or service
+record cannot silently fall back to another page with the same name. Missing
+visible details are stated explicitly; the reader does not invent a distinction.
+
 Native desktop/phone, keyboard/focus and accessibility acceptance remain pending.
 Complete translated-excerpt matching remains separate work.

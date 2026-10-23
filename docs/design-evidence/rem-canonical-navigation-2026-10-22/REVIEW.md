@@ -1,8 +1,8 @@
 # Canonical navigation — candidate, 22 October 2026
 
 Existing issue: #2197; related #2054 and #2060. Base main:
-`e9bc54d1285d104715bcfa62b985f0f4cd5b8191`. Published/installed preview remains
-1.9.3rc12. This candidate is not released or visually accepted.
+`e9bc54d1285d104715bcfa62b985f0f4cd5b8191`. Initial published/installed baseline was
+1.9.3rc12; the 23 October follow-up uses installed 1.9.3rc16. This candidate is not released or visually accepted.
 
 ## Evidence and correction
 
@@ -84,5 +84,33 @@ lookups remain exact. A navigation redirect is not proof of identity or evidence
   to a rearranged summary. Current screenshots, phone layout, actual keyboard/focus
   and accessibility remain unverified. No native browser,
   renderer, screenshot workaround, real init/provider/model call or notebook write.
-- Dependency security/compatibility gates still block publication; no advisory waiver,
-  Python minimum change, merge, tag or package availability claim is included.
+- The earlier dependency security blocker was superseded by maintainer changes
+  published in rc13+; current main independently requires Python >=3.11. This
+  navigation candidate still requires its own current-head CI/review and native
+  acceptance. It has not been merged, tagged or published.
+
+## Same-name identity follow-up, 23 October
+
+The installed official rc16 reader selects the first exact title for a “related
+to” query and the first title-containing record for Best match. A read-only title
+census finds three same-title groups involving six eligible People pages; this
+establishes ambiguity, not identity equivalence or a rendered misattribution.
+Notebook hashes remained unchanged. Private identities and source IDs stay local.
+
+Alternatives considered: merge same-name people (unsafe identity inference),
+show only a warning (no actionable choice), or offer exact-record candidates.
+The last option retains separate facts/connections, available original identifying
+fields and privacy filtering. A unique related-name lookup remains direct; ambiguous
+ordinary name searches suppress factual Best match and offer exact-page links.
+Chosen relationship URLs retain the exact path and validate its eligibility and
+name. A stale or held/service choice never falls back by name or merge alias.
+Native links use descriptions associated with each candidate's fact list; an empty
+list states that no visible identifying details are available.
+
+Seven actual-search contracts failed first, with one unique-name control passing.
+After repair, focused reader/identity suites pass 236 tests. Additional contracts
+cover the real fact parser's original/translation cache boundary, privacy, unique
+Best match and route dispatch. These run in Node with logical element stubs; they
+do not verify rendered desktop/phone, tab order, focus or screen reader output.
+No init, collection, model call, scheduled restart or real notebook write occurred.
+Full integration and independent review results are recorded in the PR.

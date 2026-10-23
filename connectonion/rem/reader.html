@@ -1475,6 +1475,10 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Open page →": "打开页面 →",
+    "Choose a page": "选择一个页面",
+    "Several pages match this name. Choose one to keep their facts and connections separate.": "多个页面匹配这个名字。请选择一个，分别查看各自的信息与关联。",
+    "No visible identifying details. Open the page to check its sources.": "没有可显示的身份信息。请打开页面核对来源。",
     "Skip to content": "跳到正文",
     "Your page": "你的页面",
     "Nothing open.": "暂无待办。",
@@ -3692,7 +3696,7 @@ function nightBand(showActivityLink = true) {
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   const requested = params.get("r"), selected = navigationRecord(requested, params.get("h") || "", params.get("ref") || "");
-  return { record: selected?.path || requested, category: params.get("c"), query: params.get("q"), heading: params.get("h"),
+  return { record: selected?.path || requested, category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"), reference: params.get("ref") || "",
     ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
@@ -5868,14 +5872,48 @@ function highlight(line, needle) {
   return out.join("");
 }
 
-function search(q) {
+// Identity choices use original visible facts, never cached translated identity or file order.
+function identityDetails(r) {
+  const original = r.original ?? r.text;
+  const text = document.documentElement.classList.contains("hide-private") ? unlabelled(original) : original;
+  const parsed = parseFacts({ ...r, text, original: text, translations: {}, readLanguage: "" });
+  return ["Company", "Role", "Email", "What they do", "Repository", "Status"]
+    .map(name => [name, (parsed.get(name) || []).map(item => plainValue(item.value)).filter(knownValue).join("; ")])
+    .filter(([, value]) => value);
+}
+function identityChoices(records, query, related = false) {
+  const section = el("section", { class: "search-group" }, [
+    el("h2", { class: "section", text: t("Choose a page") }),
+    el("p", { class: "lede", text: t("Several pages match this name. Choose one to keep their facts and connections separate.") })]);
+  const list = el("ul", { class: "hits" });
+  for (const [index, r] of records.entries()) {
+    const detailId = "identity-choice-" + index;
+    const destination = related ? "#q=" + encodeURIComponent(query) + "&related=" + encodeURIComponent(r.path) : href(r);
+    const details = identityDetails(r);
+    list.appendChild(el("li", {}, [el("div", { class: "t" }, [el("a", { href: destination, text: r.title, "aria-describedby": detailId }),
+      el("span", { class: "when", text: label(r.category) })]),
+      el("dl", { class: "best-facts", id: details.length ? detailId : detailId + "-facts" }, details.flatMap(([name, value]) => [el("dt", { text: t(name) }), el("dd", { text: value })])),
+      !details.length ? el("p", { class: "hit", id: detailId, text: t("No visible identifying details. Open the page to check its sources.") }) : null,
+      related ? el("a", { href: href(r), text: t("Open page →") }) : null]));
+  }
+  section.appendChild(list);
+  return section;
+}
+function search(q, relatedPath = "") {
   const main = document.getElementById("main");
   main.textContent = "";
   if (/\b(who\s+(?:do\s+i\s+)?owe|what\s+do\s+i\s+owe|waiting\s+on\s+me|open\s+threads)\b/i.test(q)) { taskView("open"); return; }
   if (/\b(what\s+changed|memory\s+changes|learned\s+(?:last\s+night|overnight))\b/i.test(q)) { taskView("changes"); return; }
   const connected = /\b(?:connected|related)\s+to\s+(.+)/i.exec(q);
   if (connected) {
-    const target = listedRecords().find(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    const candidates = listedRecords().filter(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    const target = relatedPath ? candidates.find(r => r.path === relatedPath) : candidates.length === 1 ? candidates[0] : null;
+    if (!target && (candidates.length > 1 || relatedPath)) {
+      main.appendChild(el("h1", { text: t("Connected to {name}", { name: connected[1].trim() }) }));
+      if (relatedPath) main.appendChild(emptyState("This page is unavailable in this snapshot."));
+      if (candidates.length) main.appendChild(identityChoices(candidates, q, true));
+      return;
+    }
     if (target) {
       main.appendChild(el("div", { class: "eyebrow", text: t("Search / related pages") }));
       main.appendChild(el("h1", { text: t("Connected to {name}", { name: target.title }) }));
@@ -5914,8 +5952,10 @@ function search(q) {
     return;
   }
   // The best match answers: a person's or organisation's name gets its facts right here.
-  const best = hits.find(h => FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
-  if (best) main.appendChild(bestMatch(best.r));
+  const eligible = new Set(listedRecords().map(r => r.path));
+  const named = hits.filter(h => eligible.has(h.r.path) && FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
+  if (named.length > 1) main.appendChild(identityChoices(named.map(h => h.r), q));
+  else if (named.length === 1) main.appendChild(bestMatch(named[0].r));
   // Grouped by kind, people first; one snippet a page, never a local path.
   const ORDER = ["people", "orgs", "projects", "skills", "sessions"];
   const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
@@ -6008,7 +6048,7 @@ function render() {
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".skip").textContent = t("Skip to content");
   document.querySelector(".nav-toggle").textContent = t("Browse notebook");
-  const { record: r, category: c, query, heading, view, reviews, reference } = route();
+  const { record: r, category: c, query, related, heading, view, reviews, reference } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
@@ -6016,7 +6056,7 @@ function render() {
   // The sheet views use the full width; reading views keep a measure.
   document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
   if (reviews) reviewPage();
-  else if (query) search(query);
+  else if (query) search(query, related);
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
