@@ -174,4 +174,6 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
     if roots:
         through = page_state(notebook.root, record).get("written_through") or ""
         read |= {m["source"] for m in stored(notebook.root, record) if m["timestamp"] <= through}
-    return bool(pointing) and pointing <= read
+    # A page that cites a message by its pre-hash id has read it.
+    from .source import legacy_session_source
+    return bool(pointing) and all(source in read or legacy_session_source(source) in read for source in pointing)
