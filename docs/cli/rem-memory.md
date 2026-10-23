@@ -78,7 +78,8 @@ keeps its original date boundary and does not become a feedback review.
 
 Mixed new raw evidence and multi-round investigations still receive their existing
 context; this fallback does not establish managed feedback receipts for those paths.
-It is not an external-agent instant-apply interface and is not included in rc8.
+It is not an external-agent instant-apply interface. This follow-up candidate is
+not included in the public 1.9.3rc16 preview.
 
 ## Investigate questions with explicit stage models
 

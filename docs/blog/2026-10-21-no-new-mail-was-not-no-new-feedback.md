@@ -1,6 +1,6 @@
 # No new mail was not no new feedback
 
-Candidate implementation; not included in the published rc8 preview.
+Candidate implementation; not included in the published 1.9.3rc16 preview.
 
 A saved correction can arrive after a page's last investigation. We asked what an
 explicit investigation would do if the mailbox and coding sessions had nothing new.
@@ -29,3 +29,12 @@ This is a limited repair to the empty-window path. It does not prove that an
 assertion is true, complete the external-agent workflow, or settle receipt handling
 for mixed-source and multi-round investigations. Logs keep the distinction so a
 feedback review cannot quietly become evidence that new research happened.
+
+
+The 23 October integration inherits current main's reviewed Python 3.11 minimum
+and dependency lock. It does not waive the old dependency audit failure. The
+empty-window fallback, accepted-target receipt and native no-change snapshot check
+remain the same contract. Matching source and public CLI documentation must be
+reviewed together before this candidate can ship. No real model, mailbox or
+scheduled maintenance was run for this integration; synthetic acceptance cannot
+establish the factual quality of a corrected memory.

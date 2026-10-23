@@ -67,3 +67,24 @@ notebook rewrite. No current screenshots or workaround for the existing preview
 security restriction. Processing receipts are not truth, usefulness or maturity
 acceptance. Mixed-raw/round receipt management and broader agent-led ownership
 remain separate work; #2334/#2332 must not close on this patch.
+
+## 23 October integration (not published)
+
+The public and installed baseline is now 1.9.3rc16. The fallback remains an
+unreleased candidate. Current main97972c3987db74d50b19f7a86231621c36d3134f was
+merged without changing the fallback contract. This inherits the maintainer's
+reviewed Python>=3.11 and current dependency lock rather than waiving the old
+Pillow audit failure. The related investigation/feedback/runner/people/daily/
+terminal/depth suite passed536tests in33.27s after integration. Final full-suite
+and exact-head GitHub gates must be reported separately.
+
+All265matching REM issue bodies were compared to the previous complete snapshot;
+none changed. The two related issue bodies and selected current comments were
+rechecked. This remains body-level matching coverage, not every repository issue
+or comment. Broader external-agent, mixed-raw/multi-round and live factual-quality
+acceptance stays open; this fallback does not satisfy those requirements.
+
+The public docs mirror now has a narrowly scoped candidate section and matching
+journal. No reader structure/style changed in this PR, so the existing lack of
+native screenshots is not replaced by logical renderer tests or generic CI.
+No real notebook, auth, provider/model execution or scheduler was modified.
