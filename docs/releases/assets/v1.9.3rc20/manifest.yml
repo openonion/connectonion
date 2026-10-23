@@ -1,4 +1,4 @@
-version: v1.9.3rc19
+version: v1.9.3rc20
 images:
 - file: cli-desktop.png
   alt: Native REM preview guide with page checks expanded

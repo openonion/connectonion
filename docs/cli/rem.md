@@ -866,7 +866,7 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-In opt-in preview **1.9.3rc19**, Codex notebooks default to **Codex desktop Scheduled** when the app
+In opt-in preview **1.9.3rc20**, Codex notebooks default to **Codex desktop Scheduled** when the app
 is installed and the notebook timezone matches this computer. The desktop
 adopts a private local automation definition; there is no public App Server
 schedule RPC in the tested version. Keep the app open and computer awake.

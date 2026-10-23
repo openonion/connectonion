@@ -49,7 +49,7 @@ from REM completion. It can report an unopened app, a late native clock and a
 failed REM pass. Cold initialization is allowed to finish; a few minutes without
 a marker no longer becomes a claim that the whole route is impossible.
 
-The [acceptance record](https://github.com/openonion/connectonion/blob/v1.9.3rc19/docs/acceptance/1.9.3rc19/README.md) separates the marker runs, an isolated scheduled REM CLI
+The [acceptance record](https://github.com/openonion/connectonion/blob/v1.9.3rc20/docs/acceptance/1.9.3rc20/README.md) separates the marker runs, an isolated scheduled REM CLI
 pass and the owner's clock migration. Native desktop visuals, remote-project
 presentation and sleep/wake behavior still need direct observation. We would
 revisit the file adapter when Codex exposes a supported scheduling API, changes
