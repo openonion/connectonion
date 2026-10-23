@@ -33,6 +33,12 @@ unspecified. An operator can restrict the domains offered for new purchases
 until the deployment is ready to serve them. Maintaining a second fixed list
 in the CLI would have recreated the original disagreement.
 
+Closing a domain to new purchases exposed another edge in repeat setup. The
+CLI checked the current domain menu before looking at the account's owned
+addresses, so a person with a valid mailbox could be told that its domain was
+unknown. Checking ownership first lets setup recognize that existing address
+without another purchase. New claims still have to pass the readiness gate.
+
 The three branded senders are now verified and their sending DNS records are
 installed. The first routing inspection used the production DNS token, which
 received 403. A later check of the shell's dedicated email token could read

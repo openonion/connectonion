@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc19
+## Current Version: 1.9.3rc20
+
+Repeat email setup recognizes an address the account already owns before
+checking which domains currently accept new purchases. A closed setup domain
+therefore does not hide existing ownership or cause a repurchase. New claims
+still follow the cloud's enabled-domain list. Stable remains 1.9.2. See
+[1.9.3rc20 notes](docs/releases/1.9.3rc20.md).
+
+- 1.9.3rc20 (recognize owned mailboxes when new domain purchases are closed).
+
+### Previous candidate: 1.9.3rc19
 
 Mailbox setup receives another regression and installation acceptance round.
 Signed-out commands and rejected account settings cannot reach a purchase;
