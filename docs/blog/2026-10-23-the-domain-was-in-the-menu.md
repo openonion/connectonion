@@ -34,11 +34,19 @@ until the deployment is ready to serve them. Maintaining a second fixed list
 in the CLI would have recreated the original disagreement.
 
 The three branded senders are now verified and their sending DNS records are
-installed. Incoming routing remains a separate acceptance step: the available
-Cloudflare token could edit DNS but received 403 from Email Routing. Until
-that permission and the catch-all route are checked, those domains must not be
-sold as ready. The application tests and rendered desktop/mobile fixtures do
-not substitute for that check, and no live email was sent for this work.
+installed. The first routing inspection used the production DNS token, which
+received 403. A later check of the shell's dedicated email token could read
+rules and Workers, but enabling a zone still returned 403: that operation needs
+Zone Settings Write. One branded domain already routes to a separate
+verification-code worker, whose existing delivery needs to be accounted for.
+Those domains remain unavailable for new purchases until incoming routing is
+accepted.
+
+A real self-test subsequently reached the owner's existing primary inbox through
+the deployed mail Worker and signed backend webhook. It was sent with the
+service's provider account because the owner's CLI send request hit its monthly
+100-message quota. That verifies the primary incoming path; it does not establish
+branded-domain delivery or a successful send through the quota-limited account.
 
 The follow-up question was simpler than the original setup request: would
 these different names still be one inbox? A test account acquired five
