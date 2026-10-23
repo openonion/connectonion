@@ -37,16 +37,19 @@ The three branded senders are now verified and their sending DNS records are
 installed. The first routing inspection used the production DNS token, which
 received 403. A later check of the shell's dedicated email token could read
 rules and Workers, but enabling a zone still returned 403: that operation needs
-Zone Settings Write. One branded domain already routes to a separate
-verification-code worker, whose existing delivery needs to be accounted for.
-Those domains remain unavailable for new purchases until incoming routing is
-accepted.
+Zone Settings Write. Inspecting the existing routes mattered too:
+trustxmail.com was already serving a separate verification-code worker. The
+owner chose to move all of that domain's mail to Agent Mail. Its original rule
+was backed up, the catch-all was changed, and a real test reached the mail store.
+It now joins mail.openonion.ai in the enabled choices. steadmail.com and
+oakinbox.com still need their routing enabled before they can be offered.
 
 A real self-test subsequently reached the owner's existing primary inbox through
 the deployed mail Worker and signed backend webhook. It was sent with the
 service's provider account because the owner's CLI send request hit its monthly
-100-message quota. That verifies the primary incoming path; it does not establish
-branded-domain delivery or a successful send through the quota-limited account.
+100-message quota. That verifies the primary incoming path; the separate trustxmail.com test
+verifies that domain's path into the mail store. Neither establishes a successful
+send through the quota-limited account or delivery to the two unenabled domains.
 
 The follow-up question was simpler than the original setup request: would
 these different names still be one inbox? A test account acquired five

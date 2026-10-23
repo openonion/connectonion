@@ -34,8 +34,9 @@ examples. Stable remains **1.9.2**; Python 3.11+ is required.
 python -m pip install --upgrade 'connectonion==1.9.3rc19'
 ```
 
-See [the preview notes](releases/1.9.3rc19.md). Branded-domain incoming routing
-still requires Cloudflare permissions and delivery acceptance.
+See [the preview notes](releases/1.9.3rc19.md). Incoming routing for
+steadmail.com and oakinbox.com still requires Cloudflare permissions and delivery
+acceptance. The cloud lists the domains currently ready for new addresses.
 
 ## Previous previews
 
