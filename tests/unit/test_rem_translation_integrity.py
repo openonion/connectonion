@@ -96,7 +96,7 @@ def test_target_validation_failure_keeps_existing_cache_bytes_and_original(noteb
     assert path.read_text() == 'retained cache fixture\n' and (notebook/record).read_text() == PAGE
 
 
-def reader_evidence(original, translated, language='en', number='1'):
+def reader_evidence(original, translated, language='en', number='1', category='people'):
     import json
     from connectonion.rem.reader import TEMPLATE
     from test_rem_reader import _run_reader_js
@@ -108,7 +108,7 @@ def reader_evidence(original, translated, language='en', number='1'):
     zh = page[page.index('  zh: {')+len('  zh: '):page.index('\n};\nfunction t(')]
     script = 'UI.zh = '+zh+'; uiLanguage = '+json.dumps(language)+';\n'+functions+r'''
       const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
-      const r = {path:'people/fixture.md', category:'people', original:ORIGINAL, text:TRANSLATED};
+      const r = {path:'people/fixture.md', category:CATEGORY, original:ORIGINAL, text:TRANSLATED};
       const REM = {source_context:{'gmail:fixture-a':{source:'gmail',sender:'Author A',excerpt:'EXCERPT_A',origin:'gmail:fixture-a'},
         'outlook:fixture-b':{source:'outlook',sender:'Author B',excerpt:'EXCERPT_B',origin:'outlook:fixture-b'}}};
       let CITES = {from:r.path,sources:{'1':'outlook:fixture-b — wrong cache'}}, evidenceTrigger;
@@ -130,7 +130,7 @@ def reader_evidence(original, translated, language='en', number='1'):
       openEvidence(r,NUMBER,{});
       console.log(JSON.stringify({routes,caption,label,panel,sourceBody}));
     '''
-    script = script.replace('ORIGINAL',json.dumps(original)).replace('TRANSLATED',json.dumps(translated)).replace('NUMBER',json.dumps(number))
+    script = script.replace('ORIGINAL',json.dumps(original)).replace('TRANSLATED',json.dumps(translated)).replace('NUMBER',json.dumps(number)).replace('CATEGORY',json.dumps(category))
     return _run_reader_js(script)
 
 
@@ -238,3 +238,17 @@ def test_reader_rejects_ambiguity_even_when_a_definition_is_filtered_or_in_anoth
     result = reader_evidence(original,original)
     assert not any(row['n']=='1' for row in result['routes'])
     assert 'EXCERPT_A' not in str(result['panel']) and 'EXCERPT_B' not in str(result['panel'])
+
+
+def test_mixed_legacy_and_explicit_session_sources_cannot_rebind_a_number():
+    original = '# Session\n\n## Sources\n- codex:session:4\n- [1] gmail:fixture-a — caption\n'
+    with pytest.raises(RemError, match='source definition'):
+        tr.checked(original,original)
+    assert reader_evidence(original,original,category='sessions')['routes'] == []
+
+
+def test_ordinary_legacy_session_sources_remain_usable():
+    original = '# Session\n\n## Sources\n- codex:session:4\n- claude-code:session:8\n'
+    assert tr.checked(original,original) == original
+    assert reader_evidence(original,original,category='sessions')['routes'] == [
+        {'n':'1','id':'codex:session:4'},{'n':'2','id':'claude-code:session:8'}]

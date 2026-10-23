@@ -34,6 +34,10 @@ claimed fixed.
   was ignored. Both new regressions failed before repair (2 failed, 30 deselected,
   1.09s). Count definitions before filtering and refuse multiple sections.
 - After review repairs: final affected suite 560 passed, 10.95s.
+- Exact-head AI review found a second ambiguity: legacy session sources synthesize
+  numbers that can collide with explicit numbers. Mixed definitions now refuse
+  routing/translation; ordinary legacy-only session sources remain usable.
+  Regression: 1 failed, 1 legacy control passed before repair (0.66s).
 - Full CI scope, independent final exact-head review and remote CI: pending.
 
 Actual reader functions use logical element/document/panel stubs. They check

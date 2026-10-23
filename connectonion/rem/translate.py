@@ -118,12 +118,13 @@ def source_definitions(text: str) -> list:
     blocks = re.findall(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
     if len(blocks) > 1:
         raise RemError("Ambiguous source definitions: multiple Sources sections")
-    rows, seen = [], set()
+    rows, seen, legacy = [], set(), False
     for line in (blocks[0] if blocks else "").splitlines():
         if not line.strip():
             continue
         match = re.fullmatch(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[\[［](W?\d{1,3})[\]］][ \t]+(.*)", line)
         if not match:
+            legacy = legacy or bool(re.fullmatch(r"[ \t]*(?:[-*+][ \t]+)?(?:codex|claude-code):[^\s:]+:\d+[ \t]*", line))
             rows.append(("literal", line))
             continue
         number, payload = match.groups()
@@ -132,6 +133,8 @@ def source_definitions(text: str) -> list:
         seen.add(number)
         route = SOURCE.match(f"- [{number}] {payload}")
         rows.append((number, "target", route.group(2)) if route else (number, "literal", payload))
+    if legacy and seen:
+        raise RemError("Ambiguous source definitions: mixed legacy and numbered sources")
     return rows
 
 

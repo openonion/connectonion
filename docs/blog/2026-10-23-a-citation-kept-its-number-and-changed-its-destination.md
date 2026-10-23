@@ -13,7 +13,9 @@ A stronger prompt alone cannot protect that boundary. Discarding every old cache
 would also throw away valid work. The correction instead checks the existing
 contract at write and read: exact supported source targets, per-line citations,
 record identity, headings, quotations, privacy labels and reader markers. Unknown
-source syntax remains literal. Ambiguous definitions stop a translation before
+source syntax remains literal. Mixed legacy session and numbered definitions
+are refused because their effective numbers can collide; ordinary legacy session
+references remain usable. Ambiguous definitions stop a translation before
 execution. Paths, revisions, hashes, queries and fragments are not normalized or
 resolved while comparing them.
 

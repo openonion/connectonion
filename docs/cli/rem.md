@@ -1745,7 +1745,9 @@ must agree. Changing `[1]` from one original to another is rejected even when
 citation counts match. Recognized Sources targets retain their literal paths,
 revisions, hashes, URL queries and fragments; only explanatory captions translate.
 Unsupported definition syntax stays literal. Duplicate numbers or multiple
-Sources sections require correction before a model translation can begin.
+Sources sections require correction before a model translation can begin. Mixing
+legacy unnumbered session sources with numbered definitions is also refused;
+ordinary unnumbered session sources remain usable.
 
 Reader source routing, labels and evidence selectors use the canonical page.
 Translated source captions are display-only and require the same unambiguous
