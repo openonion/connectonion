@@ -54,7 +54,11 @@ def recurrence(config: dict) -> str:
             + ",".join(map(str, minutes)) + ";BYSECOND=0")
     grid = [(h, m) for h in hours for m in minutes]
     if len(grid) != len(pairs):
-        rule += ";BYSETPOS=" + ",".join(str(i) for i, pair in enumerate(grid, 1) if pair in pairs)
+        positions = [i for i, pair in enumerate(grid, 1) if pair in pairs]
+        if max(positions) > 366:
+            raise RemError("These time pairs exceed Codex's rule limits; the existing clock was kept. "
+                           "Reduce the saved times or use an OS scheduler")
+        rule += ";BYSETPOS=" + ",".join(map(str, positions))
     return rule
 
 

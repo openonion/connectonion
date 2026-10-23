@@ -100,6 +100,15 @@ def test_running_legacy_batch_is_kept_without_creating_another_clock(native, tmp
     assert not native.definition_path(tmp_path / "notes").exists()
 
 
+def test_unsupported_dense_rule_keeps_the_existing_clock(native, tmp_path):
+    config = default_config()
+    config["schedule"]["times"] = [f"{hour:02}:{hour:02}" for hour in range(20)]
+    with pytest.raises(RemError, match="exceed Codex's rule limits"):
+        native.install(tmp_path / "notes", config)
+    assert not native.launcher.removed
+    assert not native.definition_path(tmp_path / "notes").exists()
+
+
 def test_failed_registration_keeps_old_clock_and_only_stages_a_paused_task(native, tmp_path):
     root = tmp_path / "notes"
     with pytest.raises(RemError, match="previous clock"):
