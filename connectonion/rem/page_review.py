@@ -946,7 +946,7 @@ PAGE_LIMIT = 20_000
 # person pages, and Greta's History opened with "The current collector
 # reports 50 matching Outlook messages with 50 bodies read".
 TOOL_TEXT = re.compile(r"\bnot searched\b|\boffline\b.{0,20}\b(?:wiki|rem|run)\b|\b(?:wiki|rem) runs?\b.{0,12}\boffline\b"
-                       r"|\bcollector (?:reports|found|read)\b|\bbodies read\b", re.IGNORECASE)
+                       r"|\bcollector (?:reports|found|read)\b|\bbodies (?:read|gathered)\b", re.IGNORECASE)
 
 
 def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str]]:

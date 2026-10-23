@@ -89,9 +89,9 @@ def excluded_people(state: dict) -> set:
 
 
 def _material_read(coverage: list[str]) -> int:
-    """How many bodies, attachments and messages an investigation's coverage says it read."""
+    """Recorded collection volume for the existing hollow-queue heuristic, not inspection proof."""
     text = "\n".join(coverage)
-    counts = re.findall(r"(\d+) bodies read|(\d+) attachments read|, (\d+) read\b", text)
+    counts = re.findall(r"(\d+) bodies (?:read|gathered)|(\d+) attachments (?:read|gathered)|, (\d+) read\b", text)
     return sum(int(number) for row in counts for number in row if number)
 
 

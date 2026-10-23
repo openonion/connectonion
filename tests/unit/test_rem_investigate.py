@@ -80,7 +80,7 @@ def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
                                  clients={"gmail": Mail()}, subscriptions={})
     assert [item["text"] for item in items if item["source"].startswith("gmail:")] == [
         "Body 1", "Body 2", "Body 3", "Body 4"]
-    assert any("4 bodies read" in line for line in coverage)
+    assert any("4 bodies gathered" in line for line in coverage)
 
 
 def test_quick_evidence_keeps_complete_gathered_sources():
@@ -215,7 +215,7 @@ def test_quick_owner_fetches_all_matching_mail_bodies():
                                  clients={'outlook': box}, subscriptions={},
                                  sent_only=True, quick=True)
     assert len(items) == 20 and sorted(box.fetched, key=int) == [str(i) for i in range(20)]
-    assert any('20 matched, 20 bodies read' in line for line in coverage)
+    assert any('20 matched, 20 bodies gathered' in line for line in coverage)
 
 
 @pytest.fixture
