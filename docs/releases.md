@@ -25,6 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc20** recognizes already-owned addresses during
+repeat email setup even if that domain no longer accepts new purchases. It
+retains multi-address setup, domain discovery, account-wide defaults and the
+merged inbox. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc20'
+```
+
+See [the preview notes](releases/1.9.3rc20.md). Currently enabled choices come
+from the cloud; unready reserved domains are not offered for new purchases.
+
+## Previous previews
+
 Release candidate **1.9.3rc19** strengthens mailbox setup regression coverage:
 no purchase after authentication/settings failures or for domains the backend
 has not enabled. It includes rc18's multi-address setup and the corrected quota
@@ -37,8 +51,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc19'
 See [the preview notes](releases/1.9.3rc19.md). Incoming routing for
 steadmail.com and oakinbox.com still requires Cloudflare permissions and delivery
 acceptance. The cloud lists the domains currently ready for new addresses.
-
-## Previous previews
 
 Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
 additional email aliases on the same cloud account. It retains sender selection,
