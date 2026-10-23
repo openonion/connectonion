@@ -25,18 +25,44 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc17** exposes hosted-domain discovery and setup of
-additional email aliases on the same cloud account. It retains existing sender
-selection, default sender and mailbox filtering. Stable remains **1.9.2**.
+Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
+additional email aliases on the same cloud account. It retains sender selection,
+account defaults and mailbox filtering. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc18'
+```
+
+See [the preview notes](releases/1.9.3rc18.md). Domain infrastructure acceptance
+is recorded separately from package tests.
+
+## Previous previews
+
+Release candidate **1.9.3rc17** processes eligible explicit feedback when
+there is no new raw material, narrows inherited-claim audit exemptions and keeps
+supplied argument names in tool error hints. Synthetic retry tests avoid real
+waiting. Stable remains 1.9.2; Python 3.11+ and existing dependency floors remain.
+This backend preview does not establish current REM model or native UI acceptance.
+See [1.9.3rc17 notes](releases/1.9.3rc17.md).
+
+After publication, install its exact pin:
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc17'
 ```
 
-See [the preview notes](releases/1.9.3rc17.md). Domain infrastructure acceptance
-is recorded separately from package tests.
+Release candidate **1.9.3rc16** skips stale click-approach waypoints under slow
+pointer dispatch, lets supervised local browser jobs pin their existing daemon, and
+keeps isolated project Hosts from inheriting a global handoff watcher. This
+preview requires Python 3.11+ and retains rc15's security dependency floors.
+See [1.9.3rc16 notes](releases/1.9.3rc16.md).
 
-## Previous previews
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc16'
+```
+
 
 Release candidate **1.9.3rc15** preserves file and image references, message kinds
 and typed sender IDs through Feishu/Lark inbox consumption and Host input.

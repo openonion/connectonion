@@ -1714,9 +1714,9 @@ This is separate from scheduling: REM still uses launchd on macOS. Codex App
 Scheduled is not a public App Server scheduling API; native schedule migration
 has not been enabled by this change.
 
-### Unchanged-content audit candidate (#2639)
+### Unchanged-content audit continuity (1.9.3rc17, #2639)
 
-An unreleased correction narrows the protection for content inherited from an
+1.9.3rc17 narrows the protection for content inherited from an
 accepted page. It compares complete retained prose contexts, including meaningful
 word spaces, the page title and section hierarchy, and exact cited original IDs
 at their relative text positions. Renumbering or line wrapping can preserve
