@@ -419,3 +419,62 @@ def test_claim_rewordings_set_aside_source_qualifications_and_added_words():
     for old, new in [("Stable 1.9.1", "Stable 1.9.2"), ("waiting on Liesel", "waiting on you"),
                      ("Python project", "project Python"), ("waiting waiting", "waiting")]:
         assert not _same(old, new), (old, new)
+
+
+@pytest.mark.parametrize('target', ['../people/corin%20marsh.md#facts', '../people/old.md#facts'])
+def test_explicit_encoded_or_merged_links_keep_bidirectional_evidence(target):
+    records = [
+        {'path': 'projects/pilot.md', 'category': 'projects', 'title': 'Pilot',
+         'text': f'[personal] Reviewed with [the contact]({target}) [7].'},
+        {'path': 'people/corin marsh.md', 'category': 'people', 'title': 'Corin Marsh', 'text': '# Corin'},
+    ]
+    links = relationships(records, aliases={'people/old.md': 'people/corin marsh.md'})
+    forward = links['projects/pilot.md'][0]
+    assert forward['path'] == 'people/corin marsh.md' and forward['kind'] == 'linked'
+    assert forward['via'] == 'projects/pilot.md' and forward['sources'] == ['7'] and forward['private']
+    backward = links['people/corin marsh.md'][0]
+    assert backward['path'] == 'projects/pilot.md' and backward['kind'] == 'linked from'
+    assert backward['via'] == forward['via'] and backward['sources'] == ['7'] and backward['private']
+    records[0]['text'] = '# Pilot'
+    assert not any(relationships(records, aliases={'people/old.md': 'people/corin marsh.md'}).values())
+
+
+def test_snapshot_aliases_are_flat_valid_and_do_not_export_unreferenced_history(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook, state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/current.md', '# Current person')
+    notebook.write('projects/pilot.md', '# Pilot\n[contact](../people/old.md#facts)')
+    write_json(state_path(tmp_path, 'aliases.json'), {
+        'people/old.md': {'into': 'people/middle.md', 'reason': 'private reason'},
+        'people/middle.md': {'into': 'people/current.md'},
+        'people/unreferenced.md': {'into': 'people/current.md'},
+        'people/current.md': {'into': 'projects/pilot.md'},
+        'people/a.md': {'into': 'people/b.md'}, 'people/b.md': {'into': 'people/a.md'},
+        'people/gone.md': {'into': 'people/absent.md'},
+        '../outside.md': {'into': 'people/current.md'},
+        '.state/archived/old.md': {'into': 'people/current.md'},
+        'people/.hidden.md': {'into': 'people/current.md'},
+        'unrecognized/old.md': {'into': 'people/current.md'},
+        'people/bad-value.md': ['people/current.md'],
+        'people/escaped.md': {'into': '../outside.md'},
+    })
+    shared = snapshot(tmp_path)
+    assert shared['aliases'] == {'people/old.md': 'people/current.md'}
+    assert snapshot(tmp_path, local=True)['aliases'] == {
+        'people/old.md': 'people/current.md', 'people/middle.md': 'people/current.md',
+        'people/unreferenced.md': 'people/current.md'}
+    assert shared['records'][0].get('reason') is None
+
+
+def test_numbered_source_links_do_not_gain_alias_evidence_identity():
+    records = [
+        {'path': 'projects/pilot.md', 'category': 'projects', 'title': 'Pilot',
+         'text': '[old reference](../people/old.md#src-%31) [7].'},
+        {'path': 'people/current.md', 'category': 'people', 'title': 'Current person', 'text': '# Current'},
+    ]
+    assert not any(relationships(records, aliases={'people/old.md': 'people/current.md'}).values())
+    records[0]['text'] = '[current reference](../people/current.md#src-1) [7].'
+    links = relationships(records, aliases={'people/current.md': 'projects/pilot.md'})
+    assert links['projects/pilot.md'][0]['path'] == 'people/current.md'

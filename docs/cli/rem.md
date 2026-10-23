@@ -1734,3 +1734,42 @@ This is a deterministic continuity check, not semantic equivalence or proof the
 old content is true. Additions may still affect discourse meaning; actual model
 and current native desktop/phone/accessibility acceptance remain unverified.
 Existing notebook pages are not automatically corrected.
+
+### Canonical page navigation candidate (#2197)
+
+An unreleased navigation repair keeps links to merged pages usable and recognizes
+encoded relative paths and section links consistently in related-page projections.
+If a referenced page is absent from the snapshot, the body and Related area visibly
+say **Page unavailable**, with an explanation in the selected interface language.
+The original label and note remain unchanged; the reader does not guess a person
+from a similar name or promise to repair a missing record.
+
+Merge redirects apply to page navigation, not evidence identity. Without an old-to-new
+source-number ledger, a numbered source link on a merged page stays unavailable;
+it is not attached to the same number on the destination page. Ordinary section
+bookmarks preserve their heading/filter state. Shared readers expose only redirects
+already referenced in their exported notes, not the entire historical merge table.
+
+Backlinks can open the exact original line in a **Referenced passage** panel on
+the originating page, with previous/next controls for repeated references. Outgoing
+cards still open the linked page; **View reference** returns to their own original
+passage. Source numbers and privacy labels remain attached to that original page,
+including when a cached translation is being read. Citation chips and their source
+popups use the original source table. Mutual links keep separate reference actions
+for both originating pages. Link addresses contain opaque
+location IDs rather than the passage text. Changed or removed locations are marked
+unavailable instead of being redirected to a merged page or a similar sentence.
+Code examples do not create page references.
+
+
+Name searches also preserve record identity. When more than one eligible page
+matches a name, **Choose a page** lists the candidates with available original
+Company, Role, Email or other identifying facts, subject to the privacy filter.
+No candidate is promoted to a factual **Best match**. “Related to …” queries
+require an exact page choice before showing connections; a unique name still opens
+directly. The choice URL retains the exact record path. A removed, held or service
+record cannot silently fall back to another page with the same name. Missing
+visible details are stated explicitly; the reader does not invent a distinction.
+
+Native desktop/phone, keyboard/focus and accessibility acceptance remain pending.
+Complete translated-excerpt matching remains separate work.
