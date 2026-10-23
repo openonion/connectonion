@@ -1008,6 +1008,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
+        if report.get("unretained_citations"):
+            audit_status += f"; {len(report['unretained_citations'])} citations unverified (originals not retained)"
         if report.get("carried_findings"):
             audit_status += f"; {len(report['carried_findings'])} unchanged findings deferred"
         # Insufficient source coverage and deferred old findings stay explicit;

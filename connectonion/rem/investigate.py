@@ -2399,6 +2399,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             index_text[:room // 2] + f"\n[Index continues in {laid_out['index']}; read the rest there.]\n")
         items = [{"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                   "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                  "originals": str(laid_out["originals"]),
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
                            f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
@@ -2484,6 +2485,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
                 parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                                     "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                                    "originals": str(laid_out["originals"]),
                                     "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
                                             f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
             coverage.append(f"rounds: {len(parts)} parts read in full" + (
