@@ -134,11 +134,11 @@ is combined; each message records its destination address.
 ```bash
 co email domains                                      # cloud domain choices and current price
 co email addresses                                    # addresses you already own
-co email setup iron.share --domain steadmail.com       # show price; no purchase
-co email setup iron.share --domain steadmail.com --buy # add another address
-co email default iron.share@steadmail.com              # choose the default sender
-co email send alice@example.com "Hello" "Hi" --from iron.share@steadmail.com
-co email inbox --address iron.share@steadmail.com
+co email setup iron.share --domain mail.openonion.ai       # show price; no purchase
+co email setup iron.share --domain mail.openonion.ai --buy # add another address
+co email default iron.share@mail.openonion.ai              # choose the default sender
+co email send alice@example.com "Hello" "Hi" --from iron.share@mail.openonion.ai
+co email inbox --address iron.share@mail.openonion.ai
 ```
 
 `setup` adds an address and keeps existing addresses. It does not upgrade your
@@ -147,8 +147,10 @@ only when `--buy` succeeds; an address already owned by this account is not
 purchased again. `co email domains` reads the domain list from your configured
 backend, so the CLI does not maintain a separate list.
 
-Hosted domains are `mail.openonion.ai`, `steadmail.com`, `trustxmail.com`, and
-`oakinbox.com`. An arbitrary external domain such as `mail.com` cannot be
+The reserved pool is `mail.openonion.ai`, `steadmail.com`, `trustxmail.com`, and
+`oakinbox.com`. Only currently enabled domains appear in `co email domains`;
+repeat setup with another listed domain to keep the same alias on both.
+An arbitrary external domain such as `mail.com` cannot be
 claimed with this command. Account addresses and the default sender live in
 the cloud: the same account uses them from every machine and deployed agent.
 A send with `--from` changes that message only; a send without it uses the
