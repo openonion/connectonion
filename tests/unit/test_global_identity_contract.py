@@ -69,10 +69,11 @@ def test_diagnostics_never_borrow_file_metadata_for_a_process_account(identities
     assert google["source"] == "process environment"
 
 
-def test_bare_init_rejects_a_project_env_selector(identities, monkeypatch):
+@pytest.mark.parametrize("command", ["init", "setup"])
+def test_global_setup_rejects_a_project_env_selector(identities, monkeypatch, command):
     _, project, *_ = identities
     monkeypatch.setattr(auth_commands.requests, "post", lambda *a, **k: pytest.fail("No auth before selector validation"))
-    result = CliRunner().invoke(app, ["--env-file", str(project / ".env"), "init"])
+    result = CliRunner().invoke(app, ["--env-file", str(project / ".env"), command])
     assert result.exit_code == 2
-    assert "co init" in result.output
+    assert f"co {command}" in result.output
     assert (project / ".env").read_text() == "PROJECT_ONLY=yes\n"

@@ -1,3 +1,5 @@
+> **Unreleased change.** Under review in [issue #2675](https://github.com/openonion/connectonion/issues/2675); this behavior is not yet in a published package.
+
 # co skills - Discover & Import Skills
 
 Scan skill files across your AI coding agents (Claude Code, Codex, Cursor, Kiro) and import the ones you want into `~/.co/skills/` so ConnectOnion can use them.
@@ -17,12 +19,18 @@ co skills copy ship-feature --to-project
 # See what's already imported
 co skills list
 
-# Publish ConnectOnion's own skills into Claude Code and Codex
+# Link ConnectOnion's own skills into Claude Code and Codex
 co skills link
 
 # Tell Claude Code and Codex that co exists (co init does this for you)
 co skills index
 ```
+
+The four initialization entry points (`co init`, `co init ./`, `co create`,
+`co setup`) already link bundled skills and refresh the command index. Use the
+standalone commands to repair just one part. The user library defaults to
+`~/.co/skills/`; an explicit process `AGENT_CONFIG_PATH` selects a different
+global directory for discovery, imports, manifests and runtime loading.
 
 ## Why
 
@@ -45,10 +53,13 @@ Skills you've written for one tool (for example Claude Code) are usually stored 
                                                       (now visible to co ai, skills plugin, publishing)
 ```
 
+Publishing is a separate explicit action: `co announce` lists profile skill metadata;
+`publish: true` also includes the skill body and companion files.
+
 ## Which tier travels
 
 `~/.co/skills/` is your library — every project on this machine can use what is in it,
-and none of it leaves the machine. A deploy carries the **project's** `.co/skills/` and
+and the user library is outside the project deployment. A deploy carries the **project's** `.co/skills/` and
 nothing else. That is what the `Deploys` column means:
 
 ```
@@ -153,9 +164,9 @@ co skills link
 
 Targets `~/.claude/skills/` and `~/.codex/skills/`, but only for a tool that is installed: if `~/.codex` does not exist, Codex is reported as `no .codex, skipped` and nothing is created. Safe to re-run — it's how you pick up skills added by a ConnectOnion upgrade.
 
-**It will not overwrite a directory you own.** If `~/.claude/skills/co-browser/` is a real directory rather than a link, that's your own skill of the same name and it's left alone (reported as `exists, not ours — skipped`). Pass `--force` to replace it.
+**It keeps your own directories and healthy links to another source.** If `~/.claude/skills/co-browser/` is a real directory rather than a link, that's your own skill of the same name and it's left alone (reported as `exists, not ours — skipped`). Dangling links from a removed installation are repaired automatically. Pass `--force` to explicitly replace an existing directory or healthy link.
 
-On macOS and Linux these are symlinks, so a ConnectOnion upgrade updates the skills in place. On Windows, where symlinks need Developer Mode or elevation, the files are copied instead — re-run `co skills link` after upgrading.
+On macOS and Linux these are symlinks, so a ConnectOnion upgrade updates the skills in place. On Windows, where symlinks need Developer Mode or elevation, the files are copied instead. Existing copies are kept on rerun; inspect them before using `co skills link --force`, which also replaces your own same-name directories.
 
 | Option | Description |
 |--------|-------------|
@@ -193,7 +204,7 @@ It is generated from the CLI itself — one line per visible top-level command, 
 
 Three things keep it current, all through the same function:
 
-- `co init` writes it (and runs `co skills link`).
+- `co init`, `co init ./`, `co create` and `co setup` write it and run `co skills link`; re-running repairs omissions without replacing your own skill directories.
 - Every agent start (`host()`, so `co ai` too) refreshes it when the version stamp differs from the installed version, printing one line per file it changed. When the block is current it only reads the stamp. A server with neither `~/.codex` nor `~/.claude` — `co deploy --to` hosts, Docker, CI — is never touched.
 - `co doctor` reports a missing or stale block under **Skills → Command index**, with `Next: co skills index`.
 
@@ -228,7 +239,7 @@ co skills manifest --stdout
 - `index.json` — where skills come *from* (source paths across all agent dirs); written by `discover`
 - `agent.json.skills` — what's *in your library*, in the shape publishing needs
 
-When merging into `agent.json`, any prior `signature` / `signer` fields are removed because the content changed and must be re-signed. Each generated skill entry has `publish: false` by default; existing `publish` values are preserved on refresh.
+When merging into `agent.json`, any prior `signature` / `signer` fields are removed because the content changed and must be re-signed. New entries use `publish: false`; refresh preserves existing publish choices, extra per-skill metadata and manually maintained listings whose bodies are outside this library.
 
 **Output shape:**
 ```json
@@ -304,5 +315,5 @@ After `co skills copy`, the `co_ai` skill loader (`cli/co_ai/skills/loader.py::d
 ## See Also
 
 - [co copy](copy.md) — Copy built-in tools/plugins/skills/prompts (different command, similar idea)
-- [Built-in Skills](../useful_skills/) — Skills that ship with ConnectOnion
+- [Skills overview](../features/skills.md) — How skills extend an agent
 - [Skills plugin](../useful_plugins/skills.md) — Runtime auto-discovery
