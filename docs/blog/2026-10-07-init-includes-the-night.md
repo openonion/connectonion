@@ -28,7 +28,11 @@ also began. Desktop code places the scheduler behind a capability published by
 the primary renderer; a live server process does not establish that readiness.
 
 The initialization candidate now opens that Scheduled entry point even when
-Codex is already running. This removes a manual setup step rather than adding a
-second timer. The control used local-file registration; account-managed task
-creation, a cold restart and the production pass's final CLI result still need
+Codex is already running. A cold-launch control then showed that an early URL could still be too soon.
+The candidate now confirms native adoption before delivering Scheduled again,
+while the previous clock is still preserved. That retry executed after a normal
+app restart without a manual UI action; the real production pass also completed
+with successful command exits and an archived wrapper. This removes a manual
+setup step while keeping one timer. The controls used local-file registration;
+account-managed creation and exact requested-minute execution still need
 separate evidence. This follow-up is under review, not a new published preview.

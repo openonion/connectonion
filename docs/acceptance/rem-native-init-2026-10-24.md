@@ -67,7 +67,16 @@ UI action. It requested 20:17 Sydney, indexed its next run at 20:18:31, started 
 confirmed and the owned definition removed. This proves execution, not exact
 requested-minute timing. The production scheduled pass completed, and the native
 wrapper was auto-archived with its command execution items reporting exit 0.
-Restart and account-managed-mode acceptance remain separate checks.
+The first cold-launch control, with only an early deep-link, failed to execute
+and was independently paused. This led to a startup-order fix: launch if needed,
+stage and confirm native adoption, then deliver Scheduled again before changing
+clock ownership. The guarded retry stopped only the normal desktop while native
+runs were idle, retained its installation/profile and the managed server, and
+used the patched install lifecycle. It requested 20:35 Sydney, indexed 20:36:33,
+started 20:36:34, created its marker and auto-archived by 20:37:11. Pause and owned
+definition removal were confirmed. The existing production task remained ACTIVE
+across the restart and no launchd job was installed or loaded for that notebook.
+Account-managed-mode acceptance remains separate.
 
 ## Account-managed registration
 
@@ -110,7 +119,7 @@ promise or a removal date.
 The migration tests use private database fixtures. They are not a claim of a
 live account migration, account task creation, or account pause succeeding.
 
-Latest local regression: **269 passed, 3 existing deprecation warnings** across
+Latest local regression: **270 passed, 3 existing deprecation warnings** across
 native scheduling, launchd scheduling, REM service and CLI tests. These include
 a concurrent activation during pause, delayed first activation without a worker
 record, and pending reactivation behind a previously stopped worker. Twelve
@@ -130,8 +139,10 @@ to edit configuration files. Required desktop consent must remain a normal
 native product action. An unavailable native registration path must be reported
 accurately rather than silently creating another timer.
 
-Release acceptance still requires actual timed execution, final CLI exit,
-archiving, repeat initialization, update, pause, and restart/sync persistence.
+Local-file execution, production CLI completion, archiving, pause and a normal
+desktop restart followed by automatic initialization have live receipts. Exact
+requested-minute timing and live account-managed creation/update/pause/migration
+remain unverified; those results must not be inferred from the legacy controls.
 Automatic archiving in a newly created account-managed task is also unverified.
 
 References:

@@ -139,7 +139,7 @@ class CodexNative:
         result = self.run(["/usr/bin/open", "-a", str(app), "codex://automations"],
                           capture_output=True, text=True, timeout=15)
         if result.returncode:
-            raise RemError("Codex desktop could not open; the previous REM clock has been kept")
+            raise RemError("Codex Scheduled could not open; run co rem status before changing timers")
 
     def _wait_for_definition(self, root: Path, expected: dict) -> bool:
         expected = dict(expected)
@@ -211,7 +211,8 @@ class CodexNative:
         if legacy.get("loaded") and legacy.get("state") == "running":
             raise RemError("The existing REM batch is still running. Let it finish, then run `co rem start` "
                            "to move its timer to Codex; the current schedule has been kept")
-        self._open_desktop()
+        if not self._app_running():
+            self._open_desktop()
         self._write(root, definition)
         if not self._wait_for_definition(root, definition):
             if previous:
@@ -219,6 +220,9 @@ class CodexNative:
             raise RemError("Codex has not registered the paused REM task. Open Codex desktop and its "
                            "Scheduled page, let initialization finish, then run `co rem start` again. "
                            "The previous clock and definition have been kept; a new task stays paused")
+        # Cold startup can hydrate the index before the primary renderer is
+        # ready. Deliver Scheduled after adoption, before removing any old clock.
+        self._open_desktop()
         with maintenance_lock(root):
             if self.launcher.describe(root).get("state") == "running":
                 if previous:

@@ -893,7 +893,8 @@ Check `co rem status` before relying on unattended upkeep;
 
 **Under review, not yet released:** initialization opens the normal installed
 desktop directly at Scheduled, including when its process is already running,
-then independently confirms activation. Stopping
+then independently confirms activation. After the native index is ready it
+opens Scheduled again, so a cold launch does not depend on an early URL request. Stopping
 waits for native pause acknowledgement before marking the worker disabled or
 starting a replacement launchd timer. A known account-migrated task is identified
 by its legacy association and requires management in Codex Scheduled until an

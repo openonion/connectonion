@@ -327,6 +327,26 @@ def test_registration_opens_scheduled_even_when_desktop_is_running(native, monke
     assert commands == [["/usr/bin/open", "-a", "/Applications/Codex.app", "codex://automations"]]
 
 
+def test_install_wakes_scheduled_after_native_adoption_before_handover(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    wake_states = []
+    write = native._write
+
+    def run(command, **kwargs):
+        if command[0] == "/usr/bin/open":
+            wake_states.append((native.definition(root).get("status"), native.launcher.removed))
+        return subprocess.CompletedProcess(command, 0)
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    native.run = run
+    monkeypatch.setattr(native, "_write", desktop_write)
+    native.install(root, default_config())
+    assert wake_states == [("PAUSED", False)]
+
+
 def test_launchd_cannot_start_before_a_native_pause_is_confirmed(tmp_path, monkeypatch):
     commands = []
     monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)
