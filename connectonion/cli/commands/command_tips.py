@@ -223,6 +223,7 @@ NEXT = {
     "co email reply": "See your reply:  co email sent",
     "co email forward": "See the forwarded message:  co email sent",
     "co email tier": "See owned addresses:  co email addresses",
+    "co email status": "Inspect sent mail:  co email sent",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',

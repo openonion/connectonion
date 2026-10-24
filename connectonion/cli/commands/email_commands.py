@@ -66,33 +66,49 @@ def _read_failure(exc, mailbox: str):
 def handle_email_send(
     to: str, subject: str, message: str,
     idempotency_key: str = None, from_address: str = None,
+    max_cost_usd: str = '0',
 ):
     """Send an email from the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.send_email import send_email
+    budget = {} if str(max_cost_usd) in ('0','0.0') else {'max_cost_usd':max_cost_usd}
     result = send_email(
         to, subject, message,
-        idempotency_key=idempotency_key, from_address=from_address,
+        idempotency_key=idempotency_key, from_address=from_address, **budget,
     )
 
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
         console.print(f"  From:       {result.get('from', '')}")
         console.print(f"  Message ID: {result.get('message_id', '')}")
+        if result.get('charged_usd') is not None:
+            from decimal import Decimal
+            charged=Decimal(str(result['charged_usd']))
+            console.print(f"  Cost:       ${charged:.3f}" if charged else '  Cost:       Included in your monthly allowance',markup=False)
         console.print("\n[dim]See it in your sent mail:[/dim] [bold]co email sent[/bold]\n")
     else:
         error = result.get("error", "Unknown error")
-        console.print(f"\n❌ [bold red]Failed:[/bold red] {error}")
+        console.print(f"\nSend not confirmed: {error}",markup=False)
         if result.get("request_id"):
             console.print(f"  Request ID: {result['request_id']}")
+        if result.get('idempotency_key'):
+            console.print(f"  Send ID: {result['idempotency_key']}",markup=False)
+            if result.get('dispatched') is not False:
+                print('  Check delivery: co email status '+shlex.quote(result['idempotency_key']))
+        if result.get('code') in ('email_payment_required','insufficient_credits'):
+            quote=result.get('billing') or {}
+            console.print(f"  Next email: ${quote.get('next_send_cost_usd','—')} · Available credits: ${quote.get('balance_usd','—')}",markup=False)
+            console.print('  Review allowance: co email tier. PAYG requires an explicit --max-cost (USD). No subscription.',markup=False)
         if result.get("retryable") and result.get("idempotency_key"):
             # The full command, restated — "the same command" is not in the
             # output, so an agent reading only this output could not retry.
             retry = ["co", "email", "send", shlex.quote(to), shlex.quote(subject), shlex.quote(message)]
             if from_address:
                 retry += ["--from", shlex.quote(from_address)]
+            if budget:
+                retry += ['--max-cost',shlex.quote(str(max_cost_usd))]
             retry += ["--idempotency-key", shlex.quote(result["idempotency_key"])]
             # Plain print, not console.print: Rich wraps at the console width,
             # and a line-broken command is no longer copy-pasteable.

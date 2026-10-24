@@ -71,24 +71,48 @@ def handle_email_search(query: str,last: int = 100,offset: int = 0,json_output: 
     for m in matches:out.print(f"{m['id']}  {m['from']}  {m['subject']}",markup=False)
     if len(messages)==last:out.print(f'Older page: co email search {shlex.quote(query)} --last {last} --offset {offset+last}',markup=False)
 
-def handle_email_reply(email_id: str,message: str,*,to: str | None = None,from_address: str | None = None,idempotency_key: str | None = None):
+def handle_email_reply(email_id: str,message: str,*,to: str | None = None,from_address: str | None = None,idempotency_key: str | None = None,max_cost_usd: str = '0'):
     original=_read(email_id)
     recipient=to or parseaddr(original['from'])[1]
     if '@' not in recipient:
         out.print('The original sender has no valid email address.',markup=False)
         raise typer.Exit(1)
+    if not from_address and not to:
+        received_at=parseaddr(original.get('to',''))[1].strip().lower()
+        addresses=_request('GET','addresses').get('addresses',[])
+        from_address=next((item['address'] for item in addresses if item['address'].lower()==received_at),None)
+        if not from_address:
+            out.print('The original receiving address is not available for sending; using your default. Set --from to choose another sender.',markup=False)
     subject=original['subject'] or '(No subject)'
     prefix='Fwd:' if to else 'Re:'
     if not subject.lower().startswith(prefix.lower()):subject=prefix+' '+subject
     quoted='\n'.join('> '+line for line in (original.get('message') or '').splitlines())
     body=f"{message}\n\nOn {original.get('timestamp','')}, {original['from']} wrote:\n{quoted}"
-    handle_email_send(recipient,subject,body,from_address=from_address,idempotency_key=idempotency_key)
+    budget={} if str(max_cost_usd) in ('0','0.0') else {'max_cost_usd':max_cost_usd}
+    handle_email_send(recipient,subject,body,from_address=from_address,idempotency_key=idempotency_key,**budget)
 
 def handle_email_tier(json_output: bool = False):
     data=_request('GET','tier')
     if json_output:print(json.dumps(data,ensure_ascii=False));return
     for label,key in [('Mailbox','sender_email'),('Plan','tier'),('Monthly allowance','emails_per_month'),('Usage','quota_status')]:
         out.print(f'{label}: {data.get(key,"—")}',markup=False)
+    billing=data.get('billing')
+    if billing:
+        out.print(f"Included left: {billing['included_remaining']} · resets {billing['resets_at']}",markup=False)
+        out.print(f"After allowance: ${float(billing['overage_price_usd']):.3f}/email · No subscription",markup=False)
+        out.print(f"Available credits: ${float(billing['balance_usd']):.4f}",markup=False)
+
+
+def handle_email_send_status(send_key: str,json_output: bool = False):
+    from urllib.parse import urlencode
+    import re
+    if not re.fullmatch(r'[\x21-\x7e]{1,256}',send_key):
+        out.print('Use the 1–256 character send ID printed by the send attempt.',markup=False);raise typer.Exit(1)
+    data=_request('GET','send-status?'+urlencode({'idempotency_key':send_key}))
+    if json_output:print(json.dumps(data,ensure_ascii=False));return
+    out.print(f"Send {send_key}: {data['state']}",markup=False)
+    if data.get('message'):out.print(data['message'],markup=False)
+    out.print(f"Charged: ${float(data['charged_usd']):.3f} · Reserved: ${float(data['reserved_usd']):.3f}",markup=False)
 
 
 def handle_email_quota(buy: bool = False,idempotency_key: str | None = None,json_output: bool = False):
@@ -104,6 +128,10 @@ def handle_email_quota(buy: bool = False,idempotency_key: str | None = None,json
     if buy:out.print(data.get('message','Quota purchase completed.'),markup=False);return
     out.print(f"Monthly allowance: {data.get('emails_per_month','—')}",markup=False)
     out.print(f"Usage: {data.get('quota_status','—')}",markup=False)
+    billing=data.get('billing')
+    if billing:
+        out.print(f"After allowance: ${billing['overage_price_usd']}/email · resets {billing['resets_at']} · no subscription",markup=False)
+        out.print(f"Available credits: ${billing['balance_usd']}",markup=False)
     increment=data.get('quota_increment')
     if increment:out.print(f"One increment adds {increment['emails_per_month']} emails/month for ${increment['price']:.2f}. Buy with: co email quota --buy --idempotency-key <unique-key>",markup=False)
     else:out.print('No extra-quota increment is available on this plan.',markup=False)
