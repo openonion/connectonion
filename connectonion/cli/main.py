@@ -230,7 +230,7 @@ def init(
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
-    """Initialize global ~/.co/keys.env, or use co init ./ for a project. Creates your keypair and writes keys.env; the global run also links co's skills and writes its command index into ~/.codex/AGENTS.md and ~/.claude/CLAUDE.md (see co skills index)."""
+    """Initialize local identity, profile and coding-agent skills, or use co init ./ for a project. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Project init does this too. Re-run to repair omissions while keeping your edits."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -253,7 +253,7 @@ def create(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
 ):
-    """Create new project. Creates the <name>/ directory; the first run also sets up ~/.co/."""
+    """Create new project. Creates the <name>/ directory and completes local identity, profile, bundled skill links and coding-agent command indexes."""
     from .commands.create import handle_create
     # An explicit False means the project was not created — exit non-zero so a
     # script can tell. Other return values keep the previous behaviour.
@@ -1045,10 +1045,10 @@ app.add_typer(eval_app, name="eval")
 def setup(
     bio: Optional[str] = typer.Option(None, "--bio", "-b", help="One-line bio for ~/.co/agent.json"),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Alias/name for ~/.co/agent.json (default: $USER)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ~/.co/agent.json (backs up to .bak)"),
-    skip_skills: bool = typer.Option(False, "--no-skills", help="Skip ~/.co/skills/ library refresh"),
+    force: bool = typer.Option(False, "--force", "-f", help="Recreate agent.json (backs up to .bak); keeps your own skills"),
+    skip_skills: bool = typer.Option(False, "--no-skills", help="Skip importing the skill library; bundled skill links are still repaired"),
 ):
-    """Set up your global ~/.co/ — identity, agent.json, and skill library. Writes ~/.co/agent.json and ~/.co/skills/."""
+    """Customize your local agent profile and import your skill library. Writes agent.json and skills/ in the global config directory; also repairs local identity, bundled skill links and coding-agent command indexes. --name and --bio update only those fields; --force recreates the profile with a backup."""
     from .commands.setup_commands import handle_setup
     handle_setup(name=name, bio=bio, force=force, skip_skills=skip_skills)
 

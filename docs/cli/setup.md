@@ -1,110 +1,106 @@
-# co setup - Global Identity & Skill Library Setup
+> **Unreleased change.** Under review in [issue #2675](https://github.com/openonion/connectonion/issues/2675); this behavior is not yet in a published package.
 
-One command to set up everything in `~/.co/` that you need to publish an agent: identity keypair, `agent.json` profile, and a populated skill library scanned from every coding agent on your machine.
+# co setup — Customize your profile and import skills
 
-## Quick Start
+`co init` prepares the local identity, a default profile, bundled skill links and
+coding-agent command indexes. Use `co setup` to customize that profile and import
+skills you keep in other coding tools.
 
 ```bash
-co setup --name my-alias --bio "One-line description of what I do"
+co setup --name my-alias --bio "What I work on"
 ```
 
-## What `~/.co/` looks like after `co setup`
+`--no-skills` skips library discovery, copying and manifest generation. It still
+repairs the identity, default profile, bundled skill links and command indexes.
 
-```
-~/.co/
-├── keys/
-│   ├── agent.key        # Ed25519 private key (signing identity)
-│   ├── agent.pub        # Public key
-│   └── recovery.txt     # 12-word recovery phrase
-├── keys.env             # OPENONION_API_KEY (after `co auth`)
-├── agent.json           # ← NEW: your publishable profile
-│                        #   {address, alias, name, bio, skills:[...], version}
-└── skills/              # ← populated from claude/codex/cursor/kiro
-    ├── index.json       # discovery cache (where each skill came from)
-    └── <name>/SKILL.md  # one dir per discovered skill
+To prepare just that local integration without importing your library:
+
+```bash
+co setup --no-skills
 ```
 
-There is **no separate "bundle" directory**. `~/.co/` itself is what `oo-publish` reads from at publish time.
+## What setup prepares
 
-## What it does (in order)
+| Item | Behavior |
+|---|---|
+| `~/.co/keys/` | Reuse the machine identity; create one when missing |
+| `~/.co/keys.env` | Repair a missing file without rotating the identity; attempt managed-key auth for a new identity |
+| `~/.co/agent.json` | Create a missing profile; explicit `--name` and `--bio` update only those fields |
+| Bundled skill links | Link into installed Codex and Claude Code; keep your own skill directories |
+| Generated command index | Refresh the marked block in the coding agents' instruction files; keep your own text |
+| `~/.co/skills/` | Discover and import your library unless `--no-skills` |
+| `agent.json.skills` | Generate metadata from that library, retaining existing publish choices |
 
-1. **Identity.** If `~/.co/keys/agent.key` is missing, runs global `co init --yes` to bootstrap one. The implementation retains its temporary working directory, but plain init no longer writes project files.
-2. **`~/.co/agent.json`.** Writes the profile with your signing address, alias, bio, and `skills[]`. Skips profile creation if the file already exists unless you pass `--force` (which backs up to `agent.json.bak`).
-3. **Skill library.** Runs `co skills discover && co skills copy --all && co skills manifest`. Idempotent — existing skills are not overwritten without `--force`; skill metadata is merged into `agent.json` with `publish: false` by default.
-4. **Auth check.** Reports whether `OPENONION_API_KEY` is in `keys.env`. If not, suggests `co auth` (publishing works without it; only the `co/*` managed models require it).
+Setup runs this preparation in the current CLI process. It does not need another
+installed copy of `co` on PATH. Every invocation checks for missing pieces even
+when the identity already exists.
+
+The default global directory is `~/.co/`. An explicit process
+`AGENT_CONFIG_PATH` selects the identity, profile and user skill library together;
+`co skills` and the runtime skills plugin read the same library.
+Global `co setup` does not accept a project `--env-file` selector; it rejects one
+before creating or repairing files.
+
+## Preserve edits or recreate the profile
+
+```bash
+# Update only the named fields; keep other profile metadata
+co setup --name writing-tools --bio "Tools for writing" --no-skills
+
+# Recreate the complete profile, backing up the old file to agent.json.bak
+co setup --name writing-tools --bio "Tools for writing" --force --no-skills
+```
+
+Without profile options, an existing profile is kept. Updating profile fields
+removes a prior signature so the changed profile can be signed again.
+`--force` recreates the profile; it does not replace user skill directories or
+force-copy the imported library. To explicitly refresh an imported skill, use
+`co skills copy <name> --force`.
+
+## Import a skill library
+
+The default setup runs:
+
+```bash
+co skills discover
+co skills copy --all
+co skills manifest
+```
+
+Existing imported skills are kept. New manifest entries use `publish: false`;
+existing publish choices, manual listings and extra skill metadata survive. Review the profile and library before announcing:
+
+```bash
+co skills list
+co announce --dry-run
+```
+
+`--dry-run` shows the proposed announcement without sending it. Setup itself
+does not publish a profile. See [co skills](skills.md) for source precedence and
+what travels with a project.
+
+## Authentication and recovery
+
+Setup reports whether an OpenOnion token is present, without printing it or
+claiming that the server has verified it. A missing token leaves local setup
+available and prints `co auth` as the recovery action. A read-only coding-agent
+directory is skipped with a repair command to run from a writable shell.
+
+```bash
+co auth
+co skills link
+co skills index
+```
 
 ## Options
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--name` | `-n` | Alias for `agent.json` (default `$USER` lowercased) |
-| `--bio` | `-b` | One-line bio for `agent.json` |
-| `--force` | `-f` | Overwrite existing `agent.json` (backs up to `.bak`) |
-| `--no-skills` |  | Skip the skill library refresh |
+| Option | Meaning |
+|---|---|
+| `--name`, `-n` | Set alias and name; default for a new profile is `$USER` |
+| `--bio`, `-b` | Set the bio; omitted fields in an existing profile stay unchanged |
+| `--force`, `-f` | Recreate `agent.json`, backing up the old profile |
+| `--no-skills` | Skip importing the user library; keep basic integration repair |
 
-## Examples
-
-### First-time setup
-
-```bash
-co setup --name writing-tools --bio "Skills for nonfiction writing and editing"
-```
-
-Output:
-```
-✓ Identity: 0xcd92510bb6cc090374ecc345ef8c19b9d3797624fd1fbf7e078a9372fc31bdc1
-✓ Wrote /Users/you/.co/agent.json (alias=writing-tools)
-
-Refreshing ~/.co/skills/ library...
-              Discovered skills (57)
-... (table) ...
-Index written to /Users/you/.co/skills/index.json
-✓ Copied 30 skill(s) → /Users/you/.co/skills
-✓ Merged 30 skill(s) into /Users/you/.co/agent.json
-
-✓ Auth: OPENONION_API_KEY present
-
-Setup complete. Run the oo-publish skill to sign + announce.
-```
-
-### Refresh Skill Library Only
-
-```bash
-co skills discover && co skills copy --all && co skills manifest
-```
-
-Use `co setup --no-skills` only when you want to create or refresh `agent.json` without touching `~/.co/skills/`.
-
-### Change alias / bio after the fact
-
-```bash
-co setup --name new-alias --bio "Updated bio" --force
-# → backs up old agent.json to agent.json.bak
-```
-
-You can also just edit `~/.co/agent.json` directly — it's normal JSON. `oo-publish` reads whatever's there at sign time.
-
-## Idempotency
-
-`co setup` is safe to re-run:
-- Identity is never regenerated if `~/.co/keys/agent.key` exists.
-- `agent.json` is skipped if it exists (use `--force` to overwrite).
-- Skill library is refreshed — new skills are added, existing ones are skipped (use `co skills copy --all --force` separately for hard refresh), and `agent.json.skills` is updated.
-
-## How `co setup` relates to `co init`
-
-| Command | Scope | What it creates |
-|---------|-------|-----------------|
-| `co init` | **Global** (`~/.co/`) | Signing identity and `keys.env`; no project files |
-| `co init ./` | **Explicit project** | `.env`, `.co/host.yaml`, docs, and optionally template code |
-| `co setup` | **Global** (`~/.co/`) | `agent.json`, `skills/`, `keys/` (if missing) |
-
-Use `co init` for global credentials, `co init ./ --template co-ai` for a
-project scaffold, and `co setup` to prepare the global profile and skill library
-for publishing. These commands can run on the same machine without conflict.
-
-## See Also
-
-- [co init](init.md) — Global credentials or an explicit project
-- [co skills](skills.md) — The discover/copy/manifest commands that `co setup` orchestrates
-- publishing workflow — Higher-level flow that signs and announces `~/.co/agent.json`
+Use [co init](init.md) for local initialization, `co init ./` for an existing
+project, or [co create](create.md) for a new project directory. Each completes the
+same local integration, so the starting command does not leave skills unlinked.

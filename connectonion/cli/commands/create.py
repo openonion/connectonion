@@ -476,6 +476,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     if gi_result:
         files_created.append(gi_result)
 
+    from .setup_commands import complete_local_setup
+    complete_local_setup()
+
     # Success message with Rich formatting
     console.print()
     console.print(f"[bold green]✅ Created {name}[/bold green]")
