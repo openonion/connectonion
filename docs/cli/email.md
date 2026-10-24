@@ -1,3 +1,5 @@
+> **Preview 1.9.3rc22.** This reference includes the send-budget and status behavior in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+
 # OpenOnion email
 
 `co email` and [OO Mail](https://mail.openonion.ai) use the same account, mailbox and server API. The global selected identity is the default; use `co --env-file PATH email ...` to select a project account explicitly. Help is the command reference: `co email --help`.
@@ -10,9 +12,29 @@ co email read 123
 co email sent
 co email sent read 456
 co email search "launch" --last 100 --offset 0 --json
+```
+
+To mark selected messages read:
+
+```sh
 co email mark-read 123 124
+```
+
+To mark one message unread:
+
+```sh
 co email mark-unread 123
+```
+
+A reply sends immediately:
+
+```sh
 co email reply 123 "Thanks for the update."
+```
+
+A forward also sends immediately:
+
+```sh
 co email forward 123 you@example.com "For your review."
 ```
 
@@ -40,10 +62,23 @@ Every free account receives **100 included emails each calendar month (UTC)**. U
 
 ```sh
 co email tier
-# Uses included sends only; no surprise charge:
+```
+
+Use included sends only:
+
+```sh
 co email send you@example.com "Hello" "My message"
-# Authorizes up to $0.003 for this email; included sends still cost $0:
+```
+
+Alternatively, authorize up to USD $0.003 for one email; included sends still cost $0:
+
+```sh
 co email send you@example.com "Hello" "My message" --max-cost 0.003 --idempotency-key my-send-001
+```
+
+Check that send without resending:
+
+```sh
 co email status my-send-001 --json
 ```
 
@@ -71,9 +106,23 @@ Existing commands cover custom names, account default, sharing/revocation and ti
 
 ```sh
 co email transfer prepare you@mail.openonion.ai --to <recipient-public-key> --out request.json
-# The named recipient runs this using their own selected identity:
+```
+
+The named recipient runs this using their own selected identity:
+
+```sh
 co email transfer accept request.json --out approval.json
+```
+
+The original owner previews completion:
+
+```sh
 co email transfer complete approval.json
+```
+
+After reviewing that preview, the owner completes the transfer:
+
+```sh
 co email transfer complete approval.json --yes
 ```
 

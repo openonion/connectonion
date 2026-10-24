@@ -47,6 +47,14 @@ library does not report those shipped skills as broken. This is a local
 candidate under review, not a claim that a new package is published or that
 every connected service has been tested.
 
+The release handoff exposed the same drift in documentation. The inherited
+handwritten email page described reads and replies differently from the package's
+guide. Rendering the guide removed that duplicate, but made its copy boundaries
+visible: a read example also contained state changes and sends. We split those
+actions and the two send-budget alternatives, then kept the preview designation
+in the exported text as well as its web badge. A shared source helps only when
+the copied piece still carries the context a reader needs to act on it.
+
 The boundary is local preparation. Importing a person's separate library remains
 an explicit setup operation. Account login, browser installation, publication
 and recurring work keep their own commands. We would revisit that boundary if
