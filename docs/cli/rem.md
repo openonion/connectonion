@@ -888,6 +888,8 @@ the presence of a TOML parser or an enabled feature is not proof of compatibilit
 The normal-profile follow-up on 2026-10-24 verified real native execution,
 auto-archiving and pause after opening the existing app's Scheduled entry point.
 A running App Server alone had not advanced its registered timer.
+This verifies execution, not exact requested-minute timing: the cold retry
+requested 20:35 Sydney, was indexed for 20:36:33 and began at 20:36:34.
 Check `co rem status` before relying on unattended upkeep;
 `co rem sync` remains available by hand.
 
