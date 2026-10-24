@@ -1575,11 +1575,14 @@ def email_callback(ctx: typer.Context):
         handle_email_inbox()
 
 
-@email_app.command("open", epilog="Example:  co email open  |  co email open --no-browser")
-def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print a one-time login link without opening a browser")):
-    """Creates a private two-minute login link and opens your real mailbox. Uses the selected co account; mail is unchanged. --no-browser prints the link for another browser or phone."""
+@email_app.command("open", epilog="Example:  co email open  |  co email open --qr  |  co email open --no-browser")
+def email_open(
+    no_browser: bool = typer.Option(False,"--no-browser",help="Print an unused one-time link for another browser or phone"),
+    qr: bool = typer.Option(False,"--qr",help="Show a phone QR code and link without opening the desktop browser"),
+):
+    """Creates separate computer and phone login links, valid for up to ten minutes. The computer opens automatically; its visit does not consume the printed phone link. --qr is phone-only."""
     from .commands.email_web import handle_email_open
-    handle_email_open(no_browser=no_browser)
+    handle_email_open(no_browser=no_browser,**({'qr':True} if qr else {}))
 
 
 @email_app.command("connect", epilog="Example:  co email connect <challenge>")

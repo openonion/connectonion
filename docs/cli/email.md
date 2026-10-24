@@ -46,15 +46,18 @@ Search examines a bounded received-mail page: sender, recipient, subject and bod
 
 ```sh
 co email open
+co email open --qr
 co email open --no-browser
 co email connect <challenge-from-the-OO-Mail-dialog>
 ```
 
-`co email open` creates a private, one-time login link for the selected account and opens its real Inbox. With `--no-browser`, only the link goes to stdout so you can copy it into another browser or your phone. It expires in two minutes and works once; run the command again for a fresh link. Never share it with someone else. Use `co --env-file PATH email open` to select a project account explicitly.
+`co email open` opens the selected account on your computer and prints an **independent, unused phone link**. The automatic desktop visit cannot consume the phone ticket. Interactive terminals also show its QR. `co email open --qr` prints one phone QR/link and never opens the computer's browser. `--no-browser` prints only one unused URL on stdout for copying or automation; diagnostics stay on stderr.
+
+Links work once and remain valid for up to ten minutes, bounded by the issuing credential's expiry. Open the printed link directly in Safari/Chrome on the phone, or scan with the phone's camera. It is already a sign-in link; no challenge needs to be copied back. An existing browser session may also create a fresh QR under **Settings → Open on phone**, without keeping the original CLI computer online.
 
 The link contains an opaque random code in the URL fragment, not your API token or private key. The browser removes that fragment, exchanges the code once and keeps its session in an HttpOnly cookie. If a different account is already connected, it asks before switching. A replayed or expired link names the command to run again. The anonymous homepage is a connection page; `/demo` is an isolated sample mailbox even when a real account is logged in.
 
-For an older CLI, use **Connect manually** on the homepage. Generate the browser challenge, run the displayed `co email connect` command, and paste its output back into that browser. A downloaded helper remains available in the dialog. This compatibility flow also keeps the private key local.
+An older CLI with `open` can use `co email open --no-browser` for an unused phone link. The legacy signed-challenge flow remains under the homepage’s compatibility help. Generate the browser challenge, run the displayed `co email connect` command, and paste its output back into that browser. A downloaded helper remains available in the dialog. This compatibility flow also keeps the private key local.
 
 ## Monthly free sends, then PAYG
 
