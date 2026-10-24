@@ -92,8 +92,10 @@ def handle_email_open(no_browser: bool = False, qr: bool = False):
     print(url)
     lifetime=phone['expires_in']
     duration=f'{lifetime//60}m {lifetime%60}s' if lifetime>=60 else f'{lifetime}s'
-    console(stderr=True).print(f'Private phone link · expires in {duration} · works once. Open it on your phone or scan the QR code.',markup=False)
-    if qr or (not no_browser and sys.stderr.isatty()):
+    show_qr=qr or (not no_browser and sys.stderr.isatty())
+    instruction='Open it on your phone, or scan the QR below.' if show_qr else 'Open this link directly on your phone.'
+    console(stderr=True).print(f'Private phone link · expires in {duration} · works once. {instruction}',markup=False)
+    if show_qr:
         sys.stderr.write(_phone_qr(url))
     if not phone_only:
         try:opened=webbrowser.open(_login_url(desktop))
