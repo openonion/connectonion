@@ -89,11 +89,12 @@ the native enrollment read responded, but accepting enrollment returned 404.
 Tool metadata exposed a creation function without making it callable in the
 tested runtime.
 
-A later OS-state check found the Mac locked. The desktop's capability publisher
-is deferred until its main content becomes visible, leaving visibility as an
-untested condition. The next comparison needs the same installation with the
-Mac unlocked and its main window open. That observation narrows the next test;
-it does not establish why both earlier windows missed their runs.
+A later OS-state check found the Mac locked. The desktop has a fallback for
+starting its timer and a visible-content phase around capability publication.
+Visibility remains an untested condition. The next comparison needs the same
+installation with the Mac unlocked and its main window open. That observation
+narrows the next test; it does not establish why both earlier windows missed
+their runs.
 
 These lifecycle changes are [under review](https://github.com/openonion/connectonion/pull/2674),
 with 257 local regression tests passing. They have not been released. The owned

@@ -35,10 +35,11 @@ not inspected: the available computer tool had no native surface, and macOS
 denied assistive access. No permission or native feature gate was bypassed.
 
 A subsequent OS-state check reported the console screen locked. The inspected
-desktop defers publication of local automation capability until
-`first_content_visible`. Visibility is therefore an unresolved test condition;
-this observation does not establish the cause of both failed windows. An
-unlocked, visible-main-window comparison on the same installation is pending.
+desktop has both a renderer-ready fallback for starting its timer and a
+visible-content phase around capability publication. Visibility is therefore
+an unresolved test condition, rather than an established single startup gate
+or the cause of both failed windows. An unlocked, visible-main-window comparison
+on the same installation is pending.
 
 ## Account-managed registration
 
