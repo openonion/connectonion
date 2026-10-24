@@ -469,11 +469,37 @@ def writable(path: Path) -> bool:
     return os.access(path if path.exists() else path.parent, os.W_OK)
 
 
+def _symlink_points_at_live_skill(link: Path) -> bool:
+    """True when ``link`` is a symlink to a directory that still has SKILL.md.
+
+    Used so ``co skills link`` / ``co init`` do not steal global Claude/Codex
+    skill links away from another install that is still on disk (#2390). A
+    dangling symlink (the old package is gone) is not "live" and may be
+    repointed.
+    """
+    if not link.is_symlink():
+        return False
+    try:
+        resolved = link.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    return resolved.is_dir() and (resolved / "SKILL.md").is_file()
+
+
 def _link_one(source: Path, target: Path, force: bool) -> str:
     """Point target at source. Returns a one-word status for the report."""
     if target.is_symlink():
-        if target.resolve() == source.resolve() and not force:
+        try:
+            current = target.resolve(strict=False)
+        except (OSError, RuntimeError):
+            current = None
+        if current is not None and current == source.resolve() and not force:
             return "already linked"
+        # Keep a link that still points at another live install (#2390). A
+        # dangling link (upgrade removed the old package) is still repointed
+        # so Claude/Codex do not keep a broken skill.
+        if not force and _symlink_points_at_live_skill(target):
+            return "other install kept — skipped"
         target.unlink()
     elif target.exists():
         if not force:
@@ -541,6 +567,7 @@ def handle_skills_link(force: bool = False, brief: bool = False):
     console.print()
     console.print(table)
     console.print(
-        "\n[dim]Skipped entries are directories you own — pass [/dim]"
+        "\n[dim]Skipped entries are directories you own, or links to another "
+        "install that still exists — pass [/dim]"
         "[bold]--force[/bold][dim] to replace them.[/dim]\n"
     )

@@ -5,7 +5,8 @@ Tests cover:
 - idempotence (re-running reports "already linked", does not duplicate)
 - a directory the user owns is never silently destroyed
 - --force replaces it
-- a stale symlink pointing elsewhere is repointed
+- a symlink to another live install is kept (unless --force)
+- a dangling symlink is repointed so upgrades do not leave broken skills
 - the packaged skills all carry the frontmatter the tools read
 """
 
@@ -105,14 +106,46 @@ class TestSkillsLink:
         assert (mine / "SKILL.md").read_text() != "my own version"
 
     @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
-    def test_repoints_a_symlink_aimed_somewhere_else(self, targets, tmp_path):
-        """An upgrade that moves the package must not leave a dangling link."""
-        stale_source = tmp_path / "old-install" / "co-browser"
-        stale_source.mkdir(parents=True)
-        (stale_source / "SKILL.md").write_text("stale")
+    def test_keeps_a_symlink_to_another_live_install(self, targets, tmp_path, capsys):
+        """co init from a throwaway venv must not steal links from a live install (#2390)."""
+        other_install = tmp_path / "other-venv" / "site-packages" / "connectonion" / "useful_skills" / "co-browser"
+        other_install.mkdir(parents=True)
+        (other_install / "SKILL.md").write_text("other install")
         link = targets[0] / "co-browser"
         link.parent.mkdir(parents=True)
-        link.symlink_to(stale_source, target_is_directory=True)
+        link.symlink_to(other_install, target_is_directory=True)
+
+        handle_skills_link()
+
+        assert link.resolve() == other_install.resolve()
+        assert (link / "SKILL.md").read_text() == "other install"
+        assert "other install kept" in capsys.readouterr().out
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
+    def test_force_repoints_a_live_other_install(self, targets, tmp_path):
+        other_install = tmp_path / "other-venv" / "co-browser"
+        other_install.mkdir(parents=True)
+        (other_install / "SKILL.md").write_text("other install")
+        link = targets[0] / "co-browser"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(other_install, target_is_directory=True)
+
+        handle_skills_link(force=True)
+
+        assert link.resolve() == (BUNDLED_SKILLS / "co-browser").resolve()
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
+    def test_repoints_a_dangling_symlink(self, targets, tmp_path):
+        """An upgrade that removed the old package must not leave a dangling link."""
+        gone = tmp_path / "deleted-install" / "co-browser"
+        gone.mkdir(parents=True)
+        (gone / "SKILL.md").write_text("gone")
+        link = targets[0] / "co-browser"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(gone, target_is_directory=True)
+        # Remove the old install after the link exists — the common upgrade case.
+        import shutil
+        shutil.rmtree(gone.parent)
 
         handle_skills_link()
 
