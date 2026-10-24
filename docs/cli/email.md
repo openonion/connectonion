@@ -34,6 +34,23 @@ The link contains an opaque random code in the URL fragment, not your API token 
 
 For an older CLI, use **Connect manually** on the homepage. Generate the browser challenge, run the displayed `co email connect` command, and paste its output back into that browser. A downloaded helper remains available in the dialog. This compatibility flow also keeps the private key local.
 
+## Monthly free sends, then PAYG
+
+Every free account receives **100 included emails each calendar month (UTC)**. Unused allowance does not roll over. Existing purchased monthly allowances stay available. After the allowance, an accepted email costs **USD $0.003**, deducted from existing OpenOnion credits. There is no mandatory subscription, automatic renewal or automatic top-up. Reading and local drafts are unchanged.
+
+```sh
+co email tier
+# Uses included sends only; no surprise charge:
+co email send you@example.com "Hello" "My message"
+# Authorizes up to $0.003 for this email; included sends still cost $0:
+co email send you@example.com "Hello" "My message" --max-cost 0.003 --idempotency-key my-send-001
+co email status my-send-001 --json
+```
+
+`--max-cost` also works with `reply` and `forward`. A price change above that cap or insufficient credits refuses the send before dispatch. Retry an uncertain delivery with **the same send ID, recipient, subject, body, From address and budget**. Do not edit an uncertain send into another message. `status` checks without resending or creating another charge; it can release expired reservations. A definitive initial provider rejection refunds the hold. Unconfirmed sends expire after 24 hours; a background task normally releases the hold within the next minute, or a status check releases it, without automatically resending; check Sent and the recipient before composing again. Deleting or transferring mailbox history cannot erase the original payer's charge or free-allowance usage.
+
+Replies use the original receiving address when it is still owned; an explicit `--from` wins. If that address is unavailable, the CLI names the default-sender fallback before sending.
+
 ## Addresses and allowance
 
 ```sh
@@ -46,7 +63,7 @@ co email change you@mail.openonion.ai --domain steadmail.com
 co email delete-history you@mail.openonion.ai
 ```
 
-These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs, which affect quota counts. The address is retained.
+These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
 
 Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
 

@@ -44,3 +44,23 @@ def test_partial_bulk_update_reports_what_changed(capsys):
         with pytest.raises(typer.Exit):flow.handle_email_mark(['7','8'])
     text=capsys.readouterr().out
     assert 'Updated 1 of 2 messages' in text and 'private host' not in text
+
+
+def test_reply_uses_receiving_owned_address_and_preserves_payg_cap():
+    with patch.object(flow,'_read',return_value=MESSAGE),patch.object(flow,'_request',return_value={'addresses':[{'address':'primary@example.com'},{'address':'me@example.com'}]}) as request,patch.object(flow,'handle_email_send') as send:
+        flow.handle_email_reply('7000','My note',max_cost_usd='0.003',idempotency_key='reply-one')
+    request.assert_called_once_with('GET','addresses')
+    assert send.call_args.kwargs=={'from_address':'me@example.com','idempotency_key':'reply-one','max_cost_usd':'0.003'}
+
+
+def test_send_status_does_not_post_or_resend(capsys):
+    with patch.object(flow,'_request',return_value={'state':'unconfirmed','charged_usd':'0','reserved_usd':'0.003','message':'Check later'}) as request:
+        flow.handle_email_send_status('send/one',True)
+    request.assert_called_once_with('GET','send-status?idempotency_key=send%2Fone')
+    assert json.loads(capsys.readouterr().out)['reserved_usd']=='0.003'
+
+
+def test_invalid_status_key_refuses_before_network():
+    with patch.object(flow,'_request') as request:
+        with pytest.raises(typer.Exit):flow.handle_email_send_status('bad key')
+    request.assert_not_called()
