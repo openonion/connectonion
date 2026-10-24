@@ -52,7 +52,7 @@ open/close. Guide source/public/HTTP parity passed for all four.
 
 The native guide and journal have separate actual rendered captures. These
 show documentation, not the native Codex Scheduled UI. Per-release images and
-their exact scopes are listed in `docs/releases/assets/v1.9.3rc22/manifest.yml`.
+their exact scopes are listed in [the visual manifest](../../releases/assets/v1.9.3rc22/manifest.yml).
 
 ## Remaining boundaries
 
