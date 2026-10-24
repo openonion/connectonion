@@ -215,7 +215,7 @@ NEXT = {
     "co slack history": HANDLER,
     "co slack thread": HANDLER,
     "co slack search": HANDLER,
-    "co email open": "Read from the terminal:  co email inbox",
+    "co email open": HANDLER,
     "co email connect": "Read from the terminal:  co email inbox",
     "co email search": "Read a matching message:  co email read <#>",
     "co email mark-read": "Check unread mail:  co email inbox --unread",

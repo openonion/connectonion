@@ -28,7 +28,11 @@ co email open --no-browser
 co email connect <challenge-from-the-OO-Mail-dialog>
 ```
 
-Generate the two-minute challenge in the browser, run the displayed connect command, and paste its output back into that same browser. The selected local identity signs only the OO Mail protocol. The private key remains local; no bearer token is put into a URL. The command prints only the short-lived proof on stdout. A downloaded helper remains available in the web dialog for older CLI versions.
+`co email open` creates a private, one-time login link for the selected account and opens its real Inbox. With `--no-browser`, only the link goes to stdout so you can copy it into another browser or your phone. It expires in two minutes and works once; run the command again for a fresh link. Never share it with someone else. Use `co --env-file PATH email open` to select a project account explicitly.
+
+The link contains an opaque random code in the URL fragment, not your API token or private key. The browser removes that fragment, exchanges the code once and keeps its session in an HttpOnly cookie. If a different account is already connected, it asks before switching. A replayed or expired link names the command to run again. The anonymous homepage is a connection page; `/demo` is an isolated sample mailbox even when a real account is logged in.
+
+For an older CLI, use **Connect manually** on the homepage. Generate the browser challenge, run the displayed `co email connect` command, and paste its output back into that browser. A downloaded helper remains available in the dialog. This compatibility flow also keeps the private key local.
 
 ## Addresses and allowance
 

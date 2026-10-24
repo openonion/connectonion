@@ -1576,8 +1576,8 @@ def email_callback(ctx: typer.Context):
 
 
 @email_app.command("open", epilog="Example:  co email open  |  co email open --no-browser")
-def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print the OO Mail URL without opening a browser")):
-    """Open the OO Mail web client. Read-only for your account."""
+def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print a one-time login link without opening a browser")):
+    """Creates a private two-minute login link and opens your real mailbox. Uses the selected co account; mail is unchanged. --no-browser prints the link for another browser or phone."""
     from .commands.email_web import handle_email_open
     handle_email_open(no_browser=no_browser)
 
