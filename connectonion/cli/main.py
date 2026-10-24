@@ -1575,6 +1575,20 @@ def email_callback(ctx: typer.Context):
         handle_email_inbox()
 
 
+@email_app.command("open", epilog="Example:  co email open  |  co email open --no-browser")
+def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print the OO Mail URL without opening a browser")):
+    """Open the OO Mail web client. Read-only for your account."""
+    from .commands.email_web import handle_email_open
+    handle_email_open(no_browser=no_browser)
+
+
+@email_app.command("connect", epilog="Example:  co email connect <challenge>")
+def email_connect(challenge: str = typer.Argument(..., help="Two-minute challenge from the OO Mail connection dialog")):
+    """Creates a short-lived code to connect this identity to OO Mail. The private key stays local."""
+    from .commands.email_web import handle_email_connect
+    handle_email_connect(challenge)
+
+
 @email_app.command("send", epilog="Example:  co email send you@example.com \"Weekly report\" \"Numbers are below.\"")
 def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
@@ -1648,7 +1662,7 @@ email_app.add_typer(sent_app, name="sent")
 @sent_app.callback(invoke_without_command=True)
 def email_sent(
     ctx: typer.Context,
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=1000, help="How many emails to show"),
     to: str = typer.Option(None, "--to", help="Only emails sent to this address"),
 ):
     """With no subcommand, list recent sent emails."""
@@ -1664,11 +1678,138 @@ def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the s
     handle_email_sent_read(email_id)
 
 
+@email_app.command("search", epilog='Example:  co email search "launch" --last 100 --json')
+def email_search(
+    query: str = typer.Argument(..., help="Text to find in sender, recipient, subject or body"),
+    last: int = typer.Option(100,"--last","-n",min=1,max=1000,help="Search this many received messages in the selected page"),
+    offset: int = typer.Option(0,"--offset",min=0,help="Skip newer messages before searching"),
+    json_output: bool = typer.Option(False,"--json",help="Print matches and searched page scope as JSON"),
+):
+    """Search a page of received mail without changing it. Read-only; use --offset for older pages."""
+    from .commands.email_workflows import handle_email_search
+    handle_email_search(query,last=last,offset=offset,json_output=json_output)
+
+
+@email_app.command("mark-read", epilog="Example:  co email mark-read 3 4")
+def email_mark_read(email_ids: List[str] = typer.Argument(...,help="Message IDs from co email inbox")):
+    """Changes received messages to read on the server, shared with the web client."""
+    from .commands.email_workflows import handle_email_mark
+    handle_email_mark(email_ids)
+
+
+@email_app.command("mark-unread", epilog="Example:  co email mark-unread 3")
+def email_mark_unread(email_ids: List[str] = typer.Argument(...,help="Message IDs from co email inbox")):
+    """Changes received messages back to unread on the server."""
+    from .commands.email_workflows import handle_email_mark
+    handle_email_mark(email_ids,unread=True)
+
+
+@email_app.command("reply", epilog='Example:  co email reply 3 "Thanks for the update."')
+def email_reply(
+    email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
+    message: str = typer.Argument(...,help="Your plain-text reply"),
+    from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+):
+    """Sends a reply immediately with a Re: subject and quoted original. Does not add threading headers."""
+    from .commands.email_workflows import handle_email_reply
+    handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key)
+
+
+@email_app.command("forward", epilog='Example:  co email forward 3 you@example.com "For your review."')
+def email_forward(
+    email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
+    to: str = typer.Argument(...,help="Recipient address"),
+    message: str = typer.Argument('',help="Optional note above the forwarded message"),
+    from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+):
+    """Sends the original message and your note to another address immediately. Attachments are not included."""
+    from .commands.email_workflows import handle_email_reply
+    handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key)
+
+
+@email_app.command("tier", epilog="Example:  co email tier --json")
+def email_tier(json_output: bool = typer.Option(False,"--json",help="Print plan, sender and quota as JSON")):
+    """Show the current mailbox address, plan and monthly send allowance. Read-only."""
+    from .commands.email_workflows import handle_email_tier
+    handle_email_tier(json_output=json_output)
+
+
 @email_app.command("addresses", epilog="Example:  co email addresses")
 def email_addresses():
     """List every email address this account owns, marking the default sender. Read-only."""
     from .commands.email_commands import handle_email_addresses
     handle_email_addresses()
+
+
+@email_app.command("change", epilog="Example:  co email change you@mail.openonion.ai --domain steadmail.com  |  co email change you@mail.openonion.ai --name new-name --buy")
+def email_change(
+    address: str = typer.Argument(...,help="Owned address from co email addresses"),
+    name: Optional[str] = typer.Option(None,"--name",help="New local part before @"),
+    domain: Optional[str] = typer.Option(None,"--domain",help="New hosted domain from co email domains"),
+    buy: bool = typer.Option(False,"--buy",help="Apply the change and deduct its one-time price"),
+):
+    """Preview an address rename or domain change. Read-only; --buy Charges credits and Changes the address."""
+    from .commands.email_workflows import handle_email_change
+    handle_email_change(address,name=name,domain=domain,buy=buy)
+
+
+@email_app.command("quota", epilog="Example:  co email quota  |  co email quota --buy --idempotency-key <unique-key>")
+def email_quota(
+    buy: bool = typer.Option(False,"--buy",help="Buy one monthly send increment at the current plan's price"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Required with --buy; reuse the same key when retrying"),
+    json_output: bool = typer.Option(False,"--json",help="Print quota or purchase result as JSON"),
+):
+    """Show quota and increment pricing. Read-only; --buy Charges credits for one increment."""
+    from .commands.email_workflows import handle_email_quota
+    handle_email_quota(buy=buy,idempotency_key=idempotency_key,json_output=json_output)
+
+
+@email_app.command("delete-history", epilog="Example:  co email delete-history you@mail.openonion.ai  |  co email delete-history you@mail.openonion.ai --yes")
+def email_delete_history(
+    address: str = typer.Argument(...,help="An owned mailbox address"),
+    include_sent: bool = typer.Option(False,"--include-sent",help="Also delete sent logs for this address; affects send-usage counts"),
+    yes: bool = typer.Option(False,"--yes",help="Apply permanent history deletion; default only previews"),
+):
+    """Preview history removal for one address. --yes Deletes received mail and optionally sent logs; keeps the address."""
+    from .commands.email_workflows import handle_email_delete_history
+    handle_email_delete_history(address,include_sent=include_sent,yes=yes)
+
+
+email_transfer_app = _typer_app(help="Move one owned address and its mail with both accounts' signatures. Creates signed files; complete --yes Changes mailbox ownership.", epilog="Example:  co email transfer prepare you@mail.openonion.ai --to <public-key> --out request.json")
+email_app.add_typer(email_transfer_app,name="transfer")
+
+
+@email_transfer_app.command("prepare",epilog="Example:  co email transfer prepare you@mail.openonion.ai --to <public-key> --out request.json")
+def email_transfer_prepare(
+    address: str = typer.Argument(...,help="Purchased address to move, including its received and sent history"),
+    to: str = typer.Option(...,"--to",help="Recipient's full 0x public key"),
+    destination: Path = typer.Option(...,"--out",help="New request file; never overwrites an existing file"),
+):
+    """Writes a five-minute transfer request signed by the selected owner identity. No mailbox move yet."""
+    from .commands.email_transfer import run,prepare
+    run(prepare,address,to,destination)
+
+
+@email_transfer_app.command("accept",epilog="Example:  co email transfer accept request.json --out approval.json")
+def email_transfer_accept(
+    source: Path = typer.Argument(...,help="Request file produced by the owner"),
+    destination: Path = typer.Option(...,"--out",help="New approval file signed by the selected recipient identity"),
+):
+    """Writes the recipient's signed acceptance of the address and all existing mail. No mailbox move yet."""
+    from .commands.email_transfer import run,accept
+    run(accept,source,destination)
+
+
+@email_transfer_app.command("complete",epilog="Example:  co email transfer complete approval.json  |  co email transfer complete approval.json --yes")
+def email_transfer_complete(
+    source: Path = typer.Argument(...,help="Approval file with both accounts' five-minute signatures"),
+    yes: bool = typer.Option(False,"--yes",help="Move the address and its mail now; default previews"),
+):
+    """Validate both signatures and preview a transfer. --yes Changes ownership of the address and its mail."""
+    from .commands.email_transfer import run,complete
+    run(complete,source,yes=yes)
 
 
 @email_app.command("domains", epilog="Example:  co email domains")

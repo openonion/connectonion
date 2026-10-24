@@ -70,7 +70,7 @@ _FROM = {
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
     **{name: ".plugins" for name in ("CodexPlugin", "ClaudeCodePlugin", "PermissionMode")},
     **{name: ".useful_tools" for name in (
-        "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
+        "send_email", "get_email", "get_sent", "get_sent_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "create_sms_pairing", "get_sms_pairing", "pairing_confirmation_code", "confirm_sms_pairing",
         "get_sms", "wait_for_sms", "acknowledge_sms", "delete_sms",
         "list_sms_devices", "revoke_sms_device",
@@ -158,6 +158,9 @@ __all__ = [
     "PermissionMode",
     # Email tools
     "send_email",
+    "get_email",
+    "get_sent",
+    "get_sent_email",
     "get_emails",
     "mark_read",
     "mark_unread",

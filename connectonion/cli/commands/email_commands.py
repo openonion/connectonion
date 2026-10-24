@@ -14,6 +14,7 @@ import requests
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.markup import escape
 from rich.table import Table
 
 from ...backend import backend_url
@@ -42,6 +43,22 @@ def _err(response) -> str:
         detail = body.get("detail", body)
         return detail.get("message", str(detail)) if isinstance(detail, dict) else str(detail)
     return response.text.strip() or f"HTTP {response.status_code}"
+
+
+def _read_failure(exc, mailbox: str):
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status in (401,403):
+            console.print("Your mail session expired or access was denied. Run co auth login, then retry.", markup=False)
+            return
+        if status == 404:
+            console.print(f"No {mailbox} email with that ID is available to this account.", markup=False)
+            return
+        console.print(f"The email service returned HTTP {status}. Please retry.", markup=False)
+    elif isinstance(exc, requests.RequestException):
+        console.print("Could not reach the email service. Check your connection and retry.", markup=False)
+    else:
+        console.print(str(exc), markup=False)
 
 
 def handle_email_send(
@@ -210,41 +227,26 @@ def handle_email_sent_read(email_id: str):
     if not _require_auth():
         return
 
-    from ...useful_tools.get_emails import get_sent
+    from ...useful_tools.get_emails import get_sent_email
     try:
-        emails = get_sent(last=100)
-    except requests.HTTPError as exc:
-        response = exc.response
-        if response is not None and response.status_code == 404:
-            console.print(
-                "\n[yellow]Sent mail is not available on this backend yet.[/yellow] "
-                "The oo-api Sent endpoint must be deployed before this command can be used.\n"
-            )
-        else:
-            status = response.status_code if response is not None else "unknown"
-            console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
-        raise typer.Exit(1)
-    except requests.RequestException:
-        console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
-        raise typer.Exit(1)
-    match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
-
-    if not match:
-        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail — run co email sent, then co email sent read <#>.[/yellow]\n")
-        raise typer.Exit(1)
+        match = get_sent_email(email_id)
+    except (requests.RequestException, ValueError) as exc:
+        _read_failure(exc, "sent")
+        console.print("Next: co email sent", markup=False)
+        raise typer.Exit(1) from exc
 
     header = (
-        f"[cyan]To:[/cyan]         {match.get('to', '')}\n"
-        f"[cyan]From:[/cyan]       {match.get('from', '')}\n"
-        f"[cyan]Subject:[/cyan]    {match.get('subject', '')}\n"
-        f"[cyan]Status:[/cyan]     {match.get('status', '')}\n"
-        f"[cyan]Message ID:[/cyan] {match.get('message_id', '')}\n"
-        f"[cyan]Date:[/cyan]       {match.get('timestamp', '')}"
+        f"[cyan]To:[/cyan]         {escape(str(match.get('to', '')))}\n"
+        f"[cyan]From:[/cyan]       {escape(str(match.get('from', '')))}\n"
+        f"[cyan]Subject:[/cyan]    {escape(str(match.get('subject', '')))}\n"
+        f"[cyan]Status:[/cyan]     {escape(str(match.get('status', '')))}\n"
+        f"[cyan]Message ID:[/cyan] {escape(str(match.get('message_id', '')))}\n"
+        f"[cyan]Date:[/cyan]       {escape(str(match.get('timestamp', '')))}"
     )
     console.print()
     console.print(Panel.fit(header, title=f"📤 Sent #{email_id}", border_style="cyan"))
     console.print()
-    console.print(match.get("body", "") or "[dim](empty body)[/dim]")
+    console.print(match["body"], soft_wrap=True, markup=False) if match.get("body") else console.print("[dim](empty body)[/dim]")
     console.print()
 
 
@@ -253,18 +255,18 @@ def handle_email_read(email_id: str, mark_read: bool = False):
     if not _require_auth():
         return
 
-    from ...useful_tools.get_emails import get_emails
-    emails = get_emails(last=1000)
-    match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
-
-    if not match:
-        console.print(f"\n[yellow]No email with id {email_id} in your recent inbox — run co email inbox, then co email read <#>.[/yellow]\n")
-        raise typer.Exit(1)
+    from ...useful_tools.get_emails import get_email
+    try:
+        match = get_email(email_id)
+    except (requests.RequestException, ValueError) as exc:
+        _read_failure(exc, "received")
+        console.print("Next: co email inbox", markup=False)
+        raise typer.Exit(1) from exc
 
     header = (
-        f"[cyan]From:[/cyan]    {match.get('from', '')}\n"
-        f"[cyan]Subject:[/cyan] {match.get('subject', '')}\n"
-        f"[cyan]Date:[/cyan]    {match.get('timestamp', '')}"
+        f"[cyan]From:[/cyan]    {escape(str(match.get('from', '')))}\n"
+        f"[cyan]Subject:[/cyan] {escape(str(match.get('subject', '')))}\n"
+        f"[cyan]Date:[/cyan]    {escape(str(match.get('timestamp', '')))}"
     )
     console.print()
     console.print(Panel.fit(header, title=f"✉️  Email #{email_id}", border_style="cyan"))
