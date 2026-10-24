@@ -4,6 +4,8 @@ import json
 import re
 import time
 import webbrowser
+import io
+import sys
 import requests
 import typer
 from ..style import console, next_line
@@ -37,35 +39,65 @@ def handle_email_connect(challenge: str):
     print(code)
     console(stderr=True).print('Paste this short-lived code into the OO Mail tab that generated the command. Your private key stays on this computer.',markup=False)
 
-def handle_email_open(no_browser: bool = False):
-    from .project_cmd_lib import load_api_key
+def _login_ticket(token: str) -> dict:
     from ...backend import backend_url
-    token = load_api_key()
+    response=requests.post(backend_url()+'/api/v1/auth/mail-link',
+        headers={'Authorization':f'Bearer {token}'},timeout=20)
+    response.raise_for_status()
+    data=response.json()
+    if not isinstance(data,dict):raise ValueError('Invalid login response')
+    if not isinstance(data.get('code'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}',data['code']):
+        raise ValueError('Invalid login response')
+    if not isinstance(data.get('public_key'),str) or not re.fullmatch(r'0x[0-9a-fA-F]{64}',data['public_key']):
+        raise ValueError('Invalid login account')
+    lifetime=data.get('expires_in')
+    if isinstance(lifetime,bool) or not isinstance(lifetime,int) or not 0<lifetime<=600:
+        raise ValueError('Invalid login expiry')
+    return data
+
+
+def _login_url(ticket: dict) -> str:
+    return MAIL_URL+'/connect#code='+ticket['code']+'&account='+ticket['public_key']
+
+
+def _phone_qr(url: str) -> str:
+    import qrcode
+    code=qrcode.QRCode(border=2)
+    code.add_data(url)
+    out=io.StringIO()
+    code.print_ascii(out=out,invert=True)
+    return out.getvalue()
+
+
+def handle_email_open(no_browser: bool = False, qr: bool = False):
+    from .project_cmd_lib import load_api_key
+    token=load_api_key()
     if not token:
-        console(stderr=True).print('Not connected. Next: co auth login', markup=False)
+        console(stderr=True).print('Not connected. Next: co auth login',markup=False)
         raise typer.Exit(1)
+    phone_only=no_browser or qr
     try:
-        response = requests.post(backend_url()+'/api/v1/auth/mail-link',
-            headers={'Authorization': f'Bearer {token}'}, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        if not isinstance(data, dict):
-            raise ValueError('Invalid login response')
-        code, account = data.get('code'), data.get('public_key')
-        if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', code):
-            raise ValueError('Invalid login response')
-        if not isinstance(account, str) or not re.fullmatch(r'0x[0-9a-fA-F]{64}', account):
-            raise ValueError('Invalid login account')
-    except (requests.RequestException, ValueError) as exc:
-        expired = isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code in (401, 403)
+        desktop=_login_ticket(token)
+        # The automatic desktop visit consumes its ticket. The printed phone
+        # link must be a different ticket, issued before either is opened.
+        phone=desktop if phone_only else _login_ticket(token)
+        if phone['public_key'].lower()!=desktop['public_key'].lower() or (not phone_only and phone['code']==desktop['code']):
+            raise ValueError('Invalid independent phone ticket')
+    except (requests.RequestException,ValueError) as exc:
+        expired=isinstance(exc,requests.HTTPError) and exc.response is not None and exc.response.status_code in (401,403)
         console(stderr=True).print('Your mail login expired. Next: co auth login' if expired else
-            'Could not create a mail login link. Check your connection. Next: co email open --no-browser', markup=False)
+            'Could not create a mail login link. Check your connection. Next: co email open --no-browser',markup=False)
         raise typer.Exit(1) from exc
-    url = MAIL_URL+'/connect#code='+code+'&account='+account
+    url=_login_url(phone)
     print(url)
-    console(stderr=True).print('Opens your current mailbox. This private link expires in two minutes and works once.', markup=False)
-    if not no_browser:
-        try: opened = webbrowser.open(url)
-        except (webbrowser.Error, OSError): opened = False
-        if not opened: console(stderr=True).print('Open the link above in your browser.', markup=False)
+    lifetime=phone['expires_in']
+    duration=f'{lifetime//60}m {lifetime%60}s' if lifetime>=60 else f'{lifetime}s'
+    console(stderr=True).print(f'Private phone link · expires in {duration} · works once. Open it on your phone or scan the QR code.',markup=False)
+    if qr or (not no_browser and sys.stderr.isatty()):
+        sys.stderr.write(_phone_qr(url))
+    if not phone_only:
+        try:opened=webbrowser.open(_login_url(desktop))
+        except (webbrowser.Error,OSError):opened=False
+        console(stderr=True).print('Opened this mailbox on your computer. The phone link above remains unused.' if opened else
+            'Open the link above in your browser or on your phone.',markup=False)
     console(stderr=True).print(next_line('co email inbox'))
