@@ -1,6 +1,6 @@
 ---
 name: rem-page-project
-description: A project page a new teammate understands in one screen: what it is, why, where it stands, what is next.
+description: 'A project page a new teammate understands in one screen: what it is, why, where it stands, what is next.'
 ---
 
 # A project's page

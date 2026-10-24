@@ -24,13 +24,13 @@ from rich.console import Console
 from rich.table import Table
 
 from ...project import project_co_dir
+from ...environment import global_config_dir
 
 console = Console()
 
-CO_HOME = Path.home() / ".co"
-SKILLS_DIR = CO_HOME / "skills"
-INDEX_FILE = SKILLS_DIR / "index.json"
-AGENT_JSON = CO_HOME / "agent.json"
+
+def user_skills_dir() -> Path:
+    return global_config_dir() / "skills"
 
 def project_skills_dir() -> Path:
     """`.co/skills` in the project, wherever `co` was run from.
@@ -49,7 +49,7 @@ def project_skills_dir() -> Path:
 def sources() -> list:
     return [
         ("co-project", project_skills_dir(), "skill-dir"),
-        ("co-user",    Path.home() / ".co" / "skills", "skill-dir"),
+        ("co-user",    user_skills_dir(), "skill-dir"),
         ("claude",     Path.home() / ".claude" / "skills", "skill-dir"),
         ("codex",      Path.home() / ".codex" / "skills", "skill-dir"),
         ("cursor",     Path.home() / ".cursor" / "rules", "mdc"),
@@ -132,8 +132,8 @@ def handle_skills_discover(save: bool = True, json_out: bool = False, include_na
     }
 
     if save:
-        SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-        INDEX_FILE.write_text(json.dumps(index, indent=2), encoding="utf-8")
+        user_skills_dir().mkdir(parents=True, exist_ok=True)
+        (user_skills_dir() / "index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
 
     if json_out:
         console.print_json(data=index)
@@ -150,13 +150,14 @@ def handle_skills_discover(save: bool = True, json_out: bool = False, include_na
         table.add_row(s["name"], s["source"], desc)
     console.print(table)
     if save:
-        console.print(f"[dim]Index written to {INDEX_FILE}[/dim]")
+        console.print(f"[dim]Index written to {user_skills_dir() / 'index.json'}[/dim]")
 
 
 def _load_index() -> Optional[dict]:
-    if not INDEX_FILE.exists():
+    path = user_skills_dir() / "index.json"
+    if not path.exists():
         return None
-    return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def source_priority() -> dict:
@@ -220,7 +221,7 @@ def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> 
     frontmatter, _ = _parse_skill_content(src_path.read_text(encoding="utf-8"))
     manifest_name = str(frontmatter.get("name") or name)
     requirements = parse_skill_requirements(frontmatter, manifest_name)
-    dest_dir = (skills_dir or SKILLS_DIR) / name
+    dest_dir = (skills_dir or user_skills_dir()) / name
     dest_file = dest_dir / "SKILL.md"
 
     if src_path.resolve() == dest_file.resolve():
@@ -293,7 +294,7 @@ def handle_skills_copy(
         console.print("[yellow]No index found. Run `co skills discover` first.[/yellow]")
         return
 
-    skills_dir = project_skills_dir() if to_project else SKILLS_DIR
+    skills_dir = project_skills_dir() if to_project else user_skills_dir()
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     by_name: dict = {}
@@ -351,7 +352,7 @@ def handle_skills_manifest(
     --out agent.json merges into its skills[] key (and strips signature).
     --stdout prints JSON instead of writing.
     """
-    skills_root = Path(path) if path else SKILLS_DIR
+    skills_root = Path(path) if path else user_skills_dir()
     if not skills_root.exists() or not skills_root.is_dir():
         console.print(f"[red]Not a directory: {skills_root}[/red]")
         raise SystemExit(1)
@@ -374,7 +375,7 @@ def handle_skills_manifest(
         console.print_json(data=manifest)
         return
 
-    out_path = Path(out) if out else AGENT_JSON
+    out_path = Path(out) if out else global_config_dir() / "agent.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if out_path.name == "agent.json":
@@ -391,7 +392,8 @@ def handle_skills_manifest(
             existing = existing_by_name.get(skill["name"])
             if existing and "publish" in existing:
                 skill["publish"] = bool(existing["publish"])
-        profile["skills"] = manifest
+            existing_by_name[skill["name"]] = {**(existing or {}), **skill}
+        profile["skills"] = list(existing_by_name.values())
         profile.pop("signature", None)
         profile.pop("signer", None)
         out_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
@@ -474,6 +476,8 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
     if target.is_symlink():
         if target.resolve() == source.resolve() and not force:
             return "already linked"
+        if target.exists() and not force:
+            return "exists, not ours — skipped"
         target.unlink()
     elif target.exists():
         if not force:
@@ -537,6 +541,8 @@ def handle_skills_link(force: bool = False, brief: bool = False):
             elif root.parent.is_dir():
                 own = f" ({len(skipped[name])} of your own kept: {', '.join(skipped[name])})" if skipped[name] else ""
                 console.print(f"[green]✓[/green] {name}: {len(skills) - len(skipped[name])} co skills in {root}{own}")
+            else:
+                console.print(f"[dim]{name}: no {root.parent}, skipped[/dim]")
         return
     console.print()
     console.print(table)

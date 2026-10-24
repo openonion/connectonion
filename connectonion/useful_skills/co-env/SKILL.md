@@ -1,6 +1,6 @@
 ---
 name: co-env
-description: See, set, remove and repair settings in the env file a `co` invocation selected — global ~/.co/keys.env by default, or the file named by `co --env-file PATH` — with `co env`. Use when a command says a key is missing, "Next: co env", "account not connected in <file>", or when the user asks which env file is in use or wants an API key saved.
+description: 'See, set, remove and repair settings in the env file a `co` invocation selected — global ~/.co/keys.env by default, or the file named by `co --env-file PATH` — with `co env`. Use when a command says a key is missing, "Next: co env", "account not connected in <file>", or when the user asks which env file is in use or wants an API key saved.'
 ---
 
 # co env

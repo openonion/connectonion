@@ -1,50 +1,39 @@
 """
-Purpose: One-shot global setup of ~/.co/ — identity, agent.json, and skill library.
+Purpose: Shared local onboarding and explicit profile/skill-library setup.
 
 LLM-Note:
-  Dependencies: imports from [json, os, subprocess, tempfile, pathlib, rich] | imported by [cli/main.py via handle_setup()]
+  Dependencies: imports from [json, os, pathlib, rich, environment, project_cmd_lib] | imported by [cli/main.py, init.py, create.py]
   Data flow:
-    1. Identity: ensure ~/.co/keys/agent.key (bootstrap via `co init` in tmpdir if missing)
+    1. Identity: ensure_global_config() creates or repairs the global identity and keys.env in process
     2. agent.json: write ~/.co/agent.json with {address, alias, name, bio, skills, version}
-    3. Skills: handle_skills_discover → handle_skills_copy(all_=True) → handle_skills_manifest
+    3. Local integration: complete_local_setup() creates a missing profile, links bundled skills, refreshes the command index
+    4. Explicit setup only: handle_skills_discover → handle_skills_copy(all_=True) → handle_skills_manifest
   State/Effects: creates ~/.co/agent.json | reads ~/.co/keys for signing address | invokes skills commands which write index.json, ~/.co/skills/<name>/, and agent.json skills metadata
   Integration: replaces oo-init's manual phases | ~/.co/agent.json is the publishable profile (read by oo-publish at sign time)
 """
 
 import json
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
 
-console = Console()
+console = Console(highlight=False)
 
-from ...environment import global_config_dir
-
-CO_HOME = global_config_dir()
-KEYS_FILE = CO_HOME / "keys" / "agent.key"
-AGENT_JSON = CO_HOME / "agent.json"
-KEYS_ENV = CO_HOME / "keys.env"
+from ...environment import explicit_env_file, global_config_dir, read_env_file, selected_env_file, setting
 
 
 def _ensure_identity() -> dict:
-    """Make sure ~/.co/keys/agent.key exists; bootstrap via `co init` in a tmpdir if not."""
-    if not KEYS_FILE.exists():
-        console.print("[yellow]No identity found; bootstrapping via `co init` in tmpdir...[/yellow]")
-        with tempfile.TemporaryDirectory() as td:
-            subprocess.run(["co", "init", "--yes"], cwd=td, check=True)
-        if not KEYS_FILE.exists():
-            console.print(f"[red]FAIL: `co init` did not create {KEYS_FILE}[/red]")
-            raise SystemExit(1)
-
+    """Reuse the machine identity and repair keys.env even when its key exists."""
+    from .project_cmd_lib import ensure_global_config
     from connectonion import address
-    return address.load(CO_HOME)
+
+    ensure_global_config()
+    return address.load(global_config_dir())
 
 
-def _write_agent_json(name: str, bio: str, addr: str):
+def _write_agent_json(path: Path, name: str, bio: str, addr: str):
     profile = {
         "address": addr,
         "alias":   name,
@@ -53,7 +42,56 @@ def _write_agent_json(name: str, bio: str, addr: str):
         "skills":  [],
         "version": "v0.1.0",
     }
-    AGENT_JSON.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+
+
+def _edit_profile(path: Path, name: Optional[str], bio: Optional[str]) -> None:
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if name is not None:
+        profile.update(alias=name, name=name)
+    if bio is not None:
+        profile["bio"] = bio
+    profile.pop("signature", None)
+    profile.pop("signer", None)
+    path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    console.print(f"[green]✓ Local profile: {path} (updated)[/green]")
+
+
+def _ensure_profile(name: Optional[str], bio: Optional[str], force: bool) -> None:
+    from connectonion import address
+
+    path = global_config_dir() / "agent.json"
+    if path.exists() and not force:
+        if name is not None or bio is not None:
+            _edit_profile(path, name, bio)
+        else:
+            profile = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(profile, dict):
+                raise ValueError(f"{path} must contain a JSON object")
+            console.print(f"[dim]✓ Local profile: {path} (kept)[/dim]")
+        return
+    if path.exists():
+        backup = path.with_suffix(".json.bak")
+        path.replace(backup)
+        console.print(f"[yellow]Backed up existing agent.json → {backup}[/yellow]")
+    alias = name or os.environ.get("USER", "agent").lower().replace(" ", "-")
+    body = bio or f"Agent for {alias}. Edit {path} to customize."
+    _write_agent_json(path, alias, body, address.load(global_config_dir())["address"])
+    console.print(f"[green]✓ Local profile: {path} (created)[/green]")
+
+
+def complete_local_setup(name: Optional[str] = None, bio: Optional[str] = None,
+                         force: bool = False) -> None:
+    """Finish local integration after ensure_global_config(); preserve user files.
+
+    Profile --force is deliberately separate from skills link --force.
+    """
+    from .agent_index import handle_skills_index
+    from .skills_commands import handle_skills_link
+
+    _ensure_profile(name, bio, force)
+    handle_skills_link(brief=True)
+    handle_skills_index(brief=True)
 
 
 def handle_setup(
@@ -64,41 +102,37 @@ def handle_setup(
 ):
     """Set up ~/.co/: identity, agent.json, skill library. Idempotent."""
 
-    # Phase 1: identity
+    if explicit_env_file() is not None:
+        console.print("Global setup does not accept --env-file. Next: co setup")
+        raise SystemExit(2)
+
+    # A fresh setup retains the managed-key attempt without invoking another co.
+    root = global_config_dir()
+    new_identity = not (root / "keys" / "agent.key").exists()
     keys = _ensure_identity()
     addr = keys["address"]
     console.print(f"[green]✓ Identity:[/green] {addr}")
+    if new_identity:
+        from .auth_commands import authenticate
+        authenticate(root, save_to_project=False)
 
-    # Phase 2: agent.json
-    if AGENT_JSON.exists() and not force:
-        existing = json.loads(AGENT_JSON.read_text(encoding="utf-8"))
-        console.print(f"[dim]✓ {AGENT_JSON} exists (alias={existing.get('alias')}, skip — pass --force to overwrite)[/dim]")
-    else:
-        if AGENT_JSON.exists() and force:
-            backup = AGENT_JSON.with_suffix(".json.bak")
-            AGENT_JSON.rename(backup)
-            console.print(f"[yellow]Backed up existing agent.json → {backup}[/yellow]")
-        alias = name or os.environ.get("USER", "agent").lower().replace(" ", "-")
-        body = bio or f"Agent for {alias}. Edit ~/.co/agent.json to customize."
-        _write_agent_json(alias, body, addr)
-        console.print(f"[green]✓ Wrote[/green] {AGENT_JSON} (alias={alias})")
-        if body.endswith("Edit ~/.co/agent.json to customize."):
-            console.print("  [yellow]Bio is a placeholder — edit before publishing.[/yellow]")
+    complete_local_setup(name, bio, force)
 
     # Phase 3: skill library
     if not skip_skills:
-        console.print("\n[cyan]Refreshing ~/.co/skills/ library...[/cyan]")
+        console.print(f"\n[cyan]Refreshing {root / 'skills'} library...[/cyan]")
         from .skills_commands import handle_skills_copy, handle_skills_discover, handle_skills_manifest
         handle_skills_discover(save=True, json_out=False)
         handle_skills_copy(names=[], all_=True, force=False)
         handle_skills_manifest()
 
     # Auth check
-    auth_ok = bool(os.environ.get("OPENONION_API_KEY"))
+    auth_ok = bool(setting("OPENONION_API_KEY") or
+                   read_env_file(selected_env_file()).get("OPENONION_API_KEY"))
     console.print()
     if auth_ok:
-        console.print("[green]✓ Auth:[/green] OPENONION_API_KEY present")
+        console.print("[green]✓ Auth:[/green] OPENONION_API_KEY present (not verified)")
     else:
         console.print("[yellow]⚠ Auth:[/yellow] run `co auth` to enable co/* managed models")
 
-    console.print("\n[bold]Setup complete.[/bold] Run the oo-publish skill to sign + announce.")
+    console.print("\n[bold]Local setup complete.[/bold] Review the profile before publishing.")

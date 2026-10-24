@@ -25,26 +25,25 @@ from rich.console import Console
 
 from ... import address
 from ...backend import backend_ws_url
+from ...environment import global_config_dir
 from ...network.announce import create_announce_message
 from ...network.profile_freshness import next_revision, revision_lock, write_state
 
 console = Console()
 
-CO_HOME = Path.home() / ".co"
-AGENT_JSON = CO_HOME / "agent.json"
-SKILLS_DIR = CO_HOME / "skills"
 LOCAL_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 def _revision_path(publisher: str) -> Path:
-    return CO_HOME / "profile-publish-state" / f"{publisher}.json"
+    return global_config_dir() / "profile-publish-state" / f"{publisher}.json"
 
 
 def _load_profile() -> dict:
-    if not AGENT_JSON.exists():
-        console.print(f"[red]No {AGENT_JSON}. Run `co setup` first.[/red]")
+    path = global_config_dir() / "agent.json"
+    if not path.exists():
+        console.print(f"[red]No {path}. Run `co setup` first.[/red]")
         raise SystemExit(1)
-    return json.loads(AGENT_JSON.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _build_listed_skills(profile: dict) -> list:
@@ -58,7 +57,7 @@ def _build_listed_skills(profile: dict) -> list:
             "description": skill.get("description", ""),
         }
         if skill.get("publish"):
-            body_path = SKILLS_DIR / name / "SKILL.md"
+            body_path = global_config_dir() / "skills" / name / "SKILL.md"
             if body_path.parent.is_symlink():
                 raise ValueError(f"{name}: published skill directory must be a regular directory")
             if body_path.exists():
@@ -148,7 +147,7 @@ async def _send(message: dict, relay_url: str) -> None:
 def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
     """Publish ~/.co/agent.json + selected SKILL.md bodies to the relay."""
     profile_file = _load_profile()
-    addr_data = address.load(CO_HOME)
+    addr_data = address.load(global_config_dir())
 
     state_path = _revision_path(addr_data["address"])
     with revision_lock(state_path):
