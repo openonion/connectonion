@@ -347,6 +347,54 @@ def test_install_wakes_scheduled_after_native_adoption_before_handover(native, t
     assert wake_states == [("PAUSED", False)]
 
 
+def test_migration_during_scheduled_open_keeps_the_previous_clock(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    write = native._write
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    def open_and_migrate():
+        migrate_index(native, root, status="PAUSED")
+
+    monkeypatch.setattr(native, "_write", desktop_write)
+    monkeypatch.setattr(native, "_open_desktop", open_and_migrate)
+    with pytest.raises(RemError, match="Scheduled"):
+        native.install(root, default_config())
+    assert not native.launcher.removed
+    assert native.launcher.present
+    assert not native.definition_path(root).exists()
+    assert native.describe(root)["storage"] == "account"
+
+
+@pytest.mark.parametrize("definition_changed", [False, True])
+def test_changed_registration_during_scheduled_open_keeps_previous_clock(native, tmp_path, monkeypatch, definition_changed):
+    root = tmp_path / "notes"
+    write = native._write
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    def change_registration():
+        if definition_changed:
+            changed = native.definition(root)
+            changed["updated_at"] += 1
+            write(root, changed)
+        else:
+            with sqlite3.connect(native.home / "sqlite" / "codex-dev.db") as connection:
+                connection.execute("UPDATE automations SET updated_at = updated_at + 1")
+
+    monkeypatch.setattr(native, "_write", desktop_write)
+    monkeypatch.setattr(native, "_open_desktop", change_registration)
+    with pytest.raises(RemError, match="changed"):
+        native.install(root, default_config())
+    assert not native.launcher.removed
+    assert native.launcher.present
+    assert native.definition(root)["status"] == "PAUSED"
+
+
 def test_launchd_cannot_start_before_a_native_pause_is_confirmed(tmp_path, monkeypatch):
     commands = []
     monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)

@@ -229,6 +229,10 @@ class CodexNative:
                     self._write(root, previous)
                 raise RemError("An existing REM batch started during registration. Let it finish, then "
                                "run `co rem start` again; the previous clock has been kept")
+            # Opening Scheduled can migrate the task or change its definition.
+            if not self._wait_for_definition(root, definition):
+                raise RemError("Codex registration changed while opening Scheduled; the previous clock "
+                               "has been kept. Check Codex Scheduled before retrying co rem start")
             if (legacy.get("installed") or legacy.get("loaded")) and not self.launcher.unload_for_migration(root):
                 if previous:
                     self._write(root, previous)

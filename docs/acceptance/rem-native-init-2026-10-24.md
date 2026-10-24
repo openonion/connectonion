@@ -11,7 +11,7 @@ The owner requested the existing normal installation, without an isolated app
 profile. The trial used Codex desktop **26.924.22138** on Intel macOS, the normal
 Codex home, and managed App Server **0.164.0**. The desktop installation, login,
 production task definitions and REM notebook configuration were not replaced.
-One normal desktop restart was performed, retaining that installation/profile.
+Normal desktop restart controls retained that installation/profile.
 
 One new, owned test task was reused for two scheduled trials. It was first
 registered PAUSED and independently read from the desktop's index, then enabled
@@ -115,12 +115,16 @@ promise or a removal date.
 - Discover a known migrated task through its legacy association. Refuse to
   recreate its old file or mutate it through the legacy adapter. A cached
   account PAUSED state is not authoritative confirmation of a server pause.
+- Recheck the same native registration after opening Scheduled and before
+  removing the previous clock. A migration or definition/index change during
+  that open aborts the handover and preserves the old clock.
 
 The migration tests use private database fixtures. They are not a claim of a
 live account migration, account task creation, or account pause succeeding.
 
-Latest local regression: **270 passed, 3 existing deprecation warnings** across
-native scheduling, launchd scheduling, REM service and CLI tests. These include
+Latest local regression: **262 passed, 3 existing deprecation warnings** across
+native scheduling, launchd scheduling, REM service and CLI command tests;
+**123 help-contract tests passed** separately. These include
 a concurrent activation during pause, delayed first activation without a worker
 record, and pending reactivation behind a previously stopped worker. Twelve
 provider/intent/observed-state combinations also prevent a false Stopped state.
@@ -155,9 +159,14 @@ References:
 ## Review coverage
 
 Independent AI role reviews identified the lifecycle gaps before the patch.
-The final independent AI review found no remaining P0/P1 in the corrected code
-scope and independently checked those twelve combinations and the confirmed
-PAUSED control. Actual guide screenshots covered desktop compatibility expanded
+The post-adoption review found a P1: migration during Scheduled delivery could
+remove the legacy clock before file-storage eligibility was checked again.
+Its private-fixture regression failed before the fix. The final independent AI
+recheck verified that migration, definition and index changes abort before
+teardown, that ACTIVE updates remain ACTIVE, and that normal PAUSED handover
+still succeeds. No remaining P0/P1 was found in that added guard. Earlier
+reviews checked the twelve state combinations and the confirmed PAUSED control.
+Actual guide screenshots covered desktop compatibility expanded
 and phone expanded/collapsed states. This was not a human founder review, a
 native desktop UI review, or an all-page pass. Lower guide sections, copy/link
 actions, the page-review disclosure's expanded state, remote-project history,
