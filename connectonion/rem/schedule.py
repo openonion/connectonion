@@ -177,6 +177,10 @@ class Launchd:
             return self._install(root, config)
 
     def _install(self, root: Path, config: dict) -> dict:
+        from .codex_schedule import CodexNative
+        native = CodexNative()
+        if native.installed(root):
+            native.uninstall(root)
         path = self.plist_path(root)
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
@@ -189,10 +193,6 @@ class Launchd:
         self._remove_legacy(root)  # one job per root, not the old label beside the new
         if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
             raise RemError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co rem doctor`")
-        from .codex_schedule import CodexNative
-        native = CodexNative()
-        if native.installed(root):
-            native.uninstall(root)
         from .codex_schedule import app_installed, desktop_timezone
         note = ("The saved timezone differs from Codex's local clock; launchd keeps the saved timezone."
                 if config.get("runner") == "codex" and app_installed()
@@ -277,7 +277,8 @@ def default_scheduler(root=None, *, for_start=False):
         from .config import read_config
         native = CodexNative()
         if not for_start:
-            if native.installed(root) and native.definition(root)["status"] == "ACTIVE":
+            if native.installed(root) and (native.definition(root).get("status") == "ACTIVE"
+                                           or native.describe(root).get("observed_active")):
                 return native
             if Launchd().installed(root):
                 return Launchd()

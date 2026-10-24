@@ -199,6 +199,229 @@ def test_updated_file_is_not_adopted_until_native_index_agrees(native, tmp_path)
     assert not native.describe(root)["loaded"]
 
 
+def test_activation_requires_desktop_acknowledgement(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    write = native._write
+
+    def paused_only(root, data):
+        write(root, data)
+        if data["status"] == "PAUSED":
+            adopt(native, root)
+
+    monkeypatch.setattr(native, "_write", paused_only)
+    with pytest.raises(RemError, match="activation.*not confirmed"):
+        native.install(root, default_config())
+
+
+def test_active_registration_without_a_next_run_is_not_an_armed_timer(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    write = native._write
+
+    def no_next_run(root, data):
+        write(root, data)
+        adopt(native, root)
+        with sqlite3.connect(native.home / "sqlite" / "codex-dev.db") as connection:
+            connection.execute("UPDATE automations SET next_run_at = NULL")
+
+    monkeypatch.setattr(native, "_write", no_next_run)
+    with pytest.raises(RemError, match="activation.*not confirmed"):
+        native.install(root, default_config())
+
+
+def test_pause_cannot_report_success_while_desktop_still_observes_active(native, tmp_path):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    with pytest.raises(RemError, match="pause.*not confirmed"):
+        native.uninstall(root)
+    info = native.describe(root)
+    assert info["observed_active"] is True
+    assert info["desired_status"] == "PAUSED"
+    assert info["loaded"] is False
+
+
+def migrate_index(native, root, *, status="ACTIVE"):
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    database = native.home / "sqlite" / "codex-dev.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("ALTER TABLE automations ADD COLUMN legacy_automation_id TEXT")
+        connection.execute("ALTER TABLE automations ADD COLUMN account_id TEXT")
+        connection.execute("UPDATE automations SET id=?, legacy_automation_id=?, account_id=?, status=?",
+                           ("canonical-rem-id", automation_id(root), "test-account", status))
+    native.definition_path(root).unlink()
+
+
+def test_account_migration_is_discovered_without_recreating_a_legacy_file(native, tmp_path):
+    root = tmp_path / "notes"
+    migrate_index(native, root)
+    assert native.installed(root)
+    info = native.describe(root)
+    assert info["automation_id"] == "canonical-rem-id"
+    assert info["storage"] == "account" and info["observed_active"] is True
+    with pytest.raises(RemError, match="Scheduled"):
+        native.install(root, default_config())
+    with pytest.raises(RemError, match="Scheduled"):
+        native.uninstall(root)
+    assert not native.definition_path(root).exists()
+
+
+def test_cached_account_pause_cannot_substitute_for_authoritative_confirmation(native, tmp_path):
+    root = tmp_path / "notes"
+    migrate_index(native, root, status="PAUSED")
+    with pytest.raises(RemError, match="not been confirmed"):
+        native.uninstall(root)
+    assert not native.definition_path(root).exists()
+
+
+def test_stopped_file_cannot_hide_an_active_orphan_index(native, tmp_path):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    native.definition_path(root).unlink()
+    assert native.describe(root)["observed_active"]
+    with pytest.raises(RemError, match="pause it in Scheduled"):
+        native.uninstall(root)
+
+
+def test_repeated_confirmed_pause_needs_no_new_file_adoption(native, tmp_path):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config(), active=False))
+    adopt(native, root)
+    before = native.definition_path(root).read_bytes()
+    assert native.uninstall(root)
+    assert native.definition_path(root).read_bytes() == before
+
+
+def test_desktop_is_opened_normally_when_needed_for_initialization(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    commands = []
+    write = native._write
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, int(command[0] == "pgrep"))
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    native.run = run
+    monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_app", lambda: Path("/Applications/Codex.app"))
+    monkeypatch.setattr(native, "_write", desktop_write)
+    native.install(root, default_config())
+    assert ["/usr/bin/open", "-a", "/Applications/Codex.app"] in commands
+
+
+def test_launchd_cannot_start_before_a_native_pause_is_confirmed(tmp_path, monkeypatch):
+    commands = []
+    monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)
+
+    def unconfirmed(self, root):
+        raise RemError("Native pause was not confirmed")
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(CodexNative, "uninstall", unconfirmed)
+    launcher = Launchd(tmp_path / "agents", run=run)
+    with pytest.raises(RemError, match="not confirmed"):
+        launcher.install(tmp_path / "notes", default_config())
+    assert not commands
+    assert not launcher.plist_path(tmp_path / "notes").exists()
+
+
+def test_stop_does_not_mark_worker_disabled_when_native_pause_is_unconfirmed(native, tmp_path, monkeypatch):
+    from connectonion.rem.service import stop, worker_state
+    root = tmp_path / "notes"
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "codex-native"})
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    with pytest.raises(RemError, match="not confirmed"):
+        stop(root, scheduler=native)
+    assert worker_state(root)["enabled"] is True
+
+
+def test_a_concurrent_activation_cannot_acknowledge_this_pause(native, tmp_path, monkeypatch):
+    from connectonion.rem.service import stop, worker_state
+    root = tmp_path / "notes"
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "codex-native"})
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    wait = native._wait_for_definition
+
+    def concurrent_activation(root, expected):
+        other = native.definition(root)
+        other.update(status="ACTIVE", updated_at=expected["updated_at"] + 1)
+        native._write(root, other)
+        adopt(native, root)
+        return wait(root, expected)
+
+    monkeypatch.setattr(native, "_wait_for_definition", concurrent_activation)
+    with pytest.raises(RemError, match="changed while waiting"):
+        stop(root, scheduler=native)
+    assert native.describe(root)["observed_active"] is True
+    assert worker_state(root)["enabled"] is True
+
+
+def test_late_activation_is_visible_even_without_a_worker_provider(native, tmp_path, monkeypatch):
+    from connectonion.rem.service import _state_line
+    from zoneinfo import ZoneInfo
+    root = tmp_path / "notes"
+    write_json(state_path(root, "consent.json"), {})
+    write = native._write
+
+    def paused_only(root, data):
+        write(root, data)
+        if data["status"] == "PAUSED":
+            adopt(native, root)
+
+    monkeypatch.setattr(native, "_write", paused_only)
+    with pytest.raises(RemError, match="activation.*not confirmed"):
+        native.install(root, default_config())
+    adopt(native, root)
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("CODEX_HOME", str(native.home))
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "without a confirmed worker registration" in text and "Stopped" not in text
+
+
+def test_provider_selection_keeps_track_of_active_account_task(native, tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("CODEX_HOME", str(native.home))
+    monkeypatch.setattr(Launchd, "installed", lambda self, root: True)
+    root = tmp_path / "notes"
+    migrate_index(native, root)
+    config = default_config()
+    config["runner"] = "coai"
+    atomic_write(root / "config.yaml", yaml.safe_dump(config))
+    assert isinstance(default_scheduler(root), CodexNative)
+
+
+def test_status_cannot_hide_a_native_timer_behind_a_stopped_worker(tmp_path, monkeypatch):
+    from connectonion.rem.service import _state_line
+    from zoneinfo import ZoneInfo
+    root = tmp_path / "notes"
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "codex-native"})
+    monkeypatch.setattr(CodexNative, "describe", lambda self, root: {"observed_active": True})
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "still reports" in text and "Stopped" not in text
+
+
+def test_stopped_worker_cannot_claim_account_authority_from_a_cached_pause(tmp_path, monkeypatch):
+    from connectonion.rem.service import _state_line
+    from zoneinfo import ZoneInfo
+    root = tmp_path / "notes"
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "codex-native"})
+    info = {"observed_active": False, "storage": "account", "reason": "account registration needs confirmation"}
+    monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "needs confirmation" in text and "Stopped" not in text
+
+
 def test_default_prefers_native_for_codex_with_app_and_stop_finds_saved_provider(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
