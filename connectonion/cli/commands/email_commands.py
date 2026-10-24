@@ -53,6 +53,8 @@ def _read_failure(exc, mailbox: str):
             return
         if status == 404:
             console.print(f"No {mailbox} email with that ID is available to this account.", markup=False)
+            if mailbox == "received":
+                console.print("To select an existing message, run co email inbox, then co email read <#>.", markup=False)
             return
         console.print(f"The email service returned HTTP {status}. Please retry.", markup=False)
     elif isinstance(exc, requests.RequestException):
