@@ -46,6 +46,7 @@ def known_timezone(monkeypatch):
 @pytest.fixture
 def native(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.codex_schedule._checkout_path", lambda: "")
+    monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_app", lambda: Path("/Applications/Codex.app"))
     return CodexNative(tmp_path / "codex", launcher=Launcher(),
                        command=["/venv with spaces/bin/python", "-m", "connectonion.cli.main"],
                        run=running, wait_seconds=0)
@@ -310,7 +311,20 @@ def test_desktop_is_opened_normally_when_needed_for_initialization(native, tmp_p
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_app", lambda: Path("/Applications/Codex.app"))
     monkeypatch.setattr(native, "_write", desktop_write)
     native.install(root, default_config())
-    assert ["/usr/bin/open", "-a", "/Applications/Codex.app"] in commands
+    assert ["/usr/bin/open", "-a", "/Applications/Codex.app", "codex://automations"] in commands
+
+
+def test_registration_opens_scheduled_even_when_desktop_is_running(native, monkeypatch):
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(native, "run", run)
+    monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_app", lambda: Path("/Applications/Codex.app"))
+    native._open_desktop()
+    assert commands == [["/usr/bin/open", "-a", "/Applications/Codex.app", "codex://automations"]]
 
 
 def test_launchd_cannot_start_before_a_native_pause_is_confirmed(tmp_path, monkeypatch):

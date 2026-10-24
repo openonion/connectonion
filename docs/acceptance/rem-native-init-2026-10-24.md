@@ -1,6 +1,6 @@
 # Native REM initialization follow-up — 2026-10-24
 
-Status: **registration and pause verified; timed execution failed**. No new
+Status: **normal-profile native execution, auto-archiving and pause verified after opening Scheduled**. No new
 preview is published from this follow-up. The changes under review improve
 registration lifecycle checks; they do not establish support for the newer
 account-managed registration path.
@@ -29,8 +29,7 @@ running its timer.
 
 The running App Server reports `in_app_local_automation` enabled and stable.
 Consequently, an enabled setting and a registered ACTIVE task are insufficient
-readiness checks. The exact reason this desktop did not advance its timer is
-still unresolved. Actual Scheduled UI and its access/migration prompts were
+readiness checks. The initial failure was narrowed by the subsequent wake control below. Actual Scheduled UI and its access/migration prompts were
 not inspected: the available computer tool had no native surface, and macOS
 denied assistive access. No permission or native feature gate was bypassed.
 
@@ -38,8 +37,37 @@ A subsequent OS-state check reported the console screen locked. The inspected
 desktop has both a renderer-ready fallback for starting its timer and a
 visible-content phase around capability publication. Visibility is therefore
 an unresolved test condition, rather than an established single startup gate
-or the cause of both failed windows. An unlocked, visible-main-window comparison
-on the same installation is pending.
+or the cause of both failed windows. The lock flag predates a successful earlier run and is not treated as a prerequisite or a proven cause. The same normal-profile control continued without unlocking the OS.
+
+## Scheduled wake control
+
+At 09:00 UTC the existing managed App Server accepted initialization and reported
+version 0.164.0. `automation/list` returned an unknown-method error, consistent
+with the freshly fetched public protocol registry (blob
+`3a777cdc3d24b43356efc575bba9b2f236ef0de0`). A new owned task was adopted PAUSED,
+then ACTIVE with a 09:07 UTC future slot. It had no run before the control.
+
+At **09:09:20 UTC**, `/usr/bin/open -a /Applications/Codex.app codex://automations`
+opened the existing normal app's Scheduled entry point. The owned native task
+started at **09:09:41**, created its marker and was **auto-archived by 09:09:50**.
+Its pause was independently acknowledged before its test definition was removed.
+The overdue production REM task also started at 09:09:21; its task definition
+and notebook configuration were not edited. Its full CLI completion remained
+under observation when this section was written.
+
+Installed desktop code initializes its scheduler capability to false and requires
+that capability before its tick advances work. The primary renderer publishes
+`automations.local` from a component mounted at `first_content_visible`.
+The control is consistent with that gate; it does not isolate every possible
+startup cause. The REM adapter had skipped opening the app whenever its process
+was already running. The candidate now opens Scheduled explicitly instead.
+A second timed trial used the patched install lifecycle without an extra manual
+UI action. It requested 20:17 Sydney, indexed its next run at 20:18:31, started at
+20:18:42 and auto-archived after its marker was created. Pause was independently
+confirmed and the owned definition removed. This proves execution, not exact
+requested-minute timing. The production scheduled pass completed, and the native
+wrapper was auto-archived with its command execution items reporting exit 0.
+Restart and account-managed-mode acceptance remain separate checks.
 
 ## Account-managed registration
 
@@ -69,7 +97,7 @@ promise or a removal date.
 
 ## Changes under review
 
-- Open the normal installed desktop when initialization needs it.
+- Open the normal installed desktop directly at `codex://automations`, including when its process is already running.
 - Require independent ACTIVE adoption before reporting installation success.
 - Require independent PAUSED adoption before disabling the REM worker or
   loading a replacement launchd clock. Existing native model turns may finish.
@@ -82,7 +110,7 @@ promise or a removal date.
 The migration tests use private database fixtures. They are not a claim of a
 live account migration, account task creation, or account pause succeeding.
 
-Final local regression: **257 passed, 3 existing deprecation warnings** across
+Latest local regression: **269 passed, 3 existing deprecation warnings** across
 native scheduling, launchd scheduling, REM service and CLI tests. These include
 a concurrent activation during pause, delayed first activation without a worker
 record, and pending reactivation behind a previously stopped worker. Twelve

@@ -131,12 +131,12 @@ class CodexNative:
                         capture_output=True, text=True, timeout=10).returncode == 0
 
     def _open_desktop(self) -> None:
-        if self._app_running():
-            return
         app = desktop_app()
         if app is None:
             raise RemError("Install Codex desktop before using its native schedule")
-        result = self.run(["/usr/bin/open", "-a", str(app)],
+        # A running App Server does not mean the primary renderer has published
+        # automations.local. Opening Scheduled wakes that native capability.
+        result = self.run(["/usr/bin/open", "-a", str(app), "codex://automations"],
                           capture_output=True, text=True, timeout=15)
         if result.returncode:
             raise RemError("Codex desktop could not open; the previous REM clock has been kept")
