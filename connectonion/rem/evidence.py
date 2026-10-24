@@ -47,7 +47,7 @@ def _group(item: dict) -> str:
         # Mail: a month per mailbox. Each entry keeps its `### <source id>`
         # heading, so a search hit still names the one message to cite.
         return f"{kind}:{str(item.get('timestamp', ''))[:7] or 'undated'}"
-    return source.rsplit(":", 1)[0]   # a session: codex:<session>:<offset>
+    return source.rsplit(":", 1)[0]   # the session, excluding its offset and optional text hash
 
 
 def _file_name(group: str, first: str) -> str:

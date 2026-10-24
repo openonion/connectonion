@@ -596,7 +596,7 @@ def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypat
 
 def test_project_quote_round_that_shrinks_the_page_restores_the_first_page(atlas):
     saved = []
-    detail = (atlas.messages[0]["text"] + " ") * 80 + "[1]\n"
+    detail = (atlas.messages[0]["text"] + " ") * 120 + "[1]\n"
 
     def page_from(prompt):
         if not saved:

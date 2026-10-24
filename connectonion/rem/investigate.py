@@ -25,7 +25,7 @@ from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, R
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .mail import SERVER_ERRORS, error_status
-from .source import KINDS, collect, timestamp, with_local_times
+from .source import KINDS, collect, parse_session_source, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
 SESSION_WIDEST_DAYS = 730
@@ -1026,15 +1026,16 @@ def _project_session_inputs(window: list[dict], picked: list[dict], subject: str
     sessions = {}
     for item in window:
         source = str(item.get("source", ""))
-        if item.get("role") == "user" and source.rpartition(":")[2].isdigit():
+        if item.get("role") == "user" and parse_session_source(source):
             sessions.setdefault(source.rpartition(":")[0], []).append(item)
     named = re.compile(rf"(?<!\w){re.escape(subject.strip())}(?!\w)", re.IGNORECASE)
     kept = []
     for item in picked:
         source = str(item.get("source", ""))
-        session, _, offset = source.rpartition(":")
-        crossed = offset.isdigit() and any(
-            int(row["source"].rpartition(":")[2]) < int(offset)
+        parsed = parse_session_source(source)
+        session = source.rpartition(":")[0]
+        crossed = parsed is not None and any(
+            parse_session_source(row["source"])[2] < parsed[2]
             and row.get("project") and row.get("project") != item.get("project")
             for row in sessions.get(session, []))
         if not crossed or named.search(item.get("text", "")):
