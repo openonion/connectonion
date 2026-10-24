@@ -881,6 +881,28 @@ an overdue trigger and a failed REM pass; a file alone is not a working schedule
 `stop` pauses the native task and retains its history. It does not cancel a native
 model turn already in progress.
 
+The native adapter in rc21 uses Codex's legacy local-file registration. Newer
+desktop code also has account-managed registration, which can replace the local
+file and task ID. That registration route has not passed REM's live acceptance;
+the presence of a TOML parser or an enabled feature is not proof of compatibility.
+The normal-profile follow-up on 2026-10-24 verified real native execution,
+auto-archiving and pause after opening the existing app's Scheduled entry point.
+A running App Server alone had not advanced its registered timer.
+This verifies execution, not exact requested-minute timing: the cold retry
+requested 20:35 Sydney, was indexed for 20:36:33 and began at 20:36:34.
+Check `co rem status` before relying on unattended upkeep;
+`co rem sync` remains available by hand.
+
+**Under review, not yet released:** initialization opens the normal installed
+desktop directly at Scheduled, including when its process is already running,
+then independently confirms activation. After the native index is ready it
+opens Scheduled again, so a cold launch does not depend on an early URL request. Stopping
+waits for native pause acknowledgement before marking the worker disabled or
+starting a replacement launchd timer. A known account-migrated task is identified
+by its legacy association and requires management in Codex Scheduled until an
+authoritative account registration API has been verified. REM does not recreate
+its old file or treat a cached account status as confirmation of a pause.
+
 Other runners, headless Macs and saved timezones different from the desktop retain
 launchd. Its five-minute tick keeps the saved timezone and coalesces missed slots.
 The native desktop uses its own local wall clock and startup/missed-run behavior;
