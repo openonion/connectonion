@@ -387,6 +387,53 @@ def test_late_activation_is_visible_even_without_a_worker_provider(native, tmp_p
     assert "without a confirmed worker registration" in text and "Stopped" not in text
 
 
+def test_failed_reactivation_cannot_hide_behind_a_previously_stopped_worker(native, tmp_path, monkeypatch):
+    from connectonion.rem.service import _state_line
+    from zoneinfo import ZoneInfo
+    root = tmp_path / "notes"
+    native.launcher.present = False
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "codex-native"})
+    native._write(root, native.render(root, default_config(), active=False))
+    adopt(native, root)
+    write = native._write
+
+    def paused_only(root, data):
+        write(root, data)
+        if data["status"] == "PAUSED":
+            adopt(native, root)
+
+    monkeypatch.setattr(native, "_write", paused_only)
+    with pytest.raises(RemError, match="activation.*not confirmed"):
+        native.install(root, default_config())
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("CODEX_HOME", str(native.home))
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "activation is still pending" in text and "Stopped" not in text
+
+
+@pytest.mark.parametrize("provider,enabled", [(None, False), ("codex-native", False),
+                                             ("codex-native", True), ("launchd", True)])
+@pytest.mark.parametrize("desired,observed,storage", [("ACTIVE", False, "file"),
+                                                     ("PAUSED", True, "file"),
+                                                     (None, False, "account")])
+def test_status_never_says_stopped_for_pending_active_or_account_unknown_task(
+        tmp_path, monkeypatch, provider, enabled, desired, observed, storage):
+    from connectonion.rem.service import _state_line
+    from zoneinfo import ZoneInfo
+    root = tmp_path / "notes"
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": enabled, "scheduler": provider})
+    info = {"installed": True, "loaded": False, "active": False, "app_running": True,
+            "desired_status": desired, "observed_active": observed, "storage": storage,
+            **({"reason": "Account registration needs confirmation"} if storage == "account" else {})}
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)
+    monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "Background needs attention" in text and "Stopped" not in text
+
+
 def test_provider_selection_keeps_track_of_active_account_task(native, tmp_path, monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(native.home))

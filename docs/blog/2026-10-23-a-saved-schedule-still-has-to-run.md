@@ -55,3 +55,50 @@ presentation and sleep/wake behavior still need direct observation. We would
 revisit the file adapter when Codex exposes a supported scheduling API, changes
 its ownership/storage mode or corrects the tested timezone path. A new protocol
 would simplify registration; it would still need an actual scheduled execution.
+
+## Follow-up, 24 October: an acknowledgement belongs to one request
+
+The next day's check brought the same question back. This time the owner asked
+us to use the normal installed desktop, keeping its existing login and profile.
+The test task appeared in the native index as ACTIVE, with its next run two
+minutes away. Six minutes passed without a run record or marker. A normal
+desktop restart and another trial produced the same result. The existing REM
+task also had an overdue next-run timestamp. Yesterday's executions were still
+real; they could not certify the desktop's state today.
+
+Looking at that gap exposed a smaller promise we could actually repair. The
+installer waited for PAUSED to be adopted, wrote ACTIVE, then returned. Stop
+wrote PAUSED and marked the worker disabled before the desktop had acknowledged
+it. Native adoption had taken tens of seconds in the live trial, leaving time
+for those local claims to get ahead of the timer.
+
+An independent AI role review found a further complication. If another start
+changed the definition back to ACTIVE during a pause wait, a check against the
+latest file could accept that ACTIVE record as success. The operation needed an
+answer to its own request. The patch now compares the requested definition and
+version with the independently observed index, and a concurrent edit ends the
+wait with an error. Status also discovers a native task when a first activation
+timed out before REM could save its worker record. That delayed activation must
+not turn into a reassuring “Stopped” message.
+
+The new account storage path makes the distinction harder to ignore. A migrated
+task can keep running after its old file and ID disappear. We can identify a
+known legacy association and stop the file adapter from recreating it. We have
+not proved that an external client can create or pause the account-owned task:
+the native enrollment read responded, but accepting enrollment returned 404.
+Tool metadata exposed a creation function without making it callable in the
+tested runtime.
+
+A later OS-state check found the Mac locked. The desktop's capability publisher
+is deferred until its main content becomes visible, leaving visibility as an
+untested condition. The next comparison needs the same installation with the
+Mac unlocked and its main window open. That observation narrows the next test;
+it does not establish why both earlier windows missed their runs.
+
+These lifecycle changes are [under review](https://github.com/openonion/connectonion/pull/2674),
+with 257 local regression tests passing. They have not been released. The owned
+test task was independently confirmed paused and its definition removed. The
+normal desktop's missing timed execution and the account registration path
+remain acceptance blockers. A one-command initialization should remove file
+editing and repeated setup work; it still owes the user an accurate distinction
+between a saved request, an acknowledged timer and work that really ran.

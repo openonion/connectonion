@@ -886,7 +886,8 @@ desktop code also has account-managed registration, which can replace the local
 file and task ID. That registration route has not passed REM's live acceptance;
 the presence of a TOML parser or an enabled feature is not proof of compatibility.
 The normal-profile follow-up on 2026-10-24 registered a task but did not observe
-its timed execution. Check `co rem status` before relying on unattended upkeep;
+its timed execution; an unlocked, visible-window comparison is still pending.
+Check `co rem status` before relying on unattended upkeep;
 `co rem sync` remains available by hand.
 
 **Under review, not yet released:** initialization opens the normal installed

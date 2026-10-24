@@ -34,6 +34,12 @@ still unresolved. Actual Scheduled UI and its access/migration prompts were
 not inspected: the available computer tool had no native surface, and macOS
 denied assistive access. No permission or native feature gate was bypassed.
 
+A subsequent OS-state check reported the console screen locked. The inspected
+desktop defers publication of local automation capability until
+`first_content_visible`. Visibility is therefore an unresolved test condition;
+this observation does not establish the cause of both failed windows. An
+unlocked, visible-main-window comparison on the same installation is pending.
+
 ## Account-managed registration
 
 The official newer **26.1021.31345** desktop package was inspected locally. Its
@@ -75,6 +81,12 @@ promise or a removal date.
 The migration tests use private database fixtures. They are not a claim of a
 live account migration, account task creation, or account pause succeeding.
 
+Final local regression: **257 passed, 3 existing deprecation warnings** across
+native scheduling, launchd scheduling, REM service and CLI tests. These include
+a concurrent activation during pause, delayed first activation without a worker
+record, and pending reactivation behind a previously stopped worker. Twelve
+provider/intent/observed-state combinations also prevent a false Stopped state.
+
 ## Creation and support decision
 
 Keep the existing `init` → background-start hook. Use the local-file adapter
@@ -103,8 +115,10 @@ References:
 ## Review coverage
 
 Independent AI role reviews identified the lifecycle gaps before the patch.
-The final review covers the changed Python code, regression results and locally
-rendered CLI guide on desktop and phone, including compatibility disclosure
-expanded/collapsed states. It is not a human founder review, a native desktop UI
-review, or an all-page pass. This is a draft acceptance record until that final
-review has completed.
+The final independent AI review found no remaining P0/P1 in the corrected code
+scope and independently checked those twelve combinations and the confirmed
+PAUSED control. Actual guide screenshots covered desktop compatibility expanded
+and phone expanded/collapsed states. This was not a human founder review, a
+native desktop UI review, or an all-page pass. Lower guide sections, copy/link
+actions, the page-review disclosure's expanded state, remote-project history,
+account creation and post-migration persistence/archiving remain unverified.

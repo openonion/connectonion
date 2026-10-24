@@ -393,13 +393,16 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
         if worker.get("scheduler") == "codex-native" or scheduler.installed(root):
             native = scheduler.describe(root)
     if native and (worker.get("scheduler") == "codex-native" or native.get("observed_active")
-                   or native.get("desired_status") == "ACTIVE"):
+                   or native.get("desired_status") == "ACTIVE" or native.get("storage") == "account"):
         if worker.get("scheduler") != "codex-native":
             return ("Background needs attention — a native REM task exists without a confirmed worker registration; "
                     "check Codex Scheduled and run `co rem start` to reconcile it"), None
         if not worker.get("enabled") and native.get("observed_active"):
             return ("Background needs attention — Codex still reports the REM task as active; "
                     "run `co rem stop` and confirm its pause in Scheduled"), None
+        if not worker.get("enabled") and native.get("desired_status") == "ACTIVE":
+            return ("Background needs attention — native activation is still pending; "
+                    "check Codex Scheduled, or run `co rem stop` to cancel the request"), None
         if not worker.get("enabled") and native.get("storage") == "account":
             return "Background needs attention — " + native["reason"], None
         if not worker.get("enabled"):
