@@ -1,11 +1,12 @@
-"""Open OO Mail and sign a browser-bound challenge using the selected identity."""
+"""Open the selected account's real mailbox with a one-time browser login."""
 import base64
 import json
 import re
 import time
 import webbrowser
+import requests
 import typer
-from ..style import console
+from ..style import console, next_line
 
 MAIL_URL = 'https://mail.openonion.ai'
 
@@ -37,6 +38,34 @@ def handle_email_connect(challenge: str):
     console(stderr=True).print('Paste this short-lived code into the OO Mail tab that generated the command. Your private key stays on this computer.',markup=False)
 
 def handle_email_open(no_browser: bool = False):
-    console().print(MAIL_URL,markup=False)
-    if not no_browser and not webbrowser.open(MAIL_URL):
-        console().print('Open this URL in your browser. Choose Connect mailbox to use your existing account.',markup=False)
+    from .project_cmd_lib import load_api_key
+    from ...backend import backend_url
+    token = load_api_key()
+    if not token:
+        console(stderr=True).print('Not connected. Next: co auth login', markup=False)
+        raise typer.Exit(1)
+    try:
+        response = requests.post(backend_url()+'/api/v1/auth/mail-link',
+            headers={'Authorization': f'Bearer {token}'}, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError('Invalid login response')
+        code, account = data.get('code'), data.get('public_key')
+        if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', code):
+            raise ValueError('Invalid login response')
+        if not isinstance(account, str) or not re.fullmatch(r'0x[0-9a-fA-F]{64}', account):
+            raise ValueError('Invalid login account')
+    except (requests.RequestException, ValueError) as exc:
+        expired = isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code in (401, 403)
+        console(stderr=True).print('Your mail login expired. Next: co auth login' if expired else
+            'Could not create a mail login link. Check your connection. Next: co email open --no-browser', markup=False)
+        raise typer.Exit(1) from exc
+    url = MAIL_URL+'/connect#code='+code+'&account='+account
+    print(url)
+    console(stderr=True).print('Opens your current mailbox. This private link expires in two minutes and works once.', markup=False)
+    if not no_browser:
+        try: opened = webbrowser.open(url)
+        except (webbrowser.Error, OSError): opened = False
+        if not opened: console(stderr=True).print('Open the link above in your browser.', markup=False)
+    console(stderr=True).print(next_line('co email inbox'))

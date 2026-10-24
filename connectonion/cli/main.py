@@ -1576,8 +1576,8 @@ def email_callback(ctx: typer.Context):
 
 
 @email_app.command("open", epilog="Example:  co email open  |  co email open --no-browser")
-def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print the OO Mail URL without opening a browser")):
-    """Open the OO Mail web client. Read-only for your account."""
+def email_open(no_browser: bool = typer.Option(False, "--no-browser", help="Print a one-time login link without opening a browser")):
+    """Creates a private two-minute login link and opens your real mailbox. Uses the selected co account; mail is unchanged. --no-browser prints the link for another browser or phone."""
     from .commands.email_web import handle_email_open
     handle_email_open(no_browser=no_browser)
 
@@ -1604,12 +1604,14 @@ def email_send(
         "--from",
         help="Send as one of your owned addresses (server checks ownership)",
     ),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD charge for this email; 0 uses included monthly sends only'),
 ):
-    """Send an email from the agent's address. Sends immediately."""
+    """Sends immediately using included monthly mail first. PAYG requires --max-cost; no subscription or automatic top-up."""
     from .commands.email_commands import handle_email_send
     handle_email_send(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
     )
 
 
@@ -1710,10 +1712,12 @@ def email_reply(
     message: str = typer.Argument(...,help="Your plain-text reply"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this reply; 0 uses included sends only'),
 ):
     """Sends a reply immediately with a Re: subject and quoted original. Does not add threading headers."""
     from .commands.email_workflows import handle_email_reply
-    handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key)
+    handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
 
 
 @email_app.command("forward", epilog='Example:  co email forward 3 you@example.com "For your review."')
@@ -1723,10 +1727,20 @@ def email_forward(
     message: str = typer.Argument('',help="Optional note above the forwarded message"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this forward; 0 uses included sends only'),
 ):
     """Sends the original message and your note to another address immediately. Attachments are not included."""
     from .commands.email_workflows import handle_email_reply
-    handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key)
+    handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+
+
+@email_app.command('status',epilog='Example:  co email status <send-id>  |  co email status <send-id> --json')
+def email_send_status(send_id: str = typer.Argument(...,help='Send ID/idempotency key printed by a send attempt'),
+                      json_output: bool = typer.Option(False,'--json',help='Print delivery and charge status as JSON')):
+    """Read-only for mail: shows delivery and charge status; releases expired holds. Does not resend or make a new charge."""
+    from .commands.email_workflows import handle_email_send_status
+    handle_email_send_status(send_id,json_output)
 
 
 @email_app.command("tier", epilog="Example:  co email tier --json")

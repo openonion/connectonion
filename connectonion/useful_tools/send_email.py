@@ -15,6 +15,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
+from decimal import Decimal, InvalidOperation
 
 import requests
 import yaml
@@ -40,6 +41,7 @@ def send_email(
     message: str,
     idempotency_key: Optional[str] = None,
     from_address: Optional[str] = None,
+    max_cost_usd: float = 0,
 ) -> Dict:
     """Send an email using the agent's email address.
 
@@ -53,6 +55,9 @@ def send_email(
         from_address: Send as one of this account's owned addresses instead of
             the default. The server verifies ownership and answers 403 for an
             address this account does not hold.
+        max_cost_usd: Maximum USD charge for this email. Defaults to 0 (included
+            monthly sends only). Use 0.003 to authorize PAYG after the allowance.
+            Reuse the original key and exact payload on an uncertain send.
 
     Returns:
         dict: Success status and details
@@ -65,6 +70,13 @@ def send_email(
             - retryable (bool): Whether retrying this key is currently safe
     """
     send_key = idempotency_key or str(uuid.uuid4())
+    try:
+        budget=Decimal(str(max_cost_usd))
+        if not budget.is_finite() or not Decimal('0')<=budget<=Decimal('1') or budget!=budget.quantize(Decimal('.00000001')):
+            raise ValueError('Invalid budget')
+    except (InvalidOperation,ValueError):
+        return {'success':False,'error':'Maximum send cost must be 0–1 USD with at most eight decimal places.',
+                'request_id':send_key,'idempotency_key':send_key,'retryable':False,'code':'invalid_send_budget'}
     from ..environment import load_environment
     load_environment()
 
@@ -110,6 +122,8 @@ def send_email(
     }
     if from_address:
         payload["from_address"] = from_address
+    if budget:
+        payload['max_cost_usd']=format(budget,'.8f')
 
     # Send email via backend API
     endpoint = f"{backend_url()}/api/v1/email/send"
@@ -126,7 +140,7 @@ def send_email(
             endpoint,
             json=payload,
             headers=headers,
-            timeout=10
+            timeout=40
         )
 
         if response.status_code == 200:
@@ -137,6 +151,7 @@ def send_email(
                 "from": data.get("from", from_email),
                 "request_id": data.get("request_id", _response_header(response, "X-Request-ID", send_key)),
                 "idempotency_key": data.get("idempotency_key", send_key),
+                **({'charged_usd':data['charged_usd']} if 'charged_usd' in data else {}),
             }
         elif response.status_code == 429:
             error_msg, request_id, returned_key, retryable = _email_error(
@@ -148,6 +163,7 @@ def send_email(
                 "request_id": request_id,
                 "idempotency_key": returned_key,
                 "retryable": retryable,
+                **_send_error_details(response),
             }
         elif response.status_code == 401:
             _, request_id, returned_key, retryable = _email_error(
@@ -159,6 +175,7 @@ def send_email(
                 "request_id": request_id,
                 "idempotency_key": returned_key,
                 "retryable": retryable,
+                **_send_error_details(response),
             }
         else:
             # The backend answers errors in JSON; the gateway in front of it
@@ -182,6 +199,7 @@ def send_email(
                 "request_id": request_id,
                 "idempotency_key": returned_key,
                 "retryable": retryable,
+                **_send_error_details(response),
             }
 
     except requests.exceptions.Timeout:
@@ -208,6 +226,16 @@ def send_email(
             "idempotency_key": send_key,
             "retryable": False,
         }
+
+
+def _send_error_details(response):
+    """Keep safe pricing/state fields for delivery recovery."""
+    try:
+        data=response.json();error=data.get('error',{}) if isinstance(data,dict) else {}
+        if not isinstance(error,dict):return {}
+        return {name:error[name] for name in ('code','send_state','dispatched','billing','retry_after') if name in error}
+    except (ValueError,AttributeError):
+        return {}
 
 
 def _email_error(
