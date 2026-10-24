@@ -28,7 +28,7 @@ from .file_tools import (
 from .gdrive import GDrive
 from .generate_image import generate_image
 from .youtube import YouTube
-from .get_emails import get_emails, mark_read, mark_unread
+from .get_emails import get_email, get_sent, get_sent_email, get_emails, mark_read, mark_unread
 from .gmail import Gmail
 from .google_calendar import GoogleCalendar
 from .memory import Memory
@@ -62,6 +62,9 @@ from .youcom_search import youcom_contents, youcom_research, youcom_search
 __all__ = [
     # Email tools
     "send_email",
+    "get_email",
+    "get_sent",
+    "get_sent_email",
     "get_emails",
     "mark_read",
     "mark_unread",

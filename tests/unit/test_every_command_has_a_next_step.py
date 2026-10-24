@@ -89,7 +89,7 @@ class TestItIsPrinted:
 
     def test_a_terminal_sees_the_same_words_with_next_and_its_command_styled(self):
         # One look for every co command (#1997): `Next:` bold, the command in the command colour.
-        env = {"FORCE_COLOR": "1", "NO_COLOR": None, "TTY_COMPATIBLE": None}
+        env = {"FORCE_COLOR": "1", "NO_COLOR": None, "TTY_COMPATIBLE": None, "TERM": "xterm-256color"}
         shown = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"], env=env).stderr
         assert "\x1b[1mNext:\x1b[0m See every list:  \x1b[1;36mco trust list\x1b[0m" in shown
         plain = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"], env={"NO_COLOR": "1"}).stderr
@@ -144,6 +144,7 @@ def test_a_handlers_tip_is_styled_in_a_terminal_and_word_for_word_in_a_pipe(monk
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.delenv("TTY_COMPATIBLE", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.setenv("TERM", "xterm-256color")
     command_tips.print_tip(tip)
     shown = capsys.readouterr().out
     monkeypatch.delenv("FORCE_COLOR")

@@ -350,8 +350,8 @@ def test_co_email_read_keeps_a_long_code_on_one_line(monkeypatch):
     code = "coh1." + "x" * 300
     monkeypatch.setattr("connectonion.cli.commands.email_commands._require_auth", lambda: True)
     import connectonion.useful_tools.get_emails  # noqa: F401  (the module; the package re-exports the function)
-    monkeypatch.setattr(sys.modules["connectonion.useful_tools.get_emails"], "get_emails", lambda last: [
-        {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"}])
+    monkeypatch.setattr(sys.modules["connectonion.useful_tools.get_emails"], "get_email", lambda email_id:
+        {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"})
     result = runner.invoke(app, ["email", "read", "7"], env={"COLUMNS": "80", "NO_COLOR": "1"})
     assert f"co handoff accept {code} [now]" in result.output
 
