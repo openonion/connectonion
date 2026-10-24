@@ -38,8 +38,19 @@ checks. Full CI found one old subscription test still patching a removed path
 constant; it was updated to select the runtime root, and the 25-test recheck
 passed. No live auth or account publication was performed by those trials.
 
-Full integrated-suite, candidate wheel and publication results are recorded
-below as they complete. Pending work is not represented as a pass.
+This record was committed while final integrated-suite, wheel and publication
+checks were pending. It does not preclaim those passes. Final results are
+recorded in the release PR linked from the [GitHub prerelease](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22)
+and in the immutable-tag [Release workflow](https://github.com/openonion/connectonion/actions/workflows/release.yml).
+That workflow must pass the full matrix, install the public package and compare
+both PyPI artifacts byte-for-byte before creating the prerelease.
+
+The first full local run had 17,320 passes and six failures: four ANSI assertions
+under inherited TERM=dumb, an unbumped recipient install pin, and a docs check
+that found an unrelated old checkout. The pin was corrected; tests for a normal
+terminal use TERM=xterm-256color and the supported CONNECTONION_DOCS_SITE selector
+points to this release's prepared docs worktree. All 102 focused rechecks passed;
+the full integrated run is repeated with those explicit settings.
 
 ## Visual review
 
