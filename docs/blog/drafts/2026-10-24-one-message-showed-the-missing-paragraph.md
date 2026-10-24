@@ -32,6 +32,15 @@ the page would have expanded what the browser held. Instead, the browser creates
 a short-lived challenge and the selected local identity signs that exact request.
 The resulting session belongs to the mailbox the operator already uses.
 
+Opening the homepage was still not opening the mailbox. A person running
+`co email open` landed in a sample workspace and then had to learn the connection
+steps. The command now asks the authenticated API for a two-minute, one-use link.
+The browser trades its opaque code for a session and opens the existing account.
+The homepage explains connection; the sample workspace lives on a separate route
+that never loads real mail, even in a signed-in browser. Reusing the browser's
+existing account silently would be convenient only when both accounts match,
+so a different account gets a clear switch decision.
+
 The command surface needed the same care. Reading an old sent message by scanning
 the newest hundred was a window onto a mailbox, not a reliable read by ID. The
 backend already offered the direct Sent read. Received mail needed the matching
