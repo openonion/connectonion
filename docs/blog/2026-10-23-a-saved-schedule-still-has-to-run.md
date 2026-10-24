@@ -89,17 +89,36 @@ the native enrollment read responded, but accepting enrollment returned 404.
 Tool metadata exposed a creation function without making it callable in the
 tested runtime.
 
-A later OS-state check found the Mac locked. The desktop has a fallback for
-starting its timer and a visible-content phase around capability publication.
-Visibility remains an untested condition. The next comparison needs the same
-installation with the Mac unlocked and its main window open. That observation
-narrows the next test; it does not establish why both earlier windows missed
-their runs.
+A later OS-state check found the Mac locked, but that flag predated a successful
+earlier run. The control continued on the same normal installation without
+unlocking. Opening `codex://automations` at 09:09:20 UTC was followed by native
+execution, a marker and automatic archiving. The overdue production REM task
+also began and its full scheduled pass completed with successful command exits.
+The installed desktop starts its scheduler capability disabled; the primary
+renderer publishes it from a visible-content phase. This control is consistent
+with that gate without proving every cause of the earlier missed windows.
 
-These lifecycle changes are [under review](https://github.com/openonion/connectonion/pull/2674),
-with 257 local regression tests passing. They have not been released. The owned
-test task was independently confirmed paused and its definition removed. The
-normal desktop's missing timed execution and the account registration path
-remain acceptance blockers. A one-command initialization should remove file
-editing and repeated setup work; it still owes the user an accurate distinction
-between a saved request, an acknowledged timer and work that really ran.
+The adapter had skipped opening a desktop that was already running. The candidate
+now delivers Scheduled after native adoption. An early URL alone still failed
+in a cold-launch control. A guarded retry with the post-adoption delivery passed
+after restarting only the normal desktop, keeping the same profile and managed
+server. It requested 20:35 Sydney, was indexed for 20:36:33, started at 20:36:34
+and auto-archived after its marker appeared. Pause was independently confirmed
+before removing the owned definition. Those times prove execution, not exact
+requested-minute scheduling. The production task stayed ACTIVE across that
+restart and its old launchd job remained absent.
+
+Independent review then caught a migration during Scheduled delivery that could
+remove the old clock before the file adapter noticed the change. The corrected
+handover rechecks the same registration immediately before teardown. Private
+fixtures verify that migration and concurrent definition/index changes preserve
+the previous clock; they do not establish live account-mode support.
+
+These changes are [under review](https://github.com/openonion/connectonion/pull/2674),
+with 262 scheduling/service/CLI command tests and 123 help-contract checks passing.
+They have not been released. Native execution, archiving, pause and initialization
+after a normal desktop restart now have receipts. Account-managed registration,
+exact timing, full server/machine restart recovery and actual native desktop UI
+remain unverified. A one-command initialization should remove file editing and
+repeated setup work; it still owes the user an accurate distinction between a
+saved request, an acknowledged timer and work that really ran.

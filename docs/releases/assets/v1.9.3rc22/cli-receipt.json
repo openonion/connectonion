@@ -1,0 +1,24 @@
+[
+  {
+    "phase": "before",
+    "version": "co 1.9.3rc21",
+    "exit": 0,
+    "observed": {
+      "profile": false,
+      "codex_skill": false,
+      "command_index": false
+    },
+    "fixture": "synthetic home/project; local unreachable backend; no live auth"
+  },
+  {
+    "phase": "after",
+    "version": "co 1.9.3rc22",
+    "exit": 0,
+    "observed": {
+      "profile": true,
+      "codex_skill": true,
+      "command_index": true
+    },
+    "fixture": "synthetic home/project; local unreachable backend; no live auth"
+  }
+]

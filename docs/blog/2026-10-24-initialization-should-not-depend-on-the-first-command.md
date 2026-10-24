@@ -1,3 +1,9 @@
+---
+title: Initialization should not depend on the first command
+date: 2026-10-24
+tags: [CLI, Onboarding, Skills]
+---
+
 # Initialization should not depend on the first command
 
 The request sounded like a missing feature: could initialization link the skills

@@ -888,13 +888,17 @@ the presence of a TOML parser or an enabled feature is not proof of compatibilit
 The normal-profile follow-up on 2026-10-24 verified real native execution,
 auto-archiving and pause after opening the existing app's Scheduled entry point.
 A running App Server alone had not advanced its registered timer.
+This verifies execution, not exact requested-minute timing: the cold retry
+requested 20:35 Sydney, was indexed for 20:36:33 and began at 20:36:34.
 Check `co rem status` before relying on unattended upkeep;
 `co rem sync` remains available by hand.
 
-**Under review, not yet released:** initialization opens the normal installed
+**In opt-in preview 1.9.3rc22:** initialization opens the normal installed
 desktop directly at Scheduled, including when its process is already running,
 then independently confirms activation. After the native index is ready it
-opens Scheduled again, so a cold launch does not depend on an early URL request. Stopping
+opens Scheduled again, so a cold launch does not depend on an early URL request.
+It rechecks the same registration before removing the old clock; migration or
+a concurrent change aborts that handover. Stopping
 waits for native pause acknowledgement before marking the worker disabled or
 starting a replacement launchd timer. A known account-migrated task is identified
 by its legacy association and requires management in Codex Scheduled until an
