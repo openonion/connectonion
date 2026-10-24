@@ -56,9 +56,13 @@ def cached(root: Path, record: str, language: str) -> str | None:
         return None
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
-    if not match or match.group(2) != digest(Notebook(root).read(record)):
+    original = Notebook(root).read(record)
+    if not match or match.group(1) != record or match.group(2) != digest(original):
         return None
-    return saved[match.end():]
+    try:
+        return checked(original, saved[match.end():])
+    except RemError:
+        return None  # Keep the bytes for diagnosis; reading never starts a model.
 
 
 def cached_languages(root: Path, record: str) -> dict[str, str]:
@@ -82,7 +86,10 @@ def prompt(language: str, quotes=(), terms=()) -> str:
             f"`{language}` and write the result to translation.md in this folder. Do not edit "
             "page.md and do not read anything else. Translate the prose only: add nothing, drop "
             "nothing, keep every line's Markdown, every link target and every source id like [3] "
-            "where it is. Keep every privacy label such as [personal] and [sensitive] on the same line, "
+            "where it is. Keep each numbered Sources target, including file paths/revisions/hashes "
+            "and URL queries/fragments, unchanged; translate only its explanatory caption. "
+            "Do not move a citation to another claim line. Keep every privacy label such as "
+            "[personal] and [sensitive] on the same line, "
             "following the same passage; never add, drop or translate a label. "
             "This page is about the reader's own work. Translate \"the user\", \"the owner\" and \"you\" "
             "referring to the notebook owner as the second person of the target language "
@@ -105,6 +112,38 @@ def quoted_passages(text: str) -> Counter:
     return Counter(quotes)
 
 
+def source_definitions(text: str) -> list:
+    """Literal routing identities; captions only split at the existing source delimiter."""
+    from .reader_model import SOURCE
+    blocks = re.findall(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
+    if len(blocks) > 1:
+        raise RemError("Ambiguous source definitions: multiple Sources sections")
+    rows, seen, legacy = [], set(), False
+    for line in (blocks[0] if blocks else "").splitlines():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[\[［](W?\d{1,3})[\]］][ \t]+(.*)", line)
+        if not match:
+            legacy = legacy or bool(re.fullmatch(r"[ \t]*(?:[-*+][ \t]+)?(?:codex|claude-code):[^\s:]+:\d+[ \t]*", line))
+            rows.append(("literal", line))
+            continue
+        number, payload = match.groups()
+        if number in seen:
+            raise RemError("Ambiguous source definition: duplicate citation number")
+        seen.add(number)
+        route = SOURCE.match(f"- [{number}] {payload}")
+        rows.append((number, "target", route.group(2)) if route else (number, "literal", payload))
+    if legacy and seen:
+        raise RemError("Ambiguous source definitions: mixed legacy and numbered sources")
+    return rows
+
+
+def citation_lines(text: str) -> list:
+    """The prompt requires every line to stay; global counts cannot bind a claim."""
+    return [(index, Counter(CITATION.findall(line))) for index, line in enumerate(text.splitlines())
+            if CITATION.search(line)]
+
+
 def checked(original: str, translation: str) -> str:
     """Keep headings, sources, privacy labels and reader markers intact."""
     headings = [line for line in original.splitlines() if line.startswith("#")]
@@ -112,6 +151,11 @@ def checked(original: str, translation: str) -> str:
         raise RemError("The translation changed the page's headings; nothing was cached. Translate again")
     if sorted(CITATION.findall(translation)) != sorted(CITATION.findall(original)):
         raise RemError("The translation changed the page's source ids; nothing was cached. Translate again")
+
+    if source_definitions(original) != source_definitions(translation):
+        raise RemError("The translation changed a source target or source definition; nothing was cached. Translate again")
+    if citation_lines(original) != citation_lines(translation):
+        raise RemError("The translation moved citations between lines; nothing was cached. Translate again")
 
     def privacy_lines(text):
         return [(number, Counter(tag.lower() for tag in PRIVACY_TAG.findall(line)))
@@ -136,6 +180,7 @@ def translate(root: Path, record: str, language: str) -> str:
     text = Notebook(root).read(record)
     if (hit := cached(root, record, language)) is not None:
         return hit
+    source_definitions(text)  # Reject ambiguous input before any paid turn.
     config = read_config(root)
     problem, fix = ready(config)
     if problem:
