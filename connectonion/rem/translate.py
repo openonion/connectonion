@@ -146,6 +146,7 @@ def translate(root: Path, record: str, language: str) -> str:
 def _run_translation(root, record, language, config, text):
     from .languages import owner_languages
     from .runner import run_task
+    from .service import running_marker
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
@@ -153,9 +154,11 @@ def _run_translation(root, record, language, config, text):
     (workspace / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
     run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
-           "phase": "translate", "record": record, "language": language, "outcome": "failed",
-           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+           "phase": "translate", "record": record, "language": language, "outcome": "running",
+           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0, **running_marker()}
     started = monotonic()
+    from . import execution
+    token = execution.begin(run, state_path(root, f"runs/{run['id']}.json"))
     try:
         envelope = run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
         run["usage"] = envelope.get("usage")
@@ -165,9 +168,10 @@ def _run_translation(root, record, language, config, text):
         run["outcome"] = "completed"
         return translation
     finally:
+        execution.end(token)
         error = sys.exc_info()[1]
         if error:
-            run.update(error=str(error), usage=getattr(error, "usage", None) or run["usage"])
+            run.update(outcome="failed", error=str(error), usage=getattr(error, "usage", None) or run["usage"])
         run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
