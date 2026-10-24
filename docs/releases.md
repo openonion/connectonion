@@ -25,6 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc22** activates Codex Scheduled after native registration
+and confirms timer changes before handing off the old clock. Normal-profile
+execution and automatic initialization after a desktop restart passed; newer
+account-managed registration and exact requested-minute timing remain unverified.
+All initialization entry points now repair the profile, skill links and command
+index together. Stable remains **1.9.2**; Python **3.11+** is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc22'
+```
+
+See [the preview notes](releases/1.9.3rc22.md) and their acceptance boundaries.
+
+## Previous previews
+
 Release candidate **1.9.3rc21** moves eligible Codex notebooks on macOS to
 Codex desktop Scheduled, verifies registration before replacing the old clock,
 and archives completed maintenance conversations. Other timezones, headless Macs
@@ -36,8 +51,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc21'
 ```
 
 See [the preview notes](releases/1.9.3rc21.md) and their native execution evidence.
-
-## Previous previews
 
 Release candidate **1.9.3rc20** recognizes already-owned addresses during
 repeat email setup even if that domain no longer accepts new purchases. It

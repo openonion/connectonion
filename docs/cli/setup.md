@@ -1,4 +1,4 @@
-> **Unreleased change.** Under review in [issue #2675](https://github.com/openonion/connectonion/issues/2675); this behavior is not yet in a published package.
+> **Preview 1.9.3rc22.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
 
 # co setup — Customize your profile and import skills
 

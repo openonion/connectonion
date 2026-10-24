@@ -400,7 +400,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc21
+## Current Version: 1.9.3rc22
+
+1.9.3rc22 wakes Codex Scheduled after native task adoption, so a running App
+Server no longer stands in for an initialized desktop scheduler. Normal-profile
+execution, archiving, pause and initialization after a desktop restart have
+receipts. Native handover rechecks the same registration before old-clock
+teardown; account-managed mutation and exact requested-minute timing remain
+unverified. Every initialization entry point also prepares and repairs the local
+profile, bundled skill links and command index while preserving custom data.
+Stable remains 1.9.2; Python 3.11+ is required. See
+[1.9.3rc22 notes](docs/releases/1.9.3rc22.md).
+
+- 1.9.3rc22 (wake native Scheduled after adoption; confirm timer lifecycle; complete and repair all initialization entry points).
+
+### Previous candidate: 1.9.3rc21
 
 1.9.3rc21 moves eligible Codex notebooks on macOS to Codex desktop Scheduled.
 The native file must be adopted before an old timer is removed; failed adoption,
