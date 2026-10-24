@@ -27,4 +27,4 @@ def test_missing_identity_is_actionable():
 def test_no_browser_prints_url_without_side_effect(capsys):
     with patch('webbrowser.open') as opened:handle_email_open(no_browser=True)
     opened.assert_not_called()
-    assert 'https://mail.openonion.ai' in capsys.readouterr().out
+    assert capsys.readouterr().out.strip() == 'https://mail.openonion.ai'
