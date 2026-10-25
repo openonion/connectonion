@@ -73,7 +73,9 @@ def test_rem_session_codex_page_and_openable_sources(notebook):
     assert "### 09:12\n> Build a simple session reader\n> # Keep this typed heading" in page
     assert "## Final reply\n> The session reader is ready." in page
     offset = len(path.read_bytes().splitlines(keepends=True)[0])
-    source = f"codex:3456-abcdef12:{offset}"
+    from connectonion.rem.source import session_source
+    source = session_source("codex", "3456-abcdef12", offset,
+                            "Build a simple session reader\n# Keep this typed heading")
     assert "## Sources\n- " + source in page
     from connectonion.rem.reader import snapshot, TEMPLATE
     data = snapshot(root, local=True)

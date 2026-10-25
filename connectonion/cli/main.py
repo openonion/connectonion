@@ -3054,6 +3054,9 @@ def audit(
     handle_audit(command, review, since, inventory, json_output, model)
 
 
+from .commands.asr_commands import transcribe_audio
+app.command('asr', epilog='Example: co asr recording.m4a --language zh --json  |  Save provider: co env set ASR_PROVIDER connectonion')(transcribe_audio)
+
 from .typer_groups import name_the_way_back  # noqa: E402 — needs every command registered
 
 name_the_way_back(app)

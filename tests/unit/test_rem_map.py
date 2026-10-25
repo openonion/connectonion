@@ -1244,8 +1244,8 @@ def test_last_seen_does_not_lag_the_last_activity_an_investigation_read(tmp_path
     assert '- Last seen: 2026-10-15' in nb.read(record)
 
 
-def test_the_owners_own_domain_is_mapped_as_their_company(tmp_path, monkeypatch):
-    """The owner's colleagues still give the company a page, marked as their own."""
+def test_the_owners_sending_domain_alone_is_not_mapped_as_their_company(tmp_path, monkeypatch):
+    """The owner's colleagues give the domain an ordinary organisation page."""
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
@@ -1255,8 +1255,7 @@ def test_the_owners_own_domain_is_mapped_as_their_company(tmp_path, monkeypatch)
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert [row['domain'] for row in result['orgs']] == ['example.ai', 'example.com']
-    assert result['orgs'][0]['own'] is True
-    assert 'own' not in result['orgs'][1]
+    assert all('own' not in row for row in result['orgs'])
 
 
 def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():

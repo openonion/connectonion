@@ -1129,6 +1129,28 @@ def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, 
     assert result['repairs'] == 1
 
 
+def test_unretained_original_records_unverified_status_without_refusal(notebook, monkeypatch, tmp_path):
+    record = 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = notebook.read(record)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Unknown — not investigated yet', '- Unknown')
+                         .replace('## What it is\n- Unknown', '## What it is\nA local demo. [1]')
+                         .replace('- (none yet)', '- [1] codex:session-atlas:42 — 2026-10-01'))
+    items = [{'role': 'user', 'source': 'codex:session-atlas:42', 'text': ''}]
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: pytest.fail('No readable originals to audit'))
+
+    runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None,
+                              claim_config=default_config())
+    assert 'A local demo.' in notebook.read(record)
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['verdict'] == 'insufficient' and report['unretained_citations'] == ['1']
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted'] is True
+    assert review['factual_quality'] == ('bounded citation audit insufficient; '
+                                         '1 citations unverified (originals not retained)')
+
+
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
 def test_runner_restores_dropped_line_after_one_unsuccessful_repair(notebook, tmp_path, stage):
     from connectonion.rem.page_review import dropped

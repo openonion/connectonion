@@ -2,7 +2,7 @@
 Purpose: Lay out one investigation's gathered material as files an agent searches, instead of chunks a model summarises
 LLM-Note:
   Dependencies: imports from [hashlib, json, pathlib, .chat.CHAT_KINDS] | imported by [rem/investigate.py] | tested by [tests/unit/test_rem_evidence.py]
-  Data flow: write_evidence(directory, items) → one file per mailbox-month (split past 40k chars), per attachment, per session or chat → index.md, one line per file → {"index", "files", "sources", "chars"}
+  Data flow: write_evidence(directory, items) → searchable files, index.md and unchanged originals.json → {"index", "originals", "files", "sources", "chars"}
   State/Effects: writes under the given directory only (0700); the caller owns retention
 
 Why files (#1850, owner 2026-09-24/30). The script has already gathered and
@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 
 from .chat import CHAT_KINDS
+from .files import write_json
 
 INDEX = "index.md"
 
@@ -47,7 +48,7 @@ def _group(item: dict) -> str:
         # Mail: a month per mailbox. Each entry keeps its `### <source id>`
         # heading, so a search hit still names the one message to cite.
         return f"{kind}:{str(item.get('timestamp', ''))[:7] or 'undated'}"
-    return source.rsplit(":", 1)[0]   # a session: codex:<session>:<offset>
+    return source.rsplit(":", 1)[0]   # the session, excluding its offset and optional text hash
 
 
 def _file_name(group: str, first: str) -> str:
@@ -95,6 +96,8 @@ def _split(group: str, entries: list[dict]):
 def write_evidence(directory: Path, items: list[dict]) -> dict:
     """Write every item, oldest first within each file; return the index path and every citable id."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    originals = directory / "originals.json"
+    write_json(originals, items)
     groups: dict[str, list[dict]] = {}
     for item in sorted(items, key=lambda i: str(i.get("timestamp", ""))):
         groups.setdefault(_group(item), []).append(item)
@@ -123,4 +126,4 @@ def write_evidence(directory: Path, items: list[dict]) -> dict:
         "each entry starts with `### <source id> · <timestamp> · local <local_time> · <speaker>` "
         "(local time when available); cite that source id.\n\n"
         + "\n".join(lines) + "\n", encoding="utf-8")
-    return {"index": index, "files": len(groups), "sources": sources, "chars": total}
+    return {"index": index, "originals": originals, "files": len(groups), "sources": sources, "chars": total}

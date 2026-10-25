@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc22
+## Current Version: 1.9.3rc23
+
+Candidate: generic ASR with a native Python Codex dictation adapter and an
+explicit ConnectOnion provider. Existing co configuration selects the provider;
+Codex is the default, no external codex-asr command is installed, no fallback
+uploads audio to another provider. Long recordings use local FFmpeg windows
+and resumable per-part checkpoints with raw text preserved. Short synthesized
+English reached both providers; a nine-minute fixture completed two Codex parts.
+Real long-meeting and multilingual recognition quality remain unverified.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc23.md).
+
+- 1.9.3rc23 (configurable Python ASR, Codex default, long-audio windows and checkpoint resume).
+
+### Previous candidate: 1.9.3rc22
 
 1.9.3rc22 wakes Codex Scheduled after native task adoption, so a running App
 Server no longer stands in for an initialized desktop scheduler. Normal-profile
@@ -2130,6 +2143,10 @@ gate. No new paid session is required for final non-billing regression checks.
 - 1.5.2 (Claude calls carry the system prompt again — Anthropic requests had been dropping it entirely and silently; `.co/docs/` is no longer empty on a PyPI install, the 194 docs files now ship inside the wheel)
 
 ## Files to Update When Versioning
+
+Also update `MIN_VERSION` in `connectonion/handoff/replies.py` for each published
+candidate: the recipient installation prompt is pinned to the sender's released
+version and its own tag. The handoff acceptance test checks this separate floor.
 
 Four files carry the package version, and `test_the_version_agrees_with_itself.py`
 fails if they disagree — so a release that misses one is caught rather than

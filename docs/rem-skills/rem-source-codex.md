@@ -34,6 +34,12 @@ being called proof that no user request exists.
 
 ## How the store is laid out
 
+- Message IDs are `codex:<session>:<offset>-<h8>`, where `h8` is the first
+  eight hex characters of SHA-256 of the parsed message text, before redaction
+  or truncation. Copied prefixes share an ID; different messages at the same
+  byte offset in resumed or forked rollout files have different IDs. Legacy
+  `codex:<session>:<offset>` IDs stay valid without migrating stored data.
+  Claude Code IDs remain `claude-code:<session>:<offset>`.
 - Dated directories, oldest first, so a backfill walks the timeline forward.
 - Progress is per file: a byte offset plus a digest of the consumed prefix, so
   an appended session resumes and a rewritten one is refused.
