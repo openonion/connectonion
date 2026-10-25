@@ -25,6 +25,23 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc23** adds generic `co asr` and Python `asr()`.
+Codex is the default provider; existing co configuration can select
+ConnectOnion. Long files are prepared locally in resumable windows. Both
+providers upload audio; the Codex endpoint is unofficial. No Watch connector
+or automatic REM ingestion is included. Stable remains **1.9.2**.
+
+After package and GitHub prerelease verification:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc23'
+```
+
+See [the candidate notes](releases/1.9.3rc23.md) and
+[ASR configuration and recovery](asr.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc22** activates Codex Scheduled after native registration
 and confirms timer changes before handing off the old clock. Normal-profile
 execution and automatic initialization after a desktop restart passed; newer
@@ -37,8 +54,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc22'
 ```
 
 See [the preview notes](releases/1.9.3rc22.md) and their acceptance boundaries.
-
-## Previous previews
 
 Release candidate **1.9.3rc21** moves eligible Codex notebooks on macOS to
 Codex desktop Scheduled, verifies registration before replacing the old clock,
