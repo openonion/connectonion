@@ -308,21 +308,32 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
     if app_id is None:
         _offer_existing(brand)
         product = "Lark" if brand == "lark" else "Feishu"
-        print(f"Creating a {product} application. Scan this with the Feishu or Lark app,")
-        print("or open the link, and approve it. The application is yours, in your tenant.")
+        print(f"Creating a {product} application. Scan this with the Feishu or Lark app,", flush=True)
+        print("or open the link, and approve it. The application is yours, in your tenant.", flush=True)
     else:
-        print(f"Authorizing {app_id}. Scan this with the Feishu or Lark app, or open")
-        print("the link, and approve it. Its groups and permissions are unchanged.")
-    print()
+        print(f"Authorizing {app_id}. Scan this with the Feishu or Lark app, or open", flush=True)
+        print("the link, and approve it. Its groups and permissions are unchanged.", flush=True)
+    print(flush=True)
 
     def show(info) -> None:
         url = cli_page_url(info.get("url", ""), brand)
-        print(_qr(url))
-        print(url)
-        print()
-        print(_link_life(info.get("expire_in")))
-        print()
-        print("Waiting for approval. Ctrl-C to stop.")
+        user_code = info.get("user_code")
+        if not user_code and url:
+            try:
+                parsed = urlparse(url)
+                query_dict = dict(parse_qsl(parsed.query, keep_blank_values=True))
+                user_code = query_dict.get("user_code")
+            except Exception:
+                pass
+
+        if user_code:
+            print(f"Code: {user_code}", flush=True)
+        print(url, flush=True)
+        print(_link_life(info.get("expire_in")), flush=True)
+        print(flush=True)
+        print(_qr(url), flush=True)
+        print("Waiting for approval. Ctrl-C to stop.", flush=True)
+        sys.stdout.flush()
 
     try:
         options = {"source": "connectonion"}
