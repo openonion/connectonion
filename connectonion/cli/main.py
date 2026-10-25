@@ -262,9 +262,13 @@ def create(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co host  |  co host --port 8001")
+@app.command(epilog="Example:  co host  |  co host --background  |  co host --status  |  co host --stop")
 def host(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
+    background: bool = typer.Option(False, '--background', help='Install/start a macOS login service for this project; preserves foreground behavior'),
+    status: bool = typer.Option(False, '--status', help='Read-only: inspect this project service and process; no device-ready claim'),
+    stop: bool = typer.Option(False, '--stop', help='Stop and disable this project service across login'),
+    uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove this project service; preserve agent, identity, memory and logs'),
 ):
     """Serve the agent in this directory: runs ./agent.py with co's own Python, so it works however co was installed.
 
@@ -273,6 +277,21 @@ def host(
     """
     import os
     import subprocess
+    if any((background, status, stop, uninstall)):
+        if sum((background, status, stop, uninstall)) != 1 or (port is not None and not background):
+            console.print('Choose one service action; --port applies to --background. Next: co host --help')
+            raise typer.Exit(2)
+        from .host_service import HostService, HostServiceError
+        from ..environment import explicit_env_file
+        import json
+        service = HostService(Path.cwd(), port=port, env_file=explicit_env_file())
+        try:
+            operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
+            console.print(json.dumps(operation()), markup=False)
+        except (HostServiceError, OSError) as error:
+            console.print(str(error) if isinstance(error, HostServiceError) else 'Cannot write the service files. Next: co host --status', markup=False)
+            raise typer.Exit(1) from None
+        return
     if not Path("agent.py").exists():
         console.print("[red]No agent.py in this directory.[/red] Make one: co create my-agent, then cd my-agent")
         raise typer.Exit(2)
