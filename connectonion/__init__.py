@@ -66,6 +66,7 @@ _FROM = {
     # calls `connectonion.llm_do(...)` — so the function is what this must return.
     "llm_do": ".llm_do",
     "transcribe": ".transcribe",
+    "asr": ".audio_asr",
     "load_system_prompt": ".prompts",
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
     **{name: ".plugins" for name in ("CodexPlugin", "ClaudeCodePlugin", "PermissionMode")},
@@ -148,6 +149,7 @@ __all__ = [
     "create_tool_from_function",
     "llm_do",
     "transcribe",
+    "asr",
     "load_system_prompt",
     "xray",
     "replay",

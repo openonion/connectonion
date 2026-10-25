@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc22
+## Current Version: 1.9.3rc23
+
+Candidate: generic ASR with a native Python Codex dictation adapter and an
+explicit ConnectOnion provider. Existing co configuration selects the provider;
+Codex is the default, no external codex-asr command is installed, no fallback
+uploads audio to another provider. Short synthesized English has one live
+accepted Codex request; long meetings and multilingual quality remain unverified.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc23.md).
+
+- 1.9.3rc23 (configurable ASR, Codex default, built-in Python adapter).
+
+### Previous candidate: 1.9.3rc22
 
 1.9.3rc22 wakes Codex Scheduled after native task adoption, so a running App
 Server no longer stands in for an initialized desktop scheduler. Normal-profile
