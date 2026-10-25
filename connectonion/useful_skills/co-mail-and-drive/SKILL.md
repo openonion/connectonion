@@ -184,7 +184,7 @@ inbox directory, like `co telegram listen`. It never re-reads a window, so mail 
 notifications is not missed, and a restart resumes where it stopped instead of answering again.
 Options are environment variables: `CO_OUTLOOK_FROM` (sender patterns, comma-separated),
 `CO_OUTLOOK_FOLDERS` (default `inbox,junkemail`), `CO_OUTLOOK_EVERY` (default `30m`),
-`CO_OUTLOOK_SINCE` (where the first round starts; default now). Needs `pip install 'connectonion[outlook]'`.
+`CO_OUTLOOK_SINCE` (where the first round starts; default now). It uses the `co auth microsoft` grant.
 
 ```bash
 CO_OUTLOOK_FROM="*@student.unsw.edu.au" co outlook listen

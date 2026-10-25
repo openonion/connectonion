@@ -1,12 +1,12 @@
 """
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
-  Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
+  Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py, inbox/outlook.py (the inbox's Graph client)] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
   Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at never use the one-shot sendMail / reply actions (they delivered at once, #1198): send() creates a draft carrying PidTagDeferredSendTime (SystemTime 0x3FEF) and PidTagDeferredDeliveryTime (0x000F) and submits it; reply() does createReply → POST attachments → PATCH the same two properties → send, so Exchange holds the exact draft until then (needs Mail.ReadWrite) | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh atomically saves the selected credential record
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments, cc, bcc) keeps send_at third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only; cc/bcc are set on the reply action's message (or PATCHed onto the deferred reply draft) so a copied third person still gets a threaded reply (#1247)
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
-  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
+  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate (ProviderCredentialError carries the status; inbox/outlook.py reads 410 and 429/5xx from it) | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
 
 Outlook tool for reading and managing Outlook emails via Microsoft Graph API.
 
@@ -175,11 +175,16 @@ class Outlook:
                                    api_key=api_key, post=httpx.post)
 
     def _request(self, method: str, endpoint: str, **kwargs) -> dict:
-        """Make authenticated request to Microsoft Graph API."""
+        """Make authenticated request to Microsoft Graph API.
+
+        `headers` are added to the defaults: the inbox's delta round sends a
+        `Prefer` for its page size and for text bodies.
+        """
         token = self._get_access_token()
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            **kwargs.pop("headers", {}),
         }
 
         url = f"{self.GRAPH_API_URL}{endpoint}"

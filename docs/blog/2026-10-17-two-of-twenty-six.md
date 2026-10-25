@@ -27,11 +27,10 @@ up the 3 new ones.
 
 Still missing: push notifications instead of polling, and the 410 case (Graph
 dropping the sync state) has only been tested in unit tests. The Graph calls go
-through Charter, an open-source library I maintain, which is only installed
-with the `outlook` extra.
+through the Outlook tool's own client, so the listener shares its token refresh
+and retries, and needs nothing new installed.
 
 ```bash
-python -m pip install 'connectonion[outlook]'
 co auth microsoft
 CO_OUTLOOK_FROM='*@student.unsw.edu.au' co outlook listen
 ```
