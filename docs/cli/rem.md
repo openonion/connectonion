@@ -654,6 +654,13 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
+- **Candidate correction for retained mail (#2626):** a cited original may be
+  opened from a verified local archive even when its derived index row is absent.
+  Provider/native identity and the full archive filename must agree; ambiguous
+  short IDs or conflicting index candidates are not guessed. Privacy, truncation
+  and retrieval/retention clocks stay intact. This read does not rebuild the
+  index, query a mailbox, or establish a provider conversation. It is pending
+  review/publication and is not behavior claimed for installed rc12.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from
