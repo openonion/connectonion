@@ -65,6 +65,8 @@ PROVIDERS = {
     "telegram": ("connectonion.inbox.telegram", "Telegram", {}),
     # Socket Mode is a WebSocket too; experimental, tested against fakes only.
     "slack": ("connectonion.inbox.slack", "Slack", {}),
+    # Graph delta query on the Outlook tool's own client, so no extra (#1733).
+    "outlook": ("connectonion.inbox.outlook", "Outlook", {}),
 }
 
 

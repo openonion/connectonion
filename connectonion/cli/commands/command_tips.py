@@ -298,6 +298,19 @@ NEXT = {
     "co outlook search": HANDLER,
     "co outlook download": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook scheduled": HANDLER,
+    # Outlook as an inbox (#1733): the same table as telegram. `reply` and `send`
+    # are the Outlook tool's own, above.
+    "co outlook listen": "co outlook receive --timeout 0",
+    "co outlook receive": "co outlook log",
+    "co outlook done": "co outlook receive --timeout 0",
+    "co outlook edit": "co outlook log",
+    "co outlook delete": "co outlook log",
+    "co outlook react": "co outlook log",
+    "co outlook check": HANDLER,
+    "co outlook ls": "co outlook receive --timeout 0",
+    "co outlook chats": HANDLER,
+    "co outlook log": "co outlook ls",
+    "co outlook consume": "co outlook ls",
     "co outlook cancel": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook contact add": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook contact list": HANDLER,  # 1.8.4 already emits a contextual next step

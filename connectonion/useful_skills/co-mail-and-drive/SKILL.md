@@ -177,6 +177,29 @@ co outlook cancel 1           # pull one back before it goes
 
 Outlook can also save an email's attachments: `co outlook download 3 --listing <listing-id> --to ~/Downloads`.
 
+### Outlook as an inbox: an agent on new mail (#1733)
+
+`co outlook listen` watches folders with Graph's delta query and writes each new email to the
+inbox directory, like `co telegram listen`. It never re-reads a window, so mail buried under
+notifications is not missed, and a restart resumes where it stopped instead of answering again.
+Options are environment variables: `CO_OUTLOOK_FROM` (sender patterns, comma-separated),
+`CO_OUTLOOK_FOLDERS` (default `inbox,junkemail`), `CO_OUTLOOK_EVERY` (default `30m`),
+`CO_OUTLOOK_SINCE` (where the first round starts; default now). It uses the `co auth microsoft` grant.
+
+```bash
+CO_OUTLOOK_FROM="*@student.unsw.edu.au" co outlook listen
+co outlook check                 # listener, connection, unread count
+co outlook receive --timeout 0   # the next email, as one JSON line
+co outlook consume ./answer.sh   # run your program on each one
+co outlook done <message-id>     # handled without replying
+co outlook ls                    # what is queued
+co outlook chats                 # one line per thread
+co outlook log                   # everything received
+```
+
+Answer with `co outlook reply` as above. `co outlook edit`, `co outlook delete` and `co outlook react`
+refuse: a sent email cannot be edited, and mail has no reactions.
+
 ## Gmail mailbox actions and incoming attachments (1.8.4 candidate)
 
 ```bash
