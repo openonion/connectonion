@@ -5,12 +5,12 @@ images:
     caption: The actual CLI help explains the Codex default, ConnectOnion override and preview limits.
     scenario: User reads co asr --help before selecting an audio file; captured through the equivalent Python module entry point.
     viewport: 1040px terminal rendering, dark, 2x
-    commit: a713f079
+    commit: 23473ff9
     source_run: 'local: python scripts/capture_asr_release_cli.py'
   - file: asr-config-recovery.png
     alt: Saved provider configuration and a missing-file JSON error
     caption: A disposable configuration selects ConnectOnion; a missing file fails before authentication or upload.
     scenario: User saves ASR_PROVIDER and attempts to transcribe a missing file in a fresh HOME.
     viewport: 1040px terminal rendering, dark, 2x
-    commit: a713f079
+    commit: 23473ff9
     source_run: 'local: python scripts/capture_asr_release_cli.py'

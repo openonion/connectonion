@@ -2144,6 +2144,10 @@ gate. No new paid session is required for final non-billing regression checks.
 
 ## Files to Update When Versioning
 
+Also update `connectonion/handoff/replies.py::MIN_VERSION` for each published
+candidate: the recipient installation prompt is pinned to the sender's released
+version and its own tag. The handoff acceptance test checks this separate floor.
+
 Four files carry the package version, and `test_the_version_agrees_with_itself.py`
 fails if they disagree — so a release that misses one is caught rather than
 shipped.

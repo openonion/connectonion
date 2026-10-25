@@ -157,7 +157,9 @@ def test_cli_help_json_and_error(audio, monkeypatch):
     app.command('asr')(commands.transcribe_audio)
     runner = CliRunner()
     result = runner.invoke(app, ['--help'])
-    assert result.exit_code == 0 and '--provider' in result.output and 'Codex' in result.output
+    from rich.text import Text
+    help_text = Text.from_ansi(result.output).plain
+    assert result.exit_code == 0 and '--provider' in help_text and 'Codex' in help_text
     monkeypatch.setattr(module(), 'asr', lambda *args, **kwargs: {'provider': 'codex', 'text': '你好'})
     result = runner.invoke(app, [str(audio), '--json'])
     assert result.exit_code == 0 and json.loads(result.stdout)['text'] == '你好'
