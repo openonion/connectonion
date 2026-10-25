@@ -1,5 +1,19 @@
 # ASR: one capability, two providers
 
+Requires the **1.9.3rc23 preview** and FFmpeg, including `ffprobe`, even for
+short files. Stable 1.9.2 does not include `co asr`. The
+[package](https://pypi.org/project/connectonion/1.9.3rc23/) and
+[GitHub prerelease](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc23)
+are published. Install this exact preview without changing the stable recommendation:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc23'
+brew install ffmpeg
+```
+
+The FFmpeg installation example is for macOS. On other platforms install
+`ffmpeg` and `ffprobe` with your package manager and put both on PATH.
+
 ```bash
 co asr recording.m4a --language zh
 co asr recording.m4a --json

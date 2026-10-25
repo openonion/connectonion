@@ -11,7 +11,7 @@ belong to the watch integration. The same file may come from a phone, a meeting
 recorder or an agent workflow. Requiring each source to choose its own model,
 authentication and transcript format repeats the hardest part of the experience.
 
-The proposed ConnectOnion ASR preview gives these sources one capability:
+ConnectOnion 1.9.3rc23 gives these sources one capability:
 `co asr recording.m4a`. Codex is the default; the existing co configuration can
 select ConnectOnion's own transcription instead. An explicit provider override
 affects one call. Provider failure never changes where an audio file is sent.
@@ -38,6 +38,8 @@ removed a tempting text-similarity merge: two matching phrases can be genuine
 repeated speech. Raw words remain in order, including possible boundary overlap;
 any later cleaned-up account is a separate version.
 
-This post is a release draft. The candidate is not advertised as available until
-the matching PyPI artifact and GitHub prerelease have been verified. The
-[ASR configuration draft](/asr.md) records the workflow and limitations.
+The [PyPI preview](https://pypi.org/project/connectonion/1.9.3rc23/) and
+[GitHub prerelease](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc23)
+are public, with matching artifact hashes and a verified clean installation.
+The [ASR guide](../asr.md) records setup, recovery and limitations. Watch pairing,
+the background Host and automatic REM ingestion remain separate work.
