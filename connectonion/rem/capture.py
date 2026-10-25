@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import RemError, read_json, state_path, write_json
-from .source import KINDS, SKIPPED, UNFAMILIAR, _verify_prefix
+from .source import KINDS, SKIPPED, UNFAMILIAR, _verify_prefix, session_source
 
 
 def capture(root: Path, transcript: Path, kind: str, *, seconds: float = .5) -> dict:
@@ -34,7 +34,7 @@ def capture(root: Path, transcript: Path, kind: str, *, seconds: float = .5) -> 
                 break
             try:
                 row = json.loads(line)
-                item = KINDS[kind]['message'](row, datetime.min.replace(tzinfo=timezone.utc))
+                item = KINDS[kind]['message'](row, datetime.min.replace(tzinfo=timezone.utc), meta)
             except (ValueError, TypeError, AttributeError) as error:
                 raise RemError("Malformed transcript; already captured records remain available") from error
             if item is SKIPPED or item is UNFAMILIAR:
@@ -42,10 +42,14 @@ def capture(root: Path, transcript: Path, kind: str, *, seconds: float = .5) -> 
             elif item:
                 session = item.pop('session', None) or meta.get('id') or transcript.name
                 project = item.pop('cwd', None) or meta.get('cwd', '')
-                item.update(source=f'{kind}:{session}:{start}', project=project, reference=transcript.as_uri())
+                item.update(source=session_source(kind, session, start, item['text']), project=project,
+                            reference=transcript.as_uri())
                 identity = hashlib.sha256(item['source'].encode()).hexdigest()
                 path = state_path(root, f'capture-queue/{identity}.json')
-                if not path.exists():
+                previous = read_json(path, {})
+                if previous and (previous.get('source') != item['source'] or previous.get('text') != item['text']):
+                    raise RemError(f"Captured session citation has conflicting content: {item['source']}")
+                if not previous:
                     write_json(path, item)
                     count += 1
             digest.update(line)

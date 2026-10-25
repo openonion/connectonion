@@ -20,6 +20,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
+from .source import SESSION_SOURCE_PATTERN, parse_session_source, session_source
 
 LOG = "tidy.json"
 WEB_LINE = re.compile(r"^\s*- web: not searched\b.*$")
@@ -459,7 +460,7 @@ def _lines(notebook: Notebook) -> list[dict]:
 # Which cited session lines the user typed, checked once each: the session
 # files are read only for ids no earlier tidy has seen.
 TYPED = "typed-sources.json"
-SESSION_SOURCE = re.compile(r"(?m)^\s*- \[(W?\d+)\]\s*:?\s*((codex|claude-code):([^\s:]+):(\d+))")
+SESSION_SOURCE = re.compile(rf"(?m)^\s*- \[(W?\d+)\]\s*:?\s*({SESSION_SOURCE_PATTERN})(?![\w-])")
 
 
 def _not_typed(notebook: Notebook) -> list[dict]:
@@ -492,7 +493,7 @@ def _not_typed(notebook: Notebook) -> list[dict]:
     return removed
 
 
-def _session_files(root: Path) -> dict[str, tuple[str, Path]]:
+def _session_files(root: Path) -> dict[str, list[tuple[str, Path]]]:
     """Every subscribed Codex and Claude Code session file by its session id, without opening them."""
     from .service import subscriptions
     files = {}
@@ -500,27 +501,37 @@ def _session_files(root: Path) -> dict[str, tuple[str, Path]]:
         kind, folder = subscription.get("kind"), Path(subscription.get("root") or "")
         if kind in ("codex", "claude-code") and folder.is_dir():
             for found in folder.rglob("rollout-*.jsonl" if kind == "codex" else "*.jsonl"):
-                files[found.stem[-36:] if kind == "codex" else found.stem] = (kind, found)
+                session = found.stem[-36:] if kind == "codex" else found.stem
+                files.setdefault(session, []).append((kind, found))
     return files
 
 
 def _typed(files: dict, source: str) -> bool:
-    """Did the user type the line `kind:session:offset` names? A file gone or unreadable says nothing: kept."""
+    """Did the user type this citation's line? Missing or unreadable evidence is kept."""
+    kind, session, offset = parse_session_source(source)
+    for _, path in files.get(session, []):
+        typed = _typed_line(path, kind, session, offset, source)
+        if typed is not None:
+            return typed
+    return True
+
+
+def _typed_line(path: Path, kind: str, session: str, offset: int, source: str) -> bool | None:
     from .files import RemError
     from .source import KINDS, SKIPPED
-    kind, session, offset = source.split(":")
-    if session not in files:
-        return True
-    with files[session][1].open("rb") as transcript:
+    with path.open("rb") as transcript:
         first = transcript.readline(1_000_000)
-        transcript.seek(int(offset))
+        transcript.seek(offset)
         line = transcript.readline()
     try:
         meta = KINDS[kind]["meta"](json.loads(first))
         item = None if meta.get("skip") else KINDS[kind]["message"](
             json.loads(line), datetime.min.replace(tzinfo=timezone.utc), meta)
     except (ValueError, TypeError, AttributeError, RemError):
-        return True
+        return None
+    if kind == "codex" and "-" in source.rsplit(":", 1)[1]:
+        if not isinstance(item, dict) or session_source(kind, session, offset, item["text"]) != source:
+            return None
     return not (meta.get("skip") or item is SKIPPED)
 
 
