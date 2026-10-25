@@ -22,14 +22,46 @@ under `~/.co/host-services/`. An edited service definition is preserved rather
 than overwritten. Use the same project directory to inspect or stop its service.
 
 Status distinguishes a configured plist from a currently observed process.
+Native startup additionally requires that process to own the responding local
+Host listener. Readiness discovers the actual port, including a project
+`AGENT_PORT` override; it does not equate a shared identity with this process.
 It does not establish device pairing, Codex readiness or successful REM work.
 Stop disables the service across login; start enables it. Uninstall removes only
 the service definition, preserving project code, identity, memory and logs.
 Only one service action can be selected per invocation. `--port` applies only
 when starting the background service. Other platforms can use foreground hosting.
 
-The standard initialization mode, native Codex Host adapter, source-scoped REM
-setup and versioned device setup URL remain subsequent slices in this PR. Do
-not substitute `co ai --harness codex` without a prompt as a persistent Host:
-the existing command is explicitly one-shot. Do not run the broad `co rem init`
-source scan merely to create empty local storage.
+## Standard Mac preparation
+
+```bash
+co init --background
+```
+
+The candidate initializes a dedicated profile at `~/.co/runtime/mac-host` through
+the standard project initializer, prepares REM directories/configuration without
+mapping or investigating sources, then starts a native Codex Host user service.
+New profiles are strict-trust, unlisted and have no chat-channel listeners.
+Existing user configuration is kept. New REM configuration selects Codex; it
+does not silently fall back to a different runner.
+
+`co host --native-codex` runs that native profile in the foreground. It reuses the
+existing Codex plugin and Host session/permission boundaries, with no outer
+ConnectOnion model call. Session continuation comes from owned Host storage;
+remote text cannot choose a native thread ID, cwd or model. File/image inputs
+are not yet accepted by this native profile; audio is transcribed separately.
+
+`AGENT_CONFIG_PATH`, selected env-file and nonsecret Codex paths survive service
+restart. `CODEX_CMD` must name one executable rather than a command with arguments
+or credentials; configure provider options in its own configuration. A saved
+baseline allows normal interpreter upgrades and reruns without repeating port
+options, while preserving actual plist edits.
+
+The result reports service/process, REM preparation, Codex login preflight and
+missing Watch connector separately. Login preflight does not prove remaining
+quota or a completed model call. No mailbox/body scan, microphone, ASR upload
+or REM investigation starts during setup. The real Watch connector, matching
+native bridge and final published setup URL remain required before claiming
+complete device onboarding. Do not use a fake QR in their place.
+
+Scoped test observations and remaining gates are recorded in
+[candidate acceptance](../acceptance/device-bootstrap/2026-10-26.md).

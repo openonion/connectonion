@@ -61,6 +61,19 @@ def machine(tmp_path, monkeypatch):
 
 class TestAProjectWithNoKeyOfItsOwn:
 
+    def test_selected_global_root_wins_over_default_home(self, machine, tmp_path, monkeypatch):
+        machine_keys, project = machine
+        selected = tmp_path/'selected-global'
+        selected_keys = address.generate()
+        address.save(selected_keys, selected)
+        monkeypatch.setenv('AGENT_CONFIG_PATH', str(selected))
+
+        resolved = resolve_agent_identity(project/'.co')
+
+        assert resolved['address'] == selected_keys['address']
+        assert resolved['address'] != machine_keys['address']
+        assert not (project/'.co'/'keys'/'agent.key').exists()
+
     def test_it_uses_the_machine_identity(self, machine):
         machine_keys, project = machine
 

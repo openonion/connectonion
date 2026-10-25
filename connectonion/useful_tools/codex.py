@@ -386,6 +386,11 @@ def _base_command():
     """codex launch argv: $CODEX_CMD (space-split) else PATH lookup, + app-server."""
     env = os.environ.get("CODEX_CMD")
     if env:
+        # A resolved executable path may contain spaces. Preserve that one
+        # argument; keep legacy command+arguments behavior for other values.
+        expanded = os.path.expanduser(env)
+        if os.path.isfile(expanded):
+            return [os.path.abspath(expanded), "app-server"]
         return env.split() + ["app-server"]
     found = shutil.which("codex")
     return [found, "app-server"] if found else None
