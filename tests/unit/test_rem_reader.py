@@ -2033,3 +2033,143 @@ def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
     assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+
+
+@pytest.mark.parametrize('target', ['../people/old.md#facts', '../people/corin%20marsh.md#facts'])
+def test_page_links_open_canonical_record_and_keep_fragment(target):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['resolve', 'notebookPath', 'navigationRecord', 'safeHref'])
+    result = _run_reader_js(functions + '\n' + re.search(r'^function byPath\(.*$', page, re.M).group(0) + 'const target = ' + json.dumps(target) + ';' + r'''
+      const REM = {aliases: {'people/old.md': 'people/corin marsh.md'}, records: [{path: 'people/corin marsh.md'}]};
+      console.log(JSON.stringify(safeHref('projects/pilot.md', target)));
+    ''')
+    assert result == {'href': '#r=people%2Fcorin%20marsh.md&h=facts', 'external': False}
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('../people/corin%20marsh.md#facts', 'people/corin marsh.md'),
+    ('../people/corin%2520marsh.md#facts%20and%20sources', 'people/corin%20marsh.md'),
+    ('../people/a.md#bad%', ''), ('../people/%C3.md', ''), ('../people/%00.md', ''),
+    ('../../people/a.md', ''), ('%6aavascript:people/a.md', ''),
+    ('//example.org/a.md', ''), ('/people/a.md', ''), ('../people/a%2.md', ''),
+    ('../people/a.MD#facts', 'people/a.MD'),
+])
+def test_notebook_path_contract_matches_python_without_root_escape(raw, expected):
+    from connectonion.rem.reader_model import _destination
+    page = TEMPLATE.read_text()
+    function = re.search(r'function notebookPath\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + '\nconsole.log(JSON.stringify(notebookPath("projects/pilot.md", '
+                            + json.dumps(raw) + ')));')
+    assert result == _destination('projects/pilot.md', raw) == expected
+
+
+def test_old_bookmarks_use_canonical_record_but_never_override_an_existing_page():
+    page = TEMPLATE.read_text()
+    function = re.search(r'^function byPath\(.*$', page, re.M).group(0) + '\n' + re.search(r'function navigationRecord\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {aliases: {'people/old.md': 'people/current.md', 'people/current.md': 'projects/pilot.md'},
+        records: [{path: 'people/current.md'}, {path: 'projects/pilot.md'}]};
+      console.log(JSON.stringify([navigationRecord('people/old.md').path, byPath('people/current.md').path]));
+    ''')
+    assert result == ['people/current.md', 'people/current.md']
+
+
+@pytest.mark.parametrize('language,label,explanation', [
+    ('en', 'Page unavailable', 'This page is unavailable in this snapshot.'),
+    ('zh', '页面不可用', '此页面在当前快照中不可用。'),
+])
+@pytest.mark.parametrize('raw', ['../people/gone.md', '../people/gone%2Emd#facts'])
+def test_missing_links_have_visible_translated_status_and_valid_title(language, label, explanation, raw):
+    from html.parser import HTMLParser
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['esc', 'resolve', 'notebookPath', 'navigationRecord', 'safeHref', 'isNotebookLink', 'pageReference', 'inline'])
+    zh = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + zh + '; uiLanguage = ' + json.dumps(language) + '; const target = ' + json.dumps(raw) + r''';
+      const REM = {records: []}, byPath = () => null;
+      const youify = x => x, shortHash = x => x, quoteSpans = x => x;
+      const uncertainCitations = x => x, tetherCitations = x => x;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      console.log(JSON.stringify({body: inline('[Contact <test>](' + target + ')', 'projects/pilot.md'),
+        related: pageReference('projects/pilot.md', 'Contact <test>', target)}));
+    ''')
+    class Tags(HTMLParser):
+        def __init__(self):
+            super().__init__(); self.tags = []
+        def handle_starttag(self, tag, attrs):
+            self.tags.append((tag, dict(attrs)))
+    parsed = Tags(); parsed.feed(result['body'])
+    assert parsed.tags[0] == ('span', {'class': 'dead-link', 'title': explanation})
+    assert label in result['body'] and 'Contact &lt;test&gt;' in result['body']
+    assert all(tag != 'a' for tag, attrs in parsed.tags)
+    assert result['related']['title'] == explanation
+    assert result['related']['children'][1]['text'] == ' · ' + label
+    assert result['related']['children'][0] == 'Contact <test>'
+
+
+def test_alias_navigation_does_not_rebind_historical_claim_source_records():
+    page = TEMPLATE.read_text()
+    function = re.search(r'^function byPath\(.*$', page, re.M).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {aliases: {'people/old.md': 'people/current.md'},
+        records: [{path: 'people/current.md', text: '## Sources\n- [1] mail:different-original'}]};
+      console.log(JSON.stringify({oldClaimRecord: byPath('people/old.md') || null,
+        current: byPath('people/current.md').path}));
+    ''')
+    assert result == {'oldClaimRecord': None, 'current': 'people/current.md'}
+
+
+def test_alias_route_preserves_section_and_filters_without_rebinding_source_numbers():
+    page = TEMPLATE.read_text()
+    functions = [re.search(r'^function byPath\(.*$', page, re.M).group(0),
+                 re.search(r'function route\(.*?\n\}', page, re.S).group(0)]
+    navigation = re.search(r'function navigationRecord\(.*?\n\}', page, re.S)
+    if navigation:
+        functions.append(navigation.group(0))
+    result = _run_reader_js('\n'.join(functions) + r'''
+      const REM = {aliases: {'people/old.md': 'people/current.md'}, records: [{path: 'people/current.md'}]};
+      const location = {hash: '#r=people%2Fold.md&h=facts&find=pilot&tag=work'};
+      const section = route(); location.hash = '#r=people%2Fold.md&h=src-1';
+      console.log(JSON.stringify({section, source: route()}));
+    ''')
+    assert result['section']['record'] == 'people/current.md'
+    assert result['section']['heading'] == 'facts'
+    assert result['section']['find'] == 'pilot' and result['section']['tag'] == 'work'
+    assert result['source']['record'] == 'people/old.md' and result['source']['heading'] == 'src-1'
+
+
+def test_merged_numbered_source_anchors_are_not_rebound_by_markdown_navigation():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['notebookPath', 'navigationRecord', 'safeHref'])
+    exact = re.search(r'^function byPath\(.*$', page, re.M).group(0)
+    result = _run_reader_js(functions + exact + r'''
+      const REM = {aliases: {'people/old.md': 'people/current.md'}, records: [{path: 'people/current.md'}]};
+      console.log(JSON.stringify([
+        safeHref('projects/pilot.md', '../people/old.md#src-1'),
+        safeHref('projects/pilot.md', '../people/old.md#src-w7'),
+        safeHref('people/old.md', '#src-1'),
+        safeHref('projects/pilot.md', '../people/current.md#src-1'),
+        safeHref('projects/pilot.md', '../people/old.md#facts')
+      ]));
+    ''')
+    assert result[:3] == [None, None, None]
+    assert result[3]['href'] == '#r=people%2Fcurrent.md&h=src-1'
+    assert result[4]['href'] == '#r=people%2Fcurrent.md&h=facts'
+
+
+def test_source_popup_lookup_remains_exact_after_merge():
+    page = TEMPLATE.read_text()
+    start = page.index('  const citation = e.target.closest("a.cite");')
+    body = page[start:page.index('\n});', start)]
+    exact = re.search(r'^function byPath\(.*$', page, re.M).group(0)
+    result = _run_reader_js(exact + '\nconst handler = e => {\n' + body + '\n};\n' + r'''
+      const REM = {aliases: {'people/old.md': 'people/current.md'}, records: [{path: 'people/current.md'}]};
+      const calls = [], openEvidence = (r, n) => { calls.push([r.path, n]); return true; };
+      const click = path => { let prevented = false;
+        handler({target: {closest: () => ({href: 'https://example.test/#r=' + encodeURIComponent(path) + '&h=src-1'})},
+          preventDefault() { prevented = true; }}); return prevented; };
+      console.log(JSON.stringify({old: click('people/old.md'), current: click('people/current.md'), calls}));
+    ''')
+    assert result == {'old': False, 'current': True, 'calls': [['people/current.md', '1']]}

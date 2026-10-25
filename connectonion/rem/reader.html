@@ -145,6 +145,12 @@
   .private-history-notice, :root.hide-private .person-insight dd.privacy-only { color: var(--ink-3); font: 12px/1.5 var(--ui); }
   :root.hide-private .person-insight dd.privacy-only .private-hidden-notice { margin: 0; }
   :root.hide-private .private-hidden-notice { display: block; }
+  .reference-passage { margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--well); scroll-margin-top: 24px; }
+  .reference-passage h2 { margin: 0 0 8px; font: 600 18px/1.4 var(--display); }
+  .reference-passage:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .reference-words { margin: 16px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .reference-controls { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font: 13px/1.5 var(--ui); }
+  .reference-controls a, .reference-close, .reference-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--blue); font: 13px/1.5 var(--ui); }
 
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 32px 40px 80px; max-width: 1180px; }
@@ -460,7 +466,8 @@
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
   .block-sources li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
   .block-sources li:target, .block-sources li.flash { background: var(--mark); }
-  .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
+  .dead-link { color: var(--ink-3); text-decoration: underline dotted; cursor: help; }
+  .missing-page-label { color: var(--ink-2); font: 12px/1.5 var(--ui); }
   .block-sources .n { font: 600 11px/1.9 var(--ui); color: var(--blue); }
   .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; justify-self: start; vertical-align: baseline; font: 500 11px var(--ui); }
   .block-sources .id { font: 11.5px var(--ui); color: var(--ink); }
@@ -1468,6 +1475,10 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Open page →": "打开页面 →",
+    "Choose a page": "选择一个页面",
+    "Several pages match this name. Choose one to keep their facts and connections separate.": "多个页面匹配这个名字。请选择一个，分别查看各自的信息与关联。",
+    "No visible identifying details. Open the page to check its sources.": "没有可显示的身份信息。请打开页面核对来源。",
     "Skip to content": "跳到正文",
     "Your page": "你的页面",
     "Nothing open.": "暂无待办。",
@@ -2179,7 +2190,20 @@ const UI = {
     "Select and copy": "请选中并复制",
     "Copied": "已复制",
     "Copy failed": "复制失败",
-    "This page is no longer in the notebook": "此页面已不在笔记库中",
+    "This page is unavailable in this snapshot.": "此页面在当前快照中不可用。",
+    "Page unavailable": "页面不可用",
+    "Referenced passage": "提及原文",
+    "From the original note; source numbers belong to this page.": "摘自原始笔记；来源编号属于此页面。",
+    "This passage is no longer in this snapshot.": "此快照中已找不到这段原文。",
+    "Hidden labelled passage. Use Show labelled passages in the menu to read it.": "已隐藏带隐私标签的段落。可在菜单中开启显示后阅读。",
+    "Reference locations": "提及位置",
+    "Reference {n} of {m}": "第 {n} 处提及，共 {m} 处",
+    "Previous reference": "上一处提及",
+    "Next reference": "下一处提及",
+    "Close passage": "关闭原文",
+    "View reference": "查看提及原文",
+    "View {n} references": "查看 {n} 处提及",
+    "View references from {page}": "查看 {page} 中的提及",
     "Some sections are filled from sources; the rest are not investigated yet.": "部分章节已有来源支持，其余尚未调查。",
     "{n} from them, {m} from you": "对方发来 {n} 封，你发出 {m} 封",
     "{name} table": "{name}表格",
@@ -2297,6 +2321,13 @@ function categoryName(c) { return ACTIVITY.has(c) ? t("Activity") : label(c); }
 function label(c) { return t(CATEGORY_LABEL[c] || c); }
 function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
+function navigationRecord(path, heading = "", reference = "") {
+  const exact = byPath(path);
+  // Merge redirects carry no old-to-new numbered-source map.
+  if (exact || reference || /^src-(?:w?\d+)$/i.test(heading)) return exact;
+  const canonical = REM.aliases?.[path];
+  return typeof canonical === "string" ? byPath(canonical) : undefined;
+}
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
@@ -2344,17 +2375,39 @@ function resolve(from, path) {
   }
   return base.join("/");
 }
+function notebookPath(from, raw) {
+  if (typeof from !== "string") return "";
+  let path;
+  try { path = decodeURIComponent(raw.split("#")[0]); if (raw.includes("#")) decodeURIComponent(raw.slice(raw.indexOf("#") + 1)); } catch { return ""; }
+  if (!/\.md$/i.test(path) || path.startsWith("/") || path.includes("\\") || /[\x00-\x1f\x7f]/.test(path) || /^[a-z][\w+.-]*:/i.test(path)) return "";
+  const parts = from.split("/").slice(0, -1);
+  for (const part of path.split("/")) {
+    if (part === "..") { if (!parts.length) return ""; parts.pop(); }
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
+}
 function safeHref(from, raw) {
   const target = raw.trim();
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
   if (target.startsWith("/") && !target.startsWith("//"))
     return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
-  if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
-  if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
-    const path = resolve(from, target.split("#")[0]);
-    if (byPath(path)) return { href: "#r=" + encodeURIComponent(path) + (target.includes("#") ? "&h=" + encodeURIComponent(target.split("#")[1]) : ""), external: false };
-  }
+  let fragment;
+  try { fragment = target.includes("#") ? decodeURIComponent(target.slice(target.indexOf("#") + 1)) : ""; } catch { return null; }
+  const path = target.startsWith("#") ? from : notebookPath(from, target);
+  const record = path && navigationRecord(path, fragment);
+  if (record) return { href: "#r=" + encodeURIComponent(record.path) + (fragment ? "&h=" + encodeURIComponent(fragment) : ""), external: false };
   return null;
+}
+function isNotebookLink(from, raw) {
+  return !!notebookPath(from, raw) || (!/^[a-z][\w+.-]*:|^\//i.test(raw) && /\.md(#.*)?$/i.test(raw));
+}
+function pageReference(from, text, raw) {
+  const link = safeHref(from, raw);
+  if (link) return el("a", { href: link.href, text, ...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {}) });
+  if (!isNotebookLink(from, raw)) return el("span", { text });
+  return el("span", { class: "dead-link", title: t("This page is unavailable in this snapshot.") },
+    [text, el("span", { class: "missing-page-label", text: " · " + t("Page unavailable") })]);
 }
 function copyToClipboard(text, btn, successMsg) {
   const original = btn.textContent;
@@ -2378,6 +2431,7 @@ function moon(status) {
 let CITES = { from: "", sources: {} };
 function citationSource(r, n) {
   if (!r) return "";
+  if (r.citationSources) return r.citationSources[n] || "";
   return r.path === CITES.from ? CITES.sources[n] || "" : sourceList(r).find(s => s.n === n)?.text || "";
 }
 function sourceChannel(kind) {
@@ -2429,6 +2483,7 @@ function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n
   const tip = "Source: " + label + (subject ? ", subject “" + subject + "”" : "")
     + (missing ? ", original not in this snapshot" : "") + (ns.length > 1 ? ", " + ns.length + " sources for this line" : "");
   return '<a class="cite' + (ns.length > 1 ? " run" : "") + (missing ? " missing" : "") + '" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() +
+    (CITES.from === from && CITES.original ? '&amp;ref=' + esc(encodeURIComponent(CITES.reference)) + '" data-original="true' : "") +
     '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + '<span class="cite-full">' + esc(full) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + '</span><span class="cite-short">' + esc(when) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</span></a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
@@ -2497,7 +2552,7 @@ function inline(text, from) {
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
     // A page that is not in the notebook: say so, rather than look like a link that does nothing (#2054).
-    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title=t("This page is no longer in the notebook")>' + lbl + "</span>" : lbl;
+    if (!link) return isNotebookLink(from, url) ? '<span class="dead-link" title="' + esc(t("This page is unavailable in this snapshot.")) + '">' + lbl + '<span class="missing-page-label"> · ' + esc(t("Page unavailable")) + "</span></span>" : lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
@@ -3640,8 +3695,9 @@ function nightBand(showActivityLink = true) {
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
-  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
-    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
+  const requested = params.get("r"), selected = navigationRecord(requested, params.get("h") || "", params.get("ref") || "");
+  return { record: selected?.path || requested, category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
+    view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"), reference: params.get("ref") || "",
     ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
@@ -5167,7 +5223,7 @@ function relationCard(link, currentPath = "") {
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
   const entry = el("div", { class: "relation-entry" }, [
-    el("a", { class: "relation-card", href: href(other) }, [
+    el("a", { class: "relation-card", href: href(other) + (link.kind === "linked from" && link.references?.length ? "&ref=" + encodeURIComponent(link.references[0].id) : "") }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
       basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(basis) }) : null,
@@ -5175,7 +5231,57 @@ function relationCard(link, currentPath = "") {
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, [t("On "), el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
+  if (origin && link.kind === "linked" && link.references?.length) entry.appendChild(el("a", {
+    class: "reference-open", href: href(origin) + "&ref=" + encodeURIComponent(link.references[0].id),
+    text: t(link.references.length === 1 ? "View reference" : "View {n} references", { n: link.references.length }) }));
+  if (link.backlinks?.references?.length && link.backlinks.via === other.path) entry.appendChild(el("a", {
+    class: "reference-open", href: href(other) + "&ref=" + encodeURIComponent(link.backlinks.references[0].id),
+    text: t("View references from {page}", { page: other.title }) }));
   return entry;
+}
+
+function originalCitationPage(r) {
+  const page = { ...r, text: r.original ?? r.text };
+  return { ...page, citationSources: Object.fromEntries(sourceList(page).map(source => [source.n, source.text])) };
+}
+function originalReferenceInline(text, r, id) {
+  const previous = CITES;
+  CITES = { from: r.path, sources: originalCitationPage(r).citationSources, original: true, reference: id };
+  try { return inline(text, r.path); }
+  finally { CITES = previous; }
+}
+
+function referencePassage(r, id) {
+  const link = (r.relations || []).find(link => link.via === r.path && link.kind === "linked"
+    && link.references?.some(item => item.id === id));
+  if (!link) return null;
+  const index = link.references.findIndex(item => item.id === id), reference = link.references[index];
+  const text = (r.original ?? r.text).replace(/\r\n?/g, "\n").split("\n")[reference.line - 1];
+  return text === undefined ? null : { link, index, text };
+}
+function showReference(r, id) {
+  if (!r || !id) return;
+  const found = referencePassage(r, id);
+  const box = el("section", { class: "reference-passage", tabindex: "-1", "aria-label": t("Referenced passage") }, [
+    el("h2", { text: t("Referenced passage") }),
+    el("p", { class: "relation-description", text: t("From the original note; source numbers belong to this page.") })]);
+  if (!found) box.appendChild(el("p", { role: "status", text: t("This passage is no longer in this snapshot.") }));
+  else {
+    const { link, index, text } = found, labelled = hasPrivacy(text);
+    box.appendChild(el("div", { class: "reference-words" + (labelled ? " private" : ""), html: originalReferenceInline(text, r, id) }));
+    if (labelled) box.appendChild(el("p", { class: "private-hidden-notice", text: t("Hidden labelled passage. Use Show labelled passages in the menu to read it.") }));
+    const controls = el("nav", { class: "reference-controls", "aria-label": t("Reference locations") }, [
+      el("span", { text: t("Reference {n} of {m}", { n: index + 1, m: link.references.length }) })]);
+    for (const [position, label] of [[index - 1, "Previous reference"], [index + 1, "Next reference"]]) {
+      if (link.references[position]) controls.appendChild(el("a", { href: href(r) + "&ref=" + encodeURIComponent(link.references[position].id), text: t(label) }));
+    }
+    box.appendChild(controls);
+  }
+  box.appendChild(el("a", { class: "reference-close", href: href(r), text: t("Close passage") }));
+  const main = document.getElementById("main");
+  main.insertBefore(box, main.querySelector(".page-head")?.nextSibling || main.firstChild);
+  box.focus({ preventScroll: true });
+  box.scrollIntoView({ block: "center" });
 }
 function relationDisclosure(links, label, className = "", currentPath = "") {
   return links.length ? el("details", { class: "more-relations " + className }, [
@@ -5697,8 +5803,7 @@ function record(path, heading) {
       const box = el("div", { class: "related" });
       if (links.length) {
         for (const [, lbl, url] of links) {
-          const link = safeHref(r.path, url);
-          box.appendChild(link ? el("a", { href: link.href, text: lbl }) : el("span", { text: lbl }));
+          box.appendChild(pageReference(r.path, lbl, url));
         }
       } else box.innerHTML = inline(parts.related, r.path);
       aside.appendChild(box);
@@ -5767,14 +5872,48 @@ function highlight(line, needle) {
   return out.join("");
 }
 
-function search(q) {
+// Identity choices use original visible facts, never cached translated identity or file order.
+function identityDetails(r) {
+  const original = r.original ?? r.text;
+  const text = document.documentElement.classList.contains("hide-private") ? unlabelled(original) : original;
+  const parsed = parseFacts({ ...r, text, original: text, translations: {}, readLanguage: "" });
+  return ["Company", "Role", "Email", "What they do", "Repository", "Status"]
+    .map(name => [name, (parsed.get(name) || []).map(item => plainValue(item.value + (item.qualifier ? " (" + item.qualifier + ")" : ""))).filter(knownValue).join("; ")])
+    .filter(([, value]) => value);
+}
+function identityChoices(records, query, related = false) {
+  const section = el("section", { class: "search-group" }, [
+    el("h2", { class: "section", text: t("Choose a page") }),
+    el("p", { class: "lede", text: t("Several pages match this name. Choose one to keep their facts and connections separate.") })]);
+  const list = el("ul", { class: "hits" });
+  for (const [index, r] of records.entries()) {
+    const detailId = "identity-choice-" + index;
+    const destination = related ? "#q=" + encodeURIComponent(query) + "&related=" + encodeURIComponent(r.path) : href(r);
+    const details = identityDetails(r);
+    list.appendChild(el("li", {}, [el("div", { class: "t" }, [el("a", { href: destination, text: r.title, "aria-describedby": detailId }),
+      el("span", { class: "when", text: label(r.category) })]),
+      el("dl", { class: "best-facts", id: details.length ? detailId : detailId + "-facts" }, details.flatMap(([name, value]) => [el("dt", { text: t(name) }), el("dd", { text: value })])),
+      !details.length ? el("p", { class: "hit", id: detailId, text: t("No visible identifying details. Open the page to check its sources.") }) : null,
+      related ? el("a", { href: href(r), text: t("Open page →") }) : null]));
+  }
+  section.appendChild(list);
+  return section;
+}
+function search(q, relatedPath = "") {
   const main = document.getElementById("main");
   main.textContent = "";
   if (/\b(who\s+(?:do\s+i\s+)?owe|what\s+do\s+i\s+owe|waiting\s+on\s+me|open\s+threads)\b/i.test(q)) { taskView("open"); return; }
   if (/\b(what\s+changed|memory\s+changes|learned\s+(?:last\s+night|overnight))\b/i.test(q)) { taskView("changes"); return; }
   const connected = /\b(?:connected|related)\s+to\s+(.+)/i.exec(q);
   if (connected) {
-    const target = listedRecords().find(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    const candidates = listedRecords().filter(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    const target = relatedPath ? candidates.find(r => r.path === relatedPath) : candidates.length === 1 ? candidates[0] : null;
+    if (!target && (candidates.length > 1 || relatedPath)) {
+      main.appendChild(el("h1", { text: t("Connected to {name}", { name: connected[1].trim() }) }));
+      if (relatedPath) main.appendChild(emptyState("This page is unavailable in this snapshot."));
+      if (candidates.length) main.appendChild(identityChoices(candidates, q, true));
+      return;
+    }
     if (target) {
       main.appendChild(el("div", { class: "eyebrow", text: t("Search / related pages") }));
       main.appendChild(el("h1", { text: t("Connected to {name}", { name: target.title }) }));
@@ -5813,8 +5952,10 @@ function search(q) {
     return;
   }
   // The best match answers: a person's or organisation's name gets its facts right here.
-  const best = hits.find(h => FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
-  if (best) main.appendChild(bestMatch(best.r));
+  const eligible = new Set(listedRecords().map(r => r.path));
+  const named = hits.filter(h => eligible.has(h.r.path) && FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
+  if (named.length > 1) main.appendChild(identityChoices(named.map(h => h.r), q));
+  else if (named.length === 1) main.appendChild(bestMatch(named[0].r));
   // Grouped by kind, people first; one snippet a page, never a local path.
   const ORDER = ["people", "orgs", "projects", "skills", "sessions"];
   const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
@@ -5907,7 +6048,7 @@ function render() {
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".skip").textContent = t("Skip to content");
   document.querySelector(".nav-toggle").textContent = t("Browse notebook");
-  const { record: r, category: c, query, heading, view, reviews } = route();
+  const { record: r, category: c, query, related, heading, view, reviews, reference } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
@@ -5915,12 +6056,13 @@ function render() {
   // The sheet views use the full width; reading views keep a measure.
   document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
   if (reviews) reviewPage();
-  else if (query) search(query);
+  else if (query) search(query, related);
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
   else if (c) category(c);
   else overview();
+  if (r && !query && !reviews && reference) showReference(byPath(r), reference);
   document.title = (reviews ? t("Questions & connections") : r ? (byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
@@ -6088,7 +6230,7 @@ function evidenceSentence(trigger, line) {
   return text.slice(start, end).trim();
 }
 function evidenceLine(trigger) {
-  const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
+  const line = trigger.closest("li, p, dd, blockquote, .reference-words") || trigger.closest(".focus-head") || trigger.parentElement;
   const copy = (line.querySelector(".focus-statement") || line).cloneNode(true);
   copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
   const path = new URLSearchParams(trigger.hash.slice(1)).get("r");
@@ -6156,6 +6298,7 @@ function sourceIdentity(context) {
   return byPath(sender)?.title || sender;
 }
 function openEvidence(r, number, trigger) {
+  if (trigger.dataset.original === "true") r = originalCitationPage(r);
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
   const context = (REM.source_context || {})[sourceId(source.text)], line = evidenceLine(trigger);
   const numbers = line.numbers.length ? line.numbers : [source.n];

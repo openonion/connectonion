@@ -11,11 +11,12 @@ import posixpath
 import re
 import sqlite3
 from pathlib import Path
+from urllib.parse import unquote
 
-from .files import state_path
+from .files import CATEGORIES, state_path
 from .store_messages import archived_message
 
-REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
+REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
@@ -29,7 +30,57 @@ def _not_sources(text: str) -> str:
 
 
 def _destination(origin: str, raw: str) -> str:
-    return posixpath.normpath(posixpath.join(posixpath.dirname(origin), raw))
+    """A relative notebook URL, decoded once; never clamp an escaped root."""
+    pieces = raw.split("#", 1)
+    path = pieces[0]
+    if any(re.search(r"%(?![0-9a-fA-F]{2})", piece) for piece in pieces):
+        return ""
+    try:
+        path = unquote(path, errors="strict")
+        if len(pieces) > 1:
+            unquote(pieces[1], errors="strict")
+    except UnicodeError:
+        return ""
+    if not path.lower().endswith(".md") or path.startswith("/") or "\\" in path or re.search(r"[\x00-\x1f\x7f]", path) or re.match(r"[a-z][\w+.-]*:", path, re.I):
+        return ""
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(origin), path))
+    return "" if target == ".." or target.startswith("../") else target
+
+
+def _record_path(path) -> bool:
+    return (isinstance(path, str) and path.lower().endswith(".md") and "\\" not in path
+            and path.split("/")[0] in CATEGORIES
+            and not any(part.startswith(".") for part in path.split("/"))
+            and not re.search(r"[\x00-\x1f\x7f]", path)
+            and not path.startswith(("/", "../")) and posixpath.normpath(path) == path
+            and not re.match(r"[a-z][\w+.-]*:", path, re.I))
+
+
+def _alias_target(old: str, table: dict, paths: set) -> str:
+    target, seen = old, {old}
+    while target not in paths:
+        entry = table.get(target)
+        target = entry.get("into") if isinstance(entry, dict) else None
+        if not _record_path(target) or target in seen:
+            return ""
+        seen.add(target)
+    return target
+
+
+def canonical_aliases(records: list[dict], table: dict, *, local: bool = False) -> dict[str, str]:
+    """Navigation redirects only; shared views expose no unreferenced history."""
+    paths = {row["path"] for row in records}
+    referenced = {_destination(row["path"], raw) for row in records
+                  for _, _, line in _reference_lines(_not_sources(row["text"]))
+                  for _, raw in REFERENCE.findall(line)} if not local else set()
+    result = {}
+    for old in table if isinstance(table, dict) else {}:
+        if old in paths or not _record_path(old) or (not local and old not in referenced):
+            continue
+        target = _alias_target(old, table, paths)
+        if target:
+            result[old] = target
+    return result
 
 
 def _clip(text: str, limit: int = 220) -> str:
@@ -46,18 +97,45 @@ def _relation(origin: str, target: str, line: str, kind: str) -> dict:
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 
 
-def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]]) -> dict:
+def _reference_lines(text: str):
+    """Original line numbers survive code exclusion; examples are not links."""
+    fence = ""
+    for number, line in enumerate(text.replace("\r\n", "\n").replace("\r", "\n").split("\n"), 1):
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            if re.fullmatch(r"\s{0,3}" + fence[0] + "{" + str(len(fence)) + r",}\s*", line):
+                fence = ""
+            continue
+        if marker:
+            fence = marker[1]
+            continue
+        # Inline code is protected by the reader before Markdown links expand.
+        visible = re.sub(r"(`+).*?\1", "", line)
+        yield number, line, visible
+
+
+def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]], aliases: dict) -> dict:
     body = _not_sources(text)
     found = {}
     # An exact notebook path does not depend on its label or the target's title.
-    for line in body.splitlines():
-        for _, raw in REFERENCE.findall(line):
+    for number, line, visible in _reference_lines(body):
+        for _, raw in REFERENCE.findall(visible):
             target = _destination(origin, raw)
-            if target in paths and target != origin and target not in found:
-                found[target] = _relation(origin, target, line.strip(), "linked")
+            if target not in paths:
+                fragment = unquote(raw.partition("#")[2])
+                if target in aliases and re.fullmatch(r"src-(?:w?[0-9]+)", fragment, re.I):
+                    continue  # A merge carries no numbered-source remapping ledger.
+                target = aliases.get(target, target)
+            if isinstance(target, str) and target in paths and target != origin:
+                relation = found.setdefault(target, _relation(origin, target, line.strip(), "linked"))
+                key = hashlib.sha256(f"{origin}\n{number}\n{line}".encode()).hexdigest()[:20]
+                references = relation.setdefault("references", [])
+                if not references or references[-1]["id"] != key:
+                    references.append({"id": key, "line": number})
     # Match visible prose once per name, never Markdown URLs. Replacing link
     # markup preserves line boundaries, citation numbers and privacy markers.
-    prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+    visible = "\n".join(line for _, _, line in _reference_lines(body))
+    prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", visible)
     folded = prose.casefold() if names else ""
     for pattern, target, name in names:
         if target == origin or target in found:
@@ -78,7 +156,7 @@ def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re
     return found
 
 
-def relationships(records: list[dict]) -> dict[str, list[dict]]:
+def relationships(records: list[dict], aliases: dict | None = None) -> dict[str, list[dict]]:
     """Exact notebook links first; unambiguous mentions remain navigation hints."""
     paths = {row["path"]: row for row in records}
     names: dict[str, list[str]] = {}
@@ -97,7 +175,7 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
               for name, rows in sorted(names.items(), key=lambda pair: -len(pair[0])) if len(set(rows)) == 1]
     # Mapped stubs have no investigated prose to infer relationships from.
     # Keep their explicit links, but avoid scanning every name in every stub.
-    forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
+    forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [], aliases or {})
                for path, row in paths.items()}
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
@@ -105,6 +183,9 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     for origin, rows in forward.items():
         for target, relation in rows.items():
             kind = "linked from" if relation["kind"] == "linked" else "mentioned by"
+            existing = found[target].get(origin)
+            if existing is not None and relation.get("references"):
+                existing["backlinks"] = {"via": origin, "references": relation["references"]}
             found[target].setdefault(origin, {**relation, "path": origin, "kind": kind})
     rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
     return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))
