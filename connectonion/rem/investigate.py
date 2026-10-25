@@ -104,25 +104,28 @@ OWN_COMPANY_NOTE = ("This is the user's own company. Write it from the user's si
                     "founder or owner: name their role. Never list the user's own addresses or agents as other "
                     "people. The main evidence is the user's outbound mail and typed coding sessions. Quote "
                     "the user's own sent words for each product, customer and deal, with dates. Notices and "
-                    "receipts sent to the company's addresses are not the company's work. All sent mail is "
-                    "supplied to avoid fragile name filtering; use the company-related exchanges. Notebook "
+                    "receipts sent to the company's addresses are not the company's work. Only sent mail "
+                    "addressed to or mentioning the company, its products or projects is supplied. Notebook "
                     "page leads below are uncited context, not evidence; verify against original sources.")
 
 
 def company_owner(notebook: Notebook, domains: list[str]) -> dict:
-    """Recognise the company after init has written the owner's Company field."""
+    """Recognise a named company or an owned project's organisation."""
     from .map import spells_owner
-    from .org_map import own_domain
+    from .org_map import own_company
 
     state = read_json(state_path(notebook.root, 'map.json'), {})
     owner = state.get('owner') or {}
     record = owner.get('record')
-    page = notebook.read(record) if record and notebook.path(record).is_file() else ''
+    if not record or not notebook.path(record).is_file():
+        return {}  # project evidence alone cannot supply the owner's identity or sent-mail scope
+    page = notebook.read(record)
     name = page.split('\n', 1)[0].removeprefix('# ').split(' (')[0]
     addresses = [*owner.get('addresses', []), *[row['address'] for row in state.get('possible_own_addresses', [])
                  if spells_owner(row['address'], name)]]
     owner = {**owner, 'addresses': sorted({a.casefold() for a in addresses}), 'name': name}
-    return owner if any(own_domain(domain, owner, page) for domain in domains) else {}
+    projects = [notebook.read(p) for p in notebook.list('projects')]
+    return owner if any(own_company(domain, page, projects, owner['addresses']) for domain in domains) else {}
 
 
 def company_projects(notebook: Notebook, record: str, subject: str, domains: list[str]) -> list[str]:
@@ -166,12 +169,47 @@ def company_context(notebook: Notebook, record: str, owner: dict) -> str:
     return '\n'.join(lines)
 
 
-def company_material(notebook: Notebook, owner: dict, projects: list[str], *, days: int,
+def company_names(notebook: Notebook, record: str, owner: dict, projects: list[str]) -> list[str]:
+    """Company and product names are leads for sent-mail relevance, not evidence of ownership."""
+    page = notebook.read(record) + '\n' + notebook.read(owner['record'])
+    names = [page_handles(notebook, p)[0] for p in [record, *projects]]
+    names += re.findall(r'(?im)^- (?:Company|Signing entity|Products?|Projects?): (.+)$', page)
+    names += re.findall(r'(?ms)^## (?:Products|Projects)[^\n]*\n(.*?)(?=^## |\Z)', page)
+    names = [re.sub(r'\[\d+\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', name)) for name in names]
+    names = [part.strip(' -`').split(' — ', 1)[0].strip() for name in names for part in re.split(r'[,;\n]', name)]
+    return [name for name in names if name.casefold() not in ('', 'unknown')]
+
+
+def company_mentions(names: list[str]) -> re.Pattern:
+    """Whole-word mentions of the company's names; a short name only as written and capitalised.
+
+    A two- or three-letter product name ("go") matched unrelated mail; a short
+    name counts only with a capital, as written ("REM", "Pix") (#2615 review).
+    """
+    long = [re.escape(name) for name in names if len(name) >= 4]
+    short = [re.escape(name) for name in names if 2 <= len(name) < 4 and any(c.isupper() for c in name)]
+    patterns = ([f"(?i:{'|'.join(long)})"] if long else []) + (['|'.join(short)] if short else [])
+    return re.compile(r'(?<!\w)(?:' + '|'.join(patterns) + r')(?!\w)') if patterns else re.compile(r'(?!)')
+
+
+def company_material(notebook: Notebook, owner: dict, projects: list[str], *, record: str, days: int,
                      clients: dict, subscriptions: dict, **kwargs) -> tuple[list[dict], list[str]]:
-    """2026-10-20: 983 domain items yielded 0–4 quotes; read what the owner wrote instead."""
+    """Read the owner's work about this company without supplying unrelated private mail."""
+    domains = org_domains(notebook.read(record))
+    names = company_names(notebook, record, owner, projects) + domains
+    mentions = company_mentions(names)
+    sent = kept = 0
+
+    def keep_mail(row, body):
+        nonlocal sent, kept
+        sent += 1
+        relevant = on_domains(row, domains) or bool(mentions.search(row.get('subject', '') + '\n' + body))
+        kept += relevant
+        return relevant
+
     items, coverage = gather(owner['name'], [*owner['addresses'], owner['name']], days=days, clients=clients,
                              subscriptions={k: v for k, v in subscriptions.items() if k in MAIL_KINDS},
-                             sent_only=True, record=owner['record'], **kwargs)
+                             sent_only=True, record=owner['record'], mail_filter=keep_mail, **kwargs)
     sessions = {k: v for k, v in subscriptions.items() if v.get('kind') in KINDS}
     for project in projects:
         title, handles = page_handles(notebook, project)
@@ -180,9 +218,8 @@ def company_material(notebook: Notebook, owner: dict, projects: list[str], *, da
         items.extend(found)
         coverage.extend(searched)
     items = list({item['source']: item for item in items}.values())
-    mail = sum(item['source'].split(':')[0] in MAIL_KINDS and item.get('role') == 'user' for item in items)
     messages = sum(item['source'].split(':')[0] in KINDS and item.get('role') == 'user' for item in items)
-    coverage.append(f"owner's company: written from the owner's sent mail ({mail}) and sessions ({messages})")
+    coverage.append(f"owner's company: written from the owner's sent mail ({kept} of {sent}) and sessions ({messages})")
     return items, coverage
 
 
@@ -717,7 +754,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
            progress=None, attachments_dir: Path | None = None,
            sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
            quick: bool = False, archive_root: Path | None = None,
-           record: str = "") -> tuple[list[dict], list[str]]:
+           record: str = "", mail_filter=None) -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -780,7 +817,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # first `investigate me` searched for them and found 6 of ~150 mails.
             mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
-        local, undated = [], 0
+        local, undated, seen = [], 0, set()
         for item in cached_by_provider.get(kind, []):
             # A saved mail with an unreadable date is that mail's gap, not the
             # run's: one naive Gmail Date stopped `investigate me` (#2013).
@@ -794,6 +831,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if item.get('_org_excluded'):
                 left_out.add((kind, item['_mail_id']))
             elif not sent_only or _address(item.get('speaker', '')) in mine or item['role'] == 'user':
+                seen.add(item['_mail_id'])
+                headers = {**item.get('participants', {'from': item.get('speaker', '')}), 'subject': item.get('subject', '')}
+                if mail_filter and not mail_filter(headers, item['text']):
+                    continue
                 local.append({**item, 'role': 'user'} if sent_only else item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
@@ -817,7 +858,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                               "source": f"{kind}:{short}:{Path(saved).name}",
                               **({"relationship_scope": scope} if scope else {})})
 
-        seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
         if archived and kind in cached_by_provider and kind in complete_kinds:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
@@ -916,6 +956,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 for key in ("date", "from", "to", "cc", "subject")}}
                 head, _, rest = body.partition("--- Email Body ---")
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                # Filter before creating evidence or reading attachments: unrelated owner mail stays private.
+                if mail_filter and not mail_filter(r, body):
+                    continue
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
                 scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
@@ -2154,11 +2197,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     gather_options = dict(progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                           mail_skipped=mail_skipped, stage_progress=stage_progress, quick=quick, archive_root=root)
     mail_subs = {k: v for k, v in subscriptions.items() if k in MAIL_KINDS} if company else subscriptions
-    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=mail_subs,
+    # Alternate contact addresses could reintroduce private mail rejected by company_material below.
+    mail_handles = own_domains if company else search_handles
+    items, coverage = gather(subject, mail_handles, days=days, clients=clients, subscriptions=mail_subs,
                              sent_only=sent_only, record=record, **gather_options)
     if company:
         projects = company_projects(notebook, record, subject, own_domains)
-        own_items, own_coverage = company_material(notebook, company, projects, days=days, clients=clients,
+        own_items, own_coverage = company_material(notebook, company, projects, record=record, days=days, clients=clients,
                                                   subscriptions=subscriptions, **gather_options)
         items = list({item['source']: item for item in [*items, *own_items]}.values())
         for item in items:
