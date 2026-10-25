@@ -81,7 +81,8 @@ def test_an_absent_lifetime_says_so_instead_of_guessing(rig, monkeypatch, capsys
     """The SDK's 600 fallback is exactly what must never be quoted as fact."""
     run(monkeypatch, expire_in=None)
 
-    out = capsys.readouterr().out
+    # An arbitrary config path can contain 600; it is not a quoted lifetime.
+    out = capsys.readouterr().out.replace(str(rig), "<config-root>")
     assert "did not say how long" in out
     assert "10 minutes" not in out
     assert "600" not in out

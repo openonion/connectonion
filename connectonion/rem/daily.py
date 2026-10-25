@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import quota
+from . import execution, quota
 from .config import read_config
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .investigate import NothingFound, NothingNew, investigate
@@ -214,24 +214,25 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
                         config['limits']['runner_calls_per_day'] - status(root)['runner_attempts_today'])
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in dict.fromkeys(changed):
-            if cached(root, page, language) is not None:
-                rows.append({'page': page, 'outcome': 'cached'})
-                continue
-            if attempts >= remaining:
-                continue
-            attempts += 1
-            record.update(runner_attempts=attempts)
-            write_json(path, record)
-            say(f"Translating {page} into {language}…")
-            try:
-                (translate_one or translate)(root, page, language)
-                rows.append({'page': page, 'outcome': 'translated'})
-            except RemError as error:
-                rows.append({'page': page, 'outcome': 'failed', 'error': str(error)})
-                say(f"Translation failed for {page}: {error}")
-            record['pages'] = rows
-            write_json(path, record)
+        with execution.capture(record, path):
+            for page in dict.fromkeys(changed):
+                if cached(root, page, language) is not None:
+                    rows.append({'page': page, 'outcome': 'cached'})
+                    continue
+                if attempts >= remaining:
+                    continue
+                attempts += 1
+                record.update(runner_attempts=attempts)
+                write_json(path, record)
+                say(f"Translating {page} into {language}…")
+                try:
+                    (translate_one or translate)(root, page, language)
+                    rows.append({'page': page, 'outcome': 'translated'})
+                except RemError as error:
+                    rows.append({'page': page, 'outcome': 'failed', 'error': str(error)})
+                    say(f"Translation failed for {page}: {error}")
+                record['pages'] = rows
+                write_json(path, record)
         report = {'language': language, 'pages': rows, 'runner_attempts': attempts}
         maintenance['translations'] = report
         record.update(**report, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
@@ -267,6 +268,7 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     sources = subscriptions(root)
     calls, tried, done, usage, changed, failed = allocation, [], [], {}, [], False
     others, over_budget = 0, False
+    token = execution.begin(record, path)
     try:
         clients = _clients(sources)
         for page in pages:
@@ -324,6 +326,7 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                       usage=getattr(error, 'usage', None) or usage or None, tried=tried, pages=done)
         failed = True
     finally:
+        execution.end(token)
         record['finished_at'] = now().isoformat()
         record['quota']['after'] = quota.read(config)
         # A daily record had no duration, and sync printed "Seconds: Unknown" (#2044).
@@ -492,6 +495,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     with maintenance_lock(root):
         record, path = _reserve(root, 'daily-update', len(chosen), meter)
     done, usage, changed, failed = [], {}, [], False
+    token = execution.begin(record, path)
     try:
         for row in chosen:
             if done and _stopped(root, config):
@@ -521,6 +525,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                       usage=usage or None, pages=done)
         failed = True
     finally:
+        execution.end(token)
         record['finished_at'] = now().isoformat()
         record['quota']['after'] = quota.read(config)
         # A daily record had no duration, and sync printed "Seconds: Unknown" (#2044).
