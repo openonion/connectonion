@@ -405,11 +405,13 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 Candidate: generic ASR with a native Python Codex dictation adapter and an
 explicit ConnectOnion provider. Existing co configuration selects the provider;
 Codex is the default, no external codex-asr command is installed, no fallback
-uploads audio to another provider. Short synthesized English has one live
-accepted Codex request; long meetings and multilingual quality remain unverified.
+uploads audio to another provider. Long recordings use local FFmpeg windows
+and resumable per-part checkpoints with raw text preserved. Short synthesized
+English reached both providers; a nine-minute fixture completed two Codex parts.
+Real long-meeting and multilingual recognition quality remain unverified.
 Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc23.md).
 
-- 1.9.3rc23 (configurable ASR, Codex default, built-in Python adapter).
+- 1.9.3rc23 (configurable Python ASR, Codex default, long-audio windows and checkpoint resume).
 
 ### Previous candidate: 1.9.3rc22
 

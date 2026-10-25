@@ -30,6 +30,14 @@ unlimited use. One synthesized short English sentence completed a live request;
 long recordings, mixed languages and recognition quality still need evaluation.
 An original recording must survive every processing failure.
 
+A file-size guard also turned out to be the wrong product boundary: a three-hour
+meeting should not become unusable because one HTTP request has a budget. Local
+FFmpeg windows make that a request concern. Each completed part is saved before
+the next starts, so a failed request does not restart the whole meeting. We also
+removed a tempting text-similarity merge: two matching phrases can be genuine
+repeated speech. Raw words remain in order, including possible boundary overlap;
+any later cleaned-up account is a separate version.
+
 This post is a release draft. The candidate is not advertised as available until
 the matching PyPI artifact and GitHub prerelease have been verified. The
 [ASR configuration draft](/asr.md) records the workflow and limitations.

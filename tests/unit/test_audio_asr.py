@@ -33,6 +33,9 @@ def audio(tmp_path, monkeypatch):
     monkeypatch.setenv('CODEX_HOME', str(home))
     monkeypatch.delenv('ASR_PROVIDER', raising=False)
     monkeypatch.delenv('ASR_MODEL', raising=False)
+    monkeypatch.setenv('AGENT_CONFIG_PATH', str(tmp_path/'co'))
+    media = importlib.import_module(PREFIX+'.asr_media')
+    monkeypatch.setattr(media, 'probe_duration', lambda path: 5.0)
     return path
 
 
@@ -163,3 +166,168 @@ def test_cli_help_json_and_error(audio, monkeypatch):
     monkeypatch.setattr(module(), 'asr', failed)
     result = runner.invoke(app, [str(audio), '--json'])
     assert result.exit_code == 1 and json.loads(result.stdout)['ok'] is False
+
+
+@pytest.fixture
+def long_audio(audio, monkeypatch):
+    media = importlib.import_module(PREFIX+'.asr_media')
+    jobs = importlib.import_module(PREFIX+'.asr_jobs')
+    monkeypatch.setattr(media, 'probe_duration', lambda path: 1000.0)
+    exported = []
+    def export(source, target, start, end):
+        exported.append((start, end))
+        target.write_bytes(b'synthetic-converted-audio')
+    monkeypatch.setattr(jobs, 'export_window', export)
+    return audio, exported, jobs
+
+
+def test_three_hour_planning_and_no_input_size_limit(audio):
+    media = importlib.import_module(PREFIX+'.asr_media')
+    planned = media.windows(10800.0)
+    assert len(planned) == 23 and planned[0] == (0, 482) and planned[-1] == (10560, 10800)
+    with audio.open('r+b') as file:
+        file.truncate(60 * 1024 * 1024)
+    module()._validate_audio(audio)
+
+
+def test_long_recording_checkpoint_and_merge(long_audio, monkeypatch):
+    audio, exported, jobs = long_audio
+    texts = iter(['We discussed the OpenOnion project', 'the OpenOnion project is green', 'Next steps are ready'])
+    monkeypatch.setattr(module(), '_codex', lambda *args: next(texts))
+    progress = []
+    result = module().asr(audio, progress=lambda part, total: progress.append((part, total)))
+    assert exported == [(0, 482), (480, 962), (960, 1000)]
+    assert len(result['segments']) == 3 and progress == [(1, 3), (2, 3), (3, 3)]
+    assert result['text'].count('OpenOnion project') == 2
+    assert result['boundary_overlap_seconds'] == 2.0
+    state = jobs.load(result['job_id'])
+    assert state['completed'][1]['text'] == 'the OpenOnion project is green'
+    directory = jobs._directory(result['job_id'])
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert (directory/'state.json').stat().st_mode & 0o777 == 0o600
+    assert not list(directory.glob('segment-*'))
+
+
+def test_resume_only_unfinished_parts_and_freezes_provider(long_audio, monkeypatch):
+    audio, exported, jobs = long_audio
+    calls = []
+    def interrupted(path, language):
+        calls.append(path)
+        if len(calls) == 2:
+            raise module().ASRError('upstream failed')
+        return 'first part'
+    monkeypatch.setattr(module(), '_codex', interrupted)
+    with pytest.raises(module().ASRInterrupted) as error:
+        module().asr(audio, language='en')
+    failure = error.value
+    assert failure.completed_segments == 1 and failure.partial_text == 'first part'
+    assert len(jobs.load(failure.job_id)['completed']) == 1
+    monkeypatch.setenv('ASR_PROVIDER', 'connectonion')
+    monkeypatch.setenv('ASR_MODEL', 'invalid-changed-config')
+    with pytest.raises(module().ASRError):
+        module().asr(audio, provider='connectonion', resume=failure.job_id)
+    monkeypatch.setattr(module(), '_codex', lambda *args: 'remaining')
+    result = module().asr(audio, resume=failure.job_id)
+    assert result['provider'] == 'codex' and len(result['segments']) == 3
+    assert exported == [(0, 482), (480, 962), (480, 962), (960, 1000)]
+    monkeypatch.setattr(module(), '_codex', lambda *args: pytest.fail('completed job re-uploaded'))
+    assert module().asr(audio, resume=failure.job_id)['text'] == result['text']
+
+
+def test_resume_rejects_changed_original_and_corrupt_checkpoint(long_audio, monkeypatch):
+    audio, _, jobs = long_audio
+    monkeypatch.setattr(module(), '_codex', lambda *args: 'done')
+    result = module().asr(audio)
+    audio.write_bytes(b'changed-original')
+    with pytest.raises(module().ASRError, match='Audio changed'):
+        module().asr(audio, resume=result['job_id'])
+    state_path = jobs._directory(result['job_id'])/'state.json'
+    state = json.loads(state_path.read_text())
+    state['completed'][0]['text'] = {'bad': 'type'}
+    state_path.write_text(json.dumps(state))
+    with pytest.raises(module().ASRError, match='checkpoint'):
+        module().asr(audio, resume=result['job_id'])
+
+
+def test_checkpoint_write_failure_does_not_claim_unsaved_result(long_audio, monkeypatch):
+    audio, _, jobs = long_audio
+    monkeypatch.setattr(module(), '_codex', lambda *args: 'not-persisted')
+    original = jobs._save
+    def save(directory, state):
+        if state['completed']:
+            raise OSError('disk full')
+        original(directory, state)
+    monkeypatch.setattr(jobs, '_save', save)
+    with pytest.raises(module().ASRInterrupted) as error:
+        module().asr(audio)
+    assert error.value.completed_segments == 0
+    assert jobs.load(error.value.job_id)['completed'] == []
+
+
+def test_same_job_cannot_run_twice(long_audio, monkeypatch):
+    audio, _, jobs = long_audio
+    monkeypatch.setattr(module(), '_codex', lambda *args: 'done')
+    result = module().asr(audio)
+    directory = jobs._directory(result['job_id'])
+    before = (directory/'state.json').read_bytes()
+    with jobs._lock(directory):
+        with pytest.raises(module().ASRError, match='already running'):
+            module().asr(audio, resume=result['job_id'])
+    assert (directory/'state.json').read_bytes() == before
+
+
+def test_repeated_speech_is_not_silently_deleted(long_audio):
+    _, _, jobs = long_audio
+    phrase = 'Thank you everyone for coming today'
+    assert jobs.merge([{'text': phrase}, {'text': phrase + ' Let us begin.'}]).count(phrase) == 2
+
+
+def test_resume_rejects_shortened_checkpoint_plan(long_audio, monkeypatch):
+    audio, _, jobs = long_audio
+    monkeypatch.setattr(module(), '_codex', lambda *args: 'done')
+    result = module().asr(audio)
+    path = jobs._directory(result['job_id'])/'state.json'
+    state = json.loads(path.read_text())
+    state.update(duration=1.0, segments=[[0.0, 1.0]], completed=[{'start': 0.0, 'end': 1.0, 'text': 'shortened'}])
+    assert jobs._valid(state)
+    path.write_text(json.dumps(state))
+    monkeypatch.setattr(module(), '_codex', lambda *args: pytest.fail('invalid plan uploaded'))
+    with pytest.raises(module().ASRError, match='duration differs'):
+        module().asr(audio, resume=result['job_id'])
+
+
+def test_cancel_keeps_completed_work(long_audio, monkeypatch):
+    audio, _, jobs = long_audio
+    count = []
+    def interrupted(*args):
+        count.append(1)
+        if len(count) == 2:
+            raise KeyboardInterrupt
+        return 'saved before cancellation'
+    monkeypatch.setattr(module(), '_codex', interrupted)
+    with pytest.raises(module().ASRInterrupted) as error:
+        module().asr(audio)
+    assert error.value.exit_code == 130 and error.value.completed_segments == 1
+    assert len(jobs.load(error.value.job_id)['completed']) == 1
+
+
+def test_real_local_audio_inspection_and_split(tmp_path, monkeypatch):
+    import shutil
+    import subprocess
+    import wave
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg or not shutil.which('ffprobe'):
+        pytest.skip('FFmpeg is not installed in this test environment')
+    media = importlib.import_module(PREFIX+'.asr_media')
+    source = tmp_path/'ten-minute-silence.m4a'
+    subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
+                    'anullsrc=r=16000:cl=mono', '-t', '601', '-c:a', 'aac', str(source)],
+                   check=True, timeout=30)
+    duration = media.probe_duration(source)
+    assert 600.9 <= duration <= 601.1
+    target = tmp_path/'first-window.wav'
+    media.export_window(source, target, *media.windows(duration)[0])
+    with wave.open(str(target)) as wave_file:
+        assert wave_file.getnchannels() == 1 and wave_file.getframerate() == 16000
+        assert abs(wave_file.getnframes()/16000 - 482) < .1
+    assert target.stat().st_size < module().MAX_AUDIO_BYTES

@@ -6,6 +6,7 @@ co asr recording.m4a --json
 co env set ASR_PROVIDER connectonion
 co asr recording.m4a
 co asr recording.m4a --provider codex
+co asr recording.m4a --resume JOB_ID
 ```
 
 Replace `recording.m4a` with your existing audio file. The default provider is
@@ -35,21 +36,55 @@ ConnectOnion uses the existing `transcribe()` API, co authentication and credits
 setting applies only to the ConnectOnion provider. Existing `transcribe()` calls
 retain their original behavior.
 
-No provider fallback or automatic retry occurs. HTTP failure may follow an
-upload: retrying can submit the audio again. The command preserves the original
-file, prints text to stdout (provider/destination to stderr), and does not save
-a transcript or ingest memory. `--json` returns `{ok, provider, text}` for success
-and `{ok:false,error}` for ASR validation/provider failures. Upstream response
-bodies are omitted from errors; authentication failures give a login next step. Empty text can mean
-silence; it is not a reason to invent words.
+No provider fallback or automatic retry occurs. The original file is preserved.
+Text goes to stdout and destination/progress to stderr. Short direct requests
+return `{ok, provider, text}` with `--json`; long recordings also return a
+`job_id` and raw `segments` with source-window start/end offsets. Those offsets
+are not word-level timestamps. Errors omit upstream response bodies.
 
-Accepted containers: WAV, MP3, M4A/MP4, FLAC, Ogg and WebM, nonempty and at most
-50 MiB. A supported suffix does not prove a valid container. No automatic
-conversion, timestamps, diarization or long-file splitting is promised. The
-upstream project recommends splitting files longer than 11 minutes; this preview
-does not yet guarantee complete long-meeting transcripts. Network timeout is
-15 seconds to connect and 300 seconds of network inactivity. Original files
-must remain available for checking omissions and recognition errors.
+## Long meetings and interrupted work
+
+There is no 50 MiB input-file limit. Install FFmpeg (`ffprobe` and `ffmpeg`) for
+local inspection and conversion. For example on macOS, `brew install ffmpeg`.
+WAV, MP3, M4A/MP4, FLAC, Ogg and WebM can go directly to the provider when short;
+other decodable formats are converted locally. There is no upload just to
+discover duration.
+
+Long audio is processed one eight-minute window at a time with two seconds of
+boundary overlap, converted to 16kHz mono PCM. A three-hour meeting becomes
+23 requests rather than a rejected whole file. Only the prepared individual
+request has an internal size budget; the original can be larger. The upstream
+project's eleven-minute recommendation is not an official Codex limit. This
+window size is a conservative implementation choice, not a service guarantee.
+
+Completed raw transcripts are atomically checkpointed in private, owner-only
+directories at `~/.co/asr/jobs/JOB_ID/state.json` (or under `AGENT_CONFIG_PATH`).
+These local transcript files are plaintext; original audio is not copied into
+the checkpoint. Temporary converted windows are removed after each part. Delete
+the job directory when you no longer need its saved transcripts/recovery.
+
+On interruption, `--json` reports `job_id`, `completed_segments` and
+`partial_text`. Resume with the same original audio and the returned ID:
+
+```bash
+co asr recording.m4a --resume JOB_ID --json
+```
+
+Resume verifies the original's streamed SHA-256, keeps the recorded provider,
+model and language even if default configuration changed, and skips already
+checkpointed parts. A second process cannot run the same job simultaneously.
+An uncertain request or a failed checkpoint write may require submitting that
+one part again; remote exactly-once billing is not promised. No other provider
+is invoked to conceal a failure.
+
+The returned text concatenates raw parts in order and preserves repeated words;
+two-second boundary overlap may repeat speech. Text similarity alone cannot
+prove that a repetition is accidental, so this layer never silently deletes it.
+Raw part transcripts remain separate; any later AI cleanup is another version,
+not an overwrite. Empty text
+can represent silence. No speaker labels, word timestamps or automatic REM
+ingestion. Network timeout is 15 seconds to connect and 300 seconds of network
+inactivity per request. Keep originals to check omissions or recognition errors.
 
 ## Protocol source and experimental status
 

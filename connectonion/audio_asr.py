@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+from typing import Callable
 
 import httpx
 
@@ -26,6 +27,19 @@ class ASRError(ValueError):
     """A safe user-facing failure; never contains credentials or response bodies."""
 
 
+class ASRInterrupted(ASRError):
+    """A resumable long recording with separately retained raw segment results."""
+    def __init__(self, identifier, completed, *, cancelled=False, reason=None):
+        from .asr_jobs import merge
+        self.job_id = identifier
+        self.completed_segments = len(completed)
+        self.partial_text = merge(completed)
+        self.exit_code = 130 if cancelled else 1
+        super().__init__(f'ASR {"cancelled" if cancelled else "interrupted"}; {len(completed)} parts saved locally. '
+                         f'{reason or ""} '
+                         f'Next: co asr <same-audio-file> --resume {identifier}')
+
+
 def selected_provider(provider: str | None = None) -> str:
     """Explicit choice overrides ASR_PROVIDER; otherwise use Codex."""
     value = provider if provider is not None else os.environ.get('ASR_PROVIDER', 'codex')
@@ -34,33 +48,57 @@ def selected_provider(provider: str | None = None) -> str:
     return value
 
 
+def request_provider(provider: str | None = None, resume: str | None = None) -> str:
+    if not resume:
+        return selected_provider(provider)
+    from .asr_jobs import load
+    saved = load(resume)['provider']
+    if provider is not None and selected_provider(provider) != saved:
+        raise ASRError('A resumed job must keep its original provider. Next: co asr --help')
+    return saved
+
+
 def asr(audio: str | Path, *, provider: str | None = None,
-        language: str | None = None) -> dict[str, str]:
+        language: str | None = None, resume: str | None = None,
+        progress: Callable[[int, int], None] | None = None) -> dict:
     """Upload a selected audio file to one provider and return provider/text.
 
     Codex is the default cloud provider, not local recognition. File-backed
     Codex ChatGPT login is required. There is no automatic retry or fallback.
     ConnectOnion reuses transcribe(), with existing co credentials and pricing.
-    The caller owns saving the returned text and linking it to the original.
+    Long recordings use private per-part checkpoints and can resume with the
+    returned job ID. The caller decides whether results enter memory.
     """
-    chosen = selected_provider(provider)
+    chosen = request_provider(provider, resume)
     path = Path(audio).expanduser().resolve()
     _validate_audio(path)
     if language is not None and not re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', language):
         raise ASRError('Invalid language hint. Next: co asr --help')
+    from .asr_media import probe_duration, WINDOW_SECONDS
+    duration = probe_duration(path)
+    if resume or duration > WINDOW_SECONDS or path.stat().st_size > MAX_AUDIO_BYTES or path.suffix.lower() not in MIME_TYPES:
+        from .asr_jobs import load, run
+        if resume:
+            saved = load(resume)
+            if language is not None and language != saved['language']:
+                raise ASRError('Resume must keep the recorded language. Next: co asr --help')
+            language, model = saved['language'], saved['model']
+        else:
+            model = _cloud_model() if chosen == 'connectonion' else None
+        operation = (lambda clip: _codex(clip, language)) if chosen == 'codex' else (
+            lambda clip: _connectonion(clip, language, model))
+        return run(path, duration, chosen, language, model, operation, resume=resume, progress=progress)
     text = _codex(path, language) if chosen == 'codex' else _connectonion(path, language)
     return {'provider': chosen, 'text': text}
 
 
 def _validate_audio(path: Path) -> None:
     try:
-        valid = path.is_file() and 0 < path.stat().st_size <= MAX_AUDIO_BYTES
+        valid = path.is_file() and path.stat().st_size > 0
     except OSError:
         valid = False
     if not valid:
-        raise ASRError('Audio must be a readable, nonempty file up to 50 MiB. Next: co asr --help')
-    if path.suffix.lower() not in MIME_TYPES:
-        raise ASRError('Use WAV, MP3, M4A/MP4, FLAC, Ogg or WebM. Next: co asr --help')
+        raise ASRError('Audio must be a readable, nonempty file. Next: co asr --help')
 
 
 def _header_value(value: object) -> bool:
@@ -133,14 +171,19 @@ def _codex(path: Path, language: str | None) -> str:
         raise ASRError('Codex ASR returned an invalid transcript. Next: co asr --help') from None
 
 
-def _connectonion(path: Path, language: str | None) -> str:
-    from .transcribe import transcribe
+def _cloud_model() -> str:
     model = os.environ.get('ASR_MODEL')
     if model is None:
         from .core.usage import DEFAULT_MODEL
         model = DEFAULT_MODEL
     if not model.startswith('co/'):
         raise ASRError('ASR_MODEL must select a co/ model. Next: co env unset ASR_MODEL')
+    return model
+
+
+def _connectonion(path: Path, language: str | None, model: str | None = None) -> str:
+    from .transcribe import transcribe
+    model = model or _cloud_model()
     prompt = f'Transcribe the audio verbatim. Language hint: {language}.' if language else None
     # Provider errors may contain upstream bodies: keep that text out of CLI/logs.
     try:

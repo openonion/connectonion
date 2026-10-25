@@ -15,6 +15,9 @@ the original. `--json` separates success (`ok`, `provider`, `text`) from failure
 Empty text can represent silence. Failures name a recovery command; don't
 invent a transcript, silently choose another provider or claim memory ingestion.
 
-No timestamps or automatic long-recording segmentation in this preview. The
+Long recordings are split locally with FFmpeg; completed raw parts are saved
+privately. Use `--resume` with the returned job ID and the same audio after an
+interruption, retaining that job's provider/model/language. Do not restart all
+parts or treat partial text as a complete meeting. No word timestamps. The
 unofficial Codex endpoint can change; a login does not guarantee ASR entitlement.
 See `co asr --help` before execution rather than guessing parameters.
