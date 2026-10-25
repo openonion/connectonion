@@ -546,7 +546,8 @@ def resolve_agent_identity(co_dir: Path) -> dict:
     if own:
         return own
 
-    inherited = address.load(Path.home() / ".co")
+    from ...environment import global_config_dir
+    inherited = address.load(global_config_dir())
     if inherited:
         return inherited
 

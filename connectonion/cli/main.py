@@ -220,7 +220,7 @@ def _show_help():
     console.print()
 
 
-@app.command(epilog="Example:  co init  |  co init ./ --template co-ai")
+@app.command(epilog="Example:  co init  |  co init --background  |  co init ./ --template co-ai")
 def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
@@ -229,6 +229,7 @@ def init(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
+    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and REM storage; no source scan'),
 ):
     """Initialize local identity, profile and coding-agent skills, or use co init ./ for a project. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Project init does this too. Re-run to repair omissions while keeping your edits."""
     from .commands.init import handle_global_init, handle_init
@@ -240,8 +241,27 @@ def init(
         if template is not None or description is not None or force:
             console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
             raise typer.Exit(2)
+        if background and sys.platform != 'darwin':
+            console.print('Background Mac setup requires macOS. Next: co init', markup=False)
+            raise typer.Exit(2)
         handle_global_init(key=key)
+        if background:
+            from .mac_bootstrap import prepare_mac_host
+            from .host_service import HostServiceError
+            import json
+            try:
+                result = prepare_mac_host()
+                console.print(json.dumps(result), markup=False)
+            except (HostServiceError, OSError) as error:
+                console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
+                raise typer.Exit(1) from None
+            if not result['codex_ready']:
+                console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
+                raise typer.Exit(1)
         return
+    if background:
+        console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)
+        raise typer.Exit(2)
     handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
@@ -262,9 +282,14 @@ def create(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co host  |  co host --port 8001")
+@app.command(epilog="Example:  co host  |  co host --background  |  co host --status  |  co host --stop")
 def host(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
+    background: bool = typer.Option(False, '--background', help='Install/start a macOS login service for this project; preserves foreground behavior'),
+    status: bool = typer.Option(False, '--status', help='Read-only: inspect this project service and process; no device-ready claim'),
+    stop: bool = typer.Option(False, '--stop', help='Stop and disable this project service across login'),
+    uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove this project service; preserve agent, identity, memory and logs'),
+    native_codex: bool = typer.Option(False, '--native-codex', help='Serve native Codex directly from this initialized profile; no agent.py or outer model'),
 ):
     """Serve the agent in this directory: runs ./agent.py with co's own Python, so it works however co was installed.
 
@@ -273,6 +298,30 @@ def host(
     """
     import os
     import subprocess
+    if any((background, status, stop, uninstall)):
+        if sum((background, status, stop, uninstall)) != 1 or (port is not None and not background):
+            console.print('Choose one service action; --port applies to --background. Next: co host --help')
+            raise typer.Exit(2)
+        from .host_service import HostService, HostServiceError
+        from ..environment import explicit_env_file
+        import json
+        try:
+            service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
+            operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
+            console.print(json.dumps(operation()), markup=False)
+        except (HostServiceError, OSError) as error:
+            console.print(str(error) if isinstance(error, HostServiceError) else 'Cannot write the service files. Next: co host --status', markup=False)
+            raise typer.Exit(1) from None
+        return
+    if native_codex:
+        from .mac_bootstrap import serve_native_mac
+        from .host_service import HostServiceError
+        try:
+            serve_native_mac(Path.cwd(), port=port)
+        except HostServiceError as error:
+            console.print(str(error), markup=False)
+            raise typer.Exit(1) from None
+        return
     if not Path("agent.py").exists():
         console.print("[red]No agent.py in this directory.[/red] Make one: co create my-agent, then cd my-agent")
         raise typer.Exit(2)
