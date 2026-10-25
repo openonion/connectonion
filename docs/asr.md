@@ -1,9 +1,10 @@
 # ASR: one capability, two providers
 
 Requires the **1.9.3rc23 preview** and FFmpeg, including `ffprobe`, even for
-short files. Stable 1.9.2 does not include `co asr`. Publication is being
-verified; once the matching package and GitHub prerelease are available, use
-this exact pin rather than changing the stable installation recommendation:
+short files. Stable 1.9.2 does not include `co asr`. The
+[package](https://pypi.org/project/connectonion/1.9.3rc23/) and
+[GitHub prerelease](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc23)
+are published. Install this exact preview without changing the stable recommendation:
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc23'

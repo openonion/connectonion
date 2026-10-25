@@ -31,7 +31,7 @@ ConnectOnion. Long files are prepared locally in resumable windows. Both
 providers upload audio; the Codex endpoint is unofficial. No Watch connector
 or automatic REM ingestion is included. Stable remains **1.9.2**.
 
-After package and GitHub prerelease verification:
+Opt-in installation:
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc23'
