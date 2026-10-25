@@ -1133,16 +1133,6 @@ def test_critic_requires_two_good_verdicts_on_the_same_packet(notebook, tmp_path
     assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [report]
 
 
-def test_critic_wraps_legacy_dict_history_before_appending(notebook, tmp_path):
-    """2026-10-21: #2607 wrote one dict, rather than an array of attempts."""
-    previous = {'bullets': [], 'usage': {'input_tokens': 7}}
-    write_json(tmp_path / 'insight-critic.json', previous)
-    path = tmp_path / 'candidate.md'
-    path.write_text(PAGE)
-    report = insight_critic.judge(notebook, RECORD, PAGE, path, [], {}, tmp_path, None)
-    assert json.loads((tmp_path / 'insight-critic.json').read_text()) == [previous, report]
-
-
 def test_restored_and_kept_insights_stay_even_over_four_bullets(notebook, tmp_path):
     """2026-10-21: restoring the page's findings takes priority over the four-bullet cap."""
     old = [f'- Pattern: Avery finding {n} about Lantern. [1]' for n in range(4)]

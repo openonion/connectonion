@@ -120,11 +120,8 @@ def _git_original(source: str, known=frozenset()) -> dict:
     if not any(where == path or path in where.parents for path in known):
         return {}
     target = [f'{sha}:{file}'] if file else ['--stat', '--format=%H%n%an%n%ad%n%s%n%n%b', sha]
-    try:
-        result = subprocess.run(['git', '-C', checkout, 'show', *target],
-                                capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired):
-        return {}
+    result = subprocess.run(['git', '-C', checkout, 'show', *target],
+                            capture_output=True, text=True, timeout=60)
     if not result.returncode and result.stdout.strip():
         return {'excerpt': result.stdout[:40_000], 'truncated': len(result.stdout) > 40_000}
     return {}
@@ -317,7 +314,5 @@ def judge(notebook, record, before, candidate_path, items, config, workspace, ru
     candidate_path.write_text(text, encoding='utf-8')
     # 2026-10-21: repairs share the run directory; retain every attempt's decisions.
     history = workspace / 'insight-critic.json'
-    previous = read_json(history, [])
-    previous = [previous] if isinstance(previous, dict) else previous
-    write_json(history, [*previous, report])
+    write_json(history, [*read_json(history, []), report])
     return report
