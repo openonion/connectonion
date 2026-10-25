@@ -34,6 +34,22 @@ class HostService:
         self.explicit_config_root = os.environ.get('AGENT_CONFIG_PATH')
         self.config_root = Path(self.explicit_config_root or self.home/'.co').expanduser().resolve()
         self.provider_paths = {key: os.environ[key] for key in ('CODEX_HOME', 'CODEX_CMD') if os.environ.get(key)}
+        self.execution_path = os.pathsep.join(str(Path(item).expanduser().resolve())
+                                             for item in os.environ.get('PATH', os.defpath).split(os.pathsep) if item)
+        digest = hashlib.sha256(str(self.project).encode()).hexdigest()[:16]
+        self.label = 'ai.connectonion.host.' + digest
+        self.domain = f'gui/{self.uid}'
+        self.target = f'{self.domain}/{self.label}'
+        self.plist = self.home/'Library'/'LaunchAgents'/(self.label+'.plist')
+        self.logs = self.home/'.co'/'host-services'/digest
+        self.baseline = self.logs/'service.json'
+
+    def _prepare_provider(self):
+        # Observation and shutdown must work even with invalid provider settings.
+        # Generic agent.py services load their provider configuration normally.
+        if not self.native_codex:
+            self.provider_paths = {}
+            return
         if 'CODEX_HOME' in self.provider_paths:
             self.provider_paths['CODEX_HOME'] = str(Path(self.provider_paths['CODEX_HOME']).expanduser().resolve())
         command = self.provider_paths.get('CODEX_CMD') or shutil.which('codex')
@@ -46,15 +62,6 @@ class HostService:
             else:
                 command = shutil.which(command) or command
             self.provider_paths['CODEX_CMD'] = command
-        self.execution_path = os.pathsep.join(str(Path(item).expanduser().resolve())
-                                             for item in os.environ.get('PATH', os.defpath).split(os.pathsep) if item)
-        digest = hashlib.sha256(str(self.project).encode()).hexdigest()[:16]
-        self.label = 'ai.connectonion.host.' + digest
-        self.domain = f'gui/{self.uid}'
-        self.target = f'{self.domain}/{self.label}'
-        self.plist = self.home/'Library'/'LaunchAgents'/(self.label+'.plist')
-        self.logs = self.home/'.co'/'host-services'/digest
-        self.baseline = self.logs/'service.json'
 
     def _mac(self):
         if sys.platform != 'darwin':
@@ -181,6 +188,7 @@ class HostService:
                 self.native_codex = options.get('native_codex', False)
         if not self.native_codex and not (self.project/'agent.py').is_file():
             raise HostServiceError('No agent.py in this project. Next: co create my-agent')
+        self._prepare_provider()
         definition = self._definition()
         self.plist.parent.mkdir(parents=True, exist_ok=True)
         for name in ('stdout.log', 'stderr.log'):

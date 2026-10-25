@@ -51,10 +51,15 @@ remote text cannot choose a native thread ID, cwd or model. File/image inputs
 are not yet accepted by this native profile; audio is transcribed separately.
 
 `AGENT_CONFIG_PATH`, selected env-file and nonsecret Codex paths survive service
-restart. `CODEX_CMD` must name one executable rather than a command with arguments
+restart. Native `CODEX_CMD` must name one executable rather than a command with arguments
 or credentials; configure provider options in its own configuration. A saved
 baseline allows normal interpreter upgrades and reruns without repeating port
 options, while preserving actual plist edits.
+
+Provider executable validation happens only when starting a native profile.
+Status, stop and uninstall remain usable with invalid Codex settings. Generic
+`agent.py` services load their provider settings through the normal selected
+configuration; shell-only Codex overrides are not copied into their plist.
 
 The result reports service/process, REM preparation, Codex login preflight and
 missing Watch connector separately. Login preflight does not prove remaining

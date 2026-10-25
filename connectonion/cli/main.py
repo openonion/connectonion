@@ -305,8 +305,8 @@ def host(
         from .host_service import HostService, HostServiceError
         from ..environment import explicit_env_file
         import json
-        service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
         try:
+            service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
             operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
             console.print(json.dumps(operation()), markup=False)
         except (HostServiceError, OSError) as error:

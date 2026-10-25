@@ -68,6 +68,33 @@ def test_status_does_not_create_files(service):
     assert not instance.plist.exists()
 
 
+@pytest.mark.parametrize('action', ['status', 'stop', 'uninstall'])
+def test_lifecycle_observation_and_stop_ignore_invalid_codex_command(service, monkeypatch, action):
+    instance, control = service
+    instance.start()
+    monkeypatch.setenv('CODEX_CMD', 'codex --profile work')
+    rerun = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    getattr(rerun, action)()
+    assert control.calls
+
+
+def test_generic_service_does_not_validate_or_persist_native_codex_override(service, monkeypatch):
+    instance, control = service
+    monkeypatch.setenv('CODEX_CMD', 'codex --profile work')
+    selected = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    assert selected.start()['running']
+    assert 'CODEX_CMD' not in plistlib.loads(selected.plist.read_bytes())['EnvironmentVariables']
+
+
+def test_native_start_validates_provider_command_before_service_registration(service, monkeypatch):
+    instance, control = service
+    monkeypatch.setenv('CODEX_CMD', 'codex --profile work')
+    selected = module().HostService(instance.project, home=instance.home, runner=control, uid=501, native_codex=True)
+    with pytest.raises(module().HostServiceError, match='one executable'):
+        selected.start()
+    assert not control.calls and not selected.plist.exists()
+
+
 def test_stop_then_restart_and_uninstall_keep_project(service):
     instance, _ = service
     instance.start()
@@ -125,9 +152,12 @@ def test_selected_config_root_is_persisted(service):
 
 def test_selected_codex_paths_are_persisted_and_reused(service):
     instance, control = service
+    instance.native_codex = True
+    instance._native_healthy = lambda pid: True
     instance.provider_paths = {'CODEX_HOME': str(instance.home/'codex-profile'), 'CODEX_CMD': '/synthetic/codex'}
     instance.start()
     rerun = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    rerun._native_healthy = lambda pid: True
     rerun.start()
     data = plistlib.loads(rerun.plist.read_bytes())
     assert data['EnvironmentVariables']['CODEX_HOME'] == str(instance.home/'codex-profile')
@@ -144,7 +174,8 @@ def test_custom_runtime_path_and_relative_codex_are_resolved(service, tmp_path, 
     monkeypatch.setenv('PATH', str(binaries))
     monkeypatch.setenv('CODEX_CMD', './npm-prefix/bin/codex')
     monkeypatch.chdir(tmp_path)
-    selected = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    selected = module().HostService(instance.project, home=instance.home, runner=control, uid=501, native_codex=True)
+    selected._native_healthy = lambda pid: True
     selected.start()
     data = plistlib.loads(selected.plist.read_bytes())
     assert data['EnvironmentVariables']['CODEX_CMD'] == str(command.resolve())
