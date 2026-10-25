@@ -6,6 +6,16 @@ import yaml
 from .host_service import HostService, HostServiceError
 
 
+def _available_port() -> int:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        try:
+            listener.bind(('0.0.0.0', 8000))
+        except OSError:
+            listener.bind(('0.0.0.0', 0))
+        return listener.getsockname()[1]
+
+
 def _prepare_profile(runtime: Path) -> None:
     from .commands.init import handle_init
     from ..rem.files import atomic_write
@@ -17,7 +27,7 @@ def _prepare_profile(runtime: Path) -> None:
     if fresh:
         path = runtime/'.co'/'host.yaml'
         config = yaml.safe_load(path.read_text()) or {}
-        config.update(name='my-mac', trust='strict', directory='unlisted', listen=[])
+        config.update(name='my-mac', trust='strict', directory='unlisted', listen=[], port=_available_port())
         atomic_write(path, yaml.safe_dump(config, sort_keys=False))
 
 

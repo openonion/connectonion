@@ -43,6 +43,8 @@ mapping or investigating sources, then starts a native Codex Host user service.
 New profiles are strict-trust, unlisted and have no chat-channel listeners.
 Existing user configuration is kept. New REM configuration selects Codex; it
 does not silently fall back to a different runner.
+New profiles use port 8000 if free, otherwise an operating-system-assigned port;
+an existing Host is not stopped. The actual saved profile port is reused later.
 
 `co host --native-codex` runs that native profile in the foreground. It reuses the
 existing Codex plugin and Host session/permission boundaries, with no outer

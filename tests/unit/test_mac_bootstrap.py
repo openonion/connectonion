@@ -13,6 +13,7 @@ def test_bootstrap_reuses_profile_preserves_rem_and_reports_missing_connector(tm
     root = tmp_path/'co'
     monkeypatch.setattr(environment, 'global_config_dir', lambda: root)
     monkeypatch.setattr(sys, 'platform', 'darwin')
+    monkeypatch.setattr(mac_bootstrap, '_available_port', lambda: 8123)
     def initialize(ai, key, template, description, yes, force, path):
         assert ai is None and key is None and template is None and description is None
         assert yes is True and force is False
@@ -32,6 +33,7 @@ def test_bootstrap_reuses_profile_preserves_rem_and_reports_missing_connector(tm
     runtime = root/'runtime'/'mac-host'
     host = yaml.safe_load((runtime/'.co'/'host.yaml').read_text())
     assert host['trust'] == 'strict' and host['directory'] == 'unlisted' and host['listen'] == []
+    assert host['port'] == 8123
     rem = root/'rem'/'config.yaml'
     original = rem.read_bytes()
     assert yaml.safe_load(original)['runner'] == 'codex'
@@ -40,6 +42,22 @@ def test_bootstrap_reuses_profile_preserves_rem_and_reports_missing_connector(tm
     mac_bootstrap.prepare_mac_host()
     assert rem.read_bytes() == original
     assert yaml.safe_load((runtime/'.co'/'host.yaml').read_text())['name'] == 'my custom name'
+
+
+def test_fresh_profile_chooses_an_unused_port_without_stopping_an_existing_host(monkeypatch):
+    import socket
+    attempted = []
+    class Socket:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def bind(self, address):
+            attempted.append(address)
+            if address[1] == 8000:
+                raise OSError('synthetic occupied port')
+        def getsockname(self): return ('0.0.0.0', 49123)
+    monkeypatch.setattr(socket, 'socket', lambda *args: Socket())
+    assert mac_bootstrap._available_port() == 49123
+    assert attempted == [('0.0.0.0', 8000), ('0.0.0.0', 0)]
 
 
 def test_programmatic_global_setup_rejects_explicit_env_without_writing(tmp_path, monkeypatch):
