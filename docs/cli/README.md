@@ -283,7 +283,7 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 ```
 
 **Subcommands:**
-- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`)
+- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`, `--address/-a`)
 - `co email read <#>` - print one message's body; add `--mark-read` to consume it
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)

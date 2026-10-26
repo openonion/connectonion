@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread, offset) → Rich table | handle_email_read() → get_emails() → find by id → print body → optionally mark_read(id)
   State/Effects: no local state | network calls happen inside the engine tools | only read --mark-read flips server-side read status | writes to stdout via rich.Console
   Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses(), handle_email_share()/handle_email_unshare() (connectonion#1137) for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py, share/unshare hit /api/v1/email/share directly like addresses/name do | requires prior 'co auth'
-  Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
+  Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash | an empty inbox --address page is checked against owned addresses and can_read grants before it is reported as no mail (#2671)
 """
 
 import shlex
@@ -119,6 +119,57 @@ def handle_email_send(
         raise typer.Exit(1)
 
 
+def _same_address(left: str, right: str) -> bool:
+    return left.strip().lower() == right.strip().lower()
+
+
+def _granted_read_addresses(token: str) -> list[str]:
+    """Addresses another account granted this one read access to."""
+    response = requests.get(
+        f"{backend_url()}/api/v1/email/share",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not response.ok:
+        console.print(f"\n[red]✗ {_err(response)}[/red]\n")
+        raise typer.Exit(1)
+    return [
+        str(row["address"])
+        for row in response.json().get("granted_to_me", [])
+        if row.get("can_read") and row.get("address")
+    ]
+
+
+def _require_inbox_address(address: str) -> None:
+    """An empty received page is not proof the mailbox is empty.
+
+    GET /received answers an address this account cannot read with an empty
+    page, so a caller cannot learn which addresses exist. This account's own
+    list is already available. Name it and exit, instead of reporting that no
+    mail arrived. A can_read grant is readable without being owned, so an
+    empty page there stays "no mail".
+    """
+    token, settings = _address_settings()
+    owned = [
+        str(item["address"])
+        for item in settings.get("addresses", [])
+        if item.get("address")
+    ]
+    if any(_same_address(address, item) for item in owned):
+        return
+    granted = _granted_read_addresses(token)
+    if any(_same_address(address, item) for item in granted):
+        return
+    yours = ", ".join(owned) if owned else "(none)"
+    console.print(
+        f"\n{address} is not one of this account's email addresses.\n"
+        f"Yours are: {yours}",
+        markup=False,
+    )
+    console.print("  See your addresses: [bold]co email addresses[/bold]\n")
+    raise typer.Exit(1)
+
+
 def handle_email_inbox(
     last: int = 10, unread: bool = False, offset: int = 0, address: str = None
 ):
@@ -129,11 +180,17 @@ def handle_email_inbox(
     from ...useful_tools.get_emails import get_emails
     emails = get_emails(last=last, offset=offset, address=address)
     page_is_full = len(emails) == last
+    # Empty is also what /received returns for an address this account cannot
+    # read. Only that case is an error; a local --unread filter of a real page
+    # is still "no unread mail".
+    received_any = bool(emails)
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
         emails = [e for e in emails if not e.get("read")]
 
     if not emails:
+        if address and not received_any:
+            _require_inbox_address(address)
         scope = "unread " if unread else ""
         where = f" at {address}" if address else ""
         console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails{where}")
