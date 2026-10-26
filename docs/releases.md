@@ -25,22 +25,35 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc24** is the freeze candidate for 1.9.3. From here
-only release-blocking fixes land; if rc24 holds up end to end it is promoted
-unchanged to 1.9.3. It adds the REM citation, translation, company-scope and
+Release candidate **1.9.3rc25** is the freeze candidate for 1.9.3: rc24 plus
+one release-blocking fix. `co lark listen` no longer loses messages silently:
+history recovery is bounded and runs only at start and reconnect, a rejected
+conversation is skipped instead of stopping recovery, a message that reached
+another client on the same app is reported by `co lark check`, and reactions,
+recalls and group events reach the inbox. If rc25 holds up end to end it is
+promoted unchanged to 1.9.3. Stable remains **1.9.2**.
+
+Opt-in installation:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc25'
+```
+
+See [the candidate notes](releases/1.9.3rc25.md).
+
+## Previous previews
+
+Release candidate **1.9.3rc24** froze the 1.9.3 line: after it, only
+release-blocking fixes land. It adds the REM citation, translation, company-scope and
 diary-folder privacy fixes merged after rc23, a macOS user service for
 `co host`, and an error for `co email inbox --address` with an address you do
 not own. Stable remains **1.9.2**.
-
-Opt-in installation:
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc24'
 ```
 
 See [the candidate notes](releases/1.9.3rc24.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc23** adds generic `co asr` and Python `asr()`.
 Codex is the default provider; existing co configuration can select
