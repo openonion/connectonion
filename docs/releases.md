@@ -25,13 +25,28 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc24** is the freeze candidate for 1.9.3. From here
+only release-blocking fixes land; if rc24 holds up end to end it is promoted
+unchanged to 1.9.3. It adds the REM citation, translation, company-scope and
+diary-folder privacy fixes merged after rc23, a macOS user service for
+`co host`, and an error for `co email inbox --address` with an address you do
+not own. Stable remains **1.9.2**.
+
+Opt-in installation:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc24'
+```
+
+See [the candidate notes](releases/1.9.3rc24.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc23** adds generic `co asr` and Python `asr()`.
 Codex is the default provider; existing co configuration can select
 ConnectOnion. Long files are prepared locally in resumable windows. Both
 providers upload audio; the Codex endpoint is unofficial. No Watch connector
 or automatic REM ingestion is included. Stable remains **1.9.2**.
-
-Opt-in installation:
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc23'
@@ -39,8 +54,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc23'
 
 See [the candidate notes](releases/1.9.3rc23.md) and
 [ASR configuration and recovery](asr.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc22** activates Codex Scheduled after native registration
 and confirms timer changes before handing off the old clock. Normal-profile

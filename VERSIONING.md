@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc23
+## Current Version: 1.9.3rc24
+
+Freeze candidate for 1.9.3. It carries the REM work merged after rc23 (cited
+originals through the evidence index, translation repair, owner company scope,
+muse new ground, one diary-folder privacy rule), the macOS device Host service
+and an `co email inbox --address` ownership check. From rc24 on only
+release-blocking fixes land on the 1.9.3 line; if rc24 holds up end to end it
+is promoted unchanged to 1.9.3. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc24.md).
+
+- 1.9.3rc24 (1.9.3 freeze candidate: REM citation, translation, company-scope and privacy fixes; macOS Host service; inbox address check).
+
+### Previous candidate: 1.9.3rc23
 
 Candidate: generic ASR with a native Python Codex dictation adapter and an
 explicit ConnectOnion provider. Existing co configuration selects the provider;
