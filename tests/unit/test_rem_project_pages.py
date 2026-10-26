@@ -896,6 +896,43 @@ def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_p
     assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
 
 
+def test_implementation_evidence_neither_reads_nor_lists_diary_files(tmp_path):
+    repo = tmp_path / 'work'
+    (repo / 'journal').mkdir(parents=True)
+    (repo / 'journal/PEOPLE.md').write_text('Mia Chen [sensitive] diary entry.')
+    (repo / 'PEOPLE.md').write_text('Avery Lin reviews the delivery.')
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Avery Lin', '-c',
+                    'user.email=avery@example.org', 'commit', '-qm', 'Add invented notes'], check=True)
+    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert {item['subject'] for item in items} == {'tracked-files', 'PEOPLE.md'}
+    assert 'journal' not in items[0]['text'] and 'PEOPLE.md' in items[0]['text']
+    assert any('Avery Lin reviews the delivery.' in item['text'] for item in items)
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+
+def test_pending_excludes_messages_typed_in_diary_subfolders(world):
+    record = 'projects/tide.md'
+    codex(world.codex / 'rollout-j.jsonl', '/work/tide/journal',
+          [('user', 'Mia Chen [sensitive] diary entry.', 1)])
+    codex(world.codex / 'rollout-a.jsonl', '/work/tide',
+          [('user', 'Avery Lin reviews the delivery.', 2)])
+    extract(world.root, world.subs)
+    messages = stored(world.root, record)
+    assert {m['cwd'] for m in messages} == {'/work/tide', '/work/tide/journal'}
+
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'first'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+    mark_written(world.root, record, ago(3))
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'update'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+
+
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
     """#2079: by recency alone a fresh init wrote the owner's private journal
     before LayeredVisions (28 sessions) and browser (17)."""
@@ -1036,3 +1073,23 @@ def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch
     monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
     snapshot = live_file_snapshot("", f"file:{note}@{hashlib.sha256(note.read_bytes()).hexdigest()}")
     assert "8% of net" in snapshot["text"]
+
+
+def test_a_project_under_a_diary_named_parent_is_private_until_investigated_on_purpose(world):
+    """Review of #2618: a whole-path rule dropped the sessions of ~/Personal/shop-app, but
+    `private()` read only the folder's own name, so the page could never be opted in."""
+    record = 'projects/shop-app.md'
+    world.notebook.stub_project(record, 'shop-app', ['/Users/a/Personal/shop-app'])
+    codex(world.codex / 'rollout-s.jsonl', '/Users/a/Personal/shop-app',
+          [('user', 'Ship the checkout page.', 1)])
+    extract(world.root, world.subs)
+    assert project_pages.private(record, world.notebook.read(record))
+    assert project_pages.pending(world.root, record)[0] == []
+
+    page = re.sub(r'^Investigation: .*$', 'Investigation: investigated 2026-10-20', world.notebook.read(record), flags=re.M)
+    world.notebook.write(record, page)
+    messages, mode = project_pages.pending(world.root, record)
+    assert [m['text'] for m in messages] == ['Ship the checkout page.']
+
+    world.notebook.stub_project('projects/atlas.md', 'atlas', ['/private/tmp/work/atlas'])
+    assert not project_pages.private('projects/atlas.md', world.notebook.read('projects/atlas.md'))

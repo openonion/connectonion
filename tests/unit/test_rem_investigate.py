@@ -488,6 +488,58 @@ def project_documents(tmp_path):
     return book, folder
 
 
+def test_project_mentions_excludes_diary_documents_unless_opted_in(tmp_path):
+    book = inv.Notebook(_notebook(tmp_path, 'codex'))
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Mia Chen reviews the delivery with Avery Lin.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    book.stub_project('projects/work.md', 'Work', [str(work)])
+    book.stub_project('projects/diary.md', 'Diary', [str(diary)])
+
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert [item['file'] for item in items] == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+    book.stub_project('projects/journal.md', 'Journal', [str(journal)])
+    for record in ('projects/journal.md', 'projects/diary.md'):
+        book.note_pass(record, 'investigated', 'project files')
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
+
+
+def test_project_inventory_excludes_diary_files_unless_opted_in(tmp_path):
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Avery Lin reviews the delivery.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    page = f'# Work\n## Paths\n- {work}\n- {diary}\n'
+
+    leads = inv.project_file_inventory(page)
+    assert leads == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in inv.project_file_texts(leads))
+
+    leads = inv.project_file_inventory(page, opted_in=frozenset({str(journal), str(diary)}))
+    items = inv.project_file_texts(leads)
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
+
+
 def test_project_mentions_reads_document_excerpts_and_redacts_secrets(project_documents):
     book, folder = project_documents
     note = folder / 'notes/a.md'
@@ -3413,3 +3465,37 @@ def test_short_product_names_match_only_as_written_whole_words():
     pattern = inv.company_mentions(['Mara Labs', 'Pix', 'go'])
     assert pattern.search('notes on mara labs pricing') and pattern.search('Pix shipped today')
     assert not pattern.search('we should go to the pixel show') and not pattern.search('pix and Go')
+
+
+def test_a_diary_folder_is_not_read_for_the_owners_page_and_the_remote_names_the_repository(tmp_path):
+    """2026-10-21 spot check: diary lines reached the owner's page; a project page said `Repository: Unknown`."""
+    import subprocess
+    assert inv._private_folder("/home/avery/journal") and inv._private_folder("/home/avery/my-diary")
+    assert inv._private_folder("/home/avery/journal/2026-10") and inv._private_folder("/home/avery/私人/notes")
+    assert not inv._private_folder("/private/tmp/work/atlas") and not inv._private_folder("")
+    assert not inv._private_folder("/home/avery/journal/2026-10", frozenset({"/home/avery/journal"}))
+    repo = tmp_path / "atlas"
+    repo.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "a@example.com"], ["config", "user.name", "Avery"],
+                 ["commit", "-q", "--allow-empty", "-m", "start"],
+                 ["remote", "add", "origin", "https://token@github.com/example/atlas.git"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    state = inv.checkout_state(str(repo))
+    assert "Remote origin: https://github.com/example/atlas.git." in state and "token" not in state
+
+
+def test_a_diary_session_line_naming_a_friend_never_reaches_the_friends_page(tmp_path, monkeypatch):
+    """Review of #2618: the diary rule applied only to the owner; a line naming a friend passed `related()`."""
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:s:10", "project": "/home/avery/journal/2026-10",
+         "timestamp": stamp, "text": "Book the hotel near Mia Chen's flat in Example Lane."},
+        {"role": "user", "source": "claude-code:s:20", "project": "/home/avery/atlas",
+         "timestamp": stamp, "text": "Send Mia Chen the Atlas deck."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, _ = inv.gather("Mia Chen", ["mia chen"], days=7, clients={},
+                          subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path), "enabled": True}},
+                          record="people/mia-chen.md")
+    assert [item["source"] for item in items] == ["claude-code:s:20"]

@@ -384,7 +384,7 @@ def collapse_worktree_paths(page: str) -> str:
     return page[:section.start(1)] + body + page[section.end(1):]
 
 
-def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
+def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset()) -> list[str]:
     """Give a project investigation bounded file leads, never file contents.
 
     Session metadata can name a project with no user messages. A short inventory
@@ -397,21 +397,22 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
     for root in roots[:4]:
         resolved = root.resolve()
-        if (not root.is_dir() or root.is_symlink() or resolved == Path.home()
+        if (_private_folder(str(root), opted_in) or not root.is_dir() or root.is_symlink() or resolved == Path.home()
                 or resolved in Path.home().parents or len(resolved.parts) < 3):
             continue
         seen = 0
         for current, dirs, files in os.walk(root, followlinks=False):
             depth = len(Path(current).relative_to(root).parts)
             dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
-                             and not (Path(current) / d).is_symlink()) if depth < 4 else []
+                             and not (Path(current) / d).is_symlink()
+                             and not _private_folder(str(Path(current) / d), opted_in)) if depth < 4 else []
             for name in sorted(files):
                 if name.startswith(".") or (Path(name).suffix.lower() not in suffixes and name != "package.json"):
                     continue
                 if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
                     continue
                 path = Path(current) / name
-                if path.is_symlink():
+                if _private_folder(str(path), opted_in) or path.is_symlink():
                     continue
                 leads.append(str(path))
                 seen += 1
@@ -546,12 +547,16 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
     if not names:
         return [], "project documents: none name the subject (no identifying name supplied)"
     pattern = re.compile("|".join(re.escape(name) for name in dict.fromkeys(names)), re.I)
+    opted_in = opted_in_folders(notebook.root)
     roots = {Path(path).expanduser().resolve() for record in notebook.list("projects")
              for path in project_paths(collapse_worktree_paths(notebook.read(record)))
-             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()}
+             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()
+             and not _private_folder(str(Path(path).expanduser().resolve()), opted_in)}
     found, seen, real = [], set(), {}
     for root in sorted(roots):
         for path in _project_documents(root):
+            if _private_folder(str(path), opted_in):
+                continue
             # Cached names can be deleted or replaced by links while other pages run.
             # A folder resolved once per call: resolving every document was most of
             # this function at 16 workers (2026-10-20).
@@ -628,6 +633,10 @@ def checkout_state(path: str, newest_session: str = "") -> str:
     ref = next((r for r in CURRENT_REFS if _git(path, "rev-parse", "--verify", "--quiet", r + "^{commit}")), "") \
         or _git(path, "for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(refname:short)", "refs/heads")
     lines = [f"Checkout {path}: branch {branch}, HEAD committed {head[:10]}."]
+    # 2026-10-21 spot check: `Repository: Unknown` beside a repo with a GitHub remote.
+    remote = _git(path, "remote", "get-url", "origin")
+    if remote:
+        lines.append(f"Remote origin: {re.sub(r'://[^/@]+@', '://', remote)}.")
     line_date = _git(path, "log", "-1", "--format=%cI", ref) if ref else ""
     if ref and line_date:
         version = _version_at(path, ref)
@@ -1012,9 +1021,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         scoped = {**sub, "enabled": True, "consented": True, "since": session_start.isoformat()}
         scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
+        opted_in = opted_in_folders(archive_root)
         read = collect_chat if chat else collect
 
         def related(item):
+            # A diary folder is never read for any page unless the owner opted it in by
+            # having its project page written (project_pages.private); its lines reached
+            # the owner's page as hotel bookings and a friend's address (2026-10-21).
+            if not chat and _private_folder(item.get("project") or item.get("cwd") or "", opted_in):
+                return False
             # A chat line says who said it; mail's rule for the owner applies:
             # what the owner wrote describes them, the whole chat does not.
             # sent_only is the owner's page even when no mailbox is connected
@@ -1933,6 +1948,28 @@ RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
 
 
+def _private_folder(path: str, opted_in=frozenset()) -> bool:
+    """`project_pages.private_path`, unless the folder is under one the owner opted in."""
+    from .project_pages import private_path
+    if not path or any(path == folder or path.startswith(folder.rstrip("/") + "/") for folder in opted_in):
+        return False
+    return private_path(path)
+
+
+def opted_in_folders(root: Path | None) -> frozenset:
+    """Folders of private projects the owner had written on purpose (`co rem investigate <page>`)."""
+    from .project_pages import private
+    if root is None:
+        return frozenset()
+    notebook = Notebook(root)
+    folders = set()
+    for record in notebook.list("projects"):
+        page = notebook.read(record)
+        if private(record, page) and last_investigated(page):
+            folders.update(project_paths(page))
+    return frozenset(folders)
+
+
 def owner_work_evidence(items: list[dict]) -> str:
     """Put a few dated, citable coding messages beside the owner's full source index.
 
@@ -2308,12 +2345,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
         project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
-        from .project_pages import current_line
+        from .project_pages import current_line, private
         # A Git project is read at its current line, handed to every round; only
         # a plain folder is read file by file. Sixty whole files of oo-api's
         # working tree took five rounds before one of the owner's messages (2026-10-15).
         line = current_line(corrected)
-        leads = [] if line else project_file_inventory(corrected)
+        leads = [] if line else project_file_inventory(
+            corrected, opted_in=opted_in_folders(root) | (frozenset(project_paths(corrected))
+                                                        if private(record, corrected) else frozenset()))
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
