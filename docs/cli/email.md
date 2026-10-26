@@ -8,11 +8,14 @@
 
 ```sh
 co email inbox --last 50
+co email inbox --address you@mail.openonion.ai
 co email read 123
 co email sent
 co email sent read 456
 co email search "launch" --last 100 --offset 0 --json
 ```
+
+`--address` narrows the inbox to one mailbox. An address this account does not own, and has not been granted read access to, exits with an error that lists this account's addresses. The received-mail API returns an empty page for an address it will not confirm, so the command checks the account's address list before calling that page "no mail".
 
 To mark selected messages read:
 
