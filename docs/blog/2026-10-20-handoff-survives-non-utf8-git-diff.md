@@ -10,7 +10,8 @@ Nothing about the patch was wrong. The assumption was. Git will happily print
 whatever is on disk; `_git_out` treated every byte sequence as valid UTF-8.
 One non-UTF-8 line in an otherwise fine diff killed the whole handoff.
 
-The decode now asks for UTF-8 with `errors="replace"`. Bad bytes become
-replacement characters in the patch text, the send continues, and the preview
-still shows the change. A unit test feeds non-UTF-8 bytes through `_git_out`
-and asserts the handoff path no longer raises.
+The diff is read as bytes and kept with `surrogateescape`, so a Latin-1 line
+stays those bytes on the way to the recipient. Accept writes the patch back
+with the same encoding, and `git apply` puts the original bytes on disk.
+Collecting the diff still does not raise. A unit test applies the patch and
+checks the resulting file byte for byte.

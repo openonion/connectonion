@@ -340,17 +340,18 @@ BYTECODE = re.compile(r"(^|/)__pycache__/|\.py[co]$")
 
 
 def _git_out(folder: Path, args: tuple, ok: tuple) -> str:
-    # diffs can contain bytes that are not UTF-8 (#2570); never let decode kill the send
-    done = subprocess.run(
-        ["git", "-C", str(folder), *args],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    """Git's stdout. A diff is not always UTF-8 (#2570): the bytes are captured whole and decoded
+    with surrogateescape, so `patch_bytes` can write them back for `git apply` unchanged."""
+    done = subprocess.run(["git", "-C", str(folder), *args], capture_output=True)
     if done.returncode not in ok:
-        raise RuntimeError(f"git {' '.join(args)} failed in {folder}: {done.stderr.strip()}")
-    return done.stdout
+        err = done.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"git {' '.join(args)} failed in {folder}: {err}")
+    return done.stdout.decode("utf-8", errors="surrogateescape")
+
+
+def patch_bytes(text: str) -> bytes:
+    """`_git_out`'s string back to the bytes git wrote."""
+    return text.encode("utf-8", errors="surrogateescape")
 
 
 def patch_digest(patch: dict) -> dict:

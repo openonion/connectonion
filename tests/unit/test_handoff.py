@@ -1319,3 +1319,34 @@ def test_code_patch_survives_a_non_utf8_git_diff(tmp_path):
     )
     assert patch is not None
     assert "note.txt" in patch["changes"]
+    assert "\ufffd" not in patch["changes"]
+
+
+def test_a_non_utf8_code_patch_applies_the_original_bytes(tmp_path, monkeypatch):
+    """#2570 review: accept applies the patch, and the recipient's file matches the sender's bytes."""
+    import subprocess
+    from connectonion.cli.commands import handoff_commands as hc
+    from connectonion.handoff import sealing
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "note.txt").write_bytes(b"cafe\n")
+    git("add", "note.txt")
+    git("commit", "-qm", "one")
+    original = b"caf\xe9\r\n"
+    (repo / "note.txt").write_bytes(original)
+    entry = sessions.code_at(repo)
+    patch = sessions.code_patch(repo, entry)
+    # send stores the patch as JSON, then seals it; accept opens that and applies it
+    draft = json.loads(json.dumps([patch]))[0]
+    key = sealing.new_key()
+    opened = sealing.unlock(key, sealing.lock(key, {"code": [draft]}, "t:held"), "t:held")["code"][0]
+    assert sessions.patch_digest(opened)["sha256"] == sessions.patch_digest(patch)["sha256"]
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    hc._unpack_code([entry], [opened], tmp_path / "accepted")
+    assert (work / "legacy" / "note.txt").read_bytes() == original
