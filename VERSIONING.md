@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc24
+## Current Version: 1.9.3rc25
+
+Freeze candidate for 1.9.3: rc24 plus one release-blocking fix, the Lark
+listener repair (#2691, fixes #2690). History recovery is bounded and runs only
+at start and reconnect; a rejected container is skipped instead of aborting
+recovery; events that reached the bot but not this listener are reported; chat
+reactions, recalls and group events reach the inbox. Nothing else changed. If
+rc25 holds up end to end it is promoted unchanged to 1.9.3. Stable remains
+1.9.2. See [candidate notes](docs/releases/1.9.3rc25.md).
+
+- 1.9.3rc25 (1.9.3 freeze candidate: rc24 plus the Lark listener fix).
+
+### Previous candidate: 1.9.3rc24
 
 Freeze candidate for 1.9.3. It carries the REM work merged after rc23 (cited
 originals through the evidence index, translation repair, owner company scope,
