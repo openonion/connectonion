@@ -75,6 +75,39 @@ def test_placeholder_is_not_an_original_identity_for_quote_extension():
     assert dropped(before, after)
 
 
+@pytest.mark.parametrize('target', [
+    'file:/fixture/a other.md#sha256:bbbb',
+    'file:/fixture/a notes.md#sha256:bbbb',
+])
+def test_space_containing_original_targets_and_hashes_are_not_truncated(target):
+    before = page('“Send Nora the pilot price” [1].',
+                  '- [1] file:/fixture/a notes.md#sha256:aaaa')
+    after = page('“Send Nora the pilot price.” [1].', f'- [1] {target}')
+    assert dropped(before, after)
+
+
+def test_complete_space_containing_original_identity_survives_renumbering():
+    target = 'file:/fixture/a notes.md#sha256:aaaa'
+    before = page('“Send Nora the pilot price” [1].', f'- [1] {target} — old caption')
+    after = page('“Send Nora the pilot price.” [7].', f'- [7] {target} — new caption')
+    assert dropped(before, after) == []
+    assert restore_dropped(before, after) == after
+
+
+def test_definition_outside_sources_cannot_bind_a_quote():
+    before = page('“Send Nora the pilot price” [1].')
+    after = page('“Send Nora the pilot price.” [1].',
+                 '\n## Appendix\n- [1] outlook:synthetic-1')
+    assert dropped(before, after)
+
+
+def test_invalid_duplicate_definition_cannot_be_ignored():
+    before = page('“Send Nora the pilot price” [1].')
+    after = page('“Send Nora the pilot price.” [1].',
+                 '- [1] outlook:synthetic-1\n- [1] Unknown')
+    assert dropped(before, after)
+
+
 def test_each_old_quote_occurrence_needs_its_original_identity():
     before = page('“Send Nora the pilot price” [1].\n“Send Nora the pilot price” [2].',
                   '- [1] outlook:synthetic-1\n- [2] outlook:synthetic-2')

@@ -33,3 +33,18 @@ is placed before the first content section, not among uncertainty statements.
 No model/provider/mail/scheduler/init, actual notebook/cache update, source
 truth or native/mobile/privacy/focus/accessibility acceptance is claimed. Source
 and semantic audit still apply. Candidate-authored duplication is separate work.
+
+Independent review of the initial implementation caught a source-identity defect:
+space-containing file targets were truncated at the first space, and definitions
+in later sections could count as Sources. Five added controls reported3failed,
+2passed,24deselected0.52s. The correction uses the existing reader's full literal
+source grammar, keeps revisions/hashes and internal spaces, stops at the next
+section, and does not ignore an invalid duplicate definition. The related suites
+then passed554tests in10.67s (285 unchanged maxsplit warnings).
+
+The initial broad run was **not acceptance**:139failed,17,442passed,331skipped
+in144.46s. A borrowed user-site runtime was unavailable to empty-HOME subprocesses
+(`dotenv` missing), and optional packages leaked into collection. A fresh isolated
+editable development environment replaces that setup; its final result must be
+recorded independently. Source changes during that earlier run also mean it is
+not exact-final-head evidence. No test or audit gate was waived.

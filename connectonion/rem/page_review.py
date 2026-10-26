@@ -1757,12 +1757,17 @@ def _quote_bindings(text: str) -> list[tuple[str, frozenset[str] | None]]:
     A source listed elsewhere, or another quote on the same line, cannot establish
     continuity. Dates and privacy labels may intervene; ordinary prose may not.
     """
+    from .reader_model import SOURCE
     head, _, tail = prose(text).partition('\n## Sources\n')
+    tail = re.split(r'^## ', tail, maxsplit=1, flags=re.M)[0]
     definitions = collections.defaultdict(set)
-    for number, source in re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)', tail):
-        definitions[number].add(source)
+    for line in tail.splitlines():
+        number = re.match(r'^[ \t]*[-*][ \t]*\[(W?\d+)\][ \t]+', line)
+        if number:
+            source = SOURCE.match(line)
+            definitions[number[1]].add(source[2].strip() if source else None)
     unique = {n: next(iter(ids)) for n, ids in definitions.items()
-              if len(ids) == 1 and re.match(r'[a-z][\w-]*:', next(iter(ids)))}
+              if len(ids) == 1 and None not in ids}
     head = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', head)
     found = []
     for line in head.splitlines():
