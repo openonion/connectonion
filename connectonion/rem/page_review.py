@@ -1751,6 +1751,51 @@ def quotes(text: str) -> set[str]:
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
 
 
+def _quote_bindings(text: str) -> list[tuple[str, frozenset[str] | None]]:
+    """Bind a quote only to its immediately following, uniquely defined citations.
+
+    A source listed elsewhere, or another quote on the same line, cannot establish
+    continuity. Dates and privacy labels may intervene; ordinary prose may not.
+    """
+    head, _, tail = prose(text).partition('\n## Sources\n')
+    definitions = collections.defaultdict(set)
+    for number, source in re.findall(r'(?m)^\s*- \[(W?\d+)\]\s*:?\s*(\S+)', tail):
+        definitions[number].add(source)
+    unique = {n: next(iter(ids)) for n, ids in definitions.items()
+              if len(ids) == 1 and re.match(r'[a-z][\w-]*:', next(iter(ids)))}
+    head = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', head)
+    found = []
+    for line in head.splitlines():
+        for quote in QUOTE.finditer(line):
+            refs = re.match(
+                r'(?:[ \t.,;:!?，。；：！？]|\(\d{4}-\d{2}-\d{2}\)|\[(?:personal|sensitive)\])*'
+                r'((?:\[W?\d+\](?!\()[ \t]*)+)', line[quote.end():])
+            numbers = CITATION.findall(refs[1]) if refs else []
+            binding = (frozenset(unique[n] for n in numbers)
+                       if numbers and all(n in unique for n in numbers) else None)
+            found.append((quote[1], binding))
+    return found
+
+
+def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
+    """An extended quote can keep literal words, but not change their source binding.
+
+    This is retention, not an attribution/meaning verdict. Exact quotes retain
+    their existing behavior; the source audit still judges the candidate.
+    """
+    missing = quotes(before) - quotes(after) - exempt
+    previous, candidate = _quote_bindings(before), _quote_bindings(after)
+    lost = set()
+    for quote in missing:
+        occurrences = [binding for words, binding in previous if words == quote]
+        literal = re.compile(r'(?<!\w)' + re.escape(quote) + r'(?!\w)')
+        if not occurrences or any(binding is None or not any(
+                binding == target and literal.search(words) for words, target in candidate)
+                for binding in occurrences):
+            lost.add(quote)
+    return lost
+
+
 def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
@@ -1758,7 +1803,7 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     quote back over the writer's correction, and the round was refused (2026-10-20).
     """
     return ([f'Dropped quote the page had: “{quote}”'
-             for quote in sorted(quotes(before) - quotes(after) - exempt)]
+             for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
                for source in sorted(_listed_sources(before) - _listed_sources(after))])
 
@@ -1779,7 +1824,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
             continue
         if section == 'Sources' or line in seen:
             continue
-        lost_quotes = quotes(before) - quotes(after) - exempt
+        lost_quotes = _lost_quotes(before, after, exempt)
         lost_sources = _listed_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
@@ -1824,6 +1869,12 @@ def _contained(row: str, line: str) -> float:
 
 
 def _insert_restored_line(text: str, section: str, line: str, lost_quotes: set[str], lost_sources: set[str]) -> str:
+    if not section:
+        # Introductory prose stays above the first section, even if a similar
+        # sentence exists under History or Uncertainties. Keep the new lead too.
+        heading = re.search(r'^## ', prose(text), re.M)
+        at = heading.start() if heading else len(text)
+        return text[:at].rstrip('\n') + '\n\n' + line + '\n\n' + text[at:]
     shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
     if shorter and CONTACT_LINE.match(shorter) and shorter.strip().endswith(': Unknown'):
         return text.replace(shorter, line, 1)
