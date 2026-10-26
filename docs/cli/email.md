@@ -104,7 +104,7 @@ co email change you@mail.openonion.ai --domain steadmail.com
 co email delete-history you@mail.openonion.ai
 ```
 
-These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
+These examples inspect or preview. Address creation/changes require `--buy` to charge credits. Setup asks the read-only name check before it quotes a price. A local part that check refuses — the wrong characters, a reserved name such as `admin`, or an automatic `0x` mailbox — is declined there, with no price and no `--buy` line. A name that is only taken still shows the price; which domain is free is decided when you buy, and a taken address is not charged. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
 
 Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
 
