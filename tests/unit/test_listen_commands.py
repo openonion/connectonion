@@ -556,6 +556,22 @@ def test_check_reports_listener_and_unread_when_configured(box, fake, capsys):
     assert "feishu configured" in out and "no listener running" in out and "1 unread" in out
 
 
+def test_check_names_a_split_delivery_found_by_history(box, fake, capsys):
+    """#2690: another client on the same app_id takes some events. Recovery
+    writes what it found; `check` is where a person looks for it."""
+    deliver(box)
+    (box.root / "missed-live.txt").write_text(
+        "2026-10-26T00:00:00Z message om_1 reached the bot but not this listener — "
+        "another client may be connected with this app_id\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        listen_commands.handle_check("feishu")
+
+    captured = capsys.readouterr()
+    assert "message om_1 reached the bot but not this listener" in captured.err
+    assert "another client" in captured.err
+
+
 class TestCheckDoesNotClaimTheNetwork:
     """"reachable" was inferred from an import, a SQLite row and a pid."""
 
