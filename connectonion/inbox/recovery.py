@@ -2,7 +2,13 @@
 
 History is a second delivery path, not a replacement for the WebSocket. Every
 record goes through the same durable inbox deduplication. The checkpoint only
-advances after all pages succeed. No chat discovery or old-history import occurs.
+advances after a run finishes. No chat discovery or old-history import occurs.
+
+A run happens at start and after a reconnect, never on a timer: every history
+page is an API call against the tenant's quota, and the listener is push-driven.
+One run makes at most CALL_BUDGET calls, newest conversations first, at most
+PAGES_PER_CONTAINER per conversation. A run that fails is not retried until the
+next reconnect or restart, so a permanent error is one log line, not 23k (#2690).
 """
 import json
 import os
@@ -16,6 +22,25 @@ from .store import _sync_directory
 
 class MissingScope(RuntimeError):
     """The app lacks a permission only an admin can grant; retrying cannot fix it."""
+
+
+class LarkError(RuntimeError):
+    """Feishu or Lark answered with a non-zero code. `code` is theirs."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
+
+
+# Lark refusing one container rather than the whole call: 230001 is an invalid
+# container_id, 230002 a chat the bot is no longer in. Skip that one, keep going.
+CONTAINER_REJECTED = {230001, 230002}
+CALL_BUDGET = 40
+PAGES_PER_CONTAINER = 2
+# A message this close to a connect or disconnect may have raced it.
+SLACK_SECONDS = 5
+MISSED_LIVE = ('message {id} reached the bot but not this listener — another client may be '
+               'connected with this app_id (Lark sends each event to only one client)')
 
 
 class HistoryRecovery:
@@ -38,6 +63,11 @@ class HistoryRecovery:
             self._save(self.through)
         self.pending, self.stopped = threading.Event(), threading.Event()
         self.worker = None
+        self.calls = 0
+        # When this listener's socket was up: from live_from, minus the gaps.
+        # A recovered message from inside that span reached someone else.
+        self.live_from = None
+        self.gaps = []
 
     def _save(self, through):
         with self.guard:
@@ -62,40 +92,54 @@ class HistoryRecovery:
         self.through = through
 
     def _containers(self):
-        with self.guard:
-            containers = {('chat', chat): chat for chat, kind in self.chat_types.items()
-                          if kind in ('p2p', 'group')}
+        """Known conversations, most recently active first. Only a real thread
+        id (omt_) is a thread container; a reply's root_id is a message id, and
+        Lark rejects it as one (#2690)."""
+        found = {}
         if self.inbox.received.exists():
-            for line in self.inbox.received.read_text().splitlines():
+            for line in reversed(self.inbox.received.read_text().splitlines()):
                 try:
                     row = json.loads(line)
                 except ValueError:
                     continue  # A torn journal tail is handled by inbox recovery.
                 if row.get('chat'):
-                    containers[('chat', row['chat'])] = row['chat']
-                    if row.get('thread'):
-                        containers[('thread', row['thread'])] = row['chat']
-        return containers
+                    if _is_thread(row.get('thread')):
+                        found.setdefault(('thread', row['thread']), row['chat'])
+                    found.setdefault(('chat', row['chat']), row['chat'])
+        with self.guard:
+            for chat, kind in self.chat_types.items():
+                if kind in ('p2p', 'group'):
+                    found.setdefault(('chat', chat), chat)
+        return found
 
     def _pages(self, kind, identifier, until):
+        """Newest first, stopping at the checkpoint, the page cap or the budget."""
         query = {'container_id_type': kind, 'container_id': identifier,
-                 'page_size': 50, 'sort_type': 'ByCreateTimeAsc'}
+                 'page_size': 50, 'sort_type': 'ByCreateTimeDesc'}
         if kind == 'chat':
             query.update(start_time=max(0, self.through - 2), end_time=until + 1)
+        floor = max(self.since, self.through - 2)
         tokens = set()
-        while not self.stopped.is_set():
+        for _ in range(PAGES_PER_CONTAINER):
+            if self.stopped.is_set():
+                raise RuntimeError('History recovery stopped before completion')
+            if self.calls >= CALL_BUDGET:
+                return
+            self.calls += 1
             body = self.provider._get('/open-apis/im/v1/messages?' + urlencode(query))
             if not isinstance(body.get('items'), list):
                 raise ValueError('History response has no message list')
             yield from body['items']
-            if not body.get('has_more'):
+            if not body.get('has_more') or any(
+                    int(row.get('create_time') or 0) / 1000 < floor for row in body['items']):
                 return
             token = body.get('page_token')
             if not token or token in tokens:
                 raise ValueError('History pagination did not advance')
             tokens.add(token)
             query['page_token'] = token
-        raise RuntimeError('History recovery stopped before completion')
+        self.inbox.log(f'history recovery read {PAGES_PER_CONTAINER} pages of {kind} {identifier}; '
+                       'older messages in it are not checked this run')
 
     def _message(self, row, chat):
         if row.get('deleted') or row.get('sender', {}).get('sender_type') != 'user':
@@ -131,23 +175,61 @@ class HistoryRecovery:
             self.provider.bot_info()
             if not self.provider._bot_open_id:
                 raise ValueError('Cannot verify bot identity for history mention filtering')
+        queue = list(containers.items())
         visited = set()
         count = 0
-        while containers:
-            (kind, identifier), chat = containers.popitem()
+        self.calls = 0
+        while queue:
+            if self.calls >= CALL_BUDGET:
+                self.inbox.log(f'history recovery used its budget of {CALL_BUDGET} calls; '
+                               f'{len(queue)} older conversation(s) not checked this run')
+                break
+            (kind, identifier), chat = queue.pop(0)
             if (kind, identifier) in visited:
                 continue
             visited.add((kind, identifier))
-            for row in self._pages(kind, identifier, until):
-                if row.get('thread_id'):
-                    containers[('thread', row['thread_id'])] = chat
-                message = self._message(row, chat)
-                if message and int(row['create_time']) / 1000 <= until:
-                    count += self.inbox.deliver(message, raw=self.raw)
+            try:
+                for row in self._pages(kind, identifier, until):
+                    if _is_thread(row.get('thread_id')) and ('thread', row['thread_id']) not in visited:
+                        queue.insert(0, (('thread', row['thread_id']), chat))
+                    count += self._recover(row, chat, until)
+            except LarkError as exc:
+                if exc.code not in CONTAINER_REJECTED:
+                    raise
+                self.inbox.log(f'history recovery skipped {kind} {identifier}: {exc}')
         self._save(until)
         (self.inbox.root / 'recovery-error.txt').unlink(missing_ok=True)
-        self.inbox.log(f'history recovery complete: {count} new message(s)')
+        self.inbox.log(f'history recovery complete: {count} new message(s), {self.calls} API call(s)')
         return count
+
+    def _recover(self, row, chat, until):
+        message = self._message(row, chat)
+        if not message or int(row['create_time']) / 1000 > until:
+            return 0
+        if not self.inbox.deliver(message, raw=self.raw):
+            return 0
+        if self._missed_live(int(row['create_time']) / 1000):
+            warning = MISSED_LIVE.format(id=message.id)
+            self.inbox.log(f'WARNING {warning}')
+            (self.inbox.root / 'missed-live.txt').write_text(f'{message.at} {warning}\n')
+        return 1
+
+    def _missed_live(self, at):
+        """Sent while this listener's socket was up, yet only history has it."""
+        if self.live_from is None or at < self.live_from + SLACK_SECONDS:
+            return False
+        return not any(start - SLACK_SECONDS <= at <= (end or float('inf')) + SLACK_SECONDS
+                       for start, end in self.gaps)
+
+    def disconnected(self, at=None):
+        self.gaps.append([time.time() if at is None else at, None])
+
+    def connected(self, at=None):
+        at = time.time() if at is None else at
+        if self.live_from is None:
+            self.live_from = at
+        elif self.gaps and self.gaps[-1][1] is None:
+            self.gaps[-1][1] = at
 
     def start(self):
         self.pending.set()
@@ -173,11 +255,11 @@ class HistoryRecovery:
                                'the listener. Live messages still arrive.')
                 return
             except Exception as exc:
+                # No timer: a retry every minute was 23k identical lines and
+                # 23k quota calls for an error that never changed (#2690).
                 (self.inbox.root / 'recovery-error.txt').write_text(str(exc))
                 self.inbox.log(f'history recovery incomplete; checkpoint retained: {exc}. '
-                                 'Check bot history permissions and network; retrying in 60 seconds')
-                if not self.stopped.wait(60):
-                    self.pending.set()
+                               'It runs again at the next reconnect or restart. Live messages still arrive.')
 
     def stop(self):
         self.stopped.set()
@@ -185,3 +267,7 @@ class HistoryRecovery:
         if self.worker is not None:
             # Do not release the listener lock while a history writer is alive.
             self.worker.join()
+
+
+def _is_thread(identifier):
+    return isinstance(identifier, str) and identifier.startswith('omt_')
