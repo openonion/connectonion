@@ -1667,12 +1667,7 @@ def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monke
     assert prompts[0].endswith('</co_rem_task>')
 
 
-@pytest.mark.parametrize('citation_error', [
-    'Citation has no identifiable source: 13',
-    'Unrecognized evidence source',
-])
-def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_lines(
-        notebook, monkeypatch, citation_error):
+def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_lines(notebook, monkeypatch):
     """3 of 4 project refusals on a real 1.9.1a2 init were one untraceable
     citation each, after two repair turns; the page was lost whole."""
     import re
@@ -1690,7 +1685,7 @@ def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_
         modes.append(last_resort)
         if not last_resort:
             write_json(directory / 'review.json', {'accepted': False,
-                       'errors': [citation_error]})
+                       'errors': ['Citation has no identifiable source: 13']})
             raise RunFailed('Candidate rejected', usage)
         book.write(record, candidate.read_text())
 
@@ -1699,7 +1694,7 @@ def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_
     result = run_stage(notebook, [{'role': 'page', 'record': record,
                                    'text': notebook.read(record), 'source': 'investigation:page'}],
                        default_config(), stage='investigate')
-    assert modes == [False, False, True]  # a repeated deterministic citation error gets one repair
+    assert modes == [False, False, False, True]  # two repairs, then the lines go, not the page
     assert result['changed'] == [record]
 
 

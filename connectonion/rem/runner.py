@@ -611,15 +611,8 @@ def _promotion_lock(root, candidate, usage, lock_held):
 
 # A marker with no Sources line is dropped the same way; it cost 1.9.2b1 its
 # busiest project (LayeredVisions) and 1.9.2b3 browser.
-CITATION_ONLY = ("Citation has no identifiable source:", "Unrecognized evidence source", "Unused citation:",
-                 "Cited local file needs ", "Cited file ", "Missing SHA-256 file hash:",
-                 "Unsupported file citation format;", "SHA-256 does not match the current file:",
-                 "File path is not associated with any mapped project:",
-                 "No mapped project paths are available", "Repository identity mismatch:",
-                 "Unsupported Git citation format;", "Git citation path must stay inside its repository:",
-                 "Cited path does not identify a Git repository:", "Exact Git commit is not present",
-                 "Cited Git file ", "Commit date could not be read from the cited repository:",
-                 "Missing or duplicate citation:")
+CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ",
+                 "Cited file needs ", "Missing or duplicate citation:")
 
 
 # A misquote or a claim the audit refuted goes with its line at the end, like a
@@ -738,7 +731,6 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
     updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
     carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
-    previous_citation_errors = None
     for attempt in range(repairs + 1):
         if attempt and stage == "muse" and candidate.is_file():
             _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress)
@@ -753,11 +745,6 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             refused = rejected
             result["usage"] = rejected.usage or result.get("usage")
             errors = read_json(directory / "review.json", {}).get("errors") or []
-            if errors and all(error.startswith(CITATION_ONLY) for error in errors):
-                signature = tuple(sorted(errors))
-                if signature == previous_citation_errors:
-                    break
-                previous_citation_errors = signature
             # Keep earlier findings when a repair passes: quotes refuted in this turn may go (2026-10-15).
             audit = read_json(directory / "claim-review.json", {})
             if audit.get("verdict") == "fail":

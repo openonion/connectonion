@@ -569,3 +569,23 @@ def test_windows_drive_paths_use_wslpath_without_shell_interpolation(monkeypatch
         assert calls == [(["/usr/bin/wslpath", "-u", path], {"capture_output": True, "text": True, "timeout": 5})]
     finally:
         source.local_path.cache_clear()
+
+
+def test_wslpath_execution_errors_are_not_hidden(monkeypatch):
+    import types
+
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+
+    def fail(*args, **kwargs):
+        raise OSError("could not launch wslpath")
+
+    monkeypatch.setattr(source.subprocess, "run", fail)
+    try:
+        with pytest.raises(OSError, match="could not launch wslpath"):
+            source.local_path(r"D:\Projects\PROJECT_NAME")
+    finally:
+        source.local_path.cache_clear()

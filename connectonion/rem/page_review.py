@@ -1192,19 +1192,16 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = _known_sources(items) | _archived_sources(root, definitions)
-    rejected_live_sources = set()
     if record.startswith('projects/'):
-        from .project_pages import inspect_live_source
+        from .project_pages import live_source_snapshot
         carried = original.partition('\n## Sources\n')[2]
         for _, value in definitions:
             source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
             if source.startswith(('file:', 'git:')) and value.strip() not in carried:
-                snapshot, reason = inspect_live_source(original, source)
-                if snapshot:
+                if live_source_snapshot(original, source):
                     known.add(source)
                 else:
-                    errors.append(reason or f'Unsupported local evidence source: {source}')
-                    rejected_live_sources.add(source)
+                    errors.append(f'Cited file needs a hash or exact Git commit in a mapped repository: {source}')
     if record.startswith('projects/'):
         if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
             for heading in ('Insight', 'Open threads'):
@@ -1218,9 +1215,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 errors.append(f'Preserve mapped project metadata: {label}')
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
-        if (record.startswith('projects/')
-                and (value.strip().startswith('/') or re.match(r'^[A-Za-z]:[\\/]', value.strip()))
-                and value.strip() not in old_sources):
+        if record.startswith('projects/') and value.strip().startswith('/') and value.strip() not in old_sources:
             errors.append(f'Cited local file needs a file: source ID and SHA-256: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-inventory'):
             errors.append(f'Candidate file inventory is not a citable original: {key}')
@@ -1243,19 +1238,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Unused citation: {key}')
         if not _identifiable(value, known=known, record=record, original=original, old_sources=old_sources,
                              items=items, pages=pages):
-            source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
-            if source in rejected_live_sources:
-                continue
-            prefix = source.split(':', 1)[0] if ':' in source else ''
-            recognized_schemes = {known_source.split(':', 1)[0] for known_source in known
-                                  if ':' in known_source}
-            recognized_schemes.update(('codex', 'claude-code', 'gmail', 'outlook', 'whatsapp',
-                                       'email', 'reflection', 'review', 'project-source',
-                                       'skill-runs', 'investigation', 'http', 'https', 'mailto'))
-            if prefix and prefix not in recognized_schemes and not re.match(r'^[A-Za-z]:[\\/]', source):
-                errors.append('Unrecognized evidence source')
-            else:
-                errors.append(f'Citation has no identifiable source: {key}')
+            errors.append(f'Citation has no identifiable source: {key}')
     if candidate != original and not refs:
         errors.append('Changed page has no numbered evidence references')
     investigation = any(item.get('role') == 'page' and item.get('record') == record for item in items)

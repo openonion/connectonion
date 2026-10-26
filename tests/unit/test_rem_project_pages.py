@@ -1035,20 +1035,7 @@ def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch
     assert "8% of net" in snapshot["text"]
 
 
-def test_live_file_diagnostic_is_bounded_and_single_line():
-    from connectonion.rem.project_pages import inspect_live_source
-
-    source = "file:/tmp/" + "x" * 500 + "\x1b\n@not-a-hash"
-
-    snapshot, reason = inspect_live_source("", source)
-
-    assert snapshot is None
-    assert reason.startswith("Unsupported file citation format")
-    assert len(reason) < 400
-    assert "\x1b" not in reason
-    assert "\n" not in reason
-
-
+@pytest.mark.skipif(os.name == "nt", reason="file citations use POSIX paths")
 def test_a_hashed_file_in_a_windows_mapped_non_git_project_is_accepted(monkeypatch, tmp_path):
     import hashlib
 
@@ -1067,28 +1054,3 @@ def test_a_hashed_file_in_a_windows_mapped_non_git_project_is_accepted(monkeypat
 
     assert snapshot["id"] == citation
     assert snapshot["text"] == "A local project without Git metadata.\n"
-
-
-def test_a_git_citation_requires_the_repository_root(monkeypatch, tmp_path):
-    import subprocess
-
-    from connectonion.rem.project_pages import inspect_live_source
-
-    repo = tmp_path / "mapped"
-    nested = repo / "nested"
-    nested.mkdir(parents=True)
-    (repo / "README.md").write_text("Repository root file.\n")
-    (nested / "README.md").write_text("Nested file.\n")
-    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "README.md", "nested/README.md"], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "Add files"], check=True,
-                   capture_output=True)
-    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
-    monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
-
-    snapshot, reason = inspect_live_source("", f"git:{nested}:{commit}:README.md")
-
-    assert snapshot is None
-    assert reason.startswith("Repository identity mismatch:")

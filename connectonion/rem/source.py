@@ -164,10 +164,7 @@ def local_path(value: str) -> str:
     converter = shutil.which("wslpath")
     if not converter:
         return value
-    try:
-        result = subprocess.run([converter, "-u", value], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
-        return value
+    result = subprocess.run([converter, "-u", value], capture_output=True, text=True, timeout=5)
     mapped = result.stdout.strip()
     return mapped if result.returncode == 0 and mapped.startswith("/") else value
 
