@@ -109,11 +109,20 @@ def _update_due(state: dict, pending_messages: int, now: datetime) -> bool:
 PRIVATE = re.compile(r"(?:^|[_ -])(?:journal|diary|private|personal|日记|私人)(?:$|[_ .-])", re.IGNORECASE)
 
 
+def private_path(path: str) -> bool:
+    """Any folder on the path is named like a diary (~/journal/2026-10, ~/Personal/shop-app, ~/私人/notes).
+
+    macOS's /private system prefix (/private/tmp, /private/var) is not a name anyone chose.
+    """
+    parts = Path(path).parts
+    parts = parts[2:] if parts[:2] == ("/", "private") else parts
+    return any(PRIVATE.search(part) for part in parts)
+
+
 def private(record: str, page: str) -> bool:
-    """The folder's own name says so, never a parent's: macOS keeps temporary folders under /private."""
+    """The page's name or any folder on one of its paths says so, the same rule its sessions are read by."""
     from .investigate import project_paths
-    names = [Path(record).stem.rsplit("-", 1)[0], *(Path(path).name for path in project_paths(page))]
-    return any(PRIVATE.search(name) for name in names)
+    return bool(PRIVATE.search(Path(record).stem.rsplit("-", 1)[0])) or any(map(private_path, project_paths(page)))
 
 
 def _negated(stamp: str) -> float:

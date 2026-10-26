@@ -1073,3 +1073,23 @@ def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch
     monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
     snapshot = live_file_snapshot("", f"file:{note}@{hashlib.sha256(note.read_bytes()).hexdigest()}")
     assert "8% of net" in snapshot["text"]
+
+
+def test_a_project_under_a_diary_named_parent_is_private_until_investigated_on_purpose(world):
+    """Review of #2618: a whole-path rule dropped the sessions of ~/Personal/shop-app, but
+    `private()` read only the folder's own name, so the page could never be opted in."""
+    record = 'projects/shop-app.md'
+    world.notebook.stub_project(record, 'shop-app', ['/Users/a/Personal/shop-app'])
+    codex(world.codex / 'rollout-s.jsonl', '/Users/a/Personal/shop-app',
+          [('user', 'Ship the checkout page.', 1)])
+    extract(world.root, world.subs)
+    assert project_pages.private(record, world.notebook.read(record))
+    assert project_pages.pending(world.root, record)[0] == []
+
+    page = re.sub(r'^Investigation: .*$', 'Investigation: investigated 2026-10-20', world.notebook.read(record), flags=re.M)
+    world.notebook.write(record, page)
+    messages, mode = project_pages.pending(world.root, record)
+    assert [m['text'] for m in messages] == ['Ship the checkout page.']
+
+    world.notebook.stub_project('projects/atlas.md', 'atlas', ['/private/tmp/work/atlas'])
+    assert not project_pages.private('projects/atlas.md', world.notebook.read('projects/atlas.md'))

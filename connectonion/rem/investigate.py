@@ -1949,16 +1949,11 @@ RECENT_PROJECT_LIMIT = 8
 
 
 def _private_folder(path: str, opted_in=frozenset()) -> bool:
-    """Any folder on the path is named like a diary (~/journal/2026-10, ~/私人/notes), unless opted in.
-
-    macOS's /private system prefix (/private/tmp, /private/var) is not a name anyone chose.
-    """
-    from .project_pages import PRIVATE
+    """`project_pages.private_path`, unless the folder is under one the owner opted in."""
+    from .project_pages import private_path
     if not path or any(path == folder or path.startswith(folder.rstrip("/") + "/") for folder in opted_in):
         return False
-    parts = Path(path).parts
-    parts = parts[2:] if parts[:2] == ("/", "private") else parts
-    return any(PRIVATE.search(part) for part in parts)
+    return private_path(path)
 
 
 def opted_in_folders(root: Path | None) -> frozenset:
