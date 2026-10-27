@@ -60,6 +60,14 @@ def _owner_alive(sock_path: str) -> bool:
     return _owner_pid(sock_path) is not None
 
 
+def _check_managed_daemon(sock_path, pinned_pid, connection=None):
+    """A supervised client never follows a missing or replaced local owner."""
+    if pinned_pid is not None and _owner_pid(sock_path) != pinned_pid:
+        if connection is not None:
+            connection.close()
+        raise RuntimeError("managed browser daemon is gone or changed; inspect its supervisor before continuing")
+
+
 def _not_answering(sock_path: str, what: str) -> str:
     """Say the daemon is stuck, and the one command that ends it."""
     pid = _owner_pid(sock_path)
@@ -663,6 +671,12 @@ def _request_with_identity(
         return 2, f"unparseable request: {exc}"
     sock_path = target.address if target is not None else default_sock_path()
     authkey_path = target.authkey_path if target is not None else None
+    pin = os.environ.get("CO_BROWSER_DAEMON_PID") if target is None else None
+    if pin is not None and (not pin.isascii() or not pin.isdecimal() or int(pin) <= 0):
+        if _connection is not None:
+            _connection.close()
+        return 2, "CO_BROWSER_DAEMON_PID must be a positive integer"
+    pinned_pid = int(pin) if pin is not None else None
     owner_pid = None
     closing = tab is None and line.split() == ["close"]
     watched = []
@@ -670,12 +684,16 @@ def _request_with_identity(
     reply_deadline = _reply_deadline(list(request_frame.command.argv))
     try:
         conn = _connection
+        _check_managed_daemon(sock_path, pinned_pid, conn)
         if conn is None:
             conn = (
                 _connect(sock_path, authkey_path=authkey_path)
                 if authkey_path is not None
                 else _connect(sock_path)
             )
+        _check_managed_daemon(sock_path, pinned_pid, conn)
+        if pinned_pid is not None and conn is None:
+            return 1, "managed browser daemon is unavailable; inspect its supervisor before continuing"
         if (conn is not None and effective_engine == "onion"
                 and not _protocol_checked and line != "engine_status"):
             # A pre-1.8 daemon ignores unknown envelope fields. Sending an
@@ -696,6 +714,8 @@ def _request_with_identity(
                 _connection=conn,
             )
             if probe_code:
+                if pinned_pid is not None:
+                    return probe_code, _probe_payload
                 # Stop this daemon, by the pid it recorded beside its socket —
                 # `pkill -f` on the module name stopped every daemon this user
                 # had, isolated test and automation daemons included.
@@ -704,12 +724,16 @@ def _request_with_identity(
                     "Restart it before using this client: "
                     f"kill \"$(cat {shlex.quote(transport.pid_path(sock_path))})\""
                 )
+            _check_managed_daemon(sock_path, pinned_pid)
             conn = (
                 _connect(sock_path, authkey_path=authkey_path)
                 if authkey_path is not None
                 else _connect(sock_path)
             )
+            _check_managed_daemon(sock_path, pinned_pid, conn)
             if conn is None:
+                if pinned_pid is not None:
+                    return 1, "managed browser daemon disconnected after its protocol probe; inspect its supervisor"
                 return _request_with_identity(
                     line,
                     caller=caller,
@@ -786,7 +810,8 @@ def _request_with_identity(
         # mistaken for the daemon being closed — and everything under it, so a
         # paid runtime the daemon left behind can be found after it is gone.
         if closing:
-            owner_pid = _owner_pid(sock_path)
+            owner_pid = pinned_pid if pinned_pid is not None else _owner_pid(sock_path)
+            _check_managed_daemon(sock_path, pinned_pid, conn)
             # Embedded users and socket round-trip tests may run the daemon in
             # another thread of this process. That process cannot exit while the
             # caller is waiting inside it; production's detached daemon always
@@ -804,6 +829,8 @@ def _request_with_identity(
         if headless and not spawned and target is None:
             _warn_if_headed(sock_path)
     except _DaemonNotAnswering as exc:
+        if pinned_pid is not None:
+            return 1, "managed browser daemon is not answering; inspect its supervisor before continuing"
         if closing:
             # The one command that must work on a stuck daemon: stop it.
             owner_pid = _owner_pid(sock_path)
@@ -836,6 +863,8 @@ def _request_with_identity(
 
     sent_at = time.monotonic()
     try:
+        if pinned_pid is not None and _owner_pid(sock_path) != pinned_pid:
+            return 1, "managed browser daemon changed before the request; inspect its supervisor before continuing"
         if transport.IS_WINDOWS:
             conn.send_bytes(request)
         else:
@@ -902,6 +931,8 @@ def _request_with_identity(
                 f"Screenshot saved to: {path}" for path in saved_paths
             )
     except (EOFError, OSError, ProtocolError, ArtifactTransferError) as exc:
+        if pinned_pid is not None and _owner_pid(sock_path) != pinned_pid:
+            return 1, "managed browser daemon disconnected; inspect its supervisor before continuing"
         if closing and watched:
             return _finish_close(owner_pid, watched, answered=False,
                                  reason=f"no answer within {CLOSE_DEADLINE}s ({exc})",
@@ -918,6 +949,8 @@ def _request_with_identity(
         conn.close()
 
     if closing and watched:
+        if pinned_pid is not None and _owner_pid(sock_path) not in (None, pinned_pid):
+            return 1, "managed browser daemon was replaced during close; replacement left untouched"
         return _finish_close(owner_pid, watched, answered=code == 0, reason=payload,
                              payload=payload, sock_path=sock_path)
     if code == 0:
@@ -933,7 +966,8 @@ def _request_with_identity(
     # verdict is the signal: whether patchright's downloaded chromium exists is
     # not something to guess at from a version-numbered cache path.
     if (
-        effective_engine != "onion"
+        pinned_pid is None
+        and effective_engine != "onion"
         and "No browser is installed for this user" in payload
         and not _provisioned
     ):

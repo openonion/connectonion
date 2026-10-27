@@ -339,6 +339,13 @@ def worker_state(root: Path) -> dict:
     return saved if isinstance(saved, dict) else {}
 
 
+def _wall_slot(day: datetime, value: str) -> datetime:
+    """Once per local day: first repeated hour; a missing hour moves by the DST gap."""
+    hour, minute = map(int, value.split(":"))
+    slot = day.replace(hour=hour, minute=minute, second=0, microsecond=0, fold=0)
+    return slot.astimezone(timezone.utc).astimezone(day.tzinfo)
+
+
 def latest_slot(config: dict, moment: datetime) -> datetime | None:
     """The most recent saved time at or before `moment`, in the saved zone.
 
@@ -352,11 +359,12 @@ def latest_slot(config: dict, moment: datetime) -> datetime | None:
         return None
     local = moment.astimezone(ZoneInfo(zone_name))
     candidates = []
-    for value in times:
-        hour, minute = (int(part) for part in value.split(":"))
-        slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        candidates.append(slot if slot <= local else slot - timedelta(days=1))
-    return max(candidates)
+    for day in (local - timedelta(days=1), local):
+        for value in times:
+            slot = _wall_slot(day, value)
+            if slot.astimezone(timezone.utc) <= moment.astimezone(timezone.utc):
+                candidates.append(slot)
+    return max(candidates, key=lambda slot: slot.astimezone(timezone.utc))
 
 
 def next_slot(config: dict, zone) -> str | None:
@@ -368,9 +376,8 @@ def next_slot(config: dict, zone) -> str | None:
     candidates = []
     for day in (0, 1):
         for value in times:
-            hour, minute = (int(part) for part in value.split(":"))
-            slot = (current + timedelta(days=day)).replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if slot > current:
+            slot = _wall_slot(current + timedelta(days=day), value)
+            if slot.astimezone(timezone.utc) > current.astimezone(timezone.utc):
                 candidates.append(slot)
     return min(candidates).isoformat(timespec="minutes") if candidates else None
 
@@ -379,6 +386,47 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = worker_state(root)
+    native = {}
+    if worker.get("scheduler") == "codex-native" or sys.platform == "darwin":
+        from .codex_schedule import CodexNative
+        scheduler = CodexNative()
+        if worker.get("scheduler") == "codex-native" or scheduler.installed(root):
+            native = scheduler.describe(root)
+    if native and (worker.get("scheduler") == "codex-native" or native.get("observed_active")
+                   or native.get("desired_status") == "ACTIVE" or native.get("storage") == "account"):
+        if worker.get("scheduler") != "codex-native":
+            return ("Background needs attention — a native REM task exists without a confirmed worker registration; "
+                    "check Codex Scheduled and run `co rem start` to reconcile it"), None
+        if not worker.get("enabled") and native.get("observed_active"):
+            return ("Background needs attention — Codex still reports the REM task as active; "
+                    "run `co rem stop` and confirm its pause in Scheduled"), None
+        if not worker.get("enabled") and native.get("desired_status") == "ACTIVE":
+            return ("Background needs attention — native activation is still pending; "
+                    "check Codex Scheduled, or run `co rem stop` to cancel the request"), None
+        if not worker.get("enabled") and native.get("storage") == "account":
+            return "Background needs attention — " + native["reason"], None
+        if not worker.get("enabled"):
+            return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
+        if not native["installed"]:
+            return "Background needs attention — native REM definition is missing; run `co rem start`", None
+        if not native["app_running"]:
+            return "Background needs attention — open Codex desktop to run its native schedule", None
+        if native.get("reason"):
+            return "Background needs attention — " + native["reason"], None
+        if not native["loaded"] or not native["active"] or native.get("next_run_at") is None:
+            return ("Background needs attention — waiting for Codex to register the native REM task; "
+                    "open Scheduled in Codex and run `co rem status` again"), None
+        last = native.get("last_run_at")
+        next_run = datetime.fromtimestamp(native["next_run_at"] / 1000, timezone.utc)
+        if now() - next_run > timedelta(minutes=15):
+            return ("Background needs attention — Codex has not triggered its due native task; "
+                    "check Codex Scheduled and initialization"), next_run.astimezone(zone).isoformat(timespec="minutes")
+        if worker.get("last_scheduled_warning") or worker.get("last_scheduled_outcome") in ("failed", "interrupted"):
+            reason = worker.get("last_scheduled_warning") or worker.get("last_scheduled_reason") or "the last REM pass failed"
+            return "Background needs attention — " + reason + "; run `co rem logs`", next_run.astimezone(zone).isoformat(timespec="minutes")
+        evidence = "last triggered " + datetime.fromtimestamp(last / 1000, zone).isoformat(timespec="minutes") if last else "first execution not yet verified"
+        return (f"Scheduled in Codex; {evidence}; keep the app open and computer awake",
+                next_run.astimezone(zone).isoformat(timespec="minutes"))
     if worker.get("enabled") and worker.get("scheduler") == "launchd":
         # worker.json travels with a copied notebook; the job it describes runs
         # the original's --root. A copy said "Running in background" and doctor
@@ -591,8 +639,9 @@ def consent_summary(root: Path) -> dict:
             "schedule": config["schedule"], "limits": config["limits"],
             # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
             # while asleep runs once at the next five-minute tick.
-            "background": "a launchd job under your user at the times above (a time missed while "
-                          "asleep runs once on wake); co rem stop removes it"}
+            "background": "Codex Scheduled for Codex notebooks on a Mac with the desktop app; "
+                          "otherwise launchd on macOS. Keep the computer awake; native scheduling "
+                          "also needs the app open. co rem stop disables the timer"}
 
 
 def ensure_consent(root: Path, *, confirm) -> bool:
@@ -638,31 +687,34 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
     # fires its run-at-load batch immediately, and two batches would race for the
     # notebook lock, with the one the user is watching likely to lose.
     first_batch = run_sync(root, runner=runner) if first and run_first_batch else None
-    try:
-        installed = scheduler.install(root, read_config(root))
-    except RemError:
-        # Consent stands -- the user gave it -- and manual sync works; only the clock is missing.
-        write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "none",
-                                                     "installed_at": None, "stopped_at": None})
-        raise
+    # A rejected migration must keep the existing worker state and its clock.
+    installed = scheduler.install(root, read_config(root))
     # Nothing is owed at install: the slot that has already passed today belongs
     # to before the clock existed. The next saved time is the first one served.
+    previous = worker_state(root)
     served = latest_slot(read_config(root), now())
-    write_json(state_path(root, "worker.json"), {"enabled": True, **installed,
+    write_json(state_path(root, "worker.json"), {**previous, "enabled": True, **installed,
                                                  "installed_at": now().isoformat(), "stopped_at": None,
-                                                 "last_scheduled_slot": served.isoformat() if served else None})
+                                                 "last_scheduled_slot": previous.get("last_scheduled_slot")
+                                                                        or (served.isoformat() if served else None)})
     return {"started": True, "consented": True, "first_batch": first_batch, **installed}
 
 
 def stop(root: Path, *, scheduler) -> dict:
     """Turn the clock off and remember that; content, consent and manual sync stay.
 
-    No notebook lock here: the batch the job itself started may be holding it,
-    and stopping that batch is the point. Removing the job terminates it, and
-    the worker file is a single atomic write.
+    No notebook lock here: the batch the job itself started may be holding it.
+    The native timer must acknowledge its pause before the worker is marked
+    disabled. An existing native model turn can still finish.
     """
     root = root.resolve()
     scheduler.uninstall(root)
+    if sys.platform == "darwin":
+        from .codex_schedule import CodexNative
+        from .schedule import Launchd
+        for other in (CodexNative(), Launchd()):
+            if not isinstance(scheduler, type(other)) and other.installed(root):
+                other.uninstall(root)
     state = {**worker_state(root), "enabled": False, "stopped_at": now().isoformat()}
     write_json(state_path(root, "worker.json"), state)
     return state

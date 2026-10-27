@@ -1,4 +1,7 @@
-"""Background maintenance rides the OS scheduler; there is no daemon of our own.
+"""Background maintenance uses Codex Scheduled or the OS; no REM timer daemon.
+
+Codex notebooks use the desktop's native file scheduler when the application
+is installed on macOS. Other runners and headless Macs retain launchd.
 
 `co rem daily` uses sync's lock, attempt cap and incremental
 checkpoint, so the only thing the background needs is something that survives a
@@ -168,7 +171,16 @@ class Launchd:
         return result.returncode == 0
 
     def install(self, root: Path, config: dict) -> dict:
+        from .files import maintenance_lock
         root = Path(root).resolve()
+        with maintenance_lock(root):
+            return self._install(root, config)
+
+    def _install(self, root: Path, config: dict) -> dict:
+        from .codex_schedule import CodexNative
+        native = CodexNative()
+        if native.installed(root):
+            native.uninstall(root)
         path = self.plist_path(root)
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
@@ -181,8 +193,28 @@ class Launchd:
         self._remove_legacy(root)  # one job per root, not the old label beside the new
         if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
             raise RemError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co rem doctor`")
+        from .codex_schedule import app_installed, desktop_timezone
+        note = ("The saved timezone differs from Codex's local clock; launchd keeps the saved timezone."
+                if config.get("runner") == "codex" and app_installed()
+                and config["schedule"]["timezone"] != desktop_timezone() else "")
         return {"scheduler": "launchd", "label": label_for(root), "plist": str(path),
-                "times": list(config["schedule"]["times"])}
+                "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
+    def unload_for_migration(self, root: Path) -> bool:
+        """Keep the plist as ownership/recovery evidence if launchctl cannot unload."""
+        path = self.plist_path(root)
+        if path.is_file():
+            arguments = plistlib.loads(path.read_bytes()).get("ProgramArguments") or []
+            roots = [arguments[i + 1] for i, item in enumerate(arguments[:-1]) if item == "--root"]
+            if path.is_symlink() or roots != [str(Path(root).resolve())]:
+                raise RemError("The existing launchd definition belongs to another notebook; nothing was unloaded")
+        info = self.describe(root)
+        if info.get("loaded"):
+            self._launchctl("bootout", f"gui/{self.uid}/{info['label']}")
+            if self.describe(root).get("loaded"):
+                return False
+        self.uninstall(root)
+        return True
 
     def uninstall(self, root: Path) -> bool:
         root = Path(root).resolve()
@@ -237,5 +269,23 @@ class Unsupported:
         return {"scheduler": "none", "installed": False}
 
 
-def default_scheduler():
-    return Launchd() if sys.platform == "darwin" else Unsupported()
+def default_scheduler(root=None, *, for_start=False):
+    if sys.platform != "darwin":
+        return Unsupported()
+    if root is not None:
+        from .codex_schedule import CodexNative, app_installed, desktop_timezone
+        from .config import read_config
+        native = CodexNative()
+        if not for_start:
+            if native.installed(root) and (native.definition(root).get("status") == "ACTIVE"
+                                           or native.describe(root).get("observed_active")):
+                return native
+            if Launchd().installed(root):
+                return Launchd()
+            if native.installed(root):
+                return native
+        config = read_config(root)
+        if (config.get("runner") == "codex" and app_installed()
+                and config["schedule"]["timezone"] == desktop_timezone()):
+            return native
+    return Launchd()

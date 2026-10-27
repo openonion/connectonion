@@ -113,6 +113,7 @@ HANDLER = None   # the handler prints its own, data-dependent tip (e.g. "co gmai
 NEXT = {
     # -- top level --
     "co ai": HANDLER,                 # the answer is the output
+    "co asr": HANDLER,                # transcript is the answer; failed/partial results name recovery
     "co approvals": "co approvals --who <address> shows one requester",
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
@@ -215,11 +216,28 @@ NEXT = {
     "co slack history": HANDLER,
     "co slack thread": HANDLER,
     "co slack search": HANDLER,
+    "co email open": HANDLER,
+    "co email connect": "Read from the terminal:  co email inbox",
+    "co email search": "Read a matching message:  co email read <#>",
+    "co email mark-read": "Check unread mail:  co email inbox --unread",
+    "co email mark-unread": "Check unread mail:  co email inbox --unread",
+    "co email reply": "See your reply:  co email sent",
+    "co email forward": "See the forwarded message:  co email sent",
+    "co email tier": "See owned addresses:  co email addresses",
+    "co email status": "Inspect sent mail:  co email sent",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
     "co email sent read": "Back to the list:  co email sent",
     "co email addresses": HANDLER,
+    "co email change": "See the current address:  co email addresses",
+    "co email quota": "See your mailbox plan:  co email tier",
+    "co email delete-history": "Inspect remaining received mail:  co email inbox",
+    "co email transfer prepare": "The recipient signs the request:  co email transfer accept <request-file> --out <approval-file>",
+    "co email transfer accept": "Preview completion:  co email transfer complete <approval-file>",
+    "co email transfer complete": "See owned addresses:  co email addresses",
+    "co email domains": HANDLER,
+    "co email setup": HANDLER,
     "co email default": "See every address and which is default:  co email addresses",
     "co email name": HANDLER,
     "co email share": HANDLER,

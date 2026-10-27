@@ -1,6 +1,7 @@
 """Both runners are co ai; the runner setting only picks which harness answers."""
 
 import json
+import re
 import types
 from pathlib import Path
 
@@ -22,6 +23,140 @@ class Quiet:
 def skill_found(monkeypatch):
     """The real check spawns the interpreter; its own tests are in test_rem_runner."""
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+
+
+@pytest.mark.parametrize('domain,company', [
+    ('student.example.edu.au', 'Example University'), ('bigcorp.example', 'Mara Labs'), ('gmail.com', 'Gmail'),
+])
+def test_sending_domain_does_not_get_own_company_note(tmp_path, monkeypatch, domain, company):
+    from connectonion.rem.files import Notebook, state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', f'# Avery Lin\n\n- Company: {company}\n')
+    notebook.stub_org('orgs/example.md', domain, [domain])
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': [f'avery@{domain}']}})
+    assert inv.company_owner(notebook, [domain]) == {}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([{
+        'source': 'gmail:example', 'role': 'other', 'speaker': f'mara@{domain}',
+        'timestamp': '2026-10-20T00:00:00+00:00', 'text': 'Here are the terms.'}], []))
+    monkeypatch.setattr(inv, 'website_items', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(inv, 'project_mentions', lambda *a: ([], 'project documents: none'))
+    monkeypatch.setattr(inv, 'quote_pass', lambda *a: None)
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {'changed': []}
+
+    inv.investigate(tmp_path, 'orgs/example.md', domain, [], days=10, clients={}, subscriptions={}, runner=runner)
+    assert seen and not any(item['role'] == 'own-company' or inv.OWN_COMPANY_NOTE in item['text'] for item in seen)
+
+
+@pytest.mark.parametrize('field', ['- Organisation: Mara Labs', '- Website: https://maralabs.example'])
+def test_project_can_establish_company_ownership(tmp_path, field):
+    from connectonion.rem.files import Notebook, state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', '# Avery Lin\n\n- Company: Unknown\n')
+    notebook.write('projects/mara.md', '# Mara\n\n' + field + '\n')
+    # An owned project counts when the owner also writes from its domain (#2615 review).
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com', 'avery@maralabs.example']}})
+    assert inv.company_owner(notebook, ['maralabs.example'])['name'] == 'Avery Lin'
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/avery.md', 'addresses': ['avery@gmail.com']}})
+    assert inv.company_owner(notebook, ['maralabs.example']) == {}
+
+
+def test_project_ownership_without_an_owner_page_cannot_supply_owner_material(tmp_path):
+    from connectonion.rem.files import Notebook
+    notebook = Notebook(tmp_path)
+    notebook.write('projects/mara.md', '# Mara\n\n- Website: https://maralabs.example\n')
+    assert inv.company_owner(notebook, ['maralabs.example']) == {}
+
+
+@pytest.fixture(params=[False, True])
+def company_mail(tmp_path, request):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import Notebook, state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write('people/avery.md', '# Avery Lin\n\n- Company: Mara Labs\n')
+    notebook.stub_org('orgs/mara.md', 'Mara Labs', ['maralabs.example'])
+    notebook.write('orgs/mara.md', notebook.read('orgs/mara.md') + '\n## Products\n- Mara — a product\n')
+    owner = {'record': 'people/avery.md', 'name': 'Avery Lin',
+             'addresses': ['avery@gmail.com', 'avery@maralabs.example']}
+    now = datetime.now(timezone.utc)
+    rows = [{'id': key, 'from': 'avery@gmail.com', 'to': ['mara@friend.example'],
+             'subject': 'Hello', 'date': (now - timedelta(days=2)).isoformat()} for key in
+            ('body', 'subject', 'domain', 'to', 'cc', 'sender', 'project', 'unrelated', 'substring')]
+    by_id = {row['id']: row for row in rows}
+    by_id['body']['to'] = ['client@partner.example']
+    by_id['subject']['subject'] = 'MARA LABS next steps'
+    by_id['domain']['subject'] = 'Next steps for maralabs.example'
+    by_id['to']['to'] = ['Mara <mara@team.maralabs.example>']
+    by_id['cc']['cc'] = ['mara@maralabs.example']
+    by_id['sender']['from'] = 'avery@maralabs.example'
+    bodies = {key: 'Dinner tomorrow?' for key in by_id}
+    bodies.update(body='I will send the Mara Labs proposal.', project='I will ship Mara.', substring='A marathon tomorrow?')
+    attachments = []
+
+    class Mail:
+        def my_addresses(self): return {'avery@gmail.com'}
+        def list_between(self, start, end, limit):
+            return [row for row in rows if start <= row['date'] < end]
+        def get_email_body(self, key): return bodies[key]
+        def download_attachments(self, key, directory):
+            attachments.append(key)
+            return []
+
+    if request.param:
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': owner['addresses'],
+            'range_start': (now - timedelta(days=20)).isoformat(), 'range_end': (now + timedelta(minutes=1)).isoformat()})
+        for row in rows:
+            retain_message(tmp_path, 'gmail', row, bodies[row['id']], fetched_at=now.isoformat())
+    return notebook, owner, Mail(), attachments, set(by_id) - {'unrelated', 'substring'}
+
+
+def test_company_material_filters_unrelated_sent_mail_before_attachments(tmp_path, company_mail):
+    notebook, owner, client, attachments, expected = company_mail
+    items, coverage = inv.company_material(notebook, owner, [], record='orgs/mara.md',
+        days=10, clients={'gmail': client}, subscriptions={}, archive_root=tmp_path,
+        attachments_dir=tmp_path / '.state/attachments')
+    assert len(items) == 7 and all(item['role'] == 'user' for item in items)
+    assert 'Dinner tomorrow?' in {item['text'] for item in items}  # header membership is sufficient
+    assert all(item['source'].startswith('gmail:') for item in items)
+    assert set(attachments) == expected
+    assert "owner's company: written from the owner's sent mail (7 of 9) and sessions (0)" in coverage
+
+
+def test_initial_company_gather_does_not_reintroduce_private_contact_mail(tmp_path, monkeypatch, company_mail):
+    from connectonion.rem.files import state_path, write_json
+    notebook, owner, client, attachments, expected = company_mail
+    # A shared contact's personal address must not bypass the owner's sent-mail filter.
+    notebook.stub_person('people/mara.md', 'Mara', email='mara@maralabs.example, mara@friend.example')
+    notebook.stub_org('orgs/friend.md', 'friend.example', ['friend.example'])
+    write_json(state_path(tmp_path, 'map.json'), {'owner': owner, 'orgs': [
+        {'record': 'orgs/mara.md', 'domains': ['maralabs.example'], 'people': ['people/mara.md']},
+        {'record': 'orgs/friend.md', 'domains': ['friend.example'], 'people': ['people/mara.md']}]})
+    assert inv.org_contact_context(notebook, 'orgs/mara.md')['addresses'] == ['mara@friend.example']
+    monkeypatch.setattr(inv, 'website_items', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(inv, 'project_mentions', lambda *a: ([], 'project documents: none'))
+    monkeypatch.setattr(inv, 'quote_pass', lambda *a: None)
+    seen = []
+    attachments.clear()
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {'changed': []}
+
+    inv.investigate(tmp_path, 'orgs/mara.md', 'Mara Labs', [], days=10,
+                    clients={'gmail': client}, subscriptions={}, runner=runner)
+    assert len([item for item in seen if item['source'].startswith('gmail:')]) == 7
+    assert set(attachments) == expected
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -218,6 +353,48 @@ def test_quick_owner_fetches_all_matching_mail_bodies():
     assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
+@pytest.mark.parametrize('quick', [True, False])
+def test_indexed_project_sessions_are_readable_during_promotion(tmp_path, monkeypatch, quick):
+    from connectonion.rem import project_claim_review
+
+    root = tmp_path / 'rem'
+    prepare(root)
+    set_config(root, ['runner', 'codex'])
+    repo = tmp_path / 'atlas'
+    repo.mkdir()
+    record = 'projects/atlas.md'
+    inv.Notebook(root).stub_project(record, 'Atlas', [str(repo)])
+    rows = [{'role': 'user', 'source': f'codex:session-atlas:{i}', 'project': str(repo),
+             'timestamp': f'2026-10-{i + 1:02d}T00:00:00Z',
+             'text': f'Atlas request {i}: ' + 'x' * 30_000} for i in range(12)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (rows, ['codex: 12 inputs']))
+    candidate = ('# Atlas\n\nThe user requested Atlas changes [1][2].\n\n## Sources\n'
+                 '- [1] codex:session-atlas:0\n- [2] codex:session-atlas:1\n')
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        index = next((item for item in items if item.get('role') == 'evidence-index'), None)
+        if index is None:  # Later rounds may not carry the overflow index.
+            return {'changed': []}
+        assert not any(item.get('role') == 'original_evidence' for item in items)
+        originals = project_claim_review.original_items([index])
+        assert {row['source'] for row in rows[:2]} <= {item['source'] for item in originals}
+        project_claim_review.retain_cited_originals(notebook, candidate, items)
+        material, missing = project_claim_review.packet(notebook, candidate, record, items)
+        assert missing == [] and material['unretained_citations'] == []
+        assert {row['source_id'] for row in material['sources']} == {row['source'] for row in rows[:2]}
+        # Retention must also make them readable without the temporary index.
+        retained, missing = project_claim_review.packet(notebook, candidate, record)
+        assert missing == [] and len(retained['sources']) == 2
+        seen.append(Path(index['originals']))
+        return {'changed': []}
+
+    inv.investigate(root, record, 'Atlas', [str(repo)], days=30, clients={}, subscriptions={},
+                    runner=runner, quick=quick, rounds=2,
+                    extractor=lambda *a: pytest.fail('Index evidence must not be digested'))
+    assert seen and all(not path.exists() for path in seen)
+
+
 @pytest.fixture
 def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""
@@ -309,6 +486,58 @@ def project_documents(tmp_path):
     book = inv.Notebook(root)
     book.stub_project('projects/client.md', 'Client delivery', [str(folder)])
     return book, folder
+
+
+def test_project_mentions_excludes_diary_documents_unless_opted_in(tmp_path):
+    book = inv.Notebook(_notebook(tmp_path, 'codex'))
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Mia Chen reviews the delivery with Avery Lin.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    book.stub_project('projects/work.md', 'Work', [str(work)])
+    book.stub_project('projects/diary.md', 'Diary', [str(diary)])
+
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert [item['file'] for item in items] == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+    book.stub_project('projects/journal.md', 'Journal', [str(journal)])
+    for record in ('projects/journal.md', 'projects/diary.md'):
+        book.note_pass(record, 'investigated', 'project files')
+    items, _ = inv.project_mentions(book, ['Mia Chen'])
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
+
+
+def test_project_inventory_excludes_diary_files_unless_opted_in(tmp_path):
+    work = tmp_path / 'work'
+    journal = work / 'journal'
+    diary = tmp_path / 'diary'
+    journal.mkdir(parents=True)
+    diary.mkdir()
+    public = work / 'PEOPLE.md'
+    public.write_text('Avery Lin reviews the delivery.')
+    sensitive = journal / 'PEOPLE.md'
+    sensitive.write_text('Mia Chen [sensitive] diary entry.')
+    separate = diary / 'PEOPLE.md'
+    separate.write_text('Mia Chen [sensitive] separate diary entry.')
+    page = f'# Work\n## Paths\n- {work}\n- {diary}\n'
+
+    leads = inv.project_file_inventory(page)
+    assert leads == [str(public)]
+    assert all('[sensitive]' not in item['text'] for item in inv.project_file_texts(leads))
+
+    leads = inv.project_file_inventory(page, opted_in=frozenset({str(journal), str(diary)}))
+    items = inv.project_file_texts(leads)
+    assert {item['file'] for item in items} == {str(public), str(sensitive), str(separate)}
+    assert any('[sensitive]' in item['text'] for item in items)
 
 
 def test_project_mentions_reads_document_excerpts_and_redacts_secrets(project_documents):
@@ -988,11 +1217,15 @@ class LikeGraph(Quiet):
     def get_email_body(self, i): return f"--- Email Body ---\nbody {i}"
 
 
-def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_still_read():
+def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_still_read(monkeypatch):
     """#1981: one Graph 500 ended every org investigation before Gmail was asked."""
+    slept = []
+    monkeypatch.setattr("time.sleep", slept.append)
+
     class Broken(LikeGraph):
         def list_with(self, address, start, end, **kw):
             from connectonion.provider_credentials import ProviderCredentialError
+            self.asked.append(address)
             raise ProviderCredentialError("provider_unavailable", "Microsoft Graph API error (HTTP 500).",
                                           "co outlook inbox", status=500)
 
@@ -1001,9 +1234,11 @@ def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_stil
             self.asked.append(address)
             return LikeGraph.list_with(self, "unsw", start, end)
 
-    gmail = Gmail()
-    items, coverage = inv.gather("UNSW", ["unsw.edu.au"], days=90, clients={"outlook": Broken(), "gmail": gmail},
+    gmail, broken = Gmail(), Broken()
+    items, coverage = inv.gather("UNSW", ["unsw.edu.au"], days=90, clients={"outlook": broken, "gmail": gmail},
                                  subscriptions={}, record="orgs/unsw.md")
+    assert slept == [1, 2, 4, 8]  # No sleep after the fifth and final failure.
+    assert broken.asked == ["unsw"] * 5  # Graph uses its root-domain query.
     assert gmail.asked[0] == "unsw.edu.au"          # Gmail takes the bare domain
     assert any(l.startswith("outlook") and "server search failed (HTTP 500); not searched" in l for l in coverage)
     assert [i["text"].split("\n")[-1] for i in items] == ["body 1"]
@@ -3234,3 +3469,44 @@ def test_the_editing_turn_puts_back_a_quote_and_source_it_deleted_with_a_hedge(t
 
     inv.editing_turn(runner, notebook, record, {})
     assert "“Can you review it?”" in notebook.read(record) and "gmail:b" in notebook.read(record)
+
+
+def test_short_product_names_match_only_as_written_whole_words():
+    """#2615 review: a two- or three-letter product name pulled in unrelated mail."""
+    pattern = inv.company_mentions(['Mara Labs', 'Pix', 'go'])
+    assert pattern.search('notes on mara labs pricing') and pattern.search('Pix shipped today')
+    assert not pattern.search('we should go to the pixel show') and not pattern.search('pix and Go')
+
+
+def test_a_diary_folder_is_not_read_for_the_owners_page_and_the_remote_names_the_repository(tmp_path):
+    """2026-10-21 spot check: diary lines reached the owner's page; a project page said `Repository: Unknown`."""
+    import subprocess
+    assert inv._private_folder("/home/avery/journal") and inv._private_folder("/home/avery/my-diary")
+    assert inv._private_folder("/home/avery/journal/2026-10") and inv._private_folder("/home/avery/私人/notes")
+    assert not inv._private_folder("/private/tmp/work/atlas") and not inv._private_folder("")
+    assert not inv._private_folder("/home/avery/journal/2026-10", frozenset({"/home/avery/journal"}))
+    repo = tmp_path / "atlas"
+    repo.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "a@example.com"], ["config", "user.name", "Avery"],
+                 ["commit", "-q", "--allow-empty", "-m", "start"],
+                 ["remote", "add", "origin", "https://token@github.com/example/atlas.git"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    state = inv.checkout_state(str(repo))
+    assert "Remote origin: https://github.com/example/atlas.git." in state and "token" not in state
+
+
+def test_a_diary_session_line_naming_a_friend_never_reaches_the_friends_page(tmp_path, monkeypatch):
+    """Review of #2618: the diary rule applied only to the owner; a line naming a friend passed `related()`."""
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:s:10", "project": "/home/avery/journal/2026-10",
+         "timestamp": stamp, "text": "Book the hotel near Mia Chen's flat in Example Lane."},
+        {"role": "user", "source": "claude-code:s:20", "project": "/home/avery/atlas",
+         "timestamp": stamp, "text": "Send Mia Chen the Atlas deck."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, _ = inv.gather("Mia Chen", ["mia chen"], days=7, clients={},
+                          subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path), "enabled": True}},
+                          record="people/mia-chen.md")
+    assert [item["source"] for item in items] == ["claude-code:s:20"]

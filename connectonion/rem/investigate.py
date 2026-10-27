@@ -25,7 +25,7 @@ from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, R
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .mail import SERVER_ERRORS, error_status
-from .source import KINDS, collect, local_path, timestamp, with_local_times
+from .source import KINDS, collect, local_path, parse_session_source, timestamp, with_local_times
 
 MAIL_KINDS = ("outlook", "gmail")
 SESSION_WIDEST_DAYS = 730
@@ -104,25 +104,28 @@ OWN_COMPANY_NOTE = ("This is the user's own company. Write it from the user's si
                     "founder or owner: name their role. Never list the user's own addresses or agents as other "
                     "people. The main evidence is the user's outbound mail and typed coding sessions. Quote "
                     "the user's own sent words for each product, customer and deal, with dates. Notices and "
-                    "receipts sent to the company's addresses are not the company's work. All sent mail is "
-                    "supplied to avoid fragile name filtering; use the company-related exchanges. Notebook "
+                    "receipts sent to the company's addresses are not the company's work. Only sent mail "
+                    "addressed to or mentioning the company, its products or projects is supplied. Notebook "
                     "page leads below are uncited context, not evidence; verify against original sources.")
 
 
 def company_owner(notebook: Notebook, domains: list[str]) -> dict:
-    """Recognise the company after init has written the owner's Company field."""
+    """Recognise a named company or an owned project's organisation."""
     from .map import spells_owner
-    from .org_map import own_domain
+    from .org_map import own_company
 
     state = read_json(state_path(notebook.root, 'map.json'), {})
     owner = state.get('owner') or {}
     record = owner.get('record')
-    page = notebook.read(record) if record and notebook.path(record).is_file() else ''
+    if not record or not notebook.path(record).is_file():
+        return {}  # project evidence alone cannot supply the owner's identity or sent-mail scope
+    page = notebook.read(record)
     name = page.split('\n', 1)[0].removeprefix('# ').split(' (')[0]
     addresses = [*owner.get('addresses', []), *[row['address'] for row in state.get('possible_own_addresses', [])
                  if spells_owner(row['address'], name)]]
     owner = {**owner, 'addresses': sorted({a.casefold() for a in addresses}), 'name': name}
-    return owner if any(own_domain(domain, owner, page) for domain in domains) else {}
+    projects = [notebook.read(p) for p in notebook.list('projects')]
+    return owner if any(own_company(domain, page, projects, owner['addresses']) for domain in domains) else {}
 
 
 def company_projects(notebook: Notebook, record: str, subject: str, domains: list[str]) -> list[str]:
@@ -166,12 +169,47 @@ def company_context(notebook: Notebook, record: str, owner: dict) -> str:
     return '\n'.join(lines)
 
 
-def company_material(notebook: Notebook, owner: dict, projects: list[str], *, days: int,
+def company_names(notebook: Notebook, record: str, owner: dict, projects: list[str]) -> list[str]:
+    """Company and product names are leads for sent-mail relevance, not evidence of ownership."""
+    page = notebook.read(record) + '\n' + notebook.read(owner['record'])
+    names = [page_handles(notebook, p)[0] for p in [record, *projects]]
+    names += re.findall(r'(?im)^- (?:Company|Signing entity|Products?|Projects?): (.+)$', page)
+    names += re.findall(r'(?ms)^## (?:Products|Projects)[^\n]*\n(.*?)(?=^## |\Z)', page)
+    names = [re.sub(r'\[\d+\]', '', re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', name)) for name in names]
+    names = [part.strip(' -`').split(' — ', 1)[0].strip() for name in names for part in re.split(r'[,;\n]', name)]
+    return [name for name in names if name.casefold() not in ('', 'unknown')]
+
+
+def company_mentions(names: list[str]) -> re.Pattern:
+    """Whole-word mentions of the company's names; a short name only as written and capitalised.
+
+    A two- or three-letter product name ("go") matched unrelated mail; a short
+    name counts only with a capital, as written ("REM", "Pix") (#2615 review).
+    """
+    long = [re.escape(name) for name in names if len(name) >= 4]
+    short = [re.escape(name) for name in names if 2 <= len(name) < 4 and any(c.isupper() for c in name)]
+    patterns = ([f"(?i:{'|'.join(long)})"] if long else []) + (['|'.join(short)] if short else [])
+    return re.compile(r'(?<!\w)(?:' + '|'.join(patterns) + r')(?!\w)') if patterns else re.compile(r'(?!)')
+
+
+def company_material(notebook: Notebook, owner: dict, projects: list[str], *, record: str, days: int,
                      clients: dict, subscriptions: dict, **kwargs) -> tuple[list[dict], list[str]]:
-    """2026-10-20: 983 domain items yielded 0–4 quotes; read what the owner wrote instead."""
+    """Read the owner's work about this company without supplying unrelated private mail."""
+    domains = org_domains(notebook.read(record))
+    names = company_names(notebook, record, owner, projects) + domains
+    mentions = company_mentions(names)
+    sent = kept = 0
+
+    def keep_mail(row, body):
+        nonlocal sent, kept
+        sent += 1
+        relevant = on_domains(row, domains) or bool(mentions.search(row.get('subject', '') + '\n' + body))
+        kept += relevant
+        return relevant
+
     items, coverage = gather(owner['name'], [*owner['addresses'], owner['name']], days=days, clients=clients,
                              subscriptions={k: v for k, v in subscriptions.items() if k in MAIL_KINDS},
-                             sent_only=True, record=owner['record'], **kwargs)
+                             sent_only=True, record=owner['record'], mail_filter=keep_mail, **kwargs)
     sessions = {k: v for k, v in subscriptions.items() if v.get('kind') in KINDS}
     for project in projects:
         title, handles = page_handles(notebook, project)
@@ -180,9 +218,8 @@ def company_material(notebook: Notebook, owner: dict, projects: list[str], *, da
         items.extend(found)
         coverage.extend(searched)
     items = list({item['source']: item for item in items}.values())
-    mail = sum(item['source'].split(':')[0] in MAIL_KINDS and item.get('role') == 'user' for item in items)
     messages = sum(item['source'].split(':')[0] in KINDS and item.get('role') == 'user' for item in items)
-    coverage.append(f"owner's company: written from the owner's sent mail ({mail}) and sessions ({messages})")
+    coverage.append(f"owner's company: written from the owner's sent mail ({kept} of {sent}) and sessions ({messages})")
     return items, coverage
 
 
@@ -356,7 +393,7 @@ def collapse_worktree_paths(page: str) -> str:
     return page[:section.start(1)] + body + page[section.end(1):]
 
 
-def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
+def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset()) -> list[str]:
     """Give a project investigation bounded file leads, never file contents.
 
     Session metadata can name a project with no user messages. A short inventory
@@ -369,21 +406,22 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
     for root in roots[:4]:
         resolved = root.resolve()
-        if (not root.is_dir() or root.is_symlink() or resolved == Path.home()
+        if (_private_folder(str(root), opted_in) or not root.is_dir() or root.is_symlink() or resolved == Path.home()
                 or resolved in Path.home().parents or len(resolved.parts) < 3):
             continue
         seen = 0
         for current, dirs, files in os.walk(root, followlinks=False):
             depth = len(Path(current).relative_to(root).parts)
             dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
-                             and not (Path(current) / d).is_symlink()) if depth < 4 else []
+                             and not (Path(current) / d).is_symlink()
+                             and not _private_folder(str(Path(current) / d), opted_in)) if depth < 4 else []
             for name in sorted(files):
                 if name.startswith(".") or (Path(name).suffix.lower() not in suffixes and name != "package.json"):
                     continue
                 if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
                     continue
                 path = Path(current) / name
-                if path.is_symlink():
+                if _private_folder(str(path), opted_in) or path.is_symlink():
                     continue
                 leads.append(str(path))
                 seen += 1
@@ -518,12 +556,16 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
     if not names:
         return [], "project documents: none name the subject (no identifying name supplied)"
     pattern = re.compile("|".join(re.escape(name) for name in dict.fromkeys(names)), re.I)
+    opted_in = opted_in_folders(notebook.root)
     roots = {Path(path).expanduser().resolve() for record in notebook.list("projects")
              for path in project_paths(collapse_worktree_paths(notebook.read(record)))
-             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()}
+             if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()
+             and not _private_folder(str(Path(path).expanduser().resolve()), opted_in)}
     found, seen, real = [], set(), {}
     for root in sorted(roots):
         for path in _project_documents(root):
+            if _private_folder(str(path), opted_in):
+                continue
             # Cached names can be deleted or replaced by links while other pages run.
             # A folder resolved once per call: resolving every document was most of
             # this function at 16 workers (2026-10-20).
@@ -600,6 +642,10 @@ def checkout_state(path: str, newest_session: str = "") -> str:
     ref = next((r for r in CURRENT_REFS if _git(path, "rev-parse", "--verify", "--quiet", r + "^{commit}")), "") \
         or _git(path, "for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(refname:short)", "refs/heads")
     lines = [f"Checkout {path}: branch {branch}, HEAD committed {head[:10]}."]
+    # 2026-10-21 spot check: `Repository: Unknown` beside a repo with a GitHub remote.
+    remote = _git(path, "remote", "get-url", "origin")
+    if remote:
+        lines.append(f"Remote origin: {re.sub(r'://[^/@]+@', '://', remote)}.")
     line_date = _git(path, "log", "-1", "--format=%cI", ref) if ref else ""
     if ref and line_date:
         version = _version_at(path, ref)
@@ -726,7 +772,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
            progress=None, attachments_dir: Path | None = None,
            sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
            quick: bool = False, archive_root: Path | None = None,
-           record: str = "") -> tuple[list[dict], list[str]]:
+           record: str = "", mail_filter=None) -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -789,7 +835,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # first `investigate me` searched for them and found 6 of ~150 mails.
             mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
-        local, undated = [], 0
+        local, undated, seen = [], 0, set()
         for item in cached_by_provider.get(kind, []):
             # A saved mail with an unreadable date is that mail's gap, not the
             # run's: one naive Gmail Date stopped `investigate me` (#2013).
@@ -803,6 +849,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if item.get('_org_excluded'):
                 left_out.add((kind, item['_mail_id']))
             elif not sent_only or _address(item.get('speaker', '')) in mine or item['role'] == 'user':
+                seen.add(item['_mail_id'])
+                headers = {**item.get('participants', {'from': item.get('speaker', '')}), 'subject': item.get('subject', '')}
+                if mail_filter and not mail_filter(headers, item['text']):
+                    continue
                 local.append({**item, 'role': 'user'} if sent_only else item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
@@ -826,7 +876,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                               "source": f"{kind}:{short}:{Path(saved).name}",
                               **({"relationship_scope": scope} if scope else {})})
 
-        seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
         if archived and kind in cached_by_provider and kind in complete_kinds:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
@@ -925,6 +974,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 for key in ("date", "from", "to", "cc", "subject")}}
                 head, _, rest = body.partition("--- Email Body ---")
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                # Filter before creating evidence or reading attachments: unrelated owner mail stays private.
+                if mail_filter and not mail_filter(r, body):
+                    continue
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
                 scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
@@ -978,9 +1030,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         scoped = {**sub, "enabled": True, "consented": True, "since": session_start.isoformat()}
         scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
+        opted_in = opted_in_folders(archive_root)
         read = collect_chat if chat else collect
 
         def related(item):
+            # A diary folder is never read for any page unless the owner opted it in by
+            # having its project page written (project_pages.private); its lines reached
+            # the owner's page as hotel bookings and a friend's address (2026-10-21).
+            if not chat and _private_folder(item.get("project") or item.get("cwd") or "", opted_in):
+                return False
             # A chat line says who said it; mail's rule for the owner applies:
             # what the owner wrote describes them, the whole chat does not.
             # sent_only is the owner's page even when no mailbox is connected
@@ -1035,15 +1093,16 @@ def _project_session_inputs(window: list[dict], picked: list[dict], subject: str
     sessions = {}
     for item in window:
         source = str(item.get("source", ""))
-        if item.get("role") == "user" and source.rpartition(":")[2].isdigit():
+        if item.get("role") == "user" and parse_session_source(source):
             sessions.setdefault(source.rpartition(":")[0], []).append(item)
     named = re.compile(rf"(?<!\w){re.escape(subject.strip())}(?!\w)", re.IGNORECASE)
     kept = []
     for item in picked:
         source = str(item.get("source", ""))
-        session, _, offset = source.rpartition(":")
-        crossed = offset.isdigit() and any(
-            int(row["source"].rpartition(":")[2]) < int(offset)
+        parsed = parse_session_source(source)
+        session = source.rpartition(":")[0]
+        crossed = parsed is not None and any(
+            parse_session_source(row["source"])[2] < parsed[2]
             and row.get("project") and row.get("project") != item.get("project")
             for row in sessions.get(session, []))
         if not crossed or named.search(item.get("text", "")):
@@ -1898,6 +1957,28 @@ RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
 
 
+def _private_folder(path: str, opted_in=frozenset()) -> bool:
+    """`project_pages.private_path`, unless the folder is under one the owner opted in."""
+    from .project_pages import private_path
+    if not path or any(path == folder or path.startswith(folder.rstrip("/") + "/") for folder in opted_in):
+        return False
+    return private_path(path)
+
+
+def opted_in_folders(root: Path | None) -> frozenset:
+    """Folders of private projects the owner had written on purpose (`co rem investigate <page>`)."""
+    from .project_pages import private
+    if root is None:
+        return frozenset()
+    notebook = Notebook(root)
+    folders = set()
+    for record in notebook.list("projects"):
+        page = notebook.read(record)
+        if private(record, page) and last_investigated(page):
+            folders.update(project_paths(page))
+    return frozenset(folders)
+
+
 def owner_work_evidence(items: list[dict]) -> str:
     """Put a few dated, citable coding messages beside the owner's full source index.
 
@@ -2049,6 +2130,90 @@ def prefill_project_dates(page: str, line_items: list[dict]) -> str:
     return head + marker + f'- [{number}] {history["source"]} — {history["timestamp"][:10]}\n' + sources
 
 
+def _feedback_without_new_raw(root: Path, record: str, config: dict, coverage: list[str], *,
+                              runner=None, max_calls=None, read_before="", retry_refused=False,
+                              stage_progress=None) -> dict | None:
+    """One explicit target's pending assertions, without claiming new research.
+
+    Select/checkpoint under lock, but leave native model reasoning outside it;
+    run_stage compares its page snapshot while holding the promotion lock.
+    """
+    if read_before:
+        return None  # A historical deepen keeps its requested date boundary.
+    from . import feedback
+    from . import facts
+    from .refusals import mark_retried, refused_for
+    from .runner import RunFailed, maintenance_instructions, run_stage
+
+    notebook = Notebook(root)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        progress = read_json(state_path(root, "progress.json"), {})
+        candidates, deferred = feedback.plan(root, progress, retry_pages=[record] if retry_refused else ())
+        candidates = [{**item, "feedback_pending_targets": [record]} for item in candidates
+                      if record in item["feedback_pending_targets"]]
+        deferred = [row for row in deferred if row["record"] == record]
+        if not candidates:
+            if deferred:
+                raise RemError("Feedback remains pending for " + record + ": " + deferred[0]["reason"] +
+                               ". No new raw material was found and no model was called.")
+            return None
+        if max_calls is not None and max_calls < 1:
+            raise RemError("Insufficient call budget for pending feedback; page and feedback preserved")
+        original = notebook.read(record)
+        facts_before = facts.coverage(original, record)
+        page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
+                "expected_page_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                "text": "The page as it stands. Assess the attributed assertions; preserve supported facts.\n\n" +
+                        original}
+        room = config["limits"]["input_chars_per_batch"] - len(maintenance_instructions("")) - 1000
+        used = len(json.dumps(page, ensure_ascii=False))
+        selected = []
+        for item in candidates:
+            size = len(json.dumps(item, ensure_ascii=False)) + 2
+            if used + size > room or len(selected) >= config["limits"]["extract_items_per_batch"]:
+                deferred.append({"record": record, "source": item["source"],
+                                 "reason": "Feedback exceeds this turn's input budget"})
+                continue
+            selected.append(item)
+            used += size
+        if not selected:
+            raise RemError("Pending feedback exceeds the maintenance input budget; page and feedback preserved")
+        execute = runner or run_stage
+        getattr(execute, "preflight", lambda: None)()
+        held = refused_for(root, record)
+        if all(feedback.same_revision(held, item) for item in selected):
+            mark_retried(root, record)
+    try:
+        if stage_progress:
+            stage_progress("processing attributed feedback")
+        # Default native promotion obtains its own lock and checks the snapshot.
+        # Custom investigation callbacks keep the existing stage keyword contract.
+        result = execute(notebook, [page, *selected], config, stage="maintain")
+    except RunFailed as error:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            progress = read_json(state_path(root, "progress.json"), {})
+            feedback.finish(root, progress, selected, record, {"refused": str(error)})
+        raise
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        progress = read_json(state_path(root, "progress.json"), {})
+        feedback.finish(root, progress, selected, record, result)
+    if result.get("refused"):
+        raise RunFailed(str(result["refused"]), result.get("usage"))
+    current = facts.coverage(notebook.read(record), record)
+    return {"record": record, "mode": "feedback_only", "items": 0, "items_available": 0,
+            "feedback_items": len(selected), "feedback_deferred": deferred,
+            "quick": False, "chars_gathered": 0, "tokens_estimated_in": 0,
+            "coverage": [*coverage, "Attributed feedback processed; no new original-source investigation"],
+            "changed": result.get("changed", []), "usage": result.get("usage"),
+            "usage_by_stage": {"maintain": result.get("usage")},
+            "report": "Feedback only; no new originals investigated. " + str(result.get("report") or ""),
+            "threads": result.get("threads", []),
+            "evidence": [{key: item[key] for key in ("source", "timestamp") if key in item}
+                         for item in selected],
+            "facts": {"before": facts_before, "after": current, "extracted": 0},
+            "instructions_chars": {"maintain": result.get("instructions_chars")}}
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -2078,11 +2243,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     gather_options = dict(progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                           mail_skipped=mail_skipped, stage_progress=stage_progress, quick=quick, archive_root=root)
     mail_subs = {k: v for k, v in subscriptions.items() if k in MAIL_KINDS} if company else subscriptions
-    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=mail_subs,
+    # Alternate contact addresses could reintroduce private mail rejected by company_material below.
+    mail_handles = own_domains if company else search_handles
+    items, coverage = gather(subject, mail_handles, days=days, clients=clients, subscriptions=mail_subs,
                              sent_only=sent_only, record=record, **gather_options)
     if company:
         projects = company_projects(notebook, record, subject, own_domains)
-        own_items, own_coverage = company_material(notebook, company, projects, days=days, clients=clients,
+        own_items, own_coverage = company_material(notebook, company, projects, record=record, days=days, clients=clients,
                                                   subscriptions=subscriptions, **gather_options)
         items = list({item['source']: item for item in [*items, *own_items]}.values())
         for item in items:
@@ -2152,6 +2319,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                 "provider-thread comparison; comparison is old evidence, not new contact")
             items = [*fresh, *comparison]
     if last and not items and not record.startswith("projects/"):
+        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                    max_calls=max_calls, read_before=read_before,
+                                                    retry_refused=retry_refused, stage_progress=stage_progress)
+        if feedback_result is not None:
+            return feedback_result
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
@@ -2182,12 +2354,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
         project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
-        from .project_pages import current_line
+        from .project_pages import current_line, private
         # A Git project is read at its current line, handed to every round; only
         # a plain folder is read file by file. Sixty whole files of oo-api's
         # working tree took five rounds before one of the owner's messages (2026-10-15).
         line = current_line(corrected)
-        leads = [] if line else project_file_inventory(corrected)
+        leads = [] if line else project_file_inventory(
+            corrected, opted_in=opted_in_folders(root) | (frozenset(project_paths(corrected))
+                                                        if private(record, corrected) else frozenset()))
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
@@ -2200,6 +2374,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads and not project_roots:
+        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                    max_calls=max_calls, read_before=read_before,
+                                                    retry_refused=retry_refused, stage_progress=stage_progress)
+        if feedback_result is not None:
+            return feedback_result
         # Nothing about the subject, so nothing to write from: the page and the
         # coverage note are not material (#1974).
         raise _nothing_found(record, subject, coverage, me=sent_only)
@@ -2250,6 +2429,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
                 item["source"] in cited for item in repository_items)
             if same:
+                feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                                                            max_calls=max_calls, read_before=read_before,
+                                                            retry_refused=retry_refused, stage_progress=stage_progress)
+                if feedback_result is not None:
+                    return feedback_result
                 raise _nothing_new(record, subject, coverage, last)
         items += repository_items[len(line_items):]
     gathered_sources.update(item["source"] for item in repository_items)
@@ -2308,6 +2492,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             index_text[:room // 2] + f"\n[Index continues in {laid_out['index']}; read the rest there.]\n")
         items = [{"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                   "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                  "originals": str(laid_out["originals"]),
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
                            f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
@@ -2393,6 +2578,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
                 parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                                     "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                                    "originals": str(laid_out["originals"]),
                                     "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
                                             f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
             coverage.append(f"rounds: {len(parts)} parts read in full" + (

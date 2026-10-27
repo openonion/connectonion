@@ -400,7 +400,130 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc15
+## Current Version: 1.9.3rc25
+
+Freeze candidate for 1.9.3: rc24 plus one release-blocking fix, the Lark
+listener repair (#2691, fixes #2690). History recovery is bounded and runs only
+at start and reconnect; a rejected container is skipped instead of aborting
+recovery; events that reached the bot but not this listener are reported; chat
+reactions, recalls and group events reach the inbox. Nothing else changed. If
+rc25 holds up end to end it is promoted unchanged to 1.9.3. Stable remains
+1.9.2. See [candidate notes](docs/releases/1.9.3rc25.md).
+
+- 1.9.3rc25 (1.9.3 freeze candidate: rc24 plus the Lark listener fix).
+
+### Previous candidate: 1.9.3rc24
+
+Freeze candidate for 1.9.3. It carries the REM work merged after rc23 (cited
+originals through the evidence index, translation repair, owner company scope,
+muse new ground, one diary-folder privacy rule), the macOS device Host service
+and an `co email inbox --address` ownership check. From rc24 on only
+release-blocking fixes land on the 1.9.3 line; if rc24 holds up end to end it
+is promoted unchanged to 1.9.3. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc24.md).
+
+- 1.9.3rc24 (1.9.3 freeze candidate: REM citation, translation, company-scope and privacy fixes; macOS Host service; inbox address check).
+
+### Previous candidate: 1.9.3rc23
+
+Candidate: generic ASR with a native Python Codex dictation adapter and an
+explicit ConnectOnion provider. Existing co configuration selects the provider;
+Codex is the default, no external codex-asr command is installed, no fallback
+uploads audio to another provider. Long recordings use local FFmpeg windows
+and resumable per-part checkpoints with raw text preserved. Short synthesized
+English reached both providers; a nine-minute fixture completed two Codex parts.
+Real long-meeting and multilingual recognition quality remain unverified.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc23.md).
+
+- 1.9.3rc23 (configurable Python ASR, Codex default, long-audio windows and checkpoint resume).
+
+### Previous candidate: 1.9.3rc22
+
+1.9.3rc22 wakes Codex Scheduled after native task adoption, so a running App
+Server no longer stands in for an initialized desktop scheduler. Normal-profile
+execution, archiving, pause and initialization after a desktop restart have
+receipts. Native handover rechecks the same registration before old-clock
+teardown; account-managed mutation and exact requested-minute timing remain
+unverified. Every initialization entry point also prepares and repairs the local
+profile, bundled skill links and command index while preserving custom data.
+Stable remains 1.9.2; Python 3.11+ is required. See
+[1.9.3rc22 notes](docs/releases/1.9.3rc22.md).
+
+- 1.9.3rc22 (wake native Scheduled after adoption; confirm timer lifecycle; complete and repair all initialization entry points).
+
+### Previous candidate: 1.9.3rc21
+
+1.9.3rc21 moves eligible Codex notebooks on macOS to Codex desktop Scheduled.
+The native file must be adopted before an old timer is removed; failed adoption,
+failed unload and a running old batch retain the prior clock. The native wrapper
+and internal REM conversations archive after completion. The tested desktop uses
+its local wall clock; other timezones, headless Macs and other runners retain
+launchd with that boundary stated. Status distinguishes configuration, native
+adoption, trigger evidence and REM outcomes. Stable remains 1.9.2 and Python
+3.11+ is required. See [1.9.3rc21 notes](docs/releases/1.9.3rc21.md).
+
+- 1.9.3rc21 (native Codex REM clock, verified handoff, archival and scheduling diagnostics).
+
+### Previous candidate: 1.9.3rc20
+
+Repeat email setup recognizes an address the account already owns before
+checking which domains currently accept new purchases. A closed setup domain
+therefore does not hide existing ownership or cause a repurchase. New claims
+still follow the cloud's enabled-domain list. Stable remains 1.9.2. See
+[1.9.3rc20 notes](docs/releases/1.9.3rc20.md).
+
+- 1.9.3rc20 (recognize owned mailboxes when new domain purchases are closed).
+
+### Previous candidate: 1.9.3rc19
+
+Mailbox setup receives another regression and installation acceptance round.
+Signed-out commands and rejected account settings cannot reach a purchase;
+reserved domains stay unavailable until enabled by the backend. Existing
+multi-address behavior and the account default are unchanged. Stable remains
+1.9.2. See [1.9.3rc19 notes](docs/releases/1.9.3rc19.md).
+
+- 1.9.3rc19 (mailbox setup regression and installation acceptance).
+
+### Previous candidate: 1.9.3rc18
+
+The email CLI exposes the existing cloud multi-address API: `co email domains`
+reads enabled domain choices and current prices, and `co email setup <alias>
+--domain <domain>` shows the price before `--buy` adds another mailbox. Existing
+addresses and the selected account default are preserved. Cloud sender
+verification and inbound routing have separate operational acceptance. Stable
+remains 1.9.2. See [1.9.3rc18 notes](docs/releases/1.9.3rc18.md).
+
+- 1.9.3rc18 (discover hosted domains and add aliases on the same account).
+
+### Previous candidate: 1.9.3rc17
+
+1.9.3rc17 is a backend maintenance release candidate: bounded explicit feedback
+processing without new raw material, stricter inherited-claim audit decisions,
+and faithful supplied-argument names in tool recovery hints. Synthetic retry
+tests record delays instead of waiting. Stable remains 1.9.2; Python 3.11+ and
+rc16's dependency floors are retained. No reader redesign or new real-data/native
+acceptance is claimed. Publication requires the normal release gates. See
+[1.9.3rc17 notes](docs/releases/1.9.3rc17.md).
+
+Tool error hints list the arguments the model supplied before execution strips
+the presentation `summary`. A supplied summary is no longer reported as missing;
+injected runtime arguments remain excluded. Tool execution, traces and permissions
+are unchanged (#2652).
+
+- 1.9.3rc17 (feedback processing, inherited-claim integrity and faithful error hints).
+
+### Previous candidate: 1.9.3rc16
+
+1.9.3rc16 skips stale click-approach waypoints under slow pointer dispatch,
+adds an optional local managed-daemon PID pin, and keeps a
+project Host from starting an unrelated global handoff watcher. Ordinary
+unpinned browser startup remains unchanged. Stable remains 1.9.2; Python 3.11+
+and rc15's dependency floors are retained. See
+[1.9.3rc16 notes](docs/releases/1.9.3rc16.md).
+
+- 1.9.3rc16 (bounded click pacing and owned browser/Host lifecycles).
+
+### Previous candidate: 1.9.3rc15
 
 1.9.3rc15 preserves Feishu/Lark message kinds, resource references and typed
 sender IDs through the inbox and Host. Recovery includes already remembered
@@ -2044,6 +2167,10 @@ gate. No new paid session is required for final non-billing regression checks.
 - 1.5.2 (Claude calls carry the system prompt again — Anthropic requests had been dropping it entirely and silently; `.co/docs/` is no longer empty on a PyPI install, the 194 docs files now ship inside the wheel)
 
 ## Files to Update When Versioning
+
+Also update `MIN_VERSION` in `connectonion/handoff/replies.py` for each published
+candidate: the recipient installation prompt is pinned to the sender's released
+version and its own tag. The handoff acceptance test checks this separate floor.
 
 Four files carry the package version, and `test_the_version_agrees_with_itself.py`
 fails if they disagree — so a release that misses one is caught rather than

@@ -12,8 +12,7 @@ from connectonion.rem.source import collect, pending_metadata
 
 def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs", session=""):
     # The session id defaults to the file's own name: an item is identified by
-    # kind:session:offset, so two fixtures sharing an id look like one session
-    # written twice and the second is deduplicated away.
+    # kind:session:offset-hash; copied messages at the same offset deduplicate.
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [{"type": "session_meta", "payload": {
         "id": session or path.stem, "cwd": project, "originator": originator}}]
@@ -587,5 +586,49 @@ def test_wslpath_execution_errors_are_not_hidden(monkeypatch):
     try:
         with pytest.raises(OSError, match="could not launch wslpath"):
             source.local_path(r"D:\Projects\PROJECT_NAME")
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("path", [r"\\server\share\project", r"D:relative", "/home/project", "relative"])
+def test_non_drive_paths_do_not_invoke_wslpath(monkeypatch, path):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: pytest.fail("unexpected wslpath lookup"))
+    try:
+        assert source.local_path(path) == path
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("returncode,stdout", [(1, "/mnt/d/project\n"), (0, "relative\n"), (0, "")])
+def test_wslpath_invalid_result_preserves_original(monkeypatch, returncode, stdout):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+    monkeypatch.setattr(source.subprocess, "run", lambda *args, **kwargs: types.SimpleNamespace(returncode=returncode, stdout=stdout))
+    try:
+        assert source.local_path(r"D:\project") == r"D:\project"
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("platform,converter", [("nt", "/usr/bin/wslpath"), ("posix", None)])
+def test_windows_paths_are_unchanged_without_wsl_conversion(monkeypatch, platform, converter):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name=platform))
+    monkeypatch.setattr(source.shutil, "which", lambda name: converter)
+    monkeypatch.setattr(source.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected conversion"))
+    try:
+        assert source.local_path(r"D:\project") == r"D:\project"
     finally:
         source.local_path.cache_clear()

@@ -283,7 +283,7 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 ```
 
 **Subcommands:**
-- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`)
+- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`, `--address/-a`)
 - `co email read <#>` - print one message's body; add `--mark-read` to consume it
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)
@@ -1464,6 +1464,7 @@ See [server.md](server.md).
 | `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
 
 ---

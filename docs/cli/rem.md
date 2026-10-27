@@ -1,4 +1,4 @@
-# co rem — 1.9.0 stable guide
+# co rem — command guide
 
 **Start in one command:** `co rem init` maps the last 180 days and investigates
 every eligible page. Run `co rem status` to see coverage and `co rem open` to
@@ -8,7 +8,7 @@ Jump to [Start here](#start-here) · [Commands](#commands) ·
 [Source controls](#source) · [Scheduling](#scheduling-and-accounting) ·
 [Reader layout](#what-the-reader-shows).
 
-Updated 2026-10-07 for stable **1.9.0**. The exact commands are
+Check your installed release. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
@@ -78,7 +78,8 @@ installed skills from source and retained run evidence: 16 pages at a time.
 After the map summary, init prints your notebook languages and whether they
 were detected from your sent mail and typed sessions or set in config. Use
 `co rem init --languages zh,en` to set them before mapping, or
-`co rem config set languages en` to change them later. English remains the
+`co rem config set languages zh,en` (your list, as init prints it) to change them
+later; `languages en` keeps English only. English remains the
 canonical writing language. After tidying and drawing decisions and principles,
 init translates every listed, written page into your first non-English language,
 even when English is first in the list. Mapped-only stubs and the skill catalog
@@ -90,8 +91,10 @@ The estimate includes one translation per selected page plus your page, with
 unknown decision/principle counts treated as zero. Translation uses its own
 `limits.workers` lanes after the investigations, so its wall time is added to
 the page queue. Completed translation runs in this notebook supply median rates;
-otherwise planning uses 80,000 input tokens and 35 seconds per page (measured
-2026-10-21). First-run translation has no daily cap.
+otherwise planning uses 90,000 input tokens and 200 seconds per page (measured
+2026-10-21 on a 297-page notebook at 16 workers: one translation alone takes
+22–40 s, but concurrent turns share the model's throughput; the whole notebook
+took 66 minutes). First-run translation has no daily cap.
 
 Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
@@ -470,6 +473,8 @@ co rem muse projects/aurora.md     # thinking: ask, choose, study, write only on
 
 Before muse saves the page, an independent reviewer checks each proposed new
 Insight bullet against its cited originals and the existing page, without seeing the writer's reasoning.
+Unresolved `git:` citations are read from the local checkout with `git show`, capped at 40,000 characters.
+The critic judges the same packet twice independently, keeps only bullets both calls rate good, and records both verdicts and their disagreement count.
 Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
 or a question still owed can move to Open threads.
 
@@ -866,10 +871,53 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-launchd invokes the resolved `co rem --root ... sync --scheduled` CLI every
-five minutes, with PATH entries for co and installed delegates. Saved local
-time slots determine whether a batch is due. Repeated start reloads one job;
-missed slots coalesce into one catch-up. No permanent co rem daemon is added.
+In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Scheduled** when the app
+is installed and the notebook timezone matches this computer. The desktop
+adopts a private local automation definition; there is no public App Server
+schedule RPC in the tested version. Keep the app open and computer awake.
+Completed native wrapper conversations and REM's internal Codex calls are
+archived, retaining their trace IDs without filling active project history.
+
+`co rem start` stages a paused task and verifies native index adoption before
+removing an old launchd clock. A running old batch or failed registration leaves
+the previous clock intact. Run start again after that batch finishes or Codex
+initializes. `status` distinguishes registration, first execution, a stopped app,
+an overdue trigger and a failed REM pass; a file alone is not a working schedule.
+`stop` pauses the native task and retains its history. It does not cancel a native
+model turn already in progress.
+
+The native adapter in rc21 uses Codex's legacy local-file registration. Newer
+desktop code also has account-managed registration, which can replace the local
+file and task ID. That registration route has not passed REM's live acceptance;
+the presence of a TOML parser or an enabled feature is not proof of compatibility.
+The normal-profile follow-up on 2026-10-24 verified real native execution,
+auto-archiving and pause after opening the existing app's Scheduled entry point.
+A running App Server alone had not advanced its registered timer.
+This verifies execution, not exact requested-minute timing: the cold retry
+requested 20:35 Sydney, was indexed for 20:36:33 and began at 20:36:34.
+Check `co rem status` before relying on unattended upkeep;
+`co rem sync` remains available by hand.
+
+**In opt-in preview 1.9.3rc22:** initialization opens the normal installed
+desktop directly at Scheduled, including when its process is already running,
+then independently confirms activation. After the native index is ready it
+opens Scheduled again, so a cold launch does not depend on an early URL request.
+It rechecks the same registration before removing the old clock; migration or
+a concurrent change aborts that handover. Stopping
+waits for native pause acknowledgement before marking the worker disabled or
+starting a replacement launchd timer. A known account-migrated task is identified
+by its legacy association and requires management in Codex Scheduled until an
+authoritative account registration API has been verified. REM does not recreate
+its old file or treat a cached account status as confirmation of a pause.
+
+Other runners, headless Macs and saved timezones different from the desktop retain
+launchd. Its five-minute tick keeps the saved timezone and coalesces missed slots.
+The native desktop uses its own local wall clock and startup/missed-run behavior;
+REM coalesces overdue saved slots when the next native trigger reaches the CLI.
+Exact time pairs use one rule with position selection, avoiding extra combinations.
+Spring DST gaps move forward by the gap; a repeated hour is served once, at its
+first occurrence. Moving the computer to another timezone needs `co rem start`
+to select the matching scheduler. No REM timer daemon is added.
 
 The job imports the checkout that ran `co rem start` when that is a source
 checkout, and nothing for an installed package; it never copies the shell's
@@ -1297,6 +1345,11 @@ before it refuses anything.
   First and Last contact code computed from the whole archive: the packet's
   date range is not the relationship's. A claim a truncated excerpt neither
   supports nor contradicts is left out, not failed.
+  Evidence indexes preserve the original items for retention and auditing, including
+  overflow from capped rounds. In `claim-review.json`, `unretained_citations` lists
+  handed citation numbers with no readable excerpt and `unverified_lines` lists
+  prose citing only those originals (unverified, not refuted); `missing_citations`
+  lists citations never handed to the turn and unavailable in the archive.
 - **Up to two repair turns for every page type; one for enrich and muse.**
   What review names goes back to the writer with where to read the originals.
   Only project pages had repairs before; callum-reid and two skill pages
@@ -1671,6 +1724,17 @@ shows the original when no translation is available. Rendering never starts a
 translation. The per-page Read in menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
 
+What the model sees and must keep: the `## Sources` section is never sent; it is
+copied back byte-identical after the translated prose. Amounts and currency
+symbols stay as written (`$50,000` never becomes US dollars), and so do names of
+people, organisations, projects, products and tools, including lowercase project
+names; the page title and every link text are passed as an explicit list.
+Email addresses, URLs, paths, issue numbers, versions and code spans are kept.
+Each translation is checked before it is cached: headings, `[n]` citations,
+privacy labels, quoted passages and reader markers. When a check fails, the
+model gets one repair turn with the exact difference ("missing [12] (1 time)");
+a second failure is reported and nothing is cached.
+
 To backfill existing pages once (the English pages remain the audited source):
 
 ```bash
@@ -1710,6 +1774,28 @@ crash can leave a thread active; existing history is not bulk-archived. They lea
 remain available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
-This is separate from scheduling: REM still uses launchd on macOS. Codex App
-Scheduled is not a public App Server scheduling API; native schedule migration
-has not been enabled by this change.
+History archiving also applies when launchd owns the timer. In rc21, eligible
+Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
+for eligibility and fallback. Registration uses the desktop's task file format;
+Scheduled is not a public App Server scheduling API.
+
+### Unchanged-content audit continuity (1.9.3rc17, #2639)
+
+1.9.3rc17 narrows the protection for content inherited from an
+accepted page. It compares complete retained prose contexts, including meaningful
+word spaces, the page title and section hierarchy, and exact cited original IDs
+at their relative text positions. Renumbering or line wrapping can preserve
+continuity; removing a condition, moving evidence to another sentence or moving
+history into current context does not. A removed or reordered old paragraph or
+bullet invalidates its section's exemption, so adjacent qualifications cannot
+silently disappear. Headings, fenced examples and Sources rows do not count as
+old prose. Every occurrence of a finding must qualify, including new duplicates.
+
+Unchanged findings can remain deferred under the existing preservation policy,
+but are recorded as **insufficient**, with a deferred count in `review.json`,
+not as a factual pass. Active findings reach ordinary repair/refusal even if the
+model labels its top-level verdict PASS or INSUFFICIENT.
+This is a deterministic continuity check, not semantic equivalence or proof the
+old content is true. Additions may still affect discourse meaning; actual model
+and current native desktop/phone/accessibility acceptance remain unverified.
+Existing notebook pages are not automatically corrected.

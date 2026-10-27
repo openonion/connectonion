@@ -66,11 +66,12 @@ _FROM = {
     # calls `connectonion.llm_do(...)` — so the function is what this must return.
     "llm_do": ".llm_do",
     "transcribe": ".transcribe",
+    "asr": ".audio_asr",
     "load_system_prompt": ".prompts",
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
     **{name: ".plugins" for name in ("CodexPlugin", "ClaudeCodePlugin", "PermissionMode")},
     **{name: ".useful_tools" for name in (
-        "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
+        "send_email", "get_email", "get_sent", "get_sent_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "create_sms_pairing", "get_sms_pairing", "pairing_confirmation_code", "confirm_sms_pairing",
         "get_sms", "wait_for_sms", "acknowledge_sms", "delete_sms",
         "list_sms_devices", "revoke_sms_device",
@@ -148,6 +149,7 @@ __all__ = [
     "create_tool_from_function",
     "llm_do",
     "transcribe",
+    "asr",
     "load_system_prompt",
     "xray",
     "replay",
@@ -158,6 +160,9 @@ __all__ = [
     "PermissionMode",
     # Email tools
     "send_email",
+    "get_email",
+    "get_sent",
+    "get_sent_email",
     "get_emails",
     "mark_read",
     "mark_unread",

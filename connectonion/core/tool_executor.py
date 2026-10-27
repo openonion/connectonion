@@ -288,6 +288,7 @@ def execute_single_tool(
     # arguments. Old sessions and third-party callers may omit it; execution
     # remains compatible and readers provide a deterministic fallback.
     tool_args = dict(tool_args)
+    provided_arguments = list(tool_args)
     tool_func = tools.get(tool_name)
     summary = _bounded_tool_summary(tool_args.get("summary"))
     if not getattr(tool_func, "_summary_is_function_argument", False):
@@ -555,7 +556,7 @@ def execute_single_tool(
         properties = list(schema.get('properties', {}).keys())
 
         error_msg = f"Error: {str(e)}"
-        error_msg += f"\n\nTool '{tool_name}' schema: required={required}, all_params={properties}, you_provided={list(tool_args.keys())}"
+        error_msg += f"\n\nTool '{tool_name}' schema: required={required}, all_params={properties}, you_provided={provided_arguments}"
         trace_entry["result"] = error_msg
         if not cleared:
             trace_entry["declined"] = True

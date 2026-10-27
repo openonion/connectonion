@@ -32,3 +32,34 @@ it is, and it is someone else's.
 
 A wrong number is worse than none. Throwing away the right ones to avoid it is
 not much better.
+
+## 23 October: what the tests were waiting for
+
+Candidate test change; not a new REM runtime release.
+
+The same question came back about CI: would more workers make it faster? The
+three Python jobs were already concurrent, and each used two pytest workers.
+Their coverage job still took eleven to thirteen minutes. That observation did
+not tell us whether more processes on the same runner would help.
+
+The slow-test report gave us a smaller answer first. A simulated mailbox stayed
+down for every retry. The test correctly kept the other mailbox's result, but
+before proving it, waited one, two, four and eight real seconds. Two other tests
+preserved earlier years after an interrupted import and waited two, four and
+eight seconds each. No mailbox was being contacted. The failures were invented;
+the waiting was real.
+
+We kept the retries and recorded the requested delays instead. The tests now
+check every delay and the final failed attempt, including that there is no extra
+sleep afterward. Their existing retained-data and healthy-source checks remain.
+The identical three-test command went from 45.76 seconds to 0.68 seconds. A first
+added assertion confused Graph's shortened query with Gmail's domain query; we
+corrected the assertion rather than changing the working search behavior.
+
+That is a useful saving, but not forty-three seconds off parallel CI. Other work
+may occupy the second worker, and the whole coverage job still needs measurement.
+The production backoff, coverage floor, timeout and release gates are unchanged.
+The lesson from the longer first-run experiment still holds: find what time is
+being spent on before multiplying workers. Here, the unnecessary resource was
+elapsed time inside synthetic tests. Runner sharding and real REM page quality
+remain separate questions.

@@ -258,7 +258,7 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
 
     monkeypatch.setattr(rem_commands, '_start_consent', consent)
     monkeypatch.setattr('typer.confirm', lambda *args, **kwargs: prompts.append(args) or True)
-    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda: SimpleNamespace(
+    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda *args, **kwargs: SimpleNamespace(
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output
@@ -364,8 +364,8 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     result = init()
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-6:]
-    # Three counterparties plus the owner's company.
-    assert tail[0] == "Your notebook: 4 people, 4 organisations, 0 projects and 0 skills."
+    # Three counterparties; a sending address alone does not establish an owned company.
+    assert tail[0] == "Your notebook: 4 people, 3 organisations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Agent sessions: 0 imported, 0 updated, 0 unchanged;")
     assert tail[3].startswith("Your page: ") and tail[3].endswith(".md")
@@ -1315,11 +1315,23 @@ def test_init_language_line_precedes_spending_and_languages_are_validated_before
     text = Text.from_ansi(result.output).plain
     assert 'Languages: 中文, English (set with co rem config set languages).' in text
     assert 'Pages are written in English and translated into 中文.' in text
+    assert f'To change: co rem --root {root} config set languages zh,en (current)' in text
+    assert f'— or `co rem --root {root} config set languages en` for English only.' in text
     assert text.index('Languages:') < text.index('First run with')
     assert 'translation of the written pages into 中文/zh' in text
     monkeypatch.setattr('connectonion.rem.map.build_map', lambda *args, **kw: pytest.fail('map started'))
     invalid = init('--languages', '../zh')
     assert invalid.exit_code == 1 and 'language tags' in invalid.output
+
+
+@pytest.mark.parametrize('languages', ['en', 'en-AU,en'])
+def test_init_english_only_language_tip_shows_only_the_current_form(first_run, languages):
+    root, init, _ = first_run
+    result = init('--languages', languages, '--no-start', '--estimate-only')
+    assert result.exit_code == 0, result.output
+    text = Text.from_ansi(result.output).plain
+    assert f'To change: co rem --root {root} config set languages {languages} (current)' in text
+    assert 'for English only' not in text
 
 
 def test_translation_estimate_uses_completed_local_medians_and_separate_worker_lanes():
@@ -1328,8 +1340,8 @@ def test_translation_estimate_uses_completed_local_medians_and_separate_worker_l
     plain = fr.plan([], **counts)
     default = fr.plan([], **counts, translation='zh')
     assert default['translation']['pages'] == 6
-    assert default['input_tokens'] == plain['input_tokens'] + 6 * 80_000
-    assert default['minutes'] == plain['minutes'] + 2  # 3 batches x 35 seconds, after investigations.
+    assert default['input_tokens'] == plain['input_tokens'] + 6 * 90_000
+    assert default['minutes'] == plain['minutes'] + 10  # 3 batches x 200 seconds, after investigations.
     runs = [{'phase': 'translate', 'outcome': outcome, 'seconds': seconds, 'usage': {'input_tokens': tokens}}
             for outcome, seconds, tokens in [('completed', 20, 74000), ('completed', 40, 80000), ('failed', 999, 999999)]]
     total = fr.plan(runs, **counts, translation='zh', abstract_pages=2)

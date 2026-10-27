@@ -1,6 +1,6 @@
 ---
 name: rem-page-project
-description: A project page a new teammate understands in one screen: what it is, why, where it stands, what is next.
+description: 'A project page a new teammate understands in one screen: what it is, why, where it stands, what is next.'
 ---
 
 # A project's page
@@ -62,6 +62,7 @@ Keep this order for those shown:
 `Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
 `Started`, `Last activity`, and no other label. Several values `; ` between, each
 `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
+- `Repository`: the checkout's `Remote origin`, cited to the checkout state.
 - `Status`: a phrase the evidence earns: `active — commits weekly on
   origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`;
   never a licence, language or README topic, and never `Unknown` while

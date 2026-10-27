@@ -699,6 +699,14 @@ def handle_check(name: str) -> None:
                          style="red")
             print_tip(f"Next: co {name} log")
         sys.exit(1)
+    missed_live = inbox.root / "missed-live.txt"
+    if missed_live.exists():
+        # History found a message the bot received while this listener was
+        # connected: another client on the same app took it (#2690). The
+        # message itself is in the inbox now; the split is still there.
+        errors.print(f"Last split delivery: {missed_live.read_text(encoding='utf-8').strip()}",
+                     style="yellow")
+        print_tip(f"Next: stop the other client using this app_id, then rm {missed_live}")
     pid = inbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"{style.ok('✓')} {escape(name)} configured · {escape(listener)} · "

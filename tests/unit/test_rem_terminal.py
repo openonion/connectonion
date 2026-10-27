@@ -75,18 +75,17 @@ def test_an_investigated_person_with_new_mail_is_to_refresh_not_unwritten(tmp_pa
 
 
 def test_status_names_only_pages_its_command_would_write(tmp_path):
-    """The owner's own company is never investigated as an org: "1 page not written → investigate orgs" did nothing."""
+    """The owner's company is now written from their side, so status must offer its investigation."""
     from connectonion.cli.commands.rem_status import next_to_write, notebook
     prepare(tmp_path)
     book = Notebook(tmp_path)
-    book.stub_person("people/me.md", "Me", ["me@acme.test"], email="me@acme.test")
-    book.write("people/me.md", book.read("people/me.md").replace("not investigated yet\n", "investigated 2026-10-01\n"))
-    book.stub_org("orgs/acme.md", "Acme", ["acme.test"], [])
+    book.write("people/avery.md", "# Avery Lin\n\n- Company: Mara Labs\n\nInvestigation: investigated 2026-10-01\n")
+    book.stub_org("orgs/mara.md", "Mara Labs", ["maralabs.example"], [])
     book.stub_skill("skills/catalog/demo.md", "demo", "/s/demo/SKILL.md")
-    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md", "addresses": ["me@acme.test"]},
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/avery.md", "addresses": ["avery@maralabs.example"]},
                                                   "people": [], "projects": [], "orgs": []})
     assert notebook(tmp_path)["orgs"] == {"mapped": 1, "written": 0}
-    assert next_to_write(tmp_path, notebook(tmp_path)) == ("1 skills page not written", ["investigate", "skills"])
+    assert next_to_write(tmp_path, notebook(tmp_path)) == ("1 organisations page not written", ["investigate", "orgs"])
 
 
 # ------------------------------------------------ #7: the People table

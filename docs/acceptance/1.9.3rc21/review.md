@@ -1,0 +1,43 @@
+# Independent review and recheck
+
+An independent AI reviewer acted in the technology-founder/marketing/UI role.
+It reviewed native runtime source dc91cbe2, actual trial records and rendered
+mobile guide/release/journal entry states. All four code P1 findings were fixed:
+cutover locking, verified old-job unload, previous-definition preservation on
+failed replacement, and changed-setting status. No code blockers remained.
+The later CI delta updates a test-double signature, recipient version pin and
+release-history entry; the selected CLI/handoff/history/native tests pass223 cases.
+
+P2 presentation findings and rechecks:
+
+- An oversized phone intro and conflicting guide version hid the first action.
+  Shortened the preview entry, collapsed page-check details and used a command
+  guide heading. Production 390x844 confirms the first command is visible.
+- Joined version/prose spacing reduced release readability. Corrected it; the
+  built release HTML contains the spaced stable version and exact install pin.
+- Duplicate journal date and missing acceptance navigation impeded verification.
+  Removed the repeated date and added the immutable-tag acceptance link. The
+  production article shows Codex/Scheduling/Testing tags and a single date.
+- A development asset-origin failure produced an unstyled intermediate capture;
+  it was rejected. Final screenshots use the local production server and show
+  no development N overlay. The disclosure was also actually opened.
+
+Actual final captures include guide desktop 1440x1000, phone collapsed/expanded,
+release phone and journal phone. The main agent additionally inspected release
+and journal desktop/mobile entry rendering and HTML link targets. This is sample
+coverage, not all pages or full accessibility/copy behavior. Native desktop UI,
+remote project layout, sleep/wake and overnight useful findings remain gaps.
+
+The rc20 rename and merge of reviewed email rc19 were independently cleared.
+Five replacement production captures visibly identify rc20; the earlier rc19
+prototype captures were replaced. A final rule-bound check rejects unsupported
+BYSETPOS values before altering either clock; its focused regression is covered
+in the final227-case CLI/version/scheduler/handoff selection, which passed.
+
+The final waiting-instruction review found no new code blocker. The monitored
+180-second native probe returned terminal exit0 and archived after completion;
+full production completion remains unverified. A subsequent docs review caught
+an inherited paragraph claiming native scheduling was disabled. Both guide
+copies now describe current eligibility and link the scheduling section.
+
+Reviewed email rc20 was subsequently merged without replacing its release notes. Native scheduling moved to rc21; final presentation captures were regenerated for rc21. All test jobs and test commands remain enabled after removing the optional pip cache restoration that stalled on account egress limits.

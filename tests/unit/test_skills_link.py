@@ -45,6 +45,15 @@ class TestBundledSkills:
             assert fm.get("name"), f"{name}: missing frontmatter name"
             assert fm.get("description"), f"{name}: missing frontmatter description"
 
+    def test_every_bundled_skill_is_readable_as_yaml(self):
+        import yaml
+
+        for name in bundled_names():
+            text = (BUNDLED_SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+            metadata = yaml.safe_load(text.split("---", 2)[1])
+            assert metadata["name"] == name
+            assert isinstance(metadata["description"], str) and metadata["description"]
+
     def test_frontmatter_name_matches_directory(self):
         for name in bundled_names():
             fm = parse_frontmatter((BUNDLED_SKILLS / name / "SKILL.md").read_text(encoding="utf-8"))
@@ -105,7 +114,7 @@ class TestSkillsLink:
         assert (mine / "SKILL.md").read_text() != "my own version"
 
     @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
-    def test_repoints_a_symlink_aimed_somewhere_else(self, targets, tmp_path):
+    def test_repairs_a_dangling_symlink_from_a_removed_install(self, targets, tmp_path):
         """An upgrade that moves the package must not leave a dangling link."""
         stale_source = tmp_path / "old-install" / "co-browser"
         stale_source.mkdir(parents=True)
@@ -113,6 +122,8 @@ class TestSkillsLink:
         link = targets[0] / "co-browser"
         link.parent.mkdir(parents=True)
         link.symlink_to(stale_source, target_is_directory=True)
+        (stale_source / "SKILL.md").unlink()
+        stale_source.rmdir()
 
         handle_skills_link()
 

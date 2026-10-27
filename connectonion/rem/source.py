@@ -159,7 +159,7 @@ def local_path(value: str) -> str:
     if len(value) > 4096:
         return value
     windows = PureWindowsPath(value)
-    if os.name == "nt" or not windows.drive or not windows.is_absolute():
+    if os.name == "nt" or not re.fullmatch(r"[A-Za-z]:", windows.drive) or not windows.is_absolute():
         return value
     converter = shutil.which("wslpath")
     if not converter:
@@ -170,6 +170,29 @@ def local_path(value: str) -> str:
 
 
 # ---- Codex rollouts: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl ----
+
+SESSION_SOURCE_PATTERN = r"(?:codex:[^\s:]+:\d+(?:-[0-9a-f]{8})?|claude-code:[^\s:]+:\d+)"
+SESSION_SOURCE = re.compile(SESSION_SOURCE_PATTERN)
+
+
+def session_source(kind: str, session: str, offset: int, text: str) -> str:
+    source = f"{kind}:{session}:{offset}"
+    return source + "-" + hashlib.sha256(text.encode()).hexdigest()[:8] if kind == "codex" else source
+
+
+def legacy_session_source(source: str) -> str:
+    """The id a Codex message had before its text hash; other ids are unchanged."""
+    parsed = parse_session_source(source)
+    return f"{parsed[0]}:{parsed[1]}:{parsed[2]}" if parsed else source
+
+
+def parse_session_source(source: str) -> tuple[str, str, int] | None:
+    """The kind, session and byte offset of a current or legacy session citation."""
+    if not SESSION_SOURCE.fullmatch(source):
+        return None
+    kind, session, position = source.split(":")
+    return kind, session, int(position.partition("-")[0])
+
 
 def _codex_meta(first: dict) -> dict:
     if ({"id", "timestamp", "instructions"} <= set(first) <= {"id", "timestamp", "instructions", "git"}
@@ -542,7 +565,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                 if item:
                     session = item.pop("session", None) or meta.get("id") or name
                     project = item.pop("cwd", None) or meta.get("cwd", "")
-                    item.update({"source": f"{kind}:{session}:{offset}", "reference": path.as_uri(),
+                    item.update({"source": session_source(kind, session, offset, item["text"]), "reference": path.as_uri(),
                                  "project": project})
                     item = _fit(item, max_chars)
                     size = len(json.dumps(item, ensure_ascii=False))

@@ -1,12 +1,14 @@
+> **Preview 1.9.3rc22.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+
 # ConnectOnion Init Command
 
-`co init` sets up global credentials. Project initialization requires an
+`co init` prepares the local identity, profile and coding-agent integration. Project initialization requires an
 explicit directory, such as `co init ./`.
 
 ## Quick start
 
 ```bash
-co init --yes                     # ~/.co/keys.env and the global identity
+co init --yes                     # identity, profile, bundled skills and command index
 co init ./ --yes                  # configuration in this existing project
 co init /path/to/project --yes    # configuration in another existing project
 co init ./ --template co-ai       # also add the hosted agent template
@@ -19,6 +21,10 @@ new directory with the default `co-ai` template.
 
 Plain `co init` creates or reuses the signing identity in `~/.co/keys/` and
 attempts managed-key authentication, saving credentials to `~/.co/keys.env`.
+It also creates a missing `~/.co/agent.json` local profile. Your existing profile
+is kept; use `co setup --name my-agent --bio "My work" --no-skills` to customize
+only those fields.
+
 It does **not** create or modify the current directory's `.env`, `.co/`,
 `agent.py`, or other project files—even when run inside an existing project.
 
@@ -33,7 +39,7 @@ does not mean managed models or email are authenticated.
 
 ### Telling Codex and Claude Code that `co` exists
 
-Global `co init` also does two things for the coding agents on this machine,
+`co init`, `co init ./`, `co create` and `co setup` all do two things for the coding agents on this machine,
 only for those installed (their `~/.codex` or `~/.claude` directory exists):
 
 - runs `co skills link`, so ConnectOnion's bundled skills appear in
@@ -47,15 +53,31 @@ only for those installed (their `~/.codex` or `~/.claude` directory exists):
 It prints each path it changed. A directory it cannot write, like `~/.codex`
 inside Codex's sandbox, is skipped with a line saying so, and init still
 finishes; run `co skills link` and `co skills index` outside the sandbox later.
+Your own skill directories are kept, including when project init uses `--force`.
 Your own text outside the markers is never touched. To take the block out: `co skills index --remove`; to refresh it
 without re-running init: `co skills index`. Agents started with `host()` or
 `co ai` refresh a stale block on their own, and `co doctor` reports one that
 is missing or stale. See [co skills index](skills.md#co-skills-index).
 
+### Rerun to repair missing setup
+
+Initialization checks these files on every run, including when a signing key
+already exists. It restores a missing `keys.env` from that identity, creates a
+missing local profile, repairs dangling bundled-skill symlinks, and connects a coding
+agent installed since the previous run. It preserves the existing identity,
+profile, user skill directories and instruction text outside the generated block.
+It does not require a separate `co skills link` after project initialization.
+
+The global directory defaults to `~/.co/`; an explicit process
+`AGENT_CONFIG_PATH` selects its identity, profile and user skill library together.
+Third-party account login, browser installation, publishing and recurring work
+remain separate commands.
+
 ## Project setup: explicit path
 
 `co init ./` uses the global identity and initializes the selected directory.
-It does not mint a separate project keypair.
+It also completes the same local profile, skills and command-index setup as
+plain init. It does not mint a separate project keypair.
 
 | File | Behavior |
 |---|---|
@@ -114,7 +136,8 @@ Commands that formerly relied on implicit project initialization must add a path
 co init ./ --yes --template co-ai
 ```
 
-Global setup scripts can keep `co init --yes`. `co create` is unchanged.
+Global setup scripts can keep `co init --yes`. `co create` now completes the
+same local coding-agent setup when it creates a project.
 At runtime, explicit process variables take precedence over the selected env
 file, which is global `~/.co/keys.env` unless `co --env-file PATH` names a
 project file; there is no per-key fallback between files. `co env` shows what

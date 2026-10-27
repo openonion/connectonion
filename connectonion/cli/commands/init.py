@@ -59,12 +59,8 @@ def handle_global_init(key: Optional[str] = None) -> None:
     console.print(f"[green]✓ Global configuration: {global_dir / 'keys.env'}[/green]")
     if not authenticated:
         console.print("[yellow]Managed-key setup is incomplete. Run co auth when ready.[/yellow]")
-    # Codex and Claude Code cannot know co exists unless something tells
-    # them; their always-loaded files are the one place every session reads.
-    from .agent_index import handle_skills_index
-    from .skills_commands import handle_skills_link
-    handle_skills_link(brief=True)
-    handle_skills_index()
+    from .setup_commands import complete_local_setup
+    complete_local_setup()
     console.print("[dim]For a project, pass its directory explicitly: co init ./[/dim]")
 
 
@@ -349,6 +345,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     gi_result = setup_gitignore(Path(current_dir))
     if gi_result:
         files_created.append(gi_result)
+
+    from .setup_commands import complete_local_setup
+    complete_local_setup()
 
     # Success message with Rich formatting
     console.print()

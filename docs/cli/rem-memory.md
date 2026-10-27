@@ -25,7 +25,7 @@ the resulting context still exceeds the budget.
 
 ### When feedback is processed
 
-In the next preview candidate, normal `sync` selects attributed reflection
+Normal `sync` selects attributed reflection
 records and review decisions by their explicit target pages. It keeps raw
 records in the maintenance input; changing the compact view is not a new event.
 Fresh feedback bypasses an older page cooldown or ordinary source-current check.
@@ -58,6 +58,28 @@ inspection, including newer records on that subject. The code does not guess whi
 old assertions were applied or silently replay the whole history. No automatic
 legacy reconciliation command is included. No existing real notebook is migrated
 or rewritten by installation.
+
+### Explicit investigation when no new originals are found
+
+In 1.9.3rc17, an explicit `co rem investigate PAGE` that finds no new
+raw material can process eligible attributed feedback for that page in one bounded
+maintenance turn. The log says `mode: feedback_only`, retains `feedback_items` and
+`feedback_deferred`, and reports the stage as `processing attributed feedback`.
+Raw source/contact counts remain unchanged; this does not stamp a new investigation
+date. No pending feedback still means no model call for an empty source window.
+
+This fallback keeps original attributed records outside extraction/digests, respects
+the input/call allowance, and uses fresh progress when acknowledging acceptance.
+Native turns reject a page changed before processing or during a no-change assessment.
+The existing explicit `retry_refused` route may override this target's refusal
+cooldown/cap; it cannot override missing pages, unresolved legacy history or budgets.
+Automatic calls retain the normal retry limits. Historical `read_before` deepening
+keeps its original date boundary and does not become a feedback review.
+
+Mixed new raw evidence and multi-round investigations still receive their existing
+context; this fallback does not establish managed feedback receipts for those paths.
+It is not an external-agent instant-apply interface. The direct-investigation fallback is
+part of 1.9.3rc17 and is not included in 1.9.3rc16.
 
 ## Investigate questions with explicit stage models
 

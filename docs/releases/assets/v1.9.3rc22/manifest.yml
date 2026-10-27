@@ -1,0 +1,36 @@
+version: v1.9.3rc22
+images:
+  - file: init-before.png
+    alt: Published rc21 project initialization without a profile, Codex skill link or command index
+    caption: Actual rc21 output in a synthetic home; the final read-only check reports all three integration files absent.
+    scenario: Before, run co init ./ --yes with installed coding-agent directories and an offline backend.
+    viewport: 1040px terminal transcript, complete output
+    commit: public PyPI 1.9.3rc21
+    source_run: Local installed-package before/after trial on 2026-10-24; cli-receipt.json
+  - file: init-after.png
+    alt: RC22 project initialization prepares the profile, skill links and coding-agent command indexes
+    caption: Actual candidate-wheel output in a separate synthetic home; the same read-only check reports all three present.
+    scenario: After, run co init ./ --yes under the same offline fixture conditions.
+    viewport: 1040px terminal transcript, complete output
+    commit: implementation 6df8a979c4c120acd122362107b87dc798a7dfd4, locally version-stamped 1.9.3rc22
+    source_run: Local candidate-wheel before/after trial on 2026-10-24; cli-receipt.json
+  - file: onboarding-desktop.png
+    alt: Reviewed initialization guide with global and project commands and section navigation
+    caption: The desktop guide during review, before package publication; its status explicitly says unreleased.
+    scenario: Read the initialization quick start and choose global or project setup.
+    viewport: 1440x1080
+    commit: docs-site 3c9530c8cc4b76df3fe395cec39f2594bb122d6e
+    source_run: Local production browser capture, 2026-10-24; docs-site PR 309
+  - file: onboarding-mobile.png
+    alt: Reviewed phone setup guide with separate command and page copy controls
+    caption: The phone guide during review; real command/page clipboard readback, section jump and menu actions were checked separately.
+    scenario: Copy the complete setup command on a narrow screen.
+    viewport: 390x844
+    commit: docs-site 3c9530c8cc4b76df3fe395cec39f2594bb122d6e
+    source_run: Local production browser capture, 2026-10-24; docs-site PR 309 receipt.json
+coverage: >-
+  Real CLI transcripts use synthetic identities and offline fixture homes;
+  temporary paths are replaced by ~ and <project>. Browser images show reviewed
+  documentation before publication. Native Codex Scheduled UI, remote project
+  history, live auth, sleep/wake and account-managed scheduling are not established
+  by these images. Independent AI role review is recorded in the acceptance notes.

@@ -1,6 +1,7 @@
 """co rem task files in, one co ai invocation out. COAI owns every harness."""
 
 import contextvars
+import hashlib
 import json
 import math
 import os
@@ -774,12 +775,14 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
 
 def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):
     """2026-10-21: independent audit kept 6/18 proposals; repairs must pass it too."""
-    from .insight_critic import judge, new_bullets
+    from .insight_critic import _bullets, _matches_approved, judge, new_bullets
     proposed = new_bullets(original, candidate.read_text(encoding="utf-8"))
     if stage_progress:
         stage_progress("insight critic")
     result["critic_usage_pending"] = True
-    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task)
+    approved = result.get("insights_approved", [])
+    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task,
+                     approved=approved)
     result["critic_usage_pending"] = False
     result["usage"] = _add_usage(result.get("usage"), decision["usage"])
     proposals = list(dict.fromkeys([*result.get("insight_proposals", []), *proposed]))
@@ -790,9 +793,18 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
     for row in decision["bullets"]:
         if row["verdict"] == "good":
             rejected.pop(row["bullet"], None)
+    text = candidate.read_text(encoding="utf-8")
+    # Keep the approval's source numbering so a later repair can restore a deleted bullet.
+    approved = [*approved, *({"bullet": row["bullet"], "page": text} for row in decision["bullets"]
+                            if row["bullet"] in proposed and row["verdict"] == "good"
+                            and row["bullet"] not in decision.get("unmatched", []))]
+    approved += [{"bullet": bullet, "page": text} for bullet in _bullets(text)
+                 if _matches_approved(bullet, approved) and bullet not in {row["bullet"] for row in approved}]
     result.update(insight_proposals=proposals, insights_proposed=len(proposals),
-                  insights_kept=sum(row["bullet"] in proposed and row["verdict"] == "good"
-                                    for row in decision["bullets"]), insights_rejected=list(rejected.values()))
+                  insights_flips=result.get("insights_flips", 0) + decision.get("critic_flips", 0),
+                  insights_approved=approved, insights_kept=sum(_matches_approved(bullet, approved)
+                                                              for bullet in _bullets(text)),
+                  insights_rejected=list(rejected.values()))
 
 
 def _owner_phones(notebook, record) -> list[str]:
@@ -1007,8 +1019,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
-        # "insufficient" means the audit could not read enough to judge; it is
-        # recorded, not a refusal of claims nobody has shown to be wrong.
+        if report.get("unretained_citations"):
+            audit_status += f"; {len(report['unretained_citations'])} citations unverified (originals not retained)"
+        if report.get("carried_findings"):
+            audit_status += f"; {len(report['carried_findings'])} unchanged findings deferred"
+        # Insufficient source coverage and deferred old findings stay explicit;
+        # the existing policy does not refuse unrefuted new content on that basis.
         if report["verdict"] == "fail":
             errors.append("Cited-claim audit did not pass; see claim-review.json")
     total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
@@ -1321,6 +1337,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         from .page_review import history_note, size_note
         prompt += size_note(len(notebook.read(record))) + history_note(notebook.read(record))
     before = {r: notebook.read(r) for r in notebook.list()}
+    selected_hash = next((i.get("expected_page_sha256") for i in items if i.get("role") == "page"), None)
+    if selected_hash and (record not in before or hashlib.sha256(before[record].encode()).hexdigest() != selected_hash):
+        raise RunFailed("Page changed before feedback processing; preserve current page and pending feedback")
     task_root = notebook.root
     if candidate:
         task_root = directory / "notebook"
@@ -1508,6 +1527,15 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
                                     result.get("usage"))
                 _verify_no_change(directory, items, result.get("usage"))
+        if candidate and no_change:
+            # No-change accepts an assessment of the original snapshot too.
+            # A later writer's page must not become proof for that older turn.
+            with _promotion_lock(notebook.root, candidate, result.get("usage"), maintenance_lock_held):
+                if not notebook.path(record).is_file() or notebook.read(record) != before[record]:
+                    raise RunFailed("Page changed during no-change assessment; preserve current page and pending feedback",
+                                    result.get("usage"))
+                from .feedback import prepare_promotion
+                prepare_promotion(notebook.root, record, before[record], items, changed=False)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if result.get("critic_usage_pending") and isinstance(error, RunFailed):
@@ -1525,15 +1553,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
-    if candidate and no_change:
-        from .feedback import prepare_promotion
-        prepare_promotion(notebook.root, record, notebook.read(record), items, changed=False)
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
-    insight_counts = {key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}
+    insight_counts = {key: result[key] for key in
+                      ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}
     if "insights_kept" in insight_counts:
-        from .insight_critic import new_bullets
-        insight_counts["insights_kept"] = min(insight_counts["insights_kept"],
-                                             len(new_bullets(before[record], notebook.read(record))))
+        from .insight_critic import _bullets, _matches_approved
+        insight_counts["insights_kept"] = sum(_matches_approved(bullet, result["insights_approved"])
+                                             for bullet in _bullets(notebook.read(record)))
     metrics.update(insight_counts)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
