@@ -2160,11 +2160,14 @@ def test_investigate_me_marks_the_page_as_the_owners_and_drops_the_how_the_user_
                     runner=runner, sent_only=True)
     page = next(item for item in seen if item["role"] == "page")
     assert page["owner"] is True
-    assert "## How the user writes to them" in page["text"]   # an older page keeps it until rewritten
+    assert "## How the user writes to them" not in page["text"]
+    assert "## Cadence" in page["text"]
     inv.Notebook(root).stub_person("people/corin.md", "Corin", ["corin@x.example"], email="corin@x.example")
     seen.clear()
     inv.investigate(root, "people/corin.md", "Corin", ["corin"], days=5, clients={}, subscriptions={}, runner=runner)
-    assert "owner" not in next(item for item in seen if item["role"] == "page")
+    corin = next(item for item in seen if item["role"] == "page")
+    assert "owner" not in corin
+    assert "## How the user writes to them" in corin["text"]
     written = inv.Notebook(root).read("people/rowan.md").replace("## How the user writes to them\n- Unknown — not "
                                                                 "investigated yet\n\n", "")
     assert not any("How the user writes" in e for e in validate("people/rowan.md", written, written, [], owner=True))

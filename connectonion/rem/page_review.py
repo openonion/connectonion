@@ -11,9 +11,21 @@ from . import facts
 from .files import Notebook, RemError
 
 
-# The owner's own page has no "How the user writes to them" (#2008): it said
-# "Not applicable" on a real owner page, a heading for nothing.
+# The owner's own page has no "How the user writes to them" (#2008, #2156):
+# it said "Not applicable" on a real owner page, a heading for nothing.
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
+# A forbidden owner section is removed only when it says nothing. Anything
+# else stays on the page so review can refuse it instead of dropping a citation.
+_OWNER_PLACEHOLDER_LINE = re.compile(
+    r'(?i)^(?:[-*]\s+)?'
+    r'(?:unknown(?:\s*[—–-]\s*not investigated yet)?'
+    r'|not[- ]applicable'
+    r'|n/a'
+    r'|none'
+    r'|未知'
+    r'|尚未确认'
+    r'|不适用)'
+    r'\s*[.。]?\s*$')
 PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
                 'Open threads', 'Uncertainties', 'Sources')
 SKILL_CORE = ('What it does', 'Insight', 'When to use', 'Current status', 'How to use',
@@ -62,14 +74,53 @@ def prose(text: str) -> str:
     return ''.join(lines)
 
 
+def _owner_placeholder(body: str) -> bool:
+    """True when a forbidden owner section is empty, Unknown, or Not applicable."""
+    if re.search(r'\[W?\d+\]', body):
+        return False
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    return all(_OWNER_PLACEHOLDER_LINE.fullmatch(line) for line in lines)
+
+
+def drop_empty_owner_section(text: str, *, owner: bool = False) -> str:
+    """Remove a blank person-only section from the owner's own page (#2156).
+
+    A section that says something, or cites a source, stays so review can
+    refuse the page instead of throwing the words away.
+    """
+    if not owner:
+        return text
+    matches = list(SECTION_HEADING_RE.finditer(prose(text)))
+    spans = []
+    for index, match in enumerate(matches):
+        if match[1].strip() != NOT_ON_OWNER_PAGE:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
+        if _owner_placeholder(body):
+            spans.append((match.start(), end))
+    for start, end in reversed(spans):
+        kept = '\n'.join(re.findall(r'^Investigation:.*$', text[start:end], re.M))
+        tail = text[end:].lstrip('\r\n')
+        if kept:
+            tail = kept + ('\n\n' + tail if tail else '\n')
+        text = text[:start].rstrip('\r\n') + '\n\n' + tail
+    return text
+
+
 def normalize(record: str, text: str, owner: bool = False) -> str:
-    """Add missing canonical sections without dropping or rewriting old content."""
+    """Add missing canonical sections without dropping or rewriting old content.
+
+    An empty person-only section on the owner's page is the exception (#2156):
+    it is removed. A section that cites something is left for review to refuse.
+    """
     required = headings(record, owner)
     if not required:
         return text
     # A page from before #2068: `## Contact` becomes `## Facts`, and the turn is
     # handed an Insight it must fill, not a bare Unknown it may leave.
     text = facts.upgrade(record, text, insight=f'- {PLACEHOLDER}')
+    text = drop_empty_owner_section(text, owner=owner)
     matches = list(SECTION_HEADING_RE.finditer(prose(text)))
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
@@ -1184,6 +1235,9 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
                for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
+    if owner and re.search(rf'^## {re.escape(NOT_ON_OWNER_PAGE)}[ \t]*$', body, re.M):
+        errors.append(f'Section does not belong on the owner page: {NOT_ON_OWNER_PAGE}; '
+                      'move any cited detail into a supported section, then remove this heading')
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
     content, _, sources = body.partition('\n## Sources\n')
