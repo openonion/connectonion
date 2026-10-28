@@ -401,6 +401,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem abstract` | Run rem-abstract over existing notebook evidence. |
+| `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co rem sync` runs one. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
@@ -1770,8 +1771,28 @@ pages could not be translated and offers a copyable `translate --all` command.
 
 REM archives its internal Codex threads after each model call, including failed
 calls when the provider remains responsive. A forced cancellation or process
-crash can leave a thread active; existing history is not bulk-archived. They leave the active conversation list while their trace and session ID
-remain available for explicit resume and `co rem logs`. Before resuming, REM
+crash can leave a thread active. In preview 1.9.3rc26, an approved `co rem start`
+also repairs older internal traces; `co rem init` reaches the same approved start.
+Inspect or apply that repair separately:
+
+```bash
+co rem history
+co rem history --archive
+```
+
+Only ConnectOnion-generated conversations or recognized legacy REM delegates
+under this notebook's private task
+directory, older than one hour, are eligible. Personal conversations, pins,
+recent work and threads observed active are retained. The repair uses native
+`thread/read` and `thread/archive`, makes no model calls, writes no native
+database rows, and keeps a private receipt. Valid paginated threads need not
+have a legacy JSONL file. Because native archive also processes descendants,
+an unarchived child outside these safeguards keeps its parent too; unknown
+children also protect the parent. A rerun skips already archived traces. Error results
+in the normal automation inbox and ordinary workspaces remain visible.
+
+They leave the active conversation list while their trace and session ID remain
+available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
 History archiving also applies when launchd owns the timer. In rc21, eligible

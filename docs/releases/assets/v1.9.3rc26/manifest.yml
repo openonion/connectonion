@@ -1,0 +1,37 @@
+version: v1.9.3rc26
+images:
+- file: history-before.png
+  alt: Actual normal-profile candidate CLI reports 1,428 eligible old internal conversations.
+  caption: Actual normal-profile candidate CLI reports 1,428 eligible old internal
+    conversations.
+  scenario: Read-only co rem history before repair
+  viewport: 1040px terminal transcript, content height
+  commit: 3b39aaf49e9c490fc1af937a848376e8aa91d6d0
+  source_run: https://github.com/openonion/connectonion/issues/2696
+- file: history-after.png
+  alt: Actual candidate CLI reports zero eligible old internal conversations in the
+    same notebook.
+  caption: Actual candidate CLI reports zero eligible old internal conversations in
+    the same notebook.
+  scenario: Read-only co rem history after native API repair
+  viewport: 1040px terminal transcript, content height
+  commit: 3b39aaf49e9c490fc1af937a848376e8aa91d6d0
+  source_run: https://github.com/openonion/connectonion/issues/2696
+- file: init-before.png
+  alt: Installed rc22 keeps an old bundled link and an incomplete profile in a synthetic
+    offline fixture.
+  caption: Installed rc22 keeps an old bundled link and an incomplete profile in a
+    synthetic offline fixture.
+  scenario: Project init with old installed-package link and missing profile fields
+  viewport: 1040px terminal transcript, content height
+  commit: 3b39aaf49e9c490fc1af937a848376e8aa91d6d0
+  source_run: https://github.com/openonion/connectonion/issues/2696
+- file: init-after.png
+  alt: RC26 candidate refreshes the bundled link, fills missing profile fields and
+    keeps personal metadata.
+  caption: RC26 candidate refreshes the bundled link, fills missing profile fields
+    and keeps personal metadata.
+  scenario: The same project initialization fixture using reviewed source
+  viewport: 1040px terminal transcript, content height
+  commit: 3b39aaf49e9c490fc1af937a848376e8aa91d6d0
+  source_run: https://github.com/openonion/connectonion/issues/2696

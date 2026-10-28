@@ -1,4 +1,4 @@
-> **Preview 1.9.3rc22.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+> **Preview 1.9.3rc26.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc26).
 
 # ConnectOnion Init Command
 
@@ -143,3 +143,10 @@ file, which is global `~/.co/keys.env` unless `co --env-file PATH` names a
 project file; there is no per-key fallback between files. `co env` shows what
 the selected file holds and `co env set` edits it.
 See [CLI reference](README.md) for authentication and credential diagnostics.
+
+
+In preview 1.9.3rc26, rerunning initialization also refreshes a bundled skill
+symlink into an older installed ConnectOnion package. Personal skill directories
+and links outside installed package layouts are preserved. Missing local profile
+fields receive defaults; invalid skill metadata is kept and reports how to repair
+it. All four entry points share this preparation.

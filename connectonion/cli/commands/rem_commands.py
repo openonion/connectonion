@@ -185,6 +185,10 @@ def _by_stage(chars, phase: str) -> dict:
     return chars if isinstance(chars, dict) else {phase: chars} if chars else {}
 
 
+def _history_progress(done: int, total: int) -> None:
+    rem_look.line(f"Codex history: {done:,} of {total:,} checked", err=True)
+
+
 def _logged(root, record, phase, call, quiet=False):
     """Run one investigation and keep a run record of it, whatever happens.
 
@@ -1273,7 +1277,8 @@ def make_rem_app(factory):
                 from ...rem.service import start
                 try:
                     background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
-                                       scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False)
+                                       scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False,
+                                       history_progress=_history_progress)
                     if not background["started"]:
                         background["reason"] = ("Background upkeep needs approval. Run "
                                                 + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
@@ -1692,6 +1697,18 @@ def make_rem_app(factory):
 
     # -------------------------------------------------------- Keep it current
 
+    @rem.command("history", cls=V("co rem history"))
+    def history(ctx: typer.Context, archive: bool = typer.Option(False, "--archive")):
+        from ...rem.codex_history import archive_history, internal_threads
+
+        def operation(root):
+            if archive:
+                value = archive_history(root, progress=_history_progress)
+                return value, ["status"]
+            return {"internal_conversations": len(internal_threads(root))}, ["history", "--archive"]
+
+        _handle(ctx, operation, ["history"])
+
     @rem.command("start", cls=V("co rem start"))
     def start_rem(ctx: typer.Context, yes: bool = typer.Option(False, "--yes")):
         from ...rem import schedule as rem_schedule
@@ -1702,7 +1719,8 @@ def make_rem_app(factory):
             return _start_consent(ctx, summary, yes=yes)
 
         def operation(root):
-            result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler(root, for_start=True))
+            result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler(root, for_start=True),
+                           history_progress=_history_progress)
             if not result["started"]:
                 raise RemError("Start was not confirmed; nothing was read or installed")
             first = result.get("first_batch") or {}
@@ -2229,7 +2247,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync sources config logs doctor "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync sources config logs doctor history "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

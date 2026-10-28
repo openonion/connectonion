@@ -129,6 +129,20 @@ class TestSkillsLink:
 
         assert link.resolve() == (BUNDLED_SKILLS / "co-browser").resolve()
 
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
+    def test_refreshes_a_bundled_link_even_when_the_old_install_still_exists(self, targets, tmp_path):
+        previous = tmp_path / "old-install/site-packages/connectonion/useful_skills/co-browser"
+        previous.mkdir(parents=True)
+        (previous / "SKILL.md").write_text("old bundled instructions")
+        link = targets[0] / "co-browser"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(previous, target_is_directory=True)
+
+        handle_skills_link()
+
+        assert link.resolve() == (BUNDLED_SKILLS / "co-browser").resolve()
+        assert (previous / "SKILL.md").read_text() == "old bundled instructions"
+
     def test_reports_both_targets(self, targets, capsys):
         handle_skills_link()
 

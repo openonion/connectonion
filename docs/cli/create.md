@@ -1,4 +1,4 @@
-> **Preview 1.9.3rc22.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+> **Preview 1.9.3rc26.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc26).
 
 # co create — Start a new agent project
 
@@ -66,3 +66,10 @@ CLI lists the supported choices when a template is unknown.
 An existing directory is refused before identity creation or authentication, with
 a suggested free name. Existing projects can be refreshed using `co init ./`.
 For profile customization and importing separate skills, see [co setup](setup.md).
+
+
+In preview 1.9.3rc26, rerunning initialization also refreshes a bundled skill
+symlink into an older installed ConnectOnion package. Personal skill directories
+and links outside installed package layouts are preserved. Missing local profile
+fields receive defaults; invalid skill metadata is kept and reports how to repair
+it. All four entry points share this preparation.
