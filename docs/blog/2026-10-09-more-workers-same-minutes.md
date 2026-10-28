@@ -63,3 +63,26 @@ The lesson from the longer first-run experiment still holds: find what time is
 being spent on before multiplying workers. Here, the unnecessary resource was
 elapsed time inside synthetic tests. Runner sharding and real REM page quality
 remain separate questions.
+
+## 29 October: the child had not started
+
+A quote repair passed its own checks, then a combined offline run failed an
+unrelated cancellation test. The synthetic Claude child was meant to write a
+marker, receive an interrupt and never perform a later write. Its controller
+waited a second for that marker. It never arrived in time, so the controller
+never sent the interrupt. The tool returned36seconds later.
+
+The same failure appeared on the unchanged release. More workers would not
+explain it, and increasing the deadline would hide what was happening before
+launch. Resolving127.0.0.1 to its full hostname took35.006seconds on this Mac.
+Python's HTTP server did that lookup while preparing the scoped Hook receiver,
+even though the receiver only listens on a numeric loopback address.
+
+The separate candidate repair retains the ordinary TCP bind and ephemeral port,
+but fills the receiver's name and port from its bound numeric address. It changes
+neither DNS settings nor the test's interruption and late-write assertions. A
+regression now makes reverse DNS raise if called; authenticated delivery, wrong
+and missing token rejection, bind-error cleanup and process-interruption checks
+remain. The observation concerns this Claude bridge startup path, not all native
+providers or general REM initialization latency. This is an unreleased follow-up
+to #2698; full combined acceptance and normal CI remain separate gates.
