@@ -183,3 +183,56 @@ def test_quote_pass_uses_map_owner_record_and_passes_insight_target(
         assert out['counts']['insight'] == [insight, 3 if owner else 2]
     else:
         assert out is None
+
+
+def test_owner_promotion_drops_an_unknown_forbidden_section(owner_page, tmp_path):
+    """#2156: Unknown under the person-only heading is removed, and the page still promotes."""
+    notebook, record, original, page, items = owner_page
+    assert '## How the user writes to them\n- Unknown' in page
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(page)
+    runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
+    saved = notebook.read(record)
+    assert '## How the user writes to them' not in saved
+    assert '- Builds reporting tools. [1]' in saved
+    assert '## Cadence' in saved
+    assert json.loads((tmp_path / 'review.json').read_text())['accepted'] is True
+
+
+def test_owner_promotion_refuses_a_substantive_forbidden_section_without_discarding_it(owner_page, tmp_path):
+    notebook, record, original, page, items = owner_page
+    cited = '- Opens with “你好” and signs the notes “Aaron”. [1]'
+    page = page.replace('## How the user writes to them\n- Unknown',
+                        '## How the user writes to them\n' + cited)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(page)
+    with pytest.raises(runner.RunFailed) as caught:
+        runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None)
+    assert 'How the user writes to them' in str(caught.value)
+    assert cited in candidate.read_text()
+    assert notebook.read(record) == original
+
+
+def test_owner_maintenance_drops_unknown_and_a_person_keeps_the_section(owner_page, tmp_path):
+    notebook, record, original, page, items = owner_page
+    notebook.write(record, page)
+    before = {r: notebook.read(r) for r in notebook.list()}
+    working = Notebook(tmp_path / 'working')
+    for name, text in before.items():
+        working.write(name, text)
+    changed = page.replace('- Builds reporting tools. [1]', '- Builds reporting tools for the team. [1]')
+    working.write(record, changed)
+    assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+    saved = notebook.read(record)
+    assert '## How the user writes to them' not in saved
+    assert 'Builds reporting tools for the team. [1]' in saved
+
+    write_json(state_path(notebook.root, 'map.json'), {'owner': {'record': 'people/theo.md'}})
+    notebook.write(record, page)
+    before = {r: notebook.read(r) for r in notebook.list()}
+    person = Notebook(tmp_path / 'person')
+    for name, text in before.items():
+        person.write(name, text)
+    person.write(record, changed)
+    assert runner._promote_maintenance(notebook, person, before, items, tmp_path, None, False) == []
+    assert '## How the user writes to them\n- Unknown' in notebook.read(record)

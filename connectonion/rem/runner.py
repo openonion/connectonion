@@ -869,8 +869,9 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None):
-    from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_owner_addresses,
-                              drop_tool_text, drop_uncited_sources, drop_unresolved, company_from_domain,
+    from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
+                              drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
                               repair_project_overview, repair_run_citations, resolve_sources, restore_missing_facts, restore_runner_fields,
@@ -980,6 +981,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, pronouns = owner_pronouns(lead_without_last_contact(record, text))
     if record == owner.get("record") and (not ask_quotes or last_resort):
         text = move_agent_threads(text)
+    text = drop_empty_owner_section(text, owner=record == owner.get("record"))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root)
     if carried:
@@ -1082,7 +1084,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     refused/, and the sync holds its material in the refusal ledger for the
     daily round's retry. A page the turn shrank too far is refused the same way.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, fold_history, lead_without_last_contact, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
+    from .page_review import (drop_empty_owner_section, drop_uncited_sources, drop_unresolved, fold_history, lead_without_last_contact, owner_pronouns, restore_dropped, sort_history, headings, normalize_numbered_sources,
                               repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
@@ -1111,6 +1113,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         written = text
         text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
+        text = drop_empty_owner_section(text, owner=record == owner)
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
@@ -1118,7 +1121,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                            "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                            "restored_lines": restored_lines}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = (validate(record, text, before.get(record, ''), items, pages=set(before), root=notebook.root)
+        errors = (validate(record, text, before.get(record, ''), items, pages=set(before),
+                           owner=record == owner, root=notebook.root)
                   if headings(record) else [])
         errors += [shrunk] if shrunk else []
         if errors:
