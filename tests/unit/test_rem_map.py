@@ -108,6 +108,7 @@ def test_project_scan_honors_disabled_and_project_scopes(tmp_path):
     sub = {'kind': 'codex', 'root': str(sessions), 'enabled': True, 'consented': True, 'project': '/allowed'}
     assert [r['path'] for r in scan_projects({'local': sub}, 1)] == ['/allowed']
     assert scan_projects({'local': {**sub, 'enabled': False}}, 1) == []
+    assert scan_projects({'local': {**sub, 'consented': False}}, 1) == []
 
 
 @pytest.mark.parametrize('kind', ['codex', 'claude-code'])
@@ -1270,3 +1271,32 @@ def test_a_relay_named_like_a_person_keeps_a_group_of_its_own():
             {'name': 'Corin Marsh', 'address': 'express@airbnb.com', 'mails': 1}]
     assert [[row['address'] for row in group] for group in _people_groups(rows)] == [
         ['corin.marsh@example.com'], ['calendar-invite@lu.ma'], ['express@airbnb.com']]
+
+
+def test_waiting_and_approve_coding_session_sources(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import write_json, state_path
+    from connectonion.rem.service import (approve_coding_session_sources, subscriptions,
+                                          waiting_coding_session_sources)
+
+    prepare(tmp_path)
+    sessions = tmp_path / 'codex-sessions'
+    sessions.mkdir()
+    sources = subscriptions(tmp_path)
+    sources['codex']['root'] = str(sessions)
+    sources['codex']['enabled'] = True
+    sources['codex']['consented'] = False
+    # Claude Code path does not exist → not waiting.
+    sources['claude-code']['root'] = str(tmp_path / 'missing-claude')
+    sources['claude-code']['enabled'] = True
+    sources['claude-code']['consented'] = False
+    write_json(state_path(tmp_path, 'subscriptions.json'), sources)
+
+    waiting = waiting_coding_session_sources(tmp_path)
+    assert [name for name, _ in waiting] == ['codex']
+    approve_coding_session_sources(tmp_path, ['codex'])
+    assert subscriptions(tmp_path)['codex']['consented'] is True
+    assert subscriptions(tmp_path)['claude-code']['consented'] is False
+    assert waiting_coding_session_sources(tmp_path) == []
+    # Schedule consent file must stay absent so co rem start still asks.
+    assert not state_path(tmp_path, 'consent.json').is_file()
