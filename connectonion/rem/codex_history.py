@@ -10,6 +10,10 @@ from pathlib import Path
 from .codex_schedule import codex_home
 from .files import state_path, write_json
 
+INTERNAL_ORIGIN = """(originator = 'connectonion' OR
+    (originator = 'Codex Desktop' AND first_user_message LIKE
+     'Follow these instructions exactly. They are the skill `rem-%'))"""
+
 
 def internal_threads(root: Path, *, home=None) -> list[dict]:
     """Read metadata only; human chats, pins and recent work are not candidates."""
@@ -20,7 +24,7 @@ def internal_threads(root: Path, *, home=None) -> list[dict]:
     with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
-            "SELECT id, cwd FROM threads WHERE archived = 0 AND originator = 'connectonion' "
+            f"SELECT id, cwd FROM threads WHERE archived = 0 AND {INTERNAL_ORIGIN} "
             "AND is_pinned = 0 AND updated_at < ?", (int(time.time()) - 3600,)).fetchall()
     return [dict(row) for row in rows if Path(row["cwd"]).resolve().is_relative_to(workspace)]
 
@@ -28,7 +32,7 @@ def internal_threads(root: Path, *, home=None) -> list[dict]:
 def _still_eligible(row: dict, workspace: Path, home: Path) -> bool:
     with closing(sqlite3.connect((home / "state_5.sqlite").as_uri() + "?mode=ro", uri=True)) as connection:
         fresh = connection.execute(
-            "SELECT cwd FROM threads WHERE id = ? AND archived = 0 AND originator = 'connectonion' "
+            f"SELECT cwd FROM threads WHERE id = ? AND archived = 0 AND {INTERNAL_ORIGIN} "
             "AND is_pinned = 0 AND updated_at < ?", (row["id"], int(time.time()) - 3600)).fetchone()
     return bool(fresh and Path(fresh[0]).resolve().is_relative_to(workspace))
 
@@ -36,7 +40,7 @@ def _still_eligible(row: dict, workspace: Path, home: Path) -> bool:
 def _already_archived(thread_id: str, workspace: Path, home: Path) -> bool:
     with closing(sqlite3.connect((home / "state_5.sqlite").as_uri() + "?mode=ro", uri=True)) as connection:
         row = connection.execute(
-            "SELECT cwd FROM threads WHERE id = ? AND archived = 1 AND originator = 'connectonion'",
+            f"SELECT cwd FROM threads WHERE id = ? AND archived = 1 AND {INTERNAL_ORIGIN}",
             (thread_id,)).fetchone()
     return bool(row and Path(row[0]).resolve().is_relative_to(workspace))
 

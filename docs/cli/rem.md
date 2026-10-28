@@ -1780,7 +1780,8 @@ co rem history
 co rem history --archive
 ```
 
-Only ConnectOnion-generated conversations under this notebook's private task
+Only ConnectOnion-generated conversations or recognized legacy REM delegates
+under this notebook's private task
 directory, older than one hour, are eligible. Personal conversations, pins,
 recent work and threads observed active are retained. The repair uses native
 `thread/read` and `thread/archive`, makes no model calls, writes no native

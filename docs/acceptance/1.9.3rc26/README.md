@@ -8,7 +8,10 @@ no App replacement, different account or raw native database writes were used.
 
 - Read-only CLI inventory found1,428 eligible older internal conversations in
   the production notebook. Native read/archive RPC repaired them. The final
-  read-only CLI inventory reports0eligible; actual terminal captures are in
+  read-only CLI inventory reports0eligible. A native active-list query then
+  identified3legacy Desktop-origin REM delegates, which were independently
+  recognized by their fixed prompt and private workspace and archived too.
+  Actual terminal captures are in
   this release's assets. This is metadata/API acceptance, not a native UI capture.
 - The first batch ended after1,296archived,3kept and an RPC error. Read-only
   reconciliation found the error's same scoped ID already archived, with its
@@ -16,7 +19,8 @@ no App replacement, different account or raw native database writes were used.
   authoritative outcome reconciliation, retry archived128remaining candidates
   and the cohort reached0eligible. An unknown/unarchived RPC error still fails.
 - The repair retains archive/resume data. Candidate selection requires this
-  notebook's reserved task workspace, ConnectOnion originator, no pin and age
+  notebook's reserved task workspace, ConnectOnion originator or fixed legacy
+  REM delegate prompt, no pin and age
   over one hour; workers refresh pin/age/cwd and native ID/runtime metadata.
   No model turn is used. Normal automation failure results remain outside scope.
 - A separate one-off operation is processing the same proven internal traces

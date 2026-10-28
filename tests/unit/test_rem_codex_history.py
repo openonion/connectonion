@@ -19,12 +19,12 @@ def history(tmp_path, monkeypatch):
     database = home / "state_5.sqlite"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE threads(id TEXT, cwd TEXT, archived INTEGER, "
-                           "originator TEXT, is_pinned INTEGER, updated_at INTEGER)")
+                           "originator TEXT, is_pinned INTEGER, updated_at INTEGER, first_user_message TEXT)")
 
-    def add(thread_id, *, cwd=None, archived=0, originator="connectonion", pinned=0, updated=0):
+    def add(thread_id, *, cwd=None, archived=0, originator="connectonion", pinned=0, updated=0, first=""):
         with sqlite3.connect(database) as connection:
-            connection.execute("INSERT INTO threads VALUES(?,?,?,?,?,?)",
-                               (thread_id, str(cwd or root / ".state/tasks"), archived, originator, pinned, updated))
+            connection.execute("INSERT INTO threads VALUES(?,?,?,?,?,?,?)",
+                               (thread_id, str(cwd or root / ".state/tasks"), archived, originator, pinned, updated, first))
     return root, home, database, add
 
 
@@ -45,6 +45,16 @@ def test_inventory_keeps_personal_pinned_recent_archived_and_neighboring_chats(h
 def test_missing_index_does_not_start_a_provider(tmp_path, monkeypatch):
     monkeypatch.setattr(native, "CodexAppServer", lambda **kwargs: pytest.fail("No history needs a provider"))
     assert archive_history(tmp_path, home=tmp_path) == {"archived": 0, "kept": 0}
+
+
+def test_only_a_known_rem_delegate_is_claimed_from_desktop_history(history):
+    root, home, _, add = history
+    add("delegated", originator="Codex Desktop",
+        first="Follow these instructions exactly. They are the skill `rem-enrich`, installed at /skills")
+    add("personal", originator="Codex Desktop", first="Investigate my project")
+    add("outside", originator="Codex Desktop", cwd=root,
+        first="Follow these instructions exactly. They are the skill `rem-enrich`")
+    assert [row["id"] for row in internal_threads(root, home=home)] == ["delegated"]
 
 
 def fake_provider(history, monkeypatch, states=None, fail=False):
