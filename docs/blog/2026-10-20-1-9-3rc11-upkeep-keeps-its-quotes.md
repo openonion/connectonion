@@ -20,3 +20,31 @@ picker changes are in
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc11'
 ```
+
+## 27 October: keeping the words twice
+
+Preserving evidence can make a page worse in a different way. A saved nightly
+candidate and the current page differed by two extra lines, consistent with a
+review that recorded two restorations: an almost repeated History event and an
+old lead below `Uncertainties: Unknown`. That comparison does not establish the
+exact promotion postimage or rule out a later edit. A second repeated obligation
+was already in the candidate, so the restoration code could not explain it all.
+
+An invented example isolated one deterministic cause. Nora's earlier quote was
+“I will reply after Friday”; the new quote kept those words and put a full stop
+inside the marks. The guard compared whole quoted strings, called the old quote
+lost, and put the old sentence back. Asking the writer to distill again would
+leave that guard unchanged. Removing the guard would again lose evidence.
+
+The candidate repair instead recognizes literal words inside one longer quote
+with the same immediately bound originals. It does not erase spaces or join
+separate quotations; `able to pay` is not retained inside `unable to pay`.
+Renumbered citations can name the same original, but an ID elsewhere in Sources
+cannot lend its identity to a different quote. Truly missing introductory prose
+returns to the introduction, retaining the new lead too.
+
+The tests separate preservation from truth. A matching span does not prove that
+its new surrounding claim is accurate, and it cannot fix a duplicate the writer
+already supplied. The original review gate remains. This is an unreleased
+follow-up to #2687, not a repair of the owner's saved notebook or proof of current
+model usefulness. Native page and source-entailment acceptance remain separate.

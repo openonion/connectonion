@@ -155,3 +155,22 @@ existing batch checkpoints; feedback uses the per-target processing receipts abo
 An accepted target stays acknowledged if a later target fails. This preview
 does not implement cross-machine locking, external sharing permissions or automatic
 factual adjudication. The underlying Markdown pages remain local.
+
+## Candidate: retained quotation context (#2687)
+
+A follow-up candidate distinguishes a lost quote from literal words retained
+inside one extended quotation. The words, spacing, case and word boundaries must
+remain exact, and the immediately following citations must resolve to the same
+unambiguous original identities. Dates and privacy labels may stand between the
+quotation and those citations. Renumbering can preserve identity; a matching ID
+elsewhere in Sources, a different binding, missing definition, concatenated
+quotations or paraphrase cannot. This does not establish equivalent meaning or
+correct attribution; the source audit still applies. Exact-quote retention keeps
+its existing behavior.
+
+If introductory evidence really is lost, its restoration stays above the first
+content section and retains the writer's new lead. It is not appended below an
+Uncertainties placeholder. This repair does not remove duplicates authored in the
+candidate, repair saved notebooks or establish real model/native usefulness.
+It is not included in the public 1.9.3rc25 preview; normal review and release
+acceptance remain required.
