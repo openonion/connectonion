@@ -48,3 +48,12 @@ its new surrounding claim is accurate, and it cannot fix a duplicate the writer
 already supplied. The original review gate remains. This is an unreleased
 follow-up to #2687, not a repair of the owner's saved notebook or proof of current
 model usefulness. Native page and source-entailment acceptance remain separate.
+
+
+## 29 October: a candidate for the bounded recheck
+
+The repairs have merged after independent source review and normal CI. Their
+combined tree passed 17,655 offline tests. We are preparing rc27 so the owner can
+choose a reproducible manual trial; the matching public package and prerelease,
+not this preparation note, establish availability. A package still cannot prove
+that a saved page is useful or that a current model's claims are supported.

@@ -172,5 +172,5 @@ If introductory evidence really is lost, its restoration stays above the first
 content section and retains the writer's new lead. It is not appended below an
 Uncertainties placeholder. This repair does not remove duplicates authored in the
 candidate, repair saved notebooks or establish real model/native usefulness.
-It is not included in the public 1.9.3rc25 preview; normal review and release
-acceptance remain required.
+This repair is prepared for 1.9.3rc27; matching public artifacts and normal
+release acceptance remain required.
