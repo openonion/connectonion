@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc25
+## Current Version: 1.9.3rc26
+
+Release-blocking fixes for investigation noise and incomplete local setup (#2696).
+Approved REM startup archives older proven internal Codex traces through native
+RPC; a read-only history command also offers explicit repair. Personal, pinned,
+active and recent chats are retained. Initialization refreshes older installed
+bundled skill links, fills missing profile fields and reports invalid metadata.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc26.md).
+
+- 1.9.3rc26 (REM internal history repair and complete skill/profile initialization).
+
+### Previous candidate: 1.9.3rc25
 
 Freeze candidate for 1.9.3: rc24 plus one release-blocking fix, the Lark
 listener repair (#2691, fixes #2690). History recovery is bounded and runs only

@@ -31,6 +31,7 @@ Settings
   config        Model, schedule times and limits.
   logs          What each run did, and what it cost.
   doctor        Check that everything the notebook needs is installed.
+  history       Inspect or archive old internal Codex investigation conversations.
 
 Options (before the command):
   --root DIR    The notebook folder (default ~/.co/rem).
@@ -415,6 +416,28 @@ Find text across pages, case-insensitive. Exact text, not meaning. No model.
 Usage:    co rem search TEXT [--in people|projects|orgs|skills]
 Example:  co rem search "term sheet" --in people
 Next:     co rem show PAGE
+Back:     co rem --help
+```
+
+## co rem history
+
+```
+Inspect old internal Codex investigation conversations for this notebook.
+
+Usage:    co rem history [--archive]
+Example:  co rem history --archive
+
+Options:  --archive    Archive the eligible conversations through Codex's native API.
+Output:   Without --archive, the number eligible. With it, archived and kept counts.
+Effects:  No model calls. Only ConnectOnion-generated conversations under this
+          notebook's private task directory, older than one hour, are eligible.
+          Pinned, active and ordinary personal conversations are kept. Traces
+          remain in Codex's archive and can be restored there. A repair receipt
+          is saved privately; rerunning skips conversations already archived.
+          co rem start performs this repair after source/schedule approval too.
+Requires: Local Codex history; archiving also needs the Codex executable.
+
+Next:     co rem status
 Back:     co rem --help
 ```
 

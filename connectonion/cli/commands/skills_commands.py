@@ -476,7 +476,12 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
     if target.is_symlink():
         if target.resolve() == source.resolve() and not force:
             return "already linked"
-        if target.exists() and not force:
+        previous = target.resolve()
+        installed_bundle = (previous.name == source.name
+                            and previous.parent.name == "useful_skills"
+                            and previous.parent.parent.name == "connectonion"
+                            and bool({"site-packages", "dist-packages"} & set(previous.parts)))
+        if target.exists() and not force and not installed_bundle:
             return "exists, not ours — skipped"
         target.unlink()
     elif target.exists():

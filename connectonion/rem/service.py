@@ -669,7 +669,8 @@ def ensure_consent(root: Path, *, confirm) -> bool:
     return True
 
 
-def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True) -> dict:
+def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True,
+          history_progress=None) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -687,6 +688,8 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
     # fires its run-at-load batch immediately, and two batches would race for the
     # notebook lock, with the one the user is watching likely to lose.
     first_batch = run_sync(root, runner=runner) if first and run_first_batch else None
+    from .codex_history import archive_history
+    history = archive_history(root, progress=history_progress) if read_config(root)["runner"] == "codex" else {}
     # A rejected migration must keep the existing worker state and its clock.
     installed = scheduler.install(root, read_config(root))
     # Nothing is owed at install: the slot that has already passed today belongs
@@ -697,7 +700,8 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
                                                  "installed_at": now().isoformat(), "stopped_at": None,
                                                  "last_scheduled_slot": previous.get("last_scheduled_slot")
                                                                         or (served.isoformat() if served else None)})
-    return {"started": True, "consented": True, "first_batch": first_batch, **installed}
+    return {"started": True, "consented": True, "first_batch": first_batch, **installed,
+            "codex_history": history}
 
 
 def stop(root: Path, *, scheduler) -> dict:

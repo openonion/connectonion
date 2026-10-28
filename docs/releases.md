@@ -25,6 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc26** repairs old REM investigation conversations in
+Codex's active history and fixes initialization omissions. Approved REM startup
+archives proven old internal traces through Codex's native API. Bundled skill
+links into older installations are refreshed, incomplete profiles are repaired,
+and malformed metadata reports an actionable error. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc26'
+```
+
+See [the candidate notes](releases/1.9.3rc26.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc25** is the freeze candidate for 1.9.3: rc24 plus
 one release-blocking fix. `co lark listen` no longer loses messages silently:
 history recovery is bounded and runs only at start and reconnect, a rejected
@@ -41,7 +55,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc25'
 
 See [the candidate notes](releases/1.9.3rc25.md).
 
-## Previous previews
 
 Release candidate **1.9.3rc24** froze the 1.9.3 line: after it, only
 release-blocking fixes land. It adds the REM citation, translation, company-scope and

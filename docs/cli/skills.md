@@ -1,4 +1,4 @@
-> **Preview 1.9.3rc22.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+> **Preview 1.9.3rc26.** Shared initialization and repair behavior described below ships in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc26).
 
 # co skills - Discover & Import Skills
 
@@ -317,3 +317,10 @@ After `co skills copy`, the `co_ai` skill loader (`cli/co_ai/skills/loader.py::d
 - [co copy](copy.md) — Copy built-in tools/plugins/skills/prompts (different command, similar idea)
 - [Skills overview](../features/skills.md) — How skills extend an agent
 - [Skills plugin](../useful_plugins/skills.md) — Runtime auto-discovery
+
+
+In preview 1.9.3rc26, rerunning initialization also refreshes a bundled skill
+symlink into an older installed ConnectOnion package. Personal skill directories
+and links outside installed package layouts are preserved. Missing local profile
+fields receive defaults; invalid skill metadata is kept and reports how to repair
+it. All four entry points share this preparation.
