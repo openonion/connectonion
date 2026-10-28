@@ -1786,7 +1786,9 @@ directory, older than one hour, are eligible. Personal conversations, pins,
 recent work and threads observed active are retained. The repair uses native
 `thread/read` and `thread/archive`, makes no model calls, writes no native
 database rows, and keeps a private receipt. Valid paginated threads need not
-have a legacy JSONL file. A rerun skips already archived traces. Error results
+have a legacy JSONL file. Because native archive also processes descendants,
+an unarchived child outside these safeguards keeps its parent too; unknown
+children also protect the parent. A rerun skips already archived traces. Error results
 in the normal automation inbox and ordinary workspaces remain visible.
 
 They leave the active conversation list while their trace and session ID remain

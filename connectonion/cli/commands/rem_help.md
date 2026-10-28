@@ -429,9 +429,10 @@ Example:  co rem history --archive
 
 Options:  --archive    Archive the eligible conversations through Codex's native API.
 Output:   Without --archive, the number eligible. With it, archived and kept counts.
-Effects:  No model calls. Only ConnectOnion-generated conversations under this
-          notebook's private task directory, older than one hour, are eligible.
-          Pinned, active and ordinary personal conversations are kept. Traces
+Effects:  No model calls. Only ConnectOnion conversations or recognized legacy
+          REM delegates under this notebook's private task directory, older
+          than one hour, are eligible. Protected or unknown descendants keep
+          their parent too. Pinned, active and ordinary chats are kept. Traces
           remain in Codex's archive and can be restored there. A repair receipt
           is saved privately; rerunning skips conversations already archived.
           co rem start performs this repair after source/schedule approval too.

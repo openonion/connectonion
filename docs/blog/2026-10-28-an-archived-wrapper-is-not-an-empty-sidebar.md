@@ -17,11 +17,14 @@ valid paginated threads also had no legacy JSONL at their recorded path; assumin
 that an absent file meant an absent conversation would miss them again.
 
 The repair asks Codex to read and archive its own records. It first narrows the
-cohort to the notebook's private task directory and the ConnectOnion originator.
+cohort to the notebook's private task directory and the ConnectOnion originator
+or a recognized legacy REM delegate prompt.
 An age threshold and pin checks keep work a person may be using. Independent
 review caught a flaw in our first batch design: a pin or update made after the
 initial inventory could become stale. Each worker now checks current metadata
-again immediately before archive. Partial failures retain all completed outcomes
+again immediately before archive. Native archive also handles descendants, so
+an unarchived protected or unknown child keeps its parent too.
+Partial failures retain all completed outcomes
 and still close the client. No model turn is needed to tidy a model's traces.
 
 Initialization had a related version of the same mistake. A symlink resolving

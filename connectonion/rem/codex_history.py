@@ -29,12 +29,24 @@ def internal_threads(root: Path, *, home=None) -> list[dict]:
     return [dict(row) for row in rows if Path(row["cwd"]).resolve().is_relative_to(workspace)]
 
 
-def _still_eligible(row: dict, workspace: Path, home: Path) -> bool:
+def _eligible_family(row: dict, workspace: Path, home: Path) -> list[str]:
     with closing(sqlite3.connect((home / "state_5.sqlite").as_uri() + "?mode=ro", uri=True)) as connection:
-        fresh = connection.execute(
-            f"SELECT cwd FROM threads WHERE id = ? AND archived = 0 AND {INTERNAL_ORIGIN} "
-            "AND is_pinned = 0 AND updated_at < ?", (row["id"], int(time.time()) - 3600)).fetchone()
-    return bool(fresh and Path(fresh[0]).resolve().is_relative_to(workspace))
+        connection.row_factory = sqlite3.Row
+        family = connection.execute(
+            "WITH RECURSIVE family(id) AS (SELECT ? UNION SELECT child_thread_id "
+            "FROM thread_spawn_edges JOIN family ON parent_thread_id = family.id) "
+            f"SELECT t.id, cwd, archived, ({INTERNAL_ORIGIN} AND is_pinned = 0 "
+            "AND updated_at < ?) AS eligible FROM family LEFT JOIN threads t ON t.id = family.id",
+            (row["id"], int(time.time()) - 3600)).fetchall()
+    parent = next((item for item in family if item["id"] == row["id"]), None)
+    if parent is None or parent["archived"] != 0:
+        return []
+    # Native archive also archives descendants. An unverified child protects
+    # the whole family, even when the selected parent itself is eligible.
+    if not all(item["archived"] == 1 or (item["eligible"] and Path(item["cwd"]).resolve().is_relative_to(workspace))
+               for item in family):
+        return []
+    return [item["id"] for item in family if item["archived"] == 0]
 
 
 def _already_archived(thread_id: str, workspace: Path, home: Path) -> bool:
@@ -46,13 +58,18 @@ def _already_archived(thread_id: str, workspace: Path, home: Path) -> bool:
 
 
 def _archive_thread(client, row: dict, workspace: Path, home: Path) -> tuple[str, str]:
-    thread = client.request("thread/read", {"threadId": row["id"], "includeTurns": False}, timeout=60)["thread"]
-    if (thread["id"] != row["id"] or thread.get("isPinned")
-            or thread["status"]["type"] not in ("notLoaded", "idle")
-            or not isinstance(thread.get("updatedAt"), int)
-            or thread["updatedAt"] >= int(time.time()) - 3600
-            or not Path(thread["cwd"]).resolve().is_relative_to(workspace)
-            or not _still_eligible(row, workspace, home)):
+    family = _eligible_family(row, workspace, home)
+    if not family:
+        return row["id"], "kept"
+    for thread_id in family:
+        thread = client.request("thread/read", {"threadId": thread_id, "includeTurns": False}, timeout=60)["thread"]
+        if (thread["id"] != thread_id or thread.get("isPinned")
+                or (thread.get("status") or {}).get("type") not in ("notLoaded", "idle")
+                or not isinstance(thread.get("updatedAt"), int)
+                or thread["updatedAt"] >= int(time.time()) - 3600
+                or not Path(thread["cwd"]).resolve().is_relative_to(workspace)):
+            return row["id"], "kept"
+    if set(_eligible_family(row, workspace, home)) != set(family):
         return row["id"], "kept"
     client.request("thread/archive", {"threadId": row["id"]}, timeout=60)
     return row["id"], "archived"
@@ -60,20 +77,25 @@ def _archive_thread(client, row: dict, workspace: Path, home: Path) -> tuple[str
 
 def _archive_batch(pool, client, rows: list[dict], workspace: Path, home: Path, receipt: dict) -> None:
     futures = {pool.submit(_archive_thread, client, row, workspace, home): row["id"] for row in rows}
-    failure = None
+    failures = []
     for future in as_completed(futures):
         error = future.exception()
         if error is not None:
-            thread_id = futures[future]
-            if _already_archived(thread_id, workspace, home):
-                receipt["archived"].append(thread_id)
-                receipt.setdefault("reconciled", []).append(thread_id)
-            else:
-                receipt["failed"].append({"id": thread_id, "error": type(error).__name__})
-                failure = failure or error
+            record = {"id": futures[future], "error": type(error).__name__}
+            receipt["failed"].append(record)
+            failures.append((record, error))
         else:
             thread_id, outcome = future.result()
             receipt[outcome].append(thread_id)
+    # Collect every completed outcome before a reconciliation read can fail.
+    failure = None
+    for record, error in failures:
+        if _already_archived(record["id"], workspace, home):
+            receipt["failed"].remove(record)
+            receipt["archived"].append(record["id"])
+            receipt.setdefault("reconciled", []).append(record["id"])
+        else:
+            failure = failure or error
     if failure is not None:
         raise failure
 

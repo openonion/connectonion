@@ -20,6 +20,7 @@ def history(tmp_path, monkeypatch):
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE threads(id TEXT, cwd TEXT, archived INTEGER, "
                            "originator TEXT, is_pinned INTEGER, updated_at INTEGER, first_user_message TEXT)")
+        connection.execute("CREATE TABLE thread_spawn_edges(parent_thread_id TEXT, child_thread_id TEXT)")
 
     def add(thread_id, *, cwd=None, archived=0, originator="connectonion", pinned=0, updated=0, first=""):
         with sqlite3.connect(database) as connection:
@@ -208,3 +209,68 @@ def test_a_native_error_is_reconciled_only_when_the_scoped_record_is_already_arc
     assert archive_history(root, home=home) == {"archived": 1, "kept": 0}
     receipt = json.loads((root / ".state/codex-history.json").read_text())
     assert receipt["failed"] == [] and receipt["reconciled"] == ["one"]
+
+
+@pytest.mark.parametrize("child", [
+    {"pinned": 1}, {"updated": 9_999_999_999}, {"cwd": "/personal-work"},
+    {"originator": "Codex Desktop"}, None,
+])
+def test_a_protected_or_unknown_descendant_keeps_the_parent(history, monkeypatch, child):
+    root, home, database, add = history
+    add("parent")
+    if child is not None:
+        add("child", **child)
+    with sqlite3.connect(database) as connection:
+        connection.execute("INSERT INTO thread_spawn_edges VALUES('parent','child')")
+    calls = fake_provider(history, monkeypatch)
+    assert archive_history(root, home=home)["kept"] >= 1
+    assert "parent" not in calls
+
+
+def test_archived_foreign_descendants_do_not_block_an_internal_parent(history, monkeypatch):
+    root, home, database, add = history
+    add("parent")
+    add("child", cwd="/personal-work", archived=1)
+    with sqlite3.connect(database) as connection:
+        connection.execute("INSERT INTO thread_spawn_edges VALUES('parent','child')")
+    calls = fake_provider(history, monkeypatch)
+    assert archive_history(root, home=home) == {"archived": 1, "kept": 0}
+    assert "parent" in calls
+
+
+@pytest.mark.parametrize("status", [{"type": "active"}, {"type": "unknown"}, {}, None])
+def test_active_or_unknown_runtime_descendants_keep_the_parent(history, monkeypatch, status):
+    root, home, database, add = history
+    add("parent")
+    add("child")
+    with sqlite3.connect(database) as connection:
+        connection.execute("INSERT INTO thread_spawn_edges VALUES('parent','child')")
+    calls = fake_provider(history, monkeypatch, {"child": {"status": status}})
+    assert archive_history(root, home=home) == {"archived": 0, "kept": 2}
+    assert "parent" not in calls and "child" not in calls
+
+
+def test_reconciliation_read_failure_retains_all_completed_outcomes(history, monkeypatch):
+    import connectonion.rem.codex_history as module
+    root, home, _, add = history
+    for name in ("bad", "one", "two"):
+        add(name)
+    calls = fake_provider(history, monkeypatch)
+    archive = module._archive_thread
+
+    def request(client, row, workspace, codex_home):
+        if row["id"] == "bad":
+            raise RuntimeError("native failure")
+        return archive(client, row, workspace, codex_home)
+
+    def broken_probe(*args):
+        raise OSError("metadata unavailable")
+
+    monkeypatch.setattr(module, "_archive_thread", request)
+    monkeypatch.setattr(module, "_already_archived", broken_probe)
+    with pytest.raises(OSError, match="metadata unavailable"):
+        archive_history(root, home=home)
+    receipt = json.loads((root / ".state/codex-history.json").read_text())
+    assert set(receipt["archived"]) == {"one", "two"}
+    assert receipt["failed"] == [{"id": "bad", "error": "RuntimeError"}]
+    assert calls[-1] == "close"
