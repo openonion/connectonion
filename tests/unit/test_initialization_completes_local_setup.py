@@ -136,6 +136,7 @@ def test_incomplete_profile_is_repaired_without_losing_custom_fields(onboarding)
     profile.write_text('{"alias":"custom","extra":"keep"}')
     result = runner.invoke(app, ["init", "--yes"])
     assert result.exit_code == 0, result.output
+    assert "(repaired)" in result.output
     saved = json.loads(profile.read_text())
     assert saved["alias"] == saved["name"] == "custom"
     assert saved["extra"] == "keep" and saved["skills"] == [] and saved["address"]

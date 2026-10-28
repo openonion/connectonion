@@ -57,7 +57,7 @@ def _edit_profile(path: Path, name: Optional[str], bio: Optional[str]) -> None:
     console.print(f"[green]✓ Local profile: {path} (updated)[/green]")
 
 
-def _repair_profile(path: Path) -> None:
+def _repair_profile(path: Path) -> bool:
     """Fill missing local fields; never discard malformed personal metadata."""
     from connectonion import address
 
@@ -82,6 +82,7 @@ def _repair_profile(path: Path) -> None:
         profile.pop("signature", None)
         profile.pop("signer", None)
         path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    return bool(missing)
 
 
 def _ensure_profile(name: Optional[str], bio: Optional[str], force: bool) -> None:
@@ -89,11 +90,11 @@ def _ensure_profile(name: Optional[str], bio: Optional[str], force: bool) -> Non
 
     path = global_config_dir() / "agent.json"
     if path.exists() and not force:
-        _repair_profile(path)
+        repaired = _repair_profile(path)
         if name is not None or bio is not None:
             _edit_profile(path, name, bio)
         else:
-            console.print(f"[dim]✓ Local profile: {path} (kept)[/dim]")
+            console.print(f"[dim]✓ Local profile: {path} ({'repaired' if repaired else 'kept'})[/dim]")
         return
     if path.exists():
         backup = path.with_suffix(".json.bak")
