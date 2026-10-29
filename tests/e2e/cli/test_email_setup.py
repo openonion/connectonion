@@ -21,12 +21,23 @@ def response(data, status=200):
 
 @pytest.fixture
 def cloud():
+    state = {'addresses': None}
+
+    def get(url, params=None, **kwargs):
+        if str(url).endswith('/email/check-name'):
+            name = (params or {}).get('name', '')
+            return response({'available': True, 'email': f'{name}@mail.openonion.ai', 'price': 9.9})
+        if state['addresses'] is not None:
+            return state['addresses']
+        return response(SETTINGS)
+
     with patch.object(email_commands, 'load_api_key', return_value='test-token'), \
-         patch.object(email_commands.requests, 'get', return_value=response(SETTINGS)) as get, \
+         patch.object(email_commands.requests, 'get', side_effect=get) as get_mock, \
          patch.object(email_commands.requests, 'post', return_value=response({
              'address': 'iron.share@steadmail.com', 'message': 'Claimed iron.share@steadmail.com',
          })) as post:
-        yield get, post
+        get_mock.state = state
+        yield get_mock, post
 
 
 def test_domains_come_from_the_cloud(cloud):
@@ -85,7 +96,7 @@ def test_signed_out_commands_do_not_contact_the_cloud(cloud, command):
 
 @pytest.mark.parametrize('command', [['domains'], ['setup', 'new.alias', '--buy']])
 def test_settings_failure_stops_before_purchase(cloud, command):
-    cloud[0].return_value = response({'detail': 'Account access denied'}, 403)
+    cloud[0].state['addresses'] = response({'detail': 'Account access denied'}, 403)
     result = CliRunner().invoke(app, ['email', *command])
     assert result.exit_code == 1
     assert 'Account access denied' in result.output
@@ -93,7 +104,7 @@ def test_settings_failure_stops_before_purchase(cloud, command):
 
 
 def test_a_reserved_domain_is_not_sold_until_the_cloud_enables_it(cloud):
-    cloud[0].return_value = response({**SETTINGS, 'domains': ['mail.openonion.ai']})
+    cloud[0].state['addresses'] = response({**SETTINGS, 'domains': ['mail.openonion.ai']})
     result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
     assert result.exit_code == 1
     assert 'co email domains' in result.output
@@ -101,7 +112,7 @@ def test_a_reserved_domain_is_not_sold_until_the_cloud_enables_it(cloud):
 
 
 def test_an_owned_address_is_recognized_when_its_domain_closes_to_new_purchases(cloud):
-    cloud[0].return_value = response({
+    cloud[0].state['addresses'] = response({
         **SETTINGS,
         'domains': ['mail.openonion.ai'],
         'addresses': [*SETTINGS['addresses'], {'address': 'iron.share@steadmail.com'}],
@@ -109,4 +120,80 @@ def test_an_owned_address_is_recognized_when_its_domain_closes_to_new_purchases(
     result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
     assert result.exit_code == 0, result.output
     assert result.output.strip() == 'Already owned: iron.share@steadmail.com'
+    cloud[1].assert_not_called()
+
+
+def _names(cloud, answers):
+    """Serve /email/addresses from the usual settings, and check-name from `answers`."""
+    def get(url, params=None, **kwargs):
+        if str(url).endswith('/email/check-name'):
+            name = (params or {}).get('name', '')
+            return response(answers(name))
+        forced = getattr(get, 'addresses', None)
+        return forced if forced is not None else response(SETTINGS)
+    cloud[0].side_effect = get
+    return get
+
+
+@pytest.mark.parametrize('alias,reason', [
+    ('Bad_Alias!', 'Name can only contain letters, numbers, and single dots between them'),
+    ('admin', 'This name is reserved'),
+    ('0xAbCdEf1234', 'This name is reserved'),
+])
+def test_preview_does_not_offer_buy_for_a_name_the_server_refuses(cloud, alias, reason):
+    seen = []
+
+    def answers(name):
+        seen.append(name)
+        return {'available': False, 'email': f'{name}@steadmail.com', 'reason': reason}
+
+    _names(cloud, answers)
+    result = CliRunner().invoke(app, ['email', 'setup', alias, '--domain', 'steadmail.com'])
+    assert result.exit_code == 1, result.output
+    assert reason in result.output
+    assert '--buy' not in result.output
+    assert '$9.90' not in result.output
+    assert seen == [alias.lower()]
+    cloud[1].assert_not_called()
+
+
+def test_buy_does_not_post_a_name_the_server_refuses(cloud):
+    _names(cloud, lambda name: {'available': False, 'reason': 'This name is reserved'})
+    result = CliRunner().invoke(app, ['email', 'setup', 'admin', '--domain', 'steadmail.com', '--buy'])
+    assert result.exit_code == 1, result.output
+    assert 'This name is reserved' in result.output
+    assert '--buy' not in result.output
+    cloud[1].assert_not_called()
+
+
+def test_a_name_that_is_only_taken_still_shows_the_price(cloud):
+    _names(cloud, lambda name: {'available': False, 'reason': 'Already taken'})
+    result = CliRunner().invoke(app, ['email', 'setup', 'ops', '--domain', 'steadmail.com'])
+    assert result.exit_code == 0, result.output
+    assert '$9.90' in result.output and '--buy' in result.output
+    cloud[1].assert_not_called()
+
+
+def test_a_sellable_alias_still_shows_the_price(cloud):
+    _names(cloud, lambda name: {'available': True, 'email': f'{name}@steadmail.com', 'price': 5})
+    result = CliRunner().invoke(app, ['email', 'setup', 'ops', '--domain', 'steadmail.com'])
+    assert result.exit_code == 0, result.output
+    assert 'ops@steadmail.com: $9.90' in result.output
+    assert '--buy' in result.output
+    cloud[1].assert_not_called()
+
+
+def test_a_rejected_name_check_is_the_whole_answer(cloud):
+    def get(url, params=None, **kwargs):
+        if str(url).endswith('/email/check-name'):
+            return response(
+                {'detail': {'message': 'Name can only contain letters, numbers, and single dots between them'}},
+                400,
+            )
+        return response(SETTINGS)
+    cloud[0].side_effect = get
+    result = CliRunner().invoke(app, ['email', 'setup', 'bad_alias!', '--buy'])
+    assert result.exit_code == 1, result.output
+    assert 'Name can only contain letters, numbers, and single dots between them' in result.output
+    assert '--buy' not in result.output
     cloud[1].assert_not_called()
