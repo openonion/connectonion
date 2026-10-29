@@ -25,6 +25,23 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc27** is a backend repair candidate for retained
+quotation context and Claude loopback bridge startup. Literal words in an extended
+quote require the same immediately bound originals to count as retained. Genuinely
+missing introductory prose stays introductory. The scoped Claude Hook receiver
+uses its numeric address without reverse DNS. No global DNS or permissions change.
+Stable remains **1.9.2**. Matching public package and prerelease are required.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc27'
+```
+
+See [the candidate notes](releases/1.9.3rc27.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc26** repairs old REM investigation conversations in
 Codex's active history and fixes initialization omissions. Approved REM startup
 archives proven old internal traces through Codex's native API. Bundled skill
@@ -36,8 +53,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc26'
 ```
 
 See [the candidate notes](releases/1.9.3rc26.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc25** is the freeze candidate for 1.9.3: rc24 plus
 one release-blocking fix. `co lark listen` no longer loses messages silently:

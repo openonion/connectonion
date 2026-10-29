@@ -86,3 +86,12 @@ and missing token rejection, bind-error cleanup and process-interruption checks
 remain. The observation concerns this Claude bridge startup path, not all native
 providers or general REM initialization latency. This is an unreleased follow-up
 to #2698; full combined acceptance and normal CI remain separate gates.
+
+
+## 29 October: a candidate for the bounded recheck
+
+The repairs have merged after independent source review and normal CI. Their
+combined tree passed 17,655 offline tests. We are preparing rc27 so the owner can
+choose a reproducible manual trial; the matching public package and prerelease,
+not this preparation note, establish availability. A package still cannot prove
+that a saved page is useful or that a current model's claims are supported.

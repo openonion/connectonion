@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc26
+## Current Version: 1.9.3rc27
+
+Backend repair candidate: retain literal quotes inside an extended quotation
+only with the same immediately bound originals; restore truly lost introductory
+prose above content sections (#2687). The scoped Claude Hook receiver binds its
+numeric loopback address without reverse DNS (#2698). Reader templates, global
+DNS settings and provider permissions are unchanged. Existing saved pages are
+not automatically repaired. Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc27.md).
+
+- 1.9.3rc27 (bound quote retention and resolver-independent Claude bridge startup).
+
+### Previous candidate: 1.9.3rc26
 
 Release-blocking fixes for investigation noise and incomplete local setup (#2696).
 Approved REM startup archives older proven internal Codex traces through native
