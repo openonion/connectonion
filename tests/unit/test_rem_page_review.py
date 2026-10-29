@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -1095,6 +1096,33 @@ def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
         runner._promote_candidate(nb, 'projects/atlas.md', path, old, items, tmp_path, None)
     assert nb.read('projects/atlas.md') == old
     assert path.read_text() == candidate
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='file citations use POSIX paths')
+def test_valid_hashed_file_in_a_windows_mapped_non_git_project_passes_validation(monkeypatch, tmp_path):
+    import hashlib
+
+    from connectonion.rem import investigate
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import validate
+
+    prepare(tmp_path)
+    project = tmp_path / 'Projects' / 'PROJECT_NAME'
+    project.mkdir(parents=True)
+    readme = project / 'README.md'
+    readme.write_text('A local project without Git metadata.\n')
+    monkeypatch.setattr(investigate, 'local_path', lambda value: str(project))
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/atlas.md', 'Atlas', paths=[r'D:\Projects\PROJECT_NAME'])
+    original = notebook.read('projects/atlas.md')
+    citation = f'file:{readme}@{hashlib.sha256(readme.read_bytes()).hexdigest()}'
+    candidate = (original.replace('## Overview\n- Unknown', '## Overview\nA local project. [1]')
+                 .replace('- (none yet)', f'- [1] {citation} — project README'))
+
+    errors = validate('projects/atlas.md', candidate, original, [])
+
+    assert not any('citation' in error.lower() or 'mapped project' in error.lower() for error in errors)
 
 
 def test_the_project_skills_require_evidence_for_overview_and_no_placeholder_or_guessed_name():

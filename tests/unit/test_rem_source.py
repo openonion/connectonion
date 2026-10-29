@@ -532,3 +532,103 @@ def test_source_files_still_refuses_hidden_and_linked_rollouts(tmp_path):
     rollout(tmp_path / ".hidden/rollout-b.jsonl", [("user", "x")])
     with pytest.raises(RemError, match="Hidden"):
         source_files(subscription(tmp_path))
+
+
+def test_codex_metadata_maps_windows_cwd_to_the_runtime_path(monkeypatch, tmp_path):
+    from connectonion.rem import source
+
+    project = tmp_path / "Projects" / "PROJECT_NAME"
+    project.mkdir(parents=True)
+    windows_cwd = r"D:\Projects\PROJECT_NAME"
+    monkeypatch.setattr(source, "local_path", lambda value: str(project), raising=False)
+
+    meta = source._codex_meta({"type": "session_meta", "payload": {"cwd": windows_cwd}})
+
+    assert meta["cwd"] == str(project)
+
+
+def test_windows_drive_paths_use_wslpath_without_shell_interpolation(monkeypatch):
+    import types
+
+    from connectonion.rem import source
+
+    calls = []
+    path = r"D:\Projects\PROJECT_NAME"
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+
+    def convert(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return types.SimpleNamespace(returncode=0, stdout="/mnt/d/Projects/PROJECT_NAME\n")
+
+    monkeypatch.setattr(source.subprocess, "run", convert)
+    try:
+        assert source.local_path(path) == "/mnt/d/Projects/PROJECT_NAME"
+        assert calls == [(["/usr/bin/wslpath", "-u", path], {"capture_output": True, "text": True, "timeout": 5})]
+    finally:
+        source.local_path.cache_clear()
+
+
+def test_wslpath_execution_errors_are_not_hidden(monkeypatch):
+    import types
+
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+
+    def fail(*args, **kwargs):
+        raise OSError("could not launch wslpath")
+
+    monkeypatch.setattr(source.subprocess, "run", fail)
+    try:
+        with pytest.raises(OSError, match="could not launch wslpath"):
+            source.local_path(r"D:\Projects\PROJECT_NAME")
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("path", [r"\\server\share\project", r"D:relative", "/home/project", "relative"])
+def test_non_drive_paths_do_not_invoke_wslpath(monkeypatch, path):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: pytest.fail("unexpected wslpath lookup"))
+    try:
+        assert source.local_path(path) == path
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("returncode,stdout", [(1, "/mnt/d/project\n"), (0, "relative\n"), (0, "")])
+def test_wslpath_invalid_result_preserves_original(monkeypatch, returncode, stdout):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name="posix"))
+    monkeypatch.setattr(source.shutil, "which", lambda name: "/usr/bin/wslpath")
+    monkeypatch.setattr(source.subprocess, "run", lambda *args, **kwargs: types.SimpleNamespace(returncode=returncode, stdout=stdout))
+    try:
+        assert source.local_path(r"D:\project") == r"D:\project"
+    finally:
+        source.local_path.cache_clear()
+
+
+@pytest.mark.parametrize("platform,converter", [("nt", "/usr/bin/wslpath"), ("posix", None)])
+def test_windows_paths_are_unchanged_without_wsl_conversion(monkeypatch, platform, converter):
+    import types
+    from connectonion.rem import source
+
+    source.local_path.cache_clear()
+    monkeypatch.setattr(source, "os", types.SimpleNamespace(name=platform))
+    monkeypatch.setattr(source.shutil, "which", lambda name: converter)
+    monkeypatch.setattr(source.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected conversion"))
+    try:
+        assert source.local_path(r"D:\project") == r"D:\project"
+    finally:
+        source.local_path.cache_clear()

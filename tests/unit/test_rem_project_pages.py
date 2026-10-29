@@ -1075,6 +1075,27 @@ def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch
     assert "8% of net" in snapshot["text"]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="file citations use POSIX paths")
+def test_a_hashed_file_in_a_windows_mapped_non_git_project_is_accepted(monkeypatch, tmp_path):
+    import hashlib
+
+    from connectonion.rem import investigate
+    from connectonion.rem.project_pages import live_file_snapshot
+
+    project = tmp_path / "Projects" / "PROJECT_NAME"
+    project.mkdir(parents=True)
+    readme = project / "README.md"
+    readme.write_text("A local project without Git metadata.\n")
+    monkeypatch.setattr(investigate, "local_path", lambda value: str(project))
+    page = "# PROJECT_NAME\n\n## Paths\n- D:\\Projects\\PROJECT_NAME\n\n## Sources\n"
+    citation = f"file:{readme}@{hashlib.sha256(readme.read_bytes()).hexdigest()}"
+
+    snapshot = live_file_snapshot(page, citation)
+
+    assert snapshot["id"] == citation
+    assert snapshot["text"] == "A local project without Git metadata.\n"
+
+
 def test_a_project_under_a_diary_named_parent_is_private_until_investigated_on_purpose(world):
     """Review of #2618: a whole-path rule dropped the sessions of ~/Personal/shop-app, but
     `private()` read only the folder's own name, so the page could never be opted in."""

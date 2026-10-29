@@ -7,9 +7,12 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from .files import RemError, safe_path
@@ -150,6 +153,22 @@ def rem_task(cwd) -> bool:
     return any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1))
 
 
+@lru_cache(maxsize=512)
+def local_path(value: str) -> str:
+    """Translate imported Windows drive paths when this process runs in WSL."""
+    if len(value) > 4096:
+        return value
+    windows = PureWindowsPath(value)
+    if os.name == "nt" or not re.fullmatch(r"[A-Za-z]:", windows.drive) or not windows.is_absolute():
+        return value
+    converter = shutil.which("wslpath")
+    if not converter:
+        return value
+    result = subprocess.run([converter, "-u", value], capture_output=True, text=True, timeout=5)
+    mapped = result.stdout.strip()
+    return mapped if result.returncode == 0 and mapped.startswith("/") else value
+
+
 # ---- Codex rollouts: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl ----
 
 SESSION_SOURCE_PATTERN = r"(?:codex:[^\s:]+:\d+(?:-[0-9a-f]{8})?|claude-code:[^\s:]+:\d+)"
@@ -198,7 +217,8 @@ def _codex_meta(first: dict) -> dict:
     # Exec prompts are program-written too: on 2026-10-15 a person investigation
     # cited one as "the user's Codex note". Reuse the same message exclusion.
     source = payload.get("source")
-    return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
+    cwd = payload.get("cwd", "")
+    return {"id": payload.get("id"), "cwd": local_path(cwd) if isinstance(cwd, str) else cwd,
             "subagent": (isinstance(source, dict) and "subagent" in source
                          or source == "exec" or payload.get("originator") == "codex_exec"),
             "interactive_cli": source == "cli" and payload.get("originator") in ("codex-tui", "codex_cli_rs"),
