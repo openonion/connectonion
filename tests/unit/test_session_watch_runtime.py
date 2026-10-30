@@ -209,8 +209,10 @@ def test_iteration_sees_task_that_finishes_during_final_model_call(tmp_path):
     agent.input("Wait for task", session=storage.get("s1").session)
 
     assert len(calls) == 2
+    assert any("task_completed" in (message.get("content") or "") for message in calls[1])
+    assert all("internal" not in message for message in calls[1])
     assert any(message.get("internal") and "task_completed" in message["content"]
-               for message in calls[1])
+               for message in agent.current_session["messages"])
     record = storage.get("s1")
     record.status = "done"
     record.session = agent.current_session
