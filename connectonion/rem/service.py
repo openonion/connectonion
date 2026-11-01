@@ -461,7 +461,7 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
 
 
-def mailbox_state(kind: str, source: dict) -> tuple[str, str]:
+def mailbox_state(kind: str, source: dict, *, root: Path | None = None) -> tuple[str, str]:
     """(what is true of this mailbox for the daily round, the command that changes it or '').
 
     Notebooks made before init subscribed its mailboxes (#1946) had Gmail
@@ -478,7 +478,39 @@ def mailbox_state(kind: str, source: dict) -> tuple[str, str]:
         return "connected, but not read by the daily round (not subscribed)", f"co rem sources add {kind}"
     if not source.get("consented"):
         return "subscribed, waiting for your approval", "co rem start"
+    if root is not None:
+        failed = _mailbox_read_failure(root, kind)
+        if failed:
+            return failed, "co rem logs"
     return "read by the daily round", ""
+
+
+def _mailbox_read_failure(root: Path, kind: str) -> str:
+    """Read health is separate from source checkpoints, which failures must preserve."""
+    last = read_json(state_path(root, "source_reads.json"), {}).get(kind)
+    logs = run_logs(root)
+    if last is None:
+        # Older notebooks have only run records, including the starvation failures.
+        for run in logs:
+            failures = run.get("source_failures") or []
+            failure = next((row for row in failures if row["source"] == kind), None)
+            if failure or run.get("failed_source") == kind:
+                last = {"at": run["started_at"], "error": (failure or run).get("error", "source could not be read")}
+                break
+            if kind in run.get("items_by_source", {}):
+                break
+    zone = notebook_zone(read_config(root))
+    if last and last.get("error"):
+        day = timestamp(last["at"]).astimezone(zone).date()
+        reason = last["error"].removeprefix(f"{kind.title()} read failed: ")
+        return f"last read failed {day}: {reason}"
+    scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
+    if scanned and now() - timestamp(scanned) > timedelta(days=2):
+        if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
+               for run in logs):
+            day = timestamp(scanned).astimezone(zone).date()
+            return f"last read failed {day}: scan is more than 2 days behind while syncs ran"
+    return ""
 
 
 def status(root: Path, *, live_quota: bool = False) -> dict:
@@ -541,7 +573,7 @@ def _mailbox_lines(root: Path) -> dict:
     sources = subscriptions(root)
     lines = {}
     for kind in MAIL_KINDS:
-        state, fix = mailbox_state(kind, sources.get(kind, {}))
+        state, fix = mailbox_state(kind, sources.get(kind, {}), root=root)
         lines[kind] = f"{state}: {fix}" if fix else state
     return lines
 
@@ -873,11 +905,16 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             records.append(record)
             if on_batch:
                 on_batch(len(records), record)
-            if record["outcome"] != "completed":
+            if record["outcome"] != "completed" or not record["items"]:
                 break
         outcome = ("budget_exhausted" if spent else "caught_up" if not records
                    or records[-1]["outcome"] == "completed" else records[-1]["outcome"])
+        failures = {row["source"]: row for record in records for row in record.get("source_failures", [])}
+        if failures and outcome == "caught_up":
+            outcome = "completed"
         return {"outcome": outcome, **({"reason": spent} if spent else {}),
+                **({"source_failures": list(failures.values()),
+                    "warning": "Source read failed: " + ", ".join(failures)} if failures else {}),
                 "batches": len(records), "items": sum(r["items"] for r in records),
                 "changed": sorted({path for r in records for path in r.get("changed", [])}),
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
@@ -985,20 +1022,34 @@ def _terminate_as_interrupt():
 
 
 
-def _collection_failure(root: Path, config: dict, name: str, started: datetime, error: Exception) -> dict:
-    """A source that cannot be read is a failed pass, even before a model starts."""
-    finished = now()
-    record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
-              "finished_at": finished.isoformat(), "seconds": round((finished - started).total_seconds(), 2),
-              "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "stage": "gathering sources",
-              "sources": [name], "failed_source": name, "items": 0, "runner_attempts": 0,
-              "outcome": "failed", "usage": None, "changed": [], "progress_advanced": False,
-              "error": str(error) if isinstance(error, (RemError, ProviderCredentialError)) else
-                       f"Source collection failed ({type(error).__name__}); source progress preserved; inspect the source and retry",
-              "warning": "", "usage_by_stage": {}, "items_by_source": {}}
-    write_json(state_path(root, f"runs/{record['id']}.json"), record)
-    return record
+def _collection_failure(name: str, error: Exception) -> dict:
+    """Keep provider diagnostics without copying request URLs or arbitrary response bodies."""
+    from http.client import responses
+    message = "source could not be read; inspect the source and retry"
+    if isinstance(error, HttpError):
+        # API messages may echo mail or credentials. Keep known diagnostic phrases only.
+        reason = re.match(r"(?:Backend Error|Internal [Ss]erver [Ee]rror|Invalid Credentials|"
+                          r"Rate Limit Exceeded|User Rate Limit Exceeded|Quota exceeded|"
+                          r"Insufficient Permission|Forbidden|Not Found|Bad Request|Service Unavailable)\b",
+                          str(error.reason))
+        message = f"{error.resp.status} {reason[0] if reason else responses.get(error.resp.status, 'HTTP request failed')}"
+    elif isinstance(error, (RemError, ProviderCredentialError)):
+        message = str(error).replace("\n", "; ")
+        message = re.split(r"(?i)\b(?:body|message body|token|access_token|refresh_token|authorization|password|secret)\s*[:=]", message)[0]
+        message = re.sub(r"https?://\S+|[^\s<>]+@[^\s<>]+", "[redacted]", message)[:160]
+    elif isinstance(error, OSError) and error.errno is not None:
+        message = os.strerror(error.errno)
+    elif isinstance(error, RequestError):
+        message = "mailbox request failed; check the connection and retry"
+    elif isinstance(error, GoogleAuthError):
+        message = "mailbox authorization failed; reconnect the mailbox"
+    return {"source": name, "error": f"{name.title()} read failed: {type(error).__name__} {message}"}
+
+
+def _record_source_read(root: Path, name: str, error: str = "") -> None:
+    reads = read_json(state_path(root, "source_reads.json"), {})
+    reads[name] = {"at": now().isoformat(), "error": error}
+    write_json(state_path(root, "source_reads.json"), reads)
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
@@ -1006,8 +1057,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
+    started = now()
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
-    source_skips = []
+    source_skips, source_failures, sources_read = [], [], []
     kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
@@ -1074,7 +1126,6 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             break
         if len(items) >= max_items or remaining <= 0:
             break
-        gathering_started = now()
         try:
             if subscription.get("kind") in MAIL_KINDS:
                 try:
@@ -1094,7 +1145,15 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                 batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         except (RemError, OSError, UnicodeError, ProviderCredentialError, RequestError,
                 HttpError, GoogleAuthError, HttpLib2Error) as error:
-            return _collection_failure(root, config, name, gathering_started, error)
+            failure = _collection_failure(name, error)
+            source_failures.append(failure)
+            _record_source_read(root, name, failure["error"])
+            updated["rem_last_source"] = name
+            # Rotation survives even if a later model turn fails; source cursors stay put.
+            write_json(state_path(root, "progress.json"), {**progress, "rem_last_source": name})
+            continue
+        sources_read.append(name)
+        _record_source_read(root, name)
         source_skips.extend({"source": name, "file": path, "reason": "processed prefix changed"}
                             for path in batch.changed_files)
         if getattr(batch, "unreadable", False):
@@ -1119,9 +1178,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
-    record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
+    record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "sources": list(selected), "items": len(items),
+              "phase": "sync", "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a
@@ -1131,7 +1190,11 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
               # of user-slot messages it did not recognise says so, by source.
               "unrecognised": unrecognised,
               "source_skips": source_skips,
-              "warning": "; ".join([*(f"{name}: {count} messages in an unfamiliar format were not read"
+              **({"failed_source": source_failures[0]["source"], "error": source_failures[0]["error"],
+                  "source_failures": source_failures} if source_failures else {}),
+              "warning": "; ".join([*(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
+                                       + "); source progress preserved; inspect co rem logs"] if source_failures else []),
+                                    *(f"{name}: {count} messages in an unfamiliar format were not read"
                                       for name, count in unrecognised.items()),
                                     *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "
                                        "other sessions continue; inspect co rem logs"] if source_skips else [])]),
@@ -1140,6 +1203,10 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
               **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
+        if source_failures:
+            record.update(outcome="completed" if sources_read else "failed", stage="gathering sources",
+                          finished_at=now().isoformat(), seconds=round((now() - started).total_seconds(), 2),
+                          progress_advanced=any(updated.get(name) != progress.get(name) for name in sources_read))
         if feedback_deferred:
             record.update(outcome="deferred", report="Local feedback remains pending; no eligible page turn")
         write_json(state_path(root, "progress.json"), updated)

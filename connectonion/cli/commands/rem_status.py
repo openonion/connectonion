@@ -33,7 +33,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     counts = notebook(root, found)
     lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
-             *_mailboxes(root), *_archive(value, spell), ""]
+             *_mailboxes(root, spell), *_archive(value, spell), ""]
     lines += [*_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
@@ -246,16 +246,17 @@ def _today(root, value: dict) -> list[str]:
             rem_look.follow(spent, glyph="")]
 
 
-def _mailboxes(root) -> list[str]:
+def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:
     """One line a mailbox: ✓ read, ✗ not, and the command that fixes it on the line under."""
     from ...rem.service import MAIL_KINDS, mailbox_state, subscriptions
     sources, lines = subscriptions(root), [style.label("Mailboxes")]
     for kind in MAIL_KINDS:
-        state, fix = mailbox_state(kind, sources.get(kind, {}))
+        state, fix = mailbox_state(kind, sources.get(kind, {}), root=root)
         mark = style.ok(rem_look.FINE) if state == "read by the daily round" else style.warn(rem_look.BROKEN)
         lines.append(rem_look.row(kind.title(), highlight(state), mark))
         if fix:
-            lines.append(rem_look.follow(style.command(fix)))
+            command = spell(["logs"]) if fix == "co rem logs" else fix
+            lines.append(rem_look.follow(style.command(command)))
     return lines
 
 
