@@ -172,7 +172,12 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
     items, used = [], 0
     for address, rows in _turns(queue, max_items - len(items)):
         for row in rows:
-            body = client.get_email_body(row["id"])
+            body = _body(client, row["id"])
+            if body is None:
+                # Deleted from the mailbox after it was queued: it 404s on every
+                # sync, and left in the queue it stopped the whole mailbox (2026-10).
+                _consume(updated["pending"], address, row["id"])
+                continue
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             text = _fit_text(body[:MAX_BODY_CHARS * 2], MAX_BODY_CHARS)
@@ -309,6 +314,21 @@ def _turns(pending: dict, max_items: int):
         yield address, rows
         if taken >= max_items:
             return
+
+
+def _body(client, email_id: str) -> str | None:
+    """The mail's text, or None when the mailbox says it no longer exists (HTTP 404)."""
+    from googleapiclient.errors import HttpError
+    from ..provider_credentials import ProviderCredentialError
+    try:
+        return client.get_email_body(email_id)
+    except HttpError as error:
+        if error.resp.status != 404:
+            raise
+    except ProviderCredentialError as error:
+        if error.status != 404:
+            raise
+    return None
 
 
 def _consume(pending: dict, address: str, email_id: str) -> None:
