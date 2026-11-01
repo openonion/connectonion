@@ -642,8 +642,8 @@ def consent_summary(root: Path) -> dict:
             # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
             # while asleep runs once at the next five-minute tick.
             "background": "Codex Scheduled for Codex notebooks on a Mac with the desktop app; "
-                          "otherwise launchd on macOS. Keep the computer awake; native scheduling "
-                          "also needs the app open. co rem stop disables the timer"}
+                          "otherwise launchd on macOS. Keep the computer awake; a small launchd job "
+                          "opens Codex in the background at each time. co rem stop disables the timer"}
 
 
 def ensure_consent(root: Path, *, confirm) -> bool:
