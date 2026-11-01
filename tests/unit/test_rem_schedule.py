@@ -140,6 +140,21 @@ def test_start_replaces_the_old_label_rather_than_running_two_jobs(tmp_path, mon
     assert [p.name for p in (tmp_path / "LaunchAgents").glob("*.plist")] == [f"{label_for(root)}.plist"]
 
 
+def test_render_failure_keeps_the_old_clock(tmp_path, monkeypatch):
+    scheduler, calls = make(tmp_path, monkeypatch)
+    root = tmp_path / "notes"
+    legacy = _legacy_job(tmp_path / "LaunchAgents", root)
+
+    def invalid_schedule(*args):
+        raise RemError("Invalid schedule")
+
+    monkeypatch.setattr(scheduler, "render", invalid_schedule)
+    with pytest.raises(RemError, match="Invalid schedule"):
+        scheduler.install(root, default_config())
+    assert legacy.exists()
+    assert not calls.commands
+
+
 def test_unsupported_platform_says_how_to_run_by_hand(tmp_path):
     with pytest.raises(RemError, match="co rem sync"):
         Unsupported().install(tmp_path, default_config())

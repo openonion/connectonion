@@ -394,14 +394,17 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
             native = scheduler.describe(root)
     if native and (worker.get("scheduler") == "codex-native" or native.get("observed_active")
                    or native.get("desired_status") == "ACTIVE" or native.get("storage") == "account"):
+        attention = "Background needs attention — "
+        if native.get("reason", "").startswith("Codex missed the "):
+            attention += native["reason"] + "; "
         if worker.get("scheduler") != "codex-native":
-            return ("Background needs attention — a native REM task exists without a confirmed worker registration; "
+            return (attention + "a native REM task exists without a confirmed worker registration; "
                     "check Codex Scheduled and run `co rem start` to reconcile it"), None
         if not worker.get("enabled") and native.get("observed_active"):
-            return ("Background needs attention — Codex still reports the REM task as active; "
+            return (attention + "Codex still reports the REM task as active; "
                     "run `co rem stop` and confirm its pause in Scheduled"), None
         if not worker.get("enabled") and native.get("desired_status") == "ACTIVE":
-            return ("Background needs attention — native activation is still pending; "
+            return (attention + "native activation is still pending; "
                     "check Codex Scheduled, or run `co rem stop` to cancel the request"), None
         if not worker.get("enabled") and native.get("storage") == "account":
             return "Background needs attention — " + native["reason"], None
@@ -409,23 +412,22 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
             return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
         if not native["installed"]:
             return "Background needs attention — native REM definition is missing; run `co rem start`", None
-        if not native["app_running"]:
-            return "Background needs attention — open Codex desktop to run its native schedule", None
         if native.get("reason"):
             return "Background needs attention — " + native["reason"], None
+        if not native["app_running"]:
+            wake = "wake job loaded" if native.get("wake_loaded") else "wake job not loaded"
+            return f"Background needs attention — open Codex desktop to run its native schedule; {wake}", None
         if not native["loaded"] or not native["active"] or native.get("next_run_at") is None:
             return ("Background needs attention — waiting for Codex to register the native REM task; "
                     "open Scheduled in Codex and run `co rem status` again"), None
         last = native.get("last_run_at")
         next_run = datetime.fromtimestamp(native["next_run_at"] / 1000, timezone.utc)
-        if now() - next_run > timedelta(minutes=15):
-            return ("Background needs attention — Codex has not triggered its due native task; "
-                    "check Codex Scheduled and initialization"), next_run.astimezone(zone).isoformat(timespec="minutes")
         if worker.get("last_scheduled_warning") or worker.get("last_scheduled_outcome") in ("failed", "interrupted"):
             reason = worker.get("last_scheduled_warning") or worker.get("last_scheduled_reason") or "the last REM pass failed"
             return "Background needs attention — " + reason + "; run `co rem logs`", next_run.astimezone(zone).isoformat(timespec="minutes")
         evidence = "last triggered " + datetime.fromtimestamp(last / 1000, zone).isoformat(timespec="minutes") if last else "first execution not yet verified"
-        return (f"Scheduled in Codex; {evidence}; keep the app open and computer awake",
+        wake = ("wake job loaded" if native.get("wake_loaded") else "wake job not loaded; run co rem start")
+        return (f"Scheduled in Codex; {evidence}; {wake}; keep the computer awake",
                 next_run.astimezone(zone).isoformat(timespec="minutes"))
     if worker.get("enabled") and worker.get("scheduler") == "launchd":
         # worker.json travels with a copied notebook; the job it describes runs

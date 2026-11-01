@@ -13,7 +13,9 @@ import subprocess
 import time
 import tomllib
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .files import RemError, atomic_write, maintenance_lock
 from .schedule import Launchd, _checkout_path, label_for
@@ -75,30 +77,35 @@ def recurrence(config: dict) -> str:
 class CodexNative:
     def __init__(self, home=None, *, launcher=None, command=None, run=subprocess.run, wait_seconds=90):
         self.home = Path(home) if home is not None else codex_home()
-        self.launcher = launcher or Launchd()
+        self.launcher = launcher or Launchd(run=run)
         self.command = command
         self.run = run
         self.wait_seconds = wait_seconds
 
+    def _index_rows(self, root: Path) -> list:
+        for name in ("codex.db", "codex-dev.db"):
+            database = self.home / "sqlite" / name
+            if not database.is_file():
+                continue
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2)) as connection:
+                connection.row_factory = sqlite3.Row
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(automations)")}
+                if not columns:
+                    continue
+                needed = set(INDEX_FIELDS)
+                if not needed.issubset(columns):
+                    raise RemError("Unrecognized native automation index; open Codex Scheduled before changing timers")
+                selected = sorted(needed | (columns & {"account_id", "user_id", "installation_id", "legacy_automation_id"}))
+                clause, arguments = "id = ?", [automation_id(root)]
+                if "legacy_automation_id" in columns:
+                    clause += " OR legacy_automation_id = ?"
+                    arguments.append(automation_id(root))
+                return connection.execute("SELECT " + ", ".join(selected) + " FROM automations WHERE " + clause,
+                                          arguments).fetchall()
+        return []
+
     def _indexed(self, root: Path) -> dict:
-        database = self.home / "sqlite" / "codex-dev.db"
-        if not database.is_file():
-            return {}
-        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2)) as connection:
-            connection.row_factory = sqlite3.Row
-            columns = {row["name"] for row in connection.execute("PRAGMA table_info(automations)")}
-            if not columns:
-                return {}
-            needed = set(INDEX_FIELDS)
-            if not needed.issubset(columns):
-                raise RemError("Unrecognized native automation index; open Codex Scheduled before changing timers")
-            selected = sorted(needed | (columns & {"account_id", "user_id", "installation_id", "legacy_automation_id"}))
-            clause, arguments = "id = ?", [automation_id(root)]
-            if "legacy_automation_id" in columns:
-                clause += " OR legacy_automation_id = ?"
-                arguments.append(automation_id(root))
-            rows = connection.execute("SELECT " + ", ".join(selected) + " FROM automations WHERE " + clause,
-                                      arguments).fetchall()
+        rows = self._index_rows(root)
         if len(rows) > 1:
             raise RemError("Multiple native REM registrations exist; resolve them in Codex Scheduled before changing timers")
         if not rows:
@@ -244,9 +251,12 @@ class CodexNative:
             raise RemError("Codex native activation was not confirmed. The task is saved, but its clock "
                            "is not verified. Open Codex Scheduled and run `co rem status`; do not enable "
                            "another timer until this registration is resolved")
+        wake = self.launcher.install_wake(root, config, desktop_app())
         return {"scheduler": "codex-native", "automation_id": definition["id"],
                 "definition": str(self.definition_path(root)), "times": list(config["schedule"]["times"]),
-                "note": "Keep Codex desktop open and this computer awake. Run co rem status to check native registration."}
+                "wake_plist": str(wake),
+                "note": "The wake job opens Codex in the background at each saved time. Keep this computer awake. "
+                        "Run co rem status to check native registration."}
 
     def uninstall(self, root: Path) -> bool:
         account = self._account_task(root)
@@ -258,32 +268,41 @@ class CodexNative:
             raise RemError("Codex still reports an active REM task without its definition; pause it in Scheduled")
         if definition:
             if definition["status"] == "PAUSED" and indexed.get("status") in (None, "PAUSED"):
+                self.launcher.uninstall_wake(root)
                 return True
             definition.update(status="PAUSED", updated_at=int(time.time() * 1000))
             self._write(root, definition)
             if indexed and not self._wait_for_definition(root, definition):
                 raise RemError("Codex native pause was not confirmed. Open Codex Scheduled and pause the REM "
                                "task there before enabling another timer. A running batch may still finish")
-        return bool(definition)
+        removed_wake = self.launcher.uninstall_wake(root)
+        return bool(definition) or removed_wake
 
     def installed(self, root: Path) -> bool:
         return bool(self.definition(root) or self._indexed(root))
 
     def describe(self, root: Path) -> dict:
         definition = self.definition(root)
+        wake = self.launcher.describe_wake(root)
         info = {"scheduler": "codex-native", "automation_id": automation_id(root),
                 "installed": bool(definition), "loaded": False, "active": False,
                 "observed_active": False, "desired_status": definition.get("status"),
-                "storage": "file", "app_running": self._app_running()}
+                "storage": "file", "app_running": self._app_running(),
+                "wake_loaded": wake["loaded"], "wake_installed": wake["installed"]}
         row = self._indexed(root)
+        missed = self._missed_slot(root, row, wake["loaded"])
+        if missed:
+            info["reason"] = missed
         if self._account_record(row):
             return {**info, **{key: row[key] for key in INDEX_FIELDS},
                     "automation_id": row["id"], "installed": True, "loaded": True,
                     "storage": "account", "active": row["status"] == "ACTIVE",
-                    "observed_active": row["status"] == "ACTIVE", "reason": ACCOUNT_STORAGE}
+                    "observed_active": row["status"] == "ACTIVE",
+                    "reason": "; ".join(filter(None, (missed, ACCOUNT_STORAGE)))}
         if not definition:
             return {**info, **row, "installed": bool(row), "observed_active": row.get("status") == "ACTIVE",
-                    **({"reason": "Native REM definition is missing; check this task in Codex Scheduled"} if row else {})}
+                    **({"reason": "; ".join(filter(None, (missed,
+                        "Native REM definition is missing; check this task in Codex Scheduled")))} if row else {})}
         if row:
             info.update({key: row[key] for key in INDEX_FIELDS})
             info["observed_active"] = row["status"] == "ACTIVE"
@@ -292,7 +311,20 @@ class CodexNative:
         from .config import read_config
         config = read_config(root)
         if config["schedule"]["timezone"] != desktop_timezone():
-            info.update(active=False, reason="The notebook timezone differs from this computer; run co rem start to use launchd")
+            reason = "The notebook timezone differs from this computer; run co rem start to use launchd"
+            info.update(active=False, reason="; ".join(filter(None, (missed, reason))))
         elif config.get("runner") != "codex" or recurrence(config) != definition["rrule"]:
-            info.update(active=False, reason="Saved schedule settings changed; run co rem start to apply them")
+            reason = "Saved schedule settings changed; run co rem start to apply them"
+            info.update(active=False, reason="; ".join(filter(None, (missed, reason))))
         return info
+
+    @staticmethod
+    def _missed_slot(root: Path, row: dict, wake_loaded: bool) -> str:
+        next_run = row.get("next_run_at")
+        if row.get("status") != "ACTIVE" or next_run is None or time.time() - next_run / 1000 <= 30 * 60:
+            return ""
+        from .config import read_config
+        zone = ZoneInfo(read_config(root)["schedule"]["timezone"])
+        slot = datetime.fromtimestamp(next_run / 1000, zone).strftime("%H:%M")
+        wake = "wake job loaded" if wake_loaded else "wake job not loaded"
+        return f"Codex missed the {slot} slot; Codex desktop was not running; {wake}"

@@ -178,27 +178,54 @@ class Launchd:
 
     def _install(self, root: Path, config: dict) -> dict:
         from .codex_schedule import CodexNative
-        native = CodexNative()
+        native = CodexNative(launcher=self, run=self.run)
         if native.installed(root):
             native.uninstall(root)
         path = self.plist_path(root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
-        with os.fdopen(fd, "w", encoding="utf-8") as output:
-            output.write(self.render(root, config))
-        os.chmod(name, 0o600)
-        os.replace(name, path)
-        # bootout first so a changed schedule is reloaded rather than ignored.
-        self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
+        self._write_plist(path, self.render(root, config))
         self._remove_legacy(root)  # one job per root, not the old label beside the new
-        if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
-            raise RemError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co rem doctor`")
+        self._load(path)
         from .codex_schedule import app_installed, desktop_timezone
         note = ("The saved timezone differs from Codex's local clock; launchd keeps the saved timezone."
                 if config.get("runner") == "codex" and app_installed()
                 and config["schedule"]["timezone"] != desktop_timezone() else "")
         return {"scheduler": "launchd", "label": label_for(root), "plist": str(path),
                 "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
+    def _write_plist(self, path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(text)
+        os.chmod(name, 0o600)
+        os.replace(name, path)
+
+    def _load(self, path: Path) -> None:
+        # bootout first so a changed schedule is reloaded rather than ignored.
+        self._launchctl("bootout", f"gui/{self.uid}/{path.stem}")
+        if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
+            raise RemError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co rem doctor`")
+
+    def wake_path(self, root: Path) -> Path:
+        return self.agents_dir / f"{label_for(root)}.wake.plist"
+
+    def install_wake(self, root: Path, config: dict, app: Path) -> Path:
+        """Open Codex at the saved local times; only Codex executes REM."""
+        path = self.wake_path(root)
+        times = [dict(zip(("Hour", "Minute"), map(int, value.split(":"))))
+                 for value in config["schedule"]["times"]]
+        job = {"Label": path.stem, "ProgramArguments": ["/usr/bin/open", "-g", "-j", "-a", str(app)],
+               "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
+        self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())
+        self._load(path)
+        return path
+
+    def uninstall_wake(self, root: Path) -> bool:
+        return self._unload(self.wake_path(root))
+
+    def describe_wake(self, root: Path) -> dict:
+        path = self.wake_path(root)
+        return self._describe(path, path.stem)
 
     def unload_for_migration(self, root: Path) -> bool:
         """Keep the plist as ownership/recovery evidence if launchctl cannot unload."""
@@ -218,11 +245,13 @@ class Launchd:
 
     def uninstall(self, root: Path) -> bool:
         root = Path(root).resolve()
-        path = self.plist_path(root)
-        self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
         removed_legacy = self._remove_legacy(root)
+        return self._unload(self.plist_path(root)) or removed_legacy
+
+    def _unload(self, path: Path) -> bool:
+        self._launchctl("bootout", f"gui/{self.uid}/{path.stem}")
         if not path.exists():
-            return removed_legacy
+            return False
         path.unlink()
         return True
 
@@ -236,8 +265,11 @@ class Launchd:
         label = label_for(root)
         if not self.plist_path(root).is_file() and self._legacy(root) is not None:
             label = LABEL  # installed before labels named the root; stop still removes it
-        installed = self.plist_path(root).is_file() or label == LABEL
-        info = {"scheduler": "launchd", "label": label, "installed": installed}
+        path = self.agents_dir / f"{label}.plist"
+        return self._describe(path, label)
+
+    def _describe(self, path: Path, label: str) -> dict:
+        info = {"scheduler": "launchd", "label": label, "installed": path.is_file()}
         result = self.run(["launchctl", "print", f"gui/{self.uid}/{label}"],
                           capture_output=True, text=True, timeout=30)
         info["loaded"] = result.returncode == 0

@@ -1,6 +1,7 @@
 """Native registration, ownership and migration contracts; no real user tasks."""
 
 import json
+import plistlib
 import sqlite3
 import subprocess
 import tomllib
@@ -12,12 +13,13 @@ import yaml
 from connectonion.rem.codex_schedule import CodexNative, automation_id, recurrence
 from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, atomic_write, state_path, write_json
-from connectonion.rem.schedule import Launchd, default_scheduler
+from connectonion.rem.schedule import Launchd, default_scheduler, label_for
 
 
 class Launcher:
     def __init__(self, *, state="waiting", installed=True):
         self.state, self.present, self.removed = state, installed, False
+        self.wake = False
 
     def installed(self, root):
         return self.present
@@ -32,6 +34,17 @@ class Launcher:
     def unload_for_migration(self, root):
         return self.uninstall(root)
 
+    def install_wake(self, root, config, app):
+        self.wake = True
+        return root / "wake.plist"
+
+    def uninstall_wake(self, root):
+        removed, self.wake = self.wake, False
+        return removed
+
+    def describe_wake(self, root):
+        return {"installed": self.wake, "loaded": self.wake}
+
 
 def running(command, **kwargs):
     return subprocess.CompletedProcess(command, 0, stdout="123\n")
@@ -41,6 +54,13 @@ def running(command, **kwargs):
 def known_timezone(monkeypatch):
     monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "Australia/Sydney")
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_timezone", lambda: "Australia/Sydney")
+    initialize = CodexNative.__init__
+
+    def isolated_native(self, *args, **kwargs):
+        kwargs.setdefault("run", running)
+        initialize(self, *args, **kwargs)
+
+    monkeypatch.setattr(CodexNative, "__init__", isolated_native)
 
 
 @pytest.fixture
@@ -52,10 +72,10 @@ def native(tmp_path, monkeypatch):
                        run=running, wait_seconds=0)
 
 
-def adopt(native, root):
+def adopt(native, root, database_name="codex.db"):
     """A private test index, standing in for desktop file adoption."""
     definition = native.definition(root)
-    database = native.home / "sqlite" / "codex-dev.db"
+    database = native.home / "sqlite" / database_name
     database.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE IF NOT EXISTS automations "
@@ -65,6 +85,201 @@ def adopt(native, root):
                            (definition["id"], definition["rrule"], definition["status"],
                             json.dumps(definition["cwds"]), definition["updated_at"],
                             1900000000000 if definition["status"] == "ACTIVE" else None, None))
+
+
+@pytest.mark.parametrize("desktop_table", ["active", "empty", "missing", "absent"])
+def test_desktop_index_is_authoritative_unless_its_table_is_missing(native, tmp_path, desktop_table):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root, "codex-dev.db")
+    database = native.home / "sqlite" / "codex.db"
+    if desktop_table != "absent":
+        with sqlite3.connect(database) as connection:
+            if desktop_table != "missing":
+                connection.execute("ATTACH DATABASE ? AS old", (str(database.with_name("codex-dev.db")),))
+                connection.execute("CREATE TABLE automations AS SELECT * FROM old.automations")
+                connection.execute("UPDATE automations SET next_run_at = 1900000060000")
+                if desktop_table == "empty":
+                    connection.execute("DELETE FROM automations")
+    before = {path: path.read_bytes() for path in database.parent.glob("*.db")}
+    row = native._indexed(root)
+    if desktop_table == "empty":
+        assert row == {}, "a stale dev row must not resurrect a removed desktop task"
+    else:
+        expected = 1900000060000 if desktop_table == "active" else 1900000000000
+        assert row["next_run_at"] == expected
+    assert {path: path.read_bytes() for path in database.parent.glob("*.db")} == before
+
+
+def test_unknown_desktop_schema_is_not_replaced_by_a_stale_dev_index(native, tmp_path):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root, "codex-dev.db")
+    with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
+        connection.execute("CREATE TABLE automations (id TEXT)")
+    with pytest.raises(RemError, match="Unrecognized native automation index"):
+        native._indexed(root)
+
+
+def test_index_connections_are_read_only(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    connect, calls = sqlite3.connect, []
+
+    def read_only(database, **kwargs):
+        calls.append((database, kwargs))
+        return connect(database, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", read_only)
+    assert native._indexed(root)
+    assert all(database.endswith("codex.db?mode=ro") and kwargs["uri"] for database, kwargs in calls)
+
+
+def test_native_runner_is_used_for_wake_job_operations(tmp_path):
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    native = CodexNative(tmp_path / "codex", run=run)
+    native.launcher.install_wake(tmp_path / "notes", default_config(), Path("/Applications/Codex.app"))
+    assert native.launcher.describe_wake(tmp_path / "notes")["loaded"]
+    assert native.launcher.uninstall_wake(tmp_path / "notes")
+    assert {command[1] for command in commands} == {"bootstrap", "bootout", "print"}
+
+
+def test_launchd_migration_uses_its_injected_wake_job_runner(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    monkeypatch.setenv("CODEX_HOME", str(native.home))
+    native._write(root, native.render(root, default_config(), active=False))
+    adopt(native, root)
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    launcher = Launchd(tmp_path / "LaunchAgents", uid=501, run=run, command=["/venv/bin/co"])
+    wake_path = launcher.install_wake(root, default_config(), Path("/Applications/Codex.app"))
+    launcher.install(root, default_config())
+    assert not wake_path.exists()
+    assert ["launchctl", "bootout", f"gui/501/{label_for(root)}.wake"] in commands
+    assert launcher.plist_path(root).is_file()
+
+
+@pytest.mark.parametrize("storage", ["account", "orphan"])
+def test_missed_index_rows_remain_visible_without_a_file_definition(native, tmp_path, storage):
+    root = tmp_path / "notes"
+    if storage == "account":
+        migrate_index(native, root)
+    else:
+        native._write(root, native.render(root, default_config()))
+        adopt(native, root)
+        native.definition_path(root).unlink()
+    with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
+        connection.execute("UPDATE automations SET next_run_at = 1")
+    assert "Codex missed the " in native.describe(root)["reason"]
+
+
+@pytest.mark.parametrize("worker", [{}, {"enabled": False, "scheduler": "codex-native"}])
+def test_pending_worker_registration_keeps_the_missed_slot_diagnosis(native, tmp_path, monkeypatch, worker):
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.service import _state_line
+    from connectonion.cli.commands.rem_status import status_next
+    root = tmp_path / "notes"
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
+        connection.execute("UPDATE automations SET next_run_at = 1")
+    info = native.describe(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), worker)
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)
+    monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
+    text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert "Codex missed the " in text
+    assert status_next({"configured": True, "state": text, "next_run": slot}) == (["stop"] if worker else ["start"])
+
+
+def test_native_install_saves_only_a_background_desktop_wake_job(native, tmp_path, monkeypatch):
+    root = tmp_path / "notes"
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, int(command[1] == "print"), stdout="")
+
+    native.launcher = Launchd(tmp_path / "LaunchAgents", uid=501, run=run)
+    write = native._write
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    monkeypatch.setattr(native, "_write", desktop_write)
+    config = default_config()
+    config["schedule"]["times"] = ["03:15", "17:45"]
+    native.install(root, config)
+    path = tmp_path / "LaunchAgents" / f"{label_for(root)}.wake.plist"
+    assert path.is_file(), "native tasks need a launchd job to reopen a closed desktop"
+    job = plistlib.loads(path.read_bytes())
+    assert job["Label"] == label_for(root) + ".wake"
+    assert job["ProgramArguments"] == ["/usr/bin/open", "-g", "-j", "-a", "/Applications/Codex.app"]
+    assert job["StartCalendarInterval"] == [{"Hour": 3, "Minute": 15}, {"Hour": 17, "Minute": 45}]
+    assert not job.get("RunAtLoad") and "StartInterval" not in job
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert ["launchctl", "bootstrap", "gui/501", str(path)] in commands
+    assert not native.launcher.plist_path(root).exists()
+    config["schedule"]["times"] = ["12:34"]
+    native.install(root, config)
+    assert plistlib.loads(path.read_bytes())["StartCalendarInterval"] == [{"Hour": 12, "Minute": 34}]
+    assert len(list(path.parent.glob("*.plist"))) == 1
+    assert native.uninstall(root)
+    assert not path.exists()
+    assert ["launchctl", "bootout", f"gui/501/{label_for(root)}.wake"] in commands
+
+
+@pytest.mark.parametrize("app_running", [False, True])
+@pytest.mark.parametrize("wake_loaded", [False, True])
+@pytest.mark.parametrize("late_minutes", [30, 31])
+def test_missed_slot_is_visible_in_describe_and_status(
+        native, tmp_path, monkeypatch, app_running, wake_loaded, late_minutes):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from connectonion.rem.service import _state_line
+    from connectonion.cli.commands.rem_status import _header, status_next
+
+    root = tmp_path / "notes"
+    slot = datetime.fromisoformat("2026-10-30T17:00:00+11:00")
+    current = slot + timedelta(minutes=late_minutes)
+    monkeypatch.setattr("connectonion.rem.codex_schedule.time.time", lambda: current.timestamp())
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: current)
+    monkeypatch.setattr(native, "_app_running", lambda: app_running)
+    native.launcher = Launchd(tmp_path / "LaunchAgents", run=lambda command, **kw:
+                              subprocess.CompletedProcess(command, 0 if wake_loaded else 1, stdout=""))
+    native._write(root, native.render(root, default_config()))
+    adopt(native, root)
+    with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
+        connection.execute("UPDATE automations SET next_run_at = ?", (int(slot.timestamp() * 1000),))
+    info = native.describe(root)
+    assert info["wake_loaded"] is wake_loaded
+    missed = "Codex missed the 17:00 slot; Codex desktop was not running"
+    if late_minutes == 30:
+        assert missed not in info.get("reason", "")
+        return
+    assert missed in info["reason"]
+    assert ("wake job loaded" if wake_loaded else "wake job not loaded") in info["reason"]
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "codex-native"})
+    monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
+    text, next_run = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
+    assert missed in text
+    value = {"configured": True, "state": text, "next_run": next_run}
+    assert "Codex missed the 17:00 slot" in "\n".join(_header(value, "co rem"))
+    assert status_next(value) == ["start"]
 
 
 def test_exact_time_pairs_are_selected_without_extra_slots():
@@ -221,7 +436,7 @@ def test_active_registration_without_a_next_run_is_not_an_armed_timer(native, tm
     def no_next_run(root, data):
         write(root, data)
         adopt(native, root)
-        with sqlite3.connect(native.home / "sqlite" / "codex-dev.db") as connection:
+        with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
             connection.execute("UPDATE automations SET next_run_at = NULL")
 
     monkeypatch.setattr(native, "_write", no_next_run)
@@ -244,7 +459,7 @@ def test_pause_cannot_report_success_while_desktop_still_observes_active(native,
 def migrate_index(native, root, *, status="ACTIVE"):
     native._write(root, native.render(root, default_config()))
     adopt(native, root)
-    database = native.home / "sqlite" / "codex-dev.db"
+    database = native.home / "sqlite" / "codex.db"
     with sqlite3.connect(database) as connection:
         connection.execute("ALTER TABLE automations ADD COLUMN legacy_automation_id TEXT")
         connection.execute("ALTER TABLE automations ADD COLUMN account_id TEXT")
@@ -383,7 +598,7 @@ def test_changed_registration_during_scheduled_open_keeps_previous_clock(native,
             changed["updated_at"] += 1
             write(root, changed)
         else:
-            with sqlite3.connect(native.home / "sqlite" / "codex-dev.db") as connection:
+            with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
                 connection.execute("UPDATE automations SET updated_at = updated_at + 1")
 
     monkeypatch.setattr(native, "_write", desktop_write)
@@ -593,7 +808,8 @@ def test_dst_slot_is_never_in_the_future_and_repeated_hour_is_served_once(moment
 @pytest.mark.parametrize("state,fragment", [({}, "waiting for Codex"),
     ({"app_running": False}, "open Codex desktop"),
     ({"loaded": True, "active": True, "next_run_at": 1900000000000}, "first execution not yet verified"),
-    ({"loaded": True, "active": True, "next_run_at": 1}, "has not triggered")])
+    ({"loaded": True, "active": True, "next_run_at": 1,
+      "reason": "Codex missed the 17:00 slot; Codex desktop was not running; wake job loaded"}, "missed the 17:00 slot")])
 def test_status_distinguishes_saved_registered_and_triggered(tmp_path, monkeypatch, state, fragment):
     from connectonion.rem.service import _state_line
     from zoneinfo import ZoneInfo
