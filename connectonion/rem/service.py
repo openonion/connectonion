@@ -146,6 +146,38 @@ def approve_sources(root: Path) -> None:
                                                       "summary": summary_fingerprint(root)})
 
 
+def waiting_coding_session_sources(root: Path) -> list[tuple[str, dict]]:
+    """Enabled coding-session sources with a real folder that still need consent (#2443).
+
+    Map metadata used to walk these folders while `consented` was still False.
+    Callers ask before scanning, then `approve_coding_session_sources`.
+    """
+    out = []
+    for name, source in subscriptions(root).items():
+        if (source.get("enabled") and not source.get("consented")
+                and source.get("kind") in KINDS
+                and Path(source.get("root", "")).is_dir()):
+            out.append((name, source))
+    return out
+
+
+def approve_coding_session_sources(root: Path, names: list[str]) -> None:
+    """Mark named coding-session sources as consented without installing the schedule (#2443).
+
+    Unlike `approve_sources`, this does not write `consent.json`: nightly upkeep
+    and mail still go through `co rem start` so the schedule summary is shown.
+    """
+    wanted = set(names)
+    with maintenance_lock(root):
+        prepare(root)
+        sources = subscriptions(root)
+        for name in wanted:
+            source = sources.get(name)
+            if source and source.get("kind") in KINDS and source.get("enabled"):
+                source["consented"] = True
+        write_json(state_path(root, "subscriptions.json"), sources)
+
+
 def summary_fingerprint(root: Path) -> str:
     """What the user agreed to, as one value: every line the consent summary shows.
 
