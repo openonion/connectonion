@@ -57,9 +57,20 @@ def cached(root: Path, record: str, language: str) -> str | None:
         return None
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
-    if not match or match.group(2) != digest(Notebook(root).read(record)):
+    original = Notebook(root).read(record)
+    if not match or match.group(1) != record or match.group(2) != digest(original):
         return None
-    return saved[match.end():]
+    translation = saved[match.end():]
+    if _reader_sources(translation) != _reader_sources(original):
+        return None
+    return translation
+
+
+def _reader_sources(text: str) -> str:
+    # Match reader.html rawSection, including comments and nonstandard headings.
+    text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    match = re.search(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
+    return match.group(1).strip() if match else ""
 
 
 def cached_languages(root: Path, record: str) -> dict[str, str]:
