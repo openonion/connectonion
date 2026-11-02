@@ -384,3 +384,36 @@ def test_a_connection_that_stays_down_or_an_auth_error_still_fails(monkeypatch):
     with pytest.raises(PermissionError):
         rem_mail._list_all(Denied(), datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 9, 8, tzinfo=timezone.utc))
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("gone", ["gmail", "outlook"])
+def test_a_message_deleted_from_the_mailbox_leaves_the_queue_instead_of_blocking_it(gone):
+    """A queued mail deleted before its turn answered 404 on every sync and the
+    whole mailbox stopped being read; it now leaves the queue and the rest are read."""
+    from googleapiclient.errors import HttpError
+    from connectonion.provider_credentials import ProviderCredentialError
+
+    class Deleted(FakeMail):
+        def get_email_body(self, email_id):
+            if email_id == "m1":
+                if gone == "gmail":
+                    raise HttpError(SimpleNamespace(status=404, reason="Not Found"), b"{}")
+                raise ProviderCredentialError("provider_unavailable", "Microsoft Graph API error (HTTP 404).",
+                                              "co outlook inbox", status=404)
+            return super().get_email_body(email_id)
+
+    client = Deleted([mail(1, "2026-09-02T09:00:00+00:00"), mail(2, "2026-09-03T09:00:00+00:00")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW)
+    assert references(batch) == ["outlook:m2"]
+    assert all(row["id"] != "m1" for rows in batch.progress["pending"].values() for row in rows)
+
+
+def test_a_mailbox_error_other_than_a_deleted_message_still_fails_the_read():
+    from googleapiclient.errors import HttpError
+
+    class Down(FakeMail):
+        def get_email_body(self, email_id):
+            raise HttpError(SimpleNamespace(status=503, reason="Backend Error"), b"{}")
+
+    with pytest.raises(HttpError):
+        collect_mail(subscription(), {}, 10, 100000, Down([mail(1, "2026-09-02T09:00:00+00:00")]), now=NOW)

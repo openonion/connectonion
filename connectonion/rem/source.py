@@ -93,6 +93,7 @@ class Batch:
     skipped: int = 0        # user-slot messages not read: the client's own machinery
     unrecognised: int = 0   # of those, ones whose shape we do not know -- the alarm
     changed_files: list[str] = field(default_factory=list)  # skipped, with their old checkpoints intact
+    dropped_missing: int = 0  # queued mail that the provider now reports as missing
 
     @property
     def unreadable(self) -> bool:

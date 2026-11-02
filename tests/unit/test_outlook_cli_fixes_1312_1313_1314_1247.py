@@ -48,6 +48,7 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_CONFIG_PATH", str(home / ".co"))
     monkeypatch.delenv("OPENONION_API_KEY", raising=False)
     monkeypatch.setattr(outlook_commands, "INBOX_CACHE", home / "outlook_last_inbox.json")
+    monkeypatch.setattr(outlook_commands, "LISTINGS", home / "outlook-listings")
     return home
 
 

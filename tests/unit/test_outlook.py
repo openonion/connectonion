@@ -1830,7 +1830,8 @@ def test_person_search_preserves_provider_threads_and_named_recipients(monkeypat
          'subject': 'Scope', 'receivedDateTime': '2026-05-02T10:00:00Z'},
     ]
 
-    def graph(method, endpoint, params=None):
+    def graph(method, endpoint, params=None, headers=None):
+        assert headers == {"Prefer": 'IdType="ImmutableId"'}
         requests.append(params)
         return {'value': messages}
 
