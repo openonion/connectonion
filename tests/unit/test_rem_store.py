@@ -212,6 +212,22 @@ def test_stale_session_line_never_returns_another_messages_body(tmp_path):
     assert cited_conversations(root, context) == {}
 
 
+def test_citing_many_lines_of_one_session_reads_its_file_once(tmp_path, monkeypatch):
+    """The reader cites thousands of session lines; each re-read the whole project JSONL (91s on a real notebook)."""
+    from pathlib import Path
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    path = state_path(root, 'projects/atlas/messages.jsonl')
+    _jsonl(path, [{'source': f'codex:s1:{n}', 'text': f'input {n}', 'tool': 'codex'} for n in range(1, 41)])
+    store.refresh(root)
+    reads, original = [], Path.read_text
+    monkeypatch.setattr(Path, 'read_text', lambda self, *a, **k: reads.append(self) or original(self, *a, **k))
+    context = cited_context(root, [{'text': '\n'.join(f'- [{n}] codex:s1:{n}' for n in range(1, 41))}])
+    assert context['codex:s1:40']['excerpt'] == 'input 40'
+    assert reads.count(path) == 1
+
+
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
