@@ -628,6 +628,11 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
+- **Candidate correction for Related pages (#2624):** repeated snippets may be
+  compacted only when their text, origin page, citation IDs, privacy state and
+  original/translated state match. A destination page's introduction is never
+  substituted under another page's source labels. Qualified or distinct evidence
+  stays visible. This is pending review/publication, not behavior claimed for rc12.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
   recorded decision when supported. A project opens on its current supported

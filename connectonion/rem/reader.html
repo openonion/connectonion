@@ -5182,21 +5182,19 @@ function relationDisclosure(links, label, className = "", currentPath = "") {
     el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(link => relationCard(link, currentPath)))]) : null;
 }
 function dedupeRelationSnippets(links) {
-  const seen = [], normal = text => String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
-  const duplicate = text => text && seen.some(shown => shown.includes(text) || text.includes(shown));
+  const seen = new Set();
   return links.map(link => {
-    let basis = link.basis || "", original = link.original;
-    if (duplicate(normal(basis))) {
-      const page = byPath(link.path), k = known(page);
-      const own = k.intro || facts(page).role || k.summary;
-      original = uiLanguage !== "en" && !page.translations?.[uiLanguage];
-      basis = hasPrivacy(own) ? "" : plainLine(own).split(/(?<=[.!?])\s|(?<=[。！？])\s*/)[0].slice(0, 160);
-      if (duplicate(normal(basis))) basis = "";
-    }
-    if (normal(basis)) seen.push(normal(basis));
-    return { ...link, basis, original };
+    const basis = String(link.basis || "").replace(/\s+/g, " ").trim();
+    // A repeated excerpt may be hidden, never replaced by another page's claim.
+    // Different origins, citations, privacy and translation states remain visible.
+    const privateBasis = !!link.private || hasPrivacy(link.basis || "");
+    const key = JSON.stringify([link.via, link.sources || [], privateBasis, !!link.original, basis]);
+    const duplicate = basis && seen.has(key);
+    if (basis) seen.add(key);
+    return { ...link, private: privateBasis, basis: duplicate ? "" : link.basis };
   });
 }
+
 function connectedContext(r) {
   const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
     && !(r.category === "projects" && byPath(link.path).category === "sessions")).map(link => localizedRelation(link, r.path));
