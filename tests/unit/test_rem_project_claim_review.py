@@ -35,7 +35,8 @@ def test_truncated_original_is_shown_with_its_limit(tmp_path, monkeypatch):
     assert material['sources'][0]['context']['excerpt'] == 'A question about filtering'
 
 
-def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
+@pytest.mark.parametrize('role', ['original_evidence', 'evidence-index'])
+def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path, role):
     prepare(tmp_path)
     session = 'codex:session:5121301'
     origin, body = 'git:main:README.md', 'The source states the project goal.'
@@ -51,11 +52,68 @@ def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
                  '- [2] ' + repository + ' — 2026-10-01\n')
     notebook = Notebook(tmp_path)
     assert project_claim_review.packet(notebook, candidate)[1] == ['1', '2']
-    project_claim_review.retain_cited_originals(notebook, candidate,
-        [{'role': 'original_evidence', 'file': str(file)}])
+    items = [{'role': role, 'originals' if role == 'evidence-index' else 'file': str(file)}]
+    project_claim_review.retain_cited_originals(notebook, candidate, items)
     material, missing = project_claim_review.packet(notebook, candidate)
     assert missing == []
     assert {row['source_id'] for row in material['sources']} == {session, repository}
+
+
+def test_packet_reads_indexed_originals_before_retention(tmp_path):
+    from connectonion.rem.evidence import write_evidence
+
+    source = 'codex:session-atlas:42'
+    body = 'Use example.com for the Atlas demo.'
+    laid_out = write_evidence(tmp_path / 'evidence', [{'role': 'user', 'source': source, 'text': body}])
+    items = [{'role': 'evidence-index', 'source': 'investigation:evidence',
+              'text': 'An index is not an original.', 'originals': str(laid_out['originals'])}]
+    candidate = f'# Atlas\n\nThe user requested a demo [1].\n\n## Sources\n- [1] {source}\n'
+
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == [] and material['unretained_citations'] == []
+    assert material['sources'][0]['context']['excerpt'] == body
+
+
+@pytest.mark.parametrize('body', ['', '   '])
+def test_handed_original_without_text_is_unverified_not_refuted(tmp_path, body):
+    candidate = '# Atlas\n\nThe user requested a demo [1].\n\n## Sources\n- [1] codex:session-atlas:42\n'
+    items = [{'role': 'user', 'source': 'codex:session-atlas:42', 'text': body}]
+
+    def should_not_run(*args):
+        pytest.fail('An unreadable handed original is an infrastructure gap')
+
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == [] and material['sources'] == []
+    assert material['unretained_citations'] == ['1']
+    assert material['unverified_lines'] == ['The user requested a demo [1].']
+    report, usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run,
+                                               items=items)
+    assert report['verdict'] == 'insufficient' and report['findings'] == []
+    assert report['reason'] == ('Cited originals were handed to the investigation but not retained; '
+                                'lines unverified, not refuted')
+    assert report['missing_citations'] == [] and report['unretained_citations'] == ['1']
+    assert report['unverified_lines'] == material['unverified_lines'] and usage == {}
+
+
+def test_packet_separates_unretained_missing_and_readable_citations(tmp_path):
+    candidate = ('# Atlas\n\nUnreadable [1].\nMixed [1][2].\nNever handed [3].\n\n## Sources\n'
+                 '- [1] codex:session-atlas:1\n- [2] codex:session-atlas:2\n- [3] codex:session-atlas:3\n')
+    items = [{'source': 'codex:session-atlas:1', 'text': ''},
+             {'source': 'codex:session-atlas:2', 'text': 'Atlas demo requested.'}]
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == ['3']
+    assert material['unretained_citations'] == ['1']
+    assert material['unverified_lines'] == ['Unreadable [1].']
+    assert [row['citation'] for row in material['sources']] == ['2']
+
+
+def test_evidence_wrappers_do_not_count_as_originals(tmp_path):
+    items = [{'role': role, 'source': f'investigation:{role}', 'text': 'Index text'}
+             for role in ('original_evidence', 'evidence-index')]
+    file = tmp_path / 'originals.json'
+    file.write_text('[]')
+    items[0]['file'] = str(file)
+    assert project_claim_review.original_items(items) == []
 
 
 def test_audit_keeps_all_cited_originals_when_several_source_files_are_long(tmp_path):
@@ -195,7 +253,7 @@ def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
 
 @pytest.mark.parametrize('claim,carried_claim', [
     ('Last contact: 2026-10-17', 'Last contact: 2026-10-17 [3]'),
-    ('Avery [3] leads\n the lab.', 'Avery\t leads [W2] the lab.'),
+    ('Avery [3] leads\n the lab.', 'Avery [W2]\t leads the lab.'),
 ])
 def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, carried_claim):
     finding = {'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
@@ -203,10 +261,10 @@ def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, c
     def audited(*_args):
         return {'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})}
 
-    candidate = '# Avery\n\n' + claim + '\n\n## Sources\n- [1] gmail:invented\n'
+    candidate = '# Avery\n\n' + claim + ('' if '[3]' in claim else ' [1]') + '\n\n## Sources\n- [1] gmail:invented\n- [3] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried='# Avery\n\n' + carried_claim, items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
-    assert report['findings'] == [] and report['verdict'] == 'pass'
+        carried='# Avery\n\n' + carried_claim + '\n\n## Sources\n- [3] gmail:invented\n- [W2] gmail:invented\n', items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+    assert report['findings'] == [] and report['verdict'] == 'insufficient'
     assert report['carried_findings'] == [finding]
 
 
@@ -220,7 +278,7 @@ def test_carried_findings_do_not_hide_a_new_claim(tmp_path):
 
     candidate = '# Avery\n\n' + '\n'.join(claims) + '\n\n## Sources\n- [1] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried=claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+        carried='# Avery\n\n' + claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
     assert report['verdict'] == 'fail' and report['findings'] == findings[1:]
     assert report['carried_findings'] == findings[:1]
 

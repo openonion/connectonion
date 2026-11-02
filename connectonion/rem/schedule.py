@@ -1,4 +1,7 @@
-"""Background maintenance rides the OS scheduler; there is no daemon of our own.
+"""Background maintenance uses Codex Scheduled or the OS; no REM timer daemon.
+
+Codex notebooks use the desktop's native file scheduler when the application
+is installed on macOS. Other runners and headless Macs retain launchd.
 
 `co rem daily` uses sync's lock, attempt cap and incremental
 checkpoint, so the only thing the background needs is something that survives a
@@ -29,6 +32,8 @@ interval elapses is skipped silently -- harmless here, the next tick catches up.
 import hashlib
 import os
 import plistlib
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -68,6 +73,20 @@ def _checkout_path() -> str:
     import connectonion
     checkout = Path(connectonion.__file__).resolve().parent.parent
     return "" if {"site-packages", "dist-packages"} & set(checkout.parts) else str(checkout)
+
+
+def wake_command(app: Path) -> list[str]:
+    """Open Codex only when it is closed.
+
+    Opening an app that is already running sends it a reopen event, which can
+    bring up a window in the middle of whatever the user is doing. The pattern
+    is anchored so it matches Codex's own executable, not this shell.
+    """
+    # pgrep reads POSIX extended regex: re.escape's "\-" and "\ " are not valid there.
+    literal = re.sub(r"([.\[\]()*+?{}|^$\\])", r"\\\1", str(app))
+    running = shlex.quote("^" + literal + "/Contents/MacOS/")
+    return ["/bin/sh", "-c",
+            f"/usr/bin/pgrep -qf {running} || /usr/bin/open -g -j -a {shlex.quote(str(app))}"]
 
 
 class Launchd:
@@ -168,29 +187,87 @@ class Launchd:
         return result.returncode == 0
 
     def install(self, root: Path, config: dict) -> dict:
+        from .files import maintenance_lock
         root = Path(root).resolve()
+        with maintenance_lock(root):
+            return self._install(root, config)
+
+    def _install(self, root: Path, config: dict) -> dict:
+        from .codex_schedule import CodexNative
+        native = CodexNative(launcher=self, run=self.run)
+        if native.installed(root):
+            native.uninstall(root)
         path = self.plist_path(root)
+        self._write_plist(path, self.render(root, config))
+        self._remove_legacy(root)  # one job per root, not the old label beside the new
+        self._load(path)
+        from .codex_schedule import app_installed, desktop_timezone
+        note = ("The saved timezone differs from Codex's local clock; launchd keeps the saved timezone."
+                if config.get("runner") == "codex" and app_installed()
+                and config["schedule"]["timezone"] != desktop_timezone() else "")
+        return {"scheduler": "launchd", "label": label_for(root), "plist": str(path),
+                "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
+    def _write_plist(self, path: Path, text: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as output:
-            output.write(self.render(root, config))
+            output.write(text)
         os.chmod(name, 0o600)
         os.replace(name, path)
+
+    def _load(self, path: Path) -> None:
         # bootout first so a changed schedule is reloaded rather than ignored.
-        self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
-        self._remove_legacy(root)  # one job per root, not the old label beside the new
+        self._launchctl("bootout", f"gui/{self.uid}/{path.stem}")
         if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
             raise RemError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co rem doctor`")
-        return {"scheduler": "launchd", "label": label_for(root), "plist": str(path),
-                "times": list(config["schedule"]["times"])}
+
+    def wake_path(self, root: Path) -> Path:
+        return self.agents_dir / f"{label_for(root)}.wake.plist"
+
+    def install_wake(self, root: Path, config: dict, app: Path) -> Path:
+        """Open Codex at the saved local times; only Codex executes REM."""
+        path = self.wake_path(root)
+        times = [dict(zip(("Hour", "Minute"), map(int, value.split(":"))))
+                 for value in config["schedule"]["times"]]
+        job = {"Label": path.stem, "ProgramArguments": wake_command(app),
+               "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
+        self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())
+        self._load(path)
+        return path
+
+    def uninstall_wake(self, root: Path) -> bool:
+        return self._unload(self.wake_path(root))
+
+    def describe_wake(self, root: Path) -> dict:
+        path = self.wake_path(root)
+        return self._describe(path, path.stem)
+
+    def unload_for_migration(self, root: Path) -> bool:
+        """Keep the plist as ownership/recovery evidence if launchctl cannot unload."""
+        path = self.plist_path(root)
+        if path.is_file():
+            arguments = plistlib.loads(path.read_bytes()).get("ProgramArguments") or []
+            roots = [arguments[i + 1] for i, item in enumerate(arguments[:-1]) if item == "--root"]
+            if path.is_symlink() or roots != [str(Path(root).resolve())]:
+                raise RemError("The existing launchd definition belongs to another notebook; nothing was unloaded")
+        info = self.describe(root)
+        if info.get("loaded"):
+            self._launchctl("bootout", f"gui/{self.uid}/{info['label']}")
+            if self.describe(root).get("loaded"):
+                return False
+        self.uninstall(root)
+        return True
 
     def uninstall(self, root: Path) -> bool:
         root = Path(root).resolve()
-        path = self.plist_path(root)
-        self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
         removed_legacy = self._remove_legacy(root)
+        return self._unload(self.plist_path(root)) or removed_legacy
+
+    def _unload(self, path: Path) -> bool:
+        self._launchctl("bootout", f"gui/{self.uid}/{path.stem}")
         if not path.exists():
-            return removed_legacy
+            return False
         path.unlink()
         return True
 
@@ -204,8 +281,11 @@ class Launchd:
         label = label_for(root)
         if not self.plist_path(root).is_file() and self._legacy(root) is not None:
             label = LABEL  # installed before labels named the root; stop still removes it
-        installed = self.plist_path(root).is_file() or label == LABEL
-        info = {"scheduler": "launchd", "label": label, "installed": installed}
+        path = self.agents_dir / f"{label}.plist"
+        return self._describe(path, label)
+
+    def _describe(self, path: Path, label: str) -> dict:
+        info = {"scheduler": "launchd", "label": label, "installed": path.is_file()}
         result = self.run(["launchctl", "print", f"gui/{self.uid}/{label}"],
                           capture_output=True, text=True, timeout=30)
         info["loaded"] = result.returncode == 0
@@ -237,5 +317,23 @@ class Unsupported:
         return {"scheduler": "none", "installed": False}
 
 
-def default_scheduler():
-    return Launchd() if sys.platform == "darwin" else Unsupported()
+def default_scheduler(root=None, *, for_start=False):
+    if sys.platform != "darwin":
+        return Unsupported()
+    if root is not None:
+        from .codex_schedule import CodexNative, app_installed, desktop_timezone
+        from .config import read_config
+        native = CodexNative()
+        if not for_start:
+            if native.installed(root) and (native.definition(root).get("status") == "ACTIVE"
+                                           or native.describe(root).get("observed_active")):
+                return native
+            if Launchd().installed(root):
+                return Launchd()
+            if native.installed(root):
+                return native
+        config = read_config(root)
+        if (config.get("runner") == "codex" and app_installed()
+                and config["schedule"]["timezone"] == desktop_timezone()):
+            return native
+    return Launchd()

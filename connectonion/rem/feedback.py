@@ -69,7 +69,7 @@ def _remaining(progress: dict, item: dict) -> list[str]:
     return [page for page in targets(item) if done.get(page, {}).get("outcome") not in TERMINAL]
 
 
-def plan(root: Path, progress: dict) -> tuple[list[dict], list[dict]]:
+def plan(root: Path, progress: dict, *, retry_pages=()) -> tuple[list[dict], list[dict]]:
     """Pending immutable events, eligible pages and explicit deferral reasons."""
     from .refusals import due_for_retry, refused_pages
 
@@ -94,7 +94,7 @@ def plan(root: Path, progress: dict) -> tuple[list[dict], list[dict]]:
                       item["role"] == "reflection" and hashlib.sha256(page.encode()).hexdigest() in unresolved
                       and item["source"] not in progress.get(RECEIPTS, {}) else
                       "Same feedback awaits refusal retry eligibility" if
-                      same_revision(held, item) and page not in due else "")
+                      same_revision(held, item) and page not in due and page not in retry_pages else "")
             if reason:
                 deferred.append({"source": item["source"], "record": page, "reason": reason})
             else:

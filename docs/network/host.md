@@ -162,6 +162,15 @@ def host(
 Upload limits (`max_file_size`, `max_files_per_request`) are `.co/host.yaml`
 keys, not parameters. See [host-config.md](host-config.md).
 
+The Host starts the handoff watcher only when its resolved `co_dir` equals
+the configured handoff directory (`$AGENT_CONFIG_PATH`, normally `~/.co`).
+A separate project Host does not inherit the operator's global pending
+handoffs or their automatic notification and reply behavior. This does not
+add a project handoff queue or change the owner's CLI watcher. Historical
+handoff state is retained; changing Host ownership must not replay it.
+The owner can still explicitly inspect global handoffs through the existing
+`co handoff status` command.
+
 ---
 
 ## How It Works

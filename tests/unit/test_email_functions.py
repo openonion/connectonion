@@ -635,3 +635,27 @@ def test_is_email_active_not_set(monkeypatch):
     monkeypatch.delenv("IS_EMAIL_ACTIVE", raising=False)
     active = is_email_active()
     assert active is False
+
+@pytest.mark.parametrize('budget',['nan','inf','-1','1.1','0.000000001',True,None])
+def test_invalid_send_budget_refuses_before_auth_or_network(budget):
+    with patch.object(send_email_module,'require_ambient_api_key') as auth,patch('requests.post') as post:
+        result=send_email('to@example.com','Subject','Body',max_cost_usd=budget)
+    assert result['code']=='invalid_send_budget'
+    auth.assert_not_called();post.assert_not_called()
+
+@patch.dict('os.environ',{'OPENONION_API_KEY':TEST_JWT_TOKEN,'AGENT_EMAIL':TEST_ACCOUNT['email']})
+@patch('requests.post')
+def test_payg_budget_exact_and_paid_receipt_preserved(post):
+    response=MagicMock(status_code=200);response.json.return_value={'message_id':'paid-id','charged_usd':'0.00300000'};post.return_value=response
+    result=send_email('to@example.com','Subject','Body',idempotency_key='paid-key',max_cost_usd='0.003')
+    assert post.call_args.kwargs['json']['max_cost_usd']=='0.00300000'
+    assert post.call_args.kwargs['headers']['Idempotency-Key']=='paid-key'
+    assert result['charged_usd']=='0.00300000'
+
+@patch.dict('os.environ',{'OPENONION_API_KEY':TEST_JWT_TOKEN,'AGENT_EMAIL':TEST_ACCOUNT['email']})
+@patch('requests.post')
+def test_payg_refusal_keeps_price_and_safe_dispatch_state(post):
+    response=MagicMock(status_code=402);response.json.return_value={'error':{'code':'email_payment_required','message':'Review price','dispatched':False,'billing':{'next_send_cost_usd':'0.00300000'},'retryable':False},'idempotency_key':'saved-key'};post.return_value=response
+    result=send_email('to@example.com','Subject','Body',idempotency_key='saved-key')
+    assert result['code']=='email_payment_required' and result['dispatched'] is False
+    assert result['billing']['next_send_cost_usd']=='0.00300000'

@@ -58,8 +58,8 @@ Ask from several angles:
 - **The page itself**: which sentence would mislead the user if they acted on
   it today? Which open thread is actually closed? Is another page the same
   person or project (same name, an address or handle that the material ties to
-  them)? Is each current `Insight` bullet, and the lead, still true and still
-  the most important thing — or left over from an earlier, thinner page?
+  them)? A current `Insight` bullet that a newer original contradicts is a
+  question; one that is merely re-provable is not.
 
 Then **choose the five** most worth pursuing: the ones whose answer would most
 change what the user understands or does, and that the originals can plausibly
@@ -69,6 +69,8 @@ settle.
 - At least three of the five are about the subject and the user — stakes,
   change, pattern, silence — not about one document's details.
 - No two chosen questions come from the same thread.
+- Do not choose a question an existing Insight bullet or the page already answers;
+  for each chosen question name the existing bullet it goes beyond, or "none covers this".
 
 Reply with all questions, the five marked and why each was chosen:
 
@@ -81,6 +83,9 @@ Reply with all questions, the five marked and why each was chosen:
 
 ## Turns 2–6 — study one question each
 
+Never edit an existing Insight bullet. A finding is a NEW bullet. If it supersedes
+an old bullet, say which in your reply; the reviewer decides.
+
 Each turn takes the next chosen question. Reread the originals that bear on it,
 search the notebook's archives if a record you need is named there, and think.
 Decide one of:
@@ -89,8 +94,9 @@ Decide one of:
   single message and that changes what they believe or do: a stake, a turn, a
   pattern, a contradiction, a thread that is really closed, a sentence on the
   page that is wrong. Test it before you call it one: if a single message
-  says it, or the page already says it, it is not an insight. Your reply
-  names the two or more sources it needed. Strike every citation but one:
+  says it, or the page already says it, it is not an insight.
+  Your reply names the two originals the insight connects ([a] and [b]) and
+  what each contributes; the bullet cites both. Strike every citation but one:
   if the claim still stands, it is that one message's summary, not an
   insight — each source must add a fact the others lack. **Only now edit the page**: put it, cited, in the right
   place (`Insight` as `At stake:`/`Changed:`/`Pattern:`, a turn in `History`,
@@ -122,10 +128,10 @@ lead's next step or in `Open threads`. Not `At stake: confirm the renewal
 before 30 November`, but `At stake: the contract renews at A$15k on
 2026-11-30 unless one side gives notice, and neither has [4][9]`. It never
 starts with or contains `Inference:` — if it needs that label it is not
-ready. `Insight` keeps at most four bullets, so a new one
-replaces the weakest (move that one's fact, quotes and citations where they
-belong). An insight adds a sentence or two, not a
-paragraph of supporting quotes. The owner is `the user`, never their name.
+ready. `Insight` keeps at most four bullets; propose which weakest bullet a
+new one supersedes, and leave replacement to the reviewer (move that one's
+fact, quotes and citations where they belong only after review). An insight
+adds a sentence or two, not a paragraph of supporting quotes. The owner is `the user`, never their name.
 A `Pattern:` names a recurrence and what it causes, not a dated list of
 requests. `Changed:` needs the same subject with a before and an after;
 two kinds of content handled differently is not a change. A new bullet
@@ -157,7 +163,8 @@ verdict: insight | no insight | open
 ## Last turn — look back
 
 Only if the page was edited this run: reread it top to bottom and remove what
-the new insights made superseded or said twice.
+the new insights made superseded or said twice, leaving existing Insight
+bullets to the reviewer.
 
 Then check the lead against every insight this run added and every `Insight`
 bullet. Ask of each: does it change who they are to the user, what is live,

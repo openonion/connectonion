@@ -12,8 +12,7 @@ from connectonion.rem.source import collect, pending_metadata
 
 def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs", session=""):
     # The session id defaults to the file's own name: an item is identified by
-    # kind:session:offset, so two fixtures sharing an id look like one session
-    # written twice and the second is deduplicated away.
+    # kind:session:offset-hash; copied messages at the same offset deduplicate.
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [{"type": "session_meta", "payload": {
         "id": session or path.stem, "cwd": project, "originator": originator}}]

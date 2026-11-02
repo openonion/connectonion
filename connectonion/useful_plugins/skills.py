@@ -152,6 +152,8 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     Returns:
         List of Path objects in priority order
     """
+    from ..environment import global_config_dir
+
     paths = []
     home = Path.home()
 
@@ -162,7 +164,7 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     paths.append(project_root() / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
     # 3. User-level ConnectOnion: ~/.co/skills/skill-name/SKILL.md
-    paths.append(home / '.co' / 'skills' / skill_name / 'SKILL.md')
+    paths.append(global_config_dir() / 'skills' / skill_name / 'SKILL.md')
 
     # 4. User-level Claude Code: ~/.claude/skills/skill-name/SKILL.md
     paths.append(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
@@ -330,11 +332,12 @@ def _skill_search_paths(co_dir: Optional[Path] = None,
     # skill answered at the root and was invisible in `sub/`.
     base = project_dir or (co_dir.parent if co_dir else project_root())
     co_base = co_dir or (base / '.co')
+    from ..environment import global_config_dir
     from ..subscription_paths import active_subscription_skills
     paths = [
         ('project', co_base / 'skills', None),
         ('claude-project', base / '.claude' / 'skills', None),
-        ('user', Path.home() / '.co' / 'skills', None),
+        ('user', global_config_dir() / 'skills', None),
         ('claude-user', Path.home() / '.claude' / 'skills', None),
     ]
     paths.extend((f'subscription:{alias}', root, None)

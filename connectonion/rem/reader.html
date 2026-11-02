@@ -3146,7 +3146,7 @@ function sourceList(r) {
   for (const item of listItems(rawSection(r, "Sources"))) {
     const m = /^[\[［](W?\d{1,3})[\]］]\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
-    else if (r.category === "sessions" && /^(codex|claude-code):[^\s:]+:\d+$/.test(item)) out.push({ n: String(out.length + 1), text: item });
+    else if (r.category === "sessions" && /^(?:codex:[^\s:]+:\d+(?:-[0-9a-f]{8})?|claude-code:[^\s:]+:\d+)$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
   return out;
 }

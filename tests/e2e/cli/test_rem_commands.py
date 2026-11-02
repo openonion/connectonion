@@ -345,7 +345,7 @@ def lifecycle(tmp_path, monkeypatch):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
-    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda: _CliScheduler())
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs: _CliScheduler())
     calls = []
 
     def fake_codex(notebook, items, config):

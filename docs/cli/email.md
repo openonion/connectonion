@@ -1,232 +1,141 @@
-# ConnectOnion Email (co email)
+> **Preview 1.9.3rc22.** This reference includes the send-budget and status behavior in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
 
-Every agent gets its own email address. `co email` lets you send and read from
-it right in the terminal — no separate mail client, no Gmail OAuth.
+# OpenOnion email
 
-Your address is derived from your agent's identity, e.g.
-`0x7a9f3b2c@mail.openonion.ai`. It's activated by `co auth`.
+`co email` and [OO Mail](https://mail.openonion.ai) use the same account, mailbox and server API. The global selected identity is the default; use `co --env-file PATH email ...` to select a project account explicitly. Help is the command reference: `co email --help`.
 
-## Quick Start
+## Everyday mail
 
-```bash
-# Check your inbox (the zero-arg default)
-co email
-
-# Send a message
-co email send alice@example.com "Hello" "Thanks for trying ConnectOnion!"
-
-# Read message #42 from the inbox list
-co email read 42
-co email read 42 --mark-read      # opt in to changing mailbox state
+```sh
+co email inbox --last 50
+co email inbox --address you@mail.openonion.ai
+co email read 123
+co email sent
+co email sent read 456
+co email search "launch" --last 100 --offset 0 --json
 ```
 
-That's the whole surface. Everything below is detail.
+`--address` narrows the inbox to one mailbox. An address this account does not own, and has not been granted read access to, exits with an error that lists this account's addresses. The received-mail API returns an empty page for an address it will not confirm, so the command checks the account's address list before calling that page "no mail".
 
-## Commands
+To mark selected messages read:
 
-### `co email` — Show the inbox
-
-With no subcommand, prints your most recent emails. Same as `co email inbox`.
-
-```bash
-co email
+```sh
+co email mark-read 123 124
 ```
 
-### `co email inbox` — List received email
+To mark one message unread:
 
-```bash
-co email inbox                 # last 10
-co email inbox --last 25       # last 25  (alias: -n 25)
-co email inbox --last 1000     # largest received-mail page
-co email inbox -n 1000 --offset 1000  # next page of older mail
-co email inbox --unread        # only unread  (alias: -u)
+```sh
+co email mark-unread 123
 ```
 
-Unread messages are marked with a green `●`. The leftmost `#` is the email's
-id — pass it to `co email read`.
+A reply sends immediately:
 
-**Options**
-- `--last, -n` — how many to show (default: 10, range: 1–1000)
-- `--offset` — how many newer emails to skip (default: 0)
-- `--unread, -u` — only unread messages
-
-> Note: `--unread` filters the fetched page locally, so `--last 10 --unread`
-> means "unread among your 10 most recent," not "your 10 most recent unread."
-
-Each received-mail page can contain up to 1000 messages. Continue through a
-larger inbox with offsets 0, 1000, 2000, and so on until a page is empty. Page
-sizes outside 1–1000 and negative offsets fail locally instead of becoming a
-generic backend validation error.
-
-### `co email read <#>` — Read one message
-
-```bash
-co email read 42
-co email read 42 --mark-read
+```sh
+co email reply 123 "Thanks for the update."
 ```
 
-Prints the sender, subject, date, and body without changing unread state. Add
-`--mark-read` only after you intend to consume the message.
+A forward also sends immediately:
 
-> Reads from your 1000 most recent messages. An email older than that won't be
-> found by id yet (see [Limitations](#limitations)).
-
-### `co email send <to> <subject> <message>` — Send
-
-```bash
-co email send bob@example.com "Subject line" "Body text"
+```sh
+co email forward 123 you@example.com "For your review."
 ```
 
-Every send carries a request ID and an idempotency key. If the result is
-uncertain (for example, a timeout after the provider accepted the message),
-the failure prints the key. Reuse it to retry without sending a duplicate:
+Received and Sent reads retrieve one record by ID, including older messages outside the newest page. Reading alone does not change unread state. Received reads require the backend's `/email/received/{id}` endpoint; unread changes use `/email/s/mark-unread`. HTTP 404 and expired authentication have distinct recovery messages.
 
-```bash
-co email send bob@example.com "Subject line" "Body text" \
-  --idempotency-key 4f07d5b4-9d8e-4e58-a889-11bb14cc70ab
+Search examines a bounded received-mail page: sender, recipient, subject and body. Its output names the number scanned and offset; use the next offset for older messages. It is not a server-wide search index. Replies and forwards call the existing idempotent send path with quoted plain text. They send immediately, include no attachments and add no RFC threading headers.
+
+## Browser connection
+
+```sh
+co email open
+co email open --qr
+co email open --no-browser
+co email connect <challenge-from-the-OO-Mail-dialog>
 ```
 
-The same key must only be reused with the same recipient, subject, and body.
+`co email open` opens the selected account on your computer and prints an **independent, unused phone link**. The automatic desktop visit cannot consume the phone ticket. Interactive terminals also show its QR. `co email open --qr` prints one phone QR/link and never opens the computer's browser. `--no-browser` prints only one unused URL on stdout for copying or automation; diagnostics stay on stderr.
 
-All three arguments are positional and required. The message body is sent as
-provided; HTML markup is supported, and ordinary text can be passed directly.
+Links work once and remain valid for up to ten minutes, bounded by the issuing credential's expiry. Open the printed link directly in Safari/Chrome on the phone, or scan with the phone's camera. It is already a sign-in link; no challenge needs to be copied back. An existing browser session may also create a fresh QR under **Settings → Open on phone**, without keeping the original CLI computer online.
 
-```bash
-# Plain text
-co email send bob@example.com "Hi" "Just checking in."
+The link contains an opaque random code in the URL fragment, not your API token or private key. The browser removes that fragment, exchanges the code once and keeps its session in an HttpOnly cookie. If a different account is already connected, it asks before switching. A replayed or expired link names the command to run again. The anonymous homepage is a connection page; `/demo` is an isolated sample mailbox even when a real account is logged in.
 
-# HTML
-co email send bob@example.com "Receipt" "<h1>Paid</h1><p>Thanks!</p>"
+An older CLI with `open` can use `co email open --no-browser` for an unused phone link. The legacy signed-challenge flow remains under the homepage’s compatibility help. Generate the browser challenge, run the displayed `co email connect` command, and paste its output back into that browser. A downloaded helper remains available in the dialog. This compatibility flow also keeps the private key local.
+
+## Monthly free sends, then PAYG
+
+Every free account receives **100 included emails each calendar month (UTC)**. Unused allowance does not roll over. Existing purchased monthly allowances stay available. After the allowance, an accepted email costs **USD $0.003**, deducted from existing OpenOnion credits. There is no mandatory subscription, automatic renewal or automatic top-up. Reading and local drafts are unchanged.
+
+```sh
+co email tier
 ```
 
-### `co email sent` — List sent email
+Use included sends only:
 
-```bash
-co email sent                        # last 10
-co email sent --last 25              # last 25  (alias: -n 25)
-co email sent --to alice@example.com # only mail sent to alice
+```sh
+co email send you@example.com "Hello" "My message"
 ```
 
-What your agent has sent, newest first, with each message's last known status.
-The leftmost `#` is the email's id — pass it to `co email sent read`. Useful
-after a failed batch: if a send is listed here, the server accepted it, and
-retrying would produce a duplicate.
+Alternatively, authorize up to USD $0.003 for one email; included sends still cost $0:
 
-Options:
-- `--last, -n` — how many to show (default 10)
-- `--to` — only messages sent to this address
-
-### `co email sent read <#>` — Read one sent message
-
-```bash
-co email sent read 7
+```sh
+co email send you@example.com "Hello" "My message" --max-cost 0.003 --idempotency-key my-send-001
 ```
 
-Prints the recipient, sender address, status, provider message id, date, and
-the body that was actually sent.
+Check that send without resending:
 
-## Customizing your address (paid)
-
-The two commands below spend ConnectOnion credits. Each shows you the price or
-new quota first, then applies it — nothing is charged unless you opt in.
-
-### `co email name <name>` — Claim a readable address
-
-By default your address is derived from your agent's key
-(`0x7a9f3b2c@mail.openonion.ai`). Claim a human-readable one instead:
-
-```bash
-co email name aaron          # check if aaron@openonion.ai is free + its price
-co email name aaron --buy    # claim it (one-time charge from your credits)
+```sh
+co email status my-send-001 --json
 ```
 
-Without `--buy` it only **checks availability** and prints the one-time price
-(returned live by the backend, so it's always current). Add `--buy` to claim
-it — the price is deducted from your credit balance and the name becomes your
-sending address.
+`--max-cost` also works with `reply` and `forward`. A price change above that cap or insufficient credits refuses the send before dispatch. Retry an uncertain delivery with **the same send ID, recipient, subject, body, From address and budget**. Do not edit an uncertain send into another message. `status` checks without resending or creating another charge; it can release expired reservations. A definitive initial provider rejection refunds the hold. Unconfirmed sends expire after 24 hours; a background task normally releases the hold within the next minute, or a status check releases it, without automatically resending; check Sent and the recipient before composing again. Deleting or transferring mailbox history cannot erase the original payer's charge or free-allowance usage.
 
-```bash
-$ co email name aaron
-✓ aaron@openonion.ai is available — $5.00 one-time, from credits
-Claim it: co email name aaron --buy
+Replies use the original receiving address when it is still owned; an explicit `--from` wins. If that address is unavailable, the CLI names the default-sender fallback before sending.
 
-$ co email name aaron --buy
-✓ Claimed aaron@openonion.ai
-  Your address: aaron@openonion.ai
+## Addresses and allowance
+
+```sh
+co email tier --json
+co email quota
+co email domains
+co email addresses
+co email setup mailbox --domain steadmail.com
+co email change you@mail.openonion.ai --domain steadmail.com
+co email delete-history you@mail.openonion.ai
 ```
 
-> Prices here are illustrative — the real figure is whatever the check command
-> prints. If the name is taken you'll see why (`✗ … — unavailable`).
+These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
 
-### `co email upgrade <tier>` — Raise your sending quota
+Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
 
-The paid tiers (`plus`, `pro`) lift the monthly quota and are billed from your
-credits. An existing `@mail.openonion.ai` mailbox can keep its exact address;
-otherwise select the domain and alias offered by the tier:
+## Transfer one address
 
-```bash
-co email upgrade plus --keep-address                          # keep the current hosted address
-co email upgrade plus --domain steadmail.com --alias support  # plus, new hosted address
-co email upgrade pro  --domain mail.acme.com --alias support  # pro + a mailbox alias
+```sh
+co email transfer prepare you@mail.openonion.ai --to <recipient-public-key> --out request.json
 ```
 
-**Options**
-- `--keep-address` — preserve the current `@mail.openonion.ai` address (plus only)
-- `--domain, -d` — sending domain (required unless `--keep-address` is used)
-- `--alias, -a` — mailbox alias, e.g. `support` → `support@mail.acme.com`
+The named recipient runs this using their own selected identity:
 
-Leave out both the domain and `--keep-address` and the upgrade is rejected
-before anything is charged:
-
-```bash
-$ co email upgrade plus
-✗ Domain required for plus tier
+```sh
+co email transfer accept request.json --out approval.json
 ```
 
-On success the server returns your new address, monthly quota, and remaining
-balance — values that reflect your account, not fixed doc numbers.
+The original owner previews completion:
 
-## Setup
-
-Email requires authentication once:
-
-```bash
-co auth
+```sh
+co email transfer complete approval.json
 ```
 
-This saves `OPENONION_API_KEY` and sets `AGENT_EMAIL` / `IS_EMAIL_ACTIVE=true`.
-If you run an email command before authenticating you'll get a prompt to run
-`co auth` first.
+After reviewing that preview, the owner completes the transfer:
 
-## Same functions, in your agent
-
-The CLI is a thin wrapper over two tool functions you can hand to any agent:
-
-```python
-from connectonion import Agent
-from connectonion.useful_tools import send_email, get_emails
-
-agent = Agent("mailer", tools=[send_email, get_emails])
-agent.input("Check my inbox and reply to anything urgent.")
+```sh
+co email transfer complete approval.json --yes
 ```
 
-So anything `co email` does, your agent can do too. See
-[send_email](../useful_tools/send_email.md) and
-[get_emails](../useful_tools/get_emails.md).
+Both keys sign the backend's exact five-minute transfer message, which names the address and its existing received/sent history. The first two commands write new mode-0600 files and refuse overwrites. Completion previews unless `--yes`; only then does it change ownership. The key-derived automatic address cannot be transferred. The backend verifies ownership and applies the address/history move atomically.
 
-## Limitations
+Server-synchronized archive, trash, stars, drafts, attachments and threading are not exposed by the existing email API. OO Mail's personal organization remains browser-local; this CLI does not invent server endpoints for those features.
 
-- **`read` only sees your recent 100 messages.** The backend has no
-  single-email endpoint yet, so `read` lists and filters by id client-side.
-- **No `reply` yet.** To reply, copy the sender into `send`:
-  `co email send <their-address> "Re: ..." "..."`.
-- **Long / multi-line bodies** are awkward as a shell argument. For now, quote
-  carefully; piping a body from a file is not wired up.
+## Validation
 
-## Troubleshooting
-
-- **"No API key found"** → run `co auth`.
-- **"AGENT_EMAIL not found"** → run `co auth` to activate email.
-- **Authentication failed (401)** → token expired, re-run `co auth`.
-- **Rate limit exceeded (429)** → you've hit your tier's send quota; check
-  `co status`.
+Protocol signatures, expiry, tampering, identity selection, direct reads, retry-key reuse, management previews, address pricing and partial bulk failures are covered by offline tests. An independent AI review checked user workflows, output fidelity, signature safety and permission boundaries. The real account was connected in OO Mail; CLI/web message IDs and body agreed, and one self-addressed UTF-8 web send appeared once in Sent and once in Inbox. Purchases, address transfers and history deletion were verified with mocks and local dummy identities, without executing them on the real account.

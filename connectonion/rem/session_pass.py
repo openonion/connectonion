@@ -135,7 +135,7 @@ def _window_file(data, path, stat, scoped):
                 break
             offset += len(line)
             ends.append(offset)
-    return {"items": items, "offsets": array("Q", (int(item["source"].rsplit(":", 1)[1]) for item in items)),
+    return {"items": items, "offsets": array("Q", (source.parse_session_source(item["source"])[2] for item in items)),
             "ends": ends, "unfamiliar": sorted(set(unfamiliar)),
             "progress": cursor, "mtime": stat.st_mtime_ns, "path": str(path), "offset": 0}
 
@@ -161,7 +161,7 @@ def _window_batch(files, about):
         for item in items if matched else []:
             size = len(json.dumps(item, ensure_ascii=False))
             if len(output) >= 4_000 or used + size > 20_000_000:
-                stop = int(item["source"].rsplit(":", 1)[1])
+                stop = source.parse_session_source(item["source"])[2]
                 break
             output.append(item)
             used += size

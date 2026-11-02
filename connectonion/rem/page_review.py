@@ -11,9 +11,21 @@ from . import facts
 from .files import Notebook, RemError
 
 
-# The owner's own page has no "How the user writes to them" (#2008): it said
-# "Not applicable" on a real owner page, a heading for nothing.
+# The owner's own page has no "How the user writes to them" (#2008, #2156):
+# it said "Not applicable" on a real owner page, a heading for nothing.
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
+# A forbidden owner section is removed only when it says nothing. Anything
+# else stays on the page so review can refuse it instead of dropping a citation.
+_OWNER_PLACEHOLDER_LINE = re.compile(
+    r'(?i)^(?:[-*]\s+)?'
+    r'(?:unknown(?:\s*[—–-]\s*not investigated yet)?'
+    r'|not[- ]applicable'
+    r'|n/a'
+    r'|none'
+    r'|未知'
+    r'|尚未确认'
+    r'|不适用)'
+    r'\s*[.。]?\s*$')
 PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
                 'Open threads', 'Uncertainties', 'Sources')
 SKILL_CORE = ('What it does', 'Insight', 'When to use', 'Current status', 'How to use',
@@ -62,14 +74,53 @@ def prose(text: str) -> str:
     return ''.join(lines)
 
 
+def _owner_placeholder(body: str) -> bool:
+    """True when a forbidden owner section is empty, Unknown, or Not applicable."""
+    if re.search(r'\[W?\d+\]', body):
+        return False
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    return all(_OWNER_PLACEHOLDER_LINE.fullmatch(line) for line in lines)
+
+
+def drop_empty_owner_section(text: str, *, owner: bool = False) -> str:
+    """Remove a blank person-only section from the owner's own page (#2156).
+
+    A section that says something, or cites a source, stays so review can
+    refuse the page instead of throwing the words away.
+    """
+    if not owner:
+        return text
+    matches = list(SECTION_HEADING_RE.finditer(prose(text)))
+    spans = []
+    for index, match in enumerate(matches):
+        if match[1].strip() != NOT_ON_OWNER_PAGE:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
+        if _owner_placeholder(body):
+            spans.append((match.start(), end))
+    for start, end in reversed(spans):
+        kept = '\n'.join(re.findall(r'^Investigation:.*$', text[start:end], re.M))
+        tail = text[end:].lstrip('\r\n')
+        if kept:
+            tail = kept + ('\n\n' + tail if tail else '\n')
+        text = text[:start].rstrip('\r\n') + '\n\n' + tail
+    return text
+
+
 def normalize(record: str, text: str, owner: bool = False) -> str:
-    """Add missing canonical sections without dropping or rewriting old content."""
+    """Add missing canonical sections without dropping or rewriting old content.
+
+    An empty person-only section on the owner's page is the exception (#2156):
+    it is removed. A section that cites something is left for review to refuse.
+    """
     required = headings(record, owner)
     if not required:
         return text
     # A page from before #2068: `## Contact` becomes `## Facts`, and the turn is
     # handed an Insight it must fill, not a bare Unknown it may leave.
     text = facts.upgrade(record, text, insight=f'- {PLACEHOLDER}')
+    text = drop_empty_owner_section(text, owner=owner)
     matches = list(SECTION_HEADING_RE.finditer(prose(text)))
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
@@ -1184,6 +1235,9 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
                for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
+    if owner and re.search(rf'^## {re.escape(NOT_ON_OWNER_PAGE)}[ \t]*$', body, re.M):
+        errors.append(f'Section does not belong on the owner page: {NOT_ON_OWNER_PAGE}; '
+                      'move any cited detail into a supported section, then remove this heading')
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
     content, _, sources = body.partition('\n## Sources\n')
@@ -1751,6 +1805,56 @@ def quotes(text: str) -> set[str]:
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
 
 
+def _quote_bindings(text: str) -> list[tuple[str, frozenset[str] | None]]:
+    """Bind a quote only to its immediately following, uniquely defined citations.
+
+    A source listed elsewhere, or another quote on the same line, cannot establish
+    continuity. Dates and privacy labels may intervene; ordinary prose may not.
+    """
+    from .reader_model import SOURCE
+    head, _, tail = prose(text).partition('\n## Sources\n')
+    tail = re.split(r'^## ', tail, maxsplit=1, flags=re.M)[0]
+    definitions = collections.defaultdict(set)
+    for line in tail.splitlines():
+        number = re.match(r'^[ \t]*[-*][ \t]*\[(W?\d+)\][ \t]+', line)
+        if number:
+            source = SOURCE.match(line)
+            definitions[number[1]].add(source[2].strip() if source else None)
+    unique = {n: next(iter(ids)) for n, ids in definitions.items()
+              if len(ids) == 1 and None not in ids}
+    head = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', head)
+    found = []
+    for line in head.splitlines():
+        for quote in QUOTE.finditer(line):
+            refs = re.match(
+                r'(?:[ \t.,;:!?，。；：！？]|\(\d{4}-\d{2}-\d{2}\)|\[(?:personal|sensitive)\])*'
+                r'((?:\[W?\d+\](?!\()[ \t]*)+)', line[quote.end():])
+            numbers = CITATION.findall(refs[1]) if refs else []
+            binding = (frozenset(unique[n] for n in numbers)
+                       if numbers and all(n in unique for n in numbers) else None)
+            found.append((quote[1], binding))
+    return found
+
+
+def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
+    """An extended quote can keep literal words, but not change their source binding.
+
+    This is retention, not an attribution/meaning verdict. Exact quotes retain
+    their existing behavior; the source audit still judges the candidate.
+    """
+    missing = quotes(before) - quotes(after) - exempt
+    previous, candidate = _quote_bindings(before), _quote_bindings(after)
+    lost = set()
+    for quote in missing:
+        occurrences = [binding for words, binding in previous if words == quote]
+        literal = re.compile(r'(?<!\w)' + re.escape(quote) + r'(?!\w)')
+        if not occurrences or any(binding is None or not any(
+                binding == target and literal.search(words) for words, target in candidate)
+                for binding in occurrences):
+            lost.add(quote)
+    return lost
+
+
 def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
@@ -1758,7 +1862,7 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     quote back over the writer's correction, and the round was refused (2026-10-20).
     """
     return ([f'Dropped quote the page had: “{quote}”'
-             for quote in sorted(quotes(before) - quotes(after) - exempt)]
+             for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
                for source in sorted(_listed_sources(before) - _listed_sources(after))])
 
@@ -1779,7 +1883,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
             continue
         if section == 'Sources' or line in seen:
             continue
-        lost_quotes = quotes(before) - quotes(after) - exempt
+        lost_quotes = _lost_quotes(before, after, exempt)
         lost_sources = _listed_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
@@ -1824,6 +1928,12 @@ def _contained(row: str, line: str) -> float:
 
 
 def _insert_restored_line(text: str, section: str, line: str, lost_quotes: set[str], lost_sources: set[str]) -> str:
+    if not section:
+        # Introductory prose stays above the first section, even if a similar
+        # sentence exists under History or Uncertainties. Keep the new lead too.
+        heading = re.search(r'^## ', prose(text), re.M)
+        at = heading.start() if heading else len(text)
+        return text[:at].rstrip('\n') + '\n\n' + line + '\n\n' + text[at:]
     shorter = _shorter_version(text.partition('\n## Sources\n')[0], line)
     if shorter and CONTACT_LINE.match(shorter) and shorter.strip().endswith(': Unknown'):
         return text.replace(shorter, line, 1)

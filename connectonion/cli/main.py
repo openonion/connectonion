@@ -220,7 +220,7 @@ def _show_help():
     console.print()
 
 
-@app.command(epilog="Example:  co init  |  co init ./ --template co-ai")
+@app.command(epilog="Example:  co init  |  co init --background  |  co init ./ --template co-ai")
 def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
@@ -229,8 +229,9 @@ def init(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
+    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and REM storage; no source scan'),
 ):
-    """Initialize global ~/.co/keys.env, or use co init ./ for a project. Creates your keypair and writes keys.env; the global run also links co's skills and writes its command index into ~/.codex/AGENTS.md and ~/.claude/CLAUDE.md (see co skills index)."""
+    """Initialize local identity, profile and coding-agent skills, or use co init ./ for a project. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Project init does this too. Re-run to repair omissions while keeping your edits."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -240,8 +241,27 @@ def init(
         if template is not None or description is not None or force:
             console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
             raise typer.Exit(2)
+        if background and sys.platform != 'darwin':
+            console.print('Background Mac setup requires macOS. Next: co init', markup=False)
+            raise typer.Exit(2)
         handle_global_init(key=key)
+        if background:
+            from .mac_bootstrap import prepare_mac_host
+            from .host_service import HostServiceError
+            import json
+            try:
+                result = prepare_mac_host()
+                console.print(json.dumps(result), markup=False)
+            except (HostServiceError, OSError) as error:
+                console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
+                raise typer.Exit(1) from None
+            if not result['codex_ready']:
+                console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
+                raise typer.Exit(1)
         return
+    if background:
+        console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)
+        raise typer.Exit(2)
     handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
@@ -253,7 +273,7 @@ def create(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
 ):
-    """Create new project. Creates the <name>/ directory; the first run also sets up ~/.co/."""
+    """Create new project. Creates the <name>/ directory and completes local identity, profile, bundled skill links and coding-agent command indexes."""
     from .commands.create import handle_create
     # An explicit False means the project was not created — exit non-zero so a
     # script can tell. Other return values keep the previous behaviour.
@@ -262,9 +282,14 @@ def create(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co host  |  co host --port 8001")
+@app.command(epilog="Example:  co host  |  co host --background  |  co host --status  |  co host --stop")
 def host(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
+    background: bool = typer.Option(False, '--background', help='Install/start a macOS login service for this project; preserves foreground behavior'),
+    status: bool = typer.Option(False, '--status', help='Read-only: inspect this project service and process; no device-ready claim'),
+    stop: bool = typer.Option(False, '--stop', help='Stop and disable this project service across login'),
+    uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove this project service; preserve agent, identity, memory and logs'),
+    native_codex: bool = typer.Option(False, '--native-codex', help='Serve native Codex directly from this initialized profile; no agent.py or outer model'),
 ):
     """Serve the agent in this directory: runs ./agent.py with co's own Python, so it works however co was installed.
 
@@ -273,6 +298,30 @@ def host(
     """
     import os
     import subprocess
+    if any((background, status, stop, uninstall)):
+        if sum((background, status, stop, uninstall)) != 1 or (port is not None and not background):
+            console.print('Choose one service action; --port applies to --background. Next: co host --help')
+            raise typer.Exit(2)
+        from .host_service import HostService, HostServiceError
+        from ..environment import explicit_env_file
+        import json
+        try:
+            service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
+            operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
+            console.print(json.dumps(operation()), markup=False)
+        except (HostServiceError, OSError) as error:
+            console.print(str(error) if isinstance(error, HostServiceError) else 'Cannot write the service files. Next: co host --status', markup=False)
+            raise typer.Exit(1) from None
+        return
+    if native_codex:
+        from .mac_bootstrap import serve_native_mac
+        from .host_service import HostServiceError
+        try:
+            serve_native_mac(Path.cwd(), port=port)
+        except HostServiceError as error:
+            console.print(str(error), markup=False)
+            raise typer.Exit(1) from None
+        return
     if not Path("agent.py").exists():
         console.print("[red]No agent.py in this directory.[/red] Make one: co create my-agent, then cd my-agent")
         raise typer.Exit(2)
@@ -1045,10 +1094,10 @@ app.add_typer(eval_app, name="eval")
 def setup(
     bio: Optional[str] = typer.Option(None, "--bio", "-b", help="One-line bio for ~/.co/agent.json"),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Alias/name for ~/.co/agent.json (default: $USER)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ~/.co/agent.json (backs up to .bak)"),
-    skip_skills: bool = typer.Option(False, "--no-skills", help="Skip ~/.co/skills/ library refresh"),
+    force: bool = typer.Option(False, "--force", "-f", help="Recreate agent.json (backs up to .bak); keeps your own skills"),
+    skip_skills: bool = typer.Option(False, "--no-skills", help="Skip importing the skill library; bundled skill links are still repaired"),
 ):
-    """Set up your global ~/.co/ — identity, agent.json, and skill library. Writes ~/.co/agent.json and ~/.co/skills/."""
+    """Customize your local agent profile and import your skill library. Writes agent.json and skills/ in the global config directory; also repairs local identity, bundled skill links and coding-agent command indexes. --name and --bio update only those fields; --force recreates the profile with a backup."""
     from .commands.setup_commands import handle_setup
     handle_setup(name=name, bio=bio, force=force, skip_skills=skip_skills)
 
@@ -1575,6 +1624,23 @@ def email_callback(ctx: typer.Context):
         handle_email_inbox()
 
 
+@email_app.command("open", epilog="Example:  co email open  |  co email open --qr  |  co email open --no-browser")
+def email_open(
+    no_browser: bool = typer.Option(False,"--no-browser",help="Print an unused one-time link for another browser or phone"),
+    qr: bool = typer.Option(False,"--qr",help="Show a phone QR code and link without opening the desktop browser"),
+):
+    """Creates separate computer and phone login links, valid for up to ten minutes. The computer opens automatically; its visit does not consume the printed phone link. --qr is phone-only."""
+    from .commands.email_web import handle_email_open
+    handle_email_open(no_browser=no_browser,**({'qr':True} if qr else {}))
+
+
+@email_app.command("connect", epilog="Example:  co email connect <challenge>")
+def email_connect(challenge: str = typer.Argument(..., help="Two-minute challenge from the OO Mail connection dialog")):
+    """Creates a short-lived code to connect this identity to OO Mail. The private key stays local."""
+    from .commands.email_web import handle_email_connect
+    handle_email_connect(challenge)
+
+
 @email_app.command("send", epilog="Example:  co email send you@example.com \"Weekly report\" \"Numbers are below.\"")
 def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
@@ -1590,12 +1656,14 @@ def email_send(
         "--from",
         help="Send as one of your owned addresses (server checks ownership)",
     ),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD charge for this email; 0 uses included monthly sends only'),
 ):
-    """Send an email from the agent's address. Sends immediately."""
+    """Sends immediately using included monthly mail first. PAYG requires --max-cost; no subscription or automatic top-up."""
     from .commands.email_commands import handle_email_send
     handle_email_send(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
     )
 
 
@@ -1648,7 +1716,7 @@ email_app.add_typer(sent_app, name="sent")
 @sent_app.callback(invoke_without_command=True)
 def email_sent(
     ctx: typer.Context,
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=1000, help="How many emails to show"),
     to: str = typer.Option(None, "--to", help="Only emails sent to this address"),
 ):
     """With no subcommand, list recent sent emails."""
@@ -1664,11 +1732,168 @@ def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the s
     handle_email_sent_read(email_id)
 
 
+@email_app.command("search", epilog='Example:  co email search "launch" --last 100 --json')
+def email_search(
+    query: str = typer.Argument(..., help="Text to find in sender, recipient, subject or body"),
+    last: int = typer.Option(100,"--last","-n",min=1,max=1000,help="Search this many received messages in the selected page"),
+    offset: int = typer.Option(0,"--offset",min=0,help="Skip newer messages before searching"),
+    json_output: bool = typer.Option(False,"--json",help="Print matches and searched page scope as JSON"),
+):
+    """Search a page of received mail without changing it. Read-only; use --offset for older pages."""
+    from .commands.email_workflows import handle_email_search
+    handle_email_search(query,last=last,offset=offset,json_output=json_output)
+
+
+@email_app.command("mark-read", epilog="Example:  co email mark-read 3 4")
+def email_mark_read(email_ids: List[str] = typer.Argument(...,help="Message IDs from co email inbox")):
+    """Changes received messages to read on the server, shared with the web client."""
+    from .commands.email_workflows import handle_email_mark
+    handle_email_mark(email_ids)
+
+
+@email_app.command("mark-unread", epilog="Example:  co email mark-unread 3")
+def email_mark_unread(email_ids: List[str] = typer.Argument(...,help="Message IDs from co email inbox")):
+    """Changes received messages back to unread on the server."""
+    from .commands.email_workflows import handle_email_mark
+    handle_email_mark(email_ids,unread=True)
+
+
+@email_app.command("reply", epilog='Example:  co email reply 3 "Thanks for the update."')
+def email_reply(
+    email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
+    message: str = typer.Argument(...,help="Your plain-text reply"),
+    from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this reply; 0 uses included sends only'),
+):
+    """Sends a reply immediately with a Re: subject and quoted original. Does not add threading headers."""
+    from .commands.email_workflows import handle_email_reply
+    handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+
+
+@email_app.command("forward", epilog='Example:  co email forward 3 you@example.com "For your review."')
+def email_forward(
+    email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
+    to: str = typer.Argument(...,help="Recipient address"),
+    message: str = typer.Argument('',help="Optional note above the forwarded message"),
+    from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
+    max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this forward; 0 uses included sends only'),
+):
+    """Sends the original message and your note to another address immediately. Attachments are not included."""
+    from .commands.email_workflows import handle_email_reply
+    handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key,
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+
+
+@email_app.command('status',epilog='Example:  co email status <send-id>  |  co email status <send-id> --json')
+def email_send_status(send_id: str = typer.Argument(...,help='Send ID/idempotency key printed by a send attempt'),
+                      json_output: bool = typer.Option(False,'--json',help='Print delivery and charge status as JSON')):
+    """Read-only for mail: shows delivery and charge status; releases expired holds. Does not resend or make a new charge."""
+    from .commands.email_workflows import handle_email_send_status
+    handle_email_send_status(send_id,json_output)
+
+
+@email_app.command("tier", epilog="Example:  co email tier --json")
+def email_tier(json_output: bool = typer.Option(False,"--json",help="Print plan, sender and quota as JSON")):
+    """Show the current mailbox address, plan and monthly send allowance. Read-only."""
+    from .commands.email_workflows import handle_email_tier
+    handle_email_tier(json_output=json_output)
+
+
 @email_app.command("addresses", epilog="Example:  co email addresses")
 def email_addresses():
     """List every email address this account owns, marking the default sender. Read-only."""
     from .commands.email_commands import handle_email_addresses
     handle_email_addresses()
+
+
+@email_app.command("change", epilog="Example:  co email change you@mail.openonion.ai --domain steadmail.com  |  co email change you@mail.openonion.ai --name new-name --buy")
+def email_change(
+    address: str = typer.Argument(...,help="Owned address from co email addresses"),
+    name: Optional[str] = typer.Option(None,"--name",help="New local part before @"),
+    domain: Optional[str] = typer.Option(None,"--domain",help="New hosted domain from co email domains"),
+    buy: bool = typer.Option(False,"--buy",help="Apply the change and deduct its one-time price"),
+):
+    """Preview an address rename or domain change. Read-only; --buy Charges credits and Changes the address."""
+    from .commands.email_workflows import handle_email_change
+    handle_email_change(address,name=name,domain=domain,buy=buy)
+
+
+@email_app.command("quota", epilog="Example:  co email quota  |  co email quota --buy --idempotency-key <unique-key>")
+def email_quota(
+    buy: bool = typer.Option(False,"--buy",help="Buy one monthly send increment at the current plan's price"),
+    idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Required with --buy; reuse the same key when retrying"),
+    json_output: bool = typer.Option(False,"--json",help="Print quota or purchase result as JSON"),
+):
+    """Show quota and increment pricing. Read-only; --buy Charges credits for one increment."""
+    from .commands.email_workflows import handle_email_quota
+    handle_email_quota(buy=buy,idempotency_key=idempotency_key,json_output=json_output)
+
+
+@email_app.command("delete-history", epilog="Example:  co email delete-history you@mail.openonion.ai  |  co email delete-history you@mail.openonion.ai --yes")
+def email_delete_history(
+    address: str = typer.Argument(...,help="An owned mailbox address"),
+    include_sent: bool = typer.Option(False,"--include-sent",help="Also delete sent logs for this address; affects send-usage counts"),
+    yes: bool = typer.Option(False,"--yes",help="Apply permanent history deletion; default only previews"),
+):
+    """Preview history removal for one address. --yes Deletes received mail and optionally sent logs; keeps the address."""
+    from .commands.email_workflows import handle_email_delete_history
+    handle_email_delete_history(address,include_sent=include_sent,yes=yes)
+
+
+email_transfer_app = _typer_app(help="Move one owned address and its mail with both accounts' signatures. Creates signed files; complete --yes Changes mailbox ownership.", epilog="Example:  co email transfer prepare you@mail.openonion.ai --to <public-key> --out request.json")
+email_app.add_typer(email_transfer_app,name="transfer")
+
+
+@email_transfer_app.command("prepare",epilog="Example:  co email transfer prepare you@mail.openonion.ai --to <public-key> --out request.json")
+def email_transfer_prepare(
+    address: str = typer.Argument(...,help="Purchased address to move, including its received and sent history"),
+    to: str = typer.Option(...,"--to",help="Recipient's full 0x public key"),
+    destination: Path = typer.Option(...,"--out",help="New request file; never overwrites an existing file"),
+):
+    """Writes a five-minute transfer request signed by the selected owner identity. No mailbox move yet."""
+    from .commands.email_transfer import run,prepare
+    run(prepare,address,to,destination)
+
+
+@email_transfer_app.command("accept",epilog="Example:  co email transfer accept request.json --out approval.json")
+def email_transfer_accept(
+    source: Path = typer.Argument(...,help="Request file produced by the owner"),
+    destination: Path = typer.Option(...,"--out",help="New approval file signed by the selected recipient identity"),
+):
+    """Writes the recipient's signed acceptance of the address and all existing mail. No mailbox move yet."""
+    from .commands.email_transfer import run,accept
+    run(accept,source,destination)
+
+
+@email_transfer_app.command("complete",epilog="Example:  co email transfer complete approval.json  |  co email transfer complete approval.json --yes")
+def email_transfer_complete(
+    source: Path = typer.Argument(...,help="Approval file with both accounts' five-minute signatures"),
+    yes: bool = typer.Option(False,"--yes",help="Move the address and its mail now; default previews"),
+):
+    """Validate both signatures and preview a transfer. --yes Changes ownership of the address and its mail."""
+    from .commands.email_transfer import run,complete
+    run(complete,source,yes=yes)
+
+
+@email_app.command("domains", epilog="Example:  co email domains")
+def email_domains():
+    """List hosted mailbox domains and address prices. Read-only."""
+    from .commands.email_commands import handle_email_domains
+    handle_email_domains()
+
+
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+def email_setup(
+    alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
+    domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
+    buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+):
+    """Set up another mailbox on this account. Shows price; --buy Charges credits."""
+    from .commands.email_commands import handle_email_setup
+    handle_email_setup(alias, domain=domain, buy=buy)
 
 
 @email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
@@ -1682,7 +1907,7 @@ def email_default(
 
 @email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
 def email_name(
-    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
+    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
@@ -2828,6 +3053,9 @@ def audit(
     from .commands.audit_commands import handle_audit
     handle_audit(command, review, since, inventory, json_output, model)
 
+
+from .commands.asr_commands import transcribe_audio
+app.command('asr', epilog='Example: co asr recording.m4a --language zh --json  |  Save provider: co env set ASR_PROVIDER connectonion')(transcribe_audio)
 
 from .typer_groups import name_the_way_back  # noqa: E402 — needs every command registered
 

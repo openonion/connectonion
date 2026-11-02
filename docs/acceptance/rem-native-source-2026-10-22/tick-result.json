@@ -1,0 +1,11 @@
+{
+  "actual_native_tick_dispatched": true,
+  "capability_false_prevents_dispatch": true,
+  "capability_true_enables_dispatch": true,
+  "native_run_time_state_updated": true,
+  "marker_created_by_stub_execution_boundary": true,
+  "model_turn_execution_tested": false,
+  "live_app_process_tested": false,
+  "sqlite_driver": "real better-sqlite3",
+  "warnings": []
+}

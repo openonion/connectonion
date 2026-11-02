@@ -181,7 +181,7 @@ co commands         # everything else; add --help to any
 <summary>With pip instead</summary>
 
 ```bash
-# Python 3.10+
+# Python 3.11+
 pip install connectonion
 co init
 ```

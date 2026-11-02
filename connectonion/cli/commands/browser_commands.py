@@ -9,6 +9,7 @@ LLM-Note:
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy)
 """
 
+import os
 import shlex
 import sys
 
@@ -196,7 +197,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             "co browser --engine system <verb>",
             file=sys.stderr,
         )
-    if engine_mode == "onion":
+    if engine_mode == "onion" and os.environ.get("CO_BROWSER_DAEMON_PID") is None:
         failure = _ensure_paid_client()
         if failure is not None:
             print(failure, file=sys.stderr)

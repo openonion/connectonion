@@ -149,6 +149,10 @@ class Message:
     # and no media knows the difference between "a photo arrived" and "a photo
     # arrived and here it is" -- and, when there is an error, why.
     media: Optional[dict] = None
+    # Provider references to original attachments; no downloads or raw payload.
+    attachments: Optional[list] = None
+    # Explicit provider ID types, when available, alongside canonical sender.
+    sender_ids: Optional[dict] = None
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -165,6 +169,10 @@ class Message:
         }
         if self.media is not None:
             record["media"] = self.media
+        if self.attachments:
+            record["attachments"] = self.attachments
+        if self.sender_ids:
+            record["sender_ids"] = self.sender_ids
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -193,6 +201,8 @@ class Message:
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
             sender_name=str(record.get("sender_name") or ""),
             media=record.get("media") if isinstance(record.get("media"), dict) else None,
+            attachments=record.get("attachments") if isinstance(record.get("attachments"), list) else None,
+            sender_ids=record.get("sender_ids") if isinstance(record.get("sender_ids"), dict) else None,
         )
 
 

@@ -50,6 +50,10 @@ class FakeServer:
     def close(self):
         self.calls.append("close")
 
+    def request(self, method, params, timeout=60):
+        self.calls.append((method, params))
+        return {}
+
     def initialize(self, timeout=60):
         self.calls.append("initialize")
 
@@ -141,6 +145,52 @@ def _run(**kwargs):
 
 
 class TestCodexRun:
+    @pytest.mark.parametrize("session_id", ["", "existing-thread"])
+    def test_rem_archives_the_trace_and_keeps_its_resume_id(self, monkeypatch, session_id):
+        monkeypatch.setenv("CO_REM_CODEX_ARCHIVE", "1")
+        result = _run(prompt="Maintain one page", session_id=session_id)
+        assert result["exit_code"] == 0
+        assert result["session_id"] == (session_id or "thread-1")
+        assert FakeServer.last.calls[-2:] == [
+            ("thread/archive", {"threadId": result["session_id"]}), "close"]
+        if session_id:
+            calls = FakeServer.last.calls
+            assert calls.index(("thread/unarchive", {"threadId": session_id})) < next(
+                index for index, call in enumerate(calls)
+                if isinstance(call, tuple) and call[0] == "resume_thread")
+
+    def test_rem_archives_a_failed_turn_and_keeps_its_trace(self, monkeypatch):
+        monkeypatch.setenv("CO_REM_CODEX_ARCHIVE", "1")
+        def fail(*args, **kwargs):
+            raise TimeoutError("turn timed out")
+        monkeypatch.setattr(FakeServer, "run_turn", fail)
+        result = _run(prompt="Maintain one page")
+        assert result["exit_code"] != 0
+        assert result["session_id"] == "thread-1"
+        assert "turn timed out" in result["error"]
+        assert FakeServer.last.calls[-2:] == [
+            ("thread/archive", {"threadId": "thread-1"}), "close"]
+
+    def test_normal_interactive_threads_stay_in_recent_history(self, monkeypatch):
+        monkeypatch.delenv("CO_REM_CODEX_ARCHIVE", raising=False)
+        _run(prompt="Help with my project")
+        assert not any(isinstance(call, tuple) and call[0] == "thread/archive"
+                       for call in FakeServer.last.calls)
+
+    def test_archive_failure_is_visible_and_still_closes_the_client(self, monkeypatch):
+        monkeypatch.setenv("CO_REM_CODEX_ARCHIVE", "1")
+        def fail(*args, **kwargs):
+            raise RuntimeError("archive unavailable")
+        monkeypatch.setattr(FakeServer, "request", fail)
+        result = _run(prompt="Maintain one page")
+        assert result["exit_code"] != 0
+        assert result["session_id"] == "thread-1"
+        assert result["status"] == "completed"
+        assert result["usage"] == {"input_tokens": 5}
+        assert result["last_message"] == "Hello world"
+        assert "archive unavailable" in result["error"]
+        assert FakeServer.last.calls[-1] == "close"
+
     @pytest.mark.parametrize("speed", ["fast", "standard"])
     @pytest.mark.parametrize("session_id", ["", "existing-thread"])
     def test_speed_reaches_new_and_resumed_threads(self, speed, session_id):

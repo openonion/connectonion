@@ -96,6 +96,74 @@ def test_a_fact_restored_from_mail_outside_the_quick_sample_keeps_its_source():
                validate('people/owner.md', invented, '# Owner\n', items, owner=True))
 
 
+FORBIDDEN = '## How the user writes to them\n- Unknown — not investigated yet'
+
+
+@pytest.mark.parametrize('body', [
+    '- Unknown',
+    '- Unknown — not investigated yet',
+    '- Not applicable',
+    '- Not-applicable',
+    'N/A',
+    '',
+])
+def test_owner_normalize_removes_an_empty_forbidden_section(tmp_path, body):
+    """#2156: an owner page promotes without a person-only heading that says nothing."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    page = notebook.read(record).replace(FORBIDDEN, '## How the user writes to them\n' + body)
+    out = normalize(record, page, owner=True)
+    assert '## How the user writes to them' not in out
+    assert '## How they communicate\n- Unknown — not investigated yet' in out
+    assert '## Cadence\n- Unknown — not investigated yet' in out
+    assert '## Sources' in out
+
+
+def test_a_person_page_keeps_how_the_user_writes_to_them(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    page = notebook.read(record)
+    out = normalize(record, page)
+    assert '## How the user writes to them\n- Unknown — not investigated yet' in out
+    assert normalize(record, page, owner=False) == out
+
+
+def test_a_substantive_forbidden_owner_section_fails_validation_and_keeps_the_citation(tmp_path):
+    """Cited words in the person-only section are refused, not deleted (#2156)."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    cited = '- Opens with “你好” and signs “Aaron”. [1]'
+    page = notebook.read(record).replace(FORBIDDEN, '## How the user writes to them\n' + cited)
+    page = page.replace('- (none yet)', '- [1] gmail:avery:1 — 2026-10-01')
+    out = normalize(record, page, owner=True)
+    assert cited in out and '## How the user writes to them' in out
+    errors = validate(record, out, page, [{'source': 'gmail:avery:1'}], owner=True)
+    assert any(error.startswith('Section does not belong on the owner page: How the user writes to them')
+               for error in errors)
+    person = validate(record, out, page, [{'source': 'gmail:avery:1'}])
+    assert not any('does not belong on the owner page' in error for error in person)
+
+
+def test_a_cited_unknown_on_the_owner_page_is_not_silently_removed(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'people/avery.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    cited = '- Unknown [1]'
+    page = notebook.read(record).replace(FORBIDDEN, '## How the user writes to them\n' + cited)
+    page = page.replace('- (none yet)', '- [1] gmail:avery:1 — 2026-10-01')
+    out = normalize(record, page, owner=True)
+    assert cited in out
+    errors = validate(record, out, page, [{'source': 'gmail:avery:1'}], owner=True)
+    assert any('How the user writes to them' in error for error in errors)
+
+
 def test_an_owner_work_excerpt_keeps_its_original_citation_after_quick_filtering():
     candidate = '# Owner\n\nA decision was reversed [1].\n\n## Sources\n- [1] codex:old — 2026-09-29\n'
     items = [{'role': 'owner-work-evidence', 'source': 'investigation:owner-work-evidence',

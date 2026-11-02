@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 
 from .files import state_path
+from .source import SESSION_SOURCE_PATTERN
 from .store_messages import archived_message
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
@@ -114,7 +115,7 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
 def _source_ids(records: list[dict]) -> set[str]:
     numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
     sessions = {source for row in records if row.get("category") == "sessions"
-                for source in re.findall(r"^- ((?:codex|claude-code):[^\s:]+:\d+)$",
+                for source in re.findall(rf"^- ({SESSION_SOURCE_PATTERN})$",
                                          row["text"].partition("\n## Sources\n")[2], re.M)}
     return numbered | sessions
 

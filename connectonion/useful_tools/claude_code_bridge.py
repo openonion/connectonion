@@ -12,6 +12,7 @@ from collections import deque
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from tempfile import TemporaryDirectory
 from threading import Lock, RLock, Thread, current_thread, main_thread
 from typing import Callable
@@ -74,6 +75,14 @@ def exclusive_workspace_writer(cwd: Path):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+class _LoopbackHookServer(ThreadingHTTPServer):
+    """The owned numeric loopback address needs no reverse-DNS lookup."""
+
+    def server_bind(self) -> None:
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class _HookReceiver(BaseHTTPRequestHandler):
@@ -232,7 +241,7 @@ def _serve_bridge(root: Path, permission_handler):
     events = root / "events.jsonl"
     events.touch(mode=0o600)
     settings = root / "settings.json"
-    receiver = ThreadingHTTPServer(("127.0.0.1", 0), _HookReceiver)
+    receiver = _LoopbackHookServer(("127.0.0.1", 0), _HookReceiver)
     receiver.daemon_threads = True
     receiver.token = secrets.token_urlsafe(32)
     receiver.events = events

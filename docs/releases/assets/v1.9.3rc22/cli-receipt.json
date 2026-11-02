@@ -1,0 +1,39 @@
+[
+  {
+    "phase": "before",
+    "version": "co 1.9.3rc21",
+    "exit": 0,
+    "observed": {
+      "profile": false,
+      "codex_skill": false,
+      "command_index": false
+    },
+    "fixture": "synthetic home/project; local unreachable backend; no live auth",
+    "commands": [
+      "co --version",
+      "co init ./ --yes"
+    ],
+    "read_only_probe": "import json; from pathlib import Path; h=Path.home(); print(json.dumps({'profile':(h/'.co/agent.json').is_file(),'codex_skill':(h/'.codex/skills/co-browser/SKILL.md').is_file(),'command_index':(h/'.codex/AGENTS.md').is_file()}))"
+  },
+  {
+    "phase": "after",
+    "version": "co 1.9.3rc22",
+    "exit": 0,
+    "observed": {
+      "profile": true,
+      "codex_skill": true,
+      "command_index": true
+    },
+    "fixture": "synthetic home/project; local unreachable backend; no live auth",
+    "commands": [
+      "co --version",
+      "co init ./ --yes"
+    ],
+    "read_only_probe": "import json; from pathlib import Path; h=Path.home(); print(json.dumps({'profile':(h/'.co/agent.json').is_file(),'codex_skill':(h/'.codex/skills/co-browser/SKILL.md').is_file(),'command_index':(h/'.codex/AGENTS.md').is_file()}))",
+    "artifact": {
+      "filename": "connectonion-1.9.3rc22-py3-none-any.whl",
+      "sha256": "8a03f332004d35217503a6929bb59940fb468ec396b5b31860eacfef6b507d08",
+      "scope": "initial version-stamped candidate wheel used for the capture; final publication bytes are verified separately"
+    }
+  }
+]

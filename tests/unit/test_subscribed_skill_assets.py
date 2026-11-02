@@ -29,7 +29,7 @@ def test_publish_and_subscribe_companion_files(tmp_path, monkeypatch):
     (source / "SKILL.md").write_text("---\nname: demo\n---\nRun scripts/run.js\n")
     (source / "scripts" / "run.js").write_bytes(b"console.log('ok')")
     (source / ".env").write_text("never publish")
-    monkeypatch.setattr(announce, "SKILLS_DIR", skills_dir)
+    monkeypatch.setattr(announce, "global_config_dir", lambda: skills_dir.parent)
     listed = announce._build_listed_skills({
         "skills": [{"name": "demo", "description": "Demo", "publish": True}],
     })

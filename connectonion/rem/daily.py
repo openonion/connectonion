@@ -207,7 +207,8 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
     with maintenance_lock(root):
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         today = now().astimezone(zone).date()
-        spent = sum(log.get('runner_attempts', 0) for log in run_logs(root)
+        spent = sum(sum(row['outcome'] != 'cached' for row in log['pages']) if 'pages' in log
+                    else log.get('runner_attempts', 0) for log in run_logs(root)
                     if log.get('phase') == 'daily-translation'
                     and datetime.fromisoformat(log['started_at']).astimezone(zone).date() == today)
         remaining = min(config['limits']['translations_per_day'] - spent,
@@ -218,10 +219,9 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining:
+            if attempts >= remaining or status(root)['runner_attempts_today'] >= config['limits']['runner_calls_per_day']:
                 continue
             attempts += 1
-            record.update(runner_attempts=attempts)
             write_json(path, record)
             say(f"Translating {page} into {language}…")
             try:
@@ -232,7 +232,8 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
                 say(f"Translation failed for {page}: {error}")
             record['pages'] = rows
             write_json(path, record)
-        report = {'language': language, 'pages': rows, 'runner_attempts': attempts}
+        # Each translation logs its own runner calls (repairs included); this summary counts pages.
+        report = {'language': language, 'pages': rows, 'attempted': attempts}
         maintenance['translations'] = report
         record.update(**report, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
                       finished_at=now().isoformat())

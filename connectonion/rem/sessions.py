@@ -282,7 +282,7 @@ def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> t
             session["id"] = item.get("session") or session["id"]
             session["cwd"] = item.get("cwd") or session["cwd"]
             session["messages"].append({**item, "text": _redact(item["text"]),
-                "source": f"{kind}:{session['id']}:{at}"})
+                "source": source.session_source(kind, session['id'], at, item["text"])})
     why = next((reason for reason in ("rem_task", "program_prompt", "sidechain") if reason in reasons),
                "no_typed_message")
     session["artifacts"] = _artifact_lists(session["artifacts"])

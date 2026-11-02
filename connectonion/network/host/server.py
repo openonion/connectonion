@@ -546,7 +546,8 @@ def resolve_agent_identity(co_dir: Path) -> dict:
     if own:
         return own
 
-    inherited = address.load(Path.home() / ".co")
+    from ...environment import global_config_dir
+    inherited = address.load(global_config_dir())
     if inherited:
         return inherited
 
@@ -856,10 +857,11 @@ def _create_cleanup_lifespan(registry):
 
     return on_startup, on_shutdown
 
-def _create_handoff_lifespan():
-    """Watch the handoffs this agent sent: acceptances, questions (answered automatically) and done.
-
-    It reads the mailbox only while a handoff sent in the last 14 days is waiting (handoff/watch.py)."""
+def _create_handoff_lifespan(co_dir: Path):
+    """Only the Host owning the configured handoff directory watches it."""
+    from ...environment import global_config_dir
+    if Path(co_dir).resolve() != global_config_dir():
+        return None, None
     from ...handoff import watch
     stop = []
 
@@ -1415,7 +1417,7 @@ def host(
     on_startup = _both(on_startup, cleanup_startup)
     on_shutdown = _both(cleanup_shutdown, on_shutdown)
     # Handoffs this agent sent get their questions answered whichever command started the host (#2453).
-    handoff_startup, handoff_shutdown = _create_handoff_lifespan()
+    handoff_startup, handoff_shutdown = _create_handoff_lifespan(co_dir)
     on_startup = _both(on_startup, handoff_startup)
     on_shutdown = _both(handoff_shutdown, on_shutdown)
     on_startup = _both(on_startup, on_agent_startup)

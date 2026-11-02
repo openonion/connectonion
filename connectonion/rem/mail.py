@@ -169,10 +169,16 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
     if only:
         needle = _address(only) or only.strip().lower()
         queue = {address: rows for address, rows in queue.items() if needle in address}
-    items, used = [], 0
+    items, used, dropped_missing = [], 0, 0
     for address, rows in _turns(queue, max_items - len(items)):
         for row in rows:
-            body = client.get_email_body(row["id"])
+            body = _body(client, row["id"])
+            if body is None:
+                # Deleted from the mailbox after it was queued: it 404s on every
+                # sync, and left in the queue it stopped the whole mailbox (2026-10).
+                _consume(updated["pending"], address, row["id"])
+                dropped_missing += 1
+                continue
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             text = _fit_text(body[:MAX_BODY_CHARS * 2], MAX_BODY_CHARS)
@@ -185,15 +191,15 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                     "project": "", "subject": row.get("subject", "")}
             room = max_chars - used - 300
             if room < 500:
-                return Batch(items, updated)
+                return Batch(items, updated, dropped_missing=dropped_missing)
             item["text"] = _fit_text(item["text"], room)
             size = len(json.dumps(item, ensure_ascii=False))
             if used + size > max_chars:
-                return Batch(items, updated)
+                return Batch(items, updated, dropped_missing=dropped_missing)
             items.append(item)
             used += size
             _consume(updated["pending"], address, row["id"])
-    return Batch(items, updated)
+    return Batch(items, updated, dropped_missing=dropped_missing)
 
 
 def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) -> dict:
@@ -309,6 +315,21 @@ def _turns(pending: dict, max_items: int):
         yield address, rows
         if taken >= max_items:
             return
+
+
+def _body(client, email_id: str) -> str | None:
+    """The mail's text, or None when the mailbox says it no longer exists (HTTP 404)."""
+    from googleapiclient.errors import HttpError
+    from ..provider_credentials import ProviderCredentialError
+    try:
+        return client.get_email_body(email_id)
+    except HttpError as error:
+        if error.resp.status != 404:
+            raise
+    except ProviderCredentialError as error:
+        if error.status != 404:
+            raise
+    return None
 
 
 def _consume(pending: dict, address: str, email_id: str) -> None:

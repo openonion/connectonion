@@ -384,19 +384,18 @@ def test_a_citation_of_a_line_the_user_did_not_type_goes_with_what_rests_on_it_a
     assert tidy(root) == {}
 
 
-def test_the_owners_own_company_is_not_an_organisation_page(tmp_path):
-    """orgs/openonion-ai and orgs/connectonion-com (2026-10-10): the owner writes
-    from openonion.ai, and CONNECTONION PTY LTD is their signing entity."""
+def test_the_owners_company_is_preserved_even_when_its_contacts_were_archived(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/me.md", "Me", ["me@openonion.ai"], email="me@openonion.ai")
-    notebook.write("people/me.md", notebook.read("people/me.md").replace(
-        "## Facts\n", "## Facts\n- Signing entity: CONNECTONION PTY LTD [1]\n", 1))
-    for domain in ("openonion.ai", "connectonion.com", "unsw.edu.au"):
+    notebook.write("people/avery.md", "# Avery Lin\n\n- Company: Mara Labs\n")
+    for domain in ("maralabs.example", "bigcorp.example", "example.edu.au", "gmail.com"):
         notebook.stub_org(f"orgs/{domain}.md", domain, [domain], [])
-    _state(tmp_path, owner={"record": "people/me.md", "addresses": ["me@openonion.ai"]})
+    _state(tmp_path, owner={"record": "people/avery.md", "addresses": ["avery@maralabs.example"]},
+           orgs=[{"record": "orgs/maralabs.example.md", "people": ["people/notices.md"]}])
 
     done = tidy(tmp_path)
 
-    assert done["archived organisation"] == ["orgs/connectonion.com.md", "orgs/openonion.ai.md"]
-    assert notebook.list("orgs") == ["orgs/unsw.edu.au.md"]
+    assert done["archived organisation"] == ["orgs/gmail.com.md"]
+    assert notebook.list("orgs") == ["orgs/bigcorp.example.md", "orgs/example.edu.au.md",
+                                    "orgs/maralabs.example.md"]
+    assert tidy(tmp_path) == {}

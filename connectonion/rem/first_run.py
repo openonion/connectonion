@@ -36,8 +36,10 @@ DEFAULTS = {"owner": {"input_tokens": 6_500_000, "seconds": 2105},
             "project": {"input_tokens": 630_000, "seconds": 133},
             "org": {"input_tokens": 2_030_000, "seconds": 510},
             "skill": {"input_tokens": 800_000, "seconds": 205},
-            # 2026-10-21: Codex gpt-6-luna, 74k–80k input and 22–40 s per page.
-            "translation": {"input_tokens": 80_000, "seconds": 35}}
+            # 2026-10-21, a real 297-page notebook, 16 workers, Codex gpt-6-luna: median
+            # 186 s per page (one turn alone takes 22-40 s; concurrent turns share the
+            # model's throughput), 90k input per page with repairs, 66 minutes in all.
+            "translation": {"input_tokens": 90_000, "seconds": 200}}
 # More workers than this did not finish sooner: 48 wrote what 16 wrote in the
 # same 66 minutes (1.9.2b3), each turn three times slower. The model's own
 # throughput is the limit, so the estimate never divides by more.

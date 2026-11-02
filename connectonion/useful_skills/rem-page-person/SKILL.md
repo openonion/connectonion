@@ -58,10 +58,10 @@ Rules:
 - **Lead: three cited sentences**; the last contact date lives in `Facts` only.
   (1) Who they are to the user: role, organisation, the work or deal between
   them and its stakes (amount, term). (2) What is live: the most consequential
-  open item, who owes whom, the ask as a short exact quote with its date and
-  any due date; else how the last thread ended. (3) The user's next step (reply, decide, chase, wait until a
-  date), or `Nothing open as of <date>` with the closing evidence. Never open
-  on a gap or a doubt.
+  open item in the `Open threads` wording (never "owes" unagreed),
+  the ask quoted with its date; else how the last thread ended. (3) The user's
+  next action on that item (reply, send, decide, chase, wait until a date), not
+  how to reach them, or `Nothing open as of <date>`. Never open on a doubt.
 - **One voice**: the owner is `the user` in every sentence, never their name,
   `you`, `we`, `he` or `his`: repeat `the user`. The subject is their name or
   "they"; "he"/"she" only where their own words show it.
@@ -104,9 +104,9 @@ Rules:
   its date. Keep each local link with its
   citations and privacy markers. Separate events, separate lines.
 - **`History` is the short true story**:
-  one line per thread, at most sixteen, newest first by date, checked before
-  you finish, `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`; older
-  threads fold into one line a year, at the bottom; a thread that
+  one line per thread, at most sixteen, newest first by date,
+  `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`, dated
+  by that thread; only threads over a year old fold into one line a year; a thread that
   stopped says `no reply after <date>`. Not a send or a newsletter.
 - **`Open threads` lists only what the user and this person still owe each
   other**, the user's debts
@@ -121,7 +121,8 @@ Rules:
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its
   people and object finds nothing later. Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
-  due date and any permission to proceed without a reply. Every ask or
+  due date and any permission to proceed without a reply. The user's own
+  "I'll …" with no delivery after it is `The user owes`. Every ask or
   promise under 60 days old with no reply about it and no delivery is a line
   here, its due date passed or not; only then `Nothing open as of <date>`.
 - **Say each thing once, plainly.** A fact lives in one section; the lead and

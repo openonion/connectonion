@@ -25,6 +25,192 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc28** repairs REM's sync rotation and native
+schedule. A failed source is recorded and the round continues with the next one;
+a queued message deleted from the mailbox leaves the queue and is counted; Outlook
+reads use immutable ids. A small launchd job opens a closed Codex desktop at each
+saved REM time. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc28'
+```
+
+See [the candidate notes](releases/1.9.3rc28.md).
+
+## Previous previews
+
+Release candidate **1.9.3rc27** is a backend repair candidate for retained
+quotation context and Claude loopback bridge startup. Literal words in an extended
+quote require the same immediately bound originals to count as retained. Genuinely
+missing introductory prose stays introductory. The scoped Claude Hook receiver
+uses its numeric address without reverse DNS. No global DNS or permissions change.
+Stable remains **1.9.2**. Matching public package and prerelease are required.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc27'
+```
+
+See [the candidate notes](releases/1.9.3rc27.md).
+
+Release candidate **1.9.3rc26** repairs old REM investigation conversations in
+Codex's active history and fixes initialization omissions. Approved REM startup
+archives proven old internal traces through Codex's native API. Bundled skill
+links into older installations are refreshed, incomplete profiles are repaired,
+and malformed metadata reports an actionable error. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc26'
+```
+
+See [the candidate notes](releases/1.9.3rc26.md).
+
+Release candidate **1.9.3rc25** is the freeze candidate for 1.9.3: rc24 plus
+one release-blocking fix. `co lark listen` no longer loses messages silently:
+history recovery is bounded and runs only at start and reconnect, a rejected
+conversation is skipped instead of stopping recovery, a message that reached
+another client on the same app is reported by `co lark check`, and reactions,
+recalls and group events reach the inbox. If rc25 holds up end to end it is
+promoted unchanged to 1.9.3. Stable remains **1.9.2**.
+
+Opt-in installation:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc25'
+```
+
+See [the candidate notes](releases/1.9.3rc25.md).
+
+
+Release candidate **1.9.3rc24** froze the 1.9.3 line: after it, only
+release-blocking fixes land. It adds the REM citation, translation, company-scope and
+diary-folder privacy fixes merged after rc23, a macOS user service for
+`co host`, and an error for `co email inbox --address` with an address you do
+not own. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc24'
+```
+
+See [the candidate notes](releases/1.9.3rc24.md).
+
+Release candidate **1.9.3rc23** adds generic `co asr` and Python `asr()`.
+Codex is the default provider; existing co configuration can select
+ConnectOnion. Long files are prepared locally in resumable windows. Both
+providers upload audio; the Codex endpoint is unofficial. No Watch connector
+or automatic REM ingestion is included. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc23'
+```
+
+See [the candidate notes](releases/1.9.3rc23.md) and
+[ASR configuration and recovery](asr.md).
+
+Release candidate **1.9.3rc22** activates Codex Scheduled after native registration
+and confirms timer changes before handing off the old clock. Normal-profile
+execution and automatic initialization after a desktop restart passed; newer
+account-managed registration and exact requested-minute timing remain unverified.
+All initialization entry points now repair the profile, skill links and command
+index together. Stable remains **1.9.2**; Python **3.11+** is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc22'
+```
+
+See [the preview notes](releases/1.9.3rc22.md) and their acceptance boundaries.
+
+Release candidate **1.9.3rc21** moves eligible Codex notebooks on macOS to
+Codex desktop Scheduled, verifies registration before replacing the old clock,
+and archives completed maintenance conversations. Other timezones, headless Macs
+and other runners retain launchd. Keep the app open and computer awake.
+Stable remains **1.9.2**; this preview requires Python **3.11+**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc21'
+```
+
+See [the preview notes](releases/1.9.3rc21.md) and their native execution evidence.
+
+Release candidate **1.9.3rc20** recognizes already-owned addresses during
+repeat email setup even if that domain no longer accepts new purchases. It
+retains multi-address setup, domain discovery, account-wide defaults and the
+merged inbox. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc20'
+```
+
+See [the preview notes](releases/1.9.3rc20.md). Currently enabled choices come
+from the cloud; unready reserved domains are not offered for new purchases.
+
+
+Release candidate **1.9.3rc19** strengthens mailbox setup regression coverage:
+no purchase after authentication/settings failures or for domains the backend
+has not enabled. It includes rc18's multi-address setup and the corrected quota
+examples. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc19'
+```
+
+See [the preview notes](releases/1.9.3rc19.md). At rc19 publication,
+steadmail.com and oakinbox.com had not passed incoming delivery. They were
+enabled after live tests on 2026-10-23; the cloud lists all four hosted domains.
+
+Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
+additional email aliases on the same cloud account. It retains sender selection,
+account defaults and mailbox filtering. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc18'
+```
+
+See [the preview notes](releases/1.9.3rc18.md). Domain infrastructure acceptance
+is recorded separately from package tests.
+
+Release candidate **1.9.3rc17** processes eligible explicit feedback when
+there is no new raw material, narrows inherited-claim audit exemptions and keeps
+supplied argument names in tool error hints. Synthetic retry tests avoid real
+waiting. Stable remains 1.9.2; Python 3.11+ and existing dependency floors remain.
+This backend preview does not establish current REM model or native UI acceptance.
+See [1.9.3rc17 notes](releases/1.9.3rc17.md).
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc17'
+```
+
+Release candidate **1.9.3rc16** skips stale click-approach waypoints under slow
+pointer dispatch, lets supervised local browser jobs pin their existing daemon, and
+keeps isolated project Hosts from inheriting a global handoff watcher. This
+preview requires Python 3.11+ and retains rc15's security dependency floors.
+See [1.9.3rc16 notes](releases/1.9.3rc16.md).
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc16'
+```
+
+
+Release candidate **1.9.3rc15** preserves file and image references, message kinds
+and typed sender IDs through Feishu/Lark inbox consumption and Host input.
+Recovery includes conversations remembered before an interrupted first journal
+write. See [1.9.3rc15 notes](releases/1.9.3rc15.md).
+
+Release candidate **1.9.3rc14** updates the optional Synology dependency to
+Paramiko 5.1.0+ and audits all extras, retaining rc13 security and compatibility
+requirements. See [1.9.3rc14 notes](releases/1.9.3rc14.md).
+
+Release candidate **1.9.3rc13** archives REM's internal Codex calls while preserving
+explicit resume and raises the Python floor to 3.11 with updated security
+dependencies. See [1.9.3rc13 notes](releases/1.9.3rc13.md).
+
 Release candidate **1.9.3rc12**: rounds keep what they had. A round keeps every quote the page
 already had and repairs a dropped quote before it is refused; open threads say who owes whom and
 keep overdue promises open; a dropped mail connection no longer stops the first run; the reader's
@@ -34,8 +220,6 @@ only. See [1.9.3rc12 notes](releases/1.9.3rc12.md).
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.3rc12'
 ```
-
-## Previous previews
 
 Release candidate **1.9.3rc11**: upkeep keeps its quotes. Daily upkeep checks a rewrite against
 the page it replaces and asks for dropped quotes back; pronoun repair only touches the owner; project

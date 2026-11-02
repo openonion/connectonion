@@ -1,4 +1,4 @@
-"""Collection failures are real failed passes, before any model has run."""
+"""Source failures stay visible while healthy sources continue."""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -24,7 +24,7 @@ def notebook(tmp_path, monkeypatch):
     progress = {"codex": {"rollout-fixture.jsonl": {"offset": 10, "digest": "old"}}}
     write_json(state_path(root, "progress.json"), progress)
     monkeypatch.setattr(service, "_selected_sources", lambda *a: {"codex": {"kind": "codex"}})
-    monkeypatch.setattr(service, "_resume_archive", lambda *a: pytest.fail("archive must not resume after failed gathering"))
+    monkeypatch.setattr(service, "_resume_archive", lambda *a: None)
     moment = datetime(2026, 10, 15, 8, tzinfo=timezone.utc)
     monkeypatch.setattr(service, "now", lambda: moment)
     monkeypatch.setattr(service, "latest_slot", lambda *a: moment)
@@ -35,6 +35,7 @@ def notebook(tmp_path, monkeypatch):
                                    UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid")])
 def test_collection_failure_is_logged_without_advancing_or_running_model(notebook, monkeypatch, error):
     root, progress = notebook
+    monkeypatch.setattr(service, "_resume_archive", lambda *a: pytest.fail("archive must not resume after failed gathering"))
     def collect(*args):
         raise error
     monkeypatch.setattr(service, "collect", collect)
@@ -49,7 +50,7 @@ def test_collection_failure_is_logged_without_advancing_or_running_model(noteboo
     logs = service.run_logs(root)
     assert len(logs) == 1 and logs[0]["id"] == result["id"]
     assert logs[0]["outcome"] == "failed" and logs[0]["failed_source"] == "codex"
-    assert read_json(state_path(root, "progress.json"), {}) == progress
+    assert read_json(state_path(root, "progress.json"), {}) == {**progress, "rem_last_source": "codex"}
     assert "private provider detail" not in result["error"]
 
 
@@ -67,7 +68,7 @@ def test_scheduled_collection_failure_serves_one_slot_and_reports_attention(note
     assert worker["last_scheduled_outcome"] == "failed"
     state, _ = service._state_line(root, read_config(root), ZoneInfo("UTC"))
     assert state.startswith("Background needs attention")
-    assert "Invalid session metadata" in state and "co rem logs" in state
+    assert "Codex read failed: RemError" in state and "co rem logs" in state
 
 
 @pytest.mark.parametrize("error", [RemError("Outlook could not be read"),
@@ -87,7 +88,7 @@ def test_mail_collection_failure_is_not_lost_before_record_creation(notebook, mo
     assert service.run_logs(root)[0]["error"] == result["error"]
     assert "private provider detail" not in result["error"]
     if isinstance(error, ProviderCredentialError):
-        assert "co auth microsoft" in result["error"]
+        assert result["error"] == "Outlook read failed: ProviderCredentialError"
 
 
 def test_programmer_errors_are_not_disguised_as_source_failures(notebook, monkeypatch):
@@ -116,7 +117,7 @@ def test_cli_reports_collection_failure_as_nonzero(notebook, monkeypatch, as_jso
         assert value["ok"] is False
         assert value["data"]["maintenance"]["failed_source"] == "codex"
     else:
-        assert "Invalid session metadata" in result.output
+        assert "Codex read failed: RemError" in result.output
 
 
 def test_scheduled_daily_pass_keeps_collection_reason_and_does_not_investigate(notebook, monkeypatch):
@@ -130,12 +131,12 @@ def test_scheduled_daily_pass_keeps_collection_reason_and_does_not_investigate(n
     result = run_daily(root, scheduled=True,
                        investigate_one=lambda *a, **k: pytest.fail("investigation must not run"))
     assert result["outcome"] == "partial" and result["investigation"] is None
-    assert service.worker_state(root)["last_scheduled_reason"] == "Invalid session metadata"
+    assert service.worker_state(root)["last_scheduled_reason"] == "Codex read failed: RemError"
     assert run_daily(root, scheduled=True) is None and calls == [True]
 
 
-@pytest.mark.parametrize("kind,command", [("gmail", "co auth google"), ("outlook", "co auth microsoft")])
-def test_mail_client_validation_is_recorded_with_safe_recovery(notebook, monkeypatch, kind, command):
+@pytest.mark.parametrize("kind", ["gmail", "outlook"])
+def test_mail_client_validation_is_recorded_without_exception_text(notebook, monkeypatch, kind):
     root, _ = notebook
     monkeypatch.setattr(service, "_selected_sources", lambda *a: {kind: {"kind": kind}})
     def client(*args):
@@ -143,4 +144,270 @@ def test_mail_client_validation_is_recorded_with_safe_recovery(notebook, monkeyp
     monkeypatch.setattr(service, "mail_client", client)
     result = service.run_sync(root)
     assert result["outcome"] == "failed" and result["failed_source"] == kind
-    assert command in result["error"] and "private configuration detail" not in result["error"]
+    assert result["error"] == f"{kind.title()} read failed: RemError"
+
+
+class FailingMailbox:
+    def my_addresses(self):
+        raise HttpError(Response({"status": "503"}),
+                        b'{"error": {"message": "Backend Error"}}',
+                        uri="https://example.com/mail?access_token=secret-token")
+
+
+@pytest.fixture
+def mixed_sources(notebook, monkeypatch):
+    from connectonion.rem.source import Batch
+    root, progress = notebook
+    sources = {
+        "gmail": {"kind": "gmail", "enabled": True, "consented": True,
+                  "since": "2026-10-01T00:00:00+00:00"},
+        "codex": {"kind": "codex"},
+    }
+    progress["gmail"] = {"scanned_until": "2026-10-10T00:00:00+00:00"}
+    write_json(state_path(root, "progress.json"), progress)
+    write_json(state_path(root, "subscriptions.json"), sources)
+    monkeypatch.setattr(service, "_selected_sources", lambda *a: sources)
+    monkeypatch.setattr(service, "mail_available", lambda kind: kind == "gmail")
+    monkeypatch.setattr(service, "mail_client", lambda *a: FailingMailbox())
+    item = {"source": "codex:fixture", "text": "Choose a local notebook", "role": "user"}
+    monkeypatch.setattr(service, "collect", lambda *a: Batch([item], {"offset": 20}))
+    return root, progress, sources, item
+
+
+def test_http_failure_continues_to_other_source_and_status_reports_it(mixed_sources):
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _mailboxes
+    root, before, sources, item = mixed_sources
+    gathered = []
+    result = service.run_sync(root, runner=lambda book, items, config, **kw:
+                              gathered.extend(items) or {"changed": []})
+    assert gathered == [item]
+    assert result["outcome"] == "completed"
+    assert result["failed_source"] == "gmail"
+    assert result["source_failures"] == [{"source": "gmail", "error": "Gmail read failed: HttpError 503 Backend Error"}]
+    assert "gmail" in result["warning"]
+    assert result["error"] == "Gmail read failed: HttpError 503 Backend Error"
+    after = read_json(state_path(root, "progress.json"), {})
+    assert after["gmail"] == before["gmail"]
+    assert after["codex"] == {"offset": 20}
+    assert list(service._rotated(sources, after["rem_last_source"])) == ["gmail", "codex"]
+    assert service.run_logs(root)[0]["source_failures"] == result["source_failures"]
+    state = service.status(root)["mailboxes"]["gmail"]
+    assert "last read failed 2026-10-15" in state and "HttpError 503 Backend Error" in state
+    rendered = Text.from_markup("\n".join(_mailboxes(root))).plain
+    assert "✗ Gmail" in rendered and "last read failed" in rendered
+    assert "✓ Gmail" not in rendered
+
+
+def test_failed_source_advances_rotation_even_when_all_reads_fail(mixed_sources, monkeypatch):
+    root, before, sources, _ = mixed_sources
+    sources.clear()
+    sources["gmail"] = {"kind": "gmail", "enabled": True, "consented": True}
+    result = service.run_sync(root)
+    assert result["outcome"] == "failed"
+    after = read_json(state_path(root, "progress.json"), {})
+    assert after["gmail"] == before["gmail"]
+    assert after["rem_last_source"] == "gmail"
+    assert result["error"] == "Gmail read failed: HttpError 503 Backend Error"
+
+
+def test_multiple_failures_keep_each_reason_and_read_the_next_source(mixed_sources, monkeypatch):
+    from connectonion.cli.commands.rem_output import sync_summary
+    from rich.text import Text
+    root, _, sources, item = mixed_sources
+    sources["outlook"] = {"kind": "outlook", "enabled": True, "consented": True}
+    sources["codex"] = sources.pop("codex")
+    result = service.run_sync(root, runner=lambda *a, **kw: {"changed": []})
+    assert result["outcome"] == "completed" and result["items"] == 1
+    assert [row["source"] for row in result["source_failures"]] == ["gmail", "outlook"]
+    assert all(name in result["warning"] for name in ("gmail", "outlook"))
+    rendered = Text.from_markup(sync_summary(result)).plain
+    assert "Gmail read failed: HttpError 503 Backend Error" in rendered
+    assert "Outlook read failed: HttpError 503 Backend Error" in rendered
+
+
+def test_successful_empty_read_completes_with_warning_and_clears_old_failure(mixed_sources, monkeypatch):
+    from connectonion.rem.source import Batch
+    root, _, sources, _ = mixed_sources
+    monkeypatch.setattr(service, "collect", lambda *a: Batch([], {"offset": 20}))
+    result = service.run_sync(root)
+    assert result["outcome"] == "completed" and result["runner_attempts"] == 0
+    assert "gmail" in result["warning"]
+    monkeypatch.setattr(service, "collect_mail", lambda *a, **kw:
+                        Batch([], {"scanned_until": service.now().isoformat()}))
+    monkeypatch.setattr(service, "_resume_archive", lambda *a: None)
+    service.run_sync(root)
+    assert service.status(root)["mailboxes"]["gmail"] == "read by the daily round"
+
+
+@pytest.mark.parametrize("days,sync_ran,unhealthy", [(3, True, True), (2, True, False), (3, False, False)])
+def test_status_marks_stale_mailbox_only_when_syncs_ran(mixed_sources, days, sync_ran, unhealthy):
+    from datetime import timedelta
+    root, progress, _, _ = mixed_sources
+    scanned = service.now() - timedelta(days=days)
+    progress["gmail"]["scanned_until"] = scanned.isoformat()
+    write_json(state_path(root, "progress.json"), progress)
+    if sync_ran:
+        write_json(state_path(root, "runs/run_fixture.json"), {
+            "id": "run_fixture", "phase": "sync", "started_at": service.now().isoformat(),
+            "outcome": "completed", "items_by_source": {"codex": 1}})
+    state = service.status(root)["mailboxes"]["gmail"]
+    assert ("not read since" in state) == unhealthy
+    assert "failed" not in state
+    if unhealthy:
+        assert str(scanned.date()) in state and "scan is more than 2 days behind" in state
+
+
+def test_status_recognises_failure_records_from_before_upgrade(mixed_sources):
+    root, _, _, _ = mixed_sources
+    write_json(state_path(root, "runs/run_fixture.json"), {
+        "id": "run_fixture", "phase": "sync", "started_at": service.now().isoformat(),
+        "outcome": "failed", "failed_source": "gmail", "error": "Source collection failed (HttpError)"})
+    assert "last read failed 2026-10-15" in service.status(root)["mailboxes"]["gmail"]
+
+
+@pytest.mark.parametrize("error", [
+    HttpError(Response({"status": "503"}),
+              b'{"error": {"message": "Backend Error for person@example.com token=secret-token body: private body"}}'),
+    OSError("Connection refused person@example.com token=secret-token body: private body"),
+])
+def test_collection_diagnostics_never_copy_mail_or_credentials(mixed_sources, monkeypatch, error):
+    import json
+    root, _, _, _ = mixed_sources
+    def client(*a):
+        raise error
+    monkeypatch.setattr(service, "mail_client", client)
+    result = service.run_sync(root, runner=lambda *a, **kw: {"changed": []})
+    assert result["outcome"] == "completed"
+    saved = json.dumps(service.run_logs(root)) + json.dumps(service.status(root))
+    for private in ("person@example.com", "secret-token", "private body"):
+        assert private not in saved
+    assert type(error).__name__ in result["error"]
+
+
+def test_backfill_stops_after_healthy_sources_are_empty(mixed_sources, monkeypatch):
+    from connectonion.rem.source import Batch
+    root, _, _, _ = mixed_sources
+    calls = []
+    def client(*a):
+        calls.append(True)
+        if len(calls) > 1:
+            pytest.fail("an empty successful source must not retry a failed mailbox forever")
+        return FailingMailbox()
+    monkeypatch.setattr(service, "mail_client", client)
+    monkeypatch.setattr(service, "collect", lambda *a: Batch([], {"offset": 20}))
+    result = service.run_sync(root, all_pending=True)
+    assert result["batches"] == 1
+    record = next(run for run in service.run_logs(root) if run["id"] == result["runs"][0])
+    assert record["outcome"] == "completed" and record["failed_source"] == "gmail"
+    assert result["outcome"] == "completed" and "gmail" in result["warning"]
+
+
+def test_failed_mailbox_status_action_keeps_explicit_notebook(mixed_sources, monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    root, _, _, _ = mixed_sources
+    monkeypatch.setattr(service, "_quota_status", lambda *a: {})
+    service.run_sync(root, runner=lambda *a, **kw: {"changed": []})
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "status"])
+    assert result.exit_code == 0, result.output
+    assert f"co rem --root {root.resolve()} logs" in result.output
+
+
+def test_partial_source_failure_does_not_stop_archive_resume(mixed_sources, monkeypatch):
+    root, _, _, _ = mixed_sources
+    resumed = []
+    monkeypatch.setattr(service, "_resume_archive", lambda *a: resumed.append(True) or {"phase": "paused"})
+    result = service.run_sync(root, runner=lambda *a, **kw: {"changed": []})
+    assert result["outcome"] == "completed" and result["failed_source"] == "gmail"
+    assert resumed == [True]
+    assert result["mail_archive"] == {"phase": "paused"}
+
+
+@pytest.mark.parametrize("kind", ["gmail", "outlook"])
+def test_missing_queued_mail_is_counted_in_run_and_reported(mixed_sources, monkeypatch, kind):
+    from connectonion.cli.commands.rem_output import sync_summary
+    root, progress, sources, _ = mixed_sources
+    sources.clear()
+    monkeypatch.setattr(service, "mail_available", lambda source: source == kind)
+    sources[kind] = {"kind": kind, "enabled": True, "consented": True, "since": service.now().isoformat()}
+    progress[kind] = {"scanned_until": service.now().isoformat(), "pending": {
+        "person@example.com": [{"id": str(i), "from": "person@example.com",
+                                 "when": service.now().isoformat()} for i in range(9)]}}
+    write_json(state_path(root, "progress.json"), progress)
+    class MissingMailbox:
+        def list_between(self, *args):
+            return []
+        def my_addresses(self):
+            return {"owner@example.com"}
+        def get_email_body(self, email_id):
+            if kind == "gmail":
+                raise HttpError(Response({"status": "404"}), b'{"error":{"message":"Not Found"}}')
+            raise ProviderCredentialError("missing", "Message missing", "co outlook inbox", status=404)
+    monkeypatch.setattr(service, "mail_client", lambda *a: MissingMailbox())
+    monkeypatch.setattr(service, "_resume_archive", lambda *a: None)
+    result = service.run_sync(root)
+    assert result["dropped_missing"] == {kind: 9}
+    assert service.run_logs(root)[0]["dropped_missing"] == {kind: 9}
+    assert read_json(state_path(root, "progress.json"), {})[kind]["pending"] == {}
+    assert f"{kind}: 9 queued messages dropped as missing" in result["warning"]
+    from rich.text import Text
+    assert "9 queued messages dropped as missing" in Text.from_markup(sync_summary(result)).plain
+    assert "9 queued messages dropped as missing" in service.mailbox_state(kind, sources[kind], root=root)[0]
+
+
+@pytest.mark.parametrize("secret", ["Bearer ya29.fixture-token", "Authorization Bearer eyJ.fixture-token",
+                                    "client_secret=GOCSPX-fixture-token", "key sk-live-fixture-token"])
+@pytest.mark.parametrize("mode", ["rem", "credential", "legacy"])
+def test_only_safe_failure_prefix_reaches_records_and_status(mixed_sources, monkeypatch, secret, mode):
+    import json
+    from connectonion.cli.commands.rem_status import _mailboxes
+    root, _, _, _ = mixed_sources
+    if mode == "legacy":
+        write_json(state_path(root, "runs/run_fixture.json"), {
+            "id": "run_fixture", "started_at": service.now().isoformat(), "outcome": "failed",
+            "failed_source": "gmail", "error": f"Gmail read failed: RemError 404 Not Found {secret}"})
+    else:
+        error = (ProviderCredentialError("fixture", secret, "co auth google")
+                 if mode == "credential" else RemError(secret))
+        def client(*a):
+            raise error
+        monkeypatch.setattr(service, "mail_client", client)
+        result = service.run_sync(root, runner=lambda *a, **kw: {"changed": []})
+        assert result["error"] == f"Gmail read failed: {type(error).__name__}"
+        assert secret not in json.dumps(service.run_logs(root))
+    assert secret not in json.dumps(service.status(root))
+    state = service.mailbox_state("gmail", service.subscriptions(root)["gmail"], root=root)[0]
+    detail = {"rem": "RemError", "credential": "ProviderCredentialError", "legacy": "RemError 404 Not Found"}[mode]
+    assert state == f"last read failed 2026-10-15: {detail}"
+    assert secret not in "\n".join(_mailboxes(root))
+
+
+def test_unparseable_legacy_failure_has_only_date(mixed_sources):
+    root, _, _, _ = mixed_sources
+    write_json(state_path(root, "runs/run_fixture.json"), {
+        "id": "run_fixture", "started_at": service.now().isoformat(), "outcome": "failed",
+        "failed_source": "gmail", "error": "Authorization Bearer eyJ.fixture-token"})
+    assert service.mailbox_state("gmail", service.subscriptions(root)["gmail"], root=root)[0] == "last read failed 2026-10-15"
+
+
+def test_rotated_mailbox_behind_is_not_reported_as_failed(mixed_sources):
+    root, progress, _, _ = mixed_sources
+    write_json(state_path(root, "runs/run_fixture.json"), {
+        "id": "run_fixture", "started_at": service.now().isoformat(), "phase": "sync",
+        "outcome": "completed", "items_by_source": {"codex": 1}})
+    state = service.status(root)["mailboxes"]["gmail"]
+    assert state.startswith("not read since 2026-10-10; scan is more than 2 days behind")
+
+
+@pytest.mark.parametrize("secret", ["Bearer ya29.fixture-token", "Authorization Bearer eyJ.fixture-token",
+                                    "client_secret=GOCSPX-fixture-token", "key sk-live-fixture-token"])
+def test_legacy_scheduled_failure_is_safe_in_status(mixed_sources, secret):
+    import json
+    root, _, _, _ = mixed_sources
+    write_json(state_path(root, "worker.json"), {
+        "enabled": True, "scheduler": "fixture", "last_scheduled_outcome": "failed",
+        "last_scheduled_reason": f"Gmail read failed: RemError {secret}"})
+    value = service.status(root)
+    assert secret not in json.dumps(value)
+    assert "Gmail read failed: RemError; run `co rem logs`" in value["state"]

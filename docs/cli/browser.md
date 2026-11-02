@@ -324,6 +324,17 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of `~/.onionwright/profiles/<address>` (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
+- A supervisor can set `$CO_BROWSER_DAEMON_PID` to the positive PID of its
+  already running local daemon. Commands then fail if that recorded owner is
+  missing, replaced or unavailable; they never start a daemon or install a
+  browser. Engine probes, reconnects and read keepalives retain the same pin.
+  A close never follows a replacement owner for force cleanup. Keep this
+  environment local to the supervised job and use a private endpoint/profile;
+  the PID is a lifecycle constraint, not authentication or a paid-session ID.
+  Explicit Host private targets ignore this local pin. Without it, ordinary
+  first-command startup works as before. Pinned ordinary commands also skip
+  automatic paid-client installation; an explicit `install-onion` command
+  remains an installation request.
 
 ## Importing logins from Chrome
 

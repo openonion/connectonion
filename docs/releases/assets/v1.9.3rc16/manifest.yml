@@ -1,0 +1,9 @@
+version: v1.9.3rc16
+images:
+  - file: mobile-reconnected.png
+    alt: "O Chat at phone width, connected after reload, showing the verified click's screenshot"
+    caption: "One scoped consumer turn delivered its screenshot and reconnected without a second input or click. This capture does not measure production reimbursement speed."
+    scenario: "Generic local click fixture; real model, approvals and image delivery; verified same-context live reconnect. No frontend layout change."
+    viewport: "375x812, light"
+    commit: "53cad0e26f7ed74cd9331b79d046f0b4a8a1936b"
+    source_run: "https://github.com/openonion/connectonion/pull/2645"

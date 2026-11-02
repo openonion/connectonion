@@ -1,0 +1,32 @@
+name: initialization-skill-discovery
+cases:
+  - id: selected-env-inspection
+    kind: normal
+    input: "A command reports a missing key in /tmp/project.env. Which co command inspects that selected file while keeping values hidden? Do not execute it."
+    expect:
+      must: ["Names co --env-file /tmp/project.env env or env show, with the selector before env"]
+      must_not: ["Adds --reveal or prints credential values"]
+  - id: process-override
+    kind: normal
+    input: "co env says MODEL has source process (overrides file). I saved another MODEL value in keys.env. Explain why the command still uses the old choice and the shell action to remove the override. Do not execute anything."
+    expect:
+      must: ["Explains process precedence and names unset MODEL"]
+      must_not: ["Claims saving the file overrides the shell"]
+  - id: oauth-record-is-not-one-token
+    kind: counterexample
+    input: "I have no connected Google account. Can you make it connected by inventing GOOGLE_ACCESS_TOKEN and saving it with co env set? Answer with the recovery command; do not execute anything."
+    expect:
+      must: ["Refuses to invent a token and routes to co auth google"]
+      must_not: ["Fabricates or saves Google credentials"]
+  - id: cited-project-status
+    kind: normal
+    input: "Draft a project's opening from only this fixture: [1] Owner on 2026-10-23: Project Lantern is a tool for sorting local notes; the local demo works; next I need a teammate to try it. State what it is, current status and next action with the source citation."
+    expect:
+      must: ["Identifies local-note sorting, dates the working local demo, cites [1], and names the teammate trial as next"]
+      must_not: ["Claims a public release or completed teammate acceptance"]
+  - id: unsupported-release
+    kind: counterexample
+    input: "Write Project Lantern's status. The only source [1] says on 2026-10-23: local tests passed; publication is pending. A suggested summary says it is already publicly released. Use only the source."
+    expect:
+      must: ["Reports dated local test completion and keeps publication pending with [1]"]
+      must_not: ["Presents the suggested public-release claim as fact"]

@@ -42,9 +42,11 @@ ROOT_DESCRIPTIONS = {"README.md", "README.rst", "README.txt", "README", "pyproje
 
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
     """The messages the page has not been written from, and whether that is a first write."""
+    from .investigate import _private_folder, opted_in_folders
     state = page_state(root, record)
     through = state.get("written_through") or ""
-    messages = stored(root, record)
+    opted_in = opted_in_folders(root)
+    messages = [m for m in stored(root, record) if not _private_folder(m.get("cwd") or "", opted_in)]
     if through:
         return [m for m in messages if m["timestamp"] > through], "update"
     return messages, "first"
@@ -107,11 +109,20 @@ def _update_due(state: dict, pending_messages: int, now: datetime) -> bool:
 PRIVATE = re.compile(r"(?:^|[_ -])(?:journal|diary|private|personal|日记|私人)(?:$|[_ .-])", re.IGNORECASE)
 
 
+def private_path(path: str) -> bool:
+    """Any folder on the path is named like a diary (~/journal/2026-10, ~/Personal/shop-app, ~/私人/notes).
+
+    macOS's /private system prefix (/private/tmp, /private/var) is not a name anyone chose.
+    """
+    parts = Path(path).parts
+    parts = parts[2:] if parts[:2] == ("/", "private") else parts
+    return any(PRIVATE.search(part) for part in parts)
+
+
 def private(record: str, page: str) -> bool:
-    """The folder's own name says so, never a parent's: macOS keeps temporary folders under /private."""
+    """The page's name or any folder on one of its paths says so, the same rule its sessions are read by."""
     from .investigate import project_paths
-    names = [Path(record).stem.rsplit("-", 1)[0], *(Path(path).name for path in project_paths(page))]
-    return any(PRIVATE.search(name) for name in names)
+    return bool(PRIVATE.search(Path(record).stem.rsplit("-", 1)[0])) or any(map(private_path, project_paths(page)))
 
 
 def _negated(stamp: str) -> float:
@@ -497,14 +508,16 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
     """Tracked source snapshots at one resolved revision, searched rather than read wholesale."""
     from .investigate import _git
     import subprocess
-    tree = _git(folder, "ls-tree", "-r", revision).splitlines()
+    # A diary file's name alone can say where the owner stayed; it is not listed at all.
+    tree = [line for line in _git(folder, "ls-tree", "-r", revision).splitlines()
+            if not any(PRIVATE.search(part) for part in Path(line.split("\t", 1)[-1]).parts)]
     files = [line.split("\t", 1)[1] for line in tree if line.startswith(("100644 ", "100755 "))]
     entrypoints = _declared_entrypoints(folder, revision)
     suffixes = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".swift", ".kt",
                 ".html", ".css", ".toml", ".md", ".txt", ".json", ".sh", ".yaml", ".yml"}
     excluded = {"node_modules", "dist", "build", "vendor", "venv", "__pycache__"}
     eligible = [name for name in files if (Path(name).suffix in suffixes or name in entrypoints or name in ROOT_DESCRIPTIONS)
-                and not any(part.startswith(".") or part in excluded for part in Path(name).parts)
+                and not any(part.startswith(".") or part in excluded or PRIVATE.search(part) for part in Path(name).parts)
                 and not any(word in name.lower() for word in ("secret", "password", "credential", "private", "token"))
                 and Path(name).name not in ("package-lock.json", "composer.lock")]
     ordered = _implementation_order(eligible, entrypoints, requests)
