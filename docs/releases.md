@@ -25,6 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc29** keeps paid WTF Browser sessions on macOS alive
+past their first fifteen-minute period: the runtime now asks for Chromium
+154.0.8037.100, which renews every period. Linux stays on 154.0.8037.58.
+Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc29'
+```
+
+See [the candidate notes](releases/1.9.3rc29.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc28** repairs REM's sync rotation and native
 schedule. A failed source is recorded and the round continues with the next one;
 a queued message deleted from the mailbox leaves the queue and is counted; Outlook
@@ -38,8 +53,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc28'
 ```
 
 See [the candidate notes](releases/1.9.3rc28.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc27** is a backend repair candidate for retained
 quotation context and Claude loopback bridge startup. Literal words in an extended
