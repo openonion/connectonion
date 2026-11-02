@@ -197,6 +197,7 @@ def test_http_failure_continues_to_other_source_and_status_reports_it(mixed_sour
     rendered = Text.from_markup("\n".join(_mailboxes(root))).plain
     assert "✗ Gmail" in rendered and "last read failed" in rendered
     assert "✓ Gmail" not in rendered
+    assert "→ co rem logs" in rendered
 
 
 def test_failed_source_advances_rotation_even_when_all_reads_fail(mixed_sources, monkeypatch):
@@ -243,6 +244,8 @@ def test_successful_empty_read_completes_with_warning_and_clears_old_failure(mix
 @pytest.mark.parametrize("days,sync_ran,unhealthy", [(3, True, True), (2, True, False), (3, False, False)])
 def test_status_marks_stale_mailbox_only_when_syncs_ran(mixed_sources, days, sync_ran, unhealthy):
     from datetime import timedelta
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _mailboxes
     root, progress, _, _ = mixed_sources
     scanned = service.now() - timedelta(days=days)
     progress["gmail"]["scanned_until"] = scanned.isoformat()
@@ -256,6 +259,9 @@ def test_status_marks_stale_mailbox_only_when_syncs_ran(mixed_sources, days, syn
     assert "failed" not in state
     if unhealthy:
         assert str(scanned.date()) in state and "scan is more than 2 days behind" in state
+    rendered = Text.from_markup("\n".join(_mailboxes(root))).plain
+    assert ("✗ Gmail" in rendered) == unhealthy
+    assert ("→ co rem logs" in rendered) == unhealthy
 
 
 def test_status_recognises_failure_records_from_before_upgrade(mixed_sources):
@@ -327,10 +333,12 @@ def test_partial_source_failure_does_not_stop_archive_resume(mixed_sources, monk
 @pytest.mark.parametrize("kind", ["gmail", "outlook"])
 def test_missing_queued_mail_is_counted_in_run_and_reported(mixed_sources, monkeypatch, kind):
     from connectonion.cli.commands.rem_output import sync_summary
+    from connectonion.cli.commands.rem_status import _mailboxes
     root, progress, sources, _ = mixed_sources
     sources.clear()
     monkeypatch.setattr(service, "mail_available", lambda source: source == kind)
     sources[kind] = {"kind": kind, "enabled": True, "consented": True, "since": service.now().isoformat()}
+    write_json(state_path(root, "subscriptions.json"), sources)
     progress[kind] = {"scanned_until": service.now().isoformat(), "pending": {
         "person@example.com": [{"id": str(i), "from": "person@example.com",
                                  "when": service.now().isoformat()} for i in range(9)]}}
@@ -353,7 +361,15 @@ def test_missing_queued_mail_is_counted_in_run_and_reported(mixed_sources, monke
     assert f"{kind}: 9 queued messages dropped as missing" in result["warning"]
     from rich.text import Text
     assert "9 queued messages dropped as missing" in Text.from_markup(sync_summary(result)).plain
-    assert "9 queued messages dropped as missing" in service.mailbox_state(kind, sources[kind], root=root)[0]
+    rendered = Text.from_markup("\n".join(_mailboxes(root))).plain
+    assert f"✓ {kind.title()}" in rendered
+    assert f"✗ {kind.title()}" not in rendered
+    assert "last read 2026-10-15: 9 queued messages dropped as missing" in rendered
+    assert "→ co rem logs" not in rendered
+    state, fix = service.mailbox_state(kind, sources[kind], root=root)
+    assert "9 queued messages dropped as missing" in state
+    assert fix == ""
+    assert "co rem logs" not in service.status(root)["mailboxes"][kind]
 
 
 @pytest.mark.parametrize("secret", ["Bearer ya29.fixture-token", "Authorization Bearer eyJ.fixture-token",
