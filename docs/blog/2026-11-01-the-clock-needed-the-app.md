@@ -22,7 +22,9 @@ the desktop database has no automations table. An empty current table stays
 empty; a stale row cannot bring a removed task back.
 
 The repair adds a small launchd job alongside the native task. At each saved
-schedule time it asks macOS to open Codex in the background, without taking
+schedule time it checks whether Codex is already running. If it is, the job
+does nothing: reopening a running app can bring up a window mid-task. If it
+is not, the job asks macOS to open Codex in the background, without taking
 focus. It never starts REM. Codex still owns execution, and the automation
 still runs the same fixed `co rem ... sync --scheduled` command. Stopping
 the native schedule also unloads and removes its wake job.

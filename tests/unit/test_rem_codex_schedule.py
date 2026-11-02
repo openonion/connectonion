@@ -4,6 +4,7 @@ import json
 import plistlib
 import sqlite3
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -13,7 +14,7 @@ import yaml
 from connectonion.rem.codex_schedule import CodexNative, automation_id, recurrence
 from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, atomic_write, state_path, write_json
-from connectonion.rem.schedule import Launchd, default_scheduler, label_for
+from connectonion.rem.schedule import Launchd, default_scheduler, label_for, wake_command
 
 
 class Launcher:
@@ -227,7 +228,7 @@ def test_native_install_saves_only_a_background_desktop_wake_job(native, tmp_pat
     assert path.is_file(), "native tasks need a launchd job to reopen a closed desktop"
     job = plistlib.loads(path.read_bytes())
     assert job["Label"] == label_for(root) + ".wake"
-    assert job["ProgramArguments"] == ["/usr/bin/open", "-g", "-j", "-a", "/Applications/Codex.app"]
+    assert job["ProgramArguments"] == wake_command(Path("/Applications/Codex.app"))
     assert job["StartCalendarInterval"] == [{"Hour": 3, "Minute": 15}, {"Hour": 17, "Minute": 45}]
     assert not job.get("RunAtLoad") and "StartInterval" not in job
     assert path.stat().st_mode & 0o777 == 0o600
@@ -820,3 +821,20 @@ def test_status_distinguishes_saved_registered_and_triggered(tmp_path, monkeypat
     monkeypatch.setattr(CodexNative, "describe", lambda self, root: native_state)
     text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
     assert fragment in text
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the wake job is a macOS launchd job")
+def test_the_wake_job_leaves_a_running_codex_alone_and_opens_a_closed_one(tmp_path):
+    app = tmp_path / "Codex Test.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    # Not a real app: if the job reaches open, open fails, so its exit code shows which branch ran.
+    closed = subprocess.run(wake_command(app), capture_output=True)
+    assert closed.returncode != 0, "a closed app must be opened"
+
+    # A process whose command line is the app's executable, as ps shows Codex's.
+    running = subprocess.Popen([str(app / "Contents" / "MacOS" / "Codex"), "30"], executable="/bin/sleep")
+    try:
+        assert subprocess.run(wake_command(app), capture_output=True).returncode == 0
+    finally:
+        running.kill()
+        running.wait()

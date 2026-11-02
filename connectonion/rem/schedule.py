@@ -32,6 +32,8 @@ interval elapses is skipped silently -- harmless here, the next tick catches up.
 import hashlib
 import os
 import plistlib
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -71,6 +73,20 @@ def _checkout_path() -> str:
     import connectonion
     checkout = Path(connectonion.__file__).resolve().parent.parent
     return "" if {"site-packages", "dist-packages"} & set(checkout.parts) else str(checkout)
+
+
+def wake_command(app: Path) -> list[str]:
+    """Open Codex only when it is closed.
+
+    Opening an app that is already running sends it a reopen event, which can
+    bring up a window in the middle of whatever the user is doing. The pattern
+    is anchored so it matches Codex's own executable, not this shell.
+    """
+    # pgrep reads POSIX extended regex: re.escape's "\-" and "\ " are not valid there.
+    literal = re.sub(r"([.\[\]()*+?{}|^$\\])", r"\\\1", str(app))
+    running = shlex.quote("^" + literal + "/Contents/MacOS/")
+    return ["/bin/sh", "-c",
+            f"/usr/bin/pgrep -qf {running} || /usr/bin/open -g -j -a {shlex.quote(str(app))}"]
 
 
 class Launchd:
@@ -214,7 +230,7 @@ class Launchd:
         path = self.wake_path(root)
         times = [dict(zip(("Hour", "Minute"), map(int, value.split(":"))))
                  for value in config["schedule"]["times"]]
-        job = {"Label": path.stem, "ProgramArguments": ["/usr/bin/open", "-g", "-j", "-a", str(app)],
+        job = {"Label": path.stem, "ProgramArguments": wake_command(app),
                "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
         self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())
         self._load(path)
