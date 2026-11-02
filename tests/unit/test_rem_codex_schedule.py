@@ -170,6 +170,36 @@ def test_launchd_migration_uses_its_injected_wake_job_runner(native, tmp_path, m
     assert launcher.plist_path(root).is_file()
 
 
+@pytest.mark.parametrize("action", ["stop", "migrate"])
+def test_deleted_native_task_does_not_leave_an_orphan_wake_job(tmp_path, monkeypatch, action):
+    from connectonion.rem.service import stop
+    root = tmp_path / "notes"
+    commands = []
+    initialize = Launchd.__init__
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    def isolated_launcher(self, **kwargs):
+        initialize(self, agents_dir=tmp_path / "LaunchAgents", uid=501, run=run)
+
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setattr(Launchd, "__init__", isolated_launcher)
+    launcher = Launchd()
+    native = CodexNative(launcher=launcher)
+    wake_path = launcher.install_wake(root, default_config(), Path("/Applications/Codex.app"))
+    assert not native.definition_path(root).exists() and not native._indexed(root)
+    commands.clear()
+    if action == "stop":
+        stop(root, scheduler=launcher)
+    else:
+        launcher.install(root, default_config())
+    assert not wake_path.exists()
+    assert ["launchctl", "bootout", f"gui/501/{label_for(root)}.wake"] in commands
+
+
 @pytest.mark.parametrize("storage", ["account", "orphan"])
 def test_missed_index_rows_remain_visible_without_a_file_definition(native, tmp_path, storage):
     root = tmp_path / "notes"
@@ -267,7 +297,8 @@ def test_missed_slot_is_visible_in_describe_and_status(
         connection.execute("UPDATE automations SET next_run_at = ?", (int(slot.timestamp() * 1000),))
     info = native.describe(root)
     assert info["wake_loaded"] is wake_loaded
-    missed = "Codex missed the 17:00 slot; Codex desktop was not running"
+    missed = "Codex missed the 17:00 slot (was the desktop app closed?)"
+    assert "Codex desktop was not running" not in info.get("reason", "")
     if late_minutes == 30:
         assert missed not in info.get("reason", "")
         return
@@ -810,7 +841,7 @@ def test_dst_slot_is_never_in_the_future_and_repeated_hour_is_served_once(moment
     ({"app_running": False}, "open Codex desktop"),
     ({"loaded": True, "active": True, "next_run_at": 1900000000000}, "first execution not yet verified"),
     ({"loaded": True, "active": True, "next_run_at": 1,
-      "reason": "Codex missed the 17:00 slot; Codex desktop was not running; wake job loaded"}, "missed the 17:00 slot")])
+      "reason": "Codex missed the 17:00 slot (was the desktop app closed?); wake job loaded"}, "missed the 17:00 slot")])
 def test_status_distinguishes_saved_registered_and_triggered(tmp_path, monkeypatch, state, fragment):
     from connectonion.rem.service import _state_line
     from zoneinfo import ZoneInfo

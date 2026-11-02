@@ -279,7 +279,7 @@ class CodexNative:
         return bool(definition) or removed_wake
 
     def installed(self, root: Path) -> bool:
-        return bool(self.definition(root) or self._indexed(root))
+        return bool(self.definition(root) or self._indexed(root) or self.launcher.wake_path(root).is_file())
 
     def describe(self, root: Path) -> dict:
         definition = self.definition(root)
@@ -327,4 +327,4 @@ class CodexNative:
         zone = ZoneInfo(read_config(root)["schedule"]["timezone"])
         slot = datetime.fromtimestamp(next_run / 1000, zone).strftime("%H:%M")
         wake = "wake job loaded" if wake_loaded else "wake job not loaded"
-        return f"Codex missed the {slot} slot; Codex desktop was not running; {wake}"
+        return f"Codex missed the {slot} slot (was the desktop app closed?); {wake}"
