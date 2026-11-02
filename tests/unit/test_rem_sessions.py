@@ -748,6 +748,44 @@ def test_rem_session_summarise_drops_empty_decision_spans(notebook, summary_read
     assert read_summary(root, "codex:3456-abcdef12")["decisions"] == []
 
 
+@pytest.mark.parametrize("original,misquote", [
+    ("not able to pay", "notable to pay"),
+    ("notable progress", "not able progress"),
+])
+def test_rem_session_summary_word_separation(notebook, summary_ready, original, misquote):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(original)])
+    import_sessions(root, now=NOW)
+    answer = summary_answer("s1")
+    data = json.loads(answer["result"])
+    data["sessions"][0]["decisions"] = [{"time": "09:12", "quote": quote}
+                                       for quote in (misquote, original)]
+    answer["result"] = json.dumps(data)
+    report = summarise_sessions(root, run=lambda *a: answer)
+    assert report["summarised"] == 1 and report["dropped_quotes"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["decisions"] == [
+        {"time": "09:12", "quote": original}]
+
+
+@pytest.mark.parametrize("original,misquote", [
+    ("not able to pay", "notable to pay"),
+    ("notable progress", "not able progress"),
+])
+def test_rem_session_saved_summary_word_separation(notebook, original, misquote):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(original)])
+    import_sessions(root, now=NOW)
+    key = "codex:3456-abcdef12"
+    saved = {"key": key, "decisions": [{"time": "09:12", "quote": quote}
+                                      for quote in (misquote, original)]}
+    write_json(summary_path(root, key), saved)
+    record = rewrite_session(root, key)
+    text = Notebook(root).read(record)
+    assert f'“{misquote}”' not in text
+    assert f'“{original}” (09:12)' in text
+    assert read_summary(root, key) == saved
+
+
 @pytest.mark.parametrize("reply", ["Here is your summary.", '{"sessions": []}',
     '{"sessions": [{"id": "s1", "title": ""}]}'])
 def test_rem_session_summarise_failed_reply_retries(notebook, summary_ready, reply):
