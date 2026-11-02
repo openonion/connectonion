@@ -481,14 +481,16 @@ def mailbox_state(kind: str, source: dict, *, root: Path | None = None) -> tuple
     if not source.get("consented"):
         return "subscribed, waiting for your approval", "co rem start"
     if root is not None:
-        failed = _mailbox_read_failure(root, kind)
+        failed, note = _mailbox_read_failure(root, kind)
         if failed:
             return failed, "co rem logs"
+        if note:
+            return note, ""
     return "read by the daily round", ""
 
 
-def _mailbox_read_failure(root: Path, kind: str) -> str:
-    """Read health is separate from source checkpoints, which failures must preserve."""
+def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
+    """(failure reason, informational note), separate from checkpoints failures must preserve."""
     last = read_json(state_path(root, "source_reads.json"), {}).get(kind)
     logs = run_logs(root)
     if last is None:
@@ -505,7 +507,7 @@ def _mailbox_read_failure(root: Path, kind: str) -> str:
     if last and last.get("error"):
         day = timestamp(last["at"]).astimezone(zone).date()
         reason = _safe_read_error(kind, last["error"]).removeprefix(f"{kind.title()} read failed")
-        return f"last read failed {day}{reason}"
+        return f"last read failed {day}{reason}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
@@ -513,11 +515,11 @@ def _mailbox_read_failure(root: Path, kind: str) -> str:
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
                for run in logs):
             day = timestamp(scanned).astimezone(zone).date()
-            return f"not read since {day}; scan is more than 2 days behind" + (f"; {missing}" if missing else "")
+            return f"not read since {day}; scan is more than 2 days behind" + (f"; {missing}" if missing else ""), ""
     if missing:
         day = timestamp(last["at"]).astimezone(zone).date()
-        return f"last read {day}: {missing}"
-    return ""
+        return "", f"last read {day}: {missing}"
+    return "", ""
 
 
 def status(root: Path, *, live_quota: bool = False) -> dict:
