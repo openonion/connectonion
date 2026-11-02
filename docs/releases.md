@@ -25,6 +25,22 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc28** repairs REM's sync rotation and native
+schedule. A failed source is recorded and the round continues with the next one;
+a queued message deleted from the mailbox leaves the queue and is counted; Outlook
+reads use immutable ids. A small launchd job opens a closed Codex desktop at each
+saved REM time. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc28'
+```
+
+See [the candidate notes](releases/1.9.3rc28.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc27** is a backend repair candidate for retained
 quotation context and Claude loopback bridge startup. Literal words in an extended
 quote require the same immediately bound originals to count as retained. Genuinely
@@ -39,8 +55,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc27'
 ```
 
 See [the candidate notes](releases/1.9.3rc27.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc26** repairs old REM investigation conversations in
 Codex's active history and fixes initialization omissions. Approved REM startup

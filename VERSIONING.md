@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc27
+## Current Version: 1.9.3rc28
+
+REM repair candidate: one failing source no longer stops a sync round; deleted
+queued mail leaves the queue and is counted; Outlook reads use immutable ids so
+moved mail is still read; failure records keep only the exception class and HTTP
+status (#2706). The native schedule installs a launchd job that opens a closed
+Codex desktop at saved REM times and leaves a running one alone (#2707). pyasn1
+0.6.5 and pypdf 6.21.4 for published CVEs (#2708). Existing native-schedule users
+run `co rem start` once to get the wake job. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc28.md).
+
+- 1.9.3rc28 (REM source failures continue the round; Codex wake job; CVE bumps).
+
+### Previous candidate: 1.9.3rc27
 
 Backend repair candidate: retain literal quotes inside an extended quotation
 only with the same immediately bound originals; restore truly lost introductory
