@@ -1548,6 +1548,7 @@ const UI = {
     "{n} change overnight": "昨夜 {n} 项变化",
     "{n} changes overnight": "昨夜 {n} 项变化",
     "{n} due soon": "{n} 项即将到期",
+    "{n} overdue": "{n} 项已逾期",
     "A quiet morning": "一个安静的早晨",
     "details": "详情",
     "Last night: read {n} items · rewrote {m} pages · ": "昨夜：读取 {n} 条内容 · 重写 {m} 页 · ",
@@ -2959,7 +2960,7 @@ function threads(r) {
     const requested = after("since|requested(?:\\s+on)?|asked(?:\\s+on)?");
     const moved = after("last moved(?:\\s+on)?");
     const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
-    const quiet = !!since && daysSince(since) > 60 && (!due || due <= today);
+    const quiet = !!since && !due && daysSince(since) > 60;
     return { text: displayed, originalText: text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
   return { items, calm };
@@ -4062,12 +4063,13 @@ function todayBrief(entries, counts) {
 }
 function briefHeader(counts, today) {
   const pass = lastPass(), day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
-  const due = today.filter(entry => entry.t.due).length;
+  const overdue = today.filter(entry => entry.t.due && entry.t.due < day).length;
+  const due = today.filter(entry => entry.t.due && entry.t.due >= day).length;
   const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
   const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
   const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
   const parts = [!firstBuild() && pass?.claims.length ? t(pass.claims.length === 1 ? "{n} change overnight" : "{n} changes overnight", { n: pass.claims.length }) : "",
-    due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
+    overdue ? t("{n} overdue", { n: overdue }) : "", due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
     el("h1", { text: parts.join(" · ") || t("A quiet morning") })]);

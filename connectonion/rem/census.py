@@ -197,8 +197,7 @@ def _thread_dates(text: str, today: date) -> tuple[str, str]:
 
 def _quiet(text: str, today: date) -> bool:
     since, due = _thread_dates(text, today)
-    return bool(since and (today - date.fromisoformat(since)).days > 60
-                and (not due or due <= today.isoformat()))
+    return bool(since and not due and (today - date.fromisoformat(since)).days > 60)
 
 
 # Source numbers belong to their page; copied promises share the resolved id.
