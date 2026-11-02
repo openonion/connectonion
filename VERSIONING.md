@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc28
+## Current Version: 1.9.3rc29
+
+Browser repair candidate: on macOS the paid browser runtime asks for Chromium
+154.0.8037.100, whose renewals use a distinct Idempotency-Key per period, so a
+paid session no longer ends after its first fifteen minutes (#2705). Linux stays
+on 154.0.8037.58. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc29.md).
+
+- 1.9.3rc29 (macOS paid browser sessions renew past the first period).
+
+### Previous candidate: 1.9.3rc28
 
 REM repair candidate: one failing source no longer stops a sync round; deleted
 queued mail leaves the queue and is counted; Outlook reads use immutable ids so
