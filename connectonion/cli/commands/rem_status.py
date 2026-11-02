@@ -256,7 +256,7 @@ def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) ->
     sources, lines = subscriptions(root), [style.label("Mailboxes")]
     for kind in MAIL_KINDS:
         state, fix = mailbox_state(kind, sources.get(kind, {}), root=root)
-        mark = style.ok(rem_look.FINE) if state == "read by the daily round" else style.warn(rem_look.BROKEN)
+        mark = style.ok(rem_look.FINE) if state.startswith("read by the daily round") else style.warn(rem_look.BROKEN)
         lines.append(rem_look.row(kind.title(), highlight(state), mark))
         if fix:
             command = spell(["logs"]) if fix == "co rem logs" else fix

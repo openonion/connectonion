@@ -484,6 +484,7 @@ def mailbox_state(kind: str, source: dict, *, root: Path | None = None) -> tuple
         failed = _mailbox_read_failure(root, kind)
         if failed:
             return failed, "co rem logs"
+        return "read by the daily round" + _dropped_note(root, kind), ""
     return "read by the daily round", ""
 
 
@@ -514,10 +515,16 @@ def _mailbox_read_failure(root: Path, kind: str) -> str:
                for run in logs):
             day = timestamp(scanned).astimezone(zone).date()
             return f"not read since {day}; scan is more than 2 days behind" + (f"; {missing}" if missing else "")
-    if missing:
-        day = timestamp(last["at"]).astimezone(zone).date()
-        return f"last read {day}: {missing}"
     return ""
+
+
+def _dropped_note(root: Path, kind: str) -> str:
+    """Mail the provider deleted before REM read it: a successful read says so, it did not fail (#2711)."""
+    last = read_json(state_path(root, "source_reads.json"), {}).get(kind) or {}
+    if not last.get("dropped_missing"):
+        return ""
+    day = timestamp(last["at"]).astimezone(notebook_zone(read_config(root))).date()
+    return f"; last read {day}: {last['dropped_missing']} queued messages dropped as missing"
 
 
 def status(root: Path, *, live_quota: bool = False) -> dict:

@@ -353,7 +353,15 @@ def test_missing_queued_mail_is_counted_in_run_and_reported(mixed_sources, monke
     assert f"{kind}: 9 queued messages dropped as missing" in result["warning"]
     from rich.text import Text
     assert "9 queued messages dropped as missing" in Text.from_markup(sync_summary(result)).plain
-    assert "9 queued messages dropped as missing" in service.mailbox_state(kind, sources[kind], root=root)[0]
+    state, fix = service.mailbox_state(kind, sources[kind], root=root)
+    assert "9 queued messages dropped as missing" in state
+    # The read succeeded: dropping deleted mail is a note, not a failure (#2711).
+    assert state.startswith("read by the daily round") and fix == ""
+    from connectonion.cli.commands.rem_status import _mailboxes
+    write_json(state_path(root, "subscriptions.json"), sources)
+    shown = Text.from_markup("\n".join(_mailboxes(root))).plain
+    row = next(line for line in shown.splitlines() if kind.title() in line)
+    assert "✓" in row and "9 queued messages dropped as missing" in shown and "co rem logs" not in shown
 
 
 @pytest.mark.parametrize("secret", ["Bearer ya29.fixture-token", "Authorization Bearer eyJ.fixture-token",
