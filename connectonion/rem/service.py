@@ -23,7 +23,7 @@ from ..provider_credentials import ProviderCredentialError
 
 from .config import prepare, read_config, validate
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
-from .mail import collect_mail
+from .mail import collect_mail, error_status
 from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
@@ -385,7 +385,7 @@ def next_slot(config: dict, zone) -> str | None:
 def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
-    worker = worker_state(root)
+    worker = _status_worker(worker_state(root))
     native = {}
     if worker.get("scheduler") == "codex-native" or sys.platform == "darwin":
         from .codex_schedule import CodexNative
@@ -502,14 +502,19 @@ def _mailbox_read_failure(root: Path, kind: str) -> str:
     zone = notebook_zone(read_config(root))
     if last and last.get("error"):
         day = timestamp(last["at"]).astimezone(zone).date()
-        reason = last["error"].removeprefix(f"{kind.title()} read failed: ")
-        return f"last read failed {day}: {reason}"
+        reason = _safe_read_error(kind, last["error"]).removeprefix(f"{kind.title()} read failed")
+        return f"last read failed {day}{reason}"
+    missing = (f"{last['dropped_missing']} queued messages dropped as missing"
+               if last and last.get("dropped_missing") else "")
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
     if scanned and now() - timestamp(scanned) > timedelta(days=2):
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
                for run in logs):
             day = timestamp(scanned).astimezone(zone).date()
-            return f"last read failed {day}: scan is more than 2 days behind while syncs ran"
+            return f"not read since {day}; scan is more than 2 days behind" + (f"; {missing}" if missing else "")
+    if missing:
+        day = timestamp(last["at"]).astimezone(zone).date()
+        return f"last read {day}: {missing}"
     return ""
 
 
@@ -544,16 +549,36 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
-            "worker": worker_state(root),
+            "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
             "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
-            "last_run": {**logs[0], "outcome": seen_outcome(logs[0])} if logs else None,
+            "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if live_quota else {})}
+
+
+def _status_worker(worker: dict) -> dict:
+    """Older scheduled failures copied the collection error into worker state."""
+    reason = worker.get("last_scheduled_reason", "")
+    for name in READABLE:
+        if reason.startswith(f"{name.title()} read failed"):
+            return {**worker, "last_scheduled_reason": _safe_read_error(name, reason)}
+    return worker
+
+
+def _status_run(run: dict) -> dict:
+    """Old collection errors may contain secrets; status never echoes them."""
+    record = {**run, "outcome": seen_outcome(run)}
+    if run.get("failed_source"):
+        record["error"] = _safe_read_error(run["failed_source"], run.get("error", ""))
+    if run.get("source_failures"):
+        record["source_failures"] = [{**row, "error": _safe_read_error(row["source"], row.get("error", ""))}
+                                     for row in run["source_failures"]]
+    return record
 
 
 def notebook_zone(config: dict):
@@ -967,7 +992,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                               with_person=with_person, include_local=not source, say=say)
         record = {**record, "sessions": sessions}
         archive = (_resume_archive(root, say) if isinstance(record, dict)
-                   and not record.get("failed_source") else None)
+                   and record.get("outcome") != "failed" else None)
         record = {**record, "mail_archive": archive} if archive else record
         if isinstance(record, dict):
             # The index the table and thread views read (#2067): after everything this
@@ -1022,33 +1047,42 @@ def _terminate_as_interrupt():
 
 
 
-def _collection_failure(name: str, error: Exception) -> dict:
-    """Keep provider diagnostics without copying request URLs or arbitrary response bodies."""
+def _http_reason(status: int, text: str = "") -> str:
+    """Only recognized diagnostic phrases may come from a provider response."""
     from http.client import responses
-    message = "source could not be read; inspect the source and retry"
-    if isinstance(error, HttpError):
-        # API messages may echo mail or credentials. Keep known diagnostic phrases only.
-        reason = re.match(r"(?:Backend Error|Internal [Ss]erver [Ee]rror|Invalid Credentials|"
-                          r"Rate Limit Exceeded|User Rate Limit Exceeded|Quota exceeded|"
-                          r"Insufficient Permission|Forbidden|Not Found|Bad Request|Service Unavailable)\b",
-                          str(error.reason))
-        message = f"{error.resp.status} {reason[0] if reason else responses.get(error.resp.status, 'HTTP request failed')}"
-    elif isinstance(error, (RemError, ProviderCredentialError)):
-        message = str(error).replace("\n", "; ")
-        message = re.split(r"(?i)\b(?:body|message body|token|access_token|refresh_token|authorization|password|secret)\s*[:=]", message)[0]
-        message = re.sub(r"https?://\S+|[^\s<>]+@[^\s<>]+", "[redacted]", message)[:160]
-    elif isinstance(error, OSError) and error.errno is not None:
-        message = os.strerror(error.errno)
-    elif isinstance(error, RequestError):
-        message = "mailbox request failed; check the connection and retry"
-    elif isinstance(error, GoogleAuthError):
-        message = "mailbox authorization failed; reconnect the mailbox"
-    return {"source": name, "error": f"{name.title()} read failed: {type(error).__name__} {message}"}
+    reasons = ("Backend Error", "Internal Server Error", "Internal server error", "Invalid Credentials",
+               "Rate Limit Exceeded", "User Rate Limit Exceeded", "Quota exceeded",
+               "Insufficient Permission", "Forbidden", "Not Found", "Bad Request", "Service Unavailable")
+    return next((reason for reason in (*reasons, responses.get(status, "HTTP request failed"))
+                 if text == reason or text.startswith(reason + " ")),
+                responses.get(status, "HTTP request failed"))
 
 
-def _record_source_read(root: Path, name: str, error: str = "") -> None:
+def _safe_read_error(name: str, error: str) -> str:
+    """Reduce pre-upgrade records to a class and optional HTTP diagnosis too."""
+    prefix = f"{name.title()} read failed"
+    match = re.match(re.escape(prefix) + r": ([A-Za-z_][A-Za-z0-9_]{0,79})(?: (\d{3})\b)?(?= |$)", error)
+    if not match:
+        return prefix
+    detail = match[1]
+    if match[2]:
+        detail += f" {match[2]} {_http_reason(int(match[2]), error[match.end():].lstrip())}"
+    return f"{prefix}: {detail}"
+
+
+def _collection_failure(name: str, error: Exception) -> dict:
+    """Never persist free-form exception text, even from credential errors."""
+    status = error_status(error)
+    detail = type(error).__name__
+    if status is not None:
+        reason = str(error.reason) if isinstance(error, HttpError) else ""
+        detail += f" {status} {_http_reason(status, reason)}"
+    return {"source": name, "error": f"{name.title()} read failed: {detail}"}
+
+
+def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missing: int = 0) -> None:
     reads = read_json(state_path(root, "source_reads.json"), {})
-    reads[name] = {"at": now().isoformat(), "error": error}
+    reads[name] = {"at": now().isoformat(), "error": error, "dropped_missing": dropped_missing}
     write_json(state_path(root, "source_reads.json"), reads)
 
 
@@ -1059,7 +1093,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
 
     started = now()
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
-    source_skips, source_failures, sources_read = [], [], []
+    source_skips, source_failures, sources_read, dropped_missing = [], [], [], {}
     kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
@@ -1153,7 +1187,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             write_json(state_path(root, "progress.json"), {**progress, "rem_last_source": name})
             continue
         sources_read.append(name)
-        _record_source_read(root, name)
+        if batch.dropped_missing:
+            dropped_missing[name] = batch.dropped_missing
+        _record_source_read(root, name, dropped_missing=batch.dropped_missing)
         source_skips.extend({"source": name, "file": path, "reason": "processed prefix changed"}
                             for path in batch.changed_files)
         if getattr(batch, "unreadable", False):
@@ -1189,11 +1225,13 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
               # transcript format, and closed is silent. A pass that passed over a pile
               # of user-slot messages it did not recognise says so, by source.
               "unrecognised": unrecognised,
-              "source_skips": source_skips,
+              "source_skips": source_skips, "dropped_missing": dropped_missing,
               **({"failed_source": source_failures[0]["source"], "error": source_failures[0]["error"],
                   "source_failures": source_failures} if source_failures else {}),
               "warning": "; ".join([*(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
                                        + "); source progress preserved; inspect co rem logs"] if source_failures else []),
+                                    *(f"{name}: {count} queued messages dropped as missing"
+                                      for name, count in dropped_missing.items()),
                                     *(f"{name}: {count} messages in an unfamiliar format were not read"
                                       for name, count in unrecognised.items()),
                                     *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "

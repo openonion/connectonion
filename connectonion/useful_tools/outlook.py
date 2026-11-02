@@ -179,7 +179,8 @@ class Outlook:
         token = self._get_access_token()
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            **kwargs.pop("headers", {}),
         }
 
         url = f"{self.GRAPH_API_URL}{endpoint}"
@@ -290,7 +291,7 @@ class Outlook:
             # Exchange work/school tenants).
             params["$filter"] = "receivedDateTime ge 1970-01-01T00:00:00Z and isRead eq false"
 
-        result = self._request("GET", endpoint, params=params)
+        result = self._request("GET", endpoint, params=params, headers={"Prefer": 'IdType="ImmutableId"'})
         return self._email_dicts(result.get('value', []))
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
@@ -321,7 +322,7 @@ class Outlook:
             "$select": "id,toRecipients,subject,sentDateTime,bodyPreview"
         }
 
-        result = self._request("GET", endpoint, params=params)
+        result = self._request("GET", endpoint, params=params, headers={"Prefer": 'IdType="ImmutableId"'})
         messages = result.get('value', [])
 
         if not messages:
@@ -458,7 +459,7 @@ class Outlook:
             "$select": "from,toRecipients,subject,receivedDateTime,body"
         }
 
-        message = self._request("GET", endpoint, params=params)
+        message = self._request("GET", endpoint, params=params, headers={"Prefer": 'IdType="ImmutableId"'})
 
         from_email = message.get('from', {}).get('emailAddress', {})
         from_addr = f"{from_email.get('name', '')} <{from_email.get('address', '')}>"
@@ -1007,7 +1008,7 @@ class Outlook:
         }
         raw, endpoint = [], "/me/messages"
         while endpoint and len(raw) < max_results:
-            result = self._request("GET", endpoint, params=params)
+            result = self._request("GET", endpoint, params=params, headers={"Prefer": 'IdType="ImmutableId"'})
             raw += result.get("value", [])
             next_link = result.get("@odata.nextLink")
             endpoint, params = (next_link.replace(self.GRAPH_API_URL, ""), None) if next_link else (None, None)
@@ -1040,7 +1041,7 @@ class Outlook:
             "$top": max_results,
             "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
-        result = self._request("GET", "/me/messages", params=params)
+        result = self._request("GET", "/me/messages", params=params, headers={"Prefer": 'IdType="ImmutableId"'})
         rows = self._email_dicts(result.get('value', []))
         # Graph's conversation id is the thread co rem's chat view groups by (#2067).
         for row, msg in zip(rows, result.get('value', [])):

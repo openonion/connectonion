@@ -470,6 +470,8 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
         lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
     failures = batch.get('source_failures') or ([{'source': batch['failed_source'],
                  'error': batch.get('error') or 'source could not be read'}] if batch.get('failed_source') else [])
+    for name, count in batch.get("dropped_missing", {}).items():
+        lines.append(rem_look.section("Missing mail", said(f"{name}: {count} queued messages dropped as missing")))
     for failure in failures:
         lines.append(rem_look.section('Source failed', said(failure['error'])))
     lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
