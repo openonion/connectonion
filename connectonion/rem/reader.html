@@ -3506,7 +3506,9 @@ function lastPass() {
 function firstBuild(pass = lastPass()) {
   if (!pass) return false;
   const started = Math.min(...pass.runs.map(runTime));
-  return !(REM.logs || []).some(run => runTime(run) < started);
+  // The page carries only the latest runs; the notebook's first run says whether it is new.
+  const earlier = [...(REM.logs || []), ...(REM.first_run_at ? [{ started_at: REM.first_run_at }] : [])];
+  return !earlier.some(run => runTime(run) < started);
 }
 let memoryPass = null;
 function updatedMarker(r, withLabel = false) {

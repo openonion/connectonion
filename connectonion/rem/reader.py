@@ -237,6 +237,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "shared": not local,
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
+            "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": listing(root), "counts": counts(root, found),
             "owner": owner}
 
