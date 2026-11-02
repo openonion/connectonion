@@ -15,6 +15,7 @@ investigation. No network, no Codex.
 import io
 import re
 import json
+from types import SimpleNamespace
 
 import pytest
 from rich.text import Text
@@ -69,6 +70,8 @@ def first_run(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs:
+                        SimpleNamespace(install=lambda root, config: {"scheduler": "fake"}))
     # Init also abstracts accepted pages; keep that model turn offline too.
     monkeypatch.setattr("connectonion.rem.runner.run_stage", lambda *args, **kwargs: {"changed": [], "usage": None})
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: True)
