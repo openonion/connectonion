@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -25,7 +26,10 @@ ENGINE_SETTING = "CO_BROWSER_ENGINE"
 # keys are immutable per revision, so the fix could only ship by moving the pin.
 # Every platform listed here must be in oo-api's catalogue at this revision
 # before this ships: a client asks for exactly this revision and nothing else.
-BROWSER_REVISION = "154.0.8037.58"
+# macOS moved to .100 for the renewal fix (openonion/browser#145): before it,
+# every macOS renewal reused one Idempotency-Key and paid sessions ended after
+# 15 minutes. Linux renews through Onionwright, never had that bug, and stays.
+BROWSER_REVISION = "154.0.8037.100" if sys.platform == "darwin" else "154.0.8037.58"
 MIN_ONIONWRIGHT_VERSION = "0.0.14"
 
 
