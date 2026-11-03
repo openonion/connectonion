@@ -42,7 +42,6 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _empty_orgs(notebook, state)
         actions += _own_addresses(notebook, state) if own_addresses else []
         actions += _skills(notebook)
-        actions += _same_person(notebook, state)
         actions += _orgs(notebook, state)
         actions += _lines(notebook)
         actions += _not_typed(notebook)
@@ -366,54 +365,6 @@ def _skills(notebook: Notebook) -> list[dict]:
         folded.append({"action": "folded duplicate skill", "page": record, "into": target,
                        "archived": f".state/archived/{record}"})
     return folded
-
-
-def _same_person(notebook: Notebook, state: dict) -> list[dict]:
-    """One person on two pages (#2724): a page lists, on its Email line, the address another page was mapped from.
-
-    The map makes a page per address. An investigation that finds two addresses
-    are one person writes the other onto that person's Email line, and nothing
-    merged the pair: one person stayed two pages, the facts split between them.
-    The less written page folds into the more written one (`merge.merge_into`).
-    The address alone is not enough either: an assistant's address or a family
-    mailbox on someone's Email line is not that person, so the titles must also
-    share a name word, or one must be no name at all (an address, Unknown). A
-    shared title alone is not enough: two people can have one name.
-    """
-    from .merge import merge_into, resolve, weight
-    from .scan import AUTOMATED_HINT
-    owner = (state.get("owner") or {}).get("record")
-    mapped = {address.casefold(): resolve(notebook.root, row["record"]) for row in state.get("people", [])
-              if row.get("record") for address in row.get("addresses") or [row.get("address") or ""] if address}
-    folded, gone = [], set()
-    for person in notebook.people():
-        page = person["path"]
-        others = {mapped.get(email.casefold()) for email in person["emails"] if not AUTOMATED_HINT.search(email)}
-        others -= {None, page, owner, *gone}
-        if page == owner or page in gone or not others:
-            continue
-        other = sorted(others)[0]
-        if not notebook.path(other).is_file() or not _same_name(person["title"], _page_title(notebook, other)):
-            continue
-        kept, old = sorted([page, other], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
-        merge_into(notebook, kept, old, "same person: one page lists the address the other was mapped from")
-        gone.add(old)
-        folded.append({"action": "folded same person", "page": old, "into": kept,
-                       "archived": f".state/archived/{old}"})
-    return folded
-
-
-def _page_title(notebook: Notebook, record: str) -> str:
-    return next((line[2:].strip() for line in notebook.read(record).splitlines() if line.startswith("# ")), "")
-
-
-def _same_name(one: str, other: str) -> bool:
-    """Titles that can be one person: a name word in common, or one of them no name."""
-    def words(title):
-        return set() if "@" in title or title.casefold() in ("", "unknown") else {
-            word for word in re.findall(r"\w+", title.casefold()) if len(word) > 1}
-    mine, theirs = words(one), words(other)
-    return not mine or not theirs or bool(mine & theirs)
 
 
 def _described(text: str) -> str:

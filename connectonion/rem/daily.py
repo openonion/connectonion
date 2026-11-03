@@ -191,9 +191,21 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     else:
         result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
                              investigate_one=investigate_one, person_one=person_one, say=say)
+    if not stop:
+        result['same_person'] = _same_person(root, config, say)
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
+
+
+def _same_person(root, config, say) -> list[dict]:
+    """Pages that look like one person are judged by a model, a few a run (#2724)."""
+    from .same_person import judge
+    try:
+        return judge(root, config, say=say)
+    except RemError as error:
+        # A failed judgement leaves the pair unjudged; tomorrow asks again.
+        return [{'outcome': _outcome(error), 'why': str(error)[:300]}]
 
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
