@@ -1222,6 +1222,7 @@ def size_note(page_chars: int) -> str:
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
              owner: bool = False, root: Path | None = None) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
+    from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
@@ -1242,7 +1243,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
         errors.append('Investigation status belongs to the runner')
     content, _, sources = body.partition('\n## Sources\n')
     refs = set(re.findall(r'\[(W?\d+)\](?!\()', content))
-    definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
+    definitions = source_definitions(sources)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = _known_sources(items) | _archived_sources(root, definitions)
@@ -1355,13 +1356,14 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     goes (a contact field keeps its label and says Unknown), its Sources entry
     goes. What remains is validated as usual.
     """
+    from .reader_model import source_definitions
     nothing = {'citations': [], 'lines': 0}
     head, marker, tail = text.partition('\n## Sources\n')
     if not headings(record) or not marker:
         return text, nothing
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
-    definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
+    definitions = source_definitions(sources)
     defined = Counter(key for key, _ in definitions)
     old_sources = original.partition('\n## Sources\n')[2]
     known = _known_sources(items) | _archived_sources(root, definitions)

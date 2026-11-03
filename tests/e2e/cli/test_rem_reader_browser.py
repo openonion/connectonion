@@ -15,6 +15,40 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    source = 'Business card handed over at the Lantern meetup — photo on 2026-11-01 <card> https://example.com/card'
+    text = ('# Elara Finch\n\n## Facts\n- Email: elara@example.com [1]\n\n'
+            f'## Notes\nMet at the Lantern meetup. [1]\n\n## Sources\n1. {source}\n')
+    notebook = Notebook(root)
+    notebook.write('people/elara-finch.md', text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 1280, 'height': 900})
+        page.goto(path.as_uri() + '#r=people%2Felara-finch.md')
+        cite = page.locator('a.cite[href$="h=src-1"]').first
+        assert cite.count() > 0
+        assert source in cite.get_attribute('title')
+        cite.click()
+        panel = page.locator('#evidence-panel')
+        assert source in panel.inner_text()
+        assert not panel.locator('card').count()
+        assert "The original isn't in this snapshot." not in panel.inner_text()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+        page.set_viewport_size({'width': 375, 'height': 812})
+        cite.click()
+        assert source in panel.inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+    assert notebook.read('people/elara-finch.md') == text
+
+
 def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from pypdf import PdfWriter

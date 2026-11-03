@@ -9,6 +9,16 @@ from connectonion.rem.reader import snapshot
 from connectonion.rem.reader_model import relationships
 
 
+def test_numbered_card_source_definitions_keep_free_text_and_typed_ids():
+    from connectonion.rem.reader_model import SOURCE, source_definitions
+
+    card = 'Business card handed over at the Lantern meetup — photo on 2026-11-01 (https://example.com/card)'
+    sources = f'1. {card}\n- [2] gmail:card-followup — 2026-11-02\n\n## Notes\n9. Not a source\n'
+    assert {n: value.strip() for n, value in source_definitions(sources)} == {
+        '1': card, '2': 'gmail:card-followup — 2026-11-02'}
+    assert SOURCE.findall(sources) == [('2', 'gmail:card-followup')]
+
+
 def test_attachment_citation_with_spaces_reads_current_file_without_claiming_old_capture(tmp_path):
     from connectonion.rem.config import prepare
     from connectonion.rem.files import state_path

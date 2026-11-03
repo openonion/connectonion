@@ -23,6 +23,13 @@ ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
 
 
+def source_definitions(sources: str) -> list[tuple[str, str]]:
+    """Citation labels and descriptions, including legacy numbered Sources lines."""
+    listed = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
+    numbered = re.split(r'^(?:## |Investigation:)', sources, maxsplit=1, flags=re.M)[0]
+    return listed + re.findall(r'^[ \t]*(\d+)\.[ \t]+(\S[^\n]*)$', numbered, re.M)
+
+
 def _not_sources(text: str) -> str:
     """Source descriptions are not evidence of a relationship in the page."""
     match = ARCHIVED.search(text)
