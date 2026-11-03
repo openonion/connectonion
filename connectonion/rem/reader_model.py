@@ -139,6 +139,15 @@ def _source_ids(records: list[dict]) -> set[str]:
     return numbered | sessions
 
 
+def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
+    """What a reader clicks first: a claim's numbered sources, mail among them, then the
+    typed lines a session page lists. Sorted by id, 8,000 session lines spent the budget
+    before the first gmail: or outlook: citation."""
+    numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
+    return sorted(ids, key=lambda source: (source not in numbered,
+                                           source.split(":", 1)[0] not in ("gmail", "outlook"), source))
+
+
 def _cited_row(db, source: str):
     row = db.execute("select * from messages where id = ?", (source,)).fetchone()
     if row is not None:
@@ -178,7 +187,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     if db is not None:
         db.row_factory = sqlite3.Row
     try:
-        for source in sorted(ids):
+        for source in _budget_order(records, ids):
             if budget <= 0:
                 break
             row = _cited_row(db, source) if db is not None else None

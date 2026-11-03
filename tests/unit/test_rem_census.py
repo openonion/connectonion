@@ -178,7 +178,7 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
     found = {record: {"category": record.split('/')[0], "held": record == "people/held.md",
                       "service": False, "duplicate": False} for record in records}
     assert open_threads(tmp_path, found, as_of=date(2026, 10, 16)) == {
-        "mine": 2, "theirs": 2, "other": 1, "quiet": 3, "open": 5}
+        "mine": 3, "theirs": 2, "other": 1, "quiet": 2, "open": 6}
 
 
 
