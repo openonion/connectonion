@@ -88,6 +88,10 @@ Each scheduled run maintains first, as before. Then:
   new messages, or a first write only for a project active since the last
   run). At most 5 pages, one call each, within the day's call cap. A run with
   nothing new calls no model and says `nothing_new`.
+- **Your own page, once a day (#2720):** the first later run of a day whose
+  page was last read before today runs `investigate me` over the days since
+  then, ahead of everyone else. It is marked tried before it starts, so a
+  refused or failed reading waits until tomorrow rather than every run.
 
 Both stop starting pages at the weekly budget or the 70% floor, and both record
 in `co rem logs` how many pages are left. Which run is which is decided by what
