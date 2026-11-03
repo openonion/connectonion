@@ -738,6 +738,9 @@ class Outlook:
 
         if draft:
             self._require_scope("Mail.ReadWrite")
+            # Graph leaves From empty on a created message until it is sent, and
+            # Outlook lists such a draft as "(No sender)".
+            message["from"] = {"emailAddress": {"address": self.get_my_email().split(":", 1)[-1].strip()}}
             saved = self._request("POST", "/me/messages", json=message)
             return f"Draft saved for {to}{suffix}, not sent. Open it in Outlook: {saved.get('webLink')}"
 

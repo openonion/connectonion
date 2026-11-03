@@ -1859,6 +1859,7 @@ class TestOutlookDraft:
     """draft=True leaves a message in Drafts for the owner to finish; nothing is sent (#2729)."""
 
     ENV = {
+        "MICROSOFT_EMAIL": "owner@example.com",
         "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
         "MICROSOFT_ACCESS_TOKEN": "test-token",
         "MICROSOFT_REFRESH_TOKEN": "test-refresh",
@@ -1886,6 +1887,8 @@ class TestOutlookDraft:
         assert message["toRecipients"] == [{"emailAddress": {"address": "a@example.com"}}]
         assert message["ccRecipients"] == [{"emailAddress": {"address": "c@example.com"}}]
         assert "singleValueExtendedProperties" not in message
+        # Without From, Outlook lists the draft as "(No sender)".
+        assert message["from"] == {"emailAddress": {"address": "owner@example.com"}}
         assert "not sent" in result
         assert "ItemID=draft-1" in result
 
