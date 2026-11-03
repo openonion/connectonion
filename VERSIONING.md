@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc31
+## Current Version: 1.9.3rc32
+
+REM: the daily round refreshes the owner's own page once a day, reading what
+they sent since it was last read (#2736, #2720). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc32.md).
+
+- 1.9.3rc32 (REM owner page refreshed daily).
+
+### Previous candidate: 1.9.3rc31
 
 Outlook drafts: `send`/`reply --draft`, `co outlook drafts`, `send-draft <#> [--at]`
 and `delete-draft <#>`, each refusing anything that is not a draft (#2732). REM:
