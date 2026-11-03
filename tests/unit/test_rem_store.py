@@ -228,6 +228,19 @@ def test_citing_many_lines_of_one_session_reads_its_file_once(tmp_path, monkeypa
     assert reads.count(path) == 1
 
 
+def test_cited_mail_is_kept_before_a_session_pages_source_list(tmp_path):
+    """A real notebook's 504 session pages list 8,000+ typed lines under Sources. Sorted
+    by id, they spent the reader's whole budget before any gmail:/outlook: citation."""
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    store.refresh(root)
+    session = {'category': 'sessions', 'text': '# Atlas\n\n## Sources\n- codex:s1:1\n- codex:s1:2\n'}
+    person = {'category': 'people', 'text': 'Corin asked for a signature. [1]\n\n## Sources\n- [1] gmail:m1\n'}
+    context = cited_context(root, [session, person], budget=len('Please sign.') + 5)
+    assert context['gmail:m1']['excerpt'] == 'Please sign.'
+
+
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)

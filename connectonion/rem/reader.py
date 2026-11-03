@@ -197,7 +197,8 @@ def snapshot(root: Path, local: bool = False) -> dict:
     links = relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
-    contexts = cited_context(root, records, private=local)
+    # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
+    contexts = cited_context(root, records, budget=3_000_000, private=local)
     from .project_material import stored
     for record in records:
         if record["category"] != "projects":
