@@ -2860,7 +2860,8 @@ def outlook_contact_search(
 
 @outlook_app.command("send", rich_help_panel="Send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
                                     "cat body.txt | co outlook send a@b.com \"Report\" -  |  "
-                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h")
+                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h  |  "
+                                    "co outlook send a@b.com \"Intro\" \"Draft for you to edit\" --draft")
 def outlook_send(
     to: str = typer.Argument(..., help="Recipient email address (comma-separated for multiple)"),
     subject: str = typer.Argument(..., help="Subject line"),
@@ -2869,10 +2870,11 @@ def outlook_send(
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
+    draft: bool = typer.Option(False, "--draft", help="Save it to your Outlook Drafts instead of sending, to finish and send yourself; prints a link that opens it"),
 ):
-    """Send an email from your Outlook account, now or scheduled with --at. Sends as you."""
+    """Send an email from your Outlook account, now, scheduled with --at, or saved with --draft. Sends as you."""
     from .commands.outlook_commands import handle_outlook_send
-    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
+    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at, draft=draft)
 
 
 @outlook_app.command("inbox", rich_help_panel="Mail", epilog="Example:  co outlook inbox --unread -n 20")
@@ -2924,7 +2926,8 @@ def outlook_download(
                                      "cat notes.txt | co outlook reply <message-id> -  |  "
                                      "co outlook reply 3 \"Looping in Sam\" --listing <listing-id> --cc sam@example.com  |  "
                                      "co outlook reply <message-id> \"Thanks both\" --all  |  "
-                                     "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf")
+                                     "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf  |  "
+                                     "co outlook reply 3 \"Draft reply\" --listing <listing-id> --draft")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
@@ -2934,11 +2937,39 @@ def outlook_reply(
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
     reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
+    draft: bool = typer.Option(False, "--draft", help="Save the reply to your Outlook Drafts, in the same thread, instead of sending, to finish and send yourself; prints a link that opens it"),
 ):
-    """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
+    """Reply to an email (threaded), now, scheduled with --at, or saved with --draft. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
     handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing,
-                         reply_all=reply_all)
+                         reply_all=reply_all, draft=draft)
+
+
+@outlook_app.command("drafts", rich_help_panel="Drafts", epilog="Example:  co outlook drafts -n 10")
+def outlook_drafts(last: int = typer.Option(25, "--last", "-n", help="How many drafts to show")):
+    """List unsent drafts, newest first, numbered, each with a link that opens it in Outlook. Read-only."""
+    from .commands.outlook_commands import handle_outlook_drafts
+    handle_outlook_drafts(last=last)
+
+
+@outlook_app.command("send-draft", rich_help_panel="Drafts",
+                     epilog="Examples:  co outlook send-draft 1  |  co outlook send-draft 1 --at +2h")
+def outlook_send_draft(
+    number: str = typer.Argument(..., help="Draft # from 'co outlook drafts' (or a full message ID)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
+):
+    """Send a draft as it now reads in Outlook, or schedule it with --at. Sends as you."""
+    from .commands.outlook_commands import handle_outlook_send_draft
+    handle_outlook_send_draft(number, at=at)
+
+
+@outlook_app.command("delete-draft", rich_help_panel="Drafts", epilog="Example:  co outlook delete-draft 2")
+def outlook_delete_draft(
+    number: str = typer.Argument(..., help="Draft # from 'co outlook drafts' (or a full message ID)"),
+):
+    """Delete a draft. Deletes the numbered draft from Drafts; refuses any message that is not a draft."""
+    from .commands.outlook_commands import handle_outlook_delete_draft
+    handle_outlook_delete_draft(number)
 
 
 @outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")
