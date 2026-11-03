@@ -259,14 +259,14 @@ def test_native_install_saves_only_a_background_desktop_wake_job(native, tmp_pat
     job = plistlib.loads(path.read_bytes())
     assert job["Label"] == label_for(root) + ".wake"
     assert job["ProgramArguments"] == wake_command(Path("/Applications/Codex.app"))
-    assert job["StartCalendarInterval"] == [{"Hour": 3, "Minute": 15}, {"Hour": 17, "Minute": 45}]
+    assert job["StartCalendarInterval"] == [{"Hour": 3, "Minute": 0}, {"Hour": 17, "Minute": 30}]
     assert not job.get("RunAtLoad") and "StartInterval" not in job
     assert path.stat().st_mode & 0o777 == 0o600
     assert ["launchctl", "bootstrap", "gui/501", str(path)] in commands
     assert not native.launcher.plist_path(root).exists()
     config["schedule"]["times"] = ["12:34"]
     native.install(root, config)
-    assert plistlib.loads(path.read_bytes())["StartCalendarInterval"] == [{"Hour": 12, "Minute": 34}]
+    assert plistlib.loads(path.read_bytes())["StartCalendarInterval"] == [{"Hour": 12, "Minute": 19}]
     assert len(list(path.parent.glob("*.plist"))) == 1
     assert native.uninstall(root)
     assert not path.exists()
@@ -869,3 +869,16 @@ def test_the_wake_job_leaves_a_running_codex_alone_and_opens_a_closed_one(tmp_pa
     finally:
         running.kill()
         running.wait()
+
+
+def test_the_wake_job_opens_codex_before_the_slot_codex_may_fire_early(tmp_path):
+    """2026-11-03: Codex scheduled the 19:00 slot for 18:55:51; a wake job at
+    19:00 opened the closed app after it, and the slot was missed."""
+    import plistlib
+    config = default_config()
+    config["schedule"]["times"] = ["00:05", "19:00"]
+    launcher = Launchd(tmp_path / "LaunchAgents", uid=501,
+                       run=lambda command, **kw: subprocess.CompletedProcess(command, 0, stdout=""))
+    path = launcher.install_wake(tmp_path / "notes", config, Path("/Applications/Codex.app"))
+    times = plistlib.loads(path.read_bytes())["StartCalendarInterval"]
+    assert times == [{"Hour": 23, "Minute": 50}, {"Hour": 18, "Minute": 45}]
