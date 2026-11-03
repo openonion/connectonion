@@ -25,6 +25,20 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc31** adds Outlook drafts (`--draft`, `co outlook drafts`,
+`send-draft`, `delete-draft`), keeps REM pages free of filler hedges, and opens
+business-card sources from their citations. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc31'
+```
+
+See [the candidate notes](releases/1.9.3rc31.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc30** makes REM pages say only what their sources say:
 related-page cards keep their own citations, translations keep their Sources,
 quote checks keep word boundaries, overdue items stay overdue, and a name shared
@@ -37,8 +51,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc30'
 ```
 
 See [the candidate notes](releases/1.9.3rc30.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc29** keeps paid WTF Browser sessions on macOS alive
 past their first fifteen-minute period: the runtime now asks for Chromium

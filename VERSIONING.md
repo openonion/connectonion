@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc30
+## Current Version: 1.9.3rc31
+
+Outlook drafts: `send`/`reply --draft`, `co outlook drafts`, `send-draft <#> [--at]`
+and `delete-draft <#>`, each refusing anything that is not a draft (#2732). REM:
+a limit is stated only when it matters, and filler hedges fail review (#2727);
+business-card `1. <text>` Sources open from their citation (#2730); two
+people-page tests use one clock (#2731). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc31.md).
+
+- 1.9.3rc31 (Outlook drafts; REM filler hedges and business-card sources).
+
+### Previous candidate: 1.9.3rc30
 
 REM accuracy candidate: related-page cards keep their own citations (#2625);
 cached translations are reused only when their Sources match the original
