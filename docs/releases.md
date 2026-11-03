@@ -25,6 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc33** opens a closed Codex desktop 15 minutes before each
+scheduled REM run, so an early-firing slot is no longer missed. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc33'
+```
+
+See [the candidate notes](releases/1.9.3rc33.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc32** keeps the REM owner's own page current: the daily
 round now refreshes it once a day from what they sent. Stable remains **1.9.2**.
 
@@ -35,8 +48,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc32'
 ```
 
 See [the candidate notes](releases/1.9.3rc32.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc31** adds Outlook drafts (`--draft`, `co outlook drafts`,
 `send-draft`, `delete-draft`), keeps REM pages free of filler hedges, and opens

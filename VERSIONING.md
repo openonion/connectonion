@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc32
+## Current Version: 1.9.3rc33
+
+REM: the wake job opens a closed Codex desktop 15 minutes before each scheduled
+slot, because Codex may fire a slot a few minutes early (#2738). Rerun
+`co rem start` after upgrading. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc33.md).
+
+- 1.9.3rc33 (REM wake job opens Codex before the slot).
+
+### Previous candidate: 1.9.3rc32
 
 REM: the daily round refreshes the owner's own page once a day, reading what
 they sent since it was last read (#2736, #2720). Stable remains 1.9.2. See
