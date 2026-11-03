@@ -25,6 +25,19 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc36** lets a scheduled REM run that Codex fires a few
+minutes early serve its slot. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc36'
+```
+
+See [the candidate notes](releases/1.9.3rc36.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc35** counts REM's same-person judgements like every
 other model call, and lets a pair that fails wait a day. Stable remains **1.9.2**.
 
@@ -35,8 +48,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc35'
 ```
 
 See [the candidate notes](releases/1.9.3rc35.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc34** folds REM people pages that are one person: code
 finds lookalike pages and a model decides from both pages and their own mail.
