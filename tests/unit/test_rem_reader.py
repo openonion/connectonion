@@ -1860,6 +1860,38 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert result['enough'] is None
 
 
+def test_a_busy_day_does_not_make_an_old_notebook_look_new(tmp_path, monkeypatch):
+    """The page carries the latest 20 runs; 33 runs in one day hid every older one,
+    and a weeks-old notebook said "Your notebook was just built"."""
+    import sys
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+    from connectonion.rem.reader import snapshot
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = build(tmp_path / 'rem', datetime(2026, 10, 20, 12, tzinfo=timezone.utc), zh=True)
+    runs = sorted((root / '.state/runs').glob('*.json'), key=lambda p: json.loads(p.read_text())['started_at'])
+    latest = json.loads(runs[-1].read_text())
+    started = datetime.fromisoformat(latest['started_at'])
+    for n in range(1, 26):
+        run = {**latest, 'id': f'run_busy_{n:02d}', 'started_at': (started - timedelta(minutes=10 * n)).isoformat()}
+        (root / f'.state/runs/run_busy_{n:02d}.json').write_text(json.dumps(run))
+    data = snapshot(root)
+    assert len(data['logs']) <= 21
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['runTime', 'lastPass', 'firstBuild', 'sameClaim'])
+    result = _run_reader_js('const REM = ' + json.dumps(data) + ';\n' + functions + r'''
+      const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
+      const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
+      const sourceName = value => value, byActivity = () => 0, calendarDay = value => value.slice(0, 10);
+      console.log(JSON.stringify({first: firstBuild()}));
+    ''')
+    assert result['first'] is False
+
+
 def test_schedule_reader_states_are_short_and_translated():
     page = TEMPLATE.read_text()
     function = re.search(r'function scheduleState\(.*?\n\}', page, re.S).group(0)

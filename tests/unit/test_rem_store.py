@@ -212,6 +212,35 @@ def test_stale_session_line_never_returns_another_messages_body(tmp_path):
     assert cited_conversations(root, context) == {}
 
 
+def test_citing_many_lines_of_one_session_reads_its_file_once(tmp_path, monkeypatch):
+    """The reader cites thousands of session lines; each re-read the whole project JSONL (91s on a real notebook)."""
+    from pathlib import Path
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    path = state_path(root, 'projects/atlas/messages.jsonl')
+    _jsonl(path, [{'source': f'codex:s1:{n}', 'text': f'input {n}', 'tool': 'codex'} for n in range(1, 41)])
+    store.refresh(root)
+    reads, original = [], Path.read_text
+    monkeypatch.setattr(Path, 'read_text', lambda self, *a, **k: reads.append(self) or original(self, *a, **k))
+    context = cited_context(root, [{'text': '\n'.join(f'- [{n}] codex:s1:{n}' for n in range(1, 41))}])
+    assert context['codex:s1:40']['excerpt'] == 'input 40'
+    assert reads.count(path) == 1
+
+
+def test_cited_mail_is_kept_before_a_session_pages_source_list(tmp_path):
+    """A real notebook's 504 session pages list 8,000+ typed lines under Sources. Sorted
+    by id, they spent the reader's whole budget before any gmail:/outlook: citation."""
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    store.refresh(root)
+    session = {'category': 'sessions', 'text': '# Atlas\n\n## Sources\n- codex:s1:1\n- codex:s1:2\n'}
+    person = {'category': 'people', 'text': 'Corin asked for a signature. [1]\n\n## Sources\n- [1] gmail:m1\n'}
+    context = cited_context(root, [session, person], budget=len('Please sign.') + 5)
+    assert context['gmail:m1']['excerpt'] == 'Please sign.'
+
+
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
