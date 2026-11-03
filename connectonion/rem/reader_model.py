@@ -12,7 +12,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .files import state_path
+from .files import ALIAS_LABELS, split_handles, state_path
 from .source import SESSION_SOURCE_PATTERN
 from .store_messages import archived_message
 
@@ -79,9 +79,27 @@ def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re
     return found
 
 
+def _ambiguous_person_names(records: list[dict]) -> set[str]:
+    claimed = {}
+    for row in records:
+        if row['category'] != 'people':
+            continue
+        names = [row['title'], *re.findall(r'\(([^()]*)\)', row['title'])]
+        for line in row['text'].splitlines()[:40]:
+            field = line.strip().lstrip('-').strip()
+            if field.casefold().startswith(ALIAS_LABELS):
+                names += split_handles(re.split('[:：]', field, maxsplit=1)[1])
+        for name in names:
+            plain = re.sub(r'\s*\([^()]*\)$', '', name).strip().casefold()
+            for key in {plain, plain.split()[0] if plain else ''} - {''}:
+                claimed.setdefault(key, set()).add(row['path'])
+    return {name for name, paths in claimed.items() if len(paths) > 1}
+
+
 def relationships(records: list[dict]) -> dict[str, list[dict]]:
     """Exact notebook links first; unambiguous mentions remain navigation hints."""
     paths = {row["path"]: row for row in records}
+    ambiguous = _ambiguous_person_names(records)
     names: dict[str, list[str]] = {}
     for row in records:
         if row["category"] in {"people", "orgs", "projects"}:
@@ -95,7 +113,8 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
                     if len(stem) >= 4:
                         names.setdefault(stem.casefold(), []).append(row["path"])
     unique = [(re.compile(r"(?<!\w)" + re.escape(name) + r"(?!\w)", re.I), rows[0], name)
-              for name, rows in sorted(names.items(), key=lambda pair: -len(pair[0])) if len(set(rows)) == 1]
+              for name, rows in sorted(names.items(), key=lambda pair: -len(pair[0]))
+              if len(set(rows)) == 1 and name not in ambiguous]
     # Mapped stubs have no investigated prose to infer relationships from.
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])

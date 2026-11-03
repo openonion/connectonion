@@ -1449,22 +1449,23 @@ def _fill_emptied_sections(head: str) -> str:
 
 def person_names(notebook, owner: str = '') -> dict:
     """{full name: record} for people pages a sentence can safely link: two words or more, one page each."""
-    seen, first_names = {}, {}
-    for person in notebook.list('people'):
-        page = notebook.read(person)
-        title = next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')
-        if person == owner or '@' in title:
+    people, claimed, first_counts = notebook.people(), Counter(), Counter()
+    for person in people:
+        keys = [person['title'], *person['aliases'], *re.findall(r'\(([^()]*)\)', person['title'])]
+        keys = {re.sub(r'\s*\([^()]*\)$', '', name).strip().casefold() for name in keys}
+        claimed.update(keys)
+        first_counts.update({name.split()[0] for name in keys if name})
+    names = {}
+    for person in people:
+        record, title = person['path'], person['title']
+        plain = re.sub(r'\s*\([^()]*\)$', '', title).strip().casefold()
+        if record == owner or '@' in title:
             continue
-        if len(title.split()) >= 2 and len(title) >= 5:
-            seen.setdefault(title, []).append(person)
-        elif re.fullmatch(r'[A-Z][a-z]{2,}', title):
-            email = (re.search(r'^- Email: (.*)$', page, re.M) or [None, ''])[1]
-            first_names.setdefault(title, []).append((person, email.split('@')[0].casefold()))
-    names = {name: records[0] for name, records in seen.items() if len(records) == 1}
-    # A page titled by a first name, as the mail's display name gave it ("Lucan"): a
-    # full name in a sentence ("Lucan Novak") is that page when it is the only "Lucan"
-    # and its address carries the surname (lucannovak@). Two Harrys link neither.
-    names.update({f'{first} *': pages[0] for first, pages in first_names.items() if len(pages) == 1})
+        if len(title.split()) >= 2 and len(title) >= 5 and claimed[plain] == 1:
+            names[title] = record
+        elif re.fullmatch(r'[A-Z][a-z]{2,}', title) and first_counts[plain] == 1:
+            email = next(iter(person['emails']), '')
+            names[f'{title} *'] = (record, email.split('@')[0].casefold())
     return names
 
 

@@ -344,12 +344,19 @@ def _followup_lines(saved: dict, notebook: Notebook) -> list[str]:
     followups = saved.get("followups", [])
     if not followups:
         return []
-    targets = []
+    from .reader_model import _ambiguous_person_names
+    targets, people = [], []
     for category in ("people", "projects"):
         for record in notebook.list(category):
-            title = notebook.read(record).splitlines()[0].removeprefix("# ")
+            text = notebook.read(record)
+            title = text.splitlines()[0].removeprefix("# ")
+            if category == 'people':
+                people.append({'path': record, 'category': category, 'title': title, 'text': text})
             if pattern := _name_pattern(title):
                 targets.append((title, record, pattern))
+    ambiguous = _ambiguous_person_names(people)
+    targets = [target for target in targets if not (target[1].startswith('people/')
+               and re.sub(r'\s*\([^()]*\)$', '', target[0]).strip().casefold() in ambiguous)]
     targets.sort(key=lambda target: -len(target[0]))
     pattern = "|".join(f"(?P<n{i}>{target[2]})" for i, target in enumerate(targets))
     def link(match):
