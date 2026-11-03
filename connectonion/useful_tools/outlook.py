@@ -2,7 +2,7 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at never use the one-shot sendMail / reply actions (they delivered at once, #1198): send() creates a draft carrying PidTagDeferredSendTime (SystemTime 0x3FEF) and PidTagDeferredDeliveryTime (0x000F) and submits it; reply() does createReply → POST attachments → PATCH the same two properties → send, so Exchange holds the exact draft until then (needs Mail.ReadWrite) | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at never use the one-shot sendMail / reply actions (they delivered at once, #1198): send() creates a draft carrying PidTagDeferredSendTime (SystemTime 0x3FEF) and PidTagDeferredDeliveryTime (0x000F) and submits it; reply() does createReply → POST attachments → PATCH the same two properties → send, so Exchange holds the exact draft until then (needs Mail.ReadWrite) | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | send(draft=True)/reply(draft=True) only create the message in Drafts (createReply keeps the thread) and return its webLink; get_drafts() lists Drafts minus deferred sends; send_draft() sends one now or PATCHes the deferred-send time first; delete_draft() and send_draft() read isDraft first and refuse any received or sent message (#2729) | get_scheduled(), get_drafts() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh atomically saves the selected credential record
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments, cc, bcc) keeps send_at third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only; cc/bcc are set on the reply action's message (or PATCHed onto the deferred reply draft) so a copied third person still gets a threaded reply (#1247)
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
@@ -683,8 +683,10 @@ class Outlook:
         return f" with attachment(s): {names}"
 
     def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
-             attachments: list = None, send_at: str = None, html: str = None) -> str:
-        """Send email via Microsoft Graph API, immediately or at a scheduled time.
+             attachments: list = None, send_at: str = None, html: str = None,
+             draft: bool = False) -> str:
+        """Send email via Microsoft Graph API, immediately or at a scheduled time,
+        or save it to Drafts for the owner to finish and send.
 
         Args:
             to: Recipient email address
@@ -697,10 +699,14 @@ class Outlook:
             send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
                 schedule delivery — Exchange holds the email until then
             html: Optional HTML body, sent instead of the plain one (Graph takes one body)
+            draft: Save the message in the Drafts folder instead of sending it,
+                and return a link that opens it in Outlook (needs Mail.ReadWrite)
 
         Returns:
             Confirmation message
         """
+        if draft and send_at:
+            raise ValueError("A draft is not sent, so it cannot be scheduled: pass draft or send_at, not both")
         message = {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html} if html else {
@@ -730,14 +736,16 @@ class Outlook:
 
         suffix = self._attachment_suffix(attachments)
 
+        if draft:
+            self._require_scope("Mail.ReadWrite")
+            saved = self._request("POST", "/me/messages", json=message)
+            return f"Draft saved for {to}{suffix}, not sent. Open it in Outlook: {saved.get('webLink')}"
+
         if send_at:
             self._require_scope("Mail.ReadWrite")
             # PidTagDeferredSendTime — Exchange holds delivery until this time.
             # Draft creation requires Mail.ReadWrite; see the scope check above.
-            message["singleValueExtendedProperties"] = [
-                {"id": "SystemTime 0x3FEF", "value": send_at},
-                {"id": "SystemTime 0x000F", "value": send_at},
-            ]
+            message["singleValueExtendedProperties"] = self._deferred(send_at)
 
         if send_at:
             # A deferred-send property belongs on a draft.  Calling sendMail
@@ -765,8 +773,9 @@ class Outlook:
 
     def reply(self, email_id: str, body: str, send_at: str = None, *,
               attachments: list = None, cc: str = None, bcc: str = None,
-              reply_all: bool = False) -> str:
-        """Reply to an email, immediately or at a scheduled time.
+              reply_all: bool = False, draft: bool = False) -> str:
+        """Reply to an email, immediately or at a scheduled time, or save the
+        reply to Drafts in the same thread for the owner to finish and send.
 
         send_at stays third positional — callers written before attachments
         existed pass reply(email_id, body, "2026-07-06T15:30:00Z"), and a
@@ -788,10 +797,14 @@ class Outlook:
             reply_all: Keep every original To and Cc recipient. A plain reply
                 reaches only the sender, so on a group thread the others were
                 dropped, or answered through a fresh `send` in a new thread (#1834).
+            draft: Save the reply in Drafts, threaded with To and Cc filled in,
+                instead of sending it (needs Mail.ReadWrite)
 
         Returns:
             Confirmation message
         """
+        if draft and send_at:
+            raise ValueError("A draft is not sent, so it cannot be scheduled: pass draft or send_at, not both")
         # Graph renders the comment as HTML, so plain-text newlines collapse
         # into one blob — escape and convert paragraphs to <p>/<br>.
         paragraphs = [html.escape(p.strip()).replace("\n", "<br>") for p in body.split("\n\n") if p.strip()]
@@ -812,6 +825,11 @@ class Outlook:
             extra["ccRecipients"] = kept + self._recipients(cc)
         if bcc:
             extra["bccRecipients"] = self._recipients(bcc)
+
+        if draft:
+            self._require_scope("Mail.ReadWrite")
+            saved = self._reply_draft(email_id, body, encoded, extra, action=action)
+            return f"Reply draft saved{suffix}, not sent. Open it in Outlook: {saved.get('webLink')}"
 
         if send_at:
             self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
@@ -854,6 +872,18 @@ class Outlook:
         draft.  Returns the draft id.
         """
         self._require_scope("Mail.ReadWrite")
+        # Recipients and the deferred-send time go on the same PATCH, so the
+        # draft is never submitted with one and not the other.
+        draft_id = self._reply_draft(email_id, body, encoded, {
+            **(recipients or {}),
+            "singleValueExtendedProperties": self._deferred(send_at)
+        }, action=action)["id"]
+        self._request("POST", f"/me/messages/{draft_id}/send")
+        return draft_id
+
+    def _reply_draft(self, email_id: str, body: str, encoded: list, changes: dict,
+                     action: str = "reply") -> dict:
+        """A threaded reply draft with its attachments and changes applied; nothing is sent."""
         create = "createReplyAll" if action == "replyAll" else "createReply"
         draft = self._request("POST", f"/me/messages/{email_id}/{create}", json={"comment": body})
         draft_id = draft.get("id")
@@ -862,17 +892,58 @@ class Outlook:
         for attachment in encoded:
             # PATCH does not take attachments; the attachments collection does.
             self._request("POST", f"/me/messages/{draft_id}/attachments", json=attachment)
-        # Recipients and the deferred-send time go on the same PATCH, so the
-        # draft is never submitted with one and not the other.
-        self._request("PATCH", f"/me/messages/{draft_id}", json={
-            **(recipients or {}),
-            "singleValueExtendedProperties": [
-                {"id": "SystemTime 0x3FEF", "value": send_at},
-                {"id": "SystemTime 0x000F", "value": send_at},
-            ]
-        })
+        if changes:
+            self._request("PATCH", f"/me/messages/{draft_id}", json=changes)
+        return draft
+
+    @staticmethod
+    def _deferred(send_at: str) -> list:
+        """PidTagDeferredSendTime and PidTagDeferredDeliveryTime: Exchange holds the draft until send_at."""
+        return [
+            {"id": "SystemTime 0x3FEF", "value": send_at},
+            {"id": "SystemTime 0x000F", "value": send_at},
+        ]
+
+    def send_draft(self, draft_id: str, send_at: str = None) -> str:
+        """Send a draft from the Drafts folder as it is now, or schedule it.
+
+        Args:
+            draft_id: Message ID from get_drafts()
+            send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z"); Exchange
+                holds the draft until then and it shows in get_scheduled()
+
+        Returns:
+            Confirmation message
+        """
+        self._require_scope("Mail.ReadWrite")
+        draft = self._the_draft(draft_id)
+        if send_at:
+            self._request("PATCH", f"/me/messages/{draft_id}",
+                          json={"singleValueExtendedProperties": self._deferred(send_at)})
         self._request("POST", f"/me/messages/{draft_id}/send")
-        return draft_id
+        when = f"scheduled for {send_at}" if send_at else "sent"
+        return f"Draft \"{draft['subject']}\" {when} to {draft['to']}"
+
+    def delete_draft(self, draft_id: str) -> str:
+        """Delete a draft. Refuses any message that is not a draft.
+
+        Args:
+            draft_id: Message ID from get_drafts()
+
+        Returns:
+            Confirmation message
+        """
+        self._require_scope("Mail.ReadWrite")
+        draft = self._the_draft(draft_id)
+        self._request("DELETE", f"/me/messages/{draft_id}")
+        return f"Deleted draft \"{draft['subject']}\" to {draft['to']}"
+
+    def _the_draft(self, message_id: str) -> dict:
+        """The draft's subject and recipients; raises if the id names a message that was received or sent."""
+        message = self._request("GET", f"/me/messages/{message_id}?$select=id,isDraft,subject,toRecipients")
+        if not message.get("isDraft"):
+            raise ValueError(f"Message {message_id} is not a draft; only drafts can be sent or deleted this way")
+        return self._draft_dict(message)
 
     def get_scheduled(self, max_results: int = 25) -> list:
         """List emails waiting for scheduled delivery (deferred-send drafts).
@@ -887,31 +958,61 @@ class Outlook:
         Returns:
             List of dicts: id, subject, to, send_at (UTC ISO)
         """
+        scheduled = []
+        for message in self._drafts_folder():
+            props = message.get("singleValueExtendedProperties")
+            if props:
+                scheduled.append({**self._draft_dict(message), "send_at": props[0]["value"]})
+            if len(scheduled) >= max_results:
+                break
+        return scheduled
+
+    def get_drafts(self, max_results: int = 25) -> list:
+        """List unsent drafts the owner still has to finish, newest first.
+
+        Scheduled sends live in the same folder and are left out: Exchange
+        sends those by itself (see get_scheduled).
+
+        Args:
+            max_results: How many drafts to return
+
+        Returns:
+            List of dicts: id, subject, to, saved_at (UTC ISO), link (opens it in Outlook)
+        """
+        drafts = []
+        for message in self._drafts_folder():
+            if not message.get("singleValueExtendedProperties"):
+                drafts.append({**self._draft_dict(message),
+                               "saved_at": message.get("lastModifiedDateTime", ""),
+                               "link": message.get("webLink", "")})
+            if len(drafts) >= max_results:
+                break
+        return drafts
+
+    @staticmethod
+    def _draft_dict(message: dict) -> dict:
+        return {
+            "id": message["id"],
+            "subject": message.get("subject", ""),
+            "to": ", ".join(r["emailAddress"]["address"] for r in message.get("toRecipients", [])),
+        }
+
+    def _drafts_folder(self):
+        """Every message in Drafts, with the deferred-send property expanded where it is set."""
         # Graph rejects $filter on this extended property, so page through
         # the drafts folder and filter client-side.
         endpoint = (
             "/me/mailFolders/drafts/messages"
-            "?$select=id,subject,toRecipients&$top=100"
+            "?$select=id,subject,toRecipients,lastModifiedDateTime,webLink&$top=100"
+            "&$orderby=lastModifiedDateTime desc"
             "&$expand=singleValueExtendedProperties"
             "($filter=id eq 'SystemTime 0x3FEF')"
         )
-
-        scheduled = []
-        while endpoint and len(scheduled) < max_results:
+        while endpoint:
             result = self._request("GET", endpoint)
-            for message in result.get("value", []):
-                props = message.get("singleValueExtendedProperties")
-                if not props:
-                    continue  # ordinary draft, not scheduled
-                scheduled.append({
-                    "id": message["id"],
-                    "subject": message.get("subject", ""),
-                    "to": ", ".join(r["emailAddress"]["address"] for r in message.get("toRecipients", [])),
-                    "send_at": props[0]["value"],
-                })
+            yield from result.get("value", [])
             next_link = result.get("@odata.nextLink", "")
             endpoint = next_link.replace(self.GRAPH_API_URL, "") if next_link else None
-        return scheduled[:max_results]
 
     def cancel_scheduled(self, email_id: str) -> str:
         """Cancel a scheduled email by deleting it before Exchange sends it.

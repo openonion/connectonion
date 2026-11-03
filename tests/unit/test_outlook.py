@@ -1223,7 +1223,7 @@ class TestOutlookReplyPositionalCompatibility:
         from connectonion.useful_tools.outlook import Outlook
 
         params = inspect.signature(Outlook.reply).parameters
-        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc", "reply_all"]
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc", "reply_all", "draft"]
         for name in ("attachments", "cc", "bcc", "reply_all"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
@@ -1853,3 +1853,154 @@ def test_a_search_with_a_quoted_phrase_reaches_graph_escaped():
     outlook._email_dicts = lambda rows: rows
     outlook.list_search('subject:"Sprint 1 retrospective meeting"')
     assert outlook._request.call_args.kwargs["params"]["$search"] == '"subject:\\"Sprint 1 retrospective meeting\\""'
+
+
+class TestOutlookDraft:
+    """draft=True leaves a message in Drafts for the owner to finish; nothing is sent (#2729)."""
+
+    ENV = {
+        "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
+        "MICROSOFT_ACCESS_TOKEN": "test-token",
+        "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+        "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+    }
+
+    @staticmethod
+    def _created(draft_id):
+        return MagicMock(status_code=201, text="{}", json=MagicMock(return_value={
+            "id": draft_id, "webLink": f"https://outlook.live.com/owa/?ItemID={draft_id}"}))
+
+    @staticmethod
+    def _paths(mock_httpx):
+        return [(c.args[0], c.args[1].split("/v1.0")[1]) for c in mock_httpx.request.call_args_list]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_send_draft_creates_the_message_and_never_sends_it(self, mock_httpx):
+        mock_httpx.request.return_value = self._created("draft-1")
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            result = Outlook().send("a@example.com", "Intro", "Body", cc="c@example.com", draft=True)
+
+        assert self._paths(mock_httpx) == [("POST", "/me/messages")]
+        message = mock_httpx.request.call_args.kwargs["json"]
+        assert message["toRecipients"] == [{"emailAddress": {"address": "a@example.com"}}]
+        assert message["ccRecipients"] == [{"emailAddress": {"address": "c@example.com"}}]
+        assert "singleValueExtendedProperties" not in message
+        assert "not sent" in result
+        assert "ItemID=draft-1" in result
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_draft_stays_in_the_thread_and_is_not_sent(self, mock_httpx):
+        mock_httpx.request.side_effect = [self._created("reply-draft-1"), MagicMock(status_code=200, text="")]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            result = Outlook().reply("msg-1", "Thanks", cc="sam@example.com", draft=True)
+
+        assert self._paths(mock_httpx) == [
+            ("POST", "/me/messages/msg-1/createReply"),
+            ("PATCH", "/me/messages/reply-draft-1"),
+        ]
+        assert mock_httpx.request.call_args_list[1].kwargs["json"] == {
+            "ccRecipients": [{"emailAddress": {"address": "sam@example.com"}}]}
+        assert "ItemID=reply-draft-1" in result
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_draft_without_changes_is_one_request(self, mock_httpx):
+        mock_httpx.request.return_value = self._created("reply-draft-2")
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            Outlook().reply("msg-1", "Thanks", reply_all=True, draft=True)
+
+        assert self._paths(mock_httpx) == [("POST", "/me/messages/msg-1/createReplyAll")]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_draft_needs_readwrite_before_any_request(self, mock_httpx):
+        with patch.dict(os.environ, {**self.ENV, "MICROSOFT_SCOPES": "Mail.Read,Mail.Send"}, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match="Mail.ReadWrite"):
+                Outlook().send("a@example.com", "Intro", "Body", draft=True)
+            with pytest.raises(ValueError, match="Mail.ReadWrite"):
+                Outlook().reply("msg-1", "Thanks", draft=True)
+        mock_httpx.request.assert_not_called()
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_draft_with_a_send_time_is_refused(self, mock_httpx):
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match="not both"):
+                Outlook().send("a@example.com", "Intro", "Body", draft=True, send_at="2026-07-06T15:30:00Z")
+            with pytest.raises(ValueError, match="not both"):
+                Outlook().reply("msg-1", "Thanks", draft=True, send_at="2026-07-06T15:30:00Z")
+        mock_httpx.request.assert_not_called()
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_get_drafts_leaves_out_scheduled_sends(self, mock_httpx):
+        mock_httpx.request.return_value = MagicMock(status_code=200, text="ok", json=MagicMock(return_value={"value": [
+            {"id": "sched-1", "subject": "Later", "toRecipients": [],
+             "singleValueExtendedProperties": [{"id": "SystemTime 0x3fef", "value": "2026-07-06T22:00:00Z"}]},
+            {"id": "draft-1", "subject": "Intro", "lastModifiedDateTime": "2026-11-03T01:00:00Z",
+             "webLink": "https://outlook.live.com/owa/?ItemID=draft-1",
+             "toRecipients": [{"emailAddress": {"address": "a@example.com"}}]},
+        ]}))
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            drafts = Outlook().get_drafts()
+
+        assert drafts == [{"id": "draft-1", "subject": "Intro", "to": "a@example.com",
+                           "saved_at": "2026-11-03T01:00:00Z",
+                           "link": "https://outlook.live.com/owa/?ItemID=draft-1"}]
+
+
+class TestOutlookDraftActions:
+    """send_draft and delete_draft act only on drafts (#2729)."""
+
+    ENV = TestOutlookDraft.ENV
+
+    @staticmethod
+    def _message(is_draft):
+        return MagicMock(status_code=200, text="{}", json=MagicMock(return_value={
+            "id": "d1", "isDraft": is_draft, "subject": "Intro",
+            "toRecipients": [{"emailAddress": {"address": "a@example.com"}}]}))
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_send_draft_now(self, mock_httpx):
+        mock_httpx.request.side_effect = [self._message(True), MagicMock(status_code=202, text="")]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            result = Outlook().send_draft("d1")
+        assert TestOutlookDraft._paths(mock_httpx)[1:] == [("POST", "/me/messages/d1/send")]
+        assert "sent" in result and "a@example.com" in result
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_send_draft_scheduled_sets_the_time_before_sending(self, mock_httpx):
+        mock_httpx.request.side_effect = [self._message(True), MagicMock(status_code=200, text=""),
+                                          MagicMock(status_code=202, text="")]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            result = Outlook().send_draft("d1", send_at="2026-07-06T15:30:00Z")
+        assert TestOutlookDraft._paths(mock_httpx)[1:] == [
+            ("PATCH", "/me/messages/d1"), ("POST", "/me/messages/d1/send")]
+        assert mock_httpx.request.call_args_list[1].kwargs["json"] == {"singleValueExtendedProperties": [
+            {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"},
+            {"id": "SystemTime 0x000F", "value": "2026-07-06T15:30:00Z"},
+        ]}
+        assert "scheduled for 2026-07-06T15:30:00Z" in result
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_delete_draft(self, mock_httpx):
+        mock_httpx.request.side_effect = [self._message(True), MagicMock(status_code=204, text="")]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            Outlook().delete_draft("d1")
+        assert TestOutlookDraft._paths(mock_httpx)[1:] == [("DELETE", "/me/messages/d1")]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_a_received_email_is_neither_sent_nor_deleted(self, mock_httpx):
+        mock_httpx.request.return_value = self._message(False)
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match="not a draft"):
+                Outlook().delete_draft("d1")
+            with pytest.raises(ValueError, match="not a draft"):
+                Outlook().send_draft("d1")
+        assert {c.args[0] for c in mock_httpx.request.call_args_list} == {"GET"}
