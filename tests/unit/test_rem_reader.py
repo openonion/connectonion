@@ -29,6 +29,54 @@ def _run_reader_js(script):
     return json.loads(result.stdout)
 
 
+@pytest.mark.parametrize('card', [
+    'Business card handed over at the Lantern meetup — photo on 2026-11-01 <card> https://example.com/card',
+    'Photo: Business `card*copy` handed over at Lantern',
+])
+def test_numbered_card_source_keeps_its_label_and_popup_text(card):
+    page = TEMPLATE.read_text()
+    names = ['sourceList', 'sourceId', 'rawSection', 'listItems', 'openEvidence']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + 'const card = ' + json.dumps(card) + ';' + r'''
+      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
+      const r = {text: '# Elara Finch\n\n## Sources\n1. ' + card + '\n'
+        + '- [3] gmail:followup — 2026-11-02\n\n## Notes\n9. Not a source\n'};
+      const sources = sourceList(r), REM = {}, evidenceLayout = () => {}, scrollEvidenceSpan = () => {};
+      const evidenceLine = () => ({numbers: [], text: 'elara@example.com [1]'});
+      const supportingSpan = () => null, markedSpan = text => text, chipLabel = () => 'source 1';
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, focus() {}});
+      const panel = {children: [], parentElement: {}, replaceChildren(...nodes) {this.children = nodes;},
+        appendChild(node) {this.children.push(node);}};
+      const evidencePanel = () => panel, closeEvidence = () => {}, document = {body: {classList: {add() {}}}};
+      let evidenceTrigger;
+      openEvidence(r, '1', {});
+      console.log(JSON.stringify({sources, panel}));
+    ''')
+    assert result['sources'][0]['n'] == '1' and result['sources'][0]['text'] == card
+    assert result['sources'][1] == {'n': '3', 'text': 'gmail:followup — 2026-11-02'}
+    assert any(node.get('text') == card for node in result['panel']['children'])
+    assert "The original isn't in this snapshot." not in json.dumps(result['panel'])
+    assert not any(node.get('class') == 'private-hidden-notice' for node in result['panel']['children'])
+
+
+def test_numbered_card_source_hover_shows_escaped_text_and_keeps_typed_context():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['citeChip', 'citationId', 'sourceId', 'esc'])
+    result = _run_reader_js(functions + r'''
+      const REM = {source_context: {'gmail:followup': {subject: 'Card follow-up'}}};
+      const byPath = () => ({}), citationDate = () => 'source 1', chipLabel = () => 'Gmail';
+      const citationSource = (r, n) => ({1: 'Photo: Business card <photo> & notes', 3: 'gmail:followup — 2026-11-02'})[n] || '';
+      const sourceList = () => [{n: '1', plain: true}, {n: '3'}];
+      console.log(JSON.stringify([citeChip('1', 'people/elara-finch.md'),
+        citeChip('3', 'people/elara-finch.md'), citeChip('9', 'people/elara-finch.md')]));
+    ''')
+    assert 'title="Source: Photo: Business card &lt;photo&gt; &amp; notes"' in result[0]
+    assert ' missing' not in result[0]
+    assert 'subject “Card follow-up”' in result[1] and ' missing' not in result[1]
+    assert 'original not in this snapshot' in result[2] and ' missing' in result[2]
+
+
 def test_this_week_project_rows_strip_the_now_label():
     page = TEMPLATE.read_text(encoding="utf-8")
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
@@ -597,7 +645,7 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
     result = _run_reader_js('\n'.join([
         '(() => { let uiLanguage = "en";', interface, functions,
         'const REM = {as_of: "2026-10-20"}, calendarDay = day => day;',
-        'const daysSince = day => Number(day), citationSource = () => "", sourceId = () => "";',
+        'const daysSince = day => Number(day), citationSource = () => "", citationId = () => "";',
         'const sourceChannel = () => "";',
         'const labels = () => [age("10"), age("1"), age("0"), citationDate({}, "99"),',
         'dueLabel({due: "2026-10-19"}), dueLabel({due: "2026-10-21"}),',
@@ -620,7 +668,7 @@ def test_undated_quiet_citation_uses_number_instead_of_source_label(source):
                           for name in ['citationDay', 'citationDate'])
     result = _run_reader_js('\n'.join([
         functions, 'const REM = {source_context: {}};',
-        'const citationSource = () => ' + json.dumps(source) + ', sourceId = text => text;',
+        'const citationSource = () => ' + json.dumps(source) + ', citationId = citationSource;',
         'const chipLabel = () => ' + json.dumps(source) + ';',
         'const labels = [citationDate({}, "99")];',
         'REM.source_context[' + json.dumps(source) + '] = {time: "2026-10-20"};',

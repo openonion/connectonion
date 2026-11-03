@@ -2386,6 +2386,9 @@ function citationSource(r, n) {
   if (!r) return "";
   return r.path === CITES.from ? CITES.sources[n] || "" : sourceList(r).find(s => s.n === n)?.text || "";
 }
+function citationId(r, n) {
+  return sourceId(citationSource(r, n), r && sourceList(r).find(s => s.n === n)?.plain);
+}
 function sourceChannel(kind) {
   return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
     || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
@@ -2409,7 +2412,8 @@ function citationDay(date) {
   return date.getUTCDate() + " " + months[date.getUTCMonth()];
 }
 function chipLabel(r, n) {
-  const text = citationSource(r, n), id = sourceId(text);
+  const text = citationSource(r, n), id = citationId(r, n);
+  if (!id) return t("source {n}", { n });
   const context = (REM.source_context || {})[id];
   const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
   const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
@@ -2419,7 +2423,7 @@ function chipLabel(r, n) {
   return label.join(", ") || t("source {n}", { n });
 }
 function citationDate(r, n) {
-  const text = citationSource(r, n), context = (REM.source_context || {})[sourceId(text)];
+  const text = citationSource(r, n), context = (REM.source_context || {})[citationId(r, n)];
   const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
   const date = day && new Date(day + "T00:00:00Z");
   return date && !isNaN(date) ? citationDay(date) : t("source {n}", { n });
@@ -2428,8 +2432,15 @@ function citeRun(ns, from) {
   return citeChip(ns[0], from, true, false, ns);
 }
 function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n]) {
-  const r = byPath(from), text = citationSource(r, n), context = (REM.source_context || {})[sourceId(text)];
-  const label = ns.map(number => chipLabel(r, number)).join("; "), missing = ns.some(number => !(REM.source_context || {})[sourceId(citationSource(r, number))]);
+  const r = byPath(from), text = citationSource(r, n), context = (REM.source_context || {})[citationId(r, n)];
+  const label = ns.map(number => {
+    const text = citationSource(r, number);
+    return !citationId(r, number) && text ? text : chipLabel(r, number);
+  }).join("; "), missing = ns.some(number => {
+    const text = citationSource(r, number);
+    const id = citationId(r, number);
+    return !text || (id && !(REM.source_context || {})[id]);
+  });
   const when = citationDate(r, n), full = when === t("source {n}", { n }) ? when : chipLabel(r, n);
   const subject = context?.subject || REM.conversations?.[context?.thread]?.subject;
   const tip = "Source: " + label + (subject ? ", subject “" + subject + "”" : "")
@@ -3076,7 +3087,7 @@ function threadPrompt(entry) {
     thread.since ? t("since {day}", { day: thread.since }) : "", thread.due ? t("due {day}", { day: thread.due }) : ""].filter(Boolean).join(" · ");
   const cited = new Set([...words.matchAll(/\[(W?\d+)\]/g)].map(m => m[1]));
   const sources = sourceList({ ...r, text: r.original ?? r.text }).filter(source => cited.has(source.n)).map(source => {
-    const text = safe(source.text), id = sourceId(text), date = /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
+    const text = safe(source.text), id = sourceId(text, source.plain), date = /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
     return id ? "- [" + source.n + "] " + id + (date ? " — " + date : "") : "";
   }).filter(Boolean);
   const search = [...obligationEvidence({ r, t: { ...thread, originalText: words } }).words].slice(0, 3).join(" ");
@@ -3149,15 +3160,17 @@ function rawSection(r, name) {
 }
 function sourceList(r) {
   const out = [];
-  for (const item of listItems(rawSection(r, "Sources"))) {
-    const m = /^[\[［](W?\d{1,3})[\]］]\s*(.*)$/.exec(item);
-    if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
+  const sources = rawSection(r, "Sources").replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
+  for (const item of listItems(sources)) {
+    const m = /^(?:[\[［](W?\d{1,3})[\]］]|(\d{1,3})\.)\s*(.*)$/.exec(item);
+    if (m && !UNKNOWN_TEXT.test(m[3])) out.push({ n: m[1] || m[2],
+      text: m[2] ? m[3] : m[3].replace(/[*`]/g, ""), ...(m[2] ? { plain: true } : {}) });
     else if (r.category === "sessions" && /^(?:codex:[^\s:]+:\d+(?:-[0-9a-f]{8})?|claude-code:[^\s:]+:\d+)$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
   return out;
 }
-function sourceId(text) {
-  return /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
+function sourceId(text, plain = false) {
+  return plain ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
 }
 const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
 // A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
@@ -4969,7 +4982,7 @@ function sectionBody(r, s) {
     const list = sourceList(r);
     if (list.length) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
-        const id = sourceId(src.text);
+        const id = sourceId(src.text, src.plain);
         const rest = id ? src.text.replace(id, "").replace(/^\s*[—–-]\s*/, "") : src.text;
         const chip = el("span", { html: citeChip(src.n, r.path) }).firstChild;
         chip.classList.add("n", "source-open");
@@ -5460,7 +5473,7 @@ function recordContext(r) {
     if (sessions) out.appendChild(sessions);
   }
   // Enrich (#2315): the documents this page cites, each one click from its file.
-  const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
+  const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text, source.plain)]])
     .filter(([, c]) => c?.source === "attachment" && c.file);
   if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
     el("h2", { text: t("Documents") }),
@@ -5468,7 +5481,7 @@ function recordContext(r) {
       el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
       el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
   const conversations = [...new Set(sourceList(r).map(source => {
-    const id = sourceId(source.text);
+    const id = sourceId(source.text, source.plain);
     return id && (REM.source_context || {})[id]?.thread;
   }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
   if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
@@ -6218,7 +6231,7 @@ function sourceIdentity(context) {
 }
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
-  const context = (REM.source_context || {})[sourceId(source.text)], line = evidenceLine(trigger);
+  const context = (REM.source_context || {})[sourceId(source.text, source.plain)], line = evidenceLine(trigger);
   const numbers = line.numbers.length ? line.numbers : [source.n];
   const excerpt = context?.excerpt || "", span = supportingSpan(line.text, excerpt);
   const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
@@ -6237,13 +6250,15 @@ function openEvidence(r, number, trigger) {
       ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
       : chipLabel(r, source.n) }),
     context && !/^(gmail|outlook)$/.test(context.source) ? el("p", { class: "evidence-subject", text: context.subject || REM.conversations?.[context.thread]?.subject || "" }) : null]));
-  const reveal = el("button", { class: "btn-action", type: "button", text: t("Show labelled passages") });
-  reveal.onclick = () => { togglePrivate(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
-  panel.appendChild(el("div", { class: "private-hidden-notice" }, [
-    el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
   if (context) {
+    const reveal = el("button", { class: "btn-action", type: "button", text: t("Show labelled passages") });
+    reveal.onclick = () => { togglePrivate(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
+    panel.appendChild(el("div", { class: "private-hidden-notice" }, [
+      el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
     const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
     panel.appendChild(evidenceOriginal(context, quote));
+  } else if (source.text && !sourceId(source.text, source.plain)) {
+    panel.appendChild(el("p", { class: "evidence-description", text: source.text }));
   } else panel.appendChild(el("p", { class: "evidence-unavailable", text: t("The original isn't in this snapshot.") }));
   evidenceTrigger = trigger;
   panel.parentElement.hidden = false;

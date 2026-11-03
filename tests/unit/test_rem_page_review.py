@@ -12,6 +12,21 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_numbered_card_source_is_defined_and_survives_page_review():
+    from connectonion.rem.page_review import drop_unresolved
+
+    page = ('# Elara Finch\n\n## Facts\n- Email: elara@example.com [1]\n\n'
+            '## Notes\nMet at the Lantern meetup. [1]\n\n## Sources\n'
+            '1. Business card handed over at the Lantern meetup (photo on 2026-11-01)\n')
+    errors = validate('people/elara-finch.md', page, page, [])
+    assert not any('citation' in error.lower() for error in errors), errors
+    assert drop_unresolved('people/elara-finch.md', page, page, []) == (page, {'citations': [], 'lines': 0})
+    missing = page.replace('[1]', '[9]')
+    assert 'Missing or duplicate citation: 9' in validate('people/elara-finch.md', missing, page, [])
+    duplicate = page + '- [1] gmail:followup\n'
+    assert 'Missing or duplicate citation: 1' in validate('people/elara-finch.md', duplicate, page, [])
+
+
 @pytest.mark.parametrize('heading', ['Open threads', 'Where it stands', 'Who they are'])
 @pytest.mark.parametrize('prefix', ['- ', ''])
 @pytest.mark.parametrize('reverse', [False, True])
