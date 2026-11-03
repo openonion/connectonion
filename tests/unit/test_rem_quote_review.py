@@ -51,6 +51,36 @@ def test_ellipses_join_parts_that_appear_in_order():
     assert misquoted(NOWHERE, 'people/x.md', backwards, items)
 
 
+@pytest.mark.parametrize('quoted,original', [
+    ('notable progress', 'not able progress'),
+    ('not able progress', 'notable progress'),
+    ('now here to help', 'nowhere to help'),
+    ('nowhere to help', 'now here to help'),
+    ('아버지가방에', '아버지 가방에'),
+    ('아버지 가방에', '아버지가방에'),
+])
+def test_quote_word_separation_cannot_change(tmp_path, quoted, original):
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:example\n')
+    assert misquoted(tmp_path, 'projects/example.md', text,
+                     [{'source': 'gmail:example', 'text': original}]) == [
+        f'Quote is not in its cited source: “{quoted}”']
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('not able to pay', 'We are NOT\n> able\tto  pay today.'),
+    ('send the [draft](https://example.com)', 'Please **send** the __draft__.'),
+    ('Ready, then send', 'Ready,\nthen send'),
+    ('Ready,then send', 'Ready , then send'),
+    ('请发送草稿', '请发送\n草稿'),
+    ('送ってください', '送って\nください'),
+    ('아버지 가방에', '아버지\n가방에'),
+])
+def test_quote_word_separation_keeps_layout_tolerance(tmp_path, quoted, original):
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:example\n')
+    assert misquoted(tmp_path, 'projects/example.md', text,
+                     [{'source': 'gmail:example', 'text': original}]) == []
+
+
 def test_a_quote_whose_original_is_not_here_is_left_to_the_audit():
     text = page('- “anything at all” [1]', '- [1] gmail:unread — 2026-10-01\n')
     assert misquoted(NOWHERE, 'people/x.md', text, []) == []

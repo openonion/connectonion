@@ -1621,13 +1621,27 @@ def _plain(text: str) -> str:
     return re.sub(r'\s+', '', text).casefold()
 
 
+QUOTE_UNSPACED = r'\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uf900-\ufaff\U00020000-\U000323af'
+
+
+def _quote_plain(text: str) -> str:
+    """Fold layout without turning 'not able' into 'notable'."""
+    text = re.sub(r'(?m)^[ \t]*>+', '', text)
+    text = re.sub(r'\*\*|__|\\(?=[^\s\w])', '', text.translate(FOLD))
+    text = re.sub(r'\s+', ' ', text).casefold()
+    # Han/kana can wrap between characters; Hangul word spaces stay meaningful.
+    text = re.sub(rf'(?<=[{QUOTE_UNSPACED}]) (?=[{QUOTE_UNSPACED}])', '', text)
+    return re.sub(r' *([,.;:!?()\[\]]) *', r'\1', text).strip()
+
+
 def _quoted_in(quote: str, original: str) -> bool:
     """Each part between ellipses appears, in order, in the original."""
     # “Best.” and “sounds great,”: punctuation the page put inside the marks,
     # and a link the page added to a name, are not the speaker's.
     quote = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', quote).rstrip(' ,.;:!?，。；：！？')
+    original = _quote_plain(original)
     at = 0
-    for part in filter(None, (_plain(part) for part in re.split(r'…|\.\.\.', quote))):
+    for part in filter(None, (_quote_plain(part) for part in re.split(r'…|\.\.\.', quote))):
         at = original.find(part, at)
         if at < 0:
             return False
@@ -1667,7 +1681,7 @@ def misquoted(root: Path, record: str, text: str, items: list[dict]) -> list[str
         return []
     head, _, sources = prose(text).partition('\n## Sources\n')
     numbers = dict(SOURCE.findall('\n' + sources))
-    originals = {source: (_plain(body), whole) for source, (body, whole) in cited_texts(root, text, items).items()}
+    originals = cited_texts(root, text, items)
     errors = []
     for line in head.splitlines():
         cited = [numbers[n] for n in CITATION.findall(line) if n in numbers]
