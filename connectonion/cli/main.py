@@ -2967,7 +2967,7 @@ def outlook_send_draft(
 def outlook_delete_draft(
     number: str = typer.Argument(..., help="Draft # from 'co outlook drafts' (or a full message ID)"),
 ):
-    """Delete a draft. Refuses any message that is not a draft; a received or sent email is never deleted."""
+    """Delete a draft. Deletes the numbered draft from Drafts; refuses any message that is not a draft."""
     from .commands.outlook_commands import handle_outlook_delete_draft
     handle_outlook_delete_draft(number)
 
