@@ -314,7 +314,6 @@ def _resolve_page(notebook, selector):
     pages = _investigation_pages(notebook)
     # A page merged into another (#1974) answers to its old record and stem.
     table = aliases(notebook.root)
-    selector = next((old for old in table if Path(old).stem == selector), selector)
     selector = resolve(notebook.root, selector)
     if selector in notebook.list():
         return selector
@@ -324,18 +323,21 @@ def _resolve_page(notebook, selector):
         # UTF-8, hidden): say why, as show does, not "No page matches".
         notebook.read(selector)
     people = {person["path"]: person for person in notebook.people()}
-    matches = []
+    named_people = {person["path"] for person in notebook.find_people(selector)}
+    old_matches = {resolve(notebook.root, old) for old in table if Path(old).stem == selector}
+    matches = [path for path in pages if path in old_matches]
     for path in pages:
         title = next((line[2:].strip() for line in notebook.read(path).splitlines()
                       if line.startswith("# ")), "")
         person = people.get(path, {})
         names = [title, Path(path).stem, *person.get("emails", []), *person.get("aliases", [])]
-        if selector.casefold() in [name.casefold() for name in names]:
+        if (path in named_people or selector.casefold() in [name.casefold() for name in names]) and path not in matches:
             matches.append(path)
     if len(matches) == 1:
         return matches[0]
     if matches:
-        raise RemError("More than one page matches. Use an exact path:\n" + "\n".join(matches))
+        rows = [path + "  " + ", ".join(people.get(path, {}).get("emails", [])) for path in matches]
+        raise RemError("More than one page matches. Use an exact path:\n" + "\n".join(rows))
     raise RemError("No page matches that name, email or path. Run investigate without arguments to see available pages.")
 
 
