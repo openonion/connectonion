@@ -399,3 +399,44 @@ def test_the_owners_company_is_preserved_even_when_its_contacts_were_archived(tm
     assert notebook.list("orgs") == ["orgs/bigcorp.example.md", "orgs/example.edu.au.md",
                                     "orgs/maralabs.example.md"]
     assert tidy(tmp_path) == {}
+
+
+def test_a_page_listing_another_pages_own_address_is_one_person_and_folds_into_the_more_written(tmp_path):
+    """#2724: the map made a page per address, and a later investigation found both
+    addresses were one person and wrote the other onto its Email line. Nothing merged
+    them, so one person stayed two pages with the facts split between them."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/robin-1.md", "Robin", "robin@mail.example", investigated=True)
+    _person(notebook, "people/rbn-2.md", "Robin", "rbn@other.example", investigated=True)
+    page = notebook.read("people/rbn-2.md").replace("- Email: rbn@other.example",
+                                                    "- Email: robin@mail.example [1]; rbn@other.example")
+    notebook.write("people/rbn-2.md", page.replace("## Insight\n", "## Insight\n- Builds sensor kits [1].\n", 1))
+    _person(notebook, "people/sam.md", "Sam Lee", "sam@team.example", investigated=True)
+    _state(tmp_path, people=[{"record": "people/robin-1.md", "addresses": ["robin@mail.example"]},
+                             {"record": "people/rbn-2.md", "addresses": ["rbn@other.example"]},
+                             {"record": "people/sam.md", "addresses": ["sam@team.example"]}])
+
+    done = tidy(tmp_path)
+
+    assert done["folded same person"] == ["people/robin-1.md"]
+    assert sorted(notebook.list("people")) == ["people/rbn-2.md", "people/sam.md"]
+    assert (tmp_path / ".state/archived/people/robin-1.md").is_file()          # moved, never deleted
+    assert read_json(state_path(tmp_path, "aliases.json"), {})["people/robin-1.md"]["into"] == "people/rbn-2.md"
+    # One line per fact: both addresses once, and Unknown gives way to what is known.
+    merged = notebook.read("people/rbn-2.md")
+    assert re.findall(r"^- Email: .*$", merged, re.M) == ["- Email: robin@mail.example [1]; rbn@other.example"]
+    assert len(re.findall(r"^- Handles: ", merged, re.M)) == 1
+    assert "Builds sensor kits" in merged
+    assert tidy(tmp_path) == {}                                                  # idempotent
+
+
+def test_two_pages_sharing_only_a_title_are_left_for_a_person_to_judge(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/robin-1.md", "Robin", "robin@mail.example", investigated=True)
+    _person(notebook, "people/robin-2.md", "Robin", "robin@elsewhere.example", investigated=True)
+    _state(tmp_path, people=[{"record": "people/robin-1.md", "addresses": ["robin@mail.example"]},
+                             {"record": "people/robin-2.md", "addresses": ["robin@elsewhere.example"]}])
+    assert "folded same person" not in tidy(tmp_path)
+    assert len(notebook.list("people")) == 2

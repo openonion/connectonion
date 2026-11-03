@@ -183,6 +183,7 @@ def merge_into(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
     root = notebook.root
     theirs, ours = notebook.read(old), notebook.read(kept)
     page, added = _merged(ours, theirs)
+    page = _one_line_per_fact(page)
     if added:  # the status line says where written lines came from; a copy of map output is not news
         page = _note(page, old)
     if page != ours:
@@ -202,6 +203,38 @@ def merge_into(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
     write_json(state_path(root, ALIASES), table)
     relinked = _relink(notebook, old, kept)
     return {"from": old, "into": kept, "reason": reason, "lines_merged": added, "relinked": relinked}
+
+
+FACT = re.compile(r"^- ([^:\n]+): (.*)$")
+
+
+def _one_line_per_fact(page: str) -> str:
+    """Facts both pages had become one line each: `Email: a; b`, not two Email lines (#2724).
+
+    Values join in order, a value already there is not repeated, and Unknown
+    gives way to anything known."""
+    match = re.search(r"(?ms)^## Facts\n(.*?)(?=^## |\Z)", page)
+    if not match:
+        return page
+    lines, at = [], {}
+    for line in match[1].splitlines():
+        fact = FACT.match(line)
+        if not fact or fact[1] not in at:
+            if fact:
+                at[fact[1]] = len(lines)
+            lines.append(line)
+            continue
+        values = _values(FACT.match(lines[at[fact[1]]])[2])
+        seen = {CITE.sub("", value).strip().casefold() for value in values}
+        values += [value for value in _values(fact[2]) if CITE.sub("", value).strip().casefold() not in seen]
+        known = [value for value in values if not PLACEHOLDER.match(value)]
+        lines[at[fact[1]]] = f"- {fact[1]}: " + "; ".join(known or values[:1])
+    body = "\n".join(lines) + ("\n" if match[1].endswith("\n") else "")
+    return page[:match.start(1)] + body + page[match.end(1):]
+
+
+def _values(text: str) -> list[str]:
+    return [value.strip() for value in re.split(r";\s*" if ";" in text else r",\s*", text) if value.strip()]
 
 
 def _relink(notebook: Notebook, old: str, new: str) -> list[str]:
