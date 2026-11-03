@@ -1,0 +1,16 @@
+version: v1.9.3rc30
+images:
+- file: name-picker-desktop.png
+  alt: "Reader search for a first name two invented people share, desktop: a Choose a page list shows each person's company, role and email before any page opens"
+  caption: "A name that fits two people picks neither: the reader lists both with what tells them apart (issue 2725)."
+  scenario: "Invented reader-test notebook (tests/fixtures/rem_reader_notebook.py, owner Avery Lin) plus one invented second person sharing a first name; search for that first name"
+  viewport: 1440x900, light
+  commit: "321859bc"
+  source_run: "Chrome capture of a co rem open --local snapshot rendered from release/1.9.3rc30; 2026-11-03"
+- file: name-picker-phone.png
+  alt: "The same Choose a page list at phone width, facts stacked under each name"
+  caption: "The same choice on a phone, no horizontal scroll."
+  scenario: "Same invented notebook and search as the desktop image"
+  viewport: 390x844, light
+  commit: "321859bc"
+  source_run: "Chrome capture of a co rem open --local snapshot rendered from release/1.9.3rc30; 2026-11-03"

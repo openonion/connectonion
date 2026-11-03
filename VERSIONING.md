@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc29
+## Current Version: 1.9.3rc30
+
+REM accuracy candidate: related-page cards keep their own citations (#2625);
+cached translations are reused only when their Sources match the original
+(#2718); quote checks keep word boundaries (#2719); overdue obligations stay
+open and are counted as overdue, and writers close a thread only on evidence
+(#2717); a name shared by several people picks none (#2725); the live reader
+reads archived mail once per process and gives mail citations their originals
+first (#2716). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc30.md).
+
+- 1.9.3rc30 (REM citations, deadlines and names say only what their sources say).
+
+### Previous candidate: 1.9.3rc29
 
 Browser repair candidate: on macOS the paid browser runtime asks for Chromium
 154.0.8037.100, whose renewals use a distinct Idempotency-Key per period, so a

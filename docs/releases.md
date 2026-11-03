@@ -25,6 +25,21 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
+Release candidate **1.9.3rc30** makes REM pages say only what their sources say:
+related-page cards keep their own citations, translations keep their Sources,
+quote checks keep word boundaries, overdue items stay overdue, and a name shared
+by several people picks none. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc30'
+```
+
+See [the candidate notes](releases/1.9.3rc30.md).
+
+## Previous previews
+
 Release candidate **1.9.3rc29** keeps paid WTF Browser sessions on macOS alive
 past their first fifteen-minute period: the runtime now asks for Chromium
 154.0.8037.100, which renews every period. Linux stays on 154.0.8037.58.
@@ -37,8 +52,6 @@ python -m pip install --upgrade 'connectonion==1.9.3rc29'
 ```
 
 See [the candidate notes](releases/1.9.3rc29.md).
-
-## Previous previews
 
 Release candidate **1.9.3rc28** repairs REM's sync rotation and native
 schedule. A failed source is recorded and the round continues with the next one;
