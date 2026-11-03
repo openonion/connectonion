@@ -480,6 +480,8 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
               'entry': entry} for record, entry in due_for_retry(root).items()
              if record not in queued and Notebook(root).path(record).is_file()]
     rows.sort(key=lambda row: row['last_activity'] or '', reverse=True)
+    # The page pinned as You comes first: it is what the owner opens first.
+    rows = _owner_due(root) + rows
     if not rows:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': 'nothing_new', 'listed': found['listed']}
@@ -501,6 +503,8 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
             try:
                 if row['kind'] == 'person':
                     result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)
+                elif row['kind'] == 'owner':
+                    result = _owner(root, row, clients=clients, subscriptions=sources)
                 elif row['kind'] == 'retry':
                     result = _retry(root, row['record'], row['entry'], clients=clients, sources=sources,
                                     config=config, person_one=person_one)
@@ -530,6 +534,40 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
         write_json(path, record)
     return {'outcome': 'partial' if failed else 'completed', 'maintenance': maintenance,
             'investigation': None if failed else {'pages': done, 'left': record.get('left')}, 'run': record}
+
+
+def _owner_due(root: Path) -> list[dict]:
+    """The owner's page, when it was last read before today and not yet tried today (#2720).
+
+    Every queue leaves it out (queue.py): it has its own reading, `investigate
+    me`. Nothing scheduled ran that reading, so the page pinned as You stayed
+    as the first build wrote it while the rounds rewrote the pages around it.
+    """
+    from .queue import last_investigated
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    record = owner.get("record")
+    if not record or not owner.get("addresses") or not Notebook(root).path(record).is_file():
+        return []
+    status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
+    read = last_investigated(status)
+    today = now().date()
+    tried = read_json(state_path(root, "owner-refresh.json"), {}).get("date", "")
+    if (read and read >= today) or tried == today.isoformat():
+        return []
+    days = min(RETRY_DAYS, (today - read).days + 1) if read else RETRY_DAYS
+    return [{'record': record, 'kind': 'owner', 'mode': 'owner', 'days': days,
+             'addresses': owner['addresses'], 'last_activity': ''}]
+
+
+def _owner(root, row, *, clients, subscriptions):
+    """`investigate me` over the days since the page was last read. Stamped first,
+    so a refused or crashed reading waits until tomorrow, not the next run."""
+    write_json(state_path(root, "owner-refresh.json"), {"date": now().date().isoformat()})
+    record = row['record']
+    title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),
+                 "Account owner")
+    return investigate(root, record, title, row['addresses'], days=row['days'], clients=clients,
+                       subscriptions=subscriptions, sent_only=True)
 
 
 def _retry(root, record, entry, *, clients, sources, config, person_one=None) -> dict:

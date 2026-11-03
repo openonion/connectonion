@@ -182,6 +182,8 @@ def _round(monkeypatch, *, clients=None, meter=None):
     monkeypatch.setattr(daily, "subscriptions", lambda root: {})
     monkeypatch.setattr(daily, "_clients", lambda sources: clients or {})
     monkeypatch.setattr(daily.quota, "read", lambda config, request=None: meter or {"unknown": "no meter"})
+    # The owner's own refresh has its tests in test_rem_daily_round.py.
+    monkeypatch.setattr(daily, "_owner_due", lambda root: [])
 
 
 def no_change(root):

@@ -221,3 +221,46 @@ def test_daily_translation_respects_total_runner_cap(translation_root, monkeypat
                              maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
                              translate_one=lambda *a: pytest.fail('daily cap exceeded'))
     assert result['maintenance']['translations']['attempted'] == 0
+
+
+def _owner_page(root, investigated: str) -> str:
+    """The owner's page as the first build left it, investigated on `investigated`."""
+    from connectonion.rem.files import state_path, write_json
+    record = "people/casey-owner.md"
+    notebook = Notebook(root)
+    notebook.stub_person(record, "Casey Owner", ["casey@example.com"])
+    path = notebook.path(record)
+    path.write_text(path.read_text().replace("not investigated yet", f"investigated {investigated} (outlook)"))
+    write_json(state_path(root, "map.json"), {"owner": {"record": record, "addresses": ["casey@example.com"]}})
+    return record
+
+
+def test_a_later_run_refreshes_the_owners_page_once_a_day(root, monkeypatch):
+    """#2720: on 2026-11-03, after 33 runs that day, the page pinned as You still
+    read as of 2026-10-10, while the same rounds rewrote 39 other pages."""
+    calls = _investigators(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(daily, "investigate", lambda root, record, title, handles, **kw: (
+        seen.update({record: (handles, kw.get("sent_only"), kw.get("days"))}),
+        calls.append(("investigate", record, {})), {"changed": [record]})[-1])
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    record = _owner_page(root, (datetime.now(timezone.utc) - timedelta(days=24)).date().isoformat())
+    assert daily.run_daily(root, maintain=no_change)["run"]["phase"] == "daily-investigation"
+    result = daily.run_daily(root, maintain=no_change)
+    assert result["run"]["phase"] == "daily-update"
+    row = result["run"]["pages"][0]
+    assert (row["page"], row["outcome"], row["mode"]) == (record, "accepted", "owner")
+    # Read the way `investigate me` reads it, over the days since it was last read.
+    assert seen[record] == (["casey@example.com"], True, 25)
+    calls.clear()
+    daily.run_daily(root, maintain=no_change)
+    assert calls == []
+
+
+def test_the_owners_page_read_today_is_not_read_again(root, monkeypatch):
+    calls = _investigators(monkeypatch)
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    _owner_page(root, datetime.now(timezone.utc).date().isoformat())
+    daily.run_daily(root, maintain=no_change)
+    daily.run_daily(root, maintain=no_change)
+    assert calls == []
