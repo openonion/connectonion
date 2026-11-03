@@ -517,7 +517,10 @@ def today_note(root: Path) -> str:
             "Without that evidence, an unanswered request remains dated with its outcome unknown, "
             "and a promise past its due date with no delivery stays overdue and open. "
             "A request nobody agreed to is not an agreed debt. "
-            "Dates on the page are local dates: use each item's local_time, not its UTC timestamp. ")
+            "Dates on the page are local dates: use each item's local_time, not its UTC timestamp. "
+            "State a limit only when it matters to the user's next step or to a claim on the page "
+            "(delivered vs requested, paid vs invoiced); keep honest consequential uncertainty and labelled inference. "
+            "Do not speculate about unasked questions or list what the evidence does not say. ")
 
 
 def _verify_no_change(directory: Path, items: list[dict], usage) -> None:

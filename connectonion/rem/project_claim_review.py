@@ -105,6 +105,8 @@ PEOPLE = (
     "A contact detail (phone, company, role) fails unless "
     "the original shows it belongs to this person, not to someone named beside it. A claim that something "
     "is unknown, unconfirmed or not established fails when a supplied original establishes it. "
+    "A sentence that only says something is not established, about a matter irrelevant to the "
+    "page's claims and the user's next step, fails as filler. "
     # kupjb5r8 and z3qdttxi failed a correct First/Last contact because the
     # packet could not prove no earlier or later mail (v193q1).
     "The packet holds only what the page cites: its earliest and latest dates are not the relationship's "

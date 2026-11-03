@@ -7,6 +7,16 @@ from connectonion.rem.runner import instructions, maintenance_instructions
 from connectonion.rem.extract import extraction_instructions
 
 
+def test_shared_writing_note_limits_hedges_to_consequential_uncertainty(tmp_path):
+    from connectonion.rem.runner import today_note
+
+    note = today_note(tmp_path)
+    assert "State a limit only when it matters to the user's next step or to a claim on the page" in note
+    assert 'delivered vs requested, paid vs invoiced' in note
+    assert 'keep honest consequential uncertainty and labelled inference' in note
+    assert 'Do not speculate about unasked questions or list what the evidence does not say' in note
+
+
 def test_a_stage_that_reads_a_source_is_handed_that_source():
     """Four sources times four stages would be sixteen files; composing is seven."""
     for stage in ("extract", "maintain", "investigate"):

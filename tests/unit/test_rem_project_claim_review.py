@@ -12,6 +12,24 @@ from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, state_path
 
 
+@pytest.mark.parametrize('kind', ['people', 'orgs'])
+def test_claim_review_rejects_irrelevant_not_established_filler(tmp_path, kind):
+    candidate = ('# Fern\n\nWhether an earlier introduction happened is not established [1].\n\n'
+                 '## Sources\n- [1] codex:fern:1\n')
+    prompts = []
+
+    def audit(_workspace, prompt, *_args):
+        prompts.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audit,
+        record=f'{kind}/fern.md', items=[{'source': 'codex:fern:1', 'text': 'Please review the pilot.'}])
+    assert len(prompts) == 1
+    assert ('A sentence that only says something is not established, about a matter irrelevant to the '
+            "page's claims and the user's next step, fails as filler.") in prompts[0]
+    assert 'fails when a supplied original establishes it' in prompts[0]
+
+
 def test_missing_cited_original_never_reaches_the_model(tmp_path):
     prepare(tmp_path)
     candidate = '# Atlas\n\nA factual claim [1].\n\n## Sources\n- [1] codex:missing — 2026-10-01\n'
