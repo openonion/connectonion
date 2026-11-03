@@ -192,20 +192,42 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
                              investigate_one=investigate_one, person_one=person_one, say=say)
     if not stop:
-        result['same_person'] = _same_person(root, config, say)
+        left = remaining - ((result.get('run') or {}).get('runner_attempts') or 0)
+        result['same_person'] = _same_person(root, config, meter, left, say)
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
 
 
-def _same_person(root, config, say) -> list[dict]:
-    """Pages that look like one person are judged by a model, a few a run (#2724)."""
-    from .same_person import judge
+def _same_person(root, config, meter, left, say) -> list[dict]:
+    """Pages that look like one person are judged by a model, a few a run (#2724).
+
+    A run of its own, so its calls are in `co rem logs --usage`, the day's call
+    count and the week's points like every other model call (#2741)."""
+    from . import same_person
+    limit = min(same_person.PAIRS_PER_RUN, left)
+    if limit <= 0 or not same_person.candidates(root):
+        return []
+    with maintenance_lock(root):
+        record, path = _reserve(root, 'same-person', limit, meter)
+    rows = []
     try:
-        return judge(root, config, say=say)
+        rows = same_person.judge(root, config, limit=limit, say=say)
+        record.update(outcome='completed')
     except RemError as error:
-        # A failed judgement leaves the pair unjudged; tomorrow asks again.
-        return [{'outcome': _outcome(error), 'why': str(error)[:300]}]
+        record.update(outcome='failed', error=str(error)[:300])
+        rows = [{'outcome': _outcome(error), 'why': str(error)[:300]}]
+    finally:
+        usage = {}
+        for row in rows:
+            _add_usage(usage, row.get('usage'))
+        record.update(runner_attempts=sum(1 for row in rows if 'pages' in row) or record['runner_attempts'],
+                      usage=usage or None, pages=[{key: row.get(key) for key in ('pages', 'same', 'outcome')}
+                                                  for row in rows],
+                      changed=[row['kept'] for row in rows if row.get('kept')], finished_at=now().isoformat())
+        record['quota']['after'] = quota.read(config)
+        write_json(path, record)
+    return rows
 
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):

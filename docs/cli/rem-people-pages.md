@@ -48,8 +48,8 @@ model then reads both pages and each one's own mail with the `rem-same-person`
 Skill and answers yes or no. Yes folds the less written page into the more
 written one (archived, aliased, links rewritten); no keeps both, with the
 reason and what the shared address is (their own, an assistant's, a shared
-mailbox ...) in `.state/same-person.json`, so a pair is asked once. The daily
-round asks about two pairs a run, inside the same budget floor.
+mailbox ...) in `.state/same-person.json`, so a pair is asked once; a judgement that fails is asked again the next day, after the pairs behind it. The daily
+round asks about two pairs a run, as a `same-person` run of its own: in `co rem logs --usage`, the day's call count and the week's points, inside the same budget floor.
 
 Measured on a copy of a real notebook (2026-11-03): nine pairs found, five
 answered yes (one person writing from two addresses, an agent mailbox, a

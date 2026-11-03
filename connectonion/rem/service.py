@@ -1537,4 +1537,4 @@ INSTRUCTIONS_TARGET_CHARS = 15_000
 # predates its own split is mostly people, so investigate.
 PHASE_STAGES = {"investigate": "investigate", "investigate me": "investigate",
                 "daily-investigation": "investigate", "daily-update": "investigate",
-                "projects write": "projects", "translate": "translate"}
+                "projects write": "projects", "translate": "translate", "same-person": "same-person"}
