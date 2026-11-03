@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc33
+## Current Version: 1.9.3rc34
+
+REM: one person on two pages is found and folded. Code finds pages that look
+alike, and a model reads both pages and each one's own mail to decide; a yes folds
+them and every answer is kept (#2740, #2724). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc34.md).
+
+- 1.9.3rc34 (REM same-person pages folded after a model's judgement).
+
+### Previous candidate: 1.9.3rc33
 
 REM: the wake job opens a closed Codex desktop 15 minutes before each scheduled
 slot, because Codex may fire a slot a few minutes early (#2738). Rerun
