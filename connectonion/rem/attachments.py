@@ -8,6 +8,7 @@ is named but not read, which is a finding the page can carry.
 """
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from .files import state_path
@@ -23,13 +24,20 @@ def attachment_context(root: Path, source: str) -> dict | None:
     path = state_path(root, f"attachments/{provider}/{message}/{filename}")
     if not path.is_file():
         return None
-    text = extract_text(path, limit=None, preview_limit=640)
+    stat = path.stat()
+    text = _preview(path, stat.st_mtime_ns, stat.st_size)
     if not text:
         return None
     return {"source": "attachment", "excerpt": text[:640], "truncated": len(text) > 640,
             "filename": filename, "file": path.as_uri(),
             "body_format": "Local attachment text extraction; images and signature appearances are not verified.",
             "input_scope": "Current local attachment. Original capture time and the version read by the writer are unknown."}
+
+
+@lru_cache(maxsize=512)
+def _preview(path: Path, mtime_ns: int, size: int) -> str:
+    """The live reader asks again on every load; an unchanged file is read once per process."""
+    return extract_text(path, limit=None, preview_limit=640)
 
 
 def _pdf_page_text(page, number: int) -> str:

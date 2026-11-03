@@ -64,6 +64,30 @@ def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
     assert calls == ['first', 'second']
 
 
+def test_an_unchanged_attachment_is_extracted_once_per_process(tmp_path, monkeypatch):
+    """The live reader rebuilt every PDF preview on each load: 33 PDFs, 66 s on a real notebook."""
+    import os
+    from connectonion.rem import attachments
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+
+    prepare(tmp_path)
+    source = 'gmail:123456789abc:terms.txt'
+    path = state_path(tmp_path, 'attachments/gmail/123456789abc/terms.txt')
+    path.parent.mkdir(parents=True)
+    path.write_text('Net 30 days.')
+    calls = []
+    original = attachments.extract_text
+    monkeypatch.setattr(attachments, 'extract_text', lambda *a, **k: calls.append(a[0]) or original(*a, **k))
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
+    assert len(calls) == 1
+    path.write_text('Net 45 days, signed.')
+    os.utime(path, ns=(1, 1))
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 45 days, signed.'
+    assert len(calls) == 2
+
+
 def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
     from connectonion.rem.attachments import attachment_context
     from connectonion.rem.config import prepare
