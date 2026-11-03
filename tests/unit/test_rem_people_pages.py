@@ -85,9 +85,10 @@ def test_a_page_investigated_since_its_last_mail_waits(root):
     assert "people/ada.md" not in {row["record"] for row in queue(root)}
 
 
-def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(root):
-    investigated(root, "people/ada.md", (NOW - timedelta(days=10)).date().isoformat())
-    row = next(row for row in queue(root) if row["record"] == "people/ada.md")
+@pytest.mark.parametrize("now", [NOW, NOW + timedelta(days=1)])
+def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(root, now):
+    investigated(root, "people/ada.md", (now - timedelta(days=10)).date().isoformat())
+    row = next(row for row in queue(root, now=now) if row["record"] == "people/ada.md")
     assert (row["mode"], row["days"]) == ("update", 11)
 
 
@@ -236,15 +237,28 @@ def test_a_person_with_nothing_new_is_named_so_and_costs_the_portion_no_call(roo
     assert result["outcome"] == "completed" and result["run"]["pages"][0]["outcome"] == "nothing_new"
 
 
-def test_later_runs_follow_only_what_is_new(root, monkeypatch):
+@pytest.mark.parametrize("now", [NOW, NOW + timedelta(days=1)])
+def test_later_runs_follow_only_what_is_new(root, monkeypatch, now):
+    now = now.replace(hour=12, minute=0, second=0, microsecond=0)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    monkeypatch.setattr(people_pages, "datetime", Clock)
+    monkeypatch.setattr(daily, "now", lambda: now)
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: now)
     client = FakeMail([])
     _round(monkeypatch, clients={"gmail": client})
     first = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: {})
     assert first["run"]["phase"] == "daily-investigation"
     for slug in ("ada", "bob", "cy", "dee"):
-        investigated(root, f"people/{slug}.md", (NOW - timedelta(days=4)).date().isoformat())
+        investigated(root, f"people/{slug}.md", (now - timedelta(days=4)).date().isoformat())
     # Bob writes after the first run; nobody else does.
-    client.messages.append(mail("Bob <bob@example.org>", OWNER, datetime.now(timezone.utc).isoformat()))
+    now += timedelta(seconds=1)
+    client.messages.append(mail("Bob <bob@example.org>", OWNER, now.isoformat()))
+    now += timedelta(seconds=1)
     followed, projects = [], []
     second = daily.run_daily(root, maintain=no_change,
                              person_one=lambda root, row, **kw: followed.append((row["record"], row["mode"],
