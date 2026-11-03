@@ -70,11 +70,10 @@ def test_no_keeps_both_pages_and_the_pair_is_not_asked_again(root):
 
 
 def test_an_answer_outside_the_schema_merges_nothing(root):
-    from connectonion.rem.runner import RunFailed
-    with pytest.raises(RunFailed):
-        same_person.judge(root, {}, run=lambda *a: {"result": json.dumps({"same": "yes"})})
+    rows = same_person.judge(root, {}, run=lambda *a: {"result": json.dumps({"same": "yes"})})
+    assert rows[0]["outcome"] == "failed" and "invalid answer" in rows[0]["error"]
     assert len(Notebook(root).list("people")) == 3
-    assert read_json(state_path(root, "same-person.json"), {}) == {}
+    assert "same" not in read_json(state_path(root, "same-person.json"), {})["people/robin-hale.md|people/robin.md"]
 
 
 def test_an_answer_in_a_json_fence_is_read(root):
@@ -94,3 +93,27 @@ def test_a_page_folded_by_one_answer_is_not_asked_about_again(root):
         return {"result": json.dumps({"same": True, "address_role": "their own", "reason": "Same threads."})}
     rows = same_person.judge(root, {}, run=run, limit=9)
     assert all("kept" in row for row in rows) and len(Notebook(root).list("people")) == 2
+
+
+def test_a_pair_whose_judgement_fails_waits_a_day_and_the_next_pair_is_asked(root):
+    """#2741: candidates come in a fixed order, so a pair that kept failing was asked
+    first on every run and the pairs behind it were never judged."""
+    _person(Notebook(root), "people/sam-ito-2.md", "Sam", "sam.ito@home.example")
+    asked = []
+
+    def run(workspace, prompt, config, stage):
+        asked.append(prompt)
+        if len(asked) == 1:
+            return {"result": "not json", "usage": {"input_tokens": 7}}
+        return {"result": json.dumps({"same": False, "address_role": "none shared", "reason": "Different."})}
+    rows = same_person.judge(root, {}, run=run)
+    assert [row.get("outcome") for row in rows] == ["failed", None]
+    assert rows[0]["usage"] == {"input_tokens": 7}                       # paid for, so counted
+    assert rows[0]["pages"] != rows[1]["pages"]
+    # Not asked again today; tomorrow it is.
+    assert rows[0]["pages"] not in [pair["pages"] for pair in same_person.candidates(root)]
+    verdicts = read_json(state_path(root, "same-person.json"), {})
+    key = "|".join(rows[0]["pages"])
+    verdicts[key]["failed"] = "2000-01-01"
+    write_json(state_path(root, "same-person.json"), verdicts)
+    assert rows[0]["pages"] in [pair["pages"] for pair in same_person.candidates(root)]

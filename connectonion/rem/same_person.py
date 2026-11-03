@@ -71,9 +71,14 @@ def candidates(root: Path) -> list[dict]:
                 email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
             why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
                 or _alike(one, other)
-            if why and key not in judged:
+            if why and _due(judged.get(key)):
                 pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
+
+
+def _due(verdict: dict | None) -> bool:
+    """Never judged, or a judgement that failed before today: answered pairs are not asked again."""
+    return not verdict or ("same" not in verdict and verdict.get("failed", "") < date.today().isoformat())
 
 
 def _own_mail(root: Path, record: str, emails: list[str]) -> list[dict]:
@@ -116,7 +121,7 @@ def _verdict(result: dict) -> dict:
 def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None) -> list[dict]:
     """Ask about up to `limit` pairs; fold the ones answered yes. Returns one row per pair asked."""
     from .merge import merge_into, weight
-    from .runner import run_claim_task
+    from .runner import RunFailed, run_claim_task
     run = run or run_claim_task
     rows = []
     for _ in range(limit):
@@ -127,8 +132,14 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
         say(f"Same person? {pair['pages'][0]} and {pair['pages'][1]}")
         workspace = state_path(root, "same-person")
         workspace.mkdir(parents=True, exist_ok=True)
-        result = run(workspace, packet(root, pair), config, "same-person")
-        answer = _verdict(result)
+        try:
+            result = run(workspace, packet(root, pair), config, "same-person")
+            answer = _verdict(result)
+        except RunFailed as error:
+            # Asked again tomorrow, so a pair that keeps failing does not hold back
+            # the pairs behind it every run (#2741).
+            rows.append(_failed(root, pair, error))
+            continue
         row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
         with maintenance_lock(root):
             notebook = Notebook(root)
@@ -143,3 +154,12 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
             write_json(state_path(root, VERDICTS), verdicts)
         rows.append(row)
     return rows
+
+
+def _failed(root: Path, pair: dict, error: Exception) -> dict:
+    with maintenance_lock(root):
+        verdicts = read_json(state_path(root, VERDICTS), {})
+        verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": date.today().isoformat(),
+                                             "error": str(error)[:300]}
+        write_json(state_path(root, VERDICTS), verdicts)
+    return {**pair, "outcome": "failed", "error": str(error)[:300], "usage": getattr(error, "usage", None)}
