@@ -997,7 +997,9 @@ class Outlook:
         return {
             "id": message["id"],
             "subject": message.get("subject", ""),
-            "to": ", ".join(r["emailAddress"]["address"] for r in message.get("toRecipients", [])),
+            # A draft left half-written can hold a recipient entry with no address.
+            "to": ", ".join(address for r in message.get("toRecipients") or []
+                            if (address := (r.get("emailAddress") or {}).get("address"))),
         }
 
     def _drafts_folder(self):

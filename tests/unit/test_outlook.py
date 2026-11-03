@@ -2007,3 +2007,18 @@ class TestOutlookDraftActions:
             with pytest.raises(ValueError, match="not a draft"):
                 Outlook().send_draft("d1")
         assert {c.args[0] for c in mock_httpx.request.call_args_list} == {"GET"}
+
+
+class TestOutlookDraftWithoutAddress:
+    """A draft whose recipient entry has no address still lists (#2729 follow-up)."""
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_a_recipient_without_an_address_does_not_break_the_listing(self, mock_httpx):
+        mock_httpx.request.return_value = MagicMock(status_code=200, text="ok", json=MagicMock(return_value={"value": [
+            {"id": "empty", "subject": "", "toRecipients": [{"emailAddress": {"name": ""}}]},
+            {"id": "d1", "subject": "Intro", "toRecipients": [{"emailAddress": {"address": "a@example.com"}}, {}]},
+        ]}))
+        with patch.dict(os.environ, TestOutlookDraft.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            drafts = Outlook().get_drafts()
+        assert [(d["id"], d["to"]) for d in drafts] == [("empty", ""), ("d1", "a@example.com")]
