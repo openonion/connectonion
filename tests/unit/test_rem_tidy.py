@@ -440,3 +440,28 @@ def test_two_pages_sharing_only_a_title_are_left_for_a_person_to_judge(tmp_path)
                              {"record": "people/robin-2.md", "addresses": ["robin@elsewhere.example"]}])
     assert "folded same person" not in tidy(tmp_path)
     assert len(notebook.list("people")) == 2
+
+
+def test_an_assistants_address_on_someones_email_line_folds_no_one(tmp_path):
+    """An address on a page's Email line can be an assistant's or a shared mailbox:
+    without a name in common the two pages stay two people."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/jo.md", "Jo Park", "jo@office.example", investigated=True)
+    _person(notebook, "people/kim.md", "Kim Ito", "kim@office.example", investigated=True)
+    page = notebook.read("people/kim.md")
+    notebook.write("people/kim.md", page.replace("- Email: kim@office.example",
+                                                 "- Email: kim@office.example; jo@office.example [2]"))
+    _state(tmp_path, people=[{"record": "people/jo.md", "addresses": ["jo@office.example"]},
+                             {"record": "people/kim.md", "addresses": ["kim@office.example"]}])
+    assert "folded same person" not in tidy(tmp_path)
+    assert sorted(notebook.list("people")) == ["people/jo.md", "people/kim.md"]
+
+
+def test_a_merged_fact_keeps_a_comma_inside_its_value_and_its_citation():
+    from connectonion.rem.merge import _one_line_per_fact
+    page = "# Robin\n\n## Facts\n- Location: Sydney, Australia [1]\n- Location: Melbourne, Australia [2]\n" \
+           "- Email: a@x.example, b@y.example\n- Email: b@y.example [3]\n\n## Insight\n- Unknown\n"
+    facts = _one_line_per_fact(page)
+    assert "- Location: Sydney, Australia [1]; Melbourne, Australia [2]\n" in facts
+    assert "- Email: a@x.example; b@y.example\n" in facts

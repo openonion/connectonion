@@ -234,7 +234,13 @@ def _one_line_per_fact(page: str) -> str:
 
 
 def _values(text: str) -> list[str]:
-    return [value.strip() for value in re.split(r";\s*" if ";" in text else r",\s*", text) if value.strip()]
+    """Values split on ";". A comma splits only a run of addresses, as the map writes
+    Email lines: "Sydney, Australia [1]" is one value."""
+    values = []
+    for value in (value.strip() for value in text.split(";")):
+        parts = [part.strip() for part in value.split(",")]
+        values += parts if len(parts) > 1 and all("@" in part for part in parts) else [value] if value else []
+    return values
 
 
 def _relink(notebook: Notebook, old: str, new: str) -> list[str]:

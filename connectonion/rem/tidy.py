@@ -375,7 +375,10 @@ def _same_person(notebook: Notebook, state: dict) -> list[dict]:
     are one person writes the other onto that person's Email line, and nothing
     merged the pair: one person stayed two pages, the facts split between them.
     The less written page folds into the more written one (`merge.merge_into`).
-    A shared title alone is not enough: two people can have one name.
+    The address alone is not enough either: an assistant's address or a family
+    mailbox on someone's Email line is not that person, so the titles must also
+    share a name word, or one must be no name at all (an address, Unknown). A
+    shared title alone is not enough: two people can have one name.
     """
     from .merge import merge_into, resolve, weight
     from .scan import AUTOMATED_HINT
@@ -390,7 +393,7 @@ def _same_person(notebook: Notebook, state: dict) -> list[dict]:
         if page == owner or page in gone or not others:
             continue
         other = sorted(others)[0]
-        if not notebook.path(other).is_file():
+        if not notebook.path(other).is_file() or not _same_name(person["title"], _page_title(notebook, other)):
             continue
         kept, old = sorted([page, other], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
         merge_into(notebook, kept, old, "same person: one page lists the address the other was mapped from")
@@ -398,6 +401,19 @@ def _same_person(notebook: Notebook, state: dict) -> list[dict]:
         folded.append({"action": "folded same person", "page": old, "into": kept,
                        "archived": f".state/archived/{old}"})
     return folded
+
+
+def _page_title(notebook: Notebook, record: str) -> str:
+    return next((line[2:].strip() for line in notebook.read(record).splitlines() if line.startswith("# ")), "")
+
+
+def _same_name(one: str, other: str) -> bool:
+    """Titles that can be one person: a name word in common, or one of them no name."""
+    def words(title):
+        return set() if "@" in title or title.casefold() in ("", "unknown") else {
+            word for word in re.findall(r"\w+", title.casefold()) if len(word) > 1}
+    mine, theirs = words(one), words(other)
+    return not mine or not theirs or bool(mine & theirs)
 
 
 def _described(text: str) -> str:
