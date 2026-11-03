@@ -40,3 +40,15 @@ def test_the_page_with_more_written_is_the_one_to_keep(tmp_path):
              "Investigation: investigated 2026-10-09\n")
     [pair] = likely_pairs(nb)
     assert (pair["kept"], pair["other"]) == ("people/zia.md", "people/zi.md")
+
+
+def test_a_merged_fact_is_one_line_that_keeps_a_comma_inside_its_value_and_its_citation():
+    """#2724: a fold left two Email lines and `Also known as: Unknown` beside the real aliases."""
+    from connectonion.rem.merge import _one_line_per_fact
+    page = "# Robin\n\n## Facts\n- Location: Sydney, Australia [1]\n- Location: Melbourne, Australia [2]\n" \
+           "- Email: a@x.example, b@y.example\n- Email: b@y.example [3]\n- Also known as: Unknown\n" \
+           "- Also known as: Rob\n\n## Insight\n- Unknown\n"
+    facts = _one_line_per_fact(page)
+    assert "- Location: Sydney, Australia [1]; Melbourne, Australia [2]\n" in facts
+    assert "- Email: a@x.example; b@y.example\n" in facts
+    assert "- Also known as: Rob\n" in facts and "Unknown\n- Also" not in facts

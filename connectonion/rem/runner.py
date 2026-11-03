@@ -343,7 +343,7 @@ def model_denial(error: Exception) -> bool:
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
-    prefix = "insight-critic" if stage == "insight-critic" else "claim"
+    prefix = stage if stage in ("insight-critic", "same-person") else "claim"
     if config["runner"] != "codex":
         packet = workspace / f"{prefix}-input.txt"
         packet.write_text(prompt, encoding="utf-8")
@@ -352,12 +352,14 @@ def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> di
     from ..useful_tools.codex import _base_command
     from .project_claim_review import SCHEMA
     from .insight_critic import CRITIC_SCHEMA
+    from .same_person import SCHEMA as SAME_PERSON_SCHEMA
     binary = _base_command()
     if not binary:
         raise RunFailed("Codex is not installed; cited-claim audit could not run")
     schema = workspace / f"{prefix}-schema.json"
     answer = workspace / f"{prefix}-answer.json"
-    schema.write_text(json.dumps(CRITIC_SCHEMA if stage == "insight-critic" else SCHEMA), encoding="utf-8")
+    schema.write_text(json.dumps({"insight-critic": CRITIC_SCHEMA, "same-person": SAME_PERSON_SCHEMA}.get(stage, SCHEMA)),
+                      encoding="utf-8")
     command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                "--json", "--output-schema", str(schema), "-o", str(answer)]
     if config["speed"] == "fast":
