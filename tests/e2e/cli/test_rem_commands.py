@@ -422,8 +422,11 @@ def test_subscribe_and_unsubscribe_round_trip(lifecycle):
     assert json.loads(invoke(root, "--json", "subscriptions").stdout)["data"]["codex"]["enabled"] is False
 
 
-def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle):
+def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle, monkeypatch):
+    from datetime import datetime, timezone
     root, sessions, calls = lifecycle
+    # Half past the hour: no saved time is within the early-fire window, whatever the zone.
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 11, 4, 10, 30, tzinfo=timezone.utc))
     assert invoke(root, "start", "--yes").exit_code == 0
     result = invoke(root, "--json", "sync", "--scheduled")
     assert result.exit_code == 0, result.output

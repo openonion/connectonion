@@ -255,7 +255,7 @@ class CodexNative:
         return {"scheduler": "codex-native", "automation_id": definition["id"],
                 "definition": str(self.definition_path(root)), "times": list(config["schedule"]["times"]),
                 "wake_plist": str(wake),
-                "note": "The wake job opens Codex in the background at each saved time. Keep this computer awake. "
+                "note": "The wake job opens Codex in the background shortly before each saved time. Keep this computer awake. "
                         "Run co rem status to check native registration."}
 
     def uninstall(self, root: Path) -> bool:

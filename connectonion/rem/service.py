@@ -346,6 +346,12 @@ def _wall_slot(day: datetime, value: str) -> datetime:
     return slot.astimezone(timezone.utc).astimezone(day.tzinfo)
 
 
+# Codex fires a slot a few minutes either side of it: on 2026-11-04 the 03:00
+# slot ran at 02:59, found the 19:00 slot of the night before already served and
+# did nothing. A tick this close before a slot serves that slot.
+EARLY_FIRE = timedelta(minutes=10)
+
+
 def latest_slot(config: dict, moment: datetime) -> datetime | None:
     """The most recent saved time at or before `moment`, in the saved zone.
 
@@ -953,7 +959,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         worker = worker_state(root)
         if not worker.get("enabled"):
             return None
-        slot = latest_slot(read_config(root), now())
+        slot = latest_slot(read_config(root), now() + EARLY_FIRE)
         served = worker.get("last_scheduled_slot")
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None

@@ -544,6 +544,27 @@ def test_scheduled_sync_runs_once_per_slot_and_coalesces_missed_ones(tmp_path, m
     assert len(calls) == 2
 
 
+def test_a_scheduled_tick_a_minute_early_serves_the_coming_slot(tmp_path, monkeypatch):
+    """Codex fired the 03:00 slot at 02:59; REM saw last night's slot already served
+    and skipped the run, so the slot was lost."""
+    from datetime import datetime, timezone
+
+    from connectonion.rem.service import start
+    root, sessions = tmp_path / "rem", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    clock = {"now": datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc)}  # 16:30 Sydney
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: clock["now"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "schedule.times", "17:00,18:00"])
+    calls = []
+    start(root, confirm=lambda s: True, scheduler=FakeScheduler(), runner=_runner_recording(calls))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    clock["now"] = datetime(2026, 9, 7, 6, 59, tzinfo=timezone.utc)   # 16:59 Sydney, a minute early
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
+    clock["now"] = datetime(2026, 9, 7, 7, 3, tzinfo=timezone.utc)    # 17:03: the same slot, served
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None
+    assert read_json(state_path(root, "worker.json"), {})["last_scheduled_slot"] == "2026-09-07T17:00:00+10:00"
+
+
 def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
 
