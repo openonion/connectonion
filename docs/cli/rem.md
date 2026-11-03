@@ -881,6 +881,9 @@ In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Sche
 is installed and the notebook timezone matches this computer. The desktop
 adopts a private local automation definition; there is no public App Server
 schedule RPC in the tested version. Keep the app open and computer awake.
+A background wake job opens a closed Codex 15 minutes before each slot, because
+Codex fires a slot a few minutes either side of it (a 19:00 slot ran at 18:55).
+Run `co rem start` again after upgrading to move an existing wake job.
 Completed native wrapper conversations and REM's internal Codex calls are
 archived, retaining their trace IDs without filling active project history.
 

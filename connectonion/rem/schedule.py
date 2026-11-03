@@ -75,6 +75,19 @@ def _checkout_path() -> str:
     return "" if {"site-packages", "dist-packages"} & set(checkout.parts) else str(checkout)
 
 
+# Codex fires a slot a few minutes either side of it: on 2026-11-03 the 19:00
+# slot was due at 18:55:51 and the 03:00 one ran at 02:57. A wake job at the
+# slot itself opened a closed app after that moment, and the slot was missed.
+WAKE_LEAD_MINUTES = 15
+
+
+def wake_time(value: str) -> dict:
+    """The launchd time that opens Codex WAKE_LEAD_MINUTES before a "HH:MM" slot."""
+    hour, minute = map(int, value.split(":"))
+    hour, minute = divmod((hour * 60 + minute - WAKE_LEAD_MINUTES) % (24 * 60), 60)
+    return {"Hour": hour, "Minute": minute}
+
+
 def wake_command(app: Path) -> list[str]:
     """Open Codex only when it is closed.
 
@@ -226,10 +239,9 @@ class Launchd:
         return self.agents_dir / f"{label_for(root)}.wake.plist"
 
     def install_wake(self, root: Path, config: dict, app: Path) -> Path:
-        """Open Codex at the saved local times; only Codex executes REM."""
+        """Open Codex shortly before each saved local time; only Codex executes REM."""
         path = self.wake_path(root)
-        times = [dict(zip(("Hour", "Minute"), map(int, value.split(":"))))
-                 for value in config["schedule"]["times"]]
+        times = [wake_time(value) for value in config["schedule"]["times"]]
         job = {"Label": path.stem, "ProgramArguments": wake_command(app),
                "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
         self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())
