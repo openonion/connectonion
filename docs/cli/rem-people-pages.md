@@ -42,7 +42,7 @@ map's, a floor for what the 150-day read finds; see
 
 The map makes a page per address, so someone who writes from two addresses,
 or under a nickname, can end up on two pages. Code only finds pairs that look
-alike: a name or alias in common, one name inside the other (Jeff, Jeff Vo),
+alike: a name or alias in common, one name inside the other (Robin, Robin Hale),
 or a page whose Email line lists the address another page was made from. A
 model then reads both pages and each one's own mail with the `rem-same-person`
 Skill and answers yes or no. Yes folds the less written page into the more
