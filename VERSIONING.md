@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc34
+## Current Version: 1.9.3rc35
+
+REM: same-person judgements are their own counted run, in `co rem logs --usage`,
+the day's call cap and the week's points; a pair whose judgement fails waits a day
+so the pairs behind it are asked (#2743, #2741). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc35.md).
+
+- 1.9.3rc35 (REM same-person judgements counted; a failing pair waits a day).
+
+### Previous candidate: 1.9.3rc34
 
 REM: one person on two pages is found and folded. Code finds pages that look
 alike, and a model reads both pages and each one's own mail to decide; a yes folds
