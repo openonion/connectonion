@@ -327,7 +327,11 @@ def host(
         raise typer.Exit(2)
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
-    raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
+    if os.name == "nt":  # Windows' exec spawns a new process and returns the prompt early
+        raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
+    # Become agent.py rather than its parent: a child outlived `kill <co host pid>`,
+    # SIGHUP and launchd's stop, kept the port, and the next `co host` failed.
+    os.execve(sys.executable, [sys.executable, "agent.py"], env)
 
 
 @app.command(epilog="Example:  co deploy  |  co deploy --to prod")
