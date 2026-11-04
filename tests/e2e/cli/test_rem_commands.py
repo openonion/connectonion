@@ -1004,6 +1004,8 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
+    assert ('No page matches "missing" in people, projects, orgs or skills. '
+            'Search names and paths with `co rem investigate`.') == failed['data']
     assert failed['next'].endswith(' investigate')
 
 

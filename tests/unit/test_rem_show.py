@@ -56,6 +56,9 @@ def test_show_exact_page_path_wins_over_name_matches(tmp_path):
 def test_show_missing_name_says_which_page_kinds_were_searched(tmp_path):
     result = show(tmp_path, "harbour")
     assert result.exit_code == 1
-    text = json.loads(result.stdout)["data"]
+    payload = json.loads(result.stdout)
+    text = payload["data"]
     assert '"harbour"' in text
     assert all(kind in text for kind in ("people", "projects", "orgs", "skills"))
+    assert 'Search names and paths with `co rem list`.' in text
+    assert payload["next"].endswith(" list")

@@ -308,7 +308,7 @@ def _investigation_pages(notebook):
             and path != "skills/catalog/index.md"]
 
 
-def _resolve_page(notebook, selector):
+def _resolve_page(notebook, selector, *, next_args=("list",)):
     from ...rem.files import RemError
     from ...rem.merge import aliases, resolve
     pages = _investigation_pages(notebook)
@@ -343,7 +343,7 @@ def _resolve_page(notebook, selector):
         rows = [path + "  " + ", ".join(people.get(path, {}).get("emails", [])) for path in matches]
         raise RemError(f'More than one page matches "{selector}". Use an exact path:\n' + "\n".join(rows))
     raise RemError(f'No page matches "{selector}" in people, projects, orgs or skills. '
-                   'Search names and paths with `co rem list`.')
+                   f'Search names and paths with `co rem {shlex.join(next_args)}`.')
 
 
 def _interactive() -> bool:
@@ -1621,7 +1621,7 @@ def make_rem_app(factory):
             if target in runnable:
                 return by_category(root, target, effective_workers)
             notebook = Notebook(root)
-            record = _resolve_page(notebook, target)
+            record = _resolve_page(notebook, target, next_args=["investigate"])
             from ...rem.investigate import NothingNew
             try:
                 # The owner naming a page is the retry: the refusal ledger is
