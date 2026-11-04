@@ -865,6 +865,9 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     if ctx is not None and ctx.obj["json"]:
         return yes
     message = render(summary, "start — source access and schedule")
+    if ctx is not None:
+        message = message.replace("co rem config", _next(ctx, ["config"]))
+        message = message.replace("co rem stop", _next(ctx, ["stop"]))
     if yes:
         rem_look.say(rem_look.result(message), err=True, plain=message)
         return True
