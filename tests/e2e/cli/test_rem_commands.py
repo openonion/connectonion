@@ -380,12 +380,15 @@ def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
 
 def test_start_consent_question_stays_on_the_same_screen(lifecycle, monkeypatch):
     root, sessions, calls = lifecycle
-    monkeypatch.setattr("click.testing._NamedTextIOWrapper.isatty", lambda self: True)
-    result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
+    # Typer may provide its own streams instead of Click's; use the runner's
+    # actual stdin type so the command takes the interactive path in either.
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), "isatty", lambda self: True)
+        result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
     assert result.exit_code == 1, result.output
     output = Text.from_ansi(result.output).plain
     before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
-    assert question
+    assert question, output
     assert len(before.splitlines()) <= 25
     assert f"Details: co rem --root {root} config" in before
     assert f"Stop: co rem --root {root} stop" in before
