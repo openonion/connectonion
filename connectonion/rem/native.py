@@ -97,9 +97,10 @@ def _offer_pending(root, task):
     if task.get("review_unreserved"):
         return _offer_review(root, task)
     claim = task.get("claimed_by")
-    if claim:
+    if claim and _alive(claim["pid"]):
         return {"outcome": "claimed", "reason": f"task {task['id']} is being worked on since {claim['started_at']}; "
                 "co rem next --discard to take it over"}
+    # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
     write_json(Path(task["directory"]) / "task.json", task)
     return {"outcome": "task", **_display(task)}
@@ -172,6 +173,16 @@ def _discard(root, cursor, task, reason):
 
 def _claim(task):
     task["claimed_by"] = {"pid": os.getpid(), "started_at": service.now().isoformat()}
+
+
+def _alive(pid) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _save(root, cursor, task):

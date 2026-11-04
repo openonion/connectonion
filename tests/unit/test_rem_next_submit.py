@@ -820,3 +820,17 @@ def test_managed_retry_checkpoint_recovers_without_rewinding_progress(trial, mon
     else:
         native.next_task(trial)
     assert read_json(state_path(trial, 'progress.json'), {}) == progress
+
+
+def test_a_claim_by_a_dead_process_does_not_block_the_next_session(trial):
+    """A session that died mid-task must not keep tonight's session idle (claims are advisory)."""
+    import os
+    _feedback(trial)
+    task = native.next_task(trial)
+    path = Path(task['material']) / 'task.json'
+    saved = read_json(path, {})
+    saved['claimed_by'] = {'pid': 2 ** 22 - 1, 'started_at': saved['claimed_by']['started_at']}
+    write_json(path, saved)
+    again = native.next_task(trial)
+    assert again['outcome'] == 'task' and again['id'] == task['id']
+    assert read_json(path, {})['claimed_by']['pid'] == os.getpid()
