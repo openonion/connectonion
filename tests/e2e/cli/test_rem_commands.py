@@ -50,6 +50,20 @@ def test_file_listing_show_and_literal_search(tmp_path):
     assert "people/alice.md" in matches.output
 
 
+def test_show_project_folder_name_and_cross_kind_ambiguity(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/harbour-a13bd.md", "Harbour Console", ["/fictional/work/harbour"])
+    shown = invoke(tmp_path, "show", "HARBOUR")
+    assert shown.exit_code == 0, shown.output
+    assert "# Harbour Console" in shown.output
+    notebook.write("orgs/harbour.md", "# Harbour\nFictional organisation details.")
+    ambiguous = invoke(tmp_path, "show", "harbour")
+    assert ambiguous.exit_code == 1
+    assert "projects/harbour-a13bd.md" in ambiguous.output and "orgs/harbour.md" in ambiguous.output
+    assert "organisation details" not in ambiguous.output
+
+
 def test_addresses_held_for_review_are_listed_only_when_asked_for(tmp_path):
     """#1844: a nameless address the owner never wrote to stays off the list until promoted."""
     from connectonion.rem.files import state_path, write_json
@@ -1027,6 +1041,8 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
+    assert ('No page matches "missing" in people, projects, orgs or skills. '
+            'Search names and paths with `co rem investigate`.') == failed['data']
     assert failed['next'].endswith(' investigate')
 
 

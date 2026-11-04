@@ -310,7 +310,7 @@ def _investigation_pages(notebook):
             and path != "skills/catalog/index.md"]
 
 
-def _resolve_page(notebook, selector):
+def _resolve_page(notebook, selector, *, next_args=("list",)):
     from ...rem.files import RemError
     from ...rem.merge import aliases, resolve
     pages = _investigation_pages(notebook)
@@ -329,18 +329,23 @@ def _resolve_page(notebook, selector):
     old_matches = {resolve(notebook.root, old) for old in table if Path(old).stem == selector}
     matches = [path for path in pages if path in old_matches]
     for path in pages:
-        title = next((line[2:].strip() for line in notebook.read(path).splitlines()
+        text = notebook.read(path)
+        title = next((line[2:].strip() for line in text.splitlines()
                       if line.startswith("# ")), "")
         person = people.get(path, {})
         names = [title, Path(path).stem, *person.get("emails", []), *person.get("aliases", [])]
+        if path.startswith("projects/"):
+            from ...rem.investigate import project_paths
+            names += [Path(folder).name for folder in project_paths(text)]
         if (path in named_people or selector.casefold() in [name.casefold() for name in names]) and path not in matches:
             matches.append(path)
     if len(matches) == 1:
         return matches[0]
     if matches:
         rows = [path + "  " + ", ".join(people.get(path, {}).get("emails", [])) for path in matches]
-        raise RemError("More than one page matches. Use an exact path:\n" + "\n".join(rows))
-    raise RemError("No page matches that name, email or path. Run investigate without arguments to see available pages.")
+        raise RemError(f'More than one page matches "{selector}". Use an exact path:\n' + "\n".join(rows))
+    raise RemError(f'No page matches "{selector}" in people, projects, orgs or skills. '
+                   f'Search names and paths with `co rem {shlex.join(next_args)}`.')
 
 
 def _interactive() -> bool:
@@ -400,14 +405,14 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
     """
     from ...rem.files import Notebook
     manual = _next(ctx, retry)
-    if want is False or problem:
-        return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
-               f"Write it with {manual}."
     owner = result.get("owner") or {}
     if not owner.get("record") or not owner.get("addresses"):
         return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
                 "what you sent. Connect one with co auth google or co auth microsoft, then run "
                 + _next(ctx, init) + ".")
+    if want is False or problem:
+        return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
+               f"Write it with {manual}."
     page = Notebook(root).path(owner["record"])
     status = next((line for line in page.read_text(encoding="utf-8").splitlines()
                    if line.startswith("Investigation:")), "") if page.is_file() else ""
@@ -841,6 +846,7 @@ def _init_done(ctx, result) -> str:
         f"{missed} page{' was' if missed == 1 else 's were'} not written this run; each is named above with why."
         if missed else "",
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
+        *([result["nothing_to_write"]] if result.get("nothing_to_write") else []),
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
         *([summary(result["sessions"])] if result.get("sessions") else []),
@@ -993,6 +999,21 @@ def _init_session_summary(root, result, progress, *, problem, estimate_only):
     progress.close()
 
 
+def _owner_material(root, result):
+    """Count mapped mail and usable sessions from the same parsed material in both init modes."""
+    from ...rem.scan import project_exclusion
+    from ...rem.service import subscriptions
+    parsed = getattr(result, "sessions", None)
+    sources = subscriptions(root)
+    paths = {str(path) for name, files in (parsed.files.items() if parsed else [])
+             if sources[name].get("consented") for path in files}
+    sessions = sum(not reason and bool(session.get("messages"))
+                   and not Path(session.get("cwd") or "").resolve().is_relative_to(root)
+                   and project_exclusion(Path(session.get("cwd") or "")) != "temporary execution directory"
+                   for path, (session, reason) in (parsed.imports.items() if parsed else []) if path in paths)
+    return (result.get("source_inventory") or {}).get("mail_observed", 0) + sessions
+
+
 def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="",
                   languages=None, no_translate=False, archive_mail=True, write_mine=None,
                   all_history=False, investigate_all=False, estimate_only=False,
@@ -1142,9 +1163,10 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
         result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
                             **({"problem": problem, "fix": fix} if problem else {})}
         retry_me = ["investigate", "me", *window]
-        reason = ("" if estimate_only else _first_page_skipped(
-            ctx, root, result, want=write_mine, problem=problem, fix=fix,
-            retry=retry_me, init=["init", *init_window]))
+        reason = _first_page_skipped(
+            ctx, root, result, want=None if estimate_only else write_mine,
+            problem="" if estimate_only else problem, fix=fix,
+            retry=retry_me, init=["init", *init_window])
         if not ctx.obj["json"]:
             # The map's summary and your page's facts first: value before any spending.
             text = render(result, "init")
@@ -1169,30 +1191,27 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
         plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
         from ...rem.files import RemError
         skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
+        mapped_people = [row for row in result.get("people", []) if row.get("classification") != "account owner"]
+        owner_material = _owner_material(root, result)
         if reason:
             result["investigate_me"] = {"started": False, "reason": reason}
             say(reason)
-        if skipped and not estimate_only:
-            result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
-            result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
-            if skipped not in (reason or ""):  # said once: the owner-page line may already say why
-                say(result["project_pages"]["reason"])
-            if yes or not sys.stdin.isatty():
-                _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         # One total before the first page (#2008): 1.9.0a5 said "~90k per
         # project page, about a minute" and spent 614k-922k and 4-5 minutes
         # each, on every project active in the window, with no total at all.
         from ...rem import first_run
         from .rem_people import counted
         from ...rem.service import run_logs
-        people_rows = _first_people_rows(root, first_people, days)
+        empty_map = not (mapped_people or result.get("projects") or owner_material)
+        people_rows = [] if empty_map else _first_people_rows(root, first_people, days)
         project_rows = (_first_project_rows(root, first_projects, sessions=getattr(result, "sessions", None))
-                        if first_projects != 0 else [])
-        org_rows = _first_org_rows(root, first_orgs)
+                        if not empty_map and first_projects != 0 else [])
+        org_rows = [] if empty_map else _first_org_rows(root, first_orgs)
         from ...rem.queue import order
-        skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
+        skill_rows = (_capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
+                      if mapped_people or result.get("projects") else [])
         total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
+                               owner_material=owner_material,
                                projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
                                workers=config["limits"]["workers"],
                                translation=language if not translation_skip else "")
@@ -1201,9 +1220,23 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                                "orgs": [row["path"] for row in org_rows],
                                "skills": [row["path"] for row in skill_rows],
                                "source_coverage": "incomplete" if result.get("errors") else "complete"}
+        if not total["pages"]:
+            result["nothing_to_write"] = ("Nothing to write yet: connect a mailbox (co auth google|microsoft) "
+                                          "or work in a project with Codex, then run co rem init")
+            if estimate_only:
+                result["estimate_only"] = True
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], bool(result.get("errors"))
+        if skipped and not estimate_only:
+            result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
+            result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
+            if skipped not in (reason or ""):  # said once: the owner-page line may already say why
+                say(result["project_pages"]["reason"])
+            if yes or not sys.stdin.isatty():
+                _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         me_days = days if window else 30  # what `investigate me` reads without --days
         steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
-                 if not reason else [])
+                 if total["counts"]["owner"] else [])
         steps += ([f"{counted(len(people_rows), 'person', 'people')} "
                    + ("(every mapped person; current source window per page)" if investigate_all else
                       "(recent first; up to two years of evidence each)")]
@@ -1261,7 +1294,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                     "the map and saved mail are retained.")
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], True
         gate = lambda: ""
-        if not reason:
+        if total["counts"]["owner"]:
             try:
                 # Quick first, so your page is there in minutes; the whole page runs
                 # with the others (2026-10-01: the full pass alone was refused in two
@@ -1593,7 +1626,7 @@ def make_rem_app(factory):
             if target in runnable:
                 return by_category(root, target, effective_workers)
             notebook = Notebook(root)
-            record = _resolve_page(notebook, target)
+            record = _resolve_page(notebook, target, next_args=["investigate"])
             from ...rem.investigate import NothingNew
             try:
                 # The owner naming a page is the retry: the refusal ledger is
@@ -1755,17 +1788,6 @@ def make_rem_app(factory):
             return None
         _handle(ctx, operation, ["list"], draw=drawn)
 
-    def _person(notebook, query: str) -> str:
-        """The one page a name, alias or address names; several or none is an error that lists them."""
-        from ...rem.files import RemError
-        found = notebook.find_people(query)
-        if len(found) == 1:
-            return found[0]["path"]
-        if not found:
-            raise RemError(f'No person matches "{query}". Search names with `co rem list people --aliases`')
-        rows = "\n".join(f"  {person['path']}  {person['title']}  {', '.join(person['emails'])}" for person in found)
-        raise RemError(f'"{query}" matches {len(found)} people; show one by its path or address:\n{rows}')
-
     @rem.command("show", cls=V("co rem show"))
     def show_record(ctx: typer.Context, record: str = typer.Argument(...)):
         from ...rem.files import CATEGORIES, Notebook, RemError, read_json, state_path
@@ -1783,8 +1805,8 @@ def make_rem_app(factory):
                                     "name. Run `co rem init --name \"Your Name\"`")
                 category = page.split("/")[0]
             elif not record.endswith(".md"):
-                page = _person(Notebook(root), record)
-                category = "people"
+                page = _resolve_page(Notebook(root), record)
+                category = page.split("/")[0]
             from ...rem.merge import resolve
             text = Notebook(root).read(resolve(root, page))
             return text, (["investigate", record] if "Unknown" in text else ["list", category])

@@ -87,6 +87,13 @@ this notebook's own runs (before there are any, measured defaults). It names the
 runner and model. The configured investigation budget (35% by default) is a target,
 not a hard limit: the selected investigation finishes even if it uses more.
 The configured weekly safety floor still stops new pages when measurable.
+
+The owner estimate scales with mapped mail and usable sessions; no material costs
+nothing, and no mailbox address means no owner page in the estimate. When the
+map finds no people or projects, installed skills are not investigated alone:
+Nothing to write yet: connect a mailbox (co auth google|microsoft) or work in a
+project with Codex, then run co rem init. There is no estimate pause in that case.
+Agent-session summaries append skip reasons, such as 3 skipped (program prompt).
 Ctrl-C stops it, says which pages were written, and
 keeps the map and every page. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
@@ -403,12 +410,16 @@ Back:     co rem --help
 ```
 Print one page as Markdown. Read-only.
 
-Usage:    co rem show PAGE | PERSON
+Usage:    co rem show PAGE | NAME
 Example:  co rem show people/greta-holloway-324b6af6e8.md
           co rem show me   (your own page)
           co rem show "Greta Holloway"   (a person's name, alias or email)
+          co rem show harbour   (a project folder name or page title)
 Inputs:   PAGE comes from list, search, or the Next line of investigate.
-          A PERSON naming several pages lists them and shows none.
+          An exact page path wins. NAME matches titles and page stems across
+          people, projects, orgs and skills, and project folder names, ignoring case.
+          Person aliases and email addresses still work.
+          A NAME matching several pages lists their paths and shows none.
 Next:     co rem investigate PAGE   (if it still says Unknown)
 Back:     co rem --help
 ```

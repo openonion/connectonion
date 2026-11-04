@@ -377,7 +377,7 @@ def test_command_resolves_page_and_prints_report(notebook, monkeypatch, stage):
 def test_unknown_page_uses_resolver_error(notebook, stage):
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook.root), stage, "missing"])
     assert result.exit_code == 1
-    assert "No page matches that name, email or path" in result.output
+    assert 'No page matches "missing" in people, projects, orgs or skills' in result.output
 
 
 @pytest.mark.parametrize("harness,expected", [("codex", {"input_tokens": 7, "output_tokens": 2}),

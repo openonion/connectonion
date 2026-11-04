@@ -92,6 +92,97 @@ def owner_record(root):
     return json.loads((root / ".state/map.json").read_text())["owner"]["record"]
 
 
+def test_plan_with_zero_material_has_no_owner_cost():
+    from connectonion.rem.first_run import plan
+
+    total = plan([], owner=True, owner_material=0, people=0, projects=0, workers=16)
+    assert total["counts"]["owner"] == 0
+    assert total["pages"] == total["input_tokens"] == total["minutes"] == 0
+
+
+def test_owner_estimate_scales_with_mapped_material():
+    from connectonion.rem.first_run import plan
+
+    small = plan([], owner=True, owner_material=3, people=0, projects=0, workers=16)
+    large = plan([], owner=True, owner_material=300, people=0, projects=0, workers=16)
+    assert 0 < small["input_tokens"] < large["input_tokens"] < 13_000_000
+    assert 0 < small["minutes"] < large["minutes"] < 71
+
+
+def test_owner_material_uses_usable_sessions_instead_of_cached_rejected_files(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _owner_material
+    from connectonion.rem.map import MapReport
+
+    monkeypatch.setattr("connectonion.rem.service.subscriptions", lambda root: {
+        "codex": {"kind": "codex", "enabled": True, "consented": True}})
+    result = MapReport(source_inventory={"mail_observed": 2},
+                       sessions={"imported": 0, "updated": 0, "unchanged": 4})
+    result.sessions = SimpleNamespace(files={"codex": ["usable", "rejected", "temporary", "notebook"]}, imports={
+        "usable": ({"messages": ["A fictional request"], "cwd": "/fictional/harbour"}, ""),
+        "rejected": ({}, "program_prompt"),
+        "temporary": ({"messages": ["A probe"], "cwd": "/private/tmp/probe"}, ""),
+        "notebook": ({"messages": ["A probe"], "cwd": str(tmp_path)}, ""),
+    })
+    assert _owner_material(tmp_path, result) == 3
+    del result["sessions"]  # The estimate-only path has the same parsed material.
+    assert _owner_material(tmp_path, result) == 3
+
+
+@pytest.mark.parametrize("flags", [[], ["--estimate-only"], ["--json"], ["--estimate-only", "--json"]])
+def test_init_without_people_or_projects_exits_without_estimate_pause(first_run, monkeypatch, flags):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    skill = root.parent / "empty-skills" / "fictional-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("---\nname: fictional-skill\ndescription: A fictional skill.\n---\nRead files.\n")
+    pauses = []
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands.typer.confirm", lambda *a, **kw: pauses.append(a))
+    monkeypatch.setattr("connectonion.rem.service.ensure_consent", lambda *a, **kw: True)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    summaries = []
+    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions", lambda *a, **kw: summaries.append(a))
+
+    result = init("--no-start", *flags)
+
+    assert result.exit_code == 0, result.output
+    message = ("Nothing to write yet: connect a mailbox (co auth google|microsoft) or work in a project "
+               "with Codex, then run co rem init")
+    assert message in result.stdout
+    assert "Your page was not written: no mailbox gave an address of yours" in result.stdout
+    assert "Estimate:" not in result.output
+    assert not pauses and not calls and not summaries
+    if "--json" in flags:
+        data = json.loads(result.stdout)["data"]
+        assert data["first_run"]["pages"] == data["first_run"]["input_tokens"] == 0
+        assert data["first_run"]["skills"] == []
+
+
+def test_estimate_only_excludes_an_owner_without_mail_addresses(first_run, monkeypatch):
+    _, init, _ = first_run
+    monkeypatch.setattr(Mail, "my_addresses", lambda self: set())
+    result = init("--estimate-only", "--json")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["first_run"]["counts"]["owner"] == 0
+    assert "no mailbox gave an address of yours" in data["investigate_me"]["reason"]
+
+
+def test_empty_init_without_a_runner_still_explains_how_to_add_material(first_run, monkeypatch):
+    from connectonion.rem.files import Notebook
+
+    root, init, calls = first_run
+    Notebook(root).stub_person("people/corin-vale.md", "Corin Vale", ["corin@example.org"])
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex not installed", "install codex"))
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._first_people_rows",
+                        lambda *a, **kw: pytest.fail("An empty map must not queue old pages"))
+    result = init("--no-start")
+    assert result.exit_code == 0, result.output
+    assert "Nothing to write yet: connect a mailbox" in result.stdout
+    assert "no mailbox gave an address of yours" in result.stdout
+    assert "Estimate:" not in result.output and not calls
+
+
 def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatch):
     root, init, calls = first_run
     monkeypatch.setattr("connectonion.rem.runner.model_access",
@@ -859,13 +950,13 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     total = fr.plan(runs, owner=False, people=0, projects=2, workers=1)
     assert total["input_tokens"] == 1_400_000 and total["minutes"] == 9
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
-    owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
+    owner_only = fr.plan(runs, owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
     assert owner_only["minutes"] == 71  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
-    mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1,
+    mixed = fr.announce(fr.plan(runs, owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=1, projects=1,
                                 workers=default_config()["limits"]["workers"]), "on your Codex plan")
     assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
 
@@ -879,7 +970,7 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     throughput, not the worker count, sets the pace."""
     from connectonion.rem import first_run as fr
 
-    b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
+    b1 = dict(owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=84, projects=20, orgs=27, skills=148)
     from connectonion.rem.config import default_config
     total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
     # Since 2026-10-20 the defaults never announce less than a measured run took:
@@ -894,7 +985,8 @@ def test_the_estimate_matches_the_2026_10_20_release_check():
     three projects, two organisations and a skill; the run took 82 minutes of
     pages after an 11.5-minute quick page, and 102M input tokens."""
     from connectonion.rem import first_run as fr
-    total = fr.plan([], owner=True, people=10, projects=3, orgs=2, skills=1, workers=16)
+    total = fr.plan([], owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE,
+                    people=10, projects=3, orgs=2, skills=1, workers=16)
     assert 90 <= total["minutes"] <= 105
     assert 95_000_000 <= total["input_tokens"] <= 110_000_000
 
@@ -1339,7 +1431,8 @@ def test_init_english_only_language_tip_shows_only_the_current_form(first_run, l
 
 def test_translation_estimate_uses_completed_local_medians_and_separate_worker_lanes():
     from connectonion.rem import first_run as fr
-    counts = dict(owner=True, people=2, projects=1, orgs=1, skills=1, workers=2)
+    counts = dict(owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE,
+                  people=2, projects=1, orgs=1, skills=1, workers=2)
     plain = fr.plan([], **counts)
     default = fr.plan([], **counts, translation='zh')
     assert default['translation']['pages'] == 6

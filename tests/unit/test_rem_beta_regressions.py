@@ -51,10 +51,10 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 0
-    # #1943: the first run's next step is reading the page; the manual command
-    # for the owner's page keeps the window, in the reason it was not run here.
-    assert payload['next'].endswith(' open')
-    assert 'investigate me --days 5.' in payload['data']['investigate_me']['reason']
+    # An empty first run keeps the selected window in its next init command.
+    assert payload['next'].endswith(' init --days 5')
+    assert 'init --days 5.' in payload['data']['investigate_me']['reason']
+    assert payload['data']['first_run']['pages'] == 0
     assert all('init --days 5' in tip for tip in payload['data']['tips'])
 
     with patch('connectonion.rem.map.build_map', return_value={
@@ -141,11 +141,11 @@ def test_show_lists_every_match_instead_of_guessing(tmp_path):
     assert one.exit_code==0 and 'zhouodywork@gmail.com' in one.output
 
 
-def test_show_names_no_person_when_nobody_matches(tmp_path):
+def test_show_names_searched_page_kinds_when_nobody_matches(tmp_path):
     root=tmp_path/'rem';prepare(root);_people(root)
     result=CliRunner().invoke(app,['rem','--root',str(root),'show','nobody'])
     assert result.exit_code!=0
-    assert 'No person matches "nobody"' in result.output
+    assert 'No page matches "nobody" in people, projects, orgs or skills' in result.output
 
 
 def test_a_name_in_the_title_brackets_is_a_name_too(tmp_path):
