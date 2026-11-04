@@ -25,17 +25,17 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc38** makes `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
+Release candidate **1.9.3rc39** lets the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
 Linux `co host` becomes `agent.py`, so no orphan is left holding the port. Stable
 remains **1.9.2**.
 
 After publication, install its exact pin:
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc38'
+python -m pip install --upgrade 'connectonion==1.9.3rc39'
 ```
 
-See [the candidate notes](releases/1.9.3rc38.md) and [1.9.3rc37](releases/1.9.3rc37.md).
+See [the candidate notes](releases/1.9.3rc39.md), [1.9.3rc38](releases/1.9.3rc38.md) and [1.9.3rc37](releases/1.9.3rc37.md).
 
 ## Previous previews
 
