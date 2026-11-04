@@ -37,9 +37,11 @@ Options (before the command):
   --root DIR    The notebook folder (default ~/.co/rem).
   --json        Machine-readable output: {"ok", "data", "next"}.
 
-First time:   co rem init
-Init offers nightly upkeep after the first run, once you approve its sources and schedule.
-Use --yes to approve the shown summary noninteractively, or --no-start to leave upkeep off.
+Start here:   co init
+It connects a mailbox if you want, asks once before reading your sources, installs upkeep
+(Codex Scheduled task or launchd) and builds the first notebook; it pauses at the estimate.
+Without a terminal or with --yes it only creates storage; then: co auth google|microsoft, co rem init.
+co init --no-rem skips REM. co rem init alone rebuilds the map with the same estimate pause.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,

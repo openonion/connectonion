@@ -225,13 +225,14 @@ def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
-    yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts; global REM storage only, without source consent or scheduling"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
-    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and REM storage; no source scan'),
+    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and the same REM setup'),
+    no_rem: bool = typer.Option(False, '--no-rem', help='Skip REM setup during global initialization'),
 ):
-    """Initialize local identity, profile and coding-agent skills, or use co init ./ for a project. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Project init does this too. Re-run to repair omissions while keeping your edits."""
+    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup asks for source consent, installs upkeep and builds the first REM notebook in the foreground after an estimate confirmation. Without a terminal or with --yes, only REM storage is created. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -255,9 +256,12 @@ def init(
             except (HostServiceError, OSError) as error:
                 console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
                 raise typer.Exit(1) from None
-            if not result['codex_ready']:
-                console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
-                raise typer.Exit(1)
+        if not no_rem:
+            from .commands.rem_commands import init_global_rem
+            init_global_rem(yes=yes)
+        if background and not result['codex_ready']:
+            console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
+            raise typer.Exit(1)
         return
     if background:
         console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)

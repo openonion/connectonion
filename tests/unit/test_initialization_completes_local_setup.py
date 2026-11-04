@@ -90,7 +90,12 @@ def test_profile_and_links_follow_the_current_home(onboarding, monkeypatch, comm
     assert result.exit_code == 0, result.output
     assert (selected / "keys" / "agent.key").is_file()
     assert (selected / "agent.json").is_file()
-    assert not default_root.exists()
+    if command == ["init", "--yes"]:
+        assert set(default_root.iterdir()) == {default_root / "rem"}
+        assert (default_root / "rem/config.yaml").is_file()
+        assert not (default_root / "rem/.state/consent.json").exists()
+    else:
+        assert not default_root.exists()
 
 
 def test_reinitialization_repairs_omissions_and_preserves_edits(onboarding):
