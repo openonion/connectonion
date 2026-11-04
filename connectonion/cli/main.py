@@ -258,7 +258,14 @@ def init(
                 raise typer.Exit(1) from None
         if not no_rem:
             from .commands.rem_commands import init_global_rem
-            init_global_rem(yes=yes)
+            from ..rem.files import RemError
+            try:
+                init_global_rem(yes=yes)
+            except RemError as error:
+                # The one place co init calls REM outside _handle: say it in one line,
+                # not a traceback (#2758). Consent is recorded, so the retry is cheap.
+                console.print(f"{error}\nNext: co rem start", markup=False)
+                raise typer.Exit(1) from None
         if background and not result['codex_ready']:
             console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
             raise typer.Exit(1)

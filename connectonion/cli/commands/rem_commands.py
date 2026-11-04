@@ -929,15 +929,39 @@ def init_global_rem(*, yes: bool = False) -> None:
         typer.echo("REM prepared; no scheduler available on this platform. Next: co rem init to build manually. Upkeep: co rem start on macOS. Watch: co rem status")
         return
     typer.echo("Installing REM upkeep. Resume setup with co rem start.")
-    result = start(root, confirm=confirm, scheduler=scheduler, run_first_batch=False,
-                   history_progress=_history_progress)
+    result = _install_upkeep(root, confirm, scheduler)
     from click import Command
     ctx = typer.Context(Command("init"), info_name="init",
                         obj={"root": root, "default_root": True, "json": False})
     built = init_rem_flow(ctx)
     summary = _init_done(ctx, built).strip().replace("\n", " ")
     next_step = "co rem init" if built.get("build_deferred") else "co rem open"
-    typer.echo(f"REM ready; {summary} Scheduler installed: {_scheduler_name(result)}. Next: {next_step}. Watch: co rem status")
+    installed = _scheduler_name(result) + (f" ({result['fallback']})" if result.get("fallback") else "")
+    typer.echo(f"REM ready; {summary} Scheduler installed: {installed}. Next: {next_step}. Watch: co rem status")
+
+
+def _install_upkeep(root, confirm, scheduler) -> dict:
+    """Start upkeep; when Codex does not register its task, launchd keeps the clock (#2758).
+
+    The Codex app watches one home. Closed, or watching another, it never adopts
+    the task and the native install raises after its wait. The first run ended in
+    a traceback there and left no upkeep at all.
+    """
+    from ...rem.codex_schedule import CodexNative
+    from ...rem.files import RemError
+    from ...rem.schedule import Launchd
+    from ...rem.service import start
+    try:
+        return start(root, confirm=confirm, scheduler=scheduler, run_first_batch=False,
+                     history_progress=_history_progress)
+    except RemError as error:
+        if not isinstance(scheduler, CodexNative):
+            raise
+        typer.echo(f"{error}\nUsing launchd for upkeep meanwhile.")
+    result = start(root, confirm=confirm, scheduler=Launchd(), run_first_batch=False,
+                   history_progress=_history_progress)
+    return {**result, "fallback": "Codex did not register the task; co rem start switches to "
+                                  "Codex Scheduled once the app is open"}
 
 
 def _people_table(ctx, root, category, *, company, open_only, sort):

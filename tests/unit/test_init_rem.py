@@ -335,3 +335,38 @@ def test_tty_json_estimate_pause_uses_stderr_and_can_decline(first_notebook, mon
     assert "co rem init" in payload["next"]
     assert "Build the first map now? [Y/n]" in output.err
     model.assert_not_called()
+
+
+def test_native_registration_failure_falls_back_to_launchd(rem_setup, monkeypatch, capsys):
+    """Codex closed, or watching another home, never adopts the task; launchd keeps the clock (#2758)."""
+    from connectonion.rem import codex_schedule
+    from connectonion.rem.files import RemError
+    root, _ = rem_setup
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: codex_schedule.CodexNative())
+    monkeypatch.setattr(codex_schedule.CodexNative, "install",
+                        lambda self, root, config: (_ for _ in ()).throw(RemError("Codex has not registered the paused REM task")))
+    launchd = Mock(return_value={"scheduler": "launchd"})
+    monkeypatch.setattr(schedule.Launchd, "install", lambda self, root, config: launchd(root, config))
+    monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\n"))
+    rem_commands.init_global_rem()
+    out = capsys.readouterr().out
+    launchd.assert_called_once()
+    assert "Using launchd for upkeep meanwhile" in out
+    assert "Scheduler installed: launchd (Codex did not register the task" in out.splitlines()[-1]
+    assert "Traceback" not in out
+
+
+def test_co_init_says_a_scheduler_error_in_one_line(rem_setup, monkeypatch, capsys):
+    from connectonion.rem.files import RemError
+    from connectonion.cli import main
+    root, installed = rem_setup
+    installed.side_effect = RemError("synthetic scheduler failure")
+    monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\n"))
+    with pytest.raises(typer.Exit) as stop:
+        main.init(path=None, template=None, yes=False, key=None, description=None,
+                  force=False, background=False, no_rem=False)
+    assert stop.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "synthetic scheduler failure" in out
+    assert "Next: co rem start" in out
+    assert "Traceback" not in out
