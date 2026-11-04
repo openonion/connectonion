@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc39
+## Current Version: 1.9.3rc40
+
+REM: one scheduled sync at a time. A scheduled round claims the whole round, gaps between
+model turns included; a second tick that finds a live claim says so in one line and leaves
+its slot owed. The same-person stage rechecks both pages under the lock and skips a pair
+that vanished instead of ending the run (#2754, #2763). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc40.md).
+
+- 1.9.3rc40 (one scheduled sync at a time).
+
+### Previous candidate: 1.9.3rc39
 
 REM: the native Codex Scheduled session does the work itself through `co rem next`
 and `co rem submit`; no more Codex sessions started from inside a Codex session, and
