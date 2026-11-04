@@ -18,6 +18,21 @@ def _state(root, **state):
     write_json(state_path(root, "map.json"), state)
 
 
+def test_archiving_a_recreated_page_keeps_both_copies(tmp_path):
+    from connectonion.rem.tidy import _archive
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = "people/robin.md"
+    notebook.write(record, "# Robin\n\nInvestigated history.\n")
+    first = _archive(notebook, record)
+    notebook.write(record, "# Robin\n\nRecreated map stub.\n")
+    second = _archive(notebook, record)
+    assert (tmp_path / first).read_text() == "# Robin\n\nInvestigated history.\n"
+    assert first != second
+    assert (tmp_path / second).read_text() == "# Robin\n\nRecreated map stub.\n"
+
+
 def test_services_an_older_map_made_people_are_archived_and_investigated_pages_stay(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)

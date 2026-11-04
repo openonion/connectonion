@@ -20,7 +20,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .files import Notebook, read_json, state_path, write_json
+from .files import Notebook, archive_path, read_json, state_path, write_json
 from .page_review import prose
 
 ALIASES = "aliases.json"
@@ -190,7 +190,7 @@ def prepare_merge(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
         if entry["into"] == old:
             entry["into"] = kept
     table[old] = {"into": kept, "reason": reason, "date": date.today().isoformat(),
-                  "archived": f".state/archived/{old}"}
+                  "archived": archive_path(notebook.root, old, new=True).relative_to(notebook.root).as_posix()}
     relinked = {}
     for record in notebook.list():
         if record == old:
@@ -210,7 +210,7 @@ def promote_merge(notebook: Notebook, plan: dict) -> dict:
     if old.startswith("projects/"):
         from .project_material import adopt
         adopt(root, old, kept)
-    target = root / ".state" / "archived" / old
+    target = root / plan["aliases"][old]["archived"]
     target.parent.mkdir(parents=True, exist_ok=True)
     if notebook.path(old).is_file():
         notebook.path(old).replace(target)

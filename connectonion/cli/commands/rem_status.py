@@ -200,6 +200,10 @@ def _header(value: dict, program: str) -> list[str]:
     head = head[:1].lower() + head[1:]
     # A state that is not running already says nothing is scheduled.
     tail = " · no run scheduled" if not value.get("next_run") and head.startswith("running") else ""
+    worker = value.get("worker") or {}
+    if (worker.get("last_scheduled_outcome") == "budget_exhausted"
+            and str(worker.get("last_scheduled_slot", ""))[:10] == value.get("date")):
+        head += " · daily cap reached"
     lines = [style.heading(f"{program} status") + " · " + highlight(head + tail)]
     return lines + ["  " + highlight(part.strip()) for part in rest.split("; ") if part.strip()]
 
@@ -288,6 +292,8 @@ def _last_run(run, zone) -> str:
         return style.muted("none yet")
     what = " ".join(filter(None, [run.get("phase") or "sync", run.get("record")]))
     outcome = str(run.get("outcome", "unknown")).replace("_", " ")
+    if run.get("outcome") == "budget_exhausted":
+        outcome = "daily cap reached"
     started = datetime.fromisoformat(run["started_at"]).astimezone(zone).strftime("%Y-%m-%d %H:%M")
     detail = [highlight(started), _plural(len(run.get("changed") or []), "page") + " changed"]
     tokens = (run.get("usage") or {}).get("input_tokens")

@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import MAP_DAYS, Notebook, atomic_write, maintenance_lock, read_json, state_path
+from .files import MAP_DAYS, Notebook, archive_path, atomic_write, maintenance_lock, read_json, state_path
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
@@ -618,7 +618,7 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     moved += [record for record in notebook.list('orgs')
               if record not in used and _mapped_only(notebook.read(record))]
     for record in moved:
-        target = notebook.root / '.state' / 'archived' / record
+        target = archive_path(notebook.root, record, new=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         notebook.path(record).replace(target)
     return sorted(moved)

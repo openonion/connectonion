@@ -1825,7 +1825,7 @@ def make_rem_app(factory):
     @rem.command("merge", cls=V("co rem merge"))
     def merge_pages(ctx: typer.Context, kept: str, old: str,
                     reason: str = typer.Option("manual merge", "--reason", "-r")):
-        from ...rem.files import Notebook, RemError, maintenance_lock
+        from ...rem.files import Notebook, RemError, archive_path, maintenance_lock
         from ...rem.merge import merge_into, resolve
 
         def operation(root):
@@ -1838,7 +1838,8 @@ def make_rem_app(factory):
                     if not notebook.exists(page):
                         raise RemError(f"Record not found: {page}; list the notebook for current record paths")
                 result = merge_into(notebook, target_kept, target_old, reason)
-                return {**result, "archived": f".state/archived/{target_old}"}, ["show", target_kept]
+                archived = archive_path(root, target_old).relative_to(root).as_posix()
+                return {**result, "archived": archived}, ["show", target_kept]
 
         _handle(ctx, operation, ["list"])
 

@@ -10,6 +10,24 @@ def notebook(tmp_path):
     return Notebook(tmp_path)
 
 
+def test_merging_a_recreated_page_keeps_both_archives_and_the_latest_alias(tmp_path):
+    from connectonion.rem.files import read_json, state_path
+    from connectonion.rem.merge import merge_into
+
+    nb = notebook(tmp_path)
+    kept, old = "people/robin-hale.md", "people/robin.md"
+    nb.write(kept, "# Robin Hale\n\n## History\n- Unknown\n")
+    nb.write(old, "# Robin\n\n## History\n- Investigated history.\n")
+    merge_into(nb, kept, old, "same person")
+    first = read_json(state_path(tmp_path, "aliases.json"), {})[old]["archived"]
+    nb.write(old, "# Robin\n\n## History\n- Recreated map stub.\n")
+    merge_into(nb, kept, old, "same person again")
+    latest = read_json(state_path(tmp_path, "aliases.json"), {})[old]["archived"]
+    assert (tmp_path / first).read_text() == "# Robin\n\n## History\n- Investigated history.\n"
+    assert latest != first
+    assert (tmp_path / latest).read_text() == "# Robin\n\n## History\n- Recreated map stub.\n"
+
+
 def test_two_pages_sharing_an_address_or_naming_each_other_are_listed_never_merged(tmp_path):
     """A real 1.9.2b2 notebook: Corin had two pages on one Gmail; 子亚 and Zia Tanaka
     shared zia@openonion.ai; Fenwick's page listed the handle of linmu0507@example.com."""

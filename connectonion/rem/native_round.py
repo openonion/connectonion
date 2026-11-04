@@ -335,7 +335,7 @@ def _merge_outputs(root, plan):
         return outputs
     merged, book = plan["merge"], Notebook(root)
     outputs.update({book.path(merged["kept"]): [merged["page"]], book.path(merged["old"]): [None],
-                    root / ".state/archived" / merged["old"]: [book.read(merged["old"])],
+                    root / merged["aliases"][merged["old"]]["archived"]: [book.read(merged["old"])],
                     state_path(root, merge.ALIASES): [_json_text(merged["aliases"])]})
     for record, text in merged["relinked"].items():
         outputs.setdefault(book.path(record), []).append(text)
