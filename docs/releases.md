@@ -25,17 +25,17 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc37** makes stopping `co host` stop the agent: on macOS and
+Release candidate **1.9.3rc38** makes `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
 Linux `co host` becomes `agent.py`, so no orphan is left holding the port. Stable
 remains **1.9.2**.
 
 After publication, install its exact pin:
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc37'
+python -m pip install --upgrade 'connectonion==1.9.3rc38'
 ```
 
-See [the candidate notes](releases/1.9.3rc37.md).
+See [the candidate notes](releases/1.9.3rc38.md) and [1.9.3rc37](releases/1.9.3rc37.md).
 
 ## Previous previews
 
