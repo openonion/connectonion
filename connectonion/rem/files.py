@@ -63,16 +63,20 @@ class RemError(Exception):
     """Safe, user-facing co rem error (never include source body or credentials)."""
 
 
+def notebook_path(relative: str) -> bool:
+    """Whether a relative path names notebook content, without checking the disk."""
+    return bool(relative) and not (
+        relative.startswith("/") or "\\" in relative
+        or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative)
+        or any(part.startswith(".") for part in relative.split("/")))
+
+
 def safe_path(root: Path, relative: str) -> Path:
     """Reject traversal and links instead of following them into another store."""
-    parts = PurePosixPath(relative).parts
-    if (not parts or relative.startswith("/") or "\\" in relative
-            or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative)):
-        raise RemError("Expected a relative notebook path")
-    if any(part in (".", "..") or part.startswith(".") for part in parts):
-        raise RemError("Hidden paths and traversal are not notebook content")
+    if not notebook_path(relative):
+        raise RemError("Expected a relative notebook path without hidden paths or traversal")
     path = root
-    for part in parts:
+    for part in PurePosixPath(relative).parts:
         path = path / part
         if path.is_symlink():
             raise RemError("Symlinks are not supported inside the notebook")

@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, read_json, state_path, write_json
 from connectonion.rem.tidy import tidy
@@ -77,6 +79,37 @@ def test_a_link_to_an_archived_page_keeps_its_name_and_loses_the_dead_link(tmp_p
     assert "- Apple Support; [Mia Tan](../people/mia.md)" in text      # the live link stays
     assert done["unlinked archived page"] == ["orgs/apple.md"]
     assert tidy(tmp_path) == {}
+
+
+@pytest.mark.parametrize("link", [
+    "[x](../.state/archived/gone.md)",
+    "[y](../../../outside.md)",
+], ids=["hidden-state", "above-root"])
+def test_tidy_preserves_links_outside_notebook_content(tmp_path, link):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    page = f"# Lantern\n\n{link}\n"
+    notebook.write("notes/lantern.md", page)
+
+    assert tidy(tmp_path) == {}
+
+    assert notebook.read("notes/lantern.md") == page
+    assert read_json(state_path(tmp_path, "tidy.json"), []) == []
+
+
+def test_tidy_preserves_above_root_link_with_matching_archive(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    page = "# Lantern\n\n[y](../../../outside.md)\n"
+    notebook.write("notes/lantern.md", page)
+    archived = state_path(tmp_path, "archived/outside.md")
+    archived.parent.mkdir(parents=True)
+    archived.write_text("# Outside\n", encoding="utf-8")
+
+    assert tidy(tmp_path) == {}
+
+    assert notebook.read("notes/lantern.md") == page
+    assert read_json(state_path(tmp_path, "tidy.json"), []) == []
 
 
 def test_lines_about_the_run_leave_pages_already_written(tmp_path):

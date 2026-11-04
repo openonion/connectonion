@@ -19,7 +19,8 @@ from contextlib import nullcontext
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .files import WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock, read_json, state_path, write_json
+from .files import (WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock, notebook_path,
+                    read_json, state_path, write_json)
 from .source import SESSION_SOURCE_PATTERN, parse_session_source, session_source
 
 LOG = "tidy.json"
@@ -86,6 +87,8 @@ def _dead_links(notebook: Notebook) -> list[dict]:
         def unlink(match):
             # A Markdown link is relative to the page's own folder.
             target = _normal(f"{Path(page).parent.as_posix()}/{match[2]}{match[3]}")
+            if not notebook_path(target):
+                return match[0]
             if (notebook.root / target).is_file() or not archive_path(notebook.root, target).is_file():
                 return match[0]
             actions.append({"action": "unlinked archived page", "page": page, "target": target})
@@ -118,7 +121,7 @@ def _link_people(notebook: Notebook, state: dict) -> list[dict]:
 def _normal(path: str) -> str:
     parts = []
     for part in path.split("/"):
-        if part == "..":
+        if part == ".." and parts and parts[-1] != "..":
             parts = parts[:-1]
         elif part not in ("", "."):
             parts.append(part)
