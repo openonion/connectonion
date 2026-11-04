@@ -51,7 +51,14 @@ def test_init_rem_records_consent_only_after_yes(rem_setup, monkeypatch, capsys,
     assert (root / ".state/consent.json").exists() == (answer == "y")
     assert installed.call_count == (1 if answer == "y" else 0)
     output = capsys.readouterr().out
-    assert "Read these sources with this model and schedule?" in output
+    before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
+    assert question
+    summary = before.split("co rem start — source access and schedule")[1]
+    assert len(summary.splitlines()) <= 25
+    assert "gmail: waiting for co auth google" in summary
+    assert "whatsapp: not subscribed" in summary
+    assert "Permissions:" in summary and "Daily cap:" in summary
+    assert "Input chars per batch" not in summary and "/inbox/whatsapp" not in summary
     assert "co rem start" in output and "co rem status" in output
     if answer == "n":
         assert "Next: co rem init" in output

@@ -367,8 +367,33 @@ def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     result = invoke(root, "start")
     assert result.exit_code == 1
-    assert "--yes" in result.output and str(sessions) in result.output
+    assert "--yes" in result.output
+    summary = result.output.split("A noninteractive run")[0]
+    assert "codex sessions: 0 found, will be read" in summary
+    assert "gmail: waiting for co auth google" in summary
+    assert "whatsapp: not subscribed" in summary
+    assert len(summary.splitlines()) <= 25
+    assert "Input chars per batch" not in summary
+    assert "/inbox/whatsapp" not in summary and str(sessions) not in summary
     assert not (root / ".state" / "consent.json").exists()
+
+
+def test_start_consent_question_stays_on_the_same_screen(lifecycle, monkeypatch):
+    root, sessions, calls = lifecycle
+    # Typer may provide its own streams instead of Click's; use the runner's
+    # actual stdin type so the command takes the interactive path in either.
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), "isatty", lambda self: True)
+        result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
+    assert result.exit_code == 1, result.output
+    output = Text.from_ansi(result.output).plain
+    before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
+    assert question, output
+    assert len(before.splitlines()) <= 25
+    assert f"Details: co rem --root {root} config" in before
+    assert f"Stop: co rem --root {root} stop" in before
+    assert "Input chars per batch" not in before and "/inbox/whatsapp" not in before
+    assert not (root / ".state" / "consent.json").exists() and calls == []
 
 
 def test_start_yes_then_stop(lifecycle):
@@ -380,6 +405,18 @@ def test_start_yes_then_stop(lifecycle):
     stopped = invoke(root, "stop")
     assert stopped.exit_code == 0, stopped.output
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
+
+
+def test_consent_details_stay_available_in_config_and_json(lifecycle):
+    root, sessions, calls = lifecycle
+    human = invoke(root, "config")
+    structured = invoke(root, "--json", "config")
+    assert human.exit_code == structured.exit_code == 0
+    assert "Input chars per batch:" in human.output
+    assert "Depth slot minutes:" in human.output
+    config = json.loads(structured.stdout)["data"]["config"]
+    assert config["limits"]["input_chars_per_batch"] == 200000
+    assert config["limits"]["depth_slot_minutes"] == 60
 
 
 def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):

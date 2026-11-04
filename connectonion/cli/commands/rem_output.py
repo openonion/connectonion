@@ -307,10 +307,49 @@ def _investigation_text(value: dict, failed: bool) -> str:
     return '\n'.join(lines)
 
 
+def _consent_source(name: str, source: dict) -> str:
+    """Describe source access without paths, timestamps or source bodies."""
+    from ...rem.source import KINDS, source_files
+    state = source['state']
+    label = name + ' sessions' if name in KINDS else name
+    if state == 'unsubscribed':
+        state = 'not subscribed'
+    elif state.startswith('connected; read from now on if you approve'):
+        state = 'connected; will be read if approved (automated senders skipped)'
+    elif name in KINDS and state == 'will be read':
+        count = len(source_files({'kind': name, 'root': source['root']}))
+        state = f'{count} found, will be read'
+    scope = f" (project: {source['project']})" if source.get('project') else ''
+    return f'  {label}: {state}{scope}'
+
+
+def _consent_text(value: dict) -> str:
+    """Keep the approval decision on screen; config and JSON retain the details."""
+    route = value['model_receives'].partition(', through ')[2]
+    route = route.replace('(no API key, no OpenOnion server)', '(no API key)')
+    permissions = value['model_permissions'].replace('Investigation and init use ', 'Init/research: ')
+    permissions = permissions.replace(' for local repository and mail archive research; other stages use ',
+                                      '; other stages: ')
+    schedule, limits = value['schedule'], value['limits']
+    background = 'Codex Scheduled/launchd' if value['runner'] == 'codex' else 'launchd on macOS'
+    lines = ['co rem start — source access and schedule', '', 'Sources:',
+             *(_consent_source(name, source) for name, source in value['sources'].items()),
+             f"Model: {value['runner']} · {value['model']} · through {route}",
+             f'Permissions: {permissions}',
+             f"Schedule: {', '.join(schedule['times'])} ({schedule['timezone']})",
+             f"Daily cap: {limits['runner_calls_per_day']} runner calls/day; "
+             f"stop at {limits['quota_floor_percent']}% weekly quota used",
+             f'Background: {background}; keep computer awake. Stop: co rem stop',
+             'Details: co rem config']
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
+    elif command == 'start — source access and schedule' and isinstance(value, dict):
+        text = _consent_text(value)
     elif command == 'init' and isinstance(value, dict):
         text = _init_text(value, failed)
     elif command == 'investigate' and isinstance(value, dict) and 'pages' in value and 'category' in value:

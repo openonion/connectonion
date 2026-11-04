@@ -1147,6 +1147,12 @@ def test_the_consent_summary_says_which_tools_unattended_investigations_can_use(
     summary = consent_summary(tmp_path)
     assert flag in summary["model_permissions"] and "local repository" in summary["model_permissions"]
     assert "co rem stop" in summary["background"]
+    from connectonion.cli.commands.rem_output import render
+    text = render(summary, "start — source access and schedule")
+    assert flag in next(line for line in text.splitlines() if line.startswith("Permissions:"))
+    assert "co rem stop" in next(line for line in text.splitlines() if line.startswith("Background:"))
+    assert len(text.splitlines()) <= 25
+    assert "Input chars per batch" not in text and "/inbox/whatsapp" not in text
 
 
 def test_a_batch_that_wrote_its_pages_before_failing_is_not_run_and_paid_for_again(rem):
@@ -1239,10 +1245,15 @@ def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, 
     from connectonion.rem.service import consent_summary
     prepare(tmp_path)
     set_config(tmp_path, ["runner", runner])
-    receives = consent_summary(tmp_path)["model_receives"]
+    summary = consent_summary(tmp_path)
+    receives = summary["model_receives"]
     assert f"your own {login} login" in receives
     other = "Claude Code" if login == "Codex" else "Codex"
     assert other not in receives
+    from connectonion.cli.commands.rem_output import render
+    model = next(line for line in render(summary, "start — source access and schedule").splitlines()
+                 if line.startswith("Model:"))
+    assert model == f"Model: {runner} · {summary['model']} · through your own {login} login (no API key)"
 
 
 def test_a_spent_day_serves_the_slot_instead_of_retrying_it_every_tick(tmp_path, monkeypatch):
