@@ -65,6 +65,26 @@ class TestBundledSkills:
 
 class TestSkillsLink:
 
+    def test_link_missing_never_replaces_a_user_directory(self, targets, tmp_path, monkeypatch, capsys):
+        bundled = tmp_path / "bundled"
+        source = bundled / "silver-fox"
+        source.mkdir(parents=True)
+        (source / "SKILL.md").write_text("Bundled instructions", encoding="utf-8")
+        monkeypatch.setattr(skills_commands, "BUNDLED_SKILLS", bundled)
+        mine = targets[0] / "silver-fox"
+        mine.mkdir(parents=True)
+        (mine / "SKILL.md").write_text("My own instructions", encoding="utf-8")
+        inode = mine.stat().st_ino
+
+        assert skills_commands.link_missing() == ["silver-fox"]
+
+        assert mine.is_dir() and not mine.is_symlink()
+        assert mine.stat().st_ino == inode
+        assert (mine / "SKILL.md").read_text(encoding="utf-8") == "My own instructions"
+        assert (targets[1] / "silver-fox" / "SKILL.md").read_text(encoding="utf-8") == "Bundled instructions"
+        assert skills_commands.link_missing() == []
+        assert capsys.readouterr().out == ""
+
     def test_links_every_skill_into_every_target(self, targets):
         handle_skills_link()
 
