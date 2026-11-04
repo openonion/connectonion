@@ -1851,7 +1851,8 @@ def make_rem_app(factory):
             except json.JSONDecodeError as error:
                 raise RemError("--usage-json must be a JSON object of measured token totals") from error
             value = submit(root, task_id, usage=usage)
-            return value, ["next"], value["outcome"] == "refused"
+            refused = value["outcome"] == "refused"
+            return value, ["submit", task_id] if refused else ["next"], refused
         _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
 
     @rem.command("sync", cls=V("co rem sync"))

@@ -524,8 +524,10 @@ Example:  co rem next --scheduled
           --json        machine-readable task with instructions, material and output paths
 
 Effects:  Collects due material once, reserves a call and releases the notebook
-          lock. Does no model work. Pending tasks older than one day are listed
-          and discarded with a log record. Quota and daily caps still apply.
+          lock. Does no model work. Claims the task; a second next shows its claim
+          time. Use --discard to take it over. Uncommitted pending tasks older
+          than one day are discarded with a log record; interrupted promotions
+          recover first. Quota and daily caps still apply.
 Requires: co rem start (saved source approval).
 Next:     Run the exact submit command printed with the task.
 Back:     co rem --help

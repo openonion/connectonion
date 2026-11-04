@@ -1499,11 +1499,10 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
     metrics = task["metrics"]
     def changed():
         if candidate:
-            # The candidate can replace only this one page. Another
-            # investigation may finish concurrently on a different page;
-            # do not claim its edit or charge it to this run.
             return [record] if notebook.read(record) != before[record] else []
-        after = {r: notebook.read(r) for r in notebook.list()}
+        # Native preparation has an empty output notebook, not a canonical copy.
+        working = Notebook(task_root) if native else notebook
+        after = {r: working.read(r) for r in working.list()}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
     # An untouched copy the model says needs no change is no change, not a page to review.

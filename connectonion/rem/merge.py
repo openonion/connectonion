@@ -178,31 +178,52 @@ def _note(page: str, old: str) -> str:
     return page
 
 
-def merge_into(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
-    """Fold page `old` into page `kept`; returns what happened. Caller holds the lock."""
-    root = notebook.root
+def prepare_merge(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
+    """Fix every postimage before the first write so a native merge can resume."""
     theirs, ours = notebook.read(old), notebook.read(kept)
     page, added = _merged(ours, theirs)
     page = _one_line_per_fact(page)
-    if added:  # the status line says where written lines came from; a copy of map output is not news
+    if added:
         page = _note(page, old)
-    if page != ours:
-        notebook.write(kept, page)
+    table = aliases(notebook.root)
+    for entry in table.values():
+        if entry["into"] == old:
+            entry["into"] = kept
+    table[old] = {"into": kept, "reason": reason, "date": date.today().isoformat(),
+                  "archived": f".state/archived/{old}"}
+    relinked = {}
+    for record in notebook.list():
+        if record == old:
+            continue
+        text = page if record == kept else notebook.read(record)
+        updated = _relinked_text(record, text, old, kept)
+        if updated != text:
+            relinked[record] = updated
+    return {"kept": kept, "old": old, "page": page, "aliases": table,
+            "relinked": relinked, "reason": reason, "lines_merged": added}
+
+
+def promote_merge(notebook: Notebook, plan: dict) -> dict:
+    root, kept, old = notebook.root, plan["kept"], plan["old"]
+    if not notebook.exists(kept) or notebook.read(kept) != plan["page"]:
+        notebook.write(kept, plan["page"])
     if old.startswith("projects/"):
         from .project_material import adopt
         adopt(root, old, kept)
     target = root / ".state" / "archived" / old
     target.parent.mkdir(parents=True, exist_ok=True)
-    notebook.path(old).replace(target)
-    table = aliases(root)
-    for entry in table.values():  # a page merged before into `old` now leads to `kept`
-        if entry["into"] == old:
-            entry["into"] = kept
-    table[old] = {"into": kept, "reason": reason, "date": date.today().isoformat(),
-                  "archived": f".state/archived/{old}"}
-    write_json(state_path(root, ALIASES), table)
-    relinked = _relink(notebook, old, kept)
-    return {"from": old, "into": kept, "reason": reason, "lines_merged": added, "relinked": relinked}
+    if notebook.path(old).is_file():
+        notebook.path(old).replace(target)
+    write_json(state_path(root, ALIASES), plan["aliases"])
+    for record, text in plan["relinked"].items():
+        notebook.write(record, text)
+    return {"from": old, "into": kept, "reason": plan["reason"],
+            "lines_merged": plan["lines_merged"], "relinked": list(plan["relinked"])}
+
+
+def merge_into(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
+    """Fold page `old` into page `kept`; caller holds the lock."""
+    return promote_merge(notebook, prepare_merge(notebook, kept, old, reason))
 
 
 FACT = re.compile(r"^- ([^:\n]+): (.*)$")
@@ -243,17 +264,20 @@ def _values(text: str) -> list[str]:
     return values
 
 
-def _relink(notebook: Notebook, old: str, new: str) -> list[str]:
-    """Links naming the old record, in any page, now name the page it went into."""
-    changed = []
+def _relinked_text(record: str, text: str, old: str, new: str) -> str:
     pattern = re.compile(r"(\]\((?:\.\./)*|\]\(\./)" + re.escape(old) + r"\)")
     same_dir = re.compile(r"\]\(\./" + re.escape(Path(old).name) + r"\)")
+    updated = pattern.sub(lambda m: m[1] + new + ")", text)
+    if Path(record).parent == Path(old).parent and Path(new).parent == Path(old).parent:
+        updated = same_dir.sub(f"](./{Path(new).name})", updated)
+    return updated
+
+
+def _relink(notebook: Notebook, old: str, new: str) -> list[str]:
+    changed = []
     for record in notebook.list():
         text = notebook.read(record)
-        updated = pattern.sub(lambda m: m[1] + new + ")", text)
-        if str(Path(record).parent) == str(Path(old).parent):
-            if Path(new).parent == Path(old).parent:
-                updated = same_dir.sub(f"](./{Path(new).name})", updated)
+        updated = _relinked_text(record, text, old, new)
         if updated != text:
             notebook.write(record, updated)
             changed.append(record)

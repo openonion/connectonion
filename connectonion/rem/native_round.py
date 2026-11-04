@@ -1,5 +1,7 @@
 """The persisted daily phase cursor. Evidence is collected once, never replayed."""
 
+import hashlib
+import json
 from pathlib import Path
 
 from . import daily, extract, investigate, project_pages, runner, service, sessions, translate
@@ -102,6 +104,8 @@ def prepare_task(root, cursor, config, directory):
         task = sessions.prepare(root, rows, config, directory=directory)
         task["prompt"] += f"\nWrite the requested JSON to {task['candidate']}."
         task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
+        files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
+        task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
         return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
@@ -188,6 +192,7 @@ def _retry_task(root, cursor, config, directory, job):
     task = runner.prepare(Notebook(root), [page, *prepared["material"]], config,
                           prepared["kind"] if prepared["kind"] in service.READABLE else "",
                           directory=directory, native=True)
+    prepared["progress_before"] = read_json(state_path(root, "progress.json"), {})
     task["retry"] = prepared
     return _task("runner", task, cursor, stage="maintain", record=job["record"], operation="retry")
 
@@ -269,8 +274,9 @@ def check_task(root, task, output):
         return extract.check(prepared, output)
     if handler == "sessions":
         result = sessions.check(prepared, output)
-        result["changed"] = sessions._save_summaries(root, result["summaries"], read_config(root))
-        return result
+        plan = sessions.prepare_summaries(root, result["summaries"], read_config(root))
+        result["changed"] = [entry["snapshot"]["record"] for entry in plan["entries"]]
+        return _commit(root, task, plan, result)
     if handler == "inquiry":
         from . import inquiry
         return {"value": inquiry.check(prepared, output)}
@@ -279,7 +285,8 @@ def check_task(root, task, output):
         return {}
     if handler == "same-person":
         from . import same_person
-        return same_person.check(prepared, output, lock_held=True)
+        plan = same_person.prepare_verdict(prepared, output)
+        return _commit(root, task, plan, plan["result"])
     if task.get("pass") == "editing":
         before = prepared["before"][task["record"]]
         candidate = Path(prepared["candidate"])
@@ -300,6 +307,68 @@ def check_task(root, task, output):
     changed = [record] if record and Notebook(root).read(record) != prepared["before"][record] else []
     return {"changed": changed, "report": output["result"],
             "review_candidates": read_json(Path(task["directory"]) / "review-candidates.json", [])}
+
+
+def _json_text(value):
+    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+
+
+def _summary_outputs(root, plan):
+    from .project_material import SECRET_SHAPES, REDACTED
+    outputs = {state_path(root, "session-tags.json"): [_json_text(plan["tags"])]}
+    for entry in plan["entries"]:
+        saved, snapshot = entry["saved"], entry["snapshot"]
+        outputs[sessions.summary_path(root, saved["key"])] = [_json_text(saved)]
+        outputs[Notebook(root).path(snapshot["record"])] = [entry["page"]]
+        for message in snapshot["messages"]:
+            source = message["source"]
+            path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+            outputs[path] = [_json_text({"source": source, "text": SECRET_SHAPES.sub(REDACTED, message["text"]),
+                "timestamp": message.get("timestamp") or "", "input_scope": message.get("input_scope") or ""})]
+    return outputs
+
+
+def _merge_outputs(root, plan):
+    from . import merge, same_person
+    outputs = {state_path(root, same_person.VERDICTS): [_json_text(plan["verdicts"])]}
+    if plan["merge"] is None:
+        return outputs
+    merged, book = plan["merge"], Notebook(root)
+    outputs.update({book.path(merged["kept"]): [merged["page"]], book.path(merged["old"]): [None],
+                    root / ".state/archived" / merged["old"]: [book.read(merged["old"])],
+                    state_path(root, merge.ALIASES): [_json_text(merged["aliases"])]})
+    for record, text in merged["relinked"].items():
+        outputs.setdefault(book.path(record), []).append(text)
+    return outputs
+
+
+def _commit(root, task, plan, result):
+    from .native import _hash
+    outputs = _summary_outputs(root, plan) if task["handler"] == "sessions" else _merge_outputs(root, plan)
+    files = {str(path): {"before": _hash(path),
+             "after": [hashlib.sha256(text.encode()).hexdigest() if text is not None else None for text in texts]}
+             for path, texts in outputs.items()}
+    write_json(Path(task["directory"]) / "commit.json",
+               {"handler": task["handler"], "plan": plan, "result": result, "files": files})
+    return recover_commit(root, task)
+
+
+def recover_commit(root, task):
+    from .native import _hash
+    receipt = read_json(Path(task["directory"]) / "commit.json", None)
+    if receipt is None:
+        return None
+    current = {path: _hash(Path(path)) for path in receipt["files"]}
+    if any(current[path] not in [state["before"], *state["after"]] for path, state in receipt["files"].items()):
+        raise RemError("Committed task output changed; preserve the current notebook. Run co rem next --discard")
+    if all(current[path] == state["after"][-1] for path, state in receipt["files"].items()):
+        return receipt["result"]
+    if receipt["handler"] == "sessions":
+        sessions.promote_summaries(root, receipt["plan"])
+    elif receipt["handler"] == "same-person":
+        from . import same_person
+        same_person.promote_verdict(root, receipt["plan"])
+    return receipt["result"]
 
 
 def _digest(cursor, notes):
@@ -330,54 +399,84 @@ def _finish_investigation(root, cursor):
     cursor["job_index"] += 1
 
 
+def _finish_feedback(root, progress, before, items, task, result):
+    from . import feedback
+    checkpoint = Path(task["directory"]) / "feedback-checkpoint.json"
+    applied = read_json(checkpoint, None)
+    current = read_json(state_path(root, "progress.json"), {})
+    if applied is not None and current == applied:
+        return applied
+    if current != before:
+        raise RemError("Source progress changed; preserve the current checkpoint and run co rem next --discard")
+    feedback.finish(root, progress, items, task["record"], result, checkpoint=checkpoint)
+    return read_json(state_path(root, "progress.json"), {})
+
+
+def _advance_batch(root, cursor, task, result):
+    batch = cursor["batch"]
+    if result.get("discarded"):
+        batch["abandoned"] = True
+        if task["handler"] == "extract":
+            batch["done"] = True
+    elif batch["selected_feedback"] and task["record"]:
+        batch["updated"] = _finish_feedback(root, batch["updated"], batch["progress_before"],
+                                            batch["selected_feedback"], task, result)
+        batch["progress_before"] = batch["updated"]
+    if task["handler"] == "extract" and not result.get("discarded"):
+        _digest(cursor, result["notes"])
+    else:
+        cursor["batch_index"] += 1
+
+
+def _advance_retry(root, cursor, task, result):
+    if not result.get("discarded"):
+        from .refusals import forget_refusal
+        retry = task["task"]["retry"]
+        if retry["managed"]:
+            _finish_feedback(root, retry["progress"], retry["progress_before"], retry["material"], task, result)
+        forget_refusal(root, task["record"])
+    cursor["job_index"] += 1
+
+
+def _advance_investigation(cursor, task, result):
+    state = cursor["current"]
+    if result.get("discarded"):
+        from .refusals import material_sources
+        if state["number"] <= len(state["parts"]):
+            state["refused_sources"] += material_sources(state["parts"][state["number"] - 1])
+        state["refused_rounds"].append(result["discarded"])
+    investigate.check_round(state, result)
+    state["inquiry"] = "plan"
+    state.pop("findings_path", None)
+    if task.get("pass") in ("editing", "quotes"):
+        state["tail"] = "quotes" if task["pass"] == "editing" else "done"
+
+
+def _remember_maintenance(root, task, result):
+    if task["operation"] in ("batch", "retry") and task["record"] and not result.get("discarded") and not result.get("refused"):
+        from .leads import remember_no_change
+        remember_no_change(root, task["record"], task["record"] not in result.get("changed", []))
+
+
 def advance(root, cursor, task, result):
     from .reviews import ingest
     ingest(root, result.get("review_candidates", []))
     cursor["changed"] = sorted({*cursor["changed"], *result.get("changed", [])})
+    _remember_maintenance(root, task, result)
     operation = task["operation"]
     if operation == "batch":
-        batch = cursor["batch"]
-        if result.get("discarded"):
-            batch["abandoned"] = True
-            if task["handler"] == "extract":
-                batch["done"] = True
-        elif batch["selected_feedback"] and task["record"]:
-            if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
-                raise RemError("Source progress changed; preserve the current checkpoint and run co rem next --discard")
-            from . import feedback
-            feedback.finish(root, batch["updated"], batch["selected_feedback"], task["record"], result)
-            batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
-        if task["handler"] == "extract" and not result.get("discarded"):
-            _digest(cursor, result["notes"])
-        else:
-            cursor["batch_index"] += 1
+        _advance_batch(root, cursor, task, result)
     elif operation == "sessions":
         cursor["summaries"] = cursor["summaries"][1:]
     elif operation == "retry":
-        if not result.get("discarded"):
-            from . import feedback
-            from .refusals import forget_refusal
-            retry = task["task"]["retry"]
-            if retry["managed"]:
-                feedback.finish(root, retry["progress"], retry["material"], task["record"], result)
-            forget_refusal(root, task["record"])
-        cursor["job_index"] += 1
+        _advance_retry(root, cursor, task, result)
     elif operation == "inquiry":
         state = cursor["current"]
         stage = task["task"]["stage"]
         state["inquiry"] = "synthesize" if stage == "plan" else "render"
         state["plan_path" if stage == "plan" else "findings_path"] = task["candidate"]
     elif operation == "investigation":
-        state = cursor["current"]
-        if result.get("discarded"):
-            from .refusals import material_sources
-            state["refused_sources"] += material_sources(state["parts"][state["number"] - 1]) if state["number"] <= len(state["parts"]) else []
-            state["refused_rounds"].append(result["discarded"])
-        investigate.check_round(state, result)
-        state["inquiry"] = "plan"
-        state.pop("findings_path", None)
-        if task.get("pass") in ("editing", "quotes"):
-            state["tail"] = "quotes" if task["pass"] == "editing" else "done"
+        _advance_investigation(cursor, task, result)
     elif operation == "project":
         if result.get("discarded"):
             cursor["job_index"] += 1

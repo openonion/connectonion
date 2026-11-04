@@ -151,24 +151,35 @@ def prepare(root, pair, *, directory):
             "prompt": packet(root, pair) + f"\nWrite only the JSON answer to {output}."}
 
 
-def check(task, result, *, lock_held=False):
-    from contextlib import nullcontext
-    from .merge import merge_into, weight
+def prepare_verdict(task, result):
+    from .merge import prepare_merge, weight
     root, pair = Path(task["root"]), task["pair"]
     answer = _verdict(result)
     row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
+    notebook, merge = Notebook(root), None
+    if answer["same"] and all(notebook.path(record).is_file() for record in pair["pages"]):
+        kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
+        merge = prepare_merge(notebook, kept, old, "same person: " + answer["reason"][:200])
+        row["kept"] = kept
+    verdicts = read_json(state_path(root, VERDICTS), {})
+    verdicts["|".join(pair["pages"])] = {key: row[key] for key in ("why", "same", "address_role", "reason", "date") if key in row}
+    return {"merge": merge, "verdicts": verdicts,
+            "result": {**row, "changed": [row["kept"]] if row.get("kept") else []}}
+
+
+def promote_verdict(root, plan):
+    from .merge import promote_merge
+    if plan["merge"]:
+        promote_merge(Notebook(root), plan["merge"])
+    write_json(state_path(root, VERDICTS), plan["verdicts"])
+    return plan["result"]
+
+
+def check(task, result, *, lock_held=False):
+    from contextlib import nullcontext
+    root = Path(task["root"])
     with nullcontext() if lock_held else maintenance_lock(root):
-        notebook = Notebook(root)
-        if answer["same"] and all(notebook.path(record).is_file() for record in pair["pages"]):
-            kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record),
-                               reverse=True)
-            merge_into(notebook, kept, old, "same person: " + answer["reason"][:200])
-            row["kept"] = kept
-        verdicts = read_json(state_path(root, VERDICTS), {})
-        verdicts["|".join(pair["pages"])] = {key: row[key] for key in ("why", "same", "address_role", "reason",
-                                                                     "date") if key in row}
-        write_json(state_path(root, VERDICTS), verdicts)
-    return {**row, "changed": [row["kept"]] if row.get("kept") else []}
+        return promote_verdict(root, prepare_verdict(task, result))
 
 
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
