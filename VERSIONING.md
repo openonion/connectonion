@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc37
+## Current Version: 1.9.3rc38
+
+Global `co init` now sets REM up itself: it offers `co auth google` or `co auth microsoft`
+when no mailbox is connected, asks once before reading sources, installs upkeep and names
+the scheduler, then runs the first notebook build after a `Build the first map now? [Y/n]`
+pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it
+(#2755, closing items 5, 7 and 9 of #2752). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc38.md).
+
+- 1.9.3rc38 (co init sets up REM; estimate pause).
+
+### Previous candidate: 1.9.3rc37
 
 `co host` becomes `agent.py` on macOS and Linux instead of starting it as a child, so
 `kill`, SIGHUP or a closed terminal stop the agent and free its port; before, an orphaned
