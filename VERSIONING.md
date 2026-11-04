@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc38
+## Current Version: 1.9.3rc39
+
+REM: the native Codex Scheduled session does the work itself through `co rem next`
+and `co rem submit`; no more Codex sessions started from inside a Codex session, and
+the round continues across sessions through a persisted cursor (#2749, #2756). A
+scheduler error at the end of `co init` is one line with a `Next:`, and when Codex
+does not register the task, launchd keeps the clock (#2758, #2759). Stable remains
+1.9.2. See [candidate notes](docs/releases/1.9.3rc39.md).
+
+- 1.9.3rc39 (native next/submit; co init scheduler fallback).
+
+### Previous candidate: 1.9.3rc38
 
 Global `co init` now sets REM up itself: it offers `co auth google` or `co auth microsoft`
 when no mailbox is connected, asks once before reading sources, installs upkeep and names
