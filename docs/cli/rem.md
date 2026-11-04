@@ -1,6 +1,6 @@
 # co rem — command guide
 
-**Start in one command:** `co rem init` maps the last 180 days and investigates
+**Start with `co init`.** It runs the same first notebook build as `co rem init`, which maps the last 180 days and investigates
 every eligible page. Run `co rem status` to see coverage and `co rem open` to
 read it. A refused page stays visible in the run history with its retry command.
 
@@ -58,12 +58,27 @@ instead of summarising is
 ## Start here
 
 ```bash
+co init                     # Approve sources and upkeep, then build the first notebook
+co rem status               # Check notebook coverage and upkeep
 co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
 co rem start                # Reapprove changed sources or resume a stopped daily round
 ```
 
-The first run is one command (#1943). `init` first maps 180 days of
+Global `co init` offers mailbox login, asks once for source/model/schedule consent,
+installs Codex Scheduled task or launchd upkeep on macOS and builds the first
+notebook in the foreground. Both init commands pause after the total estimate,
+before model spending: `Build the first map now? [Y/n]`. Enter builds; `n` keeps
+installed upkeep and prints `co rem init` to continue. The final summary reports
+mapped and written pages and names the scheduler; read with `co rem open`.
+`co rem init` skips this pause without a terminal or with its `--yes` flag.
+Global `co init --yes` or non-tty setup creates storage only, with no source
+reads, consent or scheduler; connect later with `co auth google` or
+`co auth microsoft`, then `co rem init`. `co init --no-rem` skips REM, rerunning
+init leaves existing REM unchanged, `--background` uses this same REM step,
+and project setup (`co init ./`) does not initialize REM.
+
+The full first run is one command (#1943). `co rem init` first maps 180 days of
 mail and your local Codex / Claude Code sessions, saves the private mail
 material, and prints your own page's facts — who you write to most, how much
 mail, which projects you have been coding in — with the page's path, within the

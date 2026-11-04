@@ -862,7 +862,7 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     """Use the same visible source and schedule approval in init and start."""
     import sys
 
-    if ctx.obj["json"]:
+    if ctx is not None and ctx.obj["json"]:
         return yes
     message = render(summary, "start — source access and schedule")
     if yes:
@@ -877,6 +877,69 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     return typer.confirm("Read these sources with this model and schedule?", default=False)
 
 
+def _mailbox_commands() -> None:
+    typer.echo("co auth google     Connect Gmail")
+    typer.echo("co auth microsoft  Connect Outlook")
+
+
+def _offer_mailbox() -> None:
+    """Connect a mailbox on request before showing which sources consent covers."""
+    from click import Choice
+    from ...rem.service import MAIL_KINDS, mail_available
+    from .auth_commands import handle_google_auth, handle_microsoft_auth
+    if any(mail_available(kind) for kind in MAIL_KINDS):
+        return
+    _mailbox_commands()
+    provider = typer.prompt("Connect a mailbox now", default="skip",
+                            type=Choice(["google", "microsoft", "skip"]))
+    if provider == "google":
+        handle_google_auth()
+    if provider == "microsoft":
+        handle_microsoft_auth()
+
+
+def _scheduler_name(result: dict) -> str:
+    scheduler = result.get("scheduler", "none")
+    return {"codex-native": "Codex Scheduled task", "launchd": "launchd"}.get(scheduler, scheduler)
+
+
+def init_global_rem(*, yes: bool = False) -> None:
+    """Approve upkeep and build the first notebook in the foreground."""
+    from ...rem.config import prepare
+    from ...rem.files import maintenance_lock
+    from ...rem.schedule import Unsupported, default_root, default_scheduler
+    from ...rem.service import ensure_consent, start
+    root = default_root()
+    if (root / "config.yaml").is_file():
+        typer.echo("REM is already initialized. Watch: co rem status")
+        return
+    with maintenance_lock(root):
+        prepare(root)
+    if yes or not sys.stdin.isatty():
+        _mailbox_commands()
+        typer.echo("REM storage created; sources unread and scheduling off. Next: co rem init to review consent and build. Upkeep: co rem start. Watch: co rem status")
+        return
+    _offer_mailbox()
+    confirm = lambda summary: _start_consent(None, summary, yes=False)
+    if not ensure_consent(root, confirm=confirm):
+        typer.echo("REM storage created; consent declined and scheduling off. Next: co rem init when ready to build. Upkeep: co rem start. Watch: co rem status")
+        return
+    scheduler = default_scheduler(root, for_start=True)
+    if isinstance(scheduler, Unsupported):
+        typer.echo("REM prepared; no scheduler available on this platform. Next: co rem init to build manually. Upkeep: co rem start on macOS. Watch: co rem status")
+        return
+    typer.echo("Installing REM upkeep. Resume setup with co rem start.")
+    result = start(root, confirm=confirm, scheduler=scheduler, run_first_batch=False,
+                   history_progress=_history_progress)
+    from click import Command
+    ctx = typer.Context(Command("init"), info_name="init",
+                        obj={"root": root, "default_root": True, "json": False})
+    built = init_rem_flow(ctx)
+    summary = _init_done(ctx, built).strip().replace("\n", " ")
+    next_step = "co rem init" if built.get("build_deferred") else "co rem open"
+    typer.echo(f"REM ready; {summary} Scheduler installed: {_scheduler_name(result)}. Next: {next_step}. Watch: co rem status")
+
+
 def _people_table(ctx, root, category, *, company, open_only, sort):
     """`co rem list people --table`: rows from the index (#2067), most recent contact first."""
     from ...rem.files import RemError
@@ -889,6 +952,374 @@ def _people_table(ctx, root, category, *, company, open_only, sort):
     rows = people_table(root, company=company, open_only=open_only, sort=sort,
                         descending=sort in ("last_contact", "first_contact", "mails", "open_threads"))
     return rows, (["show", rows[0]["record"]] if rows else ["list", "people"])
+
+
+def _init_session_summary(root, result, progress, *, problem, estimate_only):
+    """Keep session model turns behind the first-run estimate confirmation."""
+    if problem or estimate_only:
+        return
+    from ...rem.sessions import summarise_line, summarise_sessions
+    result["sessions_summary"] = summarise_sessions(root, limit=40)
+    progress(summarise_line(result["sessions_summary"]))
+    progress.close()
+
+
+def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="",
+                  languages=None, no_translate=False, archive_mail=True, write_mine=None,
+                  all_history=False, investigate_all=False, estimate_only=False,
+                  start_background=True, yes=False, first_people=None, first_projects=None,
+                  first_orgs=None, first_skills=None):
+    """Build the first notebook in-process for both global setup and co rem init."""
+    from ...rem.config import prepare, read_config, set_config
+    from ...rem.languages import native_name, owner_languages
+    from ...rem.files import Notebook, state_path
+    from ...rem.map import build_map, owner_summary
+    from ...rem import runner as rem_runner
+    from ...rem.service import ensure_consent, mail_available, mail_client, subscribe_read_mail, subscriptions
+    from ...rem.source import KINDS
+    from .rem_output import StageProgress
+    all_history = all_history or investigate_all
+    # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
+    owned = [part.strip() for value in mine for part in value.split(",") if part.strip()]
+    run_state = {}
+
+    def run(root):
+        prepare(root)
+        if languages is not None:
+            set_config(root, ["languages", languages])
+        # Before the ten-minute map, not after it: a missing or signed-out
+        # runner used to surface only when the first model turn failed.
+        config = read_config(root)
+        problem, fix = rem_runner.ready(config)
+        window = [] if days == MAP_DAYS else ["--days", str(days)]
+        init_window = [*window, *(["--all-history"] if all_history else [])]
+        map_days = 36500 if all_history else days
+        from ...rem.files import RemError
+        selected = set(mail)
+        if selected - {"gmail", "outlook"}:
+            raise RemError("--mail must be gmail or outlook")
+        sources = subscriptions(root)
+        available = {kind for kind in ("gmail", "outlook") if mail_available(kind)}
+        if not mail:
+            # A mailbox the user explicitly unsubscribed stays out, the same
+            # rule investigate follows; anything else authorized is mapped.
+            selected.update(kind for kind in available
+                            if not sources.get(kind, {}).get("unsubscribed"))
+            selected.update(sub["kind"] for sub in sources.values()
+                            if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
+        subscribe_read_mail(root, selected)
+        run_state["consented"] = ensure_consent(
+            root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes))
+        sources = subscriptions(root)
+        clients, errors = {}, []
+        for kind in sorted(selected):
+            try:
+                clients[kind] = mail_client(kind)
+            except Exception as error:
+                errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
+        failed = {row["source"]: row["error"] for row in errors}
+        # One line per stage on the terminal; every step in the log (#1943).
+        progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
+        try:
+            result = build_map(root, sources, clients, days=map_days, all_history=all_history,
+                               skill_directories=skills_dir or None, mine=owned, source_errors=errors,
+                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
+                               capture_sources=True, progress=progress, session_days=days)
+            run_state["result"] = result
+            if not estimate_only:
+                from ...rem.sessions import import_sessions
+                result["sessions"] = import_sessions(root, days=days, consented_only=True,
+                                                     sessions=getattr(result, "sessions", None))
+            if archive_mail and not estimate_only and result.get("source_inventory"):
+                from ...rem.files import read_json, write_json
+                from ...rem.mail_archive import archive_init
+                previous = read_json(state_path(root, "mail/archive.json"), {})
+                incomplete_scan = any(row.get("source") in ("gmail", "outlook")
+                                      for row in result.get("errors", []))
+                if previous and (not clients or incomplete_scan):
+                    body_report = {"phase": "previous_preserved", "started": previous.get("started"),
+                                   "target": previous.get("target", 0),
+                                   "reason": "Current mail enumeration unavailable; previous private archive retained"}
+                else:
+                    body_report = archive_init(root, result, clients, progress=progress,
+                                               archive_days=MAP_DAYS if all_history else None)
+                result["mail_archive"] = body_report
+                write_json(state_path(root, "map.json"), result)
+        finally:
+            progress.close()
+        unread = {row.get("source") for row in result.get("errors") or []}
+        subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
+        tips = []
+        waiting = [name for name, source in sources.items()
+                   if source.get("kind") in KINDS and source.get("enabled") and not source.get("consented")]
+        if waiting:
+            tips.append("Skipped " + ", ".join(waiting) + ": waiting for approval; not scanned. Approve with "
+                        + _next(ctx, ["init", *init_window, "--yes"]) + ".")
+        unsaved = (result.get("mail_archive") or {}).get("failed")
+        if unsaved:
+            # A cache miss, not a mailbox problem: a real first run lost every
+            # page to one body that timed out of 1,880 (2026-10-01).
+            tips.append(f"{unsaved} mail bod{'y' if unsaved == 1 else 'ies'} could not be saved; the "
+                        "rest of the first run goes on, and the next init retries "
+                        f"{'it' if unsaved == 1 else 'them'}.")
+        for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
+            if kind not in available:
+                tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
+                            + _next(ctx, ["init", *init_window]) + ".")
+        if result.get("needs_review"):
+            tips.append(f"Held for review, not investigated or listed (no name, never replied): "
+                        f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
+        if tips:
+            result["tips"] = tips
+        candidates = result.get("possible_own_addresses") or []
+        if candidates:
+            # The owner is the only one who can answer this, so the question
+            # arrives with the command that answers it, spelled for the root
+            # they actually used. Asked once, in one place: the owner's first
+            # run ended with twelve questions and a command for each (#1943).
+            shown = candidates[:6]
+            more = len(candidates) - len(shown)
+            result["confirm_own_addresses"] = [
+                "Possibly yours too (you wrote, they never replied): "
+                + ", ".join(f"{row['address']} ({row['sent']} sent, none received)" for row in shown)
+                + (f", and {more} more in .state/map.json" if more else "")
+                + ".\nConfirm the ones that are yours in one run: "
+                + _next(ctx, ["init", *init_window, "--mine", ",".join(row["address"] for row in shown)])
+                + " (leave out an assistant's or a relative's; nothing is merged without --mine)."]
+        summary = owner_summary(Notebook(root), result) if result.get("owner") else None
+        if summary:
+            result["owner_page"] = summary
+        if not selected:
+            result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
+        result["languages"] = owner_languages(root)
+        language = next((tag for tag in result["languages"]["languages"]
+                         if tag.split("-")[0].lower() != "en"), "")
+        translation_skip = ("Skipped by --no-translate." if no_translate else
+                            "Skipped by --no-investigate." if write_mine is False else
+                            "Runner not ready: " + problem if problem else
+                            "English-only owner languages (or none detected)." if not language else "")
+        result["translation"] = {"started": False, "reason": translation_skip or
+                                 ("Estimate only; no translations started." if estimate_only else
+                                  "First run has not reached translation yet.")}
+        if result.get("errors"):
+            retry = ["init", *init_window]
+            if mail:
+                retry += [part for kind in mail for part in ("--mail", kind)]
+            result["recovery"] = ("Check mailbox access with co auth status; retry init after resolving access. "
+                                  "Completed maps and saved mail bodies are reused.")
+            if not estimate_only:
+                _emit(ctx, result, retry, failed=True)
+                raise typer.Exit(1)
+        result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
+                            **({"problem": problem, "fix": fix} if problem else {})}
+        retry_me = ["investigate", "me", *window]
+        reason = ("" if estimate_only else _first_page_skipped(
+            ctx, root, result, want=write_mine, problem=problem, fix=fix,
+            retry=retry_me, init=["init", *init_window]))
+        if not ctx.obj["json"]:
+            # The map's summary and your page's facts first: value before any spending.
+            text = render(result, "init")
+            typer.echo(err=True)   # the stage lines above are stderr; a gap, then the map
+            rem_look.say(rem_look.result(text), plain=text, hanging=True)
+            typer.echo()
+        say = ((lambda text: None) if ctx.obj["json"] else
+               lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
+        names = ", ".join(native_name(tag) for tag in result["languages"]["languages"]) or "not detected yet"
+        origin = ("set with co rem config set languages" if result["languages"]["from"].startswith("set")
+                  else "detected from your sent mail and typed sessions")
+        writing = "Pages are written in English" + (f" and translated into {native_name(language)}"
+                                                   if language and not translation_skip else "")
+        basis = f" ({origin})" if result["languages"]["languages"] else ""
+        say(f"Languages: {names}{basis}. {writing}. To change: "
+            + _next(ctx, ["config", "set", "languages", ",".join(result["languages"]["languages"])])
+            + " (current)" + (" — or `" + _next(ctx, ["config", "set", "languages", "en"])
+                              + "` for English only." if language else ""))
+        if translation_skip:
+            say("Translation: Runner not ready." if translation_skip.startswith("Runner not ready:")
+                else "Translation: " + translation_skip)
+        plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
+        from ...rem.files import RemError
+        skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
+        if reason:
+            result["investigate_me"] = {"started": False, "reason": reason}
+            say(reason)
+        if skipped and not estimate_only:
+            result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
+            result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
+            if skipped not in (reason or ""):  # said once: the owner-page line may already say why
+                say(result["project_pages"]["reason"])
+            if yes or not sys.stdin.isatty():
+                _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+        # One total before the first page (#2008): 1.9.0a5 said "~90k per
+        # project page, about a minute" and spent 614k-922k and 4-5 minutes
+        # each, on every project active in the window, with no total at all.
+        from ...rem import first_run
+        from .rem_people import counted
+        from ...rem.service import run_logs
+        people_rows = _first_people_rows(root, first_people, days)
+        project_rows = (_first_project_rows(root, first_projects, sessions=getattr(result, "sessions", None))
+                        if first_projects != 0 else [])
+        org_rows = _first_org_rows(root, first_orgs)
+        from ...rem.queue import order
+        skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
+        total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
+                               projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
+                               workers=config["limits"]["workers"],
+                               translation=language if not translation_skip else "")
+        result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
+                               "projects": [row["record"] for row in project_rows],
+                               "orgs": [row["path"] for row in org_rows],
+                               "skills": [row["path"] for row in skill_rows],
+                               "source_coverage": "incomplete" if result.get("errors") else "complete"}
+        me_days = days if window else 30  # what `investigate me` reads without --days
+        steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
+                 if not reason else [])
+        steps += ([f"{counted(len(people_rows), 'person', 'people')} "
+                   + ("(every mapped person; current source window per page)" if investigate_all else
+                      "(recent first; up to two years of evidence each)")]
+                  if people_rows else [])
+        steps += ([f"{counted(len(project_rows), 'project')}" +
+                   (" (every mapped project)" if investigate_all else " (recent first)")]
+                  if project_rows else [])
+        steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
+        steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
+        if not translation_skip:
+            steps.append(f"translation of the written pages into {native_name(language)}/{language}")
+        if not steps:
+            # No estimate to confirm, so a terminal spends nothing here; a --yes or
+            # non-tty run already agreed to the model work.
+            if yes or not sys.stdin.isatty():
+                _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+        cost = (f"First run with {config['runner']} ({config['model']}): "
+                + ", ".join(steps) + f"; up to {config['limits']['workers']} at a time.\n"
+                + "Estimate: " + first_run.announce(total, plan) + "\n"
+                + "Input estimate includes cached tokens; it is not weekly quota points.\n"
+                + "No REM page or weekly quota cap stops this first run; the selected queue "
+                "continues through failures. The model provider may still enforce its own limit.\n"
+                "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
+                "keeps the map and completed pages; --no-investigate skips model work.")
+        rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
+        if estimate_only:
+            result["estimate_only"] = True
+            state = ("Partial estimate: one or more sources failed; counts are a lower bound. "
+                     if result.get("errors") else "Estimate only: ")
+            say(state + "No model turn or mail body archive was started. The map and coverage are saved.")
+            return ((result if ctx.obj["json"] else _init_done(ctx, result)),
+                    ["init", *init_window], bool(result.get("errors")))
+        if (not yes and sys.stdin.isatty()
+                and not typer.confirm("Build the first map now?", default=True, err=ctx.obj["json"])):
+            result["build_deferred"] = True
+            say("First pages deferred. Continue with " + _next(ctx, ["init", *init_window]) + ".")
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window]
+        _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
+        if not problem:
+            say("Checking access to the selected model before the page queue…")
+            access_problem, access_fix = rem_runner.model_access(root, config)
+            if access_problem:
+                from datetime import datetime, timezone
+                from uuid import uuid4
+                from ...rem.files import write_json
+                stamp = datetime.now(timezone.utc).isoformat()
+                write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
+                    "started_at": stamp, "finished_at": stamp, "phase": "model access",
+                    "outcome": "failed", "error": access_problem[:300], "changed": [], "items": 0,
+                    "harness": config["runner"], "model": config["model"], "speed": config["speed"],
+                    "sources": []})
+                result["model_access"] = {"ready": False, "problem": access_problem, "fix": access_fix}
+                say(f"Model access failed: {access_problem}. Run {access_fix}, then retry init; "
+                    "the map and saved mail are retained.")
+                return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], True
+        gate = lambda: ""
+        if not reason:
+            try:
+                # Quick first, so your page is there in minutes; the whole page runs
+                # with the others (2026-10-01: the full pass alone was refused in two
+                # of seven real first runs and nearly empty in a third).
+                _investigate_me(root, days=days if window else None, quick=True)
+            except KeyboardInterrupt:
+                result.update(investigation="interrupted",
+                              investigate_me={"started": True, "outcome": "interrupted"})
+                _interrupted(ctx, retry_me, result)
+            except (RemError, rem_runner.RunFailed) as error:
+                # One page among the first run's: the others still go on (2026-10-01).
+                result.update(investigation="failed",
+                              investigate_me={"started": True, "outcome": "failed", "why": str(error)})
+                say(f"Your page was not written: {error} The rest of the first run goes on; "
+                    f"retry your page with {_next(ctx, retry_me)}.")
+            else:
+                record = summary["record"] if summary else result["owner"]["record"]
+                result.update(investigation="completed",
+                              investigate_me={"started": True, "outcome": "completed", "page": record})
+                say("Your page is written: " + str(Notebook(root).path(record)))
+        try:
+            result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
+                                       projects=project_rows, orgs=org_rows, skills=skill_rows,
+                                       me_days=days if window else None,
+                                       owner_full=result.get("investigation") == "completed"))
+        except KeyboardInterrupt:
+            result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
+            _interrupted(ctx, ["investigate", "all"], result)
+        for key in KEYS.values():
+            if result[key].get("reason"):
+                say(result[key]["reason"])
+        result["tidy"] = _first_tidy(root, say)
+        result["abstract"] = _first_abstract(root, config, say, result)
+        result["translation"] = _first_translation(root, config, say, language=language, reason=translation_skip)
+        if result.get("investigation") == "failed":
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
+        return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+    def run_and_start(root):
+        response = run(root)
+        value, next_step = response[:2]
+        result = run_state.get("result", {})
+        incomplete = any((result.get(key) or {}).get("left", 0) for key in KEYS.values())
+        failed = bool(response[2]) if len(response) > 2 else False
+        if incomplete and next_step == ["open"]:
+            failed_page = next((page for key in KEYS.values()
+                                for page in (result.get(key) or {}).get("pages", [])
+                                if page.get("outcome") != "accepted"), None)
+            next_step = (["investigate", failed_page["page"],
+                          *(["--retry-refused"] if failed_page["outcome"] == "refused" else [])]
+                         if failed_page else ["init"])
+        from ...rem.service import worker_state
+        scheduled = worker_state(root)
+        if scheduled.get("enabled"):
+            background = {**scheduled, "started": True}
+        elif estimate_only:
+            background = {"started": False, "reason": "Estimate only; no schedule installed."}
+        elif not start_background:
+            background = {"started": False, "reason": "Background upkeep left off by --no-start."}
+        elif failed or (write_mine is not False and
+                        (incomplete or (result.get("runner") or {}).get("problem"))):
+            background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
+        elif not run_state["consented"]:
+            background = {"started": False, "reason": "Background upkeep needs approval. Run "
+                          + _next(ctx, ["start", "--yes"]) + " after reviewing its summary."}
+        else:
+            from ...rem import schedule as rem_schedule
+            from ...rem.files import RemError
+            from ...rem.service import start
+            try:
+                background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
+                                   scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False,
+                                   history_progress=_history_progress)
+                if not background["started"]:
+                    background["reason"] = ("Background upkeep needs approval. Run "
+                                            + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
+            except RemError as error:
+                background = {"started": False, "reason": f"Background upkeep could not start: {error}"}
+        if isinstance(value, dict):
+            value["background"] = background
+        else:
+            detail = (f"Background upkeep: scheduled ({_scheduler_name(background)})." if background["started"] else
+                      "Background upkeep: " + background["reason"])
+            value += "\n" + detail
+        return (value, next_step, failed or incomplete)
+
+    _handle(ctx, run_and_start, ["sources"])
+    return run_state.get("result", {})
 
 
 def make_rem_app(factory):
@@ -952,349 +1383,12 @@ def make_rem_app(factory):
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
                   first_skills: Optional[int] = typer.Option(None, "--first-skills", min=0)):
-        from ...rem.config import prepare, read_config, set_config
-        from ...rem.languages import native_name, owner_languages
-        from ...rem.files import Notebook, state_path
-        from ...rem.map import build_map, owner_summary
-        from ...rem import runner as rem_runner
-        from ...rem.service import ensure_consent, mail_available, mail_client, subscribe_read_mail, subscriptions
-        from ...rem.source import KINDS
-        from .rem_output import StageProgress
-        all_history = all_history or investigate_all
-        # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
-        owned = [part.strip() for value in mine for part in value.split(",") if part.strip()]
-        run_state = {}
-
-        def run(root):
-            prepare(root)
-            if languages is not None:
-                set_config(root, ["languages", languages])
-            # Before the ten-minute map, not after it: a missing or signed-out
-            # runner used to surface only when the first model turn failed.
-            config = read_config(root)
-            problem, fix = rem_runner.ready(config)
-            window = [] if days == MAP_DAYS else ["--days", str(days)]
-            init_window = [*window, *(["--all-history"] if all_history else [])]
-            map_days = 36500 if all_history else days
-            from ...rem.files import RemError
-            selected = set(mail)
-            if selected - {"gmail", "outlook"}:
-                raise RemError("--mail must be gmail or outlook")
-            sources = subscriptions(root)
-            available = {kind for kind in ("gmail", "outlook") if mail_available(kind)}
-            if not mail:
-                # A mailbox the user explicitly unsubscribed stays out, the same
-                # rule investigate follows; anything else authorized is mapped.
-                selected.update(kind for kind in available
-                                if not sources.get(kind, {}).get("unsubscribed"))
-                selected.update(sub["kind"] for sub in sources.values()
-                                if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
-            subscribe_read_mail(root, selected)
-            run_state["consented"] = ensure_consent(
-                root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes))
-            sources = subscriptions(root)
-            clients, errors = {}, []
-            for kind in sorted(selected):
-                try:
-                    clients[kind] = mail_client(kind)
-                except Exception as error:
-                    errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
-            failed = {row["source"]: row["error"] for row in errors}
-            # One line per stage on the terminal; every step in the log (#1943).
-            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
-            summaries = None
-            try:
-                result = build_map(root, sources, clients, days=map_days, all_history=all_history,
-                                   skill_directories=skills_dir or None, mine=owned, source_errors=errors,
-                                   absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
-                                   capture_sources=True, progress=progress, session_days=days)
-                run_state["result"] = result
-                if not estimate_only:
-                    from ...rem.sessions import import_sessions, summarise_line, summarise_sessions
-                    result["sessions"] = import_sessions(root, days=days, consented_only=True,
-                                                         sessions=getattr(result, "sessions", None))
-                    if not rem_runner.ready(config)[0]:
-                        # Model turns and mail downloads both wait on servers: run them side by
-                        # side. In sequence they were 6 + 4 minutes of a fresh map (2026-10-21).
-                        from concurrent.futures import ThreadPoolExecutor
-                        summaries = ThreadPoolExecutor(max_workers=1).submit(
-                            summarise_sessions, root, limit=40, say=progress)
-                if archive_mail and not estimate_only and result.get("source_inventory"):
-                    from ...rem.files import read_json, write_json
-                    from ...rem.mail_archive import archive_init
-                    previous = read_json(state_path(root, "mail/archive.json"), {})
-                    incomplete_scan = any(row.get("source") in ("gmail", "outlook")
-                                          for row in result.get("errors", []))
-                    if previous and (not clients or incomplete_scan):
-                        body_report = {"phase": "previous_preserved", "started": previous.get("started"),
-                                       "target": previous.get("target", 0),
-                                       "reason": "Current mail enumeration unavailable; previous private archive retained"}
-                    else:
-                        body_report = archive_init(root, result, clients, progress=progress,
-                                                   archive_days=MAP_DAYS if all_history else None)
-                    result["mail_archive"] = body_report
-                    write_json(state_path(root, "map.json"), result)
-                if summaries is not None:
-                    result["sessions_summary"] = summaries.result()
-                    progress(summarise_line(result["sessions_summary"]))
-            finally:
-                progress.close()
-            unread = {row.get("source") for row in result.get("errors") or []}
-            subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
-            tips = []
-            waiting = [name for name, source in sources.items()
-                       if source.get("kind") in KINDS and source.get("enabled") and not source.get("consented")]
-            if waiting:
-                tips.append("Skipped " + ", ".join(waiting) + ": waiting for approval; not scanned. Approve with "
-                            + _next(ctx, ["init", *init_window, "--yes"]) + ".")
-            unsaved = (result.get("mail_archive") or {}).get("failed")
-            if unsaved:
-                # A cache miss, not a mailbox problem: a real first run lost every
-                # page to one body that timed out of 1,880 (2026-10-01).
-                tips.append(f"{unsaved} mail bod{'y' if unsaved == 1 else 'ies'} could not be saved; the "
-                            "rest of the first run goes on, and the next init retries "
-                            f"{'it' if unsaved == 1 else 'them'}.")
-            for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
-                if kind not in available:
-                    tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
-                                + _next(ctx, ["init", *init_window]) + ".")
-            if result.get("needs_review"):
-                tips.append(f"Held for review, not investigated or listed (no name, never replied): "
-                            f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
-            if tips:
-                result["tips"] = tips
-            candidates = result.get("possible_own_addresses") or []
-            if candidates:
-                # The owner is the only one who can answer this, so the question
-                # arrives with the command that answers it, spelled for the root
-                # they actually used. Asked once, in one place: the owner's first
-                # run ended with twelve questions and a command for each (#1943).
-                shown = candidates[:6]
-                more = len(candidates) - len(shown)
-                result["confirm_own_addresses"] = [
-                    "Possibly yours too (you wrote, they never replied): "
-                    + ", ".join(f"{row['address']} ({row['sent']} sent, none received)" for row in shown)
-                    + (f", and {more} more in .state/map.json" if more else "")
-                    + ".\nConfirm the ones that are yours in one run: "
-                    + _next(ctx, ["init", *init_window, "--mine", ",".join(row["address"] for row in shown)])
-                    + " (leave out an assistant's or a relative's; nothing is merged without --mine)."]
-            summary = owner_summary(Notebook(root), result) if result.get("owner") else None
-            if summary:
-                result["owner_page"] = summary
-            if not selected:
-                result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
-            result["languages"] = owner_languages(root)
-            language = next((tag for tag in result["languages"]["languages"]
-                             if tag.split("-")[0].lower() != "en"), "")
-            translation_skip = ("Skipped by --no-translate." if no_translate else
-                                "Skipped by --no-investigate." if write_mine is False else
-                                "Runner not ready: " + problem if problem else
-                                "English-only owner languages (or none detected)." if not language else "")
-            result["translation"] = {"started": False, "reason": translation_skip or
-                                     ("Estimate only; no translations started." if estimate_only else
-                                      "First run has not reached translation yet.")}
-            if result.get("errors"):
-                retry = ["init", *init_window]
-                if mail:
-                    retry += [part for kind in mail for part in ("--mail", kind)]
-                result["recovery"] = ("Check mailbox access with co auth status; retry init after resolving access. "
-                                      "Completed maps and saved mail bodies are reused.")
-                if not estimate_only:
-                    _emit(ctx, result, retry, failed=True)
-                    raise typer.Exit(1)
-            result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
-                                **({"problem": problem, "fix": fix} if problem else {})}
-            retry_me = ["investigate", "me", *window]
-            reason = ("" if estimate_only else _first_page_skipped(
-                ctx, root, result, want=write_mine, problem=problem, fix=fix,
-                retry=retry_me, init=["init", *init_window]))
-            if not ctx.obj["json"]:
-                # The map's summary and your page's facts first: value before any spending.
-                text = render(result, "init")
-                typer.echo(err=True)   # the stage lines above are stderr; a gap, then the map
-                rem_look.say(rem_look.result(text), plain=text, hanging=True)
-                typer.echo()
-            say = ((lambda text: None) if ctx.obj["json"] else
-                   lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
-            names = ", ".join(native_name(tag) for tag in result["languages"]["languages"]) or "not detected yet"
-            origin = ("set with co rem config set languages" if result["languages"]["from"].startswith("set")
-                      else "detected from your sent mail and typed sessions")
-            writing = "Pages are written in English" + (f" and translated into {native_name(language)}"
-                                                       if language and not translation_skip else "")
-            basis = f" ({origin})" if result["languages"]["languages"] else ""
-            say(f"Languages: {names}{basis}. {writing}. To change: "
-                + _next(ctx, ["config", "set", "languages", ",".join(result["languages"]["languages"])])
-                + " (current)" + (" — or `" + _next(ctx, ["config", "set", "languages", "en"])
-                                  + "` for English only." if language else ""))
-            if translation_skip:
-                say("Translation: Runner not ready." if translation_skip.startswith("Runner not ready:")
-                    else "Translation: " + translation_skip)
-            plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
-            from ...rem.files import RemError
-            skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
-            if reason:
-                result["investigate_me"] = {"started": False, "reason": reason}
-                say(reason)
-            if skipped and not estimate_only:
-                result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
-                result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
-                if skipped not in (reason or ""):  # said once: the owner-page line may already say why
-                    say(result["project_pages"]["reason"])
-                return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-            # One total before the first page (#2008): 1.9.0a5 said "~90k per
-            # project page, about a minute" and spent 614k-922k and 4-5 minutes
-            # each, on every project active in the window, with no total at all.
-            from ...rem import first_run
-            from .rem_people import counted
-            from ...rem.service import run_logs
-            people_rows = _first_people_rows(root, first_people, days)
-            project_rows = (_first_project_rows(root, first_projects, sessions=getattr(result, "sessions", None))
-                            if first_projects != 0 else [])
-            org_rows = _first_org_rows(root, first_orgs)
-            from ...rem.queue import order
-            skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
-            total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
-                                   projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
-                                   workers=config["limits"]["workers"],
-                                   translation=language if not translation_skip else "")
-            result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
-                                   "projects": [row["record"] for row in project_rows],
-                                   "orgs": [row["path"] for row in org_rows],
-                                   "skills": [row["path"] for row in skill_rows],
-                                   "source_coverage": "incomplete" if result.get("errors") else "complete"}
-            me_days = days if window else 30  # what `investigate me` reads without --days
-            steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
-                     if not reason else [])
-            steps += ([f"{counted(len(people_rows), 'person', 'people')} "
-                       + ("(every mapped person; current source window per page)" if investigate_all else
-                          "(recent first; up to two years of evidence each)")]
-                      if people_rows else [])
-            steps += ([f"{counted(len(project_rows), 'project')}" +
-                       (" (every mapped project)" if investigate_all else " (recent first)")]
-                      if project_rows else [])
-            steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
-            steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
-            if not translation_skip:
-                steps.append(f"translation of the written pages into {native_name(language)}/{language}")
-            if not steps:
-                return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-            cost = (f"First run with {config['runner']} ({config['model']}): "
-                    + ", ".join(steps) + f"; up to {config['limits']['workers']} at a time.\n"
-                    + "Estimate: " + first_run.announce(total, plan) + "\n"
-                    + "Input estimate includes cached tokens; it is not weekly quota points.\n"
-                    + "No REM page or weekly quota cap stops this first run; the selected queue "
-                    "continues through failures. The model provider may still enforce its own limit.\n"
-                    "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
-                    "keeps the map and completed pages; --no-investigate skips model work.")
-            rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
-            if estimate_only:
-                result["estimate_only"] = True
-                state = ("Partial estimate: one or more sources failed; counts are a lower bound. "
-                         if result.get("errors") else "Estimate only: ")
-                say(state + "No model turn or mail body archive was started. The map and coverage are saved.")
-                return ((result if ctx.obj["json"] else _init_done(ctx, result)),
-                        ["init", *init_window], bool(result.get("errors")))
-            if not problem:
-                say("Checking access to the selected model before the page queue…")
-                access_problem, access_fix = rem_runner.model_access(root, config)
-                if access_problem:
-                    from datetime import datetime, timezone
-                    from uuid import uuid4
-                    from ...rem.files import write_json
-                    stamp = datetime.now(timezone.utc).isoformat()
-                    write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
-                        "started_at": stamp, "finished_at": stamp, "phase": "model access",
-                        "outcome": "failed", "error": access_problem[:300], "changed": [], "items": 0,
-                        "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-                        "sources": []})
-                    result["model_access"] = {"ready": False, "problem": access_problem, "fix": access_fix}
-                    say(f"Model access failed: {access_problem}. Run {access_fix}, then retry init; "
-                        "the map and saved mail are retained.")
-                    return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], True
-            gate = lambda: ""
-            if not reason:
-                try:
-                    # Quick first, so your page is there in minutes; the whole page runs
-                    # with the others (2026-10-01: the full pass alone was refused in two
-                    # of seven real first runs and nearly empty in a third).
-                    _investigate_me(root, days=days if window else None, quick=True)
-                except KeyboardInterrupt:
-                    result.update(investigation="interrupted",
-                                  investigate_me={"started": True, "outcome": "interrupted"})
-                    _interrupted(ctx, retry_me, result)
-                except (RemError, rem_runner.RunFailed) as error:
-                    # One page among the first run's: the others still go on (2026-10-01).
-                    result.update(investigation="failed",
-                                  investigate_me={"started": True, "outcome": "failed", "why": str(error)})
-                    say(f"Your page was not written: {error} The rest of the first run goes on; "
-                        f"retry your page with {_next(ctx, retry_me)}.")
-                else:
-                    record = summary["record"] if summary else result["owner"]["record"]
-                    result.update(investigation="completed",
-                                  investigate_me={"started": True, "outcome": "completed", "page": record})
-                    say("Your page is written: " + str(Notebook(root).path(record)))
-            try:
-                result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
-                                           projects=project_rows, orgs=org_rows, skills=skill_rows,
-                                           me_days=days if window else None,
-                                           owner_full=result.get("investigation") == "completed"))
-            except KeyboardInterrupt:
-                result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
-                _interrupted(ctx, ["investigate", "all"], result)
-            for key in KEYS.values():
-                if result[key].get("reason"):
-                    say(result[key]["reason"])
-            result["tidy"] = _first_tidy(root, say)
-            result["abstract"] = _first_abstract(root, config, say, result)
-            result["translation"] = _first_translation(root, config, say, language=language, reason=translation_skip)
-            if result.get("investigation") == "failed":
-                return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-        def run_and_start(root):
-            response = run(root)
-            value, next_step = response[:2]
-            result = run_state.get("result", {})
-            incomplete = any((result.get(key) or {}).get("left", 0) for key in KEYS.values())
-            failed = bool(response[2]) if len(response) > 2 else False
-            if incomplete and next_step == ["open"]:
-                failed_page = next((page for key in KEYS.values()
-                                    for page in (result.get(key) or {}).get("pages", [])
-                                    if page.get("outcome") != "accepted"), None)
-                next_step = (["investigate", failed_page["page"],
-                              *(["--retry-refused"] if failed_page["outcome"] == "refused" else [])]
-                             if failed_page else ["init"])
-            if estimate_only:
-                background = {"started": False, "reason": "Estimate only; no schedule installed."}
-            elif not start_background:
-                background = {"started": False, "reason": "Background upkeep left off by --no-start."}
-            elif failed or (write_mine is not False and
-                            (incomplete or (result.get("runner") or {}).get("problem"))):
-                background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
-            elif not run_state["consented"]:
-                background = {"started": False, "reason": "Background upkeep needs approval. Run "
-                              + _next(ctx, ["start", "--yes"]) + " after reviewing its summary."}
-            else:
-                from ...rem import schedule as rem_schedule
-                from ...rem.files import RemError
-                from ...rem.service import start
-                try:
-                    background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
-                                       scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False,
-                                       history_progress=_history_progress)
-                    if not background["started"]:
-                        background["reason"] = ("Background upkeep needs approval. Run "
-                                                + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
-                except RemError as error:
-                    background = {"started": False, "reason": f"Background upkeep could not start: {error}"}
-            if isinstance(value, dict):
-                value["background"] = background
-            else:
-                detail = ("Background upkeep: scheduled." if background["started"] else
-                          "Background upkeep: " + background["reason"])
-                value += "\n" + detail
-            return (value, next_step, failed or incomplete)
-
-        _handle(ctx, run_and_start, ["sources"])
+        init_rem_flow(ctx, days=days, skills_dir=skills_dir, mine=mine, mail=mail, name=name,
+                      languages=languages, no_translate=no_translate, archive_mail=archive_mail,
+                      write_mine=write_mine, all_history=all_history, investigate_all=investigate_all,
+                      estimate_only=estimate_only, start_background=start_background, yes=yes,
+                      first_people=first_people, first_projects=first_projects,
+                      first_orgs=first_orgs, first_skills=first_skills)
 
     @rem.command("investigate", cls=V("co rem investigate"))
     def investigate_page(ctx: typer.Context,
@@ -1733,9 +1827,8 @@ def make_rem_app(factory):
                                        f"{first.get('error')}")
                 _emit(ctx, result, ["logs", first["id"]], failed=True)
             if result.get("first_batch") is None and not ctx.obj["json"]:
-                # Only the first start runs a batch; a start after stop resumes
-                # the clock. None printed as "Unknown", which read as a fault.
-                result["first_batch"] = ("Not run: the first start already ran it. "
+                # Global setup can record consent without a first batch.
+                result["first_batch"] = ("Not run on this start. "
                                          f"{_next(ctx, ['sync'])} runs an update now.")
             return result, ["status"]
 

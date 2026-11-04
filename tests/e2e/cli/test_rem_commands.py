@@ -1386,7 +1386,7 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     result = invoke(tmp_path / 'notebook', *args)
     assert result.exit_code == 0, result.output
     text = ' '.join(result.output.split())
-    assert 'Init offers nightly upkeep after the first run' in text
+    assert 'asks once before reading your sources' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text
