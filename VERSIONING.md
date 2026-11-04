@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc36
+## Current Version: 1.9.3rc37
+
+`co host` becomes `agent.py` on macOS and Linux instead of starting it as a child, so
+`kill`, SIGHUP or a closed terminal stop the agent and free its port; before, an orphaned
+`agent.py` kept the port and the next `co host` failed (#2748). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc37.md).
+
+- 1.9.3rc37 (stopping co host stops agent.py).
+
+### Previous candidate: 1.9.3rc36
 
 REM: a scheduled run that Codex fires a few minutes before its saved time now
 serves that time instead of reporting "not due" and losing it (#2745). Stable
