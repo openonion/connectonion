@@ -845,5 +845,7 @@ def summarise_line(report: dict) -> str:
 
 
 def summary(report: dict) -> str:
+    reasons = ", ".join(reason.replace("_", " ") for reason, count in report["skipped"].items() if count)
+    suffix = f" ({reasons})" if reasons else ""
     return (f"Agent sessions: {report['imported']} imported, {report['updated']} updated, "
-            f"{report['unchanged']} unchanged; {sum(report['skipped'].values())} skipped; {report['seconds']}s")
+            f"{report['unchanged']} unchanged; {sum(report['skipped'].values())} skipped{suffix}; {report['seconds']}s")

@@ -194,6 +194,7 @@ def first_notebook(rem_setup, monkeypatch):
     monkeypatch.setattr(runner, "ready", lambda config: ("", ""))
     monkeypatch.setattr(runner, "model_access", lambda *a: ("", ""))
     monkeypatch.setattr(sessions, "import_sessions", lambda *a, **kw: {})
+    monkeypatch.setattr("connectonion.rem.mail_archive.archive_init", lambda *a, **kw: {})
     monkeypatch.setattr(investigate, "warm_session_windows", lambda *a: None)
     monkeypatch.setattr(investigate, "gather", lambda *a, **kw: ([{
         "role": "user", "source": "fixture:1", "timestamp": "2026-11-01T00:00:00Z",
@@ -204,7 +205,8 @@ def first_notebook(rem_setup, monkeypatch):
     def build_map(root, *a, **kw):
         owner = {"record": "people/ada-vale.md", "name": "Ada Vale", "addresses": ["ada@example.org"]}
         files.Notebook(root).write(owner["record"], "# Ada Vale\n\nInvestigation: not investigated\n")
-        result = {"owner": owner, "people": [owner], "projects": [], "orgs": [], "errors": []}
+        result = {"owner": owner, "people": [owner], "projects": [], "orgs": [], "errors": [],
+                  "source_inventory": {"mail_observed": 1}}
         files.write_json(files.state_path(root, "map.json"), result)
         return result
 

@@ -949,3 +949,15 @@ def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, su
     assert result["outcome"] == "completed" and investigated == ["people/corin.md"]
     assert service.status(root)["runner_attempts_today"] == 1
     assert any(line.startswith("Summarised") and "left for next time" in line for line in lines)
+
+
+@pytest.mark.parametrize("skipped, suffix", [
+    ({"program_prompt": 3}, "3 skipped (program prompt)"),
+    ({"temporary_directory": 1, "outside_window": 1}, "2 skipped (temporary directory, outside window)"),
+    ({}, "0 skipped;"),
+])
+def test_session_summary_appends_skip_reasons(skipped, suffix):
+    from connectonion.rem.sessions import summary
+
+    text = summary({"imported": 3, "updated": 0, "unchanged": 0, "skipped": skipped, "seconds": 0.012})
+    assert suffix in text

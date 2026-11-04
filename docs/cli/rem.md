@@ -151,11 +151,20 @@ workers, Codex at fast speed): a person 6.3M input tokens and ~35 minutes
 including its deepening pass, a project 2.7M and ~11 minutes, an organisation
 8.0M and ~59 minutes. Every page after those costs what the 1.9.2b1 full run
 measured: a person 2.85M and ~11 minutes, a project 630k and ~2 minutes, an
-organisation 2.0M and ~8.5 minutes, a skill 800k and ~3 minutes. Each owner
-turn is 6.5M and ~35 minutes; the quick and full turns are both counted. The
+organisation 2.0M and ~8.5 minutes, a skill 800k and ~3 minutes. The owner
+rate is scaled by mapped mail items plus usable sessions from the map's
+parsed material. Only approved session sources count; program prompts and
+temporary directories do not. Estimate-only uses that same parsed material
+without importing it. Zero material means zero owner cost; without
+a mailbox address the owner page is excluded, with a one-line explanation.
+The scaling uses a planning assumption: 2,000 items reach the full rate of
+6.5M and ~35 minutes per owner turn, capped there; smaller maps use a
+proportional share of the notebook's median or the default. The quick and full
+turns are both counted. This source-volume scaling is an estimate, not a
+measurement of per-item cost. The
 full-run rates alone announced ~42 minutes and ~50M tokens for the release
-check, which took 82 minutes and 102M; the estimate now says 95 minutes and
-100M. It does not predict every retry or refusal. Minutes are
+check, which took 82 minutes and 102M; at the full owner rate the estimate
+says 95 minutes and 100M. It does not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
 full turn and selected pages share `limits.workers` workers (default 16),
 the same setting as `co rem investigate CATEGORY`. The estimate simulates
@@ -175,6 +184,16 @@ without a model), when no mailbox gave an address of yours, when your page was
 already written. `--json` and non-terminal runs investigate by default too.
 `--no-investigate` explicitly builds the map only. Later new evidence can be
 investigated with `co rem investigate all`.
+
+If the map finds no people or projects, installed skills alone do not start a
+first-run page queue. Init exits successfully without an estimate pause and says:
+
+```text
+Nothing to write yet: connect a mailbox (co auth google|microsoft) or work in a project with Codex, then run co rem init
+```
+
+The agent-session summary includes skip reasons, for example `3 skipped
+(program prompt)` or `2 skipped (temporary directory, outside window)`.
 
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
@@ -425,11 +444,19 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` shows it and asks before anything is read. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
-| `co rem list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
+| `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
 | `co rem open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
+
+`co rem show NAME` searches people, projects, orgs and skills. An exact page
+path wins; otherwise it matches page titles, page stems and project folder
+names case-insensitively. For example, `co rem show harbour` can read
+`projects/harbour-<hash>.md` whose Paths section lists a folder named `harbour`.
+Person aliases and email addresses keep working, as does `co rem show me`.
+Several matches produce a list of paths and show no page; pass one exact path
+to choose. A missing name reports the searched name and page kinds.
 
 Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before
 O Chat served that route, so the page never loaded (#1828). O Chat serves it
