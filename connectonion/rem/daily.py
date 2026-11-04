@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 from . import quota
 from .config import read_config
-from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .investigate import NothingFound, NothingNew, investigate
 from .service import mail_client, now, run_logs, run_sync, status, subscriptions
 
@@ -126,14 +126,17 @@ def _add_usage(total: dict, usage) -> dict:
 
 def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
     """Keep worker health aligned with the whole scheduled pass, not just mail sync."""
-    if scheduled and result['outcome'] == 'partial':
+    if result['outcome'] == 'budget_exhausted':
+        result['reason'] = "the day's runner calls are spent"
+    if scheduled and result['outcome'] in ('partial', 'budget_exhausted'):
         worker_path = state_path(root, 'worker.json')
         worker = read_json(worker_path, {})
         maintenance = result.get('maintenance') or {}
-        reason = 'the last scheduled investigation failed'
+        reason = result.get('reason') or 'the last scheduled investigation failed'
         if maintenance.get('outcome') == 'failed':
             reason = maintenance.get('error') or 'the last scheduled maintenance failed'
-        write_json(worker_path, {**worker, 'last_scheduled_outcome': 'failed',
+        outcome = 'failed' if result['outcome'] == 'partial' else result['outcome']
+        write_json(worker_path, {**worker, 'last_scheduled_outcome': outcome,
                                  'last_scheduled_reason': reason})
     return result
 
@@ -169,15 +172,16 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if not ready(config)[0]:
         maintenance["sessions_summary"] = summarise_sessions(root, limit=40, say=say)
         say(summarise_line(maintenance["sessions_summary"]))
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
-        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
+        outcome = 'budget_exhausted' if maintenance['outcome'] == 'budget_exhausted' else 'partial'
+        return _record_scheduled_result(root, {'outcome': outcome, 'maintenance': maintenance,
                                                 'investigation': None}, scheduled)
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         state = status(root)
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         logs = run_logs(root)
@@ -197,13 +201,13 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
                              investigate_one=investigate_one, person_one=person_one, say=say)
     if not stop:
         left = remaining - ((result.get('run') or {}).get('runner_attempts') or 0)
-        result['same_person'] = _same_person(root, config, meter, left, say)
+        result['same_person'] = _same_person(root, config, left, say)
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
 
 
-def _same_person(root, config, meter, left, say) -> list[dict]:
+def _same_person(root, config, left, say) -> list[dict]:
     """Pages that look like one person are judged by a model, a few a run (#2724).
 
     A run of its own, so its calls are in `co rem logs --usage`, the day's call
@@ -212,10 +216,10 @@ def _same_person(root, config, meter, left, say) -> list[dict]:
     limit = min(same_person.PAIRS_PER_RUN, left)
     if limit <= 0:
         return []
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         if not same_person.candidates(root):
             return []
-        record, path = _reserve(root, 'same-person', limit, meter)
+        record, path = _reserve(root, 'same-person', limit, quota.read(config))
     rows = []
     try:
         rows = same_person.judge(root, config, limit=limit, say=say)
@@ -245,7 +249,7 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
     language = next((tag for tag in owner_languages(root)['languages'] if tag.split('-')[0].lower() != 'en'), None)
     if not language or not changed or ready(config)[0]:
         return
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
         today = now().astimezone(zone).date()
         spent = sum(sum(row['outcome'] != 'cached' for row in log['pages']) if 'pages' in log
@@ -292,9 +296,10 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     # later runs know to follow new material instead.
     why = 'nothing_unfinished' if not pages else 'budget_exhausted' if remaining < required else stop
     if why:
-        with maintenance_lock(root):
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             record, path = _reserve(root, 'daily-investigation', 0, meter)
-            record.update(outcome='completed', reason=why, left=len(pages), finished_at=now().isoformat())
+            record.update(outcome='budget_exhausted' if why == 'budget_exhausted' else 'completed',
+                          reason=why, left=len(pages), finished_at=now().isoformat())
             record['quota']['after'] = meter
             write_json(path, record)
         return {'outcome': 'budget_exhausted' if why == 'budget_exhausted' else 'completed',
@@ -304,7 +309,7 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     # Keep up to two calls for later slots. Reserve before starting so an
     # interrupted investigation cannot restart beyond the daily cap.
     allocation = min(remaining, max(required, min(remaining - 2, INVESTIGATION_CALLS)))
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         record, path = _reserve(root, 'daily-investigation', allocation, meter)
     sources = subscriptions(root)
     calls, tried, done, usage, changed, failed = allocation, [], [], {}, [], False
@@ -533,7 +538,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         record, path = _reserve(root, 'daily-update', len(chosen), meter)
     done, usage, changed, failed = [], {}, [], False
     try:
@@ -628,7 +633,7 @@ def _maintain_again(root, record, entry, config) -> dict:
     from .refusals import forget_refusal
     from .runner import RunFailed
     from .service import READABLE, _hold_for_refused, _maintain_pages
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         task = prepare_retry(root, record, entry, config)
         if task is None:
             return {'changed': [], 'refused': 0, 'report': 'Feedback targets already processed or unavailable'}

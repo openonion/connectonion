@@ -119,6 +119,17 @@ def write_json(path: Path, value) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+def archive_path(root: Path, record: str, *, new: bool = False) -> Path:
+    """The latest page archive, or the next unused name; caller holds the lock."""
+    base = state_path(root, f"archived/{record}")
+    target, latest, version = base, base, 0
+    while target.exists():
+        latest = target
+        version += 1
+        target = state_path(root, f"archived/{record}.{version}")
+    return target if new else latest
+
+
 # How long a write of work already done waits for the notebook lock. A promotion
 # can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
 # wait lost UNSW's page in a 16-worker first run (1.9.1b5).

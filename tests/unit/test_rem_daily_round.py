@@ -291,3 +291,99 @@ def test_no_pair_to_judge_writes_no_run(root, monkeypatch):
     monkeypatch.setattr(same_person, "candidates", lambda root: [])
     daily.run_daily(root, maintain=no_change)
     assert not [record for record in run_logs(root) if record.get("phase") == "same-person"]
+
+
+def test_daily_round_waits_for_a_short_owner_command(root, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.sessions import import_sessions
+
+    entered = Event()
+    sessions = import_sessions(root, consented_only=True)
+
+    def lock(root, **options):
+        entered.set()
+        return maintenance_lock(root, **options)
+
+    monkeypatch.setattr(daily, "maintenance_lock", lock)
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("offline", ""))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with maintenance_lock(root):
+            future = pool.submit(daily.run_daily, root,
+                                 maintain=lambda root: {"outcome": "no_change", "sessions": sessions})
+            assert entered.wait(timeout=3)
+            with pytest.raises(TimeoutError):
+                future.result(timeout=0.05)
+        result = future.result(timeout=3)
+    assert result["outcome"] == "completed"
+
+
+@pytest.mark.parametrize("stage", ["maintenance", "unfinished", "update"])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_scheduled_daily_cap_is_recorded_as_budget_exhausted(root, monkeypatch, stage, wrapped):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import service
+    from connectonion.rem.files import read_json, state_path, write_json
+
+    config = read_config(root)
+    slot = daily.now().astimezone(service.notebook_zone(config))
+    write_json(state_path(root, "worker.json"), {"last_scheduled_slot": slot.isoformat()})
+    write_json(state_path(root, "runs/run_cap.json"), {
+        "started_at": daily.now().isoformat(), "outcome": "completed",
+        "phase": "daily-investigation" if stage == "update" else "sync",
+        "runner_attempts": config["limits"]["runner_calls_per_day"]})
+    if stage == "update":
+        _owner_page(root, "2026-01-01")
+
+    def maintain(root, **options):
+        return {"outcome": "budget_exhausted" if stage == "maintenance" else "no_change"}
+
+    if wrapped:
+        monkeypatch.setattr(service, "_scheduled_slot", lambda root: slot)
+        result = service.run_scheduled(root, lambda: daily.run_daily(root, maintain=maintain))
+    else:
+        result = daily.run_daily(root, scheduled=True, maintain=maintain)
+    worker = read_json(state_path(root, "worker.json"), {})
+    assert result["outcome"] == "budget_exhausted"
+    assert worker["last_scheduled_outcome"] == "budget_exhausted"
+    assert worker["last_scheduled_reason"] == "the day's runner calls are spent"
+    shown = CliRunner().invoke(app, ["rem", "--root", str(root), "status"])
+    assert shown.exit_code == 0, shown.output
+    assert "daily cap reached" in shown.output
+
+
+def test_status_renders_daily_cap_as_reached():
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _last_run
+
+    rendered = Text.from_markup(_last_run({
+        "outcome": "budget_exhausted", "started_at": "2026-11-05T03:00:00+00:00"}, timezone.utc)).plain
+    assert "daily cap reached" in rendered
+    assert "failed" not in rendered
+
+
+def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
+    from connectonion.rem import same_person
+
+    meter = {"used_percent": 10, "resets_at": 2_000_000_000, "window_minutes": 10080, "plan": "fictional"}
+    monkeypatch.setattr(daily.quota, "read", lambda config: dict(meter))
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "projects/historical-notes.md"}])
+    monkeypatch.setattr(same_person, "candidates", lambda root: [{"pages": ["people/a.md", "people/b.md"]}])
+
+    def investigate(*args, **options):
+        meter["used_percent"] = 13
+        return {"changed": ["projects/historical-notes.md"]}
+
+    def judge(*args, **options):
+        meter["used_percent"] = 14
+        return [{"pages": ["people/a.md", "people/b.md"], "same": False}]
+
+    monkeypatch.setattr(same_person, "judge", judge)
+    result = daily.run_daily(root, maintain=no_change, investigate_one=investigate)
+    run = next(row for row in daily.run_logs(root) if row.get("phase") == "same-person")
+    assert run["quota"]["before"] == result["run"]["quota"]["after"]
+    assert run["quota"]["before"]["used_percent"] == 13
+    assert daily.quota.run_points(result["run"]) + daily.quota.run_points(run) == 4

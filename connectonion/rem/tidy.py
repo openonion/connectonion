@@ -19,7 +19,7 @@ from contextlib import nullcontext
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock, read_json, state_path, write_json
 from .source import SESSION_SOURCE_PATTERN, parse_session_source, session_source
 
 LOG = "tidy.json"
@@ -65,13 +65,13 @@ def _archive(notebook: Notebook, record: str, into: str = "") -> str:
     archived; the reader showed the name and the click went nowhere (#2054).
     A page folded into another is relinked there, as `merge` does; an archived
     one keeps its name as text."""
-    target = notebook.root / ".state" / "archived" / record
+    target = archive_path(notebook.root, record, new=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     notebook.path(record).replace(target)
     if into:
         from .merge import _relink
         _relink(notebook, record, into)
-    return f".state/archived/{record}"
+    return target.relative_to(notebook.root).as_posix()
 
 
 LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)\)")
@@ -79,7 +79,6 @@ LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)\)")
 
 def _dead_links(notebook: Notebook) -> list[dict]:
     """Links to a page this tidy (or an earlier one) archived keep their name as text."""
-    archived = notebook.root / ".state" / "archived"
     actions = []
     for page in notebook.list():
         text = notebook.read(page)
@@ -87,7 +86,7 @@ def _dead_links(notebook: Notebook) -> list[dict]:
         def unlink(match):
             # A Markdown link is relative to the page's own folder.
             target = _normal(f"{Path(page).parent.as_posix()}/{match[2]}{match[3]}")
-            if (notebook.root / target).is_file() or not (archived / target).is_file():
+            if (notebook.root / target).is_file() or not archive_path(notebook.root, target).is_file():
                 return match[0]
             actions.append({"action": "unlinked archived page", "page": page, "target": target})
             return match[1]
@@ -236,7 +235,8 @@ def _own_addresses(notebook: Notebook, state: dict) -> list[dict]:
                         f"{group[0]['sent']} sent, none received, carrying the owner's name (people)")
             _fold_owner(notebook, record, page, sorted(emails), evidence)
             folded.append({"action": "folded into the owner's page", "page": page, "into": record,
-                           "addresses": sorted(emails), "archived": f".state/archived/{page}"})
+                           "addresses": sorted(emails),
+                           "archived": archive_path(notebook.root, page).relative_to(notebook.root).as_posix()})
             added += sorted(emails - confirmed)
     asked = state.get("possible_own_addresses") or []
     kept = [row for row in asked if row.get("address", "").casefold() not in confirmed | set(added)
@@ -363,7 +363,7 @@ def _skills(notebook: Notebook) -> list[dict]:
             continue
         merge_into(notebook, target, record, "same skill, named by its folder")
         folded.append({"action": "folded duplicate skill", "page": record, "into": target,
-                       "archived": f".state/archived/{record}"})
+                       "archived": archive_path(notebook.root, record).relative_to(notebook.root).as_posix()})
     return folded
 
 

@@ -43,6 +43,28 @@ def test_pages_whose_names_are_alike_are_candidates_and_others_are_not(root):
     assert pairs[0]["why"] == "one name inside the other"
 
 
+def test_same_person_waits_for_a_short_owner_command(root, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+    from connectonion.rem.files import maintenance_lock
+
+    entered = Event()
+
+    def lock(root, **options):
+        entered.set()
+        return maintenance_lock(root, **options)
+
+    monkeypatch.setattr(same_person, "maintenance_lock", lock)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with maintenance_lock(root):
+            future = pool.submit(same_person.judge, root, {}, run=_answer(False))
+            assert entered.wait(timeout=3)
+            with pytest.raises(TimeoutError):
+                future.result(timeout=0.05)
+        rows = future.result(timeout=3)
+    assert rows[0]["same"] is False
+
+
 def test_a_page_listing_the_address_another_was_made_from_is_a_candidate_whatever_the_names(root):
     notebook = Notebook(root)
     page = notebook.read("people/sam.md")

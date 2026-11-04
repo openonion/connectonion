@@ -19,7 +19,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .files import Notebook, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
 
 SKILL = "rem-same-person"
 VERDICTS = "same-person.json"
@@ -141,12 +141,12 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
     rows = []
     for _ in range(limit):
         # Found again after every answer: a fold removes a page that later pairs named.
-        with maintenance_lock(root):
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             pair = next(iter(candidates(root)), None)
         if not pair:
             break
         say(f"Same person? {pair['pages'][0]} and {pair['pages'][1]}")
-        with maintenance_lock(root):
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             if not current_pair(root, pair):
                 rows.append(_skipped(pair, say=say))
                 continue
@@ -202,12 +202,12 @@ def promote_verdict(root, plan):
 def check(task, result, *, lock_held=False, say=lambda text: None):
     from contextlib import nullcontext
     root = Path(task["root"])
-    with nullcontext() if lock_held else maintenance_lock(root):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         return promote_verdict(root, prepare_verdict(task, result, say=say))
 
 
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
-    with maintenance_lock(root):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         verdicts = read_json(state_path(root, VERDICTS), {})
         verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": date.today().isoformat(),
                                              "error": str(error)[:300]}
