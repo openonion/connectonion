@@ -2,13 +2,15 @@
 
 # ConnectOnion Init Command
 
-`co init` prepares the local identity, profile and coding-agent integration. Project initialization requires an
+`co init` prepares the local identity, profile, coding-agent integration and REM. Project initialization requires an
 explicit directory, such as `co init ./`.
 
 ## Quick start
 
 ```bash
-co init --yes                     # identity, profile, bundled skills and command index
+co init                           # identity, profile, skills, command index and REM consent
+co init --yes                     # automatic local setup; REM storage only, no source access
+co init --no-rem                  # skip REM setup
 co init ./ --yes                  # configuration in this existing project
 co init /path/to/project --yes    # configuration in another existing project
 co init ./ --template co-ai       # also add the hosted agent template
@@ -24,6 +26,20 @@ attempts managed-key authentication, saving credentials to `~/.co/keys.env`.
 It also creates a missing `~/.co/agent.json` local profile. Your existing profile
 is kept; use `co setup --name my-agent --bio "My work" --no-skills` to customize
 only those fields.
+
+### REM setup
+
+Global `co init` prepares `~/.co/rem`, offers mailbox login and asks once for
+source/model/schedule consent. After installing Codex Scheduled task or launchd
+upkeep on macOS, it runs the same foreground first notebook build as `co rem init`.
+Before model work, the estimate pauses at `Build the first map now? [Y/n]`;
+Enter builds, while `n` keeps upkeep installed and prints `co rem init` to continue.
+The final summary reports mapped and written pages and names the scheduler;
+read with `co rem open`. Without a terminal or with `co init --yes`, only storage
+is created: no login, consent, source reads or scheduler. Connect later with
+`co auth google` or `co auth microsoft`, then run `co rem init`. `--no-rem` skips
+REM, rerunning init leaves existing REM unchanged, and `--background` uses this
+same REM step. See [REM: Start here](rem.md#start-here).
 
 It does **not** create or modify the current directory's `.env`, `.co/`,
 `agent.py`, or other project files—even when run inside an existing project.
@@ -70,14 +86,14 @@ It does not require a separate `co skills link` after project initialization.
 
 The global directory defaults to `~/.co/`; an explicit process
 `AGENT_CONFIG_PATH` selects its identity, profile and user skill library together.
-Third-party account login, browser installation, publishing and recurring work
-remain separate commands.
+Browser installation and publishing remain separate commands. REM uses
+`~/.co/rem`, the same default as `co rem`, independently of `AGENT_CONFIG_PATH`.
 
 ## Project setup: explicit path
 
 `co init ./` uses the global identity and initializes the selected directory.
 It also completes the same local profile, skills and command-index setup as
-plain init. It does not mint a separate project keypair.
+plain init. It does not mint a separate project keypair or initialize REM.
 
 | File | Behavior |
 |---|---|
