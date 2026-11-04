@@ -91,7 +91,7 @@ def _write(path: Path, new_block: str) -> None:
 
 def refresh(app=None) -> List[Tuple[Path, Optional[str], str]]:
     """Write the block wherever it is missing or stale and can be written; (file, old, new) for each one changed."""
-    from .skills_commands import writable
+    from .skills_commands import link_missing, writable
     changes = [(path, old) for path, old in stale() if writable(path)]
     if not changes:
         return []
@@ -100,6 +100,7 @@ def refresh(app=None) -> List[Tuple[Path, Optional[str], str]]:
     new_block = block(generate(app))
     for path, _ in changes:
         _write(path, new_block)
+    link_missing()
     return [(path, old, __version__) for path, old in changes]
 
 
