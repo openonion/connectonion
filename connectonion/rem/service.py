@@ -683,6 +683,8 @@ def consent_summary(root: Path) -> dict:
         elif name in offered:
             state = ("connected; read from now on if you approve (automated senders skipped). "
                      f"Keep it out with co rem sources remove {name}")
+        elif source.get("kind") in MAIL_KINDS and source.get("adapter", "available") != "available":
+            state = source["adapter"]          # not connected: say how, not "unsubscribed" (#2752)
         elif not source.get("enabled"):
             state = "unsubscribed"
         elif source.get("kind") in KINDS:

@@ -1239,6 +1239,16 @@ def test_a_mailbox_the_owner_removed_is_not_offered_again(tmp_path, monkeypatch)
     assert consent_summary(tmp_path)["sources"]["gmail"]["state"] == "unsubscribed"
 
 
+def test_a_mailbox_never_connected_is_told_how_to_connect_not_called_unsubscribed(tmp_path, monkeypatch):
+    """The consent prompt said "unsubscribed" for a mailbox the owner had simply not
+    connected yet; nothing on that screen said `co auth google` was the step."""
+    from connectonion.rem.service import consent_summary
+    prepare(tmp_path)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    assert consent_summary(tmp_path)["sources"]["gmail"]["state"] == "waiting for co auth google"
+    assert consent_summary(tmp_path)["sources"]["outlook"]["state"] == "waiting for co auth microsoft"
+
+
 def test_stale_running_records_are_marked_abandoned_by_the_next_writer(tmp_path, monkeypatch):
     """Two records said "running" for days on the owner's notebook."""
     import os
