@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -178,7 +179,7 @@ def check_skill(root: Path, stage: str) -> None:
     that is where the import that lost the Skill happened. A frozen bundle
     carries its own Skills and is not asked.
     """
-    if getattr(sys, "frozen", False):
+    if SESSION.get() is not None or getattr(sys, "frozen", False):
         return
     workspace = Path(root) / ".state" / "tasks"
     workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -216,6 +217,8 @@ def ready(config: dict) -> tuple[str, str]:
     Claude Code keeps its login in the system keychain, so only its binary is
     checked; ConnectOnion's own loop needs neither.
     """
+    if SESSION.get() is not None:
+        return "", ""
     runner = config.get("runner")
     if runner == "codex":
         from ..useful_tools.codex import _base_command
@@ -268,10 +271,31 @@ _THREADS = contextvars.ContextVar("rem_turn_threads", default=None)
 # The tier check fills a fixture page to see what a model can do; auditing its
 # made-up claims would cost a model call and measure nothing (tier.attempt).
 AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
+# Native sessions supply the turn; preparation and checks stay in the stages.
+SESSION = contextvars.ContextVar("rem_session_executor", default=None)
+
+
+def task_directory(parent: Path, prefix: str) -> Path:
+    executor = SESSION.get()
+    if executor:
+        return executor.directory(parent, prefix)
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+
+
+@contextmanager
+def task_workspace(parent: Path, prefix: str):
+    directory = task_directory(parent, prefix)
+    try:
+        yield directory
+    finally:
+        if SESSION.get() is None:
+            shutil.rmtree(directory)
 
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
+    if executor := SESSION.get():
+        return executor.turn(workspace, prompt, config, stage, resume=bool(session))
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
     prompt = prompt.replace("\0", "")
     timeout = config["limits"]["timeout_seconds"]
@@ -343,6 +367,8 @@ def model_denial(error: Exception) -> bool:
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
+    if executor := SESSION.get():
+        return executor.turn(workspace, prompt, config, stage)
     prefix = stage if stage in ("insight-critic", "same-person") else "claim"
     if config["runner"] != "codex":
         packet = workspace / f"{prefix}-input.txt"
@@ -752,6 +778,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
+            if SESSION.get() is not None:
+                raise
             refused = rejected
             result["usage"] = rejected.usage or result.get("usage")
             errors = read_json(directory / "review.json", {}).get("errors") or []
@@ -1172,6 +1200,8 @@ def scrub_task(directory: Path) -> None:
     accumulate" (#1958). What is kept is the owner's alone: a candidate page
     quotes their mail, and 1.9.0a2 left it 0644 (#1974).
     """
+    if SESSION.get() is not None:
+        return
     import shutil
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
@@ -1255,7 +1285,7 @@ def _stage_on_copies(notebook: Notebook, items: list[dict], config: dict, kind: 
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with _TASK_CLEANUP_LOCK:
         scrub_finished_tasks(workdir)
-    directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
+    directory = task_directory(workdir, f"{stage}-")
     # The model inherits this mask; overlapping turns restore it only after
     # the last task finishes.
     with private_task_mask():
@@ -1368,7 +1398,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "If the evidence changes nothing on the page, leave the file as it is"
                    + ("" if stage in ("enrich", "muse") else " and end your reply with NO CHANGE") + ". "
                    "Write only that candidate file using an available local file tool. "
-                   "The runner owns validation and replacement. Do not start nested co rem jobs. "
+                   "The CLI owns validation and replacement. Do not start another REM round while working on this task. "
                    # enrich and muse end on the reply their Skill asks for: the lead list, the
                    # insights and open questions. Asked for a coverage summary, the 2026-10-16 trial
                    # enrich ended on that instead of its leads.
@@ -1389,7 +1419,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         if record:
             prompt += f"Update the existing page at {task_root / record}, preserving correct information. "
         if stage != "init":
-            prompt += ("Do not start nested co rem jobs or change config.yaml or .state files "
+            prompt += ("Do not start another REM round or change config.yaml or .state files "
                        "other than task outputs explicitly named here. "
                        "Write notebook Markdown pages directly, and report unresolved gaps. ")
 

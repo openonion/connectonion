@@ -26,6 +26,8 @@ Keep it current
   stop          Turn the schedule off. Pages and approvals stay.
   status        Is the schedule on, when it runs next, what ran today.
   sync          Run one update now.
+  next          Prepare the next task for this session.
+  submit        Check and save a session task.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -458,15 +460,17 @@ Example:  co rem start
 Effects:  On macOS, Codex notebooks use Codex desktop Scheduled when the app is
           installed and the saved timezone matches this computer. Keep the app
           open and computer awake. Other runners, headless Macs and different
-          saved timezones use launchd. Both run `co rem sync --scheduled` at the
+          saved timezones use launchd. Codex follows `co rem next --scheduled` and
+          submit; launchd runs `co rem sync --scheduled` at the
           saved times (default 03:00 04:00 06:00 17:00 18:00 19:00 local).
           Native registration is checked before removing an old timer; a running
           old batch is kept. Status distinguishes registration from execution.
-          Each run reads new mail bodies and sessions and calls the model, at most
-          `runner_calls_per_day` times a day. Nobody watches those runs, so the
-          model is confined: Codex gets --sandbox workspace-write, Claude Code
-          --permission-mode acceptEdits. It writes only under the notebook's
-          .state/tasks, with no shell commands and no network.
+          Each run reads new mail bodies and sessions and honors the
+          `runner_calls_per_day` cap. Native sessions perform the printed tasks
+          themselves and write only named outputs; the CLI checks before saving.
+          Child upkeep uses --sandbox workspace-write for Codex and
+          --permission-mode acceptEdits for Claude Code. Investigation permissions
+          follow the configured harness and stage.
 Requires: co rem init. On Linux and Windows the schedule is not yet installed; run
           co rem sync yourself.
 
@@ -964,4 +968,40 @@ Requires: co rem init.
 Output:   One line per page: accepted, refused (and why) or failed; pages left.
 Next:     co rem show PAGE
 Back:     co rem projects --help
+```
+
+## co rem next
+
+```
+co rem next — prepare the next task for this session.
+
+Writes task material and instructions under the notebook's private task directory.
+Runs due source collection, session import and tidy before handing out model work.
+No child model is started. Follow the printed instructions, write only the named
+outputs, then run the exact submit command. Repeat until the round says done.
+
+Usage:    co rem next [--scheduled] [--json]
+Options:  --scheduled  Honor the saved schedule, missed slots and stopped state.
+          --json       Print the task as machine-readable data.
+          --help       Show this page.
+Example:  co rem next --scheduled
+Back:     co rem --help
+```
+
+## co rem submit
+
+```
+co rem submit — check and save a session task.
+
+Writes checked changes and a run record. Uses the same page, citation, quotation,
+receipt and merge checks as sync. A refusal preserves the notebook: fix the named
+output and submit the same task again. A superseded task needs a fresh next.
+Usage totals remain in Codex; task logs record unknown usage.
+
+Usage:    co rem submit TASK_ID [--json]
+Options:  --json  Print the submission result as machine-readable data.
+          --help  Show this page.
+Example:  co rem submit TASK_ID
+Next:     co rem next
+Back:     co rem --help
 ```

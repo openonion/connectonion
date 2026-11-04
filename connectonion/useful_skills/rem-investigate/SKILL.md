@@ -40,7 +40,7 @@ condition; a decision, correction or instruction; how someone asks to be
 reached; who someone says they are. Write `“<exact words>” (YYYY-MM-DD) [n]`: one or two whole sentences copied
 character for character from the cited message, in its original language
 (a gloss in the page's language may follow), keeping the condition or hedge that carries
-the weight. The runner checks every `“…”` against its cited source and
+the weight. The CLI checks every `“…”` against its cited source and
 refuses a quote it cannot find there.
 
 - The speaker is the cited message's `From`. In a thread, check who wrote
@@ -56,7 +56,7 @@ refuses a quote it cannot find there.
 
 - `Unknown — not investigated yet`: find it in the material, or write bare
   `Unknown`; a leftover one becomes bare `Unknown`, the page has not been
-  investigated otherwise. The runner-owned `Investigation:` footer stays unchanged.
+  investigated otherwise. The CLI-owned `Investigation:` footer stays unchanged.
 - A dictated name can be misheard ("WTF engine"): correct it only where the
   material shows the right term, citing that too.
 - Coverage (what was searched, counts, empty searches) goes in your final
@@ -79,7 +79,7 @@ files by source ID, path and date or revision, not commands or queries.
 ## Candidate and finish
 
 Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
-or write other pages: the runner reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
+or write other pages: the CLI reviews this candidate and writes the page. Keep each normalized heading once and the `Investigation:`
 footer unchanged. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says
 `not investigated yet` (exclude the footer); every private sentence, including

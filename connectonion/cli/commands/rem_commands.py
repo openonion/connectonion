@@ -32,6 +32,11 @@ def _next(ctx, arguments):
     return shlex.join([*program, *location, *arguments])
 
 
+def _plain_task(value):
+    typer.echo(value['prompt'])
+    return ""
+
+
 def _carry_over(ctx):
     """Bring a co wiki notebook, its schedule and wrapper variable over to co rem (#1932)."""
     from ...rem import migrate
@@ -1830,6 +1835,25 @@ def make_rem_app(factory):
                   days: int = typer.Option(30, "--days", min=1)):
         _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days)
 
+    @rem.command("next", cls=V("co rem next"))
+    def next_rem(ctx: typer.Context,
+                 scheduled: bool = typer.Option(False, "--scheduled"),
+                 json_output: bool = typer.Option(False, "--json")):
+        from ...rem.native import next_task
+        ctx.obj["json"] = ctx.obj["json"] or json_output
+        def operation(root):
+            value = next_task(root, scheduled=scheduled)
+            return value, (["status"] if value["done"] else ["submit", value["id"]])
+        _handle(ctx, operation, ["next"], draw=_plain_task)
+
+    @rem.command("submit", cls=V("co rem submit"))
+    def submit_rem(ctx: typer.Context, task_id: str = typer.Argument(...),
+                   json_output: bool = typer.Option(False, "--json")):
+        from ...rem.native import submit
+        ctx.obj["json"] = ctx.obj["json"] or json_output
+        _handle(ctx, lambda root: (submit(root, task_id), ["next"]), ["submit", task_id],
+                draw=lambda value: value.get("message"))
+
     # --------------------------------------------------------------- Settings
 
     sources_app = factory(help="co rem sources", no_args_is_help=False)
@@ -2249,7 +2273,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync sources config logs doctor history "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync next submit sources config logs doctor history "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

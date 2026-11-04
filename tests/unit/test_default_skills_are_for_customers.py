@@ -9,6 +9,7 @@ EXPECTED_DEFAULTS = {
     "co-browser",
     "co-mail-and-drive",
     "handoff",
+    "rem",
     "rem-init",
     "rem-investigate",
     "rem-enrich",

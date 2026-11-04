@@ -262,7 +262,7 @@ def test_person_investigation_has_one_history_and_source_contract():
     assert "covers every thread" not in person
     assert "oldest first" not in person
     assert "local mail" in person
-    assert "runner-owned `Investigation:` footer stays unchanged" in person
+    assert "CLI-owned `Investigation:` footer stays unchanged" in person
 
 
 def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():

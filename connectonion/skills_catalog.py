@@ -19,6 +19,7 @@ DEFAULT_LIBRARY_SKILLS = (
     # Passing this session's work to another person or their agent.
     "handoff",
     # co rem stages share the same CLI skill resolution for every harness.
+    "rem",
     "rem-init",
     "rem-investigate",
     "rem-enrich",

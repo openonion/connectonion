@@ -136,6 +136,9 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
             result = run(workspace, packet(root, pair), config, "same-person")
             answer = _verdict(result)
         except RunFailed as error:
+            from .runner import SESSION
+            if SESSION.get() is not None:
+                raise
             # Asked again tomorrow, so a pair that keeps failing does not hold back
             # the pairs behind it every run (#2741).
             rows.append(_failed(root, pair, error))

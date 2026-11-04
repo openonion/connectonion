@@ -140,5 +140,5 @@ Rules:
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
+Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the CLI's
 `Investigation:` line unchanged.

@@ -1153,11 +1153,13 @@ def test_list_without_a_category_is_refused_before_anything_runs(tmp_path):
     assert result.exit_code == 1 and 'investigate people --list' in result.output
 
 
-def test_start_help_names_the_confinement_and_the_undo():
+def test_start_help_names_native_tasks_child_permissions_and_the_undo():
     import re
     result = runner.invoke(app, ["rem", "start", "--help"])
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert "--sandbox workspace-write" in text and "--permission-mode acceptEdits" in text
+    assert "Native sessions perform the printed tasks" in text
+    assert "the CLI checks before saving" in text
     assert "co rem stop" in text
 
 

@@ -2208,6 +2208,14 @@ def _feedback_without_new_raw(root: Path, record: str, config: dict, coverage: l
             "instructions_chars": {"maintain": result.get("instructions_chars")}}
 
 
+def _evidence_directory(root: Path) -> Path:
+    from .runner import SESSION, task_directory
+    if SESSION.get() is not None:
+        return task_directory(state_path(root, 'tasks'), 'evidence-')
+    import uuid
+    return state_path(root, f'evidence/{uuid.uuid4().hex}')
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -2381,9 +2389,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .inquiry import routing
     original_material = None
     if routing(root):
-        import uuid
-
-        original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
+        original_material = _evidence_directory(root).with_suffix(".json")
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, page_kind_of, run_stage
     # The instructions this page's turn is actually given (task_prompt), not
@@ -2475,10 +2481,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # minutes for the owner's page (#1850). The material goes into files
         # and the one investigate turn searches them for what the page needs.
         import shutil
-        import uuid
 
         from .evidence import write_evidence
-        evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+        evidence_dir = _evidence_directory(root)
         shutil.rmtree(evidence_dir, ignore_errors=True)
         laid_out = write_evidence(evidence_dir, items)
         index_text = laid_out["index"].read_text(encoding="utf-8")
@@ -2566,9 +2571,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                  f"{record} is unchanged.")
             if older:
                 # Past the round cap, the rest of the material is still searchable from the first round.
-                import uuid
                 from .evidence import write_evidence
-                evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+                evidence_dir = _evidence_directory(root)
                 laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
                 parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
                                     "file": str(laid_out["index"]), "sources": laid_out["sources"],
@@ -2602,11 +2606,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # Copies of private mail do not accumulate under .state, run after run;
         # the report keeps which files were read. The routed run's uncompressed
         # copy is one too, and was left behind every time.
-        if evidence_dir is not None:
-            import shutil
-            shutil.rmtree(evidence_dir, ignore_errors=True)
-        if original_material is not None:
-            original_material.unlink(missing_ok=True)
+        from .runner import SESSION
+        if SESSION.get() is None:
+            if evidence_dir is not None:
+                import shutil
+                shutil.rmtree(evidence_dir, ignore_errors=True)
+            if original_material is not None:
+                original_material.unlink(missing_ok=True)
     if stage_progress:
         stage_progress("recording result")
     usage_by_stage["investigate"] = result.get("usage")

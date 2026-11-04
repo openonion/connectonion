@@ -2,11 +2,10 @@
 
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 
 from .files import read_json, state_path, write_json
-from .runner import RunFailed, instructions, run_task, task_prompt
+from .runner import RunFailed, instructions, run_task, task_prompt, task_workspace
 from .tier import current
 
 NOTHING = "Nothing worth keeping."
@@ -62,7 +61,7 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
     """Read the extraction artifact, not the agent's status message."""
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with tempfile.TemporaryDirectory(prefix="extract-", dir=tasks) as temporary:
+    with task_workspace(tasks, "extract-") as temporary:
         directory = Path(temporary)
         prompt = task_prompt(directory, items, "extract", kind)
         output = directory / "notes.md"
@@ -71,7 +70,7 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
         prompt += ("Reply with ONLY the complete extraction notes; do not call tools or write files. "
                    if summary else f"Write the complete extraction notes to {output}; this file is your output. ")
         prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
-                   "Do not edit notebook pages, read other sources, or start nested co rem jobs.")
+                   "Do not edit notebook pages, read other sources, or start another REM round.")
         result = run_task(tasks, prompt, config, "extract")
         if summary:
             output.write_text(str(result.get("result") or ""), encoding="utf-8")

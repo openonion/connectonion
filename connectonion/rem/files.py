@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+from contextvars import ContextVar
 import json
 import os
 import re
@@ -161,6 +162,8 @@ class _InOrder:
 # while a waiter slept between tries: three organisation pages waited ten
 # minutes and failed (1.9.2b2 trial).
 _THREADS = _InOrder()
+# A native transaction already holds the canonical notebook lock.
+LOCKED_COPY = ContextVar("rem_locked_copy", default=None)
 
 
 @contextmanager
@@ -171,6 +174,9 @@ def maintenance_lock(root: Path, wait: float = 0):
     once and retries on the next one; a finished investigation has no next
     tick, so it waits rather than lose a page it already paid for.
     """
+    if LOCKED_COPY.get() == root:
+        yield
+        return
     if not _THREADS.acquire(timeout=wait):
         raise RemError("co rem is busy; wait for the active maintenance run")
     try:

@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
-import tempfile
 import sys
 from time import monotonic
 from uuid import uuid4
@@ -199,10 +198,10 @@ def translate(root: Path, record: str, language: str) -> str:
 
 def _run_translation(root, record, language, config, text):
     from .languages import owner_languages
-    from .runner import _add_usage
+    from .runner import _add_usage, task_directory, SESSION
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
-    workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
+    workspace = task_directory(tasks, "translate-")
     prose, sources, stamp = _page_parts(text)
     (workspace / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
@@ -225,7 +224,8 @@ def _run_translation(root, record, language, config, text):
             run.update(error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
         run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
-        shutil.rmtree(workspace)
+        if SESSION.get() is None:
+            shutil.rmtree(workspace)
 
 
 def _page_parts(text):
@@ -237,7 +237,7 @@ def _page_parts(text):
 
 
 def _translate_prose(workspace, prose, task_prompt, config, run):
-    from .runner import _add_usage, run_task
+    from .runner import _add_usage, run_task, SESSION
     repair = ""
     for attempt in range(2):
         run["runner_attempts"] += 1
@@ -248,7 +248,7 @@ def _translate_prose(workspace, prose, task_prompt, config, run):
         try:
             return checked(prose, answer)
         except RemError as error:
-            if attempt:
+            if SESSION.get() is not None or attempt:
                 raise
             repair = f"\n\nYour translation.md failed validation: {error}. Fix translation.md in place using page.md."
 

@@ -9,7 +9,7 @@ description: Write or update one project page from the owner's messages and a bo
 The page has source `investigation:page`. User inputs to Codex or Claude
 Code in this project's folders are oldest first, each under its own
 `### <source id>` heading with a date; a coverage note says how many and
-whether older ones were left out. The runner also supplies the README and
+whether older ones were left out. The CLI also supplies the README and
 manifest at the project's current line, the checkout state, the current
 line's commit history with the unmerged branches committed lately, and a
 source index of snapshot files at that revision. Search the index for the

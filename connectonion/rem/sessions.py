@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import re
-import tempfile
 import time
 import uuid
 from collections import Counter
@@ -707,7 +706,7 @@ def _summary_batch(root: Path, rows: list[dict], settings: dict, run) -> dict:
     usage = {}
     # One bad provider reply must leave this batch retryable and let the next run.
     try:
-        with tempfile.TemporaryDirectory(prefix="sessions-summary-", dir=tasks) as temporary:
+        with runner.task_workspace(tasks, "sessions-summary-") as temporary:
             prompt = _summary_prompt(rows, read_json(state_path(root, "session-tags.json"), {}))
             result = run(Path(temporary), prompt, settings, "abstract")
         usage = result.get("usage") or {}
