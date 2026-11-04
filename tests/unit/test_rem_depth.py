@@ -516,6 +516,8 @@ def test_deepen_cli_resolves_explicit_pages_in_order(root, monkeypatch):
                                                      (True, "partial", False), (True, None, False)])
 def test_only_due_completed_scheduled_sync_deepens(root, monkeypatch, scheduled, outcome, called):
     from connectonion.rem import daily
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "00:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": outcome is not None})
     calls = []
     monkeypatch.setattr(daily, "run_daily", lambda *a, **kw: None if outcome is None else {
         "outcome": outcome, "maintenance": {"items": 0}, "investigation": None})

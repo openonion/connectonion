@@ -565,6 +565,112 @@ def test_a_scheduled_tick_a_minute_early_serves_the_coming_slot(tmp_path, monkey
     assert read_json(state_path(root, "worker.json"), {})["last_scheduled_slot"] == "2026-09-07T17:00:00+10:00"
 
 
+@pytest.mark.parametrize("phase", ["sync", "daily-investigation", "daily-update"])
+@pytest.mark.parametrize("alive", [True, False])
+def test_scheduled_sync_leaves_slot_owed_while_a_local_run_is_alive(rem, monkeypatch, phase, alive):
+    import os
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    write_json(state_path(root, "worker.json"), worker)
+    path = state_path(root, "runs/run_" + "a" * 32 + ".json")
+    started = "2026-09-07T11:00:00+00:00"
+    write_json(path, {"id": "run_" + "a" * 32, "started_at": started, "phase": phase,
+                      "outcome": "running", **service.running_marker(),
+                      "pid": os.getpid() if alive else 2 ** 22 + 7})
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("no model needed"))
+
+    result = run_sync(root, scheduled=True)
+
+    if alive:
+        assert result == {"outcome": "busy", "reason": f"a scheduled sync started at {started} is still running"}
+        assert service.worker_state(root) == worker
+        assert read_json(path, {})["outcome"] == "running"
+    else:
+        assert result["outcome"] == "no_change"
+        assert read_json(path, {})["outcome"] == "abandoned"
+        assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_scheduled_busy_cli_prints_one_line_and_starts_no_daily_work(rem, monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"})
+    started = "2026-09-07T11:00:00+00:00"
+    write_json(state_path(root, "runs/run_" + "b" * 32 + ".json"), {
+        "started_at": started, "outcome": "running", "phase": "daily-investigation", **service.running_marker()})
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("busy must stop"))
+
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "sync", "--scheduled"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running"]
+
+
+def test_scheduled_ownership_covers_gaps_between_stage_records_and_retries_next_tick(rem, monkeypatch):
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00,13:00"])
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    write_json(state_path(root, "worker.json"), worker)
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("no model needed"))
+
+    def between_stages():
+        monkeypatch.setattr(service, "now", lambda: datetime(2026, 9, 7, 13, tzinfo=timezone.utc))
+        nested = run_sync(root, scheduled=True)
+        assert nested == {"outcome": "busy", "reason": "a scheduled sync started at 2026-09-07T12:00:00+00:00 is still running"}
+        assert service.worker_state(root)["last_scheduled_slot"] == worker["last_scheduled_slot"]
+        return {"outcome": "completed"}
+
+    assert service.run_scheduled(root, between_stages)["outcome"] == "completed"
+    assert "scheduled_run" not in service.worker_state(root)
+    assert run_sync(root, scheduled=True)["outcome"] == "no_change"
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T13:00:00+00:00"
+
+
+def test_two_scheduled_ticks_cannot_both_claim_the_same_slot(rem, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, local
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True})
+    barrier, thread, due = Barrier(2), local(), service._scheduled_slot
+    calls = []
+
+    def simultaneous_tick(root):
+        if not getattr(thread, "checked", False):
+            thread.checked = True
+            barrier.wait(timeout=5)
+        return due(root)
+
+    monkeypatch.setattr(service, "_scheduled_slot", simultaneous_tick)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ticks = [pool.submit(service.run_scheduled, root, lambda: calls.append("ran") or {"outcome": "no_change"})
+                 for _ in range(2)]
+        errors = [tick.exception(timeout=10) for tick in ticks]
+        assert all(error is None or isinstance(error, RemError) and "busy" in str(error) for error in errors)
+        results = [tick.result() for tick, error in zip(ticks, errors) if error is None]
+    assert calls == ["ran"]
+    assert sum(row is not None and row["outcome"] == "no_change" for row in results) == 1
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_dead_scheduled_worker_claim_does_not_block_the_owed_slot(rem):
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduled_run": {
+        "phase": "daily-sync", "outcome": "running", "started_at": "2026-09-07T11:00:00+00:00",
+        **service.running_marker(), "pid": 2 ** 22 + 7}})
+    assert run_sync(root, scheduled=True)["outcome"] == "no_change"
+    assert "scheduled_run" not in service.worker_state(root)
+
+
 def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
 

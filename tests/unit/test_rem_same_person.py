@@ -117,3 +117,51 @@ def test_a_pair_whose_judgement_fails_waits_a_day_and_the_next_pair_is_asked(roo
     verdicts[key]["failed"] = "2000-01-01"
     write_json(state_path(root, "same-person.json"), verdicts)
     assert rows[0]["pages"] in [pair["pages"] for pair in same_person.candidates(root)]
+
+
+@pytest.mark.parametrize("when", ["before_packet", "during_model"])
+@pytest.mark.parametrize("recreated", [False, True])
+def test_daily_same_person_skips_a_pair_archived_after_selection(root, monkeypatch, _claim_audit_passes, when, recreated):
+    from connectonion.rem import daily, runner
+    from connectonion.rem.config import set_config
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.merge import merge_into
+    from connectonion.rem.service import run_logs
+    set_config(root, ["runner", "claude-code"])
+    monkeypatch.setattr(runner, "ready", lambda config: ("offline", ""))
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    monkeypatch.setattr(daily.quota, "read", lambda config: {"unknown": "no meter"})
+    said, calls = [], []
+
+    def archive():
+        with maintenance_lock(root):
+            merge_into(Notebook(root), "people/robin-hale.md", "people/robin.md", "same person")
+            if recreated:
+                (root / "people/robin.md").write_text("# Robin\n\nRecreated old name.\n")
+
+    def say(text):
+        said.append(text)
+        if when == "before_packet" and text.startswith("Same person?"):
+            archive()
+
+    def run_task(workspace, prompt, config, stage):
+        assert stage == "same-person"
+        calls.append(stage)
+        archive()
+        return {"result": json.dumps({"same": True, "address_role": "their own", "reason": "Same threads."}),
+                "usage": {"input_tokens": 10}}
+
+    monkeypatch.setattr(runner, "run_task", run_task)
+    # Exercise the real child path; only its model boundary is replaced.
+    monkeypatch.setattr(runner, "run_claim_task", _claim_audit_passes)
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "no_change"}, say=say)
+
+    assert result["outcome"] == "completed"
+    assert any("Skipping same-person pair" in text and "people/robin.md" in text for text in said), (said, result)
+    assert read_json(state_path(root, same_person.VERDICTS), {}) == {}
+    assert len(calls) == (when == "during_model")
+    run = next(record for record in run_logs(root) if record.get("phase") == "same-person")
+    assert run["outcome"] == "completed"
+    assert run["runner_attempts"] == (when == "during_model")
+    if calls:
+        assert run["usage"] == {"input_tokens": 10}

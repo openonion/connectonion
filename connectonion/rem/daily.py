@@ -146,16 +146,20 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
     `say` gets one line per step. Run off a terminal, a sync printed nothing
     for 25 minutes and everything at the end (#2033)."""
+    if scheduled and maintain is None:
+        from .service import run_scheduled
+        return run_scheduled(root, lambda: run_daily(
+            root, days=days, investigate_one=investigate_one, person_one=person_one,
+            project_one=project_one, translate_one=translate_one, say=say))
     say = say or (lambda text: None)
     say("Reading new material…")
     # The archive a sync resumes says its progress through `say` too (#2042).
     sync = maintain or (lambda root, **options: run_sync(root, say=say, **options))
     maintenance = sync(root, scheduled=True) if scheduled else sync(root)
-    if maintenance is not None:
-        say(f"New material: {maintenance.get('items', 0)} items, "
-            f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
-    if maintenance is None:
-        return None
+    if maintenance is None or maintenance.get('outcome') == 'busy':
+        return maintenance
+    say(f"New material: {maintenance.get('items', 0)} items, "
+        f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
     from .runner import ready
     from .sessions import import_sessions, summarise_line, summarise_sessions, summary
     if "sessions" not in maintenance:
@@ -206,9 +210,11 @@ def _same_person(root, config, meter, left, say) -> list[dict]:
     count and the week's points like every other model call (#2741)."""
     from . import same_person
     limit = min(same_person.PAIRS_PER_RUN, left)
-    if limit <= 0 or not same_person.candidates(root):
+    if limit <= 0:
         return []
     with maintenance_lock(root):
+        if not same_person.candidates(root):
+            return []
         record, path = _reserve(root, 'same-person', limit, meter)
     rows = []
     try:
@@ -221,7 +227,8 @@ def _same_person(root, config, meter, left, say) -> list[dict]:
         usage = {}
         for row in rows:
             _add_usage(usage, row.get('usage'))
-        record.update(runner_attempts=sum(1 for row in rows if 'pages' in row) or record['runner_attempts'],
+        record.update(runner_attempts=sum(row.get('runner_attempts', int('pages' in row)) for row in rows)
+                      if rows else record['runner_attempts'],
                       usage=usage or None, pages=[{key: row.get(key) for key in ('pages', 'same', 'outcome')}
                                                   for row in rows],
                       changed=[row['kept'] for row in rows if row.get('kept')], finished_at=now().isoformat())
