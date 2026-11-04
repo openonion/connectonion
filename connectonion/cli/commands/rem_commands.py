@@ -2136,7 +2136,7 @@ def make_rem_app(factory):
                      usage: bool = typer.Option(False, "--usage"),
                      days: int = typer.Option(0, "--days", min=0),
                      old_run: str = typer.Option("", "--run")):
-        from ...rem.service import run_logs, usage_report
+        from ...rem.service import run_logs, seen_outcome, usage_report
 
         def operation(root):
             if usage:
@@ -2146,7 +2146,7 @@ def make_rem_app(factory):
                     return f"No runs with recorded usage{window}.", ["logs"]
                 return report, ["logs"]
             chosen = run_id or old_run
-            records = run_logs(root, chosen)[:20]
+            records = [{**log, "outcome": seen_outcome(log)} for log in run_logs(root, chosen)[:20]]
             return records, (["logs", records[0]["id"]] if records and not chosen else ["status"])
         _handle(ctx, operation, ["logs"])
 
