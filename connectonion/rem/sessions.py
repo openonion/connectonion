@@ -708,24 +708,36 @@ def _summary_batch(root: Path, rows: list[dict], settings: dict, run) -> dict:
     # One bad provider reply must leave this batch retryable and let the next run.
     try:
         with tempfile.TemporaryDirectory(prefix="sessions-summary-", dir=tasks) as temporary:
-            prompt = _summary_prompt(rows, read_json(state_path(root, "session-tags.json"), {}))
-            result = run(Path(temporary), prompt, settings, "abstract")
+            task = prepare(root, rows, settings, directory=Path(temporary))
+            result = run(Path(temporary), task["prompt"], settings, "abstract")
         usage = result.get("usage") or {}
-        reply = str(result.get("result") or "").strip()
-        reply = re.sub(r"\A```(?:json)?\s*\n?(.*?)\n?```\Z", r"\1", reply, flags=re.S)
-        value = json.loads(reply)
-        sessions = value.get("sessions") if isinstance(value, dict) else None
-        if (not isinstance(sessions, list) or len(sessions) != len(rows)
-                or any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in sessions)
-                or {item["id"] for item in sessions} != {f"s{i}" for i in range(1, len(rows) + 1)}):
-            raise runner.RunFailed("Session summary reply is missing ids")
-        by_id = {item["id"]: item for item in sessions}
-        validated = [_validated_summary(by_id[f"s{i}"], row) for i, row in enumerate(rows, 1)]
-        return {"summaries": [saved for saved, _ in validated], "usage": usage,
-                "dropped_quotes": sum(dropped for _, dropped in validated)}
+        return check(task, result)
     except (runner.RunFailed, json.JSONDecodeError) as error:
         return {"summaries": [], "usage": (error.usage if isinstance(error, runner.RunFailed) else None) or usage,
                 "dropped_quotes": 0, "error": str(error)}
+
+
+def prepare(root, rows, settings, *, directory):
+    prompt = _summary_prompt(rows, read_json(state_path(root, "session-tags.json"), {}))
+    output = directory / "candidate.json"
+    return {"rows": rows, "prompt": prompt, "candidate": str(output)}
+
+
+def check(task, result):
+    rows = task["rows"]
+    usage = result.get("usage") or {}
+    reply = str(result.get("result") or "").strip()
+    reply = re.sub(r"\A```(?:json)?\s*\n?(.*?)\n?```\Z", r"\1", reply, flags=re.S)
+    value = json.loads(reply)
+    sessions = value.get("sessions") if isinstance(value, dict) else None
+    if (not isinstance(sessions, list) or len(sessions) != len(rows)
+            or any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in sessions)
+            or {item["id"] for item in sessions} != {f"s{i}" for i in range(1, len(rows) + 1)}):
+        raise runner.RunFailed("Session summary reply is missing ids")
+    by_id = {item["id"]: item for item in sessions}
+    validated = [_validated_summary(by_id[f"s{i}"], row) for i, row in enumerate(rows, 1)]
+    return {"summaries": [saved for saved, _ in validated], "usage": usage,
+            "dropped_quotes": sum(dropped for _, dropped in validated)}
 
 
 def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:

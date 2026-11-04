@@ -7,6 +7,7 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -30,7 +31,8 @@ def observed_message_path(root: Path, provider: str, message_id: str) -> Path:
 
 
 def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_at: str,
-                   input_scope: str = "Provider read during investigation; not initial-window coverage.") -> dict:
+                   input_scope: str = "Provider read during investigation; not initial-window coverage.",
+                   lock_held: bool = False) -> dict:
     """Keep the first full provider rendering and its metadata outside the init inventory.
 
     A recovered body uses an empty fetched_at when its original retrieval time
@@ -40,7 +42,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
     if not isinstance(body, str):
         raise RemError("Mail provider returned no text body")
     metadata = state_path(root, f"mail/observed-metadata/{provider}/{_key(row['id'])}.json")
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         path = original if original.is_file() else observed_message_path(root, provider, row["id"])
         for folder in ("mail", "mail/observed", f"mail/observed/{provider}",
                        "mail/observed-metadata", f"mail/observed-metadata/{provider}"):

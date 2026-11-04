@@ -203,20 +203,15 @@ def _run_translation(root, record, language, config, text):
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
-    prose, sources, stamp = _page_parts(text)
-    (workspace / "page.md").write_text(prose, encoding="utf-8")
-    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    task = prepare(root, record, language, directory=workspace, text=text)
+    prose = task["prose"]
     run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "failed",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
     started = monotonic()
     try:
-        task_prompt = prompt(language, quoted_passages(prose), terms, page_names(prose))
-        translation = _translate_prose(workspace, prose, task_prompt, config, run)
-        translation += ("\n" + sources if sources else "")
-        translation += (("" if sources else "\n") + stamp.group(0) + "\n" if stamp else "")
-        atomic_write(translation_path(root, record, language),
-                     f"<!-- co rem translation of {record} sha256:{digest(text)} -->\n" + translation)
+        translation = _translate_prose(workspace, prose, task["prompt"], config, run)
+        translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
     finally:
@@ -226,6 +221,28 @@ def _run_translation(root, record, language, config, text):
         run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
+
+
+def prepare(root, record, language, *, directory, text=None):
+    from .languages import owner_languages
+    text = Notebook(root).read(record) if text is None else text
+    prose, sources, stamp = _page_parts(text)
+    (directory / "page.md").write_text(prose, encoding="utf-8")
+    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    return {"root": str(root), "record": record, "language": language, "directory": str(directory),
+            "before": {record: text}, "prose": prose, "sources": sources, "stamp": stamp.group(0) if stamp else "",
+            "candidate": str(directory / "translation.md"),
+            "prompt": prompt(language, quoted_passages(prose), terms, page_names(prose))}
+
+
+def check(task, output):
+    original = task["before"][task["record"]]
+    translation = checked(task["prose"], output["result"])
+    translation += ("\n" + task["sources"] if task["sources"] else "")
+    translation += (("" if task["sources"] else "\n") + task["stamp"] + "\n" if task["stamp"] else "")
+    atomic_write(translation_path(Path(task["root"]), task["record"], task["language"]),
+                 f"<!-- co rem translation of {task['record']} sha256:{digest(original)} -->\n" + translation)
+    return translation
 
 
 def _page_parts(text):

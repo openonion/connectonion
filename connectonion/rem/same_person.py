@@ -140,20 +140,35 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
             # the pairs behind it every run (#2741).
             rows.append(_failed(root, pair, error))
             continue
-        row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
-        with maintenance_lock(root):
-            notebook = Notebook(root)
-            if answer["same"] and all(notebook.path(record).is_file() for record in pair["pages"]):
-                kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record),
-                                   reverse=True)
-                merge_into(notebook, kept, old, "same person: " + answer["reason"][:200])
-                row["kept"] = kept
-            verdicts = read_json(state_path(root, VERDICTS), {})
-            verdicts["|".join(pair["pages"])] = {key: row[key] for key in ("why", "same", "address_role", "reason",
-                                                                         "date") if key in row}
-            write_json(state_path(root, VERDICTS), verdicts)
-        rows.append(row)
+        rows.append(check({"root": str(root), "pair": pair}, result))
     return rows
+
+
+def prepare(root, pair, *, directory):
+    output = directory / "candidate.json"
+    return {"root": str(root), "pair": pair, "candidate": str(output),
+            "before": {record: Notebook(root).read(record) for record in pair["pages"]},
+            "prompt": packet(root, pair) + f"\nWrite only the JSON answer to {output}."}
+
+
+def check(task, result, *, lock_held=False):
+    from contextlib import nullcontext
+    from .merge import merge_into, weight
+    root, pair = Path(task["root"]), task["pair"]
+    answer = _verdict(result)
+    row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
+    with nullcontext() if lock_held else maintenance_lock(root):
+        notebook = Notebook(root)
+        if answer["same"] and all(notebook.path(record).is_file() for record in pair["pages"]):
+            kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record),
+                               reverse=True)
+            merge_into(notebook, kept, old, "same person: " + answer["reason"][:200])
+            row["kept"] = kept
+        verdicts = read_json(state_path(root, VERDICTS), {})
+        verdicts["|".join(pair["pages"])] = {key: row[key] for key in ("why", "same", "address_role", "reason",
+                                                                     "date") if key in row}
+        write_json(state_path(root, VERDICTS), verdicts)
+    return {**row, "changed": [row["kept"]] if row.get("kept") else []}
 
 
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
