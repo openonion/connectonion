@@ -25,17 +25,17 @@ python -m pip install --upgrade 'connectonion==1.9.2'
 
 ## Current preview
 
-Release candidate **1.9.3rc41** makes the first run honest and short: a one-screen consent summary, an estimate that follows the material and says Nothing to write yet on an empty map, skip reasons for sessions, and `co rem show NAME` across every page kind (#2765, #2766). Before it, **1.9.3rc40** ran one scheduled REM sync at a time (a second tick says busy and keeps its slot) and lets the same-person stage skip a page that vanished (#2763). Before it, **1.9.3rc39** let the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
+Release candidate **1.9.3rc42** carries the four pre-stable audit fixes (#2754, #2771): scheduled-round writes wait for the lock, the daily cap is "daily cap reached" rather than a failure, the same-person stage charges the week once, archives are never overwritten; and `co rem logs` reads a dead run as interrupted (#2770). Before it, **1.9.3rc41** made the first run honest and short: a one-screen consent summary, an estimate that follows the material and says Nothing to write yet on an empty map, skip reasons for sessions, and `co rem show NAME` across every page kind (#2765, #2766). Before it, **1.9.3rc40** ran one scheduled REM sync at a time (a second tick says busy and keeps its slot) and lets the same-person stage skip a page that vanished (#2763). Before it, **1.9.3rc39** let the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
 Linux `co host` becomes `agent.py`, so no orphan is left holding the port. Stable
 remains **1.9.2**.
 
 After publication, install its exact pin:
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc41'
+python -m pip install --upgrade 'connectonion==1.9.3rc42'
 ```
 
-See [the candidate notes](releases/1.9.3rc41.md), [1.9.3rc40](releases/1.9.3rc40.md) and [1.9.3rc39](releases/1.9.3rc39.md).
+See [the candidate notes](releases/1.9.3rc42.md), [1.9.3rc41](releases/1.9.3rc41.md) and [1.9.3rc40](releases/1.9.3rc40.md).
 
 ## Previous previews
 
