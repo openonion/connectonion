@@ -63,18 +63,27 @@ class RemError(Exception):
     """Safe, user-facing co rem error (never include source body or credentials)."""
 
 
-def notebook_path(relative: str) -> bool:
-    """Whether a relative path names notebook content, without checking the disk."""
+def _relative_form(relative: str) -> bool:
     return bool(relative) and not (
         relative.startswith("/") or "\\" in relative
-        or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative)
-        or any(part.startswith(".") for part in relative.split("/")))
+        or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative))
+
+
+def _hidden(relative: str) -> bool:
+    return any(part.startswith(".") for part in relative.split("/"))
+
+
+def notebook_path(relative: str) -> bool:
+    """Whether a relative path names notebook content, without checking the disk."""
+    return _relative_form(relative) and not _hidden(relative)
 
 
 def safe_path(root: Path, relative: str) -> Path:
     """Reject traversal and links instead of following them into another store."""
-    if not notebook_path(relative):
-        raise RemError("Expected a relative notebook path without hidden paths or traversal")
+    if not _relative_form(relative):
+        raise RemError("Expected a relative notebook path")
+    if _hidden(relative):
+        raise RemError("Hidden paths and traversal are not notebook content")
     path = root
     for part in PurePosixPath(relative).parts:
         path = path / part
