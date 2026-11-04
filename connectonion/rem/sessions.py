@@ -384,13 +384,13 @@ def _artifact_lines(artifacts: dict) -> list[str]:
     return lines
 
 
-def _structure_lines(session: dict, notebook: Notebook, folders: dict, zone, day: str) -> list[str]:
+def _structure_lines(session: dict, notebook: Notebook, folders: dict, zone, day: str, saved=None) -> list[str]:
     messages = session["messages"]
     cwd = session["cwd"]
     project = _project(session, folders)
     title = notebook.read(project).splitlines()[0].removeprefix("# ") if project else ""
     linked = f"[{title}](../{project})" if project else cwd
-    saved = read_summary(notebook.root, f"{session['kind']}:{session['id']}")
+    saved = saved if saved is not None else read_summary(notebook.root, f"{session['kind']}:{session['id']}")
     started = _title(session)
     heading = saved.get("title") or started
     lines = [f"# {heading}", ""]
@@ -413,10 +413,10 @@ def _structure_lines(session: dict, notebook: Notebook, folders: dict, zone, day
     return lines
 
 
-def _page(session: dict, notebook: Notebook, folders: dict, zone) -> tuple[str, str]:
+def _page(session: dict, notebook: Notebook, folders: dict, zone, saved=None) -> tuple[str, str]:
     messages = session["messages"]
     day = source.timestamp(messages[0]["timestamp"]).astimezone(zone).date().isoformat()
-    lines = [*_structure_lines(session, notebook, folders, zone, day), "", "## What you typed"]
+    lines = [*_structure_lines(session, notebook, folders, zone, day, saved), "", "## What you typed"]
     for message in messages:
         local = source.timestamp(message["timestamp"]).astimezone(zone)
         stamp = local.strftime("%H:%M" if local.date().isoformat() == day else "%Y-%m-%d %H:%M")
@@ -575,27 +575,34 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     return {**counts, "skipped": dict(skipped), "seconds": round(time.monotonic() - started, 3)}
 
 
+def _session_snapshot(root: Path, key: str) -> dict:
+    progress = read_json(state_path(root, "sessions.json"), {"files": {}})
+    matches = [(Path(path), entry) for path, entry in progress["files"].items()
+               if entry.get("session") == key and entry.get("record")]
+    if not matches:
+        raise RemError("Session has not been imported")
+    path, entry = matches[-1]
+    if path.is_symlink() or not path.is_file():
+        raise RemError("Session transcript is missing or linked")
+    since = source.timestamp(entry["since"]) if entry.get("since") else datetime.min.replace(tzinfo=timezone.utc)
+    session, why = _read_session(path, key.split(":", 1)[0], since)
+    if why or f"{session['kind']}:{session['id']}" != key:
+        raise RemError("Session transcript no longer contains the imported conversation")
+    return {"session": session, "record": entry["record"],
+            "timezone": progress.get("settings", {}).get("timezone") or "UTC"}
+
+
+def _write_session(root: Path, snapshot: dict, saved=None) -> str:
+    session, notebook = snapshot["session"], Notebook(root)
+    _, page = _page(session, notebook, page_folders(notebook), ZoneInfo(snapshot["timezone"]), saved)
+    notebook.write(snapshot["record"], page)
+    retain_cited_sessions(root, session["messages"], {m["source"] for m in session["messages"]}, replace=True)
+    return snapshot["record"]
+
+
 def rewrite_session(root: Path, key: str, *, lock_held: bool = False) -> str:
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        progress = read_json(state_path(root, "sessions.json"), {"files": {}})
-        matches = [(Path(path), entry) for path, entry in progress["files"].items()
-                   if entry.get("session") == key and entry.get("record")]
-        if not matches:
-            raise RemError("Session has not been imported")
-        path, entry = matches[-1]
-        if path.is_symlink() or not path.is_file():
-            raise RemError("Session transcript is missing or linked")
-        # Preserve the import window: a summary must not pull older turns back in.
-        since = source.timestamp(entry["since"]) if entry.get("since") else datetime.min.replace(tzinfo=timezone.utc)
-        session, why = _read_session(path, key.split(":", 1)[0], since)
-        if why or f"{session['kind']}:{session['id']}" != key:
-            raise RemError("Session transcript no longer contains the imported conversation")
-        notebook = Notebook(root)
-        zone = ZoneInfo(progress.get("settings", {}).get("timezone") or "UTC")
-        _, page = _page(session, notebook, page_folders(notebook), zone)
-        notebook.write(entry["record"], page)
-        retain_cited_sessions(root, session["messages"], {m["source"] for m in session["messages"]}, replace=True)
-        return entry["record"]
+        return _write_session(root, _session_snapshot(root, key))
 
 
 def _typed_messages(page: str) -> list[dict]:
@@ -708,24 +715,36 @@ def _summary_batch(root: Path, rows: list[dict], settings: dict, run) -> dict:
     # One bad provider reply must leave this batch retryable and let the next run.
     try:
         with tempfile.TemporaryDirectory(prefix="sessions-summary-", dir=tasks) as temporary:
-            prompt = _summary_prompt(rows, read_json(state_path(root, "session-tags.json"), {}))
-            result = run(Path(temporary), prompt, settings, "abstract")
+            task = prepare(root, rows, settings, directory=Path(temporary))
+            result = run(Path(temporary), task["prompt"], settings, "abstract")
         usage = result.get("usage") or {}
-        reply = str(result.get("result") or "").strip()
-        reply = re.sub(r"\A```(?:json)?\s*\n?(.*?)\n?```\Z", r"\1", reply, flags=re.S)
-        value = json.loads(reply)
-        sessions = value.get("sessions") if isinstance(value, dict) else None
-        if (not isinstance(sessions, list) or len(sessions) != len(rows)
-                or any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in sessions)
-                or {item["id"] for item in sessions} != {f"s{i}" for i in range(1, len(rows) + 1)}):
-            raise runner.RunFailed("Session summary reply is missing ids")
-        by_id = {item["id"]: item for item in sessions}
-        validated = [_validated_summary(by_id[f"s{i}"], row) for i, row in enumerate(rows, 1)]
-        return {"summaries": [saved for saved, _ in validated], "usage": usage,
-                "dropped_quotes": sum(dropped for _, dropped in validated)}
+        return check(task, result)
     except (runner.RunFailed, json.JSONDecodeError) as error:
         return {"summaries": [], "usage": (error.usage if isinstance(error, runner.RunFailed) else None) or usage,
                 "dropped_quotes": 0, "error": str(error)}
+
+
+def prepare(root, rows, settings, *, directory):
+    prompt = _summary_prompt(rows, read_json(state_path(root, "session-tags.json"), {}))
+    output = directory / "candidate.json"
+    return {"rows": rows, "prompt": prompt, "candidate": str(output)}
+
+
+def check(task, result):
+    rows = task["rows"]
+    usage = result.get("usage") or {}
+    reply = str(result.get("result") or "").strip()
+    reply = re.sub(r"\A```(?:json)?\s*\n?(.*?)\n?```\Z", r"\1", reply, flags=re.S)
+    value = json.loads(reply)
+    sessions = value.get("sessions") if isinstance(value, dict) else None
+    if (not isinstance(sessions, list) or len(sessions) != len(rows)
+            or any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in sessions)
+            or {item["id"] for item in sessions} != {f"s{i}" for i in range(1, len(rows) + 1)}):
+        raise runner.RunFailed("Session summary reply is missing ids")
+    by_id = {item["id"]: item for item in sessions}
+    validated = [_validated_summary(by_id[f"s{i}"], row) for i, row in enumerate(rows, 1)]
+    return {"summaries": [saved for saved, _ in validated], "usage": usage,
+            "dropped_quotes": sum(dropped for _, dropped in validated)}
 
 
 def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:
@@ -738,18 +757,36 @@ def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:
     return record, path
 
 
-def _save_summaries(root: Path, summaries: list[dict], settings: dict) -> list[str]:
+def prepare_summaries(root: Path, summaries: list[dict], settings: dict) -> dict:
     tags = Counter(read_json(state_path(root, "session-tags.json"), {}))
-    changed = []
-    for saved in summaries:
-        key = saved["key"]
-        tags.subtract(read_summary(root, key).get("tags", []))
-        saved.update(summarised_at=service.now().isoformat(), model=settings["model"])
-        write_json(summary_path(root, key), saved)
+    entries = []
+    for summary in summaries:
+        saved = {**summary, "summarised_at": service.now().isoformat(), "model": settings["model"]}
+        tags.subtract(read_summary(root, saved["key"]).get("tags", []))
         tags.update(saved["tags"])
-        changed.append(rewrite_session(root, key, lock_held=True))
-    write_json(state_path(root, "session-tags.json"), +tags)
+        snapshot = _session_snapshot(root, saved["key"])
+        _, page = _page(snapshot["session"], Notebook(root), page_folders(Notebook(root)),
+                        ZoneInfo(snapshot["timezone"]), saved)
+        entries.append({"saved": saved, "snapshot": {"record": snapshot["record"],
+                        "messages": snapshot["session"]["messages"]}, "page": page})
+    return {"entries": entries, "tags": dict(+tags)}
+
+
+def promote_summaries(root: Path, plan: dict) -> list[str]:
+    changed = []
+    for entry in plan["entries"]:
+        saved, snapshot = entry["saved"], entry["snapshot"]
+        write_json(summary_path(root, saved["key"]), saved)
+        Notebook(root).write(snapshot["record"], entry["page"])
+        messages = snapshot["messages"]
+        retain_cited_sessions(root, messages, {m["source"] for m in messages}, replace=True)
+        changed.append(snapshot["record"])
+    write_json(state_path(root, "session-tags.json"), plan["tags"])
     return changed
+
+
+def _save_summaries(root: Path, summaries: list[dict], settings: dict) -> list[str]:
+    return promote_summaries(root, prepare_summaries(root, summaries, settings))
 
 
 def summarise_sessions(root: Path, *, limit: int = 40, batch: int = 8, run=None, say=None) -> dict:

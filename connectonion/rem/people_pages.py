@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from contextlib import nullcontext
 
 from .config import read_config
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
@@ -238,11 +239,11 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
     return older
 
 
-def mark_investigated(root: Path, record: str, when: datetime) -> None:
+def mark_investigated(root: Path, record: str, when: datetime, *, lock_held=False) -> None:
     """When the gather for this page started: mail after it is new for the next run."""
     folder = state_path(root, "people")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):  # people finishing together each rewrite this file
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         done = read_json(folder / "investigated.json", {})
         done[record] = when.isoformat()
         write_json(folder / "investigated.json", done)

@@ -725,7 +725,7 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
                          stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
-                         stage_progress=None):
+                         stage_progress=None, native=False):
     """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
@@ -740,7 +740,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
     # An update of a page already investigated keeps what it had too: people-page upkeep on
     # real mail lost 22 quotes and 40-70 sources over 15 updates (2026-10-20).
     updated = stage == "investigate" and re.search(r"(?m)^Investigation:.*\b(?:investigated|written) \d", original)
-    carried = original if stage in ("enrich", "muse", "maintain") or updated else ""
+    carried = original if native or stage in ("enrich", "muse", "maintain") or updated else ""
     for attempt in range(repairs + 1):
         if attempt and stage == "muse" and candidate.is_file():
             _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress)
@@ -748,7 +748,9 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             usage = _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
                                        carried=carried, ask_quotes=attempt < repairs and stage == "investigate",
-                                       stage_progress=stage_progress)
+                                       stage_progress=stage_progress, **({"native": True} if native else {}))
+            if usage and "needs_review" in usage:
+                return usage
             result["usage"] = _add_usage(result.get("usage"), usage)
             return
         except RunFailed as rejected:
@@ -775,7 +777,7 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                 raise RunFailed(str(error), _add_usage(result.get("usage"), error.usage)) from error
             result["repair_usage"] = _add_usage(result["repair_usage"], repair.get("usage")) or {}
             result["usage"] = _add_usage(result.get("usage"), repair.get("usage"))
-    if not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
+    if native or not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                        lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
@@ -877,7 +879,7 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
-                       stage_progress=None):
+                       stage_progress=None, native=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
                               drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain,
@@ -923,7 +925,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         uncited = [*uncited, *more]
     # The last resort has no repair turn after it: a finding on an untraceable
     # citation goes with its line, as 1.9.2b3 refused linkedin-workshop whole for one.
-    citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation and not last_resort else []
+    citation_errors = unresolved_findings(cited_text, dropped['citations']) if (investigation or native) and not last_resort else []
     # An Overview without a flow becomes Unknown; it used to refuse the whole page.
     text, overview_replaced = repair_project_overview(record, text)
     text = link_company(notebook, record, drop_uncited_sources(text))
@@ -1022,11 +1024,27 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         if stage_progress:
             stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
-        # First-run backfill holds the lock per saved message (2026-10-16 trial).
-        with _promotion_lock(notebook.root, candidate, usage, lock_held):
-            retain_cited_originals(notebook, text, items)
-        report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
-                                            record=record, items=items, carried=carried)
+        if native:
+            from .project_claim_review import prepare, check
+            audit = prepare(notebook, text, record=record, items=items, carried=carried)
+            output = directory / "audit-output.json"
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            saved = read_json(directory / "audit-task.json", {})
+            if "report" in audit:
+                report = audit["report"]
+            elif saved.get("sha256") == digest and output.is_file():
+                report, audit_usage = check(saved["task"], {"result": output.read_text(), "usage": None})
+            else:
+                output.unlink(missing_ok=True)
+                write_json(directory / "audit-task.json", {"sha256": digest, "task": audit})
+                return {"needs_review": audit["prompt"] + f"\nWrite the JSON decision to {output}.",
+                        "candidate": str(output)}
+        else:
+            # The child runner keeps its read-only audit and retained source behavior.
+            with _promotion_lock(notebook.root, candidate, usage, lock_held):
+                retain_cited_originals(notebook, text, items)
+            report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
+                                                record=record, items=items, carried=carried)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
@@ -1062,11 +1080,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        _write_page(notebook, record, text, items)
+        _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
     return audit_usage
 
 
-def _write_page(notebook, record, text, items):
+def _write_page(notebook, record, text, items, *, receipt=None):
     """Save an accepted page with its sources numbered once and dated by their originals."""
     from . import facts
     from .config import read_config
@@ -1078,11 +1096,15 @@ def _write_page(notebook, record, text, items):
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
     saved = collapse_repeated_markers(renumber_sources(settle_sources(facts.names_not_addresses(record, text), dates)))
     from .feedback import prepare_promotion
+    if receipt:
+        from .project_claim_review import retain_cited_originals
+        retain_cited_originals(notebook, saved, items)
+        write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
 
 
-def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
+def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False):
     """Write every page that passes review; keep the ones that do not, with why.
 
     A batch used to be refused whole when any one page failed, and a refused
@@ -1099,6 +1121,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
+    if native and (len(changed) > 1 or any(notebook.exists(record) and record not in before for record in changed)):
+        raise RunFailed("Write one new page only; existing pages need a prepared page task", usage)
     accepted, refusals, repairs = [], [], {}
     for record in changed:
         if record not in after:
@@ -1143,7 +1167,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
     with nullcontext() if lock_held else maintenance_lock(notebook.root, wait=WRITE_WAIT_SECONDS):
-        if {r: notebook.read(r) for r in notebook.list()} != before:
+        if not native and {r: notebook.read(r) for r in notebook.list()} != before:
             write_json(directory / 'review.json', {'accepted': False, 'errors': ['Notebook changed during maintenance'],
                        'factual_quality': 'not automatically assessed'})
             raise RunFailed('Maintenance rejected: Notebook changed during maintenance; preserve current pages and retry',
@@ -1151,8 +1175,10 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'repairs': {record: found for record, found in repairs.items() if any(found.values())},
                    'factual_quality': 'not automatically assessed'})
+        if native and refusals:
+            raise RunFailed("Maintenance rejected: " + "; ".join(e for row in refusals for e in row["errors"]), usage)
         for record, text in accepted:
-            _write_page(notebook, record, text, items)
+            _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
     return refusals
 
 
@@ -1160,7 +1186,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # questions, rejection reasons and the Skill text it was given. The rest is a
 # private copy of the owner's mail and pages.
 TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
-              "insight-critic.json", "review-candidates.json", "instructions.md", "refused")
+              "insight-critic.json", "review-candidates.json", "instructions.md", "task.json", "refused")
 
 
 def scrub_task(directory: Path) -> None:
@@ -1172,6 +1198,11 @@ def scrub_task(directory: Path) -> None:
     accumulate" (#1958). What is kept is the owner's alone: a candidate page
     quotes their mail, and 1.9.0a2 left it 0644 (#1974).
     """
+    native_task = read_json(directory / "task.json", {})
+    active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
+    if native_task.get("status") == "pending" or (native_task and not active_round.get("done")
+            and native_task.get("round_started_at") == active_round.get("started_at")):
+        return
     import shutil
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
@@ -1301,8 +1332,7 @@ def _with_additions(items: list[dict], additions: list[dict], budget: int) -> li
     return [*items, *kept]
 
 
-def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
-               search=None, turns=(), stage_progress=None):
+def prepare(notebook, items, config, kind="", *, stage="maintain", directory, native=False, search=None):
     from .config import read_config
     from .reflections import POLICY
     from .reflections import context as reflections
@@ -1349,19 +1379,22 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         # learnt that only after a 643k-token turn (#2041).
         from .page_review import history_note, size_note
         prompt += size_note(len(notebook.read(record))) + history_note(notebook.read(record))
-    before = {r: notebook.read(r) for r in notebook.list()}
+    before = ({record: notebook.read(record)} if record and (candidate or native)
+              else {} if native else {r: notebook.read(r) for r in notebook.list()})
     selected_hash = next((i.get("expected_page_sha256") for i in items if i.get("role") == "page"), None)
     if selected_hash and (record not in before or hashlib.sha256(before[record].encode()).hexdigest() != selected_hash):
         raise RunFailed("Page changed before feedback processing; preserve current page and pending feedback")
     task_root = notebook.root
     if candidate:
         task_root = directory / "notebook"
-        Notebook(task_root).write(record, before[record])
+        if not native:
+            Notebook(task_root).write(record, before[record])
         # Edit, not rewrite: a page written from scratch each pass kept only
         # what the model copied back, and each pass paid to type it again.
         candidate.write_text(before[record], encoding="utf-8")
-        prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}, with this page at {task_root / record}. "
-                   f"Your working copy of the page is the file {candidate}; it starts as the page as it stands. "
+        prompt += ((f"\n\n## Output\nThe canonical page at {notebook.root / record} is read-only evidence. " if native else
+                    f"\n\n## Output\nThe working notebook copy is {task_root}, with this page at {task_root / record}. ")
+                   + f"Your working copy of the page is the file {candidate}; it starts as the page as it stands. "
                    "Edit it in place the way you edit code: add what the evidence adds, change what it corrects, and delete "
                    "what it supersedes, what the page now says twice and doubts it settles. Leave correct lines as they are. "
                    "Do not rewrite the page from scratch. "
@@ -1384,7 +1417,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 copied = task_root / path
                 copied.parent.mkdir(parents=True, exist_ok=True)
                 copied.write_text(text, encoding="utf-8")
-            prompt += "This is a disposable notebook copy. Preserve all canonical headings, mapped metadata, diagrams and existing citations. "
+            prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
+                       "Write at most one NEW page in the output notebook; do not modify an existing canonical page. "
+                       if native else "This is a disposable notebook copy. Preserve all canonical headings, mapped metadata, diagrams and existing citations. ")
         prompt += f"\n\n## Output\nThe notebook root is {task_root}. "
         if record:
             prompt += f"Update the existing page at {task_root / record}, preserving correct information. "
@@ -1423,15 +1458,6 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if summary:
         prompt = summary_prompt(directory) + POLICY
 
-    def changed():
-        if candidate:
-            # The candidate can replace only this one page. Another
-            # investigation may finish concurrently on a different page;
-            # do not claim its edit or charge it to this run.
-            return [record] if notebook.read(record) != before[record] else []
-        after = {r: notebook.read(r) for r in notebook.list()}
-        return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
-
     metrics = {"stage": stage, "harness": config["runner"], "model": config["model"], "timeouts_retried": 0,
                "speed": config["speed"],
                "tier": "summary" if summary else "agent",
@@ -1454,6 +1480,91 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "Match returned `Author:` logins to the person (a login like jdoe2001 for Jane Doe); state the match. "
                    "You get one more turn with what they find; cite their ids. The coverage item says what was "
                    "already searched; do not repeat those addresses.")
+    return {"root": str(notebook.root), "directory": str(directory), "stage": stage, "kind": kind,
+            "record": record, "items": items, "before": before, "config": config,
+            "candidate": str(candidate) if candidate else None, "task_root": str(task_root),
+            "prompt": prompt, "metrics": metrics, "summary": summary}
+
+
+def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_progress=None,
+          automatic_repairs=True, native=False):
+    """Validate and promote prepared output; no preparation or evidence collection is repeated."""
+    notebook = Notebook(Path(task["root"]))
+    directory, workdir = Path(task["directory"]), Path(task["directory"]).parent
+    record, before, items, stage = task["record"], task["before"], task["items"], task["stage"]
+    candidate = Path(task["candidate"]) if task["candidate"] else None
+    task_root, summary, selected_config = Path(task["task_root"]), task["summary"], task["config"]
+    run_turn = run_turn or run_task
+    refusals = []
+    metrics = task["metrics"]
+    def changed():
+        if candidate:
+            return [record] if notebook.read(record) != before[record] else []
+        # Native preparation has an empty output notebook, not a canonical copy.
+        working = Notebook(task_root) if native else notebook
+        after = {r: working.read(r) for r in working.list()}
+        return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
+
+    # An untouched copy the model says needs no change is no change, not a page to review.
+    no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
+        and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
+    if candidate and not no_change:
+        repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
+                      if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
+        if stage == "muse" and candidate.is_file():
+            _review_insights(notebook, record, before[record], candidate, items, selected_config,
+                             directory, result, stage_progress)
+        pending = promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
+                             workdir=workdir, config=selected_config, stage=stage,
+                             run=repair_run, stage_progress=stage_progress,
+                             investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
+                             # A model that only replies, or never wrote the page, will not edit
+                             # the file a repair names.
+                             repairs=0 if not automatic_repairs or summary or not candidate.is_file()
+                             or candidate.read_text(encoding="utf-8") == before[record]
+                             else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS,
+                             **({"native": True} if native else {}))
+        if pending:
+            return pending
+        metrics["render_usage"] = result.get("usage")
+    elif stage in ("maintain", "abstract") and not candidate:
+        refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
+                                        result.get("usage"), maintenance_lock_held, **({"native": True} if native else {}))
+        if stage == "maintain" and items and not changed():
+            if refusals:
+                raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
+                                result.get("usage"))
+            _verify_no_change(directory, items, result.get("usage"))
+    if candidate and no_change:
+        # No-change accepts an assessment of the original snapshot too.
+        # A later writer's page must not become proof for that older turn.
+        with _promotion_lock(notebook.root, candidate, result.get("usage"), maintenance_lock_held):
+            if not notebook.path(record).is_file() or notebook.read(record) != before[record]:
+                raise RunFailed("Page changed during no-change assessment; preserve current page and pending feedback",
+                                result.get("usage"))
+            from .feedback import prepare_promotion
+            prepare_promotion(notebook.root, record, before[record], items, changed=False)
+    return refusals
+
+
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+               search=None, turns=(), stage_progress=None):
+    from .config import read_config
+    from .service import notebook_zone
+    task = prepare(notebook, items, config, kind, stage=stage, directory=directory, search=search)
+    record, before, items = task["record"], task["before"], task["items"]
+    candidate = Path(task["candidate"]) if task["candidate"] else None
+    prompt, summary, metrics = task["prompt"], task["summary"], task["metrics"]
+    quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
+    def changed():
+        if candidate:
+            # The candidate can replace only this one page. Another
+            # investigation may finish concurrently on a different page;
+            # do not claim its edit or charge it to this run.
+            return [record] if notebook.read(record) != before[record] else []
+        after = {r: notebook.read(r) for r in notebook.list()}
+        return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
+
     started = time.monotonic()
     result = {}
     prior_turn_usage = None
@@ -1513,42 +1624,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
-        # An untouched copy the model says needs no change is no change, not a page to review.
-        no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
-            and (stage in ("enrich", "muse") or "NO CHANGE" in str(result.get("result") or ""))
-        if candidate and not no_change:
-            repair_run = (_repair_thread(result["session_id"], result.get("usage"), run=run_turn)
-                          if stage in ("enrich", "muse") and result.get("session_id") else run_turn)
-            if stage == "muse" and candidate.is_file():
-                _review_insights(notebook, record, before[record], candidate, items, selected_config,
-                                 directory, result, stage_progress)
-            promote_with_repairs(notebook, record, candidate, before[record], items, directory, result,
-                                 workdir=workdir, config=selected_config, stage=stage,
-                                 run=repair_run, stage_progress=stage_progress,
-                                 investigation=stage in ONE_PAGE_STAGES, lock_held=maintenance_lock_held,
-                                 # A model that only replies, or never wrote the page, will not edit
-                                 # the file a repair names.
-                                 repairs=0 if summary or not candidate.is_file()
-                                 or candidate.read_text(encoding="utf-8") == before[record]
-                                 else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS)
-            metrics["render_usage"] = result.get("usage")
-        elif stage in ("maintain", "abstract") and not candidate:
-            refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
-                                            result.get("usage"), maintenance_lock_held)
-            if stage == "maintain" and items and not changed():
-                if refusals:
-                    raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
-                                    result.get("usage"))
-                _verify_no_change(directory, items, result.get("usage"))
-        if candidate and no_change:
-            # No-change accepts an assessment of the original snapshot too.
-            # A later writer's page must not become proof for that older turn.
-            with _promotion_lock(notebook.root, candidate, result.get("usage"), maintenance_lock_held):
-                if not notebook.path(record).is_file() or notebook.read(record) != before[record]:
-                    raise RunFailed("Page changed during no-change assessment; preserve current page and pending feedback",
-                                    result.get("usage"))
-                from .feedback import prepare_promotion
-                prepare_promotion(notebook.root, record, before[record], items, changed=False)
+        task["config"] = selected_config
+        refusals = check(task, result, maintenance_lock_held=maintenance_lock_held, run_turn=run_turn,
+                         stage_progress=stage_progress)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if result.get("critic_usage_pending") and isinstance(error, RunFailed):

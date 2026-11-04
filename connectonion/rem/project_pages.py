@@ -675,6 +675,23 @@ def project_falls_short(page: str, messages: int) -> tuple[int, int] | None:
     return None
 
 
+def prepare_quotes(notebook, record, items, counts, *, directory, config):
+    from .runner import language_note, today_note
+    page = notebook.read(record)
+    candidate = directory / "candidate.md"
+    candidate.write_text(page, encoding="utf-8")
+    quote_items = [{**items[0], "text": f"The page as it stands, at {record}:\n\n{page}"},
+                   {"role": "round", "source": "investigation:round",
+                    "text": PROJECT_QUOTE_NOTE.format(quotes=counts[0], decisions=counts[1])},
+                   # The whole first-write material: given only the messages, the claim
+                   # audit refuted sections that cite the repository (2026-10-20, 4 of 6).
+                   *items[1:]]
+    text = prompt(directory, quote_items, candidate, len(page)) + today_note(notebook.root) + language_note(notebook.root)
+    return {"root": str(notebook.root), "directory": str(directory), "record": record,
+            "items": quote_items, "before": {record: page}, "candidate": str(candidate),
+            "prompt": text, "config": config}
+
+
 def _project_quote_turn(notebook, record, page, items, counts, config, run, workdir, turn, progress):
     """Edit the saved page with at most one repair, then remove the task's private material."""
     from .investigate import _keep_unless_lost
@@ -684,13 +701,8 @@ def _project_quote_turn(notebook, record, page, items, counts, config, run, work
     try:
         candidate = directory / "candidate.md"
         candidate.write_text(page, encoding="utf-8")
-        quote_items = [{**items[0], "text": f"The page as it stands, at {record}:\n\n{page}"},
-                       {"role": "round", "source": "investigation:round",
-                        "text": PROJECT_QUOTE_NOTE.format(quotes=counts[0], decisions=counts[1])},
-                       # The whole first-write material: given only the messages, the claim
-                       # audit refuted sections that cite the repository (2026-10-20, 4 of 6).
-                       *items[1:]]
-        text = prompt(directory, quote_items, candidate, len(page)) + today_note(notebook.root) + language_note(notebook.root)
+        prepared = prepare_quotes(notebook, record, items, counts, directory=directory, config=config)
+        quote_items, text = prepared["items"], prepared["prompt"]
         if progress:
             progress("quote round")
         turn.update(run(workdir, text, config, "investigate"))
@@ -730,21 +742,39 @@ def _project_quote_round(notebook, record, items, config, run, workdir, result, 
     return {"quotes": [counts[0], after[0]], "unquoted_decisions": [counts[1], after[1]]}
 
 
+def prepare(root, record, *, config, directory, now=None):
+    from .runner import language_note, today_note
+    notebook = Notebook(root)
+    items, through = material(root, record, now=now)
+    original = notebook.read(record)
+    candidate = directory / "candidate.md"
+    text = prompt(directory, items, candidate, len(original)) + today_note(root) + language_note(root)
+    return {"root": str(root), "directory": str(directory), "record": record, "items": items,
+            "through": through, "before": {record: original}, "candidate": str(candidate),
+            "prompt": text, "config": config}
+
+
+def check(task, result, *, run=None, lock_held=False, native=False):
+    from .runner import promote_with_repairs
+    directory, record = Path(task["directory"]), task["record"]
+    return promote_with_repairs(Notebook(Path(task["root"])), record, Path(task["candidate"]),
+                                task["before"][record], task["items"], directory, result,
+                                workdir=directory.parent, config=task["config"], stage="investigate", run=run,
+                                lock_held=lock_held, **({"repairs": 0, "native": True} if native else {}))
+
+
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """Write pending messages, then optionally edit quotes; save only pages that pass review."""
     from .runner import RunFailed, _one_more_turn, promote_with_repairs, run_task
     config = config or read_config(root)
     run = run or run_task
-    notebook = Notebook(root)
-    items, through = material(root, record, now=now)
     workdir = root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory = Path(tempfile.mkdtemp(prefix="projects-", dir=workdir))
-    candidate = directory / "candidate.md"
-    original = notebook.read(record)
-    from .runner import language_note, today_note
-    text = prompt(directory, items, candidate, len(original)) + today_note(root) + language_note(root)
+    task = prepare(root, record, config=config, directory=directory, now=now)
+    notebook, items, through = Notebook(root), task["items"], task["through"]
+    candidate, original, text = Path(task["candidate"]), task["before"][record], task["prompt"]
     if progress:
         progress("writing page")
     started, result = time.monotonic(), {}
@@ -755,8 +785,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         result = run(workdir, text, config, "investigate")
         if not candidate.is_file():
             result = _one_more_turn(workdir, text, config, "investigate", candidate, result, run)
-        promote_with_repairs(notebook, record, candidate, original, items, directory, result,
-                             workdir=workdir, config=config, stage="investigate", run=run)
+        check(task, result, run=run)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),

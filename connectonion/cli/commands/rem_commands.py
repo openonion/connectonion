@@ -1937,6 +1937,41 @@ def make_rem_app(factory):
             return sync_summary(value, lambda arguments: _next(ctx, arguments))
         _handle(ctx, operation, ["logs"], draw=draw)
 
+    from rich.markup import escape
+
+    def native_text(value):
+        if value.get("outcome") == "task":
+            return ("\n".join(value.get("notices", [])) + "\n" + value["instructions"]
+                    + f"\n\nMaterial: {value['material']}\nWrite: {value['candidate']}"
+                    + f"\nSubmit: {value['submit']}").strip()
+        return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
+                           *(value.get("changed") or [])])
+
+    @rem.command("next", cls=V("co rem next"))
+    def native_next(ctx: typer.Context,
+                    scheduled: bool = typer.Option(False, "--scheduled"),
+                    discard: bool = typer.Option(False, "--discard"),
+                    json_out: bool = typer.Option(False, "--json")):
+        from ...rem.native import next_task
+        ctx.obj["json"] = ctx.obj["json"] or json_out
+        _handle(ctx, lambda root: (next_task(root, scheduled=scheduled, discard=discard), ["next"]),
+                ["next"], draw=lambda value: escape(native_text(value)))
+
+    @rem.command("submit", cls=V("co rem submit"))
+    def native_submit(ctx: typer.Context, task_id: str = typer.Argument(...),
+                      usage_json: Optional[str] = typer.Option(None, "--usage-json")):
+        from ...rem.native import submit
+        from ...rem.files import RemError
+        def operation(root):
+            try:
+                usage = json.loads(usage_json) if usage_json is not None else None
+            except json.JSONDecodeError as error:
+                raise RemError("--usage-json must be a JSON object of measured token totals") from error
+            value = submit(root, task_id, usage=usage)
+            refused = value["outcome"] == "refused"
+            return value, ["submit", task_id] if refused else ["next"], refused
+        _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
+
     @rem.command("sync", cls=V("co rem sync"))
     def sync_rem(ctx: typer.Context,
                   source: str = typer.Option("", "--source"),
@@ -2366,7 +2401,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync sources config logs doctor history "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync next submit sources config logs doctor history "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

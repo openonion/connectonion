@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -763,7 +764,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
            progress=None, attachments_dir: Path | None = None,
            sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
            quick: bool = False, archive_root: Path | None = None,
-           record: str = "", mail_filter=None) -> tuple[list[dict], list[str]]:
+           record: str = "", mail_filter=None, lock_held=False) -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -956,7 +957,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 provenance = {}
                 if archive_root is not None:
                     from .mail_archive import retain_message
-                    saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
+                    saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat(),
+                                           **({"lock_held": True} if lock_held else {}))
                     body = saved["body"]
                     provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
                     if saved.get("fetched_at"):
@@ -1622,9 +1624,7 @@ def falls_short(page: str, *, min_insight: int = 2) -> tuple[int, int, int] | No
     return None
 
 
-def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]], counts: tuple[int, int, int],
-               config: dict, stage_progress=None, context=(), *, insight_target=2):
-    """One edit with only the page's cited originals, so exact words can replace paraphrases."""
+def prepare_quotes(notebook, record, rounds, counts, context=(), *, insight_target=2):
     from .page_review import prose
     from .reader_model import SOURCE
     from .runner import RunFailed
@@ -1643,6 +1643,14 @@ def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]]
              # contact and promotion could not put it back (2026-10-20, 3 of 5 pages).
              *[item for item in context if item.get("role") == "facts"],
              *[item for part in rounds for item in part if item.get('source') in cited]]
+    return items
+
+
+def quote_turn(runner, notebook: Notebook, record: str, rounds: list[list[dict]], counts: tuple[int, int, int],
+               config: dict, stage_progress=None, context=(), *, insight_target=2):
+    """One edit with only the page's cited originals, so exact words can replace paraphrases."""
+    from .runner import RunFailed
+    items = prepare_quotes(notebook, record, rounds, counts, context, insight_target=insight_target)
     if stage_progress:
         stage_progress("quote round")
     try:
@@ -1677,6 +1685,22 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
             "counts": {"quotes": [counts[0], quotes_after], "insight": [counts[2], insight_after]}}
 
 
+def prepare_editing(notebook, record, context=()):
+    from .page_review import hedged_lines
+    before = hedged_lines(notebook.read(record))
+    if not before:
+        return None
+    note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
+    items = [{"role": "page", "record": record, "source": "investigation:page",
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
+                      f"note:\n\n{notebook.read(record)}"},
+             {"role": "round", "source": "investigation:round", "text": note},
+             # The facts the audit judges contact dates against (see quote_turn).
+             *[item for item in context if item.get("role") == "facts"]]
+    return items
+
+
 def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_progress=None, context=()):
     """One turn that edits the hedged lines the final round left, if any (#2343).
 
@@ -1692,14 +1716,7 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     before = hedged_lines(notebook.read(record))
     if not before:
         return [], [], None
-    note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
-    items = [{"role": "page", "record": record, "source": "investigation:page",
-              "timestamp": datetime.now(timezone.utc).isoformat(),
-              "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
-                      f"note:\n\n{notebook.read(record)}"},
-             {"role": "round", "source": "investigation:round", "text": note},
-             # The facts the audit judges contact dates against (see quote_turn).
-             *[item for item in context if item.get("role") == "facts"]]
+    items = prepare_editing(notebook, record, context)
     if stage_progress:
         stage_progress("editing round")
     page = notebook.read(record)
@@ -1716,16 +1733,18 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     else:
         # A hedge is rewritten, never deleted with what it cited: three trial runs of
         # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
-        from .page_review import fold_history, restore_dropped, strip_hedge
-        edited = notebook.read(record)
-        kept = restore_dropped(page, edited)
-        # Then every hedged line outside Uncertainties loses only its hedge clause, in code.
-        hedged = {line for _, line in hedged_lines(kept)}
-        kept = fold_history("\n".join(strip_hedge(line) if line.strip() in hedged else line
-                                       for line in kept.split("\n")))
+        kept = keep_editing(page, notebook.read(record))
         if kept != notebook.read(record):
             notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
+
+
+def keep_editing(page, edited):
+    from .page_review import fold_history, hedged_lines, restore_dropped, strip_hedge
+    kept = restore_dropped(page, edited)
+    hedged = {line for _, line in hedged_lines(kept)}
+    return fold_history("\n".join(strip_hedge(line) if line.strip() in hedged else line
+                                 for line in kept.split("\n")))
 
 
 def _cut_too_much(before: str, after: str) -> bool:
@@ -1792,6 +1811,35 @@ def _repair_quotes(runner, notebook, record, page_item, context, before, lost, o
             "refuted_claims": [*out.get("refuted_claims", []), *repair.get("refuted_claims", [])]}
 
 
+def prepare_round(notebook, state, page=None):
+    """The next bounded turn, including leads carried by earlier processes."""
+    record, number, parts = state["record"], state["number"], state["parts"]
+    total = len(parts)
+    if number > total + 1 or number > total and (not state["multi"] or not state["edited"]):
+        return None
+    part = parts[number - 1] if number <= total else []
+    dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
+             for i in part if i.get("local_time") or i.get("timestamp")]
+    note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"), last=max(dates, default="?"))
+            if part else (PERSON_SYNTHESIS_NOTE if record.startswith("people/") else SYNTHESIS_NOTE).format(total=total))
+    leads = "\n\nLeads from earlier rounds:\n" + "\n\n".join(state["ledgers"])[-6000:] if state["ledgers"] else ""
+    from .page_review import normalize
+    page = page or {**state["page"], "text": normalize(record, notebook.read(record),
+                                                     owner=state["page"].get("owner", False))}
+    return [page, *state["context"], *([{"role": "round", "source": "investigation:round", "text": note + leads}]
+                                    if state["multi"] else []), *part]
+
+
+def check_round(state, result):
+    """Advance only an accepted turn; refused evidence and ledgers remain serializable."""
+    state["changed"] = sorted({*state["changed"], *result.get("changed", [])})
+    state["edited"] = state["edited"] or bool(result.get("changed"))
+    if result.get("report"):
+        state["ledgers"].append(f"Round {state['number']}: {result['report']}")
+        state["leads"] = state["ledgers"][-1:]
+    state["number"] += 1
+
+
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
                config: dict, stage_progress=None) -> dict:
     """One turn per part, each on the page the last one left, then a synthesis turn.
@@ -1806,21 +1854,14 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     from .runner import RunFailed
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total, edited, repaired = len(rounds), False, 0
+    state = {"record": record, "parts": rounds, "context": context, "page": {}, "number": 1,
+             "multi": True, "edited": False, "ledgers": ledgers, "changed": [], "leads": []}
     for number, part in enumerate([*rounds, []], 1):
-        if not part and not edited:
-            # Nothing to bring together: every part round answered NO CHANGE or was
-            # refused. The owner's full page spent a 415-second synthesis turn on
-            # an unchanged page after four such rounds (2026-10-20).
+        state.update(number=number, edited=edited)
+        items = prepare_round(notebook, state, page_item(notebook.read(record)))
+        if items is None:
             ledgers.append(f"Round {number}: skipped; no earlier round changed the page.")
             break
-        dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
-                 for i in part if i.get("local_time") or i.get("timestamp")]
-        note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
-                                  last=max(dates, default="?"))
-                if part else (PERSON_SYNTHESIS_NOTE if record.startswith("people/") else SYNTHESIS_NOTE).format(total=total))
-        leads = ("\n\nLeads from earlier rounds:\n" + "\n\n".join(ledgers)[-6000:]) if ledgers else ""
-        items = [page_item(notebook.read(record)), *context,
-                 {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
         if stage_progress:
             stage_progress(f"investigation round {number} of {total + 1}")
         before = notebook.read(record)
@@ -2063,11 +2104,11 @@ def recent_projects(root: Path) -> str:
             + ("\n".join(lines) if lines else "- none in these four weeks"))
 
 
-def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -> None:
+def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict], *, lock_held=False) -> None:
     """Nothing new to read, but a fact the material holds is missing from the page:
     put it in its field with its source, no model needed (#2068)."""
     from . import facts
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         page = notebook.read(record)
         kept, restored = facts.keep_extracted(record, facts.upgrade(record, page), rows)
         if restored:
@@ -2212,7 +2253,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
                 quick: bool = False, retry_refused: bool = False, website=None,
-                fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "") -> dict:
+                fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "",
+                prepare_only=False, lock_held=False, directory=None) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input.
 
     `rounds` caps the parts read in full (the first run's time budget), and
@@ -2222,7 +2264,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
-    if runner is None:
+    if runner is None and not prepare_only:
         # Seconds now, not after the gather: the model's co ai once could not
         # find this Skill, and said so only after minutes of fetching mail.
         from . import runner as runner_module
@@ -2235,7 +2277,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     company_note = ''
     search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
     gather_options = dict(progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
-                          mail_skipped=mail_skipped, stage_progress=stage_progress, quick=quick, archive_root=root)
+                          mail_skipped=mail_skipped, stage_progress=stage_progress, quick=quick, archive_root=root,
+                          **({"lock_held": True} if lock_held else {}))
     mail_subs = {k: v for k, v in subscriptions.items() if k in MAIL_KINDS} if company else subscriptions
     # Alternate contact addresses could reintroduce private mail rejected by company_material below.
     mail_handles = own_domains if company else search_handles
@@ -2313,12 +2356,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                 "provider-thread comparison; comparison is old evidence, not new contact")
             items = [*fresh, *comparison]
     if last and not items and not record.startswith("projects/"):
-        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+        feedback_result = None if prepare_only else _feedback_without_new_raw(root, record, config, coverage, runner=runner,
                                                     max_calls=max_calls, read_before=read_before,
                                                     retry_refused=retry_refused, stage_progress=stage_progress)
         if feedback_result is not None:
             return feedback_result
-        _keep_facts(notebook, root, record, fact_rows)
+        _keep_facts(notebook, root, record, fact_rows, lock_held=lock_held)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
@@ -2368,7 +2411,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads and not project_roots:
-        feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+        feedback_result = None if prepare_only else _feedback_without_new_raw(root, record, config, coverage, runner=runner,
                                                     max_calls=max_calls, read_before=read_before,
                                                     retry_refused=retry_refused, stage_progress=stage_progress)
         if feedback_result is not None:
@@ -2383,7 +2426,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if routing(root):
         import uuid
 
-        original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
+        original_material = directory / "originals.json" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}.json")
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, page_kind_of, run_stage
     # The instructions this page's turn is actually given (task_prompt), not
@@ -2393,7 +2436,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 + len(notebook.read(record)) + len(company_note) + 4000)
     room = config["limits"]["input_chars_per_batch"] - overhead - len(owner_packet)
     from .tier import current
-    summary = current(root, config) == "summary"
+    summary = not prepare_only and current(root, config) == "summary"
     if summary:
         # A plain model reads nothing it is not handed: the page's whole
         # material travels in the one prompt, so it must fit there (#1847).
@@ -2408,7 +2451,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             corrected = prefill_project_dates(notebook.read(record), line_items)
             if corrected != notebook.read(record):
                 # NO CHANGE or a failed turn still leaves these cited dates on the page (2026-10-15).
-                with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+                with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
                     retain_repository_context(root, line_items,
                                               {i['source'] for i in line_items if i['role'] == 'recent-commits'})
                     notebook.write(record, corrected)
@@ -2423,7 +2466,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
                 item["source"] in cited for item in repository_items)
             if same:
-                feedback_result = _feedback_without_new_raw(root, record, config, coverage, runner=runner,
+                feedback_result = None if prepare_only else _feedback_without_new_raw(root, record, config, coverage, runner=runner,
                                                             max_calls=max_calls, read_before=read_before,
                                                             retry_refused=retry_refused, stage_progress=stage_progress)
                 if feedback_result is not None:
@@ -2478,7 +2521,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         import uuid
 
         from .evidence import write_evidence
-        evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+        evidence_dir = directory / "evidence" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}")
         shutil.rmtree(evidence_dir, ignore_errors=True)
         laid_out = write_evidence(evidence_dir, items)
         index_text = laid_out["index"].read_text(encoding="utf-8")
@@ -2556,27 +2599,35 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner = partial(run_stage, search=mail_search(clients, root, known_addresses(root))) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
+    parts, context = [items], prompt_items[1:len(prompt_items) - len(items)]
+    if in_rounds:
+        context = prompt_items[1:len(prompt_items) - len(items)]
+        parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
+        parts, older = rounds_to_read(parts, rounds or config["limits"]["investigation_rounds"], read_before)
+        if not parts:
+            raise NothingNew(f"Nothing dated before {read_before} for {subject}. No model was called; "
+                             f"{record} is unchanged.")
+        if older:
+            # Past the round cap, the rest of the material is still searchable from the first round.
+            import uuid
+            from .evidence import write_evidence
+            evidence_dir = directory / "evidence" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}")
+            laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
+            parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
+                                "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                                "originals": str(laid_out["originals"]),
+                                "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
+                                        f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
+        coverage.append(f"rounds: {len(parts)} parts read in full" + (
+            f", {sum(map(len, older))} other items searchable in files" if older else ""))
+    if prepare_only:
+        return {"record": record, "parts": parts, "context": context, "page": prompt_items[0],
+                "number": 1, "ledgers": [], "leads": [], "refused_sources": [], "refused_rounds": [],
+                "changed": [], "edited": False, "multi": in_rounds,
+                "searched": searched_sources(coverage), "repository_items": repository_items,
+                "session_items": original_items, "project_inputs": project_inputs, "days": days}
     try:
         if in_rounds:
-            context = prompt_items[1:len(prompt_items) - len(items)]
-            parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
-            parts, older = rounds_to_read(parts, rounds or config["limits"]["investigation_rounds"], read_before)
-            if not parts:
-                raise NothingNew(f"Nothing dated before {read_before} for {subject}. No model was called; "
-                                 f"{record} is unchanged.")
-            if older:
-                # Past the round cap, the rest of the material is still searchable from the first round.
-                import uuid
-                from .evidence import write_evidence
-                evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
-                laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
-                parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
-                                    "file": str(laid_out["index"]), "sources": laid_out["sources"],
-                                    "originals": str(laid_out["originals"]),
-                                    "text": f"The rest of the material, not in these rounds, is in files under {evidence_dir}; "
-                                            f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
-            coverage.append(f"rounds: {len(parts)} parts read in full" + (
-                f", {sum(map(len, older))} other items searchable in files" if older else ""))
             result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")
@@ -2665,13 +2716,13 @@ def _repositories_note(roots: list[str], line) -> str:
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
                   *, changed: bool = False, repository_items=(), session_items=(), skill_records=(),
-                  project_coverage=None) -> None:
+                  project_coverage=None, lock_held=False) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
     pages in flight (the first run writes four at once) two finish together.
     """
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         from .reviews import ingest
         ingest(root, review_candidates)
         if changed:

@@ -990,6 +990,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     # Inside the sync's own lock: waiting for it here made a second sync sit for
     # the write wait and then run, instead of saying at once that co rem is busy.
     with maintenance_lock(root), _terminate_as_interrupt():
+        from .native import refuse_pending
+        refuse_pending(root)
         sessions = import_sessions(root, consented_only=True, lock_held=True)
         config = validate(read_config(root))
         abandon_stale_runs(root)
@@ -1098,8 +1100,8 @@ def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missi
     write_json(state_path(root, "source_reads.json"), reads)
 
 
-def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
-                 with_person="", include_local=True, say=None):
+def prepare_sync(root, selected, progress, config, runner=None, *, with_person="", include_local=True):
+    """Collect and route one batch once, stopping before its first model call."""
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
@@ -1264,7 +1266,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         # (#1846). Messages passed over in an unfamiliar format are still said.
         if record["warning"] or feedback_deferred:
             write_json(path, record)
-        return record
+        return {"done": True, "record": record}
     from .extract import finished_digest, forget_digest, remember_digest
     digested = finished_digest(root, items, kind) if record["extracted"] else None
     extract_calls = 1 if record["extracted"] and digested is None else 0
@@ -1292,7 +1294,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         write_json(state_path(root, "progress.json"), updated)
         forget_digest(root)
         write_json(path, record)
-        return record
+        return {"done": True, "record": record}
     room = limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
     if room < 1:
         cap = daily_cap(root)
@@ -1312,6 +1314,26 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                 {"record": page, "reason": "Page or daily runner budget reached"} for page in deferred_targets)
     leads = leads[:room]
     attempts = extract_calls + (len(leads) or 1)
+    return {"done": False, "items": items, "updated": updated, "record": record, "kind": kind,
+            "leads": leads, "current": current, "passed": passed, "digested": digested,
+            "selected_feedback": selected_feedback, "attempts": attempts, "room": room, "local": local}
+
+
+def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
+                 with_person="", include_local=True, say=None):
+    from .extract import NOTHING, extraction_item, run_extract, forget_digest, remember_digest
+    from .runner import run_stage
+    from .leads import project_writer_pages
+    from . import feedback
+    task = prepare_sync(root, selected, progress, config, runner, with_person=with_person, include_local=include_local)
+    if task["done"]:
+        return task["record"]
+    items, updated, record, kind = (task[key] for key in ("items", "updated", "record", "kind"))
+    leads, current, passed, digested = (task[key] for key in ("leads", "current", "passed", "digested"))
+    selected_feedback, attempts, room = (task[key] for key in ("selected_feedback", "attempts", "room"))
+    local = task["local"]
+    started = datetime.fromisoformat(record["started_at"])
+    path = state_path(root, f"runs/{record['id']}.json")
     runner = runner or run_stage
     # A runner may carry a preflight (the CLI adapter checks that co is installed). It raises before an attempt is reserved: a configuration error is
     # not a failed batch and must not spend one of the day's attempts.
