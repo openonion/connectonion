@@ -89,6 +89,8 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
+    elif isinstance(value, dict) and value.get("outcome") == "busy":
+        typer.echo(value["reason"])
     elif draw and not isinstance(value, str) and (drawn := draw(value)) is not None:
         # A drawing may decline a result of another shape (sync's dry run) by
         # returning None; a failed result it draws ends on its Next line too.
@@ -1905,6 +1907,8 @@ def make_rem_app(factory):
                     raise typer.Exit(130)
                 if scheduled and record is None:
                     return {"due": False, "ran": False}, ["status"]
+                if record.get("outcome") == "busy":
+                    return record, ["status"]
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
                         why = record.get("reason") or record["outcome"]
@@ -1919,15 +1923,22 @@ def make_rem_app(factory):
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
-            result = run_daily(root, days=days, scheduled=scheduled,
-                               say=lambda text: rem_look.step(text))
+            from ...rem.service import run_scheduled
+
+            def daily_round():
+                result = run_daily(root, days=days, say=lambda text: rem_look.step(text))
+                if result is None or result["outcome"] in ("partial", "busy"):
+                    return result
+                if scheduled:
+                    from ...rem import depth
+                    result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
+                return result
+
+            result = run_scheduled(root, daily_round) if scheduled else daily_round()
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":
                 _emit(ctx, result, ["logs"], failed=True, draw=draw)
-            elif scheduled:
-                from ...rem import depth
-                result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
             return result, ["logs"]
         from .rem_output import sync_summary
 

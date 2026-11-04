@@ -16,5 +16,7 @@ def _claim_audit_passes(request, monkeypatch):
     if request.module.__name__.endswith("test_rem_project_claim_review"):
         return
     from connectonion.rem import runner
+    original = runner.run_claim_task
     monkeypatch.setattr(runner, "run_claim_task", lambda *_args: {
         "result": json.dumps({"verdict": "PASS", "findings": []}), "usage": {}})
+    return original

@@ -57,12 +57,14 @@ def _alike(one: dict, other: dict) -> str:
 
 def candidates(root: Path) -> list[dict]:
     """Pairs of people pages that look alike and have not been judged, by code alone."""
+    from .merge import aliases
     state = read_json(state_path(root, "map.json"), {})
     owner = (state.get("owner") or {}).get("record")
     mapped = {address.casefold(): row["record"] for row in state.get("people", []) if row.get("record")
               for address in row.get("addresses") or [row.get("address") or ""] if address}
     judged = read_json(state_path(root, VERDICTS), {})
-    roster = [person for person in Notebook(root).people() if person["path"] != owner]
+    folded = aliases(root)
+    roster = [person for person in Notebook(root).people() if person["path"] != owner and person["path"] not in folded]
     pairs = {}
     for i, one in enumerate(roster):
         for other in roster[i + 1:]:
@@ -74,6 +76,20 @@ def candidates(root: Path) -> list[dict]:
             if why and _due(judged.get(key)):
                 pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
+
+
+def current_pair(root: Path, pair: dict) -> bool:
+    """Caller holds the lock: both original pages must still be independent pages."""
+    from .merge import aliases
+    folded, notebook = aliases(root), Notebook(root)
+    return all(record not in folded and notebook.exists(record) for record in pair["pages"])
+
+
+def _skipped(pair, usage=None, say=lambda text: None, *, asked=False):
+    reason = "a page vanished or is already an alias"
+    say(f"Skipping same-person pair {' and '.join(pair['pages'])}: {reason}")
+    return {**pair, "outcome": "skipped", "reason": reason, "usage": usage, "changed": [],
+            "runner_attempts": int(asked)}
 
 
 def _due(verdict: dict | None) -> bool:
@@ -120,27 +136,32 @@ def _verdict(result: dict) -> dict:
 
 def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None) -> list[dict]:
     """Ask about up to `limit` pairs; fold the ones answered yes. Returns one row per pair asked."""
-    from .merge import merge_into, weight
     from .runner import RunFailed, run_claim_task
     run = run or run_claim_task
     rows = []
     for _ in range(limit):
         # Found again after every answer: a fold removes a page that later pairs named.
-        pair = next(iter(candidates(root)), None)
+        with maintenance_lock(root):
+            pair = next(iter(candidates(root)), None)
         if not pair:
             break
         say(f"Same person? {pair['pages'][0]} and {pair['pages'][1]}")
+        with maintenance_lock(root):
+            if not current_pair(root, pair):
+                rows.append(_skipped(pair, say=say))
+                continue
+            prompt = packet(root, pair)
         workspace = state_path(root, "same-person")
         workspace.mkdir(parents=True, exist_ok=True)
         try:
-            result = run(workspace, packet(root, pair), config, "same-person")
-            answer = _verdict(result)
+            result = run(workspace, prompt, config, "same-person")
+            row = check({"root": str(root), "pair": pair}, result, say=say)
         except RunFailed as error:
             # Asked again tomorrow, so a pair that keeps failing does not hold back
             # the pairs behind it every run (#2741).
             rows.append(_failed(root, pair, error))
             continue
-        rows.append(check({"root": str(root), "pair": pair}, result))
+        rows.append(row)
     return rows
 
 
@@ -151,17 +172,20 @@ def prepare(root, pair, *, directory):
             "prompt": packet(root, pair) + f"\nWrite only the JSON answer to {output}."}
 
 
-def prepare_verdict(task, result):
+def prepare_verdict(task, result, *, say=lambda text: None):
     from .merge import prepare_merge, weight
     root, pair = Path(task["root"]), task["pair"]
+    verdicts = read_json(state_path(root, VERDICTS), {})
+    if not current_pair(root, pair):
+        return {"merge": None, "verdicts": verdicts,
+                "result": _skipped(pair, result.get("usage"), say, asked=True)}
     answer = _verdict(result)
     row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
     notebook, merge = Notebook(root), None
-    if answer["same"] and all(notebook.path(record).is_file() for record in pair["pages"]):
+    if answer["same"]:
         kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
         merge = prepare_merge(notebook, kept, old, "same person: " + answer["reason"][:200])
         row["kept"] = kept
-    verdicts = read_json(state_path(root, VERDICTS), {})
     verdicts["|".join(pair["pages"])] = {key: row[key] for key in ("why", "same", "address_role", "reason", "date") if key in row}
     return {"merge": merge, "verdicts": verdicts,
             "result": {**row, "changed": [row["kept"]] if row.get("kept") else []}}
@@ -175,11 +199,11 @@ def promote_verdict(root, plan):
     return plan["result"]
 
 
-def check(task, result, *, lock_held=False):
+def check(task, result, *, lock_held=False, say=lambda text: None):
     from contextlib import nullcontext
     root = Path(task["root"])
     with nullcontext() if lock_held else maintenance_lock(root):
-        return promote_verdict(root, prepare_verdict(task, result))
+        return promote_verdict(root, prepare_verdict(task, result, say=say))
 
 
 def _failed(root: Path, pair: dict, error: Exception) -> dict:

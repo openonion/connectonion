@@ -339,6 +339,68 @@ def worker_state(root: Path) -> dict:
     return saved if isinstance(saved, dict) else {}
 
 
+def _scheduled_slot(root: Path):
+    worker = worker_state(root)
+    if not worker.get("enabled"):
+        return None
+    slot = latest_slot(read_config(root), now() + EARLY_FIRE)
+    served = worker.get("last_scheduled_slot")
+    return slot if slot and (not served or datetime.fromisoformat(served) < slot) else None
+
+
+def _active_scheduled_run(root: Path):
+    host = socket.gethostname()
+    records = [worker_state(root).get("scheduled_run") or {}, *run_logs(root)]
+    return next((record for record in records
+                 if record.get("outcome") == "running"
+                 and (record.get("phase", "sync") == "sync" or record.get("phase", "").startswith("daily-")
+                      or record.get("phase") == "same-person")
+                 and record.get("host") == host and record.get("pid") and _alive(int(record["pid"]))), None)
+
+
+def run_scheduled(root: Path, operation) -> dict | None:
+    """Claim the whole scheduled round, including the gaps between its model turns."""
+    if _scheduled_slot(root) is None:
+        return None
+    with maintenance_lock(root):
+        abandon_stale_runs(root)
+        slot = _scheduled_slot(root)
+        if slot is None:
+            return None
+        active = _active_scheduled_run(root)
+        if active:
+            return {"outcome": "busy", "reason": f"a scheduled sync started at {active['started_at']} is still running"}
+        claim = {"phase": "daily-sync", "outcome": "running", "started_at": now().isoformat(), **running_marker()}
+        write_json(state_path(root, "worker.json"), {**worker_state(root), "scheduled_run": claim})
+    result = None
+    try:
+        result = operation()
+    except RemError as error:
+        if CAP_LIMIT not in str(error):
+            raise
+        result = {"outcome": "budget_exhausted", "reason": "the day's runner calls are spent"}
+    finally:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            _finish_scheduled(root, slot, result)
+    return result
+
+
+def _finish_scheduled(root, slot, result):
+    worker = worker_state(root)
+    worker.pop("scheduled_run", None)
+    if result is None:
+        write_json(state_path(root, "worker.json"), worker)
+        return
+    maintenance = result.get("maintenance") or result
+    partial = result["outcome"] == "partial"
+    reason = (maintenance.get("error") or "the last scheduled investigation failed") if partial else (
+        result.get("reason") or result.get("error") or "")
+    write_json(state_path(root, "worker.json"), {
+        **worker, "last_scheduled_slot": slot.isoformat(),
+        "last_scheduled_outcome": "failed" if partial else result["outcome"],
+        "last_scheduled_reason": reason, "last_scheduled_warning": maintenance.get("warning") or ""})
+
+
 def _wall_slot(day: datetime, value: str) -> datetime:
     """Once per local day: first repeated hour; a missing hour moves by the DST gap."""
     hour, minute = map(int, value.split(":"))
@@ -926,6 +988,10 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             for name, sub in _selected_sources(root, source).items()},
             # `status` said 30/30 while the dry run said nothing of it (#1957).
             "daily_cap": daily_cap(root)}
+    if scheduled:
+        return run_scheduled(root, lambda: run_sync(
+            root, source=source, with_person=with_person, all_pending=all_pending,
+            runner=runner, extractor=extractor, on_batch=on_batch, say=say))
     if all_pending:
         records, spent = [], ""
         while True:
@@ -957,33 +1023,6 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
                           for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
                 "runs": [r["id"] for r in records]}
-    if scheduled:
-        worker = worker_state(root)
-        if not worker.get("enabled"):
-            return None
-        slot = latest_slot(read_config(root), now() + EARLY_FIRE)
-        served = worker.get("last_scheduled_slot")
-        if slot is None or (served and datetime.fromisoformat(served) >= slot):
-            return None
-        try:
-            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor,
-                              say=say)
-        except RemError as error:
-            if CAP_LIMIT not in str(error):
-                raise
-            # The day's calls are spent: the slot is served, not owed. Leaving it
-            # owed retried it on every five-minute tick until midnight and wrote
-            # the same error into launchd.log each time (seen on a real notebook).
-            record = {"outcome": "budget_exhausted", "reason": "the day's runner calls are spent"}
-        # Any recorded outcome serves the slot; a refusal to start (busy) raised
-        # above this line and leaves it owed for the next tick.
-        write_json(state_path(root, "worker.json"), {
-            **worker_state(root), "last_scheduled_slot": slot.isoformat(),
-            "last_scheduled_outcome": record.get("outcome"),
-            "last_scheduled_reason": record.get("reason") or record.get("error") or "",
-            "last_scheduled_warning": record.get("warning") or "",
-        })
-        return record
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
     from .sessions import import_sessions
