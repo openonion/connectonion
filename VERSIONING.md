@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc41
+## Current Version: 1.9.3rc42
+
+REM, from the pre-stable code audit (#2754, #2771): writes made by a scheduled round wait
+for the notebook lock instead of losing the night to a short owner command; reaching the
+daily call cap is recorded as `budget_exhausted` and shown as "daily cap reached", not as a
+failure; the same-person stage no longer charges the investigation's spend twice; and an
+archive never overwrites an earlier archive of the same record. `co rem logs` reads a run
+whose process is gone as interrupted, like `status` (#2769, #2770). Stable remains 1.9.2.
+See [candidate notes](docs/releases/1.9.3rc42.md).
+
+- 1.9.3rc42 (audit fixes: lock wait, daily cap, same-person meter, archive overwrite; logs outcome).
+
+### Previous candidate: 1.9.3rc41
 
 REM first run: the consent summary fits one screen (13 lines, the question visible, #2765);
 the estimate follows the material actually mapped and an empty map says Nothing to write yet
