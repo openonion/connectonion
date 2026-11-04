@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc40
+## Current Version: 1.9.3rc41
+
+REM first run: the consent summary fits one screen (13 lines, the question visible, #2765);
+the estimate follows the material actually mapped and an empty map says Nothing to write yet
+instead of asking for 71 minutes; skipped sessions say why; co rem show NAME resolves people,
+projects, orgs and skills (#2766). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc41.md).
+
+- 1.9.3rc41 (one-screen consent; estimate follows material; show by name).
+
+### Previous candidate: 1.9.3rc40
 
 REM: one scheduled sync at a time. A scheduled round claims the whole round, gaps between
 model turns included; a second tick that finds a live claim says so in one line and leaves
