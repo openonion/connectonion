@@ -7,7 +7,7 @@ The agreed design is issue #1656; change a page there and here together.
 
 ```
 co rem — a notebook about the people, projects and tools in your work, kept up to date from your mail and coding sessions.
-Experimental: a preview; its commands may change before 1.9.0.
+Experimental: its commands may still change between 1.9.x releases.
 
 Build (once)
   init          Build the notebook from mail and sessions, investigate mapped pages, then offer nightly upkeep.
@@ -92,7 +92,7 @@ Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--
                        [--all-history] [--investigate-all] [--estimate-only]
                        [--start | --no-start] [--yes]
                        [--first-people N] [--first-projects N] [--first-orgs N] [--first-skills N]
-Example:  co rem init --days 180 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
+Example:  co rem init --days 180 --name "Robin Lee" --mine robin@example.com,robin.lee@example.org
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
           Claude Code sessions. --mine adds addresses that are yours (commas, or
