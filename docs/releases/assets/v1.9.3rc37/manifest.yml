@@ -1,0 +1,2 @@
+version: v1.9.3rc37
+no_visual_change: "Process-lifecycle change only: on macOS and Linux co host becomes agent.py instead of starting it as a child, so stopping co host stops the agent. No reader layout, CSS, component or CLI output changes."
