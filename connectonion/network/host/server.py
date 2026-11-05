@@ -34,12 +34,12 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Union
 
+import httpx
 import uvicorn
 from rich.console import Console
 
 from ... import address, approvals
 from ...backend import DEFAULT_BACKEND_WS_URL
-from ...cli.browser_agent.transport import pid_alive
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from ..trust import TRUST_LEVELS, TrustAgent, parse_policy
@@ -561,16 +561,25 @@ SERVED_BY_FILE = "served_by.json"
 
 
 def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) -> Optional[str]:
-    """Record the serving PID, port, working folder and name beside the key.
+    """Record who serves this key, or return a verified duplicate's details.
 
-    Return a collision message if another live process claims this address,
-    even in the same folder. The caller must refuse startup on a collision.
-    Dead PIDs, legacy records without a PID and corrupt JSON are replaced
-    quietly. The working folder is the process's cwd: for `co ai`, co_dir is
-    global ~/.co and its parent does not identify the coding task's folder.
+    #642 caught two agents sharing one address: proximity sent calls meant for
+    the deployed agent to the laptop's agent, which answered with different
+    tools. Projects without their own key inherit the global identity, so the
+    record lives beside the key, where every project sharing it can see it.
+
+    A warning used to allow restarts despite stale records. A live duplicate
+    then let the relay split one session across two Hosts (oo-api #283), so the
+    caller now refuses if the recorded Host's /info answers with this address.
+    PIDs can be reused; they are only for the message. Unverified records are
+    replaced quietly, allowing restarts without changing the identity key.
+
+    The working folder is the process's cwd: for `co ai`, co_dir is global
+    ~/.co and its parent does not identify the coding task's folder.
     """
     source = Path(identity.get("source") or co_dir)
     if not source.is_dir():
+        # No identity directory means there is nowhere to record a claim.
         return None
     record = source / SERVED_BY_FILE
     mine = {"name": name, "project": str(Path.cwd()), "address": identity["address"],
@@ -579,23 +588,23 @@ def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) ->
     if record.exists():
         try:
             existing = json.loads(record.read_text(encoding="utf-8"))
-            if (existing.get("address") == mine["address"]
-                    and existing.get("pid") != mine["pid"]
-                    and pid_alive(existing.get("pid", 0))):
-                return (
-                    f"{identity['address']} is already served by '{existing.get('name')}' "
-                    f"(PID {existing['pid']}) in {existing.get('project')} "
-                    f"on port {existing.get('port')}. "
-                    f"Stop it with `kill {existing['pid']}`, then start this Host again."
-                )
-        except json.JSONDecodeError:
-            # Unreadable old records cannot establish a live owner.
+            if (isinstance(existing, dict)
+                    and existing.get("address") == mine["address"]
+                    and existing.get("port")):
+                response = httpx.get(f"http://127.0.0.1:{existing['port']}/info",
+                                     timeout=1.0, trust_env=False)
+                info = response.json() if response.status_code == 200 else {}
+                if isinstance(info, dict) and info.get("address") == mine["address"]:
+                    return (
+                        f"{identity['address']} is already served by '{existing.get('name')}' "
+                        f"(PID {existing.get('pid')}) in {existing.get('project')} "
+                        f"on port {existing['port']}. "
+                        f"Stop it with `kill {existing.get('pid')}`, then start this Host again."
+                    )
+        except (json.JSONDecodeError, httpx.RequestError, httpx.InvalidURL):
+            # Unreadable records and failed probes cannot establish a live owner.
             existing = None
 
-    # Check after the identity collision so even a shared port names the owner,
-    # but before writing a claim for a process that cannot start serving.
-    if _port_in_use(port):
-        raise SystemExit(_port_taken_message(port, co_dir))
     record.write_text(json.dumps(mine, indent=2), encoding="utf-8")
     return None
 
@@ -1225,6 +1234,9 @@ def host(
     # Before anything is printed: a banner announcing http://localhost:<port>
     # followed by uvicorn's raw "[Errno 48] address already in use" told the
     # user their agent was up at an address it would never serve.
+    if _port_in_use(port):
+        raise SystemExit(_port_taken_message(port, co_dir))
+
     # After `pip install -U` nobody re-runs co init, but the agent starts
     # again: refresh the command index for co that Codex and Claude Code read (#2113).
     # Silent when current or when neither ~/.codex nor ~/.claude exists,

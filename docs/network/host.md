@@ -91,8 +91,10 @@ file if the project has none), or for one run `co host --port 8001`.
 identity exits with an error naming the existing Host's PID, working folder,
 name and port. Stop that process with the shown `kill <pid>` command, then
 restart. This also applies in the same folder and to `co ai` using `~/.co`.
-The `served_by.json` record beside the identity key tracks the serving process;
-records with a dead PID are replaced quietly. Restarting does not require
+The `served_by.json` record beside the identity key tracks the serving process.
+Startup verifies that `http://127.0.0.1:<recorded port>/info` answers with the
+same address, with a one-second timeout. Records that cannot be verified are
+replaced quietly, even if their PID is alive. Restarting does not require
 generating or replacing your identity key.
 
 **`co host` or `python agent.py`?** The same thing. `co host` runs `./agent.py`

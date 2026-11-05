@@ -426,10 +426,11 @@ This is loaded every session, so the agent always follows your rules.
 - Same address across all `co ai` sessions
 
 Only one Host process on this machine can serve that address. If an older Host
-is still running, startup exits with its PID, working folder, name and port.
-Stop it with the shown `kill <pid>` command and start again. A dead process's
-`~/.co/served_by.json` record is replaced quietly; your identity key stays the
-same.
+answers `/info` on its recorded local port with the same address, startup exits
+with its PID, working folder, name and port. Stop it with the shown `kill <pid>`
+command and start again. The check times out after one second. Unverified
+`~/.co/served_by.json` records are replaced quietly, even if the PID is alive;
+your identity key stays the same.
 
 Task scoring is separate from session recording. It is off by default; pass
 `--eval` when debugging to generate an expected outcome and score completion.

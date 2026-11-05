@@ -83,3 +83,21 @@ def test_a_free_port_is_not_reported(tmp_path):
     sock.close()
 
     assert REAL_PORT_CHECK(free) is False
+
+
+@pytest.mark.parametrize("identity_dir_exists", [True, False])
+def test_a_taken_port_stops_before_metadata_even_without_an_identity_directory(
+        tmp_path, monkeypatch, identity_dir_exists):
+    co_dir = tmp_path / ".co"
+    if identity_dir_exists:
+        co_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(server, "_port_in_use", lambda port: True)
+
+    def create_agent():
+        pytest.fail("a taken port must stop before extracting agent metadata")
+
+    with pytest.raises(SystemExit, match="Port 8124 is already in use"):
+        server.host(create_agent, co_dir=co_dir, port=8124, relay_url=None)
+
+    assert not (co_dir / "served_by.json").exists()

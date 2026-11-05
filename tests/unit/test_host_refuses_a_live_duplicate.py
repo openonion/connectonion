@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 from connectonion import Agent, address
@@ -37,19 +38,36 @@ def recorded_host(tmp_path, monkeypatch, live_process):
     project = tmp_path / "maple"
     project.mkdir()
     monkeypatch.chdir(project)
+
+    def no_listener(url, **kwargs):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(httpx, "get", no_listener)
     return co_dir, identity, record, existing
 
 
-@pytest.mark.parametrize("port_taken", [False, True])
+@pytest.fixture
+def answering_host(recorded_host, monkeypatch):
+    _, identity, _, existing = recorded_host
+
+    def info(url, *, timeout, trust_env):
+        assert url == f"http://127.0.0.1:{existing['port']}/info"
+        assert timeout == 1.0
+        assert trust_env is False
+        return httpx.Response(200, json={"address": identity["address"]})
+
+    monkeypatch.setattr(httpx, "get", info)
+    return recorded_host
+
+
 @pytest.mark.parametrize("same_folder", [False, True])
 def test_co_ai_refuses_another_live_host_on_its_global_identity(
-        monkeypatch, recorded_host, port_taken, same_folder):
-    co_dir, _, record, existing = recorded_host
+        monkeypatch, answering_host, same_folder):
+    co_dir, _, record, existing = answering_host
     key = co_dir / "keys" / "agent.key"
     original_key = key.read_bytes()
     if same_folder:
         monkeypatch.chdir(co_dir.parent)
-    monkeypatch.setattr(server, "_port_in_use", lambda port: port_taken)
     served = []
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **kw: served.append(kw))
     monkeypatch.setattr(server, "_print_host_banner", lambda **kw: served.append("banner"))
@@ -77,6 +95,20 @@ def test_a_dead_pid_is_replaced_quietly(recorded_host, live_process, capsys):
     co_dir, identity, record, _ = recorded_host
     live_process.stdin.close()
     live_process.wait(timeout=10)
+
+    assert server.claim_identity(co_dir, identity, "maple", 8124) is None
+
+    assert capsys.readouterr().out == ""
+    assert json.loads(record.read_text()) == {
+        "address": identity["address"], "name": "maple",
+        "project": str(Path.cwd()), "pid": os.getpid(), "port": 8124,
+    }
+
+
+def test_a_live_unrelated_pid_with_no_answer_is_replaced_quietly(
+        recorded_host, live_process, capsys):
+    co_dir, identity, record, _ = recorded_host
+    assert live_process.poll() is None
 
     assert server.claim_identity(co_dir, identity, "maple", 8124) is None
 
@@ -124,34 +156,48 @@ def test_a_taken_port_does_not_leave_a_live_claim(recorded_host, live_process, m
     monkeypatch.setattr(server, "_port_in_use", lambda port: True)
 
     with pytest.raises(SystemExit, match="Port 8124 is already in use"):
-        server.claim_identity(co_dir, identity, "maple", 8124)
+        server.host(lambda: pytest.fail("must not extract metadata"),
+                    co_dir=co_dir, port=8124, relay_url=None)
 
     assert json.loads(record.read_text()) == existing
 
 
-@pytest.mark.parametrize("alive", [True, False])
-def test_windows_checks_liveness_without_signalling_the_process(
-        recorded_host, monkeypatch, alive):
-    import ctypes
-    from types import SimpleNamespace
+@pytest.mark.parametrize("pid", [0, os.getpid()])
+def test_an_answering_host_is_verified_regardless_of_pid(answering_host, pid):
+    co_dir, identity, record, existing = answering_host
+    existing["pid"] = pid
+    record.write_text(json.dumps(existing))
 
-    from connectonion.cli.browser_agent import transport
+    assert server.claim_identity(co_dir, identity, "maple", 8124)
+    assert json.loads(record.read_text()) == existing
 
-    co_dir, identity, record, existing = recorded_host
-    closed = []
 
-    def status(handle, code):
-        code._obj.value = 259 if alive else 0
-        return True
+@pytest.mark.parametrize("reply", [
+    httpx.ReadTimeout("timed out"),
+    httpx.Response(200, json={"address": "0xanother-address"}),
+    httpx.Response(200, json={}),
+    httpx.Response(200, text="not JSON"),
+    503,
+])
+def test_an_unverified_host_is_replaced_quietly(recorded_host, monkeypatch, capsys, reply):
+    co_dir, identity, record, _ = recorded_host
 
-    kernel = SimpleNamespace(OpenProcess=lambda *args: 123,
-                             GetExitCodeProcess=status, CloseHandle=closed.append)
-    monkeypatch.setattr(transport, "IS_WINDOWS", True)
-    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: kernel, raising=False)
-    monkeypatch.setattr(os, "kill", lambda *args: pytest.fail("liveness must not signal on Windows"))
+    def info(url, **kwargs):
+        if isinstance(reply, Exception):
+            raise reply
+        if isinstance(reply, int):
+            return httpx.Response(reply, json={"address": identity["address"]})
+        return reply
 
-    collision = server.claim_identity(co_dir, identity, "maple", 8124)
+    monkeypatch.setattr(httpx, "get", info)
 
-    assert bool(collision) is alive
-    assert closed == [123]
-    assert json.loads(record.read_text())["pid"] == (existing["pid"] if alive else os.getpid())
+    assert server.claim_identity(co_dir, identity, "maple", 8124) is None
+    assert capsys.readouterr().out == ""
+    assert json.loads(record.read_text())["name"] == "maple"
+
+
+def test_claim_identity_does_not_check_port_availability(recorded_host, monkeypatch):
+    co_dir, identity, _, _ = recorded_host
+    monkeypatch.setattr(server, "_port_in_use", lambda port: pytest.fail("identity only"))
+
+    assert server.claim_identity(co_dir, identity, "maple", 8124) is None
