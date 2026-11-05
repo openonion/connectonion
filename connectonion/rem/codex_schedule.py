@@ -285,13 +285,14 @@ class CodexNative:
     def describe(self, root: Path) -> dict:
         definition = self.definition(root)
         wake = self.launcher.describe_wake(root)
+        app_running = self._app_running()
         info = {"scheduler": "codex-native", "automation_id": automation_id(root),
                 "installed": bool(definition), "loaded": False, "active": False,
                 "observed_active": False, "desired_status": definition.get("status"),
-                "storage": "file", "app_running": self._app_running(),
+                "storage": "file", "app_running": app_running,
                 "wake_loaded": wake["loaded"], "wake_installed": wake["installed"]}
         row = self._indexed(root)
-        missed = self._missed_slot(root, row, wake["loaded"])
+        missed = self._missed_slot(root, row, wake["loaded"], app_running)
         if missed:
             info["reason"] = missed
         if self._account_record(row):
@@ -320,7 +321,7 @@ class CodexNative:
         return info
 
     @staticmethod
-    def _missed_slot(root: Path, row: dict, wake_loaded: bool) -> str:
+    def _missed_slot(root: Path, row: dict, wake_loaded: bool, app_running: bool) -> str:
         next_run = row.get("next_run_at")
         if row.get("status") != "ACTIVE" or next_run is None or time.time() - next_run / 1000 <= 30 * 60:
             return ""
@@ -328,4 +329,7 @@ class CodexNative:
         zone = ZoneInfo(read_config(root)["schedule"]["timezone"])
         slot = datetime.fromtimestamp(next_run / 1000, zone).strftime("%H:%M")
         wake = "wake job loaded" if wake_loaded else "wake job not loaded"
+        if app_running:
+            return (f"Codex is open but did not run the {slot} slot; show its window once, "
+                    f"then run co rem start to reinstall the wake job; {wake}")
         return f"Codex missed the {slot} slot (was the desktop app closed?); {wake}"

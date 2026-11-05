@@ -94,12 +94,14 @@ def wake_command(app: Path) -> list[str]:
     Opening an app that is already running sends it a reopen event, which can
     bring up a window in the middle of whatever the user is doing. The pattern
     is anchored so it matches Codex's own executable, not this shell.
+    A hidden launch (-j) gets no automation ticks; -g keeps the window visible
+    without bringing it to the foreground.
     """
     # pgrep reads POSIX extended regex: re.escape's "\-" and "\ " are not valid there.
     literal = re.sub(r"([.\[\]()*+?{}|^$\\])", r"\\\1", str(app))
     running = shlex.quote("^" + literal + "/Contents/MacOS/")
     return ["/bin/sh", "-c",
-            f"/usr/bin/pgrep -qf {running} || /usr/bin/open -g -j -a {shlex.quote(str(app))}"]
+            f"/usr/bin/pgrep -qf {running} || /usr/bin/open -g -a {shlex.quote(str(app))}"]
 
 
 class Launchd:

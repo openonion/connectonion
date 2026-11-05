@@ -463,7 +463,7 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if native and (worker.get("scheduler") == "codex-native" or native.get("observed_active")
                    or native.get("desired_status") == "ACTIVE" or native.get("storage") == "account"):
         attention = "Background needs attention — "
-        if native.get("reason", "").startswith("Codex missed the "):
+        if native.get("reason", "").startswith(("Codex missed the ", "Codex is open but did not run the ")):
             attention += native["reason"] + "; "
         if worker.get("scheduler") != "codex-native":
             return (attention + "a native REM task exists without a confirmed worker registration; "

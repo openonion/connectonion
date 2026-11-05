@@ -2,6 +2,7 @@
 
 import json
 import plistlib
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -211,7 +212,7 @@ def test_missed_index_rows_remain_visible_without_a_file_definition(native, tmp_
         native.definition_path(root).unlink()
     with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
         connection.execute("UPDATE automations SET next_run_at = 1")
-    assert "Codex missed the " in native.describe(root)["reason"]
+    assert "Codex is open but did not run the " in native.describe(root)["reason"]
 
 
 @pytest.mark.parametrize("worker", [{}, {"enabled": False, "scheduler": "codex-native"}])
@@ -225,13 +226,14 @@ def test_pending_worker_registration_keeps_the_missed_slot_diagnosis(native, tmp
     with sqlite3.connect(native.home / "sqlite" / "codex.db") as connection:
         connection.execute("UPDATE automations SET next_run_at = 1")
     info = native.describe(root)
+    assert info["reason"].startswith("Codex is open but did not run the ")
     write_json(state_path(root, "consent.json"), {})
     write_json(state_path(root, "worker.json"), worker)
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr(CodexNative, "installed", lambda self, root: True)
     monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
     text, slot = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
-    assert "Codex missed the " in text
+    assert info["reason"] in text
     assert status_next({"configured": True, "state": text, "next_run": slot}) == (["stop"] if worker else ["start"])
 
 
@@ -297,20 +299,25 @@ def test_missed_slot_is_visible_in_describe_and_status(
         connection.execute("UPDATE automations SET next_run_at = ?", (int(slot.timestamp() * 1000),))
     info = native.describe(root)
     assert info["wake_loaded"] is wake_loaded
-    missed = "Codex missed the 17:00 slot (was the desktop app closed?)"
+    diagnosis = ("Codex is open but did not run the 17:00 slot; show its window once, "
+                 "then run co rem start to reinstall the wake job") if app_running else (
+                 "Codex missed the 17:00 slot (was the desktop app closed?)")
+    wake = "wake job loaded" if wake_loaded else "wake job not loaded"
+    reason = f"{diagnosis}; {wake}"
     assert "Codex desktop was not running" not in info.get("reason", "")
     if late_minutes == 30:
-        assert missed not in info.get("reason", "")
+        assert "reason" not in info
         return
-    assert missed in info["reason"]
-    assert ("wake job loaded" if wake_loaded else "wake job not loaded") in info["reason"]
+    assert info["reason"] == reason
     write_json(state_path(root, "consent.json"), {})
     write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "codex-native"})
     monkeypatch.setattr(CodexNative, "describe", lambda self, root: info)
     text, next_run = _state_line(root, default_config(), ZoneInfo("Australia/Sydney"))
-    assert missed in text
+    assert text == f"Background needs attention — {reason}"
     value = {"configured": True, "state": text, "next_run": next_run}
-    assert "Codex missed the 17:00 slot" in "\n".join(_header(value, "co rem"))
+    header = "\n".join(_header(value, "co rem"))
+    assert ("Codex is open but did not run the 17:00 slot" if app_running else diagnosis) in header
+    assert wake in header
     assert status_next(value) == ["start"]
 
 
@@ -841,7 +848,8 @@ def test_dst_slot_is_never_in_the_future_and_repeated_hour_is_served_once(moment
     ({"app_running": False}, "open Codex desktop"),
     ({"loaded": True, "active": True, "next_run_at": 1900000000000}, "first execution not yet verified"),
     ({"loaded": True, "active": True, "next_run_at": 1,
-      "reason": "Codex missed the 17:00 slot (was the desktop app closed?); wake job loaded"}, "missed the 17:00 slot")])
+      "reason": "Codex is open but did not run the 17:00 slot; show its window once, "
+                "then run co rem start to reinstall the wake job; wake job loaded"}, "did not run the 17:00 slot")])
 def test_status_distinguishes_saved_registered_and_triggered(tmp_path, monkeypatch, state, fragment):
     from connectonion.rem.service import _state_line
     from zoneinfo import ZoneInfo
@@ -869,6 +877,31 @@ def test_the_wake_job_leaves_a_running_codex_alone_and_opens_a_closed_one(tmp_pa
     finally:
         running.kill()
         running.wait()
+
+
+def test_wake_command_opens_a_visible_window_without_taking_focus():
+    command = wake_command(Path("/Applications/Codex.app"))[-1]
+    assert " -j " not in command
+    assert "/usr/bin/open -g -a" in command
+
+
+@pytest.mark.parametrize("app_running", [False, True])
+def test_wake_command_guard_branches_with_stubbed_tools(tmp_path, app_running):
+    app = tmp_path / "Codex Test.app"
+    opened = tmp_path / "opened"
+    pgrep, open_app = tmp_path / "pgrep", tmp_path / "open"
+    # Exercise the shell guard without access to the host process list or desktop.
+    pgrep.write_text(f"#!/bin/sh\nexit {0 if app_running else 1}\n")
+    open_app.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {shlex.quote(str(opened))}\n")
+    pgrep.chmod(0o700)
+    open_app.chmod(0o700)
+    command = wake_command(app)
+    command[-1] = command[-1].replace("/usr/bin/pgrep", shlex.quote(str(pgrep))).replace(
+        "/usr/bin/open", shlex.quote(str(open_app)))
+    subprocess.run(command, check=True, capture_output=True)
+    assert opened.exists() is not app_running
+    if not app_running:
+        assert opened.read_text().splitlines() == ["-g", "-a", str(app)]
 
 
 def test_the_wake_job_opens_codex_before_the_slot_codex_may_fire_early(tmp_path):
