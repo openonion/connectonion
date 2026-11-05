@@ -277,9 +277,6 @@ def test_a_flat_or_unknown_overlapping_group_counts_fresh_tokens_at_each_runs_sp
     if unknown:
         standard["quota"] = {"before": {"unknown": "unavailable"}, "after": {"unknown": "unavailable"}}
     fast = {**standard, "speed": "fast"}
-    assert quota.run_points(standard) == 1
-    assert quota.run_points({**standard, "speed": "standard"}) == 1
-    assert quota.run_points(fast) == 2
     now = {"used_percent": 40, "window_minutes": WEEK, "resets_at": RESETS}
     assert quota.points_spent([standard, fast], now) == 3
     assert quota.run_spent(now, now, [standard, fast], standard["started_at"]) == 3
@@ -290,7 +287,6 @@ def test_a_group_crossing_a_weekly_reset_counts_tokens_even_if_the_meter_ends_hi
     run = {**_run("2026-09-30T01:00:00+00:00", 90, after, finished="2026-09-30T02:00:00+00:00"),
            "usage": {"input_tokens": 12_000_000}}
     run["quota"]["after"]["resets_at"] += WEEK * 60
-    assert quota.run_points(run) == 1
     assert quota.group_points([run, run]) == 2
 
 

@@ -437,10 +437,10 @@ def test_repeated_page_passes_keep_only_the_latest_stamp_per_kind(tmp_path, monk
     record = "people/alice.md"
     body = "# Alice\n\nA sourced fact [1].\n\n## Sources\n- [1] gmail:one\n\n"
     notebook.write(record, body + "Investigation: mapped 2026-09-01 · not investigated yet\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-01")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-01")
     notebook.note_pass(record, "written", "own messages: codex")
     notebook.note_investigation(record, "gmail")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-02")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-02")
     for _ in range(50):
         notebook.note_investigation(record, "outlook")
     notebook.note_pass(record, "enriched", "web")
@@ -460,7 +460,7 @@ def test_next_pass_compacts_legacy_status_without_losing_unknown_metadata(tmp_pa
     notebook.write(record, "# Atlas\n\nInvestigation: mapped 2026-09-01 · "
                    "investigated 2026-10-02 (gmail) · Requested investigation window: 90 days · "
                    "custom provenance note · investigated 2026-10-01 (codex)\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "own messages: codex")
     assert notebook.read(record).split("Investigation:", 1)[1].strip() == (
         "mapped 2026-09-01 · investigated 2026-10-02 (gmail) · "
@@ -473,7 +473,7 @@ def test_first_page_pass_has_a_single_footer_and_terminal_newline(tmp_path, monk
     notebook = Notebook(tmp_path)
     record = "projects/atlas.md"
     notebook.write(record, "# Atlas\n\nA fact.\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "codex")
     assert notebook.read(record) == "# Atlas\n\nA fact.\n\nInvestigation: written 2026-10-03 (codex)\n"
 
@@ -487,6 +487,21 @@ def test_compaction_keeps_dated_metadata_outside_known_pass_verbs(tmp_path, monk
     original = ("# Atlas\n\nInvestigation: mapped 2026-09-01 · custom 2026-09-02 (first) · "
                 "custom 2026-10-02 (second)\n")
     notebook.write(record, original)
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "codex")
     assert notebook.read(record) == original.rstrip() + " · written 2026-10-03 (codex)\n"
+
+
+@pytest.mark.parametrize("zone, day", [("Pacific/Honolulu", "2026-11-05"), ("Pacific/Kiritimati", "2026-11-06")])
+def test_page_stamps_use_the_notebook_day(tmp_path, monkeypatch, zone, day):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", zone])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale")
+    book.note_investigation("people/robin.md", "fixture")
+    assert f"mapped {day}" in book.read("people/robin.md")
+    assert f"investigated {day} (fixture)" in book.read("people/robin.md")

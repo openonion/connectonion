@@ -7,11 +7,12 @@ import re
 import shutil
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -301,31 +302,55 @@ def seen_outcome(record: dict) -> str:
     return outcome
 
 
+def _boot_time() -> datetime | None:
+    """The last boot in UTC, when the platform makes it available cheaply; None leaves live PIDs trusted."""
+    if sys.platform == "darwin" and shutil.which("sysctl"):
+        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True)
+        match = re.search(r"\bsec = (\d+)", result.stdout) if result.returncode == 0 else None
+    elif sys.platform.startswith("linux") and Path("/proc/stat").is_file():
+        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(), re.M)
+    else:
+        return None
+    return datetime.fromtimestamp(int(match[1]), timezone.utc) if match else None
+
+
+def _run_alive(record: dict, boot: datetime | None) -> bool:
+    """A reused PID after a reboot cannot own an older run."""
+    return _alive(int(record["pid"])) and (boot is None or datetime.fromisoformat(record["started_at"]) >= boot)
+
+
+def _run_expired(record: dict, timeout: int) -> bool:
+    """Age fallback for records without a process on this machine."""
+    last = datetime.fromisoformat(record.get("stage_updated_at") or record["started_at"])
+    limit = timedelta(seconds=timeout * (max(int(record.get("runner_attempts") or 0), 1) + 1) + 3600)
+    return now() - last >= limit
+
+
 def abandon_stale_runs(root: Path) -> list[str]:
     """Mark "running" records whose run can no longer finish as abandoned, with why (#1974).
 
     A run killed outright (SIGKILL, a sleep that never woke the process, a
     closed laptop lid mid-turn) never closes its record, and the owner's
     notebook showed two runs "running" for days. On this machine a record
-    names its process, so a dead one is certain; a record from before that, or
-    from another machine, is abandoned once it is older than the runner
-    timeout times its attempts, plus an hour for gathering. Called by the
-    commands that write runs; status and logs stay read-only.
+    names its process, so a dead one or a run started before boot is certain.
+    Only records without a same-host PID expire after the runner timeout
+    times their attempts, plus an hour for gathering. Called by commands
+    that write runs; status and logs stay read-only.
     """
     timeout = read_config(root)["limits"]["timeout_seconds"]
     host, moment, closed = socket.gethostname(), now(), []
+    boot = _boot_time()
     for path in state_path(root, "runs").glob("run_*.json"):
         record = read_json(path, {})
         if not isinstance(record, dict) or record.get("outcome") != "running":
             continue
         if record.get("pid") and record.get("host") == host:
-            if _alive(int(record["pid"])):
+            if _run_alive(record, boot):
                 continue
             reason = f"its process ({record['pid']}) is no longer running; it was killed or the machine restarted"
         else:
             last = datetime.fromisoformat(record.get("stage_updated_at") or record["started_at"])
-            limit = timedelta(seconds=timeout * (max(int(record.get("runner_attempts") or 0), 1) + 1) + 3600)
-            if moment - last < limit:
+            if not _run_expired(record, timeout):
                 continue
             reason = (f"no progress for {int((moment - last).total_seconds() // 3600)} h, past its runner "
                       f"timeout ({timeout} s a call); it was killed or the machine slept through it")
@@ -358,8 +383,7 @@ def scheduled_skip(root: Path, *, start_command="co rem start") -> dict:
         config = read_config(root)
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         served = worker.get("last_scheduled_slot")
-        after = max(now(), datetime.fromisoformat(served)) if served else now()
-        upcoming = next_slot(config, zone, after=after)
+        upcoming = next_slot(config, zone, served)
         reason = (f"the {datetime.fromisoformat(served).astimezone(zone):%H:%M} slot was already served"
                   if served else "no scheduled slot is due")
         reason += f"; next slot {upcoming}" if upcoming else "; no next slot is configured"
@@ -368,12 +392,13 @@ def scheduled_skip(root: Path, *, start_command="co rem start") -> dict:
 
 def _active_scheduled_run(root: Path):
     host = socket.gethostname()
+    boot = _boot_time()
     records = [worker_state(root).get("scheduled_run") or {}, *run_logs(root)]
     return next((record for record in records
                  if record.get("outcome") == "running"
                  and (record.get("phase", "sync") == "sync" or record.get("phase", "").startswith("daily-")
                       or record.get("phase") == "same-person")
-                 and record.get("host") == host and record.get("pid") and _alive(int(record["pid"]))), None)
+                 and record.get("host") == host and record.get("pid") and _run_alive(record, boot)), None)
 
 
 def run_scheduled(root: Path, operation) -> dict | None:
@@ -453,19 +478,21 @@ def latest_slot(config: dict, moment: datetime) -> datetime | None:
     return max(candidates, key=lambda slot: slot.astimezone(timezone.utc))
 
 
-def next_slot(config: dict, zone, *, after: datetime | None = None) -> str | None:
-    """The next configured time after the supplied moment (or now), in the saved zone."""
+def next_slot(config: dict, zone, served: str | None = None) -> str | None:
+    """The next unserved wall-clock slot; an open early-fire window stays eligible."""
     times = config.get("schedule", {}).get("times", [])
     if not times or zone is timezone.utc and not config.get("schedule", {}).get("timezone"):
         return None
-    current = (after or now()).astimezone(zone)
+    current = now().astimezone(zone)
+    last = datetime.fromisoformat(served).astimezone(timezone.utc) if served else None
     candidates = []
     for day in (0, 1):
         for value in times:
             slot = _wall_slot(current + timedelta(days=day), value)
-            if slot.astimezone(timezone.utc) > current.astimezone(timezone.utc):
+            instant = slot.astimezone(timezone.utc)
+            if instant >= current.astimezone(timezone.utc) and (last is None or instant > last):
                 candidates.append(slot)
-    return min(candidates).isoformat(timespec="minutes") if candidates else None
+    return min(candidates, key=lambda slot: slot.astimezone(timezone.utc)).isoformat(timespec="minutes") if candidates else None
 
 
 def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
@@ -547,7 +574,7 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
                         f"{installed[:10]}. Check System Settings → General → Login Items → Allow in the "
                         "Background, then run `co rem start`; `co rem sync` works by hand meanwhile"), None
     if worker.get("enabled"):
-        slot = next_slot(config, zone)
+        slot = next_slot(config, zone, worker.get("last_scheduled_slot"))
         if worker.get("last_scheduled_warning") or worker.get("last_scheduled_outcome") == "failed":
             reason = (worker.get("last_scheduled_reason") if worker.get("last_scheduled_outcome") == "failed"
                       else worker.get("last_scheduled_warning"))
@@ -685,6 +712,11 @@ def notebook_zone(config: dict):
     """The notebook's own timezone (schedule.timezone), UTC until one is saved."""
     saved_zone = config.get("schedule", {}).get("timezone", "")
     return ZoneInfo(saved_zone) if saved_zone else timezone.utc
+
+
+def notebook_today(root: Path) -> date:
+    """Calendar dates on pages and in daily decisions use the notebook's zone."""
+    return now().astimezone(notebook_zone(read_config(root))).date()
 
 
 def runs_today(logs: list[dict], zone) -> tuple:

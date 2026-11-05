@@ -1181,7 +1181,7 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
     prepare(tmp_path)
     Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
-    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category: [
+    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category, today=None: [
         {'path': 'people/ada.md', 'recent': False, 'weight': 1, 'unknown': 1,
          'last_investigated': None}])
     from connectonion.rem.runner import RunFailed

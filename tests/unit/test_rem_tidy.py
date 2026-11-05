@@ -447,3 +447,18 @@ def test_the_owners_company_is_preserved_even_when_its_contacts_were_archived(tm
     assert notebook.list("orgs") == ["orgs/bigcorp.example.md", "orgs/example.edu.au.md",
                                     "orgs/maralabs.example.md"]
     assert tidy(tmp_path) == {}
+
+
+def test_tidy_log_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    _person(book, "people/robin.md", "Robin Hale", "robin@tide.example", investigated=True)
+    book.write("people/robin.md", book.read("people/robin.md").replace("## Sources\n", "## Sources\n- [2] investigation:coverage\n"))
+    assert tidy(tmp_path)
+    assert all(row["date"] == "2040-11-05" for row in read_json(state_path(tmp_path, "tidy.json"), []))
