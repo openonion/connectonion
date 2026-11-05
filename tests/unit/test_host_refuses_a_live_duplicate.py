@@ -162,7 +162,7 @@ def test_a_taken_port_does_not_leave_a_live_claim(recorded_host, live_process, m
     assert json.loads(record.read_text()) == existing
 
 
-@pytest.mark.parametrize("pid", [0, os.getpid()])
+@pytest.mark.parametrize("pid", [0, os.getpid()], ids=["no-pid", "own-pid"])
 def test_an_answering_host_is_verified_regardless_of_pid(answering_host, pid):
     co_dir, identity, record, existing = answering_host
     existing["pid"] = pid
