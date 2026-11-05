@@ -119,8 +119,8 @@ jobs:
   # for Proactor Windows or Darwin close/shutdown behavior.
   remote-browser-egress:
     runs-on: ${{ matrix.os }}
-    # Allow 20 minutes for dependency installation and five focused test files across all OSes.
-    timeout-minutes: 20
+    # Backstop for hangs outside a test, including installation and shutdown.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -142,8 +142,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run destination, gateway, and private runtime contracts
+        # A thread watchdog can terminate blocked native IPC on every OS.
         run: |
-          python -m pytest tests/unit/test_remote_browser_destination_policy.py tests/unit/test_remote_browser_egress_gateway.py tests/unit/test_remote_browser_private_runtime.py tests/unit/test_remote_browser_service.py tests/e2e/cli/test_remote_browser_daemon.py -v --tb=short
+          python -m pytest tests/unit/test_remote_browser_destination_policy.py tests/unit/test_remote_browser_egress_gateway.py tests/unit/test_remote_browser_private_runtime.py tests/unit/test_remote_browser_service.py tests/e2e/cli/test_remote_browser_daemon.py -v --tb=short --timeout=30 --timeout-method=thread
 
   # Validate the native Windows browser IPC (named-pipe daemon transport) — the
   # `co browser` daemon uses Unix sockets on POSIX and Windows named pipes here.
