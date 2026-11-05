@@ -1606,6 +1606,17 @@ def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_pa
     assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]
 
 
+def test_project_paths_resolves_a_windows_path_from_an_imported_page(monkeypatch, tmp_path):
+    from connectonion.rem import investigate
+
+    project = tmp_path / "Projects" / "PROJECT_NAME"
+    project.mkdir(parents=True)
+    monkeypatch.setattr(investigate, "local_path", lambda value: str(project))
+    page = "# Project\n\n## Paths\n- D:\\Projects\\PROJECT_NAME\n\n## Sources\n"
+
+    assert inv.project_paths(page) == [str(project)]
+
+
 # ------------------------------------------------ #1974: no stamp without material
 
 
