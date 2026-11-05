@@ -320,6 +320,58 @@ def _runner_recording(calls):
     return runner
 
 
+def test_systemd_start_enables_worker_and_status_then_stop_removes_timer(rem, tmp_path, monkeypatch):
+    from connectonion.rem.service import start, stop, worker_state
+    from tests.unit.test_rem_schedule import make_systemd
+    root, sessions = rem
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "linux")
+    monkeypatch.setattr("connectonion.rem.schedule.Systemd", lambda: scheduler)
+    monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
+    state_path(root, "consent.json").unlink()  # exercise the first batch, not a previously approved start
+    rollout(sessions / "rollout-a.jsonl", [("user", "remember this")])
+    result = start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording([]))
+    assert result["started"] and result["first_batch"]["outcome"] == "completed"
+    assert worker_state(root)["enabled"] is True and worker_state(root)["scheduler"] == "systemd"
+    shown = status(root)
+    assert "Scheduled with systemd" in shown["state"] and shown["next_run"]
+    assert shown["last_run"]["outcome"] == "completed" and "awake" not in shown["state"]
+    stop(root, scheduler=scheduler)
+    assert worker_state(root)["enabled"] is False and not scheduler.installed(root)
+    assert status(root)["state"].startswith("Stopped")
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_systemd_status_does_not_claim_an_absent_or_inactive_timer_is_scheduled(rem, tmp_path, monkeypatch, missing):
+    from tests.unit.test_rem_schedule import make_systemd
+    root, _ = rem
+    scheduler, _ = make_systemd(tmp_path, monkeypatch, active=False)
+    monkeypatch.setattr("connectonion.rem.schedule.Systemd", lambda: scheduler)
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "systemd"})
+    if not missing:
+        scheduler.install(root, read_config(root))
+    shown = status(root)
+    assert shown["next_run"] is None and "co rem start" in shown["state"]
+    assert ("Not scheduled here" if missing else "Background needs attention") in shown["state"]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_linux_consent_names_systemd_without_mac_awake_wording(rem, monkeypatch, available):
+    from connectonion.cli.commands.rem_output import render
+    from connectonion.rem.service import consent_summary
+    root, _ = rem
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "linux")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/systemctl" if available else None)
+    summary = consent_summary(root)
+    text = render(summary, "start — source access and schedule")
+    for shown in (summary["background"], text):
+        if available:
+            assert "systemd user timer" in shown and "loginctl enable-linger" in shown
+        else:
+            assert "manual sync or cron" in shown and "systemd user timer" not in shown
+        assert "awake" not in shown and "launchd" not in shown
+
+
 def test_declined_start_reads_nothing_and_installs_nothing(tmp_path, monkeypatch):
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"

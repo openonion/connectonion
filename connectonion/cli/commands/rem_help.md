@@ -41,7 +41,7 @@ Options (before the command):
 
 Start here:   co init
 In a terminal, it offers to connect mail and asks once before reading your sources.
-It schedules daily updates with Codex desktop or launchd and builds the notebook,
+It schedules daily updates with Codex desktop, launchd or systemd and builds the notebook,
 pausing at the cost estimate.
 For scripts, co init --yes creates storage only. Then connect mail:
   co auth google or co auth microsoft
@@ -504,21 +504,23 @@ Effects:  Saves your approval, installs daily updates and runs the first update
           on first start. Each run reads new mail bodies and coding sessions,
           calls the model and saves page changes. runner_calls_per_day limits
           model calls each day.
-Schedule: Updates run automatically through Codex desktop or launchd at saved
+Schedule: Updates run automatically through Codex desktop, launchd or systemd at saved
           local times (default: 03:00, 04:00, 06:00, 17:00, 18:00, 19:00).
           On macOS, uses Codex desktop when the runner is Codex, the app is
           installed and the saved timezone matches this computer. Keep the app
           open and computer awake. Other runners, headless Macs and different
           saved timezones use launchd.
+          Linux uses a systemd user timer; loginctl enable-linger keeps it
+          running while logged out.
           Codex desktop follows the rem skill with co rem next --scheduled.
-          launchd runs co rem sync --scheduled. Checks that the new schedule
+          launchd and systemd run co rem sync --scheduled. Checks that the new schedule
           is saved before removing an old timer; keeps any old batch still
           running. Status shows whether the schedule is saved and has run.
 Access:   Background models can write only under the notebook's .state/tasks,
           with no shell commands or network access.
           Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
-Requires: co rem init. On Linux and Windows the schedule is not yet installed; run
-          co rem sync yourself.
+Requires: co rem init; systemctl on Linux. On Windows or Linux without systemd,
+          run co rem sync yourself or schedule it with cron.
 
 Next:     co rem status
 Undo:     co rem stop
