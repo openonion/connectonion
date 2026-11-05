@@ -404,7 +404,8 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 REM hotfix (#2773): on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped
 at once on a notebook whose pages link to a path outside notebook content (a regression from
-#2771); tidy now leaves such links alone. Stable remains 1.9.2. See
+#2771); tidy now leaves such links alone. Bundled skills added by an upgrade are linked when the
+command index refreshes (#2775). Stable remains 1.9.2. See
 [candidate notes](docs/releases/1.9.3rc43.md).
 
 - 1.9.3rc43 (hotfix: tidy leaves non-notebook link targets alone).
