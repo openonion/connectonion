@@ -10,7 +10,7 @@ co rem — a notebook about the people, projects and tools in your work, kept up
 Experimental: its commands may still change between 1.9.x releases.
 
 Build (once)
-  init          Build pages from mail and coding sessions, then offer daily updates.
+  init          Build the notebook from mail and coding sessions, then offer daily updates.
   investigate   Fill a page, a whole category, or your own page, using a model.
 Deepen one page
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
@@ -40,7 +40,7 @@ Options (before the command):
   --json        Machine-readable output: {"ok", "data", "next"}.
 
 Start here:   co init
-In a terminal, it offers to connect mail and asks before reading your sources.
+In a terminal, it offers to connect mail and asks once before reading your sources.
 It schedules daily updates with Codex desktop or launchd and builds the notebook,
 pausing at the cost estimate.
 For scripts, co init --yes creates storage only. Then connect mail:
@@ -515,8 +515,8 @@ Schedule: Updates run automatically through Codex desktop or launchd at saved
           is saved before removing an old timer; keeps any old batch still
           running. Status shows whether the schedule is saved and has run.
 Access:   Background models can write only under the notebook's .state/tasks,
-          with no shell commands or network access. Codex uses --sandbox
-          workspace-write; Claude Code uses --permission-mode acceptEdits.
+          with no shell commands or network access.
+          Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
 Requires: co rem init. On Linux and Windows the schedule is not yet installed; run
           co rem sync yourself.
 
