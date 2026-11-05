@@ -578,6 +578,9 @@ Effects:  Collects due material once and saves a task without calling a model.
           Use --discard to take over. First finishes recording any results saved
           before an interruption. Then discards and logs unfinished tasks older
           than one day. Weekly usage limits and daily caps still apply.
+          A new scheduled slot defers an older round's remaining translations
+          and starts reading fresh material. Skipped pages are listed in logs.
+          Live translation claims and investigation portions can still resume.
 Requires: co rem start (saved source approval).
 Next:     Run the exact submit command printed with the task.
 Back:     co rem --help

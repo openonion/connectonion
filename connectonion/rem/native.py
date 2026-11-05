@@ -83,10 +83,12 @@ def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     with maintenance_lock(root), runner.private_task_mask():
         cursor = read_json(state_path(root, "round.json"), {})
+        previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get("pending") else {}
         notices = []
         if cursor.get("pending"):
-            previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {})
-            notices = _resume(root, cursor, previous, discard=discard)
+            notices = _resume(root, cursor, previous, discard=discard, scheduled=scheduled)
+        if scheduled and not discard:
+            notices += _defer_translation_tail(root, cursor, previous)
         if discard:
             cursor = {}
         tasks = pending(root)
@@ -95,6 +97,34 @@ def next_task(root, *, scheduled=False, discard=False):
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
         return result
+
+
+def _defer_translation_tail(root, cursor, task):
+    from . import native_round
+    if not cursor or cursor.get("done"):
+        return []
+    if cursor.get("pending") and task:
+        if task.get("handler") != "translate" or task.get("status") != "pending":
+            return []
+        claim = task.get("claimed_by")
+        if claim and _alive(claim["pid"]):
+            return []
+    elif not native_round.translations_only(root, cursor):
+        return []
+    config = read_config(root)
+    slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
+    tail_slot = cursor.get("translation_slot", cursor.get("portion_slot", cursor["slot"]))
+    if "translation_slot" not in cursor and cursor["slot"] and task.get("handler") == "translate":
+        started = service.latest_slot(config, datetime.fromisoformat(task["created_at"]) + service.EARLY_FIRE)
+        tail_slot = started.isoformat() if started else None
+    if cursor["slot"] is None:
+        tail_slot = None
+    if slot is None or tail_slot and datetime.fromisoformat(tail_slot) >= slot:
+        return []
+    reason = "translation deferred: a new scheduled slot must read new material"
+    notices = _discard(root, cursor, task, reason) if cursor.get("pending") and task else []
+    native_round.defer_translations(root, cursor, reason)
+    return notices
 
 
 def _offer_pending(root, task):
@@ -147,11 +177,15 @@ def _new_task(root, cursor, config, meter, notices):
     return {"outcome": "task", **_save(root, cursor, task), "notices": notices}
 
 
-def _resume(root, cursor, task, *, discard):
+def _resume(root, cursor, task, *, discard, scheduled=False):
     from . import native_round
     if not task:
         cursor["pending"] = None
         return []
+    if scheduled and not discard and task.get("handler") == "translate" and task.get("status") == "pending":
+        claim = task.get("claimed_by")
+        if claim and _alive(claim["pid"]):
+            return []
     if discard or task.get("status") == "discarded":
         reason = "explicitly discarded" if discard else task["reason"]
         return _discard(root, cursor, task, reason)
