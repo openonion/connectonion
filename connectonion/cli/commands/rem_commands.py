@@ -2157,6 +2157,7 @@ def make_rem_app(factory):
         import shutil
 
         from ..._version import __version__
+        from ...rem.attachments import spreadsheet_install_command
         from ...rem.config import read_config, validate
         from ...rem.files import RemError
         from ...rem.runner import co_command
@@ -2197,7 +2198,7 @@ def make_rem_app(factory):
             check("spreadsheet support (co rem extra)", sheets,
                   "openpyxl installed; XLSX attachments are read" if sheets
                   else "not installed; XLSX attachments are named, not read",
-                  f"python -m pip install 'connectonion[rem]=={__version__}'")
+                  spreadsheet_install_command())
             from ...rem.service import mailbox_state
             sources = subscriptions(root)
             for kind in ("gmail", "outlook"):
