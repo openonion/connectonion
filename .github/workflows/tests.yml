@@ -492,7 +492,7 @@ jobs:
   # bundled browser into an isolated runner directory, then drive a real page
   # through the public `co browser` CLI.
   macos-e2e:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 25
 
     steps:
