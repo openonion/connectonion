@@ -2,8 +2,12 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import shlex
+import sys
 
-from connectonion.rem.attachments import extract_text
+import pytest
+
+from connectonion.rem.attachments import extract_text, spreadsheet_install_command
 
 
 def test_a_pdf_is_read_as_text(tmp_path):
@@ -148,10 +152,23 @@ def test_gather_creates_gmail_download_directory(tmp_path):
     assert not any("could not be saved" in line for line in coverage)
 
 
-def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize("environment", ["uv/tools/connectonion", "plain venv", "custom-tools/connectonion"])
+def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, monkeypatch, environment):
     """openpyxl is the `co rem` extra, not a core dependency; a plain install names the
     spreadsheet as unread and gives the exact command, rather than crashing."""
     import builtins
+    from connectonion._version import __version__
+
+    prefix = tmp_path / environment
+    executable = prefix / "bin" / "python"
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    monkeypatch.setattr(sys, "executable", str(executable))
+    if environment.startswith("custom-tools"):
+        prefix.mkdir(parents=True)
+        (prefix / "uv-receipt.toml").write_text("[tool]\n")
+    installer = ([str(executable), "-m", "pip", "install"] if environment == "plain venv"
+                 else ["uv", "tool", "install", "--force"])
+    command = shlex.join([*installer, f"connectonion[rem]=={__version__}"])
     real_import = builtins.__import__
 
     def no_openpyxl(name, *args, **kwargs):
@@ -162,7 +179,29 @@ def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, mo
     monkeypatch.setattr(builtins, "__import__", no_openpyxl)
     path = tmp_path / "terms.xlsx"
     path.write_bytes(b"PK")
-    assert "pip install 'connectonion[rem]'" in extract_text(path)
+    assert extract_text(path) == (
+        f"[XLSX not read: spreadsheet support is optional; run {command}, then investigate again]"
+    )
+
+
+@pytest.mark.parametrize("specifier", ["", ">=0.0.14,<1"])
+def test_spreadsheet_install_preserves_uv_companion_requirements(tmp_path, monkeypatch, specifier):
+    from connectonion._version import __version__
+
+    (tmp_path / "uv-receipt.toml").write_text(
+        '[tool]\nrequirements = [\n'
+        '  { name = "connectonion", specifier = "==1.9.3rc47" },\n'
+        f'  {{ name = "onionwright", specifier = "{specifier}" }},\n'
+        '  { name = "other-package", specifier = "==2.0" },\n'
+        ']\npython = "3.14"\n'
+    )
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+
+    command = spreadsheet_install_command()
+    assert command == (
+        f"uv tool install --force 'connectonion[rem]=={__version__}'"
+        f" --with {shlex.quote('onionwright' + specifier)} --with other-package==2.0 --python 3.14"
+    )
 
 
 def test_pdf_annotation_text_is_not_mistaken_for_blank_party_fields(tmp_path):

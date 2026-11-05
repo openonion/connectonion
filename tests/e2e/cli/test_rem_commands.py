@@ -3,6 +3,7 @@
 import importlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 import urllib.parse
@@ -1294,8 +1295,27 @@ def test_investigate_a_bad_file_gives_the_reason_show_gives(tmp_path, make):
     assert reason in investigated.output
 
 
-def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch):
+@pytest.mark.parametrize("environment", ["uv/tools/connectonion", "plain venv"])
+def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch, environment):
     import importlib.util
+    from connectonion._version import __version__
+
+    prefix = tmp_path / environment
+    executable = prefix / "bin" / "python"
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    monkeypatch.setattr(sys, "executable", str(executable))
+    installer = (["uv", "tool", "install", "--force"] if environment.startswith("uv/")
+                 else [str(executable), "-m", "pip", "install"])
+    command = shlex.join([*installer, f"connectonion[rem]=={__version__}"])
+    if environment.startswith("uv/"):
+        prefix.mkdir(parents=True)
+        (prefix / "uv-receipt.toml").write_text(
+            '[tool]\nrequirements = [\n'
+            '  { name = "connectonion", specifier = "==1.9.3rc47" },\n'
+            '  { name = "onionwright" },\n'
+            ']\npython = "3.14"\n'
+        )
+        command += " --with onionwright --python 3.14"
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, 'find_spec',
                         lambda name, *a: None if name == 'openpyxl' else real(name, *a))
@@ -1303,7 +1323,11 @@ def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypa
     lines = result.output.splitlines()
     at = next(n for n, line in enumerate(lines) if 'spreadsheet' in line)
     # 1.9.0a9: ✗ and the check on its line, the fix on the line under it.
-    assert lines[at].startswith('  ✗ spreadsheet support') and "connectonion[rem]" in lines[at + 1]
+    assert lines[at].startswith('  ✗ spreadsheet support')
+    assert lines[at + 1].strip() == f"→ {command}"
+    data = json.loads(invoke(tmp_path, '--json', 'doctor').stdout)['data']
+    sheets = next(check for check in data if check['check'].startswith('spreadsheet support'))
+    assert sheets['fix'] == command
 
 
 def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
