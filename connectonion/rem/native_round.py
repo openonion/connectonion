@@ -123,6 +123,9 @@ def prepare_task(root, cursor, config, directory):
     pair = next(iter(same_person.candidates(root)), None) if cursor["same_left"] else None
     if pair:
         return _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
+    if "translation_slot" not in cursor:
+        slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
+        cursor["translation_slot"] = slot.isoformat() if slot else None
     from .languages import owner_languages
     zone = service.notebook_zone(config)
     _, today_runs = service.runs_today(service.run_logs(root), zone)
@@ -132,6 +135,28 @@ def prepare_task(root, cursor, config, directory):
         if record not in cursor["translations"] and translate.cached(root, record, language) is None:
             task = translate.prepare(root, record, language, directory=directory)
             return _task("translate", task, cursor, stage="translate", record=record)
+    finish(root, cursor)
+    return None
+
+
+def translations_only(root, cursor):
+    from . import same_person
+    if (not cursor["batch"]["done"] or cursor["summaries"] or cursor["current"]
+            or cursor["job_index"] < len(cursor["jobs"])):
+        return False
+    return not (cursor["same_left"] and same_person.candidates(root))
+
+
+def defer_translations(root, cursor, reason):
+    from .languages import owner_languages
+    language = next((tag for tag in owner_languages(root)["languages"] if tag.split("-")[0] != "en"), None)
+    pages = [{"page": record, "outcome": "skipped", "reason": reason}
+             for record in cursor["changed"] if language and translate.cached(root, record, language) is None]
+    cursor["run"]["translations"] = {"language": language, "pages": pages}
+    finish(root, cursor)
+
+
+def finish(root, cursor):
     cursor.update(done=True, pending=None)
     cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"])
     write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
@@ -139,7 +164,6 @@ def prepare_task(root, cursor, config, directory):
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
                                                    "last_scheduled_outcome": "completed"})
     write_json(state_path(root, "round.json"), cursor)
-    return None
 
 
 def _prepare_job(root, cursor, config, directory):
@@ -488,6 +512,7 @@ def advance(root, cursor, task, result):
         cursor["same_left"] -= 1
     elif operation == "translate":
         cursor["translations"].append(task["record"])
-        cursor["translated"] += 1
+        if not result.get("discarded"):
+            cursor["translated"] += 1
     cursor["pending"] = None
     write_json(state_path(root, "round.json"), cursor)

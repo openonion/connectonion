@@ -732,6 +732,171 @@ def _translation_task(root):
     return task
 
 
+@pytest.fixture
+def translation_round(trial, monkeypatch):
+    from datetime import timezone
+    from connectonion.rem import native_round
+    from connectonion.rem.config import set_config
+    set_config(trial, ['languages', 'zh', 'schedule.timezone', 'UTC', 'schedule.times', '03:00,04:00'])
+    moment = datetime(2026, 11, 5, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    records = ['notes/launch.md', 'notes/pilot.md', 'notes/review.md']
+    for record in records:
+        Notebook(trial).write(record, '# Pilot\n\nRead the pilot notes.\n')
+    with maintenance_lock(trial):
+        cursor = native_round.prepare(trial, read_config(trial), scheduled=True)
+        cursor['batch']['done'] = True
+        cursor.update(changed=records, jobs=[], summaries=[], same_left=0)
+        write_json(state_path(trial, 'round.json'), cursor)
+    return cursor
+
+
+@pytest.mark.parametrize('pending', [False, True])
+@pytest.mark.parametrize('manual_round', [False, True])
+@pytest.mark.parametrize('legacy', [False, True])
+def test_later_scheduled_slot_defers_old_translations_and_reads_new_material(
+        trial, monkeypatch, translation_round, pending, manual_round, legacy):
+    cursor = translation_round
+    if manual_round:
+        cursor['slot'] = None
+        write_json(state_path(trial, 'round.json'), cursor)
+    # One translation succeeded; two pages remain uncached.
+    task = native.next_task(trial)
+    Path(task['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    if pending:
+        task = native.next_task(trial)
+        saved = read_json(Path(task['material']) / 'task.json', {})
+        saved.pop('claimed_by')
+        write_json(Path(task['material']) / 'task.json', saved)
+    if legacy:
+        saved_cursor = read_json(state_path(trial, 'round.json'), {})
+        saved_cursor.pop('translation_slot', None)
+        write_json(state_path(trial, 'round.json'), saved_cursor)
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    if manual_round and legacy:
+        saved_cursor['portion_slot'] = moment.isoformat()
+        write_json(state_path(trial, 'round.json'), saved_cursor)
+    record, source = _feedback(trial)
+    result = native.next_task(trial, scheduled=True)
+    assert result['outcome'] == 'task' and result['record'] == record, result
+    current = read_json(state_path(trial, 'round.json'), {})
+    assert current['started_at'] == moment.isoformat()
+    assert current['run']['id'] != cursor['run']['id']
+    assert source in (Path(result['material']) / 'material.md').read_text()
+    old_run = read_json(state_path(trial, f"runs/{cursor['run']['id']}.json"), {})
+    assert old_run['outcome'] == 'completed' and old_run['finished_at'] == moment.isoformat()
+    assert old_run['changed'] == cursor['changed']
+    rows = old_run['translations']['pages']
+    assert [row['page'] for row in rows] == cursor['changed'][1:]
+    assert all(row['outcome'] == 'skipped' and 'slot' in row['reason'] for row in rows)
+    worker = service.worker_state(trial)
+    if not manual_round:
+        assert worker['last_scheduled_slot'] == cursor['slot']
+        assert worker['last_scheduled_outcome'] == 'completed'
+    if pending:
+        discarded = read_json(Path(task['material']) / 'task.json', {})
+        assert discarded['status'] == 'discarded'
+        assert any(row.get('task_id') == task['id'] and row['outcome'] == 'discarded'
+                   for row in service.run_logs(trial))
+    logs = CliRunner().invoke(app, ['rem', '--root', str(trial), 'logs', cursor['run']['id']])
+    assert logs.exit_code == 0, logs.output
+    assert 'skipped' in logs.output and 'notes/review.md' in logs.output
+
+
+@pytest.mark.parametrize('scheduled,later', [(True, False), (False, True)])
+def test_same_slot_and_manual_next_keep_translation_tail(trial, monkeypatch, translation_round, scheduled, later):
+    first = native.next_task(trial)
+    Path(first['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
+    assert native.submit(trial, first['id'])['outcome'] == 'accepted'
+    second = native.next_task(trial)
+    saved = read_json(Path(second['material']) / 'task.json', {})
+    saved.pop('claimed_by')
+    write_json(Path(second['material']) / 'task.json', saved)
+    moment = service.now() + timedelta(minutes=60 if later else 5)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    result = native.next_task(trial, scheduled=scheduled)
+    assert result['outcome'] == 'task' and result['id'] == second['id']
+    assert result['stage'] == 'translate'
+    assert not read_json(state_path(trial, 'round.json'), {}).get('done')
+
+
+@pytest.mark.parametrize('hours', [1, 25])
+def test_later_scheduled_slot_leaves_live_translation_claim(trial, monkeypatch, translation_round, hours):
+    task = native.next_task(trial)
+    before = read_json(state_path(trial, 'round.json'), {})
+    moment = service.now() + timedelta(hours=hours)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    assert native.next_task(trial, scheduled=True)['outcome'] == 'claimed'
+    assert read_json(state_path(trial, 'round.json'), {}) == before
+    assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'pending'
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_translation_tail_started_this_slot_keeps_older_round(trial, monkeypatch, translation_round, legacy):
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    # An investigation from the old round has only just finished in this slot.
+    task = native.next_task(trial)
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    if legacy:
+        cursor.pop('translation_slot')
+        write_json(state_path(trial, 'round.json'), cursor)
+    saved = read_json(Path(task['material']) / 'task.json', {})
+    saved.pop('claimed_by')
+    write_json(Path(task['material']) / 'task.json', saved)
+    moment += timedelta(minutes=5)
+    result = native.next_task(trial, scheduled=True)
+    assert result['outcome'] == 'task' and result['id'] == task['id'], result
+    assert read_json(state_path(trial, 'round.json'), {})['run']['id'] == translation_round['run']['id']
+
+
+def test_later_slot_recovers_accepted_translation_then_starts_new_round(trial, monkeypatch, translation_round):
+    from connectonion.rem import native_round
+    task = native.next_task(trial)
+    Path(task['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
+    advance = native_round.advance
+    def interrupted(*args):
+        raise KeyboardInterrupt('after acceptance, before advancing the cursor')
+    monkeypatch.setattr(native_round, 'advance', interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        native.submit(trial, task['id'])
+    monkeypatch.setattr(native_round, 'advance', advance)
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    record, _ = _feedback(trial)
+    result = native.next_task(trial, scheduled=True)
+    assert result['outcome'] == 'task' and result['record'] == record, result
+    old_run = service.run_logs(trial, translation_round['run']['id'])[0]
+    assert old_run['outcome'] == 'completed'
+    assert len(old_run['translations']['pages']) == 2
+
+
+def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, translation_round):
+    from connectonion.rem import native_round
+    cursor = translation_round
+    cursor.update(jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], current={'record': 'notes/pilot.md'},
+                  investigation_left=0)
+    write_json(state_path(trial, 'round.json'), cursor)
+    stopped = native.next_task(trial, scheduled=True)
+    assert 'investigation portion cap reached' in stopped['reason']
+    def resume_job(root, state, config, directory):
+        prepared = runner.prepare(Notebook(root), [{'role': 'user', 'source': 'codex:fixture:1',
+            'text': 'Review the fictional pilot.'}], config, directory=directory, native=True)
+        return native_round._task('runner', prepared, state, stage='investigate', record='notes/pilot.md',
+                                  operation='investigation')
+    monkeypatch.setattr(native_round, '_prepare_job', resume_job)
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    result = native.next_task(trial, scheduled=True)
+    assert result['outcome'] == 'task' and result['stage'] == 'investigate', result
+    current = read_json(state_path(trial, 'round.json'), {})
+    assert current['run']['id'] == cursor['run']['id']
+    assert current['portion_slot'] == moment.isoformat() and current['investigation_left'] > 0
+
+
 def _extraction_task(root):
     from connectonion.rem import native_round, extract
     write_json(state_path(root, 'capture-queue/extract.json'),
