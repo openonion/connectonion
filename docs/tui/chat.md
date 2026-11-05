@@ -101,7 +101,7 @@ During tool execution:
 
 ```
 ⠹ Search emails in inbox
-  └─ search_emails("aaron")
+  └─ search_emails("ellis")
 ```
 
 Shows:

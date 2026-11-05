@@ -198,11 +198,11 @@ The agent-session summary includes skip reasons, for example `3 skipped
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
 received; spellings that differ only in case are one name, and a name that is
-just the address, `xietianle`, is not one), else the From name of mail you
-sent, else the name a mailbox has configured (#2008). On the owner's real
-account the configured name was "Aaron x", and Outlook stamps it on every sent
-mail too; correspondents wrote "Aaron Xie". A new notebook names the file after
-you (`people/aaron-xie-….md`); an existing page keeps its path.
+just the address, `ellis`, is not one), else the From name of mail you
+sent, else the name a mailbox has configured (#2008). For example, a mailbox's
+configured name can be "Ellis y", and Outlook stamps it on every sent
+mail too; correspondents wrote "Ellis Yew". A new notebook names the file after
+you (`people/ellis-yew-….md`); an existing page keeps its path.
 
 Progress shows the mail scan and body archive counts, then a live total bar and
 completed counts for You, People, Projects, Organisations and Skills. Each page
@@ -1188,7 +1188,7 @@ own domain ("Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.c
 "X" <notify@x.com>) and who writes at least three times as often as the owner
 answers is a service: listed with the notice senders, no people page, and an
 older map's page for it that holds only map output is archived. Someone writing
-from their own name at a domain named after them (aaron@aaron.dev) stays a person.
+from their own name at a domain named after them (ellis@ellis.dev) stays a person.
 Skills and projects are one page per skill name and per repository (below). With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.

@@ -102,7 +102,7 @@ supports it and `Unknown` when the batch touches the question without answering 
       - Quote: “Clause 4: please change gross to net, otherwise fine.”
   - How they write: English for legal (numbered, "Regards, Elodie"), brief Mandarin
     for operations ("收到"). Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; leads with
+  - How the user writes to them: opens "Elodie，你好，", signs "Ellis"; leads with
     the conclusion, then the math.
   - Cadence: same-day replies through 2026-08-05→07.
   - Open: nothing owed by either side as of 2026-08-07.

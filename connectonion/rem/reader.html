@@ -2882,7 +2882,7 @@ function statusPill(r) {
 
 // ---------- reading a page's parts ----------
 // Open threads name who owes whom (rem-page-person): the reader shows the direction.
-// Pages name the owner as "the user", "you" or by first name ("Aaron promised…").
+// Pages name the owner as "the user", "you" or by first name ("Ellis promised…").
 // The earliest phrase that says who must act decides the thread's direction.
 let OWING = null;
 function owing() {
@@ -2891,7 +2891,7 @@ function owing() {
   const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
   // "User owes pickup of the card" (1.9.2b1) names the owner without "the".
   const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
-  // The owner asking or waiting on someone is their debt: "Aaron asked Anselm to arrange a call" (1.9.2b3).
+  // The owner asking or waiting on someone is their debt: "Ellis asked Anselm to arrange a call" (1.9.2b3).
   const chasing = "\\b" + me + "\\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|is waiting (?:on|for)|was waiting (?:on|for))\\s+(?!" + me + "\\b)";
   OWING = {
     // An offer of something ("offered Mara a trial") is optional; an offer to do something is owed.

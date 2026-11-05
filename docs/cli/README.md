@@ -288,7 +288,7 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)
 - `co email sent read <#>` - print one sent message's body and status
-- `co email name <name> [--buy]` - check or claim a readable address (e.g. `aaron@openonion.ai`), paid from credits
+- `co email name <name> [--buy]` - check or claim a readable address (e.g. `ellis@mail.openonion.ai`), paid from credits
 - `co email upgrade <tier>` - raise your monthly send quota (`plus --keep-address` preserves an existing hosted address; `--domain`/`--alias` selects a new one), paid from credits
 
 The same `send_email` / `get_emails` functions also work as agent tools, so

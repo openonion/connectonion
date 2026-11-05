@@ -494,17 +494,17 @@ def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins
     from connectonion.rem.files import Notebook
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/zi.md", "子亚", ["zia@openonion.ai"], email="zia@openonion.ai")
-    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@openonion.ai"], email="zia@openonion.ai")
+    notebook.stub_person("people/zi.md", "子亚", ["zia@example.org"], email="zia@example.org")
+    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@example.org"], email="zia@example.org")
     said = []
     result = _first_tidy(tmp_path, said.append)
     assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/zia.md",
-                                "why": "both list zia@openonion.ai"}]
+                                "why": "both list zia@example.org"}]
 
     class Ctx:
         obj = {"root": tmp_path, "json": False}
     text = _init_done(Ctx(), {"tidy": result})
-    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@openonion.ai" in text
+    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@example.org" in text
     assert f"co rem --root {tmp_path} merge people/zi.md people/zia.md" in text
 
 

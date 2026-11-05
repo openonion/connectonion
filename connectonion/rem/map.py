@@ -144,7 +144,7 @@ def _write_only(row: dict) -> bool:
 def owner_tokens(addresses, name: str) -> set[str]:
     """Words of the owner's own: the local parts of addresses already theirs, and their name.
 
-    Four letters or more, so "Xie" or "Wu" alone never makes a stranger the owner.
+    Four letters or more, so "Yew" or "Wu" alone never makes a stranger the owner.
     """
     generic = {'account', 'owner', 'mail', 'gmail', 'outlook'}
     words = {part for address in addresses for part in re.split(r'[^a-z]+', address.split('@')[0].casefold())}
@@ -153,7 +153,7 @@ def owner_tokens(addresses, name: str) -> set[str]:
 
 
 def spells_owner(address: str, owner_name: str) -> bool:
-    """The address's local part is the owner's full name: aaron.xie@ for "Aaron Xie" (#2078).
+    """The address's local part is the owner's full name: ellis.yew@ for "Ellis Yew" (#2078).
 
     Replies or not: the owner's agents and aliases answer mail too. Two words at
     least, so a first name alone never makes a stranger the owner."""
@@ -196,7 +196,7 @@ def _notice(row: dict) -> bool:
 
     "Never hears back" is nearly never for a notification address: replying to
     a GitHub notification by mail once made notifications@github.com (95 in,
-    1 out, display name "Aaron") a person page named after the owner.
+    1 out, display name "Ellis") a person page named after the owner.
     """
     address = row['address']
     if RELAY.search(address):
@@ -216,7 +216,7 @@ def _service(group: list[dict]) -> bool:
     "Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.com>,
     "X" <notify@x.com>: no address says no-reply, so 1.9.0a3 made each a people
     page. The display name's first word is the domain's own name. A person on a
-    domain named after them writes from their name (aaron@aaron.dev), and a desk
+    domain named after them writes from their name (ellis@ellis.dev), and a desk
     the owner answers as often as it writes stays a correspondent.
     """
     if any(institutional_name(str(row.get('name') or '')) for row in group):
@@ -255,7 +255,7 @@ def _named_by_domain(address: str) -> bool:
 
     A person writes from their own name; a service puts its brand on the
     mailbox. Only for an address the owner never wrote to (`_service`), and
-    never the bare name (aaron@aaron.dev is a person on a domain named after them).
+    never the bare name (ellis@ellis.dev is a person on a domain named after them).
     """
     domain = _domain(address)
     brand = organisation(domain).split('.')[0] if domain else ''
@@ -296,7 +296,7 @@ def service_page(title: str, emails: list[str], row: dict | None, automated: set
 def _people_groups(rows: list[dict]) -> list[list[dict]]:
     """Rows that are one person: the same full display name (two words or more).
 
-    A single first name ("Aaron", "John") is too common to join on, so it keeps its
+    A single first name ("Ellis", "John") is too common to join on, so it keeps its
     own page. Most mail first, so the busiest address leads its group.
 
     A relay carries the person's name but is the platform's address: joined by
@@ -337,9 +337,9 @@ def _session_state(subscription: dict, projects: list) -> str:
 def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
     """What the owner is called: what they said, else what others call them, else their sent From name.
 
-    A real account's configured name was "Aaron x", and Outlook stamps it on
-    every mail sent, so the sent From name said "Aaron x" too; the people
-    writing to him put "Aaron Xie" on his address (#2008). The name others use
+    For example, a mailbox's configured name is "Ellis y", and Outlook stamps it on
+    every mail sent, so the sent From name said "Ellis y" too; the people
+    writing to him put "Ellis Yew" on his address (#2008). The name others use
     comes first (spellings that differ only in case are one name), then the
     sent From name, then a mailbox's configured name.
     """
@@ -431,7 +431,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     original = page
     # A page nobody has investigated holds only what a map wrote, so the map
     # may rewrite it. That matters on an upgraded notebook: an older map, not
-    # knowing aaron@… was the owner, made it a correspondent page -- titled by
+    # knowing ellis@… was the owner, made it a correspondent page -- titled by
     # the address, History "Observed mail count: 1", marked unassessed -- and
     # when the owner was recognised that page was reused as-is, still empty.
     mapped_only = 'not investigated yet' in next(
@@ -555,7 +555,7 @@ def _held(group: list[dict], page: str) -> bool:
 
     Except one the owner only ever writes to (`_write_only`), with no name:
     the shape of their own other mailbox, which 1.9.0a3 listed as a person
-    (aaron@openonion.ai, 10 sent, none received). It is still asked about with
+    (ellis.work@example.org, 10 sent, none received). It is still asked about with
     `init --mine`, and held until that is answered or it replies (#1987).
 
     Since #2057 an address the owner never wrote to gets no page at all, so the
@@ -997,7 +997,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
             row for row in group if spells_owner(row['address'], known_name)]
         if not kept and own and len(own) == len(group):
             # The owner's own mailbox is not a person (#2078): a fresh init made
-            # pages for aaronplus1996@ (108 sent, none back) and aaron@. It is
+            # pages for ellis.a@ (108 sent, none back) and ellis@. It is
             # still asked about, on the owner's page and in init's summary; it
             # just gets no page of its own. An agent address stays a person
             # (#1844): it may be someone else's agent.

@@ -127,17 +127,17 @@ def test_a_folder_named_copy_joins_the_skill_it_copies(tmp_path):
 
 def test_structured_thread_direction_wins_over_words_in_the_body():
     from connectonion.rem.census import direction
-    for owner in ("The user", "the user", "THE USER", "you", "You", "Aaron"):
-        assert direction(f"{owner} owes Mara: she promised the deck.", "Aaron") == "mine"
-        assert direction(f"{owner} asked Mara: you promised to review her answer.", "Aaron") == "theirs"
-        assert direction(f"Mara owes {owner}: you promised to review her answer.", "Aaron") == "theirs"
+    for owner in ("The user", "the user", "THE USER", "you", "You", "Ellis"):
+        assert direction(f"{owner} owes Mara: she promised the deck.", "Ellis") == "mine"
+        assert direction(f"{owner} asked Mara: you promised to review her answer.", "Ellis") == "theirs"
+        assert direction(f"Mara owes {owner}: you promised to review her answer.", "Ellis") == "theirs"
     assert direction("- The user owes Mara: an answer.") == "mine"
     assert direction("Yu at Heidi Health owes Corin A$123.38; you asked about it.") == "third"
     assert direction("Yu owes Corin: the user promised to check.") == "third"
     assert direction("Dr. Yu owes Corin the expense reimbursement.") == "third"
     assert direction("Yu (Heidi Health, Inc.) owes Corin the reimbursement.") == "plain"
     assert direction("The user needs to reply to Mara") == "mine"
-    assert direction("Aaron asked Anselm to arrange a call", "Aaron") == "theirs"
+    assert direction("Ellis asked Anselm to arrange a call", "Ellis") == "theirs"
     assert direction("Mara promised the deck") == "theirs"
     assert direction("Scope to decide together") == "plain"
 
@@ -157,7 +157,7 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
     prepare(tmp_path)
     book = Notebook(tmp_path)
     records = {
-        "people/me.md": "# Aaron Xie\n",
+        "people/me.md": "# Ellis Yew\n",
         "people/mara.md": "# Mara\n\n## Open threads\n"
         "- The user owes Mara: reply since 2026-10-15.\n"
         "- The user asked Mara: answer since 2026-08-17.\n"  # exactly 60 days stays active
@@ -193,7 +193,7 @@ def test_shared_thread_census_groups_copied_letter_of_support(tmp_path):
     records = [("people/cc-one.md", "Copied One", "7", quote),
                ("people/cc-two.md", "Copied Two", "W5", longer),
                ("people/liesel.md", "Liesel Voss", "3", quote.replace("'", "’")),
-               ("people/me.md", "Aaron Xie", "3", longer)]
+               ("people/me.md", "Ellis Yew", "3", longer)]
     for record, title, n, words in records:
         sources_heading = "## sources " if n == "W5" else "## Sources"
         book.write(record, f"# {title}\n\n## Open threads\n"

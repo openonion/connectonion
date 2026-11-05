@@ -1,5 +1,7 @@
 # Hosted mailbox domain audit — 2026-10-23
 
+Mailbox addresses are anonymized below.
+
 ## Before
 
 The production `/api/v1/email/addresses` exposed mail.openonion.ai,
@@ -128,9 +130,9 @@ matching `email_received` row. No other account's mailbox was used.
 Production `EMAIL_ADDRESS_DOMAINS` and the oo-api repository variable now both
 list `mail.openonion.ai,steadmail.com,trustxmail.com,oakinbox.com`. The restarted
 service was healthy; the authenticated address API and `co email domains` showed
-all four. Aaron's account owns `aaron@trustxmail.com`,
-`aaron@steadmail.com`, and `aaron@oakinbox.com` alongside its primary
-`aaron.xie@mail.openonion.ai`. The last two purchases cost $9.90 each and kept
+all four. Aaron's account owns `ellis@first.example.org`,
+`ellis@second.example.org`, and `ellis@third.example.org` alongside its primary
+`ellis.yew@example.org`. The last two purchases cost $9.90 each and kept
 the primary address as default.
 
 One real provider message to each branded owned address produced three results

@@ -153,7 +153,7 @@ def test_a_substantive_forbidden_owner_section_fails_validation_and_keeps_the_ci
     notebook = Notebook(tmp_path)
     record = 'people/avery.md'
     notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
-    cited = '- Opens with “你好” and signs “Aaron”. [1]'
+    cited = '- Opens with “你好” and signs “Ellis”. [1]'
     page = notebook.read(record).replace(FORBIDDEN, '## How the user writes to them\n' + cited)
     page = page.replace('- (none yet)', '- [1] gmail:avery:1 — 2026-10-01')
     out = normalize(record, page, owner=True)
@@ -1324,7 +1324,7 @@ def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page()
     """1.9.2b1 (2026-10-09) gave Liesel the user's phone from his own signature, against the instructions."""
     from connectonion.rem.page_review import drop_owner_addresses
     page = "## Facts\n- Email: liesel.voss@rmit.edu.au\n- Phone: +61 491 570 156 [2]\n- Role: Professor [1]\n"
-    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0491 570 156 (work)"})
+    text, removed = drop_owner_addresses(page, {"ellis.work@example.org", "0491 570 156 (work)"})
     assert "- Phone: Unknown\n" in text and removed == ["+61 491 570 156"]
     assert "- Email: liesel.voss@rmit.edu.au" in text
     other = page.replace("+61 491 570 156", "+61 400 111 222")

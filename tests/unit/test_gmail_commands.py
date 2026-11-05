@@ -43,7 +43,7 @@ CONNECTED_ENV = {
     "GOOGLE_SCOPES": "gmail.send,gmail.readonly,gmail.modify,calendar",
     "GOOGLE_ACCESS_TOKEN": "test-token",
     "GOOGLE_REFRESH_TOKEN": "test-refresh",
-    "GOOGLE_EMAIL": "aaron@example.com",
+    "GOOGLE_EMAIL": "ellis@example.com",
 }
 
 READONLY_ENV = {**CONNECTED_ENV, "GOOGLE_SCOPES": "gmail.send,gmail.readonly,calendar"}

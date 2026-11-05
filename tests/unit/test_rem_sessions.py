@@ -505,7 +505,7 @@ def test_rem_session_mentions_typed_names_aliases_and_newest_first():
                 session("sessions/tie.md", "ask Corin", clock="10:00"),
                 session("sessions/will.md", "ask Will and Al"),
                 session("sessions/no.md", "the melody will play", "Corin Marsh and 周小明 and Will"),
-                session("sessions/boundary.md", "xOdy Zhou2")]
+                session("sessions/boundary.md", "xCorin Marsh2")]
     assert mentions(people, sessions) == {
         "people/corin.md": ["sessions/alias.md", "sessions/tie.md", "sessions/new.md", "sessions/old.md"],
         "people/will.md": ["sessions/will.md"]}

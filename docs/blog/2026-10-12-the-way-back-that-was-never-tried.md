@@ -36,8 +36,8 @@ send` read a name, anything starting with `0x` was treated as an address and
 never looked up. A ten-character address is not a valid one, so the command
 refused it.
 
-Every earlier run had a sender at `aaron.xie@mail.openonion.ai`, whose contact
-is called `aaron`. The way back was printed in every one of those runs, and
+Every earlier run had a sender at `ellis.yew@example.org`, whose contact
+is called `ellis`. The way back was printed in every one of those runs, and
 nobody ran it. A fresh identity has no custom address, so that is what a new
 user has, and the way back failed for every one of them.
 

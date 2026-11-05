@@ -55,7 +55,7 @@ def test_falls_back_to_the_older_cookies_location(tmp_path):
 
 
 def test_a_profile_is_found_by_folder_or_by_the_name_chrome_shows(tmp_path):
-    make_profile(tmp_path, "Default", [], shown_name="Aaron")
+    make_profile(tmp_path, "Default", [], shown_name="Ellis")
     make_profile(tmp_path, "Profile 1", [], shown_name="openonion")
 
     assert chrome.resolve_profile(tmp_path, "Profile 1").name == "Profile 1"
