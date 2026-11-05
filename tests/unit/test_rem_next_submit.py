@@ -1,6 +1,9 @@
 """Native sessions write outputs; real stage preparation and validation own promotion."""
 
 import json
+import os
+import subprocess
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,6 +14,25 @@ from connectonion.cli.main import app
 from connectonion.rem import daily, native, quota, reflections, runner, service
 from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+
+
+def test_source_view_digest_is_stable_across_hash_seeds(rem_mail_threads):
+    task_path = state_path(rem_mail_threads, "fixture-task.json")
+    write_json(task_path, {"items": [{"source": "gmail:alpha-0"}, {"source": "gmail:beta-0"}], "before": {}})
+    script = """
+import json, sys
+from pathlib import Path
+from connectonion.rem import native
+root, task_path = map(Path, sys.argv[1:])
+task = json.loads(task_path.read_text())
+print(native._source_view(root, task, handler="runner"))
+"""
+    digests = [subprocess.run(
+        [sys.executable, "-c", script, str(rem_mail_threads), str(task_path)],
+        env={**os.environ, "PYTHONHASHSEED": seed}, text=True, capture_output=True, check=True,
+    ).stdout.strip() for seed in ("1", "2")]
+    assert len(digests[0]) == 64
+    assert digests[0] == digests[1]
 
 
 @pytest.fixture

@@ -9,6 +9,22 @@ from connectonion.rem.reader import snapshot
 from connectonion.rem.reader_model import relationships
 
 
+@pytest.mark.parametrize("budget", [40_000, 20])
+@pytest.mark.parametrize("per_thread,expected", [
+    (4, ["beta-1", "alpha-1", "alpha-2", "beta-2"]),
+    (1, ["alpha-2", "beta-2"]),
+])
+def test_later_in_threads_is_oldest_first_before_budget(rem_mail_threads, budget, per_thread, expected):
+    from connectonion.rem.reader_model import later_in_threads
+
+    sources = ["gmail:alpha-0", "gmail:beta-0"]
+    tails = later_in_threads(rem_mail_threads, sources, budget=budget, per_thread=per_thread)
+    assert tails == later_in_threads(rem_mail_threads, sources[::-1], budget=budget, per_thread=per_thread)
+    assert tails == later_in_threads(rem_mail_threads, sources + sources, budget=budget, per_thread=per_thread)
+    assert [row["timestamp"] for row in tails] == sorted(row["timestamp"] for row in tails)
+    assert "".join(row["text"] for row in tails) == "".join(f"Reply {message_id}." for message_id in expected)[:budget]
+
+
 def test_numbered_card_source_definitions_keep_free_text_and_typed_ids():
     from connectonion.rem.reader_model import SOURCE, source_definitions
 
