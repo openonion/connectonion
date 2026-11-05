@@ -141,6 +141,14 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
     return result
 
 
+def record_cap_stop(root: Path) -> dict:
+    """A scheduled visit that stopped at the daily cap, so co rem logs shows the slot was visited."""
+    record, path = _reserve(root, "sync", 0, {}, moment=now())
+    record.update(outcome="budget_exhausted", scheduled=True, finished_at=now().isoformat())
+    write_json(path, _record_scheduled_result(root, record, True))
+    return record
+
+
 def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
               maintain=None, investigate_one=None, person_one=None, project_one=None, translate_one=None, say=None) -> dict | None:
     """One scheduled run. `investigate_one`, `person_one` and `project_one` replace

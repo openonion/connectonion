@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from . import quota, runner, service
 from .config import read_config
+from .daily import record_cap_stop
 from .files import Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
 
 
@@ -88,9 +89,12 @@ def next_task(root, *, scheduled=False, discard=False):
             notices = _resume(root, cursor, previous, discard=discard)
         if discard:
             cursor = {}
-        for task in pending(root):
-            return _offer_pending(root, task)
-        return _next_round(root, cursor, scheduled=scheduled, notices=notices)
+        tasks = pending(root)
+        result = (_offer_pending(root, tasks[0]) if tasks
+                  else _next_round(root, cursor, scheduled=scheduled, notices=notices))
+        if scheduled and result.get("reason") == "daily cap reached":
+            record_cap_stop(root)
+        return result
 
 
 def _offer_pending(root, task):
