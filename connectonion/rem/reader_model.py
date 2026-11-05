@@ -304,16 +304,16 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         return []
     with closing(sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)) as db:
         db.row_factory = sqlite3.Row
-        rows = [row for source in dict.fromkeys(sources) if (row := _cited_row(db, source)) is not None
+        rows = [row for source in sorted(dict.fromkeys(sources)) if (row := _cited_row(db, source)) is not None
                 and (row["thread"] or "").startswith("mail:")]
         given, after = {row["id"] for row in rows}, {}
         for row in rows:
             after[row["thread"]] = max(after.get(row["thread"], ""), row["time"] or "")
         later = [row for thread, time in after.items() for row in reversed(db.execute(
-            "select * from messages where thread = ? and time > ? order by time desc limit ?",
+            "select * from messages where thread = ? and time > ? order by time desc, id desc limit ?",
             (thread, time, per_thread)).fetchall()) if row["id"] not in given]
     found = []
-    for row in later:
+    for row in sorted(later, key=lambda row: (row["time"] or "", row["id"])):
         saved = archived_message(root, dict(row)) or {}
         raw = saved.get("body")
         if not isinstance(raw, str) or PRIVATE.search(raw):
