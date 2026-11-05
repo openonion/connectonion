@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc47
+## Current Version: 1.9.3rc48
+
+`co rem doctor` (#2798) now names an install command that fixes the running co: on a uv tool it
+keeps the receipt's --with packages and --python. The macOS remote-browser-egress CI checks (#2797)
+assert timeouts by behaviour with a per-test watchdog instead of a tight wall-clock bound.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc48.md).
+
+- 1.9.3rc48 (doctor install advice for uv tools; steadier release checks).
+
+### Previous candidate: 1.9.3rc47
 
 Native REM schedule (#2794): the scheduled Codex session finished about one translation per slot,
 and the old round kept every later slot, so no new material was read for days. A new scheduled
