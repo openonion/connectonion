@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc46
+## Current Version: 1.9.3rc47
+
+Native REM schedule (#2794): the scheduled Codex session finished about one translation per slot,
+and the old round kept every later slot, so no new material was read for days. A new scheduled
+slot now logs the old round's untranslated pages as skipped, closes it and starts a fresh round.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc47.md).
+
+- 1.9.3rc47 (a new scheduled slot no longer waits on an old round's translations).
+
+### Previous candidate: 1.9.3rc46
 
 REM on Linux (#2790): `co rem start` ran the first batch and then raised "macOS-only" at the
 scheduler install, so no Linux notebook ever ran a scheduled slot. Linux with systemd now gets a
