@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc42
+## Current Version: 1.9.3rc43
+
+REM hotfix (#2773): on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped
+at once on a notebook whose pages link to a path outside notebook content (a regression from
+#2771); tidy now leaves such links alone. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc43.md).
+
+- 1.9.3rc43 (hotfix: tidy leaves non-notebook link targets alone).
+
+### Previous candidate: 1.9.3rc42
 
 REM, from the pre-stable code audit (#2754, #2771): writes made by a scheduled round wait
 for the notebook lock instead of losing the night to a short owner command; reaching the
