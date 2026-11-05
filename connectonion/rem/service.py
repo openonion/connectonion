@@ -349,6 +349,23 @@ def _scheduled_slot(root: Path):
     return slot if slot and (not served or datetime.fromisoformat(served) < slot) else None
 
 
+def scheduled_skip(root: Path, *, start_command="co rem start") -> dict:
+    """Explain a skipped tick without reading any source."""
+    worker = worker_state(root)
+    if not worker.get("enabled"):
+        reason = f"background upkeep is off; run {start_command} to enable it"
+    else:
+        config = read_config(root)
+        zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
+        served = worker.get("last_scheduled_slot")
+        after = max(now(), datetime.fromisoformat(served)) if served else now()
+        upcoming = next_slot(config, zone, after=after)
+        reason = (f"the {datetime.fromisoformat(served).astimezone(zone):%H:%M} slot was already served"
+                  if served else "no scheduled slot is due")
+        reason += f"; next slot {upcoming}" if upcoming else "; no next slot is configured"
+    return {"due": False, "ran": False, "reason": reason}
+
+
 def _active_scheduled_run(root: Path):
     host = socket.gethostname()
     records = [worker_state(root).get("scheduled_run") or {}, *run_logs(root)]
@@ -436,12 +453,12 @@ def latest_slot(config: dict, moment: datetime) -> datetime | None:
     return max(candidates, key=lambda slot: slot.astimezone(timezone.utc))
 
 
-def next_slot(config: dict, zone) -> str | None:
-    """The next configured time after now, in the saved zone; None without a timezone."""
+def next_slot(config: dict, zone, *, after: datetime | None = None) -> str | None:
+    """The next configured time after the supplied moment (or now), in the saved zone."""
     times = config.get("schedule", {}).get("times", [])
     if not times or zone is timezone.utc and not config.get("schedule", {}).get("timezone"):
         return None
-    current = now().astimezone(zone)
+    current = (after or now()).astimezone(zone)
     candidates = []
     for day in (0, 1):
         for value in times:
@@ -1314,6 +1331,8 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                                       for name, count in unrecognised.items()),
                                     *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "
                                        "other sessions continue; inspect co rem logs"] if source_skips else [])]),
+              "material_remaining": {name: sum(len(rows) for rows in updated[name].get("pending", {}).values())
+                                     for name in sources_read if selected[name].get("kind") in MAIL_KINDS},
               "usage_by_stage": {}, "items_by_source": counts,
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None,
               **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}

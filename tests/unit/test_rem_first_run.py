@@ -1488,3 +1488,29 @@ def test_init_summary_reports_translated_pages_and_how_to_retry_failures():
     assert line.startswith("Translated into zh: 2 of 3 pages. 1 failed; retry with ")
     assert line.endswith("translate --all.")
     assert _translation_line(ctx, {"started": False, "reason": "Skipped by --no-translate."}) == []
+
+
+@pytest.mark.parametrize("problem,fix", [
+    ("Codex is not installed", "npm install -g @openai/codex"),
+    ("Claude Code is not installed", "npm install -g @anthropic-ai/claude-code"),
+])
+@pytest.mark.parametrize("as_json", [False, True])
+def test_missing_runner_background_reason_names_install(first_run, monkeypatch, problem, fix, as_json):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (problem, fix))
+    result = init(*(["--json"] if as_json else []))
+    assert result.exit_code == 0, result.output
+    reason = json.loads(result.stdout)["data"]["background"]["reason"] if as_json else result.stdout.split("Background upkeep:")[-1]
+    assert problem in reason and fix in reason
+    assert "finish its pages" not in reason
+    assert calls == []
+
+
+def test_missing_runner_preserves_map_only_upkeep_path(first_run, monkeypatch):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (
+        "Codex is not installed", "npm install -g @openai/codex"))
+    result = init("--no-investigate", "--yes", "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["background"]["started"] is True
+    assert not calls
