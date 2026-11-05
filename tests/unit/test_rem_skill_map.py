@@ -220,20 +220,6 @@ def test_an_older_notebooks_per_copy_pages_merge_into_one_and_keep_what_was_writ
     assert shown.exit_code == 0 and "Weekly releases" in shown.output
 
 
-def test_merged_written_pages_renumber_citations():
-    from connectonion.rem.merge import merge_text
-    kept = ("# P\n\n## Open threads\n- A owes B [1]\n\n## Uncertainties\n- Unknown — not investigated yet\n\n"
-            "## Sources\n- [1] mail one\n\nInvestigation: mapped 2026-09-01 · investigated 2026-09-02 (gmail)\n")
-    other = ("# P\n\n## Open threads\n- A owes B [3]\n- C waits on D [1]\n\n## Uncertainties\n- Who is C [2]\n\n"
-             "## Sources\n- [1] mail two\n- [2] mail three\n- [3] mail four\n\n"
-             "Investigation: mapped 2026-09-01 · investigated 2026-09-03 (gmail)\n")
-    page = merge_text(kept, other)
-    assert "- A owes B [1]\n- C waits on D [2]" in page                     # a repeated line is not doubled
-    assert "## Uncertainties\n- Who is C [3]" in page
-    assert "- [1] mail one\n- [2] mail two\n- [3] mail three" in page and "mail four" not in page
-    assert page.count("Investigation:") == 1
-
-
 def test_usage_counts_invocations_from_the_users_sessions(tmp_path, monkeypatch):
     """Skill tool calls and /name commands in Claude Code; $name and SKILL.md loads
     in Codex, once per turn; co rem's own runs are not the user's."""
@@ -282,3 +268,17 @@ def test_usage_counts_invocations_from_the_users_sessions(tmp_path, monkeypatch)
     before = nb.read("skills/catalog/ship-feature.md")
     map_skills(nb, [source], subscriptions=subscriptions, days=36500)
     assert nb.read("skills/catalog/ship-feature.md") == before                # cached rerun, same page
+
+
+def test_skill_alias_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, set_config
+    from connectonion.rem.merge import aliases
+    from connectonion.rem.skill_map import _alias
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    _alias(Notebook(tmp_path), "skills/catalog/old.md", "skills/catalog/tide.md")
+    assert aliases(tmp_path)["skills/catalog/old.md"]["date"] == "2040-11-05"

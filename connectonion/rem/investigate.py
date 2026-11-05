@@ -1977,7 +1977,7 @@ def last_investigated(page: str):
     return max(date.fromisoformat(d) for d in days) if days else None
 
 
-def window_since(page: str, default: int = 730) -> int:
+def window_since(page: str, default: int = 730, *, root: Path) -> int:
     """Days to gather for a page: since its last investigation, else `default`.
 
     The script already read everything before that date into the page; asking
@@ -1985,7 +1985,9 @@ def window_since(page: str, default: int = 730) -> int:
     last = last_investigated(page)
     if not last:
         return default
-    return max(1, (datetime.now(timezone.utc).date() - last).days + 1)
+    from .service import notebook_today
+    today = notebook_today(root)
+    return max(1, (today - last).days + 1)
 
 
 RECENT_PROJECT_DAYS = 28
@@ -2308,8 +2310,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # by its quick page. That citation only says the first pass saw them; the
     # final writer still needs the earlier and later words side by side.
     owner_packet = owner_work_evidence(items) if sent_only and not quick else ""
-    coverage.append(f"Requested investigation window: {days} days ending "
-                    f"{datetime.now(timezone.utc).date().isoformat()}")
+    from .service import notebook_today
+    coverage.append(f"Requested investigation window: {days} days ending {notebook_today(root).isoformat()}")
     last = last_investigated(notebook.read(record))
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,

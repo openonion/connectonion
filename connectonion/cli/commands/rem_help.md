@@ -234,7 +234,11 @@ page unmarked.
 Budget: with the Codex runner every investigation records your Codex week before
 and after. A CATEGORY run stops starting pages when an explicit --budget is spent,
 or once the week is at limits.quota_floor_percent (default 90%), and says which.
-Pages already running finish.
+Pages already running finish. Manual investigations are not limited by
+limits.runner_calls_per_day; that cap is for background rounds. Their usage
+still counts toward the weekly investigation budget. Scheduled investigations
+and updates reserve calls before starting; unused reservations are not returned
+to the daily cap.
 
 Effects:  Reads message bodies and files. Calls the model configured in co rem config:
           one page-writing run, plus review and repairs as needed. Large inputs

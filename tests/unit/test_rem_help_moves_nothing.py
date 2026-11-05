@@ -38,3 +38,10 @@ def test_a_real_command_still_carries_the_notebook_over(tmp_path, monkeypatch):
     old = _old_notebook(tmp_path)
     CliRunner().invoke(app, ["rem", "list", "people"])
     assert not old.exists() and (tmp_path / ".co" / "rem" / "people" / "someone.md").is_file()
+
+
+def test_investigate_help_explains_manual_daily_cap_and_reservations():
+    shown = CliRunner().invoke(app, ["rem", "investigate", "--help"])
+    assert shown.exit_code == 0, shown.output
+    assert "Manual investigations are not limited by\nlimits.runner_calls_per_day" in shown.output
+    assert "unused reservations are not returned\nto the daily cap" in shown.output
