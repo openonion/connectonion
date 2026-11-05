@@ -1214,6 +1214,13 @@ def test_start_help_names_the_confinement_and_the_undo():
     assert "co rem stop" in text
 
 
+def test_start_help_explains_linux_systemd_and_linger():
+    result = runner.invoke(app, ["rem", "start", "--help"])
+    assert result.exit_code == 0
+    assert "systemd user timer" in result.output and "loginctl enable-linger" in result.output
+    assert "On Linux and Windows the schedule is not yet installed" not in result.output
+
+
 def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
     """After stop, `start` resumed the schedule and printed `First batch:
     Unknown` while its help promised it runs the first update. Only the first
@@ -1362,6 +1369,7 @@ def test_status_ends_on_the_step_its_first_line_names(tmp_path, monkeypatch):
     assert status_next({"configured": True, "state": "Not started — run `co rem start`"}) == ["start"]
     assert status_next({"configured": True, "state": "Stopped — background maintenance is off"}) == ["start"]
     assert status_next({"configured": True, "state": "Running in background (launchd); next slot 07:00"}) == ["logs"]
+    assert status_next({"configured": True, "state": "Scheduled with systemd; next slot 07:00"}) == ["logs"]
 
 
 # ------------------------------------------- the 1.9.0a7 acceptance run (#2044)

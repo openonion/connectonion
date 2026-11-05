@@ -331,7 +331,11 @@ def _consent_text(value: dict) -> str:
     permissions = permissions.replace(' for local repository and mail archive research; other stages use ',
                                       '; other stages: ')
     schedule, limits = value['schedule'], value['limits']
-    background = 'Codex Scheduled/launchd' if value['runner'] == 'codex' else 'launchd on macOS'
+    background = value['background']
+    if sys.platform == 'darwin':
+        # The full macOS sentence lives in config and JSON; one line keeps the question on screen.
+        background = ('Codex Scheduled/launchd' if value['runner'] == 'codex' else 'launchd on macOS')
+        background += '; keep computer awake. Stop: co rem stop'
     lines = ['co rem start — source access and schedule', '', 'Sources:',
              *(_consent_source(name, source) for name, source in value['sources'].items()),
              f"Model: {value['runner']} · {value['model']} · through {route}",
@@ -339,7 +343,7 @@ def _consent_text(value: dict) -> str:
              f"Schedule: {', '.join(schedule['times'])} ({schedule['timezone']})",
              f"Daily cap: {limits['runner_calls_per_day']} runner calls/day; "
              f"stop at {limits['quota_floor_percent']}% weekly quota used",
-             f'Background: {background}; keep computer awake. Stop: co rem stop',
+             f"Background: {background}",
              'Details: co rem config']
     return '\n'.join(lines)
 

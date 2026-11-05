@@ -122,7 +122,7 @@ def status_next(value: dict) -> list:
         _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
         if arguments:
             return arguments
-    return ["logs"] if str(value.get("state", "")).startswith("Running") else ["start"]
+    return ["logs"] if str(value.get("state", "")).startswith(("Running", "Scheduled")) else ["start"]
 
 
 def notebook(root, found: dict | None = None) -> dict:

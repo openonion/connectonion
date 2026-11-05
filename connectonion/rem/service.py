@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import sys
@@ -497,6 +498,14 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
         wake = ("wake job loaded" if native.get("wake_loaded") else "wake job not loaded; run co rem start")
         return (f"Scheduled in Codex; {evidence}; {wake}; keep the computer awake",
                 next_run.astimezone(zone).isoformat(timespec="minutes"))
+    if worker.get("enabled") and worker.get("scheduler") == "systemd":
+        from .schedule import Systemd
+        timer = Systemd()
+        if not timer.installed(root):
+            return ("Not scheduled here — systemd unit files are missing; "
+                    "`co rem start` schedules this notebook"), None
+        if not timer.describe(root)["active"]:
+            return "Background needs attention — systemd timer is not active; run `co rem start`", None
     if worker.get("enabled") and worker.get("scheduler") == "launchd":
         # worker.json travels with a copied notebook; the job it describes runs
         # the original's --root. A copy said "Running in background" and doctor
@@ -527,6 +536,8 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
                       else worker.get("last_scheduled_warning"))
             return ("Background needs attention — " + (reason or "the last scheduled pass failed")
                     + "; run `co rem logs`"), slot
+        if worker.get("scheduler") == "systemd":
+            return f"Scheduled with systemd; next slot {slot or 'unknown'}", slot
         return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
     return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
 
@@ -770,9 +781,23 @@ def consent_summary(root: Path) -> dict:
             "schedule": config["schedule"], "limits": config["limits"],
             # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
             # while asleep runs once at the next five-minute tick.
-            "background": "Codex Scheduled for Codex notebooks on a Mac with the desktop app; "
-                          "otherwise launchd on macOS. Keep the computer awake; a small launchd job "
-                          "opens Codex in the background at each time. co rem stop disables the timer"}
+            "background": background_summary(config)}
+
+
+def background_summary(config: dict) -> str:
+    """The schedule the owner approves, shared by text and JSON consent.
+
+    The macOS text is part of summary_fingerprint: changing it would ask every
+    Mac notebook to approve again at its next start, so it stays word for word.
+    """
+    if sys.platform == "darwin":
+        return ("Codex Scheduled for Codex notebooks on a Mac with the desktop app; "
+                "otherwise launchd on macOS. Keep the computer awake; a small launchd job "
+                "opens Codex in the background at each time. co rem stop disables the timer")
+    if sys.platform == "linux" and shutil.which("systemctl"):
+        return ("systemd user timer; loginctl enable-linger keeps it running while logged out. "
+                "Stop: co rem stop")
+    return "manual sync or cron; no supported background scheduler. Stop: co rem stop"
 
 
 def ensure_consent(root: Path, *, confirm) -> bool:

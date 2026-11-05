@@ -911,7 +911,8 @@ def _offer_mailbox() -> None:
 
 def _scheduler_name(result: dict) -> str:
     scheduler = result.get("scheduler", "none")
-    return {"codex-native": "Codex Scheduled task", "launchd": "launchd"}.get(scheduler, scheduler)
+    return {"codex-native": "Codex Scheduled task", "launchd": "launchd",
+            "systemd": "systemd user timer"}.get(scheduler, scheduler)
 
 
 def init_global_rem(*, yes: bool = False) -> None:
@@ -937,7 +938,7 @@ def init_global_rem(*, yes: bool = False) -> None:
         return
     scheduler = default_scheduler(root, for_start=True)
     if isinstance(scheduler, Unsupported):
-        typer.echo("REM prepared; no scheduler available on this platform. Next: co rem init to build manually. Upkeep: co rem start on macOS. Watch: co rem status")
+        typer.echo("REM prepared; no scheduler available on this platform. Next: co rem init to build manually. Upkeep: schedule co rem sync with cron. Watch: co rem status")
         return
     typer.echo("Installing REM upkeep. Resume setup with co rem start.")
     result = _install_upkeep(root, confirm, scheduler)
