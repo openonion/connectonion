@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc43
+## Current Version: 1.9.3rc44
+
+REM native path (#2778): `co rem submit` accepted nothing on a real notebook because the
+source-view digest followed set iteration order and so differed between the `next` and
+`submit` processes; later-in-thread mail is now ordered deterministically. Stable remains
+1.9.2. See [candidate notes](docs/releases/1.9.3rc44.md).
+
+- 1.9.3rc44 (native submit accepts what next prepared).
+
+### Previous candidate: 1.9.3rc43
 
 REM hotfix (#2773): on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped
 at once on a notebook whose pages link to a path outside notebook content (a regression from
