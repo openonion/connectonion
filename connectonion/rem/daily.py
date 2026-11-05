@@ -169,8 +169,11 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     maintenance = sync(root, scheduled=True) if scheduled else sync(root)
     if maintenance is None or maintenance.get('outcome') == 'busy':
         return maintenance
+    backlog = ("; " + ", ".join(f"{left} left in {source} for next time"
+                               for source, left in maintenance.get('material_remaining', {}).items())
+               if maintenance['outcome'] in ('completed', 'no_change') and maintenance.get('material_remaining') else "")
     say(f"New material: {maintenance.get('items', 0)} items, "
-        f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
+        f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']}){backlog}")
     from .runner import ready
     from .sessions import import_sessions, summarise_line, summarise_sessions, summary
     if "sessions" not in maintenance:
@@ -266,6 +269,7 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
                     and datetime.fromisoformat(log['started_at']).astimezone(zone).date() == today)
         remaining = min(config['limits']['translations_per_day'] - spent,
                         config['limits']['runner_calls_per_day'] - status(root)['runner_attempts_today'])
+        translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
         for page in dict.fromkeys(changed):
@@ -278,7 +282,10 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             write_json(path, record)
             say(f"Translating {page} into {language}…")
             try:
-                (translate_one or translate)(root, page, language)
+                if translate_one:
+                    translate_one(root, page, language)
+                else:
+                    translate(root, page, language, on_run=translation_runs.append)
                 rows.append({'page': page, 'outcome': 'translated'})
             except RemError as error:
                 rows.append({'page': page, 'outcome': 'failed', 'error': str(error)})
@@ -286,9 +293,12 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             record['pages'] = rows
             write_json(path, record)
         # Each translation logs its own runner calls (repairs included); this summary counts pages.
-        report = {'language': language, 'pages': rows, 'attempted': attempts}
+        usage = {}
+        for run_id in translation_runs:
+            _add_usage(usage, run_logs(root, run_id)[0].get('usage'))
+        report = {'language': language, 'pages': rows, 'attempted': attempts, 'usage': usage or None}
         maintenance['translations'] = report
-        record.update(**report, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
+        record.update(language=language, pages=rows, attempted=attempts, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
                       finished_at=now().isoformat())
         write_json(path, record)
 

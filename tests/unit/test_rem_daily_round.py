@@ -391,6 +391,54 @@ def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
     assert daily.quota.points_spent([result["run"], run], meter) == 4
 
 
+def test_translation_usage_is_returned_once_and_excludes_older_runs(translation_root, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    root = translation_root
+    monkeypatch.setattr("connectonion.rem.translate.cached", lambda *a: None)
+    write_json(state_path(root, "runs/run_old.json"), {
+        "id": "run_old", "phase": "translate", "started_at": daily.now().isoformat(),
+        "outcome": "completed", "usage": {"input_tokens": 9999}})
+
+    def run(workspace, prompt, config, stage):
+        (workspace / "translation.md").write_text((workspace / "page.md").read_text())
+        return {"outcome": "natural", "usage": {"input_tokens": 400, "output_tokens": 10}}
+
+    monkeypatch.setattr("connectonion.rem.runner.run_task", run)
+    result = daily.run_daily(root, maintain=lambda root: {
+        "outcome": "completed", "changed": ["projects/harbour.md"]})
+    assert result["maintenance"]["translations"]["usage"] == {"input_tokens": 400, "output_tokens": 10}
+    summary = next(log for log in daily.run_logs(root) if log["phase"] == "daily-translation")
+    assert summary["usage"] is None  # The underlying translate run already owns this usage.
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_translation_usage_excludes_overlapping_manual_run(translation_root, monkeypatch, failed):
+    from connectonion.rem.translate import translate
+
+    root = translation_root
+    page = "projects/harbour.md"
+    calls = []
+
+    def run(workspace, prompt, config, stage):
+        calls.append(workspace)
+        scheduled = len(calls) == 1
+        if scheduled:
+            # A standalone translation of even the same page may finish during upkeep.
+            translate(root, page, "zh")
+        if not (scheduled and failed):
+            (workspace / "translation.md").write_text((workspace / "page.md").read_text())
+        return {"outcome": "natural", "usage": {
+            "input_tokens": 400 if scheduled else 900, "output_tokens": 10}}
+
+    monkeypatch.setattr("connectonion.rem.runner.run_task", run)
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "completed", "changed": [page]})
+    report = result["maintenance"]["translations"]
+    assert len(calls) == 2
+    assert report["usage"] == {"input_tokens": 400, "output_tokens": 10}
+    assert report["pages"][0]["outcome"] == ("failed" if failed else "translated")
+
+
+
 @pytest.mark.parametrize("zone, moment, day", [
     ("Pacific/Honolulu", "2026-11-06T01:00:00+00:00", "2026-11-05"),
     ("Pacific/Kiritimati", "2026-11-05T12:00:00+00:00", "2026-11-06"),

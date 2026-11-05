@@ -1574,6 +1574,33 @@ def test_usage_report_survives_a_run_whose_instruction_size_is_one_number(tmp_pa
     assert stages["investigate"]["instructions_chars_mean"] == 13_000
 
 
+@pytest.mark.parametrize("count", [2, 5])
+def test_sync_reports_mail_still_queued_after_bounded_batch(rem, monkeypatch, count):
+    from connectonion.rem.source import Batch
+    root, _ = rem
+    set_config(root, ["limits.extract_items_per_batch", "2"])
+    monkeypatch.setattr("connectonion.rem.service._selected_sources", lambda *a: {
+        "gmail": {"kind": "gmail", "enabled": True, "consented": True}})
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind: object())
+    items = [{"source": f"gmail:{n}", "role": "user", "text": "Fictional project note"} for n in range(2)]
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch(
+        items, {"pending": {"rowan@example.org": [{"id": str(n)} for n in range(count - 2)]}}))
+    record = run_sync(root, runner=lambda *a, **kw: {"changed": [], "usage": None})
+    assert record["items"] == 2
+    assert record["material_remaining"] == {"gmail": count - 2}
+
+
+def test_not_due_reason_skips_the_slot_already_served_early(rem):
+    from connectonion.rem.service import scheduled_skip
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "03:00,19:00"])
+    write_json(state_path(root, "worker.json"), {
+        "enabled": True, "last_scheduled_slot": "2026-09-07T19:00:00+00:00"})
+    result = scheduled_skip(root)
+    assert "19:00 slot was already served" in result["reason"]
+    assert "next slot 2026-09-08T03:00+00:00" in result["reason"]
+
+
 @pytest.mark.parametrize("boot_known", [True, False])
 def test_live_run_does_not_expire_without_progress(tmp_path, monkeypatch, boot_known):
     from connectonion.rem import service

@@ -374,6 +374,22 @@ def _scheduled_slot(root: Path):
     return slot if slot and (not served or datetime.fromisoformat(served) < slot) else None
 
 
+def scheduled_skip(root: Path, *, start_command="co rem start") -> dict:
+    """Explain a skipped tick without reading any source."""
+    worker = worker_state(root)
+    if not worker.get("enabled"):
+        reason = f"background upkeep is off; run {start_command} to enable it"
+    else:
+        config = read_config(root)
+        zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
+        served = worker.get("last_scheduled_slot")
+        upcoming = next_slot(config, zone, served)
+        reason = (f"the {datetime.fromisoformat(served).astimezone(zone):%H:%M} slot was already served"
+                  if served else "no scheduled slot is due")
+        reason += f"; next slot {upcoming}" if upcoming else "; no next slot is configured"
+    return {"due": False, "ran": False, "reason": reason}
+
+
 def _active_scheduled_run(root: Path):
     host = socket.gethostname()
     boot = _boot_time()
@@ -1347,6 +1363,8 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                                       for name, count in unrecognised.items()),
                                     *([f"{len(source_skips)} changed session file(s) skipped; checkpoints kept; "
                                        "other sessions continue; inspect co rem logs"] if source_skips else [])]),
+              "material_remaining": {name: sum(len(rows) for rows in updated[name].get("pending", {}).values())
+                                     for name in sources_read if selected[name].get("kind") in MAIL_KINDS},
               "usage_by_stage": {}, "items_by_source": counts,
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None,
               **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}
