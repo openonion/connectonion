@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -153,6 +153,43 @@ def test_quota_floor_stops_before_collecting(trial, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "floor" in result.output and "95%" in result.output
     assert not state_path(trial, "round.json").exists()
+
+
+@pytest.mark.parametrize("scheduled", [False, True])
+@pytest.mark.parametrize("pending_review", [False, True])
+def test_daily_cap_records_only_scheduled_visits(trial, scheduled, pending_review):
+    if pending_review:
+        from connectonion.rem.config import set_config
+        set_config(trial, ["limits.runner_calls_per_day", "1"])
+        record, source = _feedback(trial)
+        task = native.next_task(trial)
+        _candidate(trial, task, record, source)
+        assert native.submit(trial, task["id"])["reason"] == "daily cap reached"
+    else:
+        write_json(state_path(trial, "runs/run_cap.json"), {
+            "id": "run_cap", "started_at": service.now().isoformat(), "outcome": "completed",
+            "runner_attempts": read_config(trial)["limits"]["runner_calls_per_day"]})
+    assert service.daily_cap(trial)["remaining"] == 0
+    existing = {row["id"] for row in service.run_logs(trial)}
+    before = service.now()
+    args = ["rem", "--root", str(trial), "next", *(["--scheduled"] if scheduled else [])]
+    result = CliRunner().invoke(app, args)
+    after = service.now()
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[0] == "daily cap reached"
+    records = [row for row in service.run_logs(trial) if row["id"] not in existing]
+    assert len(records) == int(scheduled)
+    if scheduled:
+        record, = records
+        assert record["outcome"] == "budget_exhausted"
+        assert record["reason"] == "the day's runner calls are spent"
+        assert record["scheduled"] is True
+        assert record["phase"] == "sync"
+        assert record["runner_attempts"] == 0
+        started = datetime.fromisoformat(record["started_at"])
+        finished = datetime.fromisoformat(record["finished_at"])
+        assert before <= started <= finished <= after
+    assert len(service.run_logs(trial)) == len(existing) + int(scheduled)
 
 
 def test_overnight_submit_uses_prepared_date(trial, monkeypatch):
