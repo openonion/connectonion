@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc44
+## Current Version: 1.9.3rc45
+
+REM native schedule (#2785): the wake job started Codex hidden, and a hidden Codex does not run
+its automations, so a cold start missed every slot; it now opens Codex visible but not in front.
+A scheduled `co rem next` that stops at the daily cap leaves a run record (#2786), and the
+`co rem` help pages read plainly after `co audit --review` (#2782). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc45.md).
+
+- 1.9.3rc45 (wake job opens Codex visible; cap stops recorded; plainer rem help).
+
+### Previous candidate: 1.9.3rc44
 
 REM native path (#2778): `co rem submit` accepted nothing on a real notebook because the
 source-view digest followed set iteration order and so differed between the `next` and
