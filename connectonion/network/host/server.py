@@ -39,6 +39,7 @@ from rich.console import Console
 
 from ... import address, approvals
 from ...backend import DEFAULT_BACKEND_WS_URL
+from ...cli.browser_agent.transport import pid_alive
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from ..trust import TRUST_LEVELS, TrustAgent, parse_policy
@@ -559,70 +560,44 @@ def resolve_agent_identity(co_dir: Path) -> dict:
 SERVED_BY_FILE = "served_by.json"
 
 
-def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
-    """Record that this agent serves under this key, or say who already does.
+def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) -> Optional[str]:
+    """Record the serving PID, port, working folder and name beside the key.
 
-    One address, one agent. #642 caught two of them sharing `0x10e68f6d…` —
-    `oo` on this laptop with bash and write, and `naturewill` on the deployed
-    box with the contract-ledger tools — because every 1.5.x `co init` wrote
-    `AGENT_CONFIG_PATH=~/.co` and a project with no key of its own inherits the
-    global one on purpose. Since #643 a client resolves an endpoint directly
-    and picks by proximity, so a call meant for the deployed agent reaches the
-    local coding agent instead. `/info` verification cannot catch that: the
-    address genuinely matches.
-
-    The record goes beside the key rather than in the project, because the
-    whole problem is several projects sharing one identity directory.
-
-    Returns a warning, not a refusal. The agent whose address this is may be
-    the one restarting, and an operator who cannot start their agent because of
-    a stale claim is worse off than one who is told the truth. `co deploy` is
-    where refusing belongs — that is the moment a second permanent copy is
-    made.
+    Return a collision message if another live process claims this address,
+    even in the same folder. The caller must refuse startup on a collision.
+    Dead PIDs, legacy records without a PID and corrupt JSON are replaced
+    quietly. The working folder is the process's cwd: for `co ai`, co_dir is
+    global ~/.co and its parent does not identify the coding task's folder.
     """
     source = Path(identity.get("source") or co_dir)
     if not source.is_dir():
-        # A freshly generated identity is saved into a directory that may not
-        # exist yet, and a hint about who is serving is not worth failing a
-        # start over. No directory, no claim, no warning.
         return None
     record = source / SERVED_BY_FILE
-    mine = {"name": name, "project": str(co_dir.parent), "address": identity["address"]}
+    mine = {"name": name, "project": str(Path.cwd()), "address": identity["address"],
+            "pid": os.getpid(), "port": port}
 
-    existing = None
     if record.exists():
         try:
             existing = json.loads(record.read_text(encoding="utf-8"))
+            if (existing.get("address") == mine["address"]
+                    and existing.get("pid") != mine["pid"]
+                    and pid_alive(existing.get("pid", 0))):
+                return (
+                    f"{identity['address']} is already served by '{existing.get('name')}' "
+                    f"(PID {existing['pid']}) in {existing.get('project')} "
+                    f"on port {existing.get('port')}. "
+                    f"Stop it with `kill {existing['pid']}`, then start this Host again."
+                )
         except json.JSONDecodeError:
-            # A warning aid, not a gate. An unreadable record costs a warning,
-            # not a start.
+            # Unreadable old records cannot establish a live owner.
             existing = None
 
+    # Check after the identity collision so even a shared port names the owner,
+    # but before writing a claim for a process that cannot start serving.
+    if _port_in_use(port):
+        raise SystemExit(_port_taken_message(port, co_dir))
     record.write_text(json.dumps(mine, indent=2), encoding="utf-8")
-
-    if not existing or existing.get("project") == mine["project"]:
-        return None       # nobody else, or the same project restarting/renamed
-
-    # Only advice that works. Saying "point AGENT_CONFIG_PATH at this project's
-    # .co" would be wrong for the case that produces this warning: the project
-    # has no key there, which is why it inherited one. Nothing today mints a
-    # local identity for a project that already exists — that gap is what makes
-    # this a warning rather than a refusal, and it is filed separately.
-    return (
-        f"{identity['address'][:10]}… is already served by "
-        f"'{existing.get('name')}' in {existing.get('project')}, using the same "
-        f"key from {source}. Two agents on one address means whichever is "
-        f"nearest answers the call, and the tools they answer with differ. "
-        # This said a project made by `co create` gets its own identity. It
-        # does not: `co create` writes no key, so every such project inherits
-        # ~/.co's and lands here. A key in the project's own .co/keys/ wins
-        # over ~/.co (resolve_agent_identity), so that is the advice that works.
-        f"`co create` does not give a project its own key; they all use "
-        f"~/.co's. To give this one its own address, run in {co_dir.parent}: "
-        f"python -c \"from pathlib import Path; from connectonion import address; "
-        f"address.save(address.generate(), Path('.co'))\" -- the key in "
-        f".co/keys/ then wins over ~/.co. Clients must use the new address."
-    )
+    return None
 
 
 def usable_uvicorn_options(workers, reload) -> tuple:
@@ -1131,6 +1106,8 @@ def host(
 
     Passing an Agent instance is the simple path and shares that instance.
     Passing a factory creates a fresh Agent for each request.
+    Startup exits non-zero if another live process claims this address, naming
+    its PID, working folder and port, with the command to stop it.
 
     State Control:
         # Simple/default: share one configured agent and expensive tool setup:
@@ -1256,9 +1233,6 @@ def host(
     for path, old, new in refresh():
         print(f"Refreshed the command index for co in {path} ({old or 'none'} → {new})")
 
-    if _port_in_use(port):
-        raise SystemExit(_port_taken_message(port, co_dir))
-
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))
 
@@ -1286,9 +1260,9 @@ def host(
 
     # Said before the banner, where the address is about to be printed as if it
     # belonged to this agent alone.
-    collision = claim_identity(co_dir, addr_data, agent_metadata["name"])
+    collision = claim_identity(co_dir, addr_data, agent_metadata["name"], port)
     if collision:
-        print(f"[host] {collision}")
+        raise SystemExit(f"[host] {collision}")
 
     agent_metadata["address"] = addr_data['address']
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"

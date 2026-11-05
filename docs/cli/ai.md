@@ -425,6 +425,12 @@ This is loaded every session, so the agent always follows your rules.
 - Resumable one-shot sessions saved privately under `~/.co/ai/sessions/`
 - Same address across all `co ai` sessions
 
+Only one Host process on this machine can serve that address. If an older Host
+is still running, startup exits with its PID, working folder, name and port.
+Stop it with the shown `kill <pid>` command and start again. A dead process's
+`~/.co/served_by.json` record is replaced quietly; your identity key stays the
+same.
+
 Task scoring is separate from session recording. It is off by default; pass
 `--eval` when debugging to generate an expected outcome and score completion.
 
