@@ -19,7 +19,7 @@ that is asleep, offline or logged out is not an always-available server.
 The plist contains executable/configuration paths, not tokens. Existing co
 configuration is loaded at process startup. Logs are local owner-only files
 under `~/.co/host-services/`. An edited service definition is preserved rather
-than overwritten. Use the same project directory to inspect or stop its service.
+than overwritten. `co host --status` and `co host --stop` find the running Host from any folder, whichever command started it ([one Host per address](host.md#one-host-per-address-on-this-computer)).
 
 Status distinguishes a configured plist from a currently observed process.
 Native startup additionally requires that process to own the responding local

@@ -21,7 +21,30 @@ One host serves everything, from one process and one port:
 - **the schedule**, the jobs in `.co/schedule.yaml`.
 
 `python agent.py`, `co deploy` and `co ai` go through the same `host()`, so they
-serve the same things. See [host()](../network/host.md#what-one-host-serves)
+serve the same things.
+
+## One Host per address on this computer
+
+Every project made by `co create`, `co ai`, the background service from
+`co init --background` and the `co ai` that `co rem open` starts all use the
+key in `~/.co`, so they share one address. Only one of them serves it at a
+time. A second one exits at once and names the first:
+
+```text
+[host] 0x3ae5aab6… is already served on this computer by 'a' in /Users/you/a (pid 72209, http://localhost:8731). One address, one Host: the relay would pick between them at random.
+       Use that one, or stop it first: co host --stop
+```
+
+From any folder:
+
+```bash
+co host --status   # {"serving": {"pid", "port", "name", "project", "service"}} or {"serving": null}
+co host --stop     # stops it; a background service is stopped as a launchd job
+co status          # "Host on this computer"
+```
+
+`co rem open` reads through that Host instead of starting another. A project
+with its own key in `.co/keys/` has its own address and its own Host. See [host()](../network/host.md#what-one-host-serves)
 and [host.yaml](../network/host-config.md).
 
 ## "Discover" in co

@@ -65,8 +65,11 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     state = directory / "rem-live-host.json"
     log = directory / "rem-live-host.log"
     process, saved = None, {}
+    from ..network.host.server import running_host
     with _owner_invite_lock(directory):
-        if host_online(address):
+        # The Host already serving this key here, whichever command started it:
+        # a second one would be refused, and would split the relay if it were not.
+        if running_host(directory) is not None or host_online(address):
             return None
         saved = read_json(state, {})
         if saved.get("address") != address or not _alive(saved):
@@ -112,9 +115,11 @@ def answers(port: int, address: str) -> bool:
 
 def local_reader(address: str) -> str | None:
     """The base URL of this identity's Host on this computer, if one answers."""
+    from ..network.host.server import running_host
     from ..project import selected_identity_dir
+    serving = running_host(selected_identity_dir()) or {}
     saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
-    for port in dict.fromkeys(p for p in (saved.get("port"), DEFAULT_PORT) if isinstance(p, int)):
+    for port in dict.fromkeys(p for p in (serving.get("port"), saved.get("port"), DEFAULT_PORT) if isinstance(p, int)):
         if answers(port, address):
             return f"http://127.0.0.1:{port}"
     return None
@@ -129,8 +134,8 @@ def ensure_local(address: str) -> tuple[str | None, str | None]:
             return None, failure
         base = local_reader(address)
     if not base:
-        return None, ("co ai is running, but not on a port co rem knows (8000 or one it started); "
-                      "use `co rem open --live`, or stop that co ai and open again")
+        return None, ("this identity's Host is online but does not answer on this computer; "
+                      "use `co rem open --live`, or see `co host --status`")
     return f"{base}/rem?token={reader_token(selected_identity_dir())}", None
 
 

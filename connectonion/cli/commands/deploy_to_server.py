@@ -628,6 +628,9 @@ RSYNC_FILTERS = [
     # on the server and makes the deployed agent read the laptop's claim as
     # a collision on every start.
     "--exclude", ".co/served_by.json",
+    # Which local process holds this key (#2750): the laptop's pid and lock.
+    "--exclude", ".co/host.json",
+    "--exclude", ".co/host.lock",
     "--exclude", ".co/provision.json",
     # The scheduler's record of what ran, and `co schedule pause` / `run`
     # (#1685). A laptop copy sent up would rewind the server's last runs, so

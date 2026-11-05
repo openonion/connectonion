@@ -224,6 +224,8 @@ def test_a_local_schedule_state_does_not_rewind_the_servers(tmp_path):
     ".co/evals/hello.yaml",
     ".co/sessions/abc.yaml",
     ".co/served_by.json",
+    ".co/host.json",
+    ".co/host.lock",
     ".co/schedule-state.json.lock",
     ".co/schedule.tick.lock",
     ".co/watch-state.sqlite3",
