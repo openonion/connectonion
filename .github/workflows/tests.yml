@@ -119,8 +119,8 @@ jobs:
   # for Proactor Windows or Darwin close/shutdown behavior.
   remote-browser-egress:
     runs-on: ${{ matrix.os }}
-    # Backstop for hangs outside a test, including installation and shutdown.
-    timeout-minutes: 10
+    # Backstop for hangs outside a test (installation, shutdown); the per-test watchdog catches the rest.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
