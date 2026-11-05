@@ -24,11 +24,11 @@ from . import quota
 from .config import read_config
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .investigate import NothingFound, NothingNew, investigate
-from .service import mail_client, now, run_logs, run_sync, status, subscriptions
+from .service import mail_client, notebook_today, now, run_logs, run_sync, status, subscriptions
 
 # At most this many calls for the first run's portion. It was "everything but
-# two", which at the old cap of 6 meant 4; at 30 it would let one large page
-# spend a night's calls. A person is one call, so this is up to 8 people.
+# two", which at the old cap of 6 meant 4; at the default cap of 50 it would
+# let one large page spend a night's calls. A person is one call: up to 8 people.
 INVESTIGATION_CALLS = 8
 # Pages a later run updates from new material, one call each.
 UPDATE_PAGES = 5
@@ -604,7 +604,7 @@ def _owner_due(root: Path) -> list[dict]:
         return []
     status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
     read = last_investigated(status)
-    today = now().date()
+    today = notebook_today(root)
     tried = read_json(state_path(root, "owner-refresh.json"), {}).get("date", "")
     if (read and read >= today) or tried == today.isoformat():
         return []
@@ -616,7 +616,7 @@ def _owner_due(root: Path) -> list[dict]:
 def _owner(root, row, *, clients, subscriptions):
     """`investigate me` over the days since the page was last read. Stamped first,
     so a refused or crashed reading waits until tomorrow, not the next run."""
-    write_json(state_path(root, "owner-refresh.json"), {"date": now().date().isoformat()})
+    write_json(state_path(root, "owner-refresh.json"), {"date": notebook_today(root).isoformat()})
     record = row['record']
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),
                  "Account owner")

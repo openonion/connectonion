@@ -170,7 +170,8 @@ def people_table(root: Path, *, company: str = "", query: str = "", open_only: b
     if open_only:
         where.append("open_threads > 0")
     if recent_days:
-        since = date.fromisoformat(today or date.today().isoformat()) - timedelta(days=recent_days)
+        from .service import notebook_today
+        since = (date.fromisoformat(today) if today else notebook_today(root)) - timedelta(days=recent_days)
         where.append("last_contact >= ?")
         parameters.append(since.isoformat())
     order = f"({sort} is null or {sort} = ''), {sort} {'desc' if descending else 'asc'}, name, record"

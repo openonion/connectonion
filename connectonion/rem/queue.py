@@ -20,7 +20,7 @@ Left out on purpose:
 """
 
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 
 from .files import Notebook, read_json, state_path
 from .map import needs_review
@@ -141,7 +141,8 @@ def _stamped_from_nothing(page: str) -> bool:
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
-    today = today or datetime.now(timezone.utc).date()
+    from .service import notebook_today
+    today = today or notebook_today(root)
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     from .merge import resolve

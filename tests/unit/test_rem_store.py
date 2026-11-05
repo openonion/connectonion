@@ -449,3 +449,22 @@ def test_the_table_before_any_build_says_how_to_make_one(tmp_path):
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "list", "people", "--table"])
     assert result.exit_code == 0 and "No people table yet" in result.output
     assert result.output.rstrip().endswith(f"{root} sync")     # the Next line, spelled with this --root
+
+
+def test_people_recent_filter_uses_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service, store
+    from connectonion.rem.config import set_config
+
+    root = notebook(tmp_path)
+    set_config(root, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 9, 30, 1, tzinfo=timezone.utc))
+    book = Notebook(root)
+    book.stub_person("people/boundary.md", "Boundary", ["boundary@example.org"])
+    book.write("people/boundary.md", book.read("people/boundary.md").replace(
+        "## Who they are\n", "## Who they are\nLast contact: 2026-09-19. [1]\n"))
+    store.refresh(root)
+    assert store.people_table(root, recent_days=10) == store.people_table(root, recent_days=10, today="2026-09-29")
+    assert "people/boundary.md" in {row["record"] for row in store.people_table(root, recent_days=10)}
+    assert "people/boundary.md" not in {row["record"] for row in store.people_table(
+        root, recent_days=10, today="2026-09-30")}

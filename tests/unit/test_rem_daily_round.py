@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from connectonion.rem import daily
-from connectonion.rem.config import prepare, read_config
+from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook
 from connectonion.rem.investigate import NothingFound
 from connectonion.rem.refusals import refused_pages, remember_refusal
@@ -26,6 +26,7 @@ def no_change(root):
 def root(tmp_path, monkeypatch):
     root = tmp_path / "rem"
     prepare(root)
+    set_config(root, ["schedule.timezone", "UTC"])
     notebook = Notebook(root)
     notebook.stub_skill("skills/catalog/job-followup.md", "job-followup", "/nowhere/SKILL.md")
     notebook.stub_project("projects/historical-notes.md", "historical-notes", [])
@@ -368,7 +369,8 @@ def test_status_renders_daily_cap_as_reached():
 def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
     from connectonion.rem import same_person
 
-    meter = {"used_percent": 10, "resets_at": 2_000_000_000, "window_minutes": 10080, "plan": "fictional"}
+    meter = {"used_percent": 10, "resets_at": int((daily.now() + timedelta(days=1)).timestamp()),
+             "window_minutes": 10080, "plan": "fictional"}
     monkeypatch.setattr(daily.quota, "read", lambda config: dict(meter))
     monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "projects/historical-notes.md"}])
     monkeypatch.setattr(same_person, "candidates", lambda root: [{"pages": ["people/a.md", "people/b.md"]}])
@@ -386,4 +388,27 @@ def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
     run = next(row for row in daily.run_logs(root) if row.get("phase") == "same-person")
     assert run["quota"]["before"] == result["run"]["quota"]["after"]
     assert run["quota"]["before"]["used_percent"] == 13
-    assert daily.quota.run_points(result["run"]) + daily.quota.run_points(run) == 4
+    assert daily.quota.points_spent([result["run"], run], meter) == 4
+
+
+@pytest.mark.parametrize("zone, moment, day", [
+    ("Pacific/Honolulu", "2026-11-06T01:00:00+00:00", "2026-11-05"),
+    ("Pacific/Kiritimati", "2026-11-05T12:00:00+00:00", "2026-11-06"),
+])
+def test_owner_due_and_refresh_use_the_notebook_day(root, monkeypatch, zone, moment, day):
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+    from connectonion.rem.files import read_json, state_path
+
+    set_config(root, ["schedule.timezone", zone])
+    clock = lambda: datetime.fromisoformat(moment)
+    monkeypatch.setattr(service, "now", clock)
+    monkeypatch.setattr(daily, "now", clock)
+    record = _owner_page(root, day)
+    assert daily._owner_due(root) == []
+    Notebook(root).write(record, Notebook(root).read(record).replace(f"investigated {day}", "investigated 2026-11-01"))
+    [row] = daily._owner_due(root)
+    monkeypatch.setattr(daily, "investigate", lambda *args, **kwargs: {})
+    daily._owner(root, row, clients={}, subscriptions={})
+    assert read_json(state_path(root, "owner-refresh.json"), {})["date"] == day
+    assert daily._owner_due(root) == []

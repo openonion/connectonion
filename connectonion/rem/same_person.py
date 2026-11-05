@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
 from pathlib import Path
 
+from .service import notebook_today
 from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
 
 SKILL = "rem-same-person"
@@ -73,7 +73,7 @@ def candidates(root: Path) -> list[dict]:
                 email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
             why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
                 or _alike(one, other)
-            if why and _due(judged.get(key)):
+            if why and _due(root, judged.get(key)):
                 pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
 
@@ -92,9 +92,9 @@ def _skipped(pair, usage=None, say=lambda text: None, *, asked=False):
             "runner_attempts": int(asked)}
 
 
-def _due(verdict: dict | None) -> bool:
+def _due(root: Path, verdict: dict | None) -> bool:
     """Never judged, or a judgement that failed before today: answered pairs are not asked again."""
-    return not verdict or ("same" not in verdict and verdict.get("failed", "") < date.today().isoformat())
+    return not verdict or ("same" not in verdict and verdict.get("failed", "") < notebook_today(root).isoformat())
 
 
 def _own_mail(root: Path, record: str, emails: list[str]) -> list[dict]:
@@ -180,7 +180,7 @@ def prepare_verdict(task, result, *, say=lambda text: None):
         return {"merge": None, "verdicts": verdicts,
                 "result": _skipped(pair, result.get("usage"), say, asked=True)}
     answer = _verdict(result)
-    row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
+    row = {**pair, **answer, "date": notebook_today(root).isoformat(), "usage": result.get("usage")}
     notebook, merge = Notebook(root), None
     if answer["same"]:
         kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
@@ -209,7 +209,7 @@ def check(task, result, *, lock_held=False, say=lambda text: None):
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         verdicts = read_json(state_path(root, VERDICTS), {})
-        verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": date.today().isoformat(),
+        verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": notebook_today(root).isoformat(),
                                              "error": str(error)[:300]}
         write_json(state_path(root, VERDICTS), verdicts)
     return {**pair, "outcome": "failed", "error": str(error)[:300], "usage": getattr(error, "usage", None)}
