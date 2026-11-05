@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc45
+## Current Version: 1.9.3rc46
+
+REM on Linux (#2790): `co rem start` ran the first batch and then raised "macOS-only" at the
+scheduler install, so no Linux notebook ever ran a scheduled slot. Linux with systemd now gets a
+user timer that runs `co rem sync --scheduled` every five minutes, like the launchd job.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc46.md).
+
+- 1.9.3rc46 (REM schedules on Linux with a systemd user timer).
+
+### Previous candidate: 1.9.3rc45
 
 REM native schedule (#2785): the wake job started Codex hidden, and a hidden Codex does not run
 its automations, so a cold start missed every slot; it now opens Codex visible but not in front.
