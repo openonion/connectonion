@@ -78,7 +78,7 @@ Keep this order for those shown:
   commits name working on it; `Unknown` only with neither.
 
 **Insight**: 2–4 cited bullets of at most 30 words, starting `Now:`,
-`Changed:`, `At stake:` or `Pattern:`: what changes a teammate's next
+`Changed:`, `At stake:`, `Pattern:` or `Inference:`: what changes a teammate's next
 decision. Compare the owner's words with the repository first: a requirement
 the code contradicts or has not caught up with (the owner says 8% of net, the
 PDF says gross), a reversed choice, a requirement that moved, what keeps
@@ -169,3 +169,8 @@ verify those from the repository or a reported run. On an older page, reorder
 to this shape, keeping supported content. Never reuse the architecture
 diagram as the overview. Leave the `Investigation:` line unchanged. Keep the
 mapped `Sessions`, `First seen` and `Last seen` fields in `Paths` exactly.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

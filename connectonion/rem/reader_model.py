@@ -185,6 +185,8 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     ([personal]/[sensitive]) excerpts show there, behind the reader's toggle.
     Without it -- the claim audit's model, the O Chat view -- they are left out.
     """
+    from .evidence import research_contexts
+    research = research_contexts(root, records, private=private)
     ids = _source_ids(records)
     file = state_path(root, "rem.db")
     if not ids or file.is_symlink():
@@ -206,7 +208,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source, private)
-                           or github_context(root, source) or attachment_context(root, source))
+                           or github_context(root, source) or attachment_context(root, source) or research.get(source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}

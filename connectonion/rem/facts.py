@@ -45,7 +45,7 @@ MULTI = ("Email", "Phone", "Links", "Handles", "Also known as")
 # What the extractor reads with certainty. Company and role off a signature are
 # a judgement, handed to the turn but never written back by code.
 RESTORABLE = ("Email", "Phone", "Links", "First contact", "Last contact")
-INSIGHT_KINDS = ("Now", "Changed", "At stake", "Pattern")
+INSIGHT_KINDS = ("Now", "Changed", "At stake", "Pattern", "Inference")
 LEGACY = "Contact"
 CITES = re.compile(r"((?:\s*\[W?\d+\])*)\s*$")
 QUALIFIER = re.compile(r"(?<!\])\s*\(([^()]+)\)$")
@@ -75,7 +75,7 @@ def _lines(text: str) -> dict[str, str]:
         return {}
     found = {}
     for line in text[span[0]:span[1]].splitlines():
-        match = re.match(r"^- ([^:\n]{1,40}):[ \t]*(.*)$", line)
+        match = re.match(r"^- ([^:\n]+):[ \t]*(.*)$", line)
         if match and match[1] not in found:
             found[match[1]] = match[2].strip()
     return found
@@ -341,7 +341,7 @@ REJECTED_NAME = re.compile(r"\b(?:corrected|wrong|incorrect|misspel\w*|typo|reje
                            r"|不是", re.I)
 
 
-def names_not_addresses(record: str, text: str) -> str:
+def names_not_addresses(record: str, text: str, original: str = '') -> str:
     """Also known as holds names they answer to; an address there only repeats the Email line.
 
     The map once seeded every handle into it, and a turn copies the Email line
@@ -354,7 +354,9 @@ def names_not_addresses(record: str, text: str) -> str:
     if not match:
         return text
     parts = _split(match[1])
-    names = [part for part in parts if "@" not in part and not REJECTED_NAME.search(part)]
+    carried = {value['value'] for value in parse(original, record)['Also known as']}
+    names = [part for part in parts if not REJECTED_NAME.search(part)
+             and ("@" not in part or any(value['value'] in carried for value in values(part)))]
     if names == parts:
         return text
     return text[:match.start(1)] + ("; ".join(names) or "Unknown") + text[match.end(1):]

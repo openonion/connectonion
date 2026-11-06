@@ -533,3 +533,45 @@ def test_source_files_still_refuses_hidden_and_linked_rollouts(tmp_path):
     rollout(tmp_path / ".hidden/rollout-b.jsonl", [("user", "x")])
     with pytest.raises(RemError, match="Hidden"):
         source_files(subscription(tmp_path))
+
+
+@pytest.mark.parametrize('vanish_at', ['stat', 'open'])
+def test_rem_vanished_rollout_is_skipped_without_losing_other_sessions(tmp_path, monkeypatch, vanish_at):
+    missing = tmp_path / 'rollout-a.jsonl'
+    rollout(missing, [('user', 'ephemeral')])
+    rollout(tmp_path / 'rollout-b.jsonl', [('user', 'safe later session')])
+    original = getattr(Path, vanish_at)
+
+    def vanish(path, *args, **kwargs):
+        if path == missing:
+            path.unlink(missing_ok=True)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, vanish_at, vanish)
+    batch = collect(subscription(tmp_path), {}, 20, 10000)
+    assert [item['text'] for item in batch.items] == ['safe later session']
+    assert batch.missing_files == ['rollout-a.jsonl']
+    assert 'rollout-a.jsonl' not in batch.progress
+
+
+def test_rem_about_scoped_checkpoint_uses_open_file_if_rollout_vanishes(tmp_path, monkeypatch):
+    import hashlib
+    from contextlib import contextmanager
+    from connectonion.rem import source
+
+    path = tmp_path / 'rollout-a.jsonl'
+    rollout(path, [('user', 'Atlas first'), ('user', 'Atlas second')])
+    raw = path.read_bytes()
+    read = source._read_rollout
+
+    @contextmanager
+    def unlink_after_open(file, *args):
+        with read(file, *args) as opened:
+            file.unlink()
+            yield opened
+
+    monkeypatch.setattr(source, '_read_rollout', unlink_after_open)
+    batch = collect(subscription(tmp_path, about='Atlas'), {}, 1, 10000)
+    assert [item['text'] for item in batch.items] == ['Atlas first']
+    checkpoint = batch.progress[path.name]
+    assert checkpoint['digest'] == hashlib.sha256(raw[:checkpoint['offset']]).hexdigest()
