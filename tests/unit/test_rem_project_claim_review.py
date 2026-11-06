@@ -3,7 +3,7 @@
 import json
 import importlib
 import hashlib
-import subprocess
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -72,16 +72,13 @@ def test_native_audit_guides_lookup_to_original_beyond_tool_output(tmp_path, cit
     assert 'chunks of at most 80 lines' in prompt
 
     # Follow the instructions on a real packet whose target is beyond a first tool read.
-    definition = subprocess.run(['rg', '-n', f'^\\[{citation}\\]|^- \\[{citation}\\] ',
-                                 'audit-material.md'], cwd=tmp_path, text=True, capture_output=True, check=True)
-    assert f'- [{citation}] {source}' in definition.stdout
-    heading = subprocess.run(['rg', '-n', '-F', f'### {source} · ', 'audit-material.md'],
-                             cwd=tmp_path, text=True, capture_output=True, check=True)
-    line = int(heading.stdout.partition(':')[0])
+    # Same lookups as the printed rg/sed commands, in Python so CI needs no ripgrep.
+    lines = (tmp_path / 'audit-material.md').read_text().splitlines()
+    definition = [text for text in lines if re.match(f'^\\[{citation}\\]|^- \\[{citation}\\] ', text)]
+    assert any(f'- [{citation}] {source}' in text for text in definition)
+    line = next(number for number, text in enumerate(lines, 1) if f'### {source} · ' in text)
     assert line > 2_000
-    excerpt = subprocess.run(['sed', '-n', f'{line},{line + 20}p', 'audit-material.md'],
-                             cwd=tmp_path, text=True, capture_output=True, check=True)
-    assert 'Please review Atlas.' in excerpt.stdout
+    assert 'Please review Atlas.' in '\n'.join(lines[line - 1:line + 20])
 
 
 def test_native_audit_searches_before_treating_an_original_as_missing(tmp_path):
