@@ -225,16 +225,22 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         shutil.rmtree(workspace)
 
 
-def prepare(root, record, language, *, directory, text=None):
+def prepare(root, record, language, *, directory, text=None, native=False):
     from .languages import owner_languages
     text = Notebook(root).read(record) if text is None else text
     prose, sources, stamp = _page_parts(text)
     (directory / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose))
+    if native:
+        from .files import write_json
+        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose)}
+        write_json(directory / "translation-constraints.json", constraints, readable=True)
+        instruction = prompt(language).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
     return {"root": str(root), "record": record, "language": language, "directory": str(directory),
             "before": {record: text}, "prose": prose, "sources": sources, "stamp": stamp.group(0) if stamp else "",
             "candidate": str(directory / "translation.md"),
-            "prompt": prompt(language, quoted_passages(prose), terms, page_names(prose))}
+            "prompt": instruction}
 
 
 def check(task, output):

@@ -435,7 +435,7 @@ def page_kind_of(record: str) -> str:
     return PAGE_KINDS.get(record.split("/")[0], "")
 
 
-def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") -> str:
+def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", *, native=False) -> str:
     """Let co ai load the stage Skill once; supply only its composed additions."""
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = page_kind_of(record)
@@ -456,7 +456,7 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
     additions = text[len(core):].strip()
     material = directory / "material.json"
     skill = directory / "instructions.md"
-    material.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json(material, items, readable=native)
     readable = directory / "material.md"
     readable.write_text(readable_material(items), encoding="utf-8")
     skill.write_text(text, encoding="utf-8")
@@ -473,7 +473,7 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
     evidence_read = ("The inline packet includes an evidence index, not the evidence bodies. "
                      "Read and search the evidence files named by that index before writing findings. "
                      if indexed else "")
-    if stage in ("maintain", "extract", "investigate") and fits_inline(additions, material_text):
+    if not native and stage in ("maintain", "extract", "investigate") and fits_inline(additions, material_text):
         # Given, not fetched. A real maintenance pass spent ten of its nineteen
         # turns reading these two files in chunks, and every turn re-sends the
         # whole context: 1.45M input tokens for 9k characters of material. The
@@ -702,15 +702,20 @@ def _repair_thread(session, usage, run=None):
     return resume
 
 
-def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path) -> str:
+def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path, *, native=False) -> str:
     """What the review refused, and where the writer reads the originals to fix it."""
-    text = (f"Review refused the page: {'; '.join(errors)}. Read the cited originals in "
+    if native:
+        write_json(directory / "repair-findings.json", errors, readable=True)
+    findings = f"read {directory / 'repair-findings.json'}" if native else '; '.join(errors)
+    text = (f"Review refused the page: {findings}. Read the cited originals in "
             f"{directory / 'material.md'} and its evidence index. Fix each named problem in the "
             "existing candidate: for an unresolved citation, copy the exact source ids of the originals "
             "that support the claim; a quote must be copied character for character from the message its "
             "line cites, in its original language, or the line rewritten without quotation marks; a "
             "claim states only what its original proves, or goes. Keep supported detail. "
-            "Keep at most sixteen dated History lines. Save the same file and stop.")
+            "Keep at most sixteen dated History lines. ")
+    text += ("Save the same candidate file and run the printed submit command again in this turn." if native
+             else "Save the same file and stop.")
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
         text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
                  "clauses beside it; the audit is a correction guide, not a source.")
@@ -1062,7 +1067,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
             from .project_claim_review import prepare, check
-            audit = prepare(notebook, text, record=record, items=items, carried=carried)
+            audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True, directory=directory)
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
                                                sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -1070,7 +1075,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             if "report" in audit:
                 report = audit["report"]
             elif saved.get("sha256") == digest and output.is_file():
-                report, audit_usage = check(saved["task"], {"result": output.read_text(), "usage": None})
+                report, audit_usage = check(saved["task"], {"result": json.dumps(read_json(output, None), ensure_ascii=False), "usage": None})
             else:
                 output.unlink(missing_ok=True)
                 write_json(directory / "audit-task.json", {"sha256": digest, "task": audit})
@@ -1384,7 +1389,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
                             config["limits"]["input_chars_per_batch"])
     items = with_local_times(items, notebook_zone(read_config(notebook.root, validated=False)))
-    prompt = (task_prompt(directory, items, stage, kind) + "\n\n## Evidence interpretation\n" + POLICY
+    prompt = (task_prompt(directory, items, stage, kind, native=native) + "\n\n## Evidence interpretation\n" + POLICY
               + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root))
               + (TAIL_NOTE if any(item.get("role") == "thread-tail" for item in items) else ""))
     # The model must read and write local task files. Codex has a sandboxed
@@ -1497,7 +1502,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
 
     from .tier import current, summary_prompt
     # The tier recorded for this model by `co rem config set model` (#1847).
-    summary = bool(candidate) and stage == "investigate" and current(notebook.root, config) == "summary"
+    summary = not native and bool(candidate) and stage == "investigate" and current(notebook.root, config) == "summary"
     if summary:
         prompt = summary_prompt(directory) + POLICY
 

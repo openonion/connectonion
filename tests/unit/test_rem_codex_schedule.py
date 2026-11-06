@@ -18,6 +18,16 @@ from connectonion.rem.files import RemError, atomic_write, state_path, write_jso
 from connectonion.rem.schedule import Launchd, default_scheduler, label_for, wake_command
 
 
+def _rule_pairs(rule):
+    """Expand a daily RRULE's wall-clock pairs independently of the window builder."""
+    fields = dict(part.split('=', 1) for part in rule.split(';'))
+    assert fields['FREQ'] == 'DAILY' and fields['BYSECOND'] == '0'
+    grid = [(hour, minute) for hour in range(24) for minute in range(60)
+            if str(hour) in fields['BYHOUR'].split(',') and str(minute) in fields['BYMINUTE'].split(',')]
+    positions = set(map(int, fields['BYSETPOS'].split(','))) if 'BYSETPOS' in fields else set(range(1, len(grid) + 1))
+    return {hour * 60 + minute for index, (hour, minute) in enumerate(grid, 1) if index in positions}
+
+
 class Launcher:
     def __init__(self, *, state="waiting", installed=True):
         self.state, self.present, self.removed = state, installed, False
@@ -101,6 +111,8 @@ def test_native_waiting_rules(native, tmp_path, source):
                  "do not start a second", "about a minute", "not a reason to end the turn",
                  "daily cap", "weekly floor", "nothing to do"):
         assert rule in " ".join(text.split())
+    for rule in ("Do as many tasks as you can", "if you stop", "next follow-up continues within 15 minutes", "rg/sed"):
+        assert rule in " ".join(text.split())
 
 
 def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatch):
@@ -113,8 +125,10 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
     monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
     service.approve_sources(root)
     consent = state_path(root, "consent.json").read_bytes()
+    fingerprint = service.summary_fingerprint(root)
     old = native.render(root, default_config())
     old["prompt"] = "Run co rem next --scheduled and do the work it prints."
+    old["rrule"] = "FREQ=DAILY;BYHOUR=3,4,6,17,18,19;BYMINUTE=0;BYSECOND=0"
     native._write(root, old)
     adopt(native, root)
     assert "co rem start" in native.describe(root)["reason"]
@@ -130,9 +144,11 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
     assert "same command until it exits" in native.definition(root)["prompt"]
+    assert "next follow-up continues within 15 minutes" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
     assert state_path(root, "consent.json").read_bytes() == consent
+    assert service.summary_fingerprint(root) == fingerprint
 
 
 @pytest.mark.parametrize("desktop_table", ["active", "empty", "missing", "absent"])
@@ -307,14 +323,16 @@ def test_native_install_saves_only_a_background_desktop_wake_job(native, tmp_pat
     job = plistlib.loads(path.read_bytes())
     assert job["Label"] == label_for(root) + ".wake"
     assert job["ProgramArguments"] == wake_command(Path("/Applications/Codex.app"))
-    assert job["StartCalendarInterval"] == [{"Hour": 3, "Minute": 0}, {"Hour": 17, "Minute": 30}]
+    from connectonion.rem.codex_schedule import fire_times
+    from connectonion.rem.schedule import wake_time
+    assert job["StartCalendarInterval"] == [wake_time(value) for value in fire_times(config)]
     assert not job.get("RunAtLoad") and "StartInterval" not in job
     assert path.stat().st_mode & 0o777 == 0o600
     assert ["launchctl", "bootstrap", "gui/501", str(path)] in commands
     assert not native.launcher.plist_path(root).exists()
     config["schedule"]["times"] = ["12:34"]
     native.install(root, config)
-    assert plistlib.loads(path.read_bytes())["StartCalendarInterval"] == [{"Hour": 12, "Minute": 19}]
+    assert plistlib.loads(path.read_bytes())["StartCalendarInterval"] == [wake_time(value) for value in fire_times(config)]
     assert len(list(path.parent.glob("*.plist"))) == 1
     assert native.uninstall(root)
     assert not path.exists()
@@ -370,7 +388,10 @@ def test_missed_slot_is_visible_in_describe_and_status(
 def test_exact_time_pairs_are_selected_without_extra_slots():
     config = default_config()
     config["schedule"] = {"times": ["03:15", "17:45", "06:15"], "timezone": "Australia/Sydney"}
-    assert recurrence(config) == "FREQ=DAILY;BYHOUR=3,6,17;BYMINUTE=15,45;BYSECOND=0;BYSETPOS=1,3,6"
+    times = _rule_pairs(recurrence(config))
+    assert 17 * 60 + 15 not in times
+    assert 17 * 60 + 45 in times
+    assert 20 * 60 + 45 in times
 
 
 def test_different_saved_timezone_cannot_silently_shift(native, tmp_path, monkeypatch):
@@ -910,6 +931,9 @@ def test_status_distinguishes_saved_registered_and_triggered(tmp_path, monkeypat
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the wake job is a macOS launchd job")
 def test_the_wake_job_leaves_a_running_codex_alone_and_opens_a_closed_one(tmp_path):
+    process_list = subprocess.run(['/usr/bin/pgrep', '-f', 'co-rem-test-process-list-probe'], capture_output=True)
+    if process_list.returncode not in (0, 1):
+        pytest.skip('host process enumeration is unavailable in this sandbox; shell branches are tested with stubs')
     app = tmp_path / "Codex Test.app"
     (app / "Contents" / "MacOS").mkdir(parents=True)
     # Not a real app: if the job reaches open, open fails, so its exit code shows which branch ran.
@@ -960,4 +984,46 @@ def test_the_wake_job_opens_codex_before_the_slot_codex_may_fire_early(tmp_path)
                        run=lambda command, **kw: subprocess.CompletedProcess(command, 0, stdout=""))
     path = launcher.install_wake(tmp_path / "notes", config, Path("/Applications/Codex.app"))
     times = plistlib.loads(path.read_bytes())["StartCalendarInterval"]
-    assert times == [{"Hour": 23, "Minute": 50}, {"Hour": 18, "Minute": 45}]
+    from connectonion.rem.codex_schedule import fire_times
+    from connectonion.rem.schedule import wake_time
+    assert times == [wake_time(value) for value in fire_times(config)]
+    assert {"Hour": 23, "Minute": 50} in times and {"Hour": 18, "Minute": 45} in times
+
+
+@pytest.mark.parametrize("saved", [["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
+                                    ["23:50", "01:05"], ["03:07", "05:22"], ["12:00"]])
+def test_followup_rrule_and_wake_times_are_exact(tmp_path, saved):
+    from connectonion.rem.schedule import wake_time
+    config = default_config()
+    config['schedule']['times'] = saved
+    starts = sorted(int(t[:2]) * 60 + int(t[3:]) for t in saved)
+    expected = set()
+    for index, start in enumerate(starts):
+        until_next = (starts[(index + 1) % len(starts)] - start) % 1440 or 1440
+        expected.update((start + offset) % 1440 for offset in range(0, min(180, until_next - 1) + 1, 15))
+    assert _rule_pairs(recurrence(config)) == expected
+    launcher = Launchd(tmp_path / 'agents', uid=501, run=running)
+    path = launcher.install_wake(tmp_path / 'notes', config, Path('/Applications/Codex.app'))
+    intervals = plistlib.loads(path.read_bytes())['StartCalendarInterval']
+    assert intervals == [wake_time(f'{minute // 60:02}:{minute % 60:02}') for minute in sorted(expected)]
+    assert config['schedule']['times'] == saved
+
+
+def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, monkeypatch):
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare
+    root = tmp_path / 'notes'
+    prepare(root)
+    config = default_config()
+    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '19:00']
+    atomic_write(root / 'config.yaml', yaml.safe_dump(config))
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    before = service.summary_fingerprint(root)
+    summary = service.consent_summary(root)
+    assert summary['schedule'] == config['schedule']
+    status = service.status(root)
+    data = native.render(root, config)
+    assert 'BYMINUTE=0,15,30,45' in data['rrule']
+    assert service.status(root)['schedule_times'] == status['schedule_times'] == config['schedule']['times']
+    assert service.consent_summary(root) == summary
+    assert service.summary_fingerprint(root) == before

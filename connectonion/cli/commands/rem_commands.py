@@ -96,7 +96,10 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
         rem_look.say(printable(drawn), hanging=True)
-        rem_look.say(next_line(command))
+        tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
+        rem_look.say(next_line(tip))
+        if isinstance(value, dict) and value.get("continuation"):
+            rem_look.say(value["continuation"])
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
@@ -1986,10 +1989,18 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
+        repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
+                  + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
+        if value.get("outcome") == "refused":
+            return repair
         if value.get("outcome") == "task":
-            return ("\n".join(value.get("notices", [])) + "\n" + value["instructions"]
-                    + f"\n\nMaterial: {value['material']}\nWrite: {value['candidate']}"
-                    + f"\nSubmit: {value['submit']}").strip()
+            if repair:
+                return f"Task: {value['id']}\nStage: {value['stage']}\n" + repair
+            lines = len(value['instructions'].splitlines())
+            notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""
+            return (f"Task: {value['id']}\nStage: {value['stage']}\nWorkspace: {value['material']}"
+                    + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
+                    + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
                            *(value.get("changed") or [])])
 
@@ -2000,8 +2011,10 @@ def make_rem_app(factory):
                     json_out: bool = typer.Option(False, "--json")):
         from ...rem.native import next_task
         ctx.obj["json"] = ctx.obj["json"] or json_out
-        _handle(ctx, lambda root: (next_task(root, scheduled=scheduled, discard=discard), ["next"]),
-                ["next"], draw=lambda value: escape(native_text(value)))
+        def operation(root):
+            value = next_task(root, scheduled=scheduled, discard=discard)
+            return value, ["submit", value["id"]] if value.get("fix") else ["next"]
+        _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
 
     @rem.command("submit", cls=V("co rem submit"))
     def native_submit(ctx: typer.Context, task_id: str = typer.Argument(...),

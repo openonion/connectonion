@@ -68,11 +68,11 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
         return check(task, run_task(tasks, task["prompt"], config, "extract"))
 
 
-def prepare(items, config, kind="", *, root, directory):
-    prompt = task_prompt(directory, items, "extract", kind)
+def prepare(items, config, kind="", *, root, directory, native=False):
+    prompt = task_prompt(directory, items, "extract", kind, native=native)
     output = directory / "notes.md"
     # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.
-    summary = current(root, config) == "summary"
+    summary = not native and current(root, config) == "summary"
     prompt += ("Reply with ONLY the complete extraction notes; do not call tools or write files. "
                if summary else f"Write the complete extraction notes to {output}; this file is your output. ")
     prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
