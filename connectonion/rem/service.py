@@ -651,6 +651,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
     """`live_quota` reads the Codex meter now (#1843). Only `co rem status` asks:
     the round and sync call this inside the lock, where a Codex process per
     call would only slow them."""
+    from .census import people_coverage
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -685,6 +686,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
+            "people_coverage": people_coverage(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if live_quota else {})}
@@ -1138,6 +1140,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             # sync wrote, still under the lock, and reported rather than fatal.
             from .store import refresh_safely
             record = {**record, "store": refresh_safely(root)}
+            from .people_basics import refresh as refresh_basics
+            record["basics_changed"] = refresh_basics(root)
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 

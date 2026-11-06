@@ -1146,6 +1146,10 @@ def _write_page(notebook, record, text, items, *, receipt=None):
     from .reader_model import _source_ids
     from .service import notebook_zone
     from .evidence import retain_research
+    if record.startswith("people/"):
+        from . import people_basics, store
+        store.refresh(notebook.root)
+        text = people_basics.fill(notebook, record, text)
     retain_research(notebook.root, text, items)
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
@@ -1157,6 +1161,8 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
+    if record.startswith("people/"):
+        store.refresh(notebook.root)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False):

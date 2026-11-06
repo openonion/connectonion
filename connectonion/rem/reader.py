@@ -217,6 +217,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = contact_candidates(root)
+    current_status = status(root)
     logs = run_logs(root)
     shown_logs = logs[:20]
     translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
@@ -234,9 +235,10 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
+            "people_coverage": current_status["people_coverage"],
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,
-            "status": status(root), "subscriptions": subscriptions(root),
+            "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": listing(root), "counts": counts(root, found),

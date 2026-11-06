@@ -213,7 +213,9 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     where = str(value["root"]).replace(str(Path.home()), "~", 1)
     built = "  (not built yet)" if not value.get("configured") else ""
     lines = [rem_look.section("Notebook", style.path(where) + built)]
-    rows = [(label, counts[category]) for category, label in CATEGORIES]
+    coverage = value.get("people_coverage", {})
+    rows = [(label, {"written": coverage.get("covered", 0), "mapped": coverage.get("total", 0)}
+             if category == "people" else counts[category]) for category, label in CATEGORIES]
     wide = max(len(f"{row['mapped']:,}") for _, row in rows)
     for label, row in rows:
         done, total = row["written"], row["mapped"]
@@ -222,8 +224,12 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
                                   + _number(done).rjust(len(_number(done)) + wide - len(f"{done:,}"))
                                   + style.muted(" of ") + _number(total)
                                   + " " * (wide - len(f"{total:,}")) + "  " + style.muted(share.rjust(4))))
-    lines.append(rem_look.follow(style.muted(f"{rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
+    lines.append(rem_look.follow(style.muted(f"Other rows: {rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
                                  glyph=""))
+    lines.append(rem_look.row("People coverage", "pages for correspondents meeting the page rule in the archive"))
+    if coverage.get("missing"):
+        lines.append(rem_look.follow(style.muted(
+            f"{coverage['missing']} people you write to have no page yet"), glyph=""))
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     what, arguments = next_to_write(root, counts)

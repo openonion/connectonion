@@ -2001,6 +2001,8 @@ const UI = {
     "Outputs that can be reused or shown": "可复用或展示的成果",
     "Promises, waiting on others, dates that matter": "承诺、等待对方的事项与重要日期",
     "People, projects, skills and ideas in one place": "人物、项目、技能与想法，汇于一处",
+    "{n} of {m} qualifying correspondents have a page": "{m} 位符合建页条件的通信对象中，{n} 位已有页面",
+    "{n} people you write to have no page yet": "你写信的对象中，{n} 位尚无页面",
     "The pass may have refreshed pages; that alone is not a new memory.": "本次可能更新了页面措辞，这不代表新增了记忆。",
     "No supported open loop is in this snapshot.": "此快照中没有来源支持的未完成事项。",
     "{n} waiting on you": "{n} 件等你处理",
@@ -2850,7 +2852,7 @@ function known(r) {
   KNOWN.set(r.path, k);
   return k;
 }
-function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
+function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !parseFacts(r).get("Last contact")?.length && !!(r.last_activity || r.mail?.last); }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text, keepPrivate = false) {
   const line = String(keepPrivate ? text : unlabelled(text)).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -4350,6 +4352,11 @@ function ledeSeparator(text) {
   return /[？。！?.!]$/.test(text.trim()) ? " " : uiLanguage === "zh" ? " · " : ". ";
 }
 function categoryCount(c, counts, total) {
+  if (c === "people" && REM.people_coverage) {
+    const { covered, total } = REM.people_coverage;
+    return t("{n} of {m} qualifying correspondents have a page", { n: covered, m: total })
+      + (total ? " · " + Math.round(100 * covered / total) + "%" : "");
+  }
   const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
 }
@@ -4363,9 +4370,12 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
-  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? ledeSeparator(t(lede)) : ""),
-    items.length || other ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
+  const hasCoverage = c === "people" && REM.people_coverage?.total;
+  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other || hasCoverage ? ledeSeparator(t(lede)) : ""),
+    items.length || other || hasCoverage ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
       + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
+  if (c === "people" && REM.people_coverage?.missing) main.appendChild(el("p", { class: "directory-note",
+    text: t("{n} people you write to have no page yet", { n: REM.people_coverage.missing }) }));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
     const note = el("p", { class: "held-note" }, [el("span", { text:

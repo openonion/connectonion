@@ -1293,10 +1293,10 @@ the block as a card.
   A value may be a Markdown link.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
-- `First contact` needs evidence of the relationship's beginning. The earliest
-  retained message is an observed mail date, not automatically first contact;
-  the Person writer and People index leave this fact Unknown when it cannot be
-  established.
+- On people pages, `First contact` and `Last contact` are the earliest and newest
+  messages to or from the person's own addresses in the retained archive,
+  in the notebook's time zone. They are recomputed after promotion and on sync;
+  they describe the archive's bounds, which may not span the whole relationship.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
@@ -1342,9 +1342,22 @@ stays only if the person sends from it or is written to at it under their
 name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
 person (or relayed under their name) with the number in it and nobody else
 named to call beside it. What goes is listed under `contacts_unverified`. An
-unknown `Company` is filled from the domain of the address they write from now,
-never a mailbox provider, a relay, an agent address or a student address
-(`company_from_domain` in `review.json`).
+unknown `Company` can be filled from their own organisation email domain when
+it maps unambiguously to an existing organisation page. Student subdomains
+can name a university affiliation; `(from email domain)` does not establish
+employment. Free-mail, relay, agent, shared and role addresses never supply it.
+An unknown `Time zone` takes a cited, unambiguous `Location`, or, when Location
+is Unknown, a single-zone country email suffix (such as `.sg` or `.uk`).
+These deterministic basics run in both native and in-process promotion and on
+every sync, with numbered Sources citations. Populated Company and Time zone
+values are preserved; contact dates always follow the archive.
+
+People coverage in `co rem status` and the reader uses correspondents
+across the retained archive who meet the page rule: mail both ways, or at least
+two messages from you (To and Cc count, as in the map). Addresses on one existing person page count
+once. Coverage counts qualifying correspondents with a listed page, whether
+written or mapped, and reports `N people you write to have no page yet`.
+Other category meters continue to show written pages out of mapped pages.
 
 ### Insight
 

@@ -336,7 +336,13 @@ def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_
     assert "Someone else's phone: +61 2 9000 0157 (Colin Drake)" in seen["facts"]
     page = notebook.read("people/rowan.md")
     assert "0457 222 333 (mobile) [1]" in page and "9065" not in page
-    assert "- [2]" not in page   # Colin's mail, cited by nothing else now, goes rather than refuse the page
+    assert "+61 2 9000 0157" not in page
+    # The mail is still evidence of first contact: the person was a recipient.
+    import re
+    first = facts.parse(page, "people/rowan.md")["First contact"][0]
+    sources = dict(re.findall(r"^- \[(\d+)\] (\S+)", page.partition("\n## Sources\n")[2], re.M))
+    assert first["value"] == "2026-09-29"
+    assert sources[first["citations"][0]] == "outlook:s2"
 
 
 def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_domain(tmp_path, monkeypatch):

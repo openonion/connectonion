@@ -34,6 +34,8 @@ def prepare(root, config, *, scheduled):
     refresh(root)
     progress = read_json(state_path(root, "progress.json"), {})
     batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
+    from .people_basics import refresh as refresh_basics
+    basics_changed = refresh_basics(root)
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
     today, recent = service.runs_today(logs, service.notebook_zone(config))
@@ -42,7 +44,7 @@ def prepare(root, config, *, scheduled):
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 40),
               "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
-              "changed": [], "same_left": 3, "translations": [], "translated": 0, "sessions": imported}
+              "changed": basics_changed, "same_left": 3, "translations": [], "translated": 0, "sessions": imported}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
