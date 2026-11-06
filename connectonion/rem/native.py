@@ -109,6 +109,17 @@ def _inputs(root, task, directory, *, handler):
     return {str(path): _input_hash(root, path) for path in sorted(paths)}
 
 
+def _audit_progress(task):
+    directory = Path(task["material"])
+    notes = directory / "notes.md"
+    if task["stage"] != "claim-audit" or not notes.is_file():
+        return None
+    candidate = read_json(directory / "audit-material.json", {})["candidate"]
+    citations = set(re.findall(r"^\s*[-*]\s+\[(W?\d+)\]\s+", candidate.partition("\n## Sources\n")[2], re.M))
+    checked = set(re.findall(r"^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b", notes.read_text(), re.M))
+    return f"Audit progress: {len(checked & citations)} of {len(citations)} citations checked ({notes})"
+
+
 def _display(root, task):
     result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
     refusal = task.get("last_result", {})
@@ -117,6 +128,9 @@ def _display(root, task):
     cursor = read_json(state_path(root, "round.json"), {})
     if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
+    progress = _audit_progress(task)
+    if progress:
+        result["audit_progress"] = progress
     return result
 
 

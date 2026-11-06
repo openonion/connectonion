@@ -579,6 +579,54 @@ def test_schedule_change_and_start_accept_pending_audit(trial, monkeypatch):
     assert "accepted" in accepted.output
 
 
+def test_audit_notes_are_not_task_inputs_and_edits_allow_submit(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    notes = Path(task['material']) / 'notes.md'
+    notes.write_text('Writer notes.\n')
+    saved = native.pending(trial)[0]
+    inputs = native._inputs(trial, saved['task'], notes.parent, handler=saved['handler'])
+    assert str(notes) not in inputs
+    assert str(notes) not in saved['inputs']
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    notes.write_text('[1] PASS — The original requests a pilot review.\n')
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+@pytest.mark.parametrize('scheduled', [False, True])
+@pytest.mark.parametrize('checked', [0, 1, 2])
+def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, scheduled, checked):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    directory = Path(task['material'])
+    web = directory / 'web'
+    web.mkdir()
+    (web / 'team.md').write_text('Avery leads Atlas.')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/team', 'file': 'team.md', 'date': '2026-11-06'}]))
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('## Who they are\n',
+        '## Who they are\n- Avery leads Atlas. [W74]\n').replace('## Sources\n',
+        '## Sources\n- [W74] https://example.org/team — 2026-11-06\n'))
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    notes = directory / 'notes.md'
+    entries = ['[W74] PASS — The team page names Avery as lead.\n',
+               '[1] PASS — The original requests a pilot review.\n']
+    notes.write_text('Audit notes: [1] is not checked by this heading.\n[999] PASS — Unrelated.\n'
+                     + ''.join(entries[:checked]) + (entries[0] if checked else ''))
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    result = CliRunner().invoke(app, ['rem', '--root', str(trial), 'next',
+                                    *(['--scheduled'] if scheduled else [])])
+    assert result.exit_code == 0, result.output
+    assert f'Audit progress: {checked} of 2 citations checked ({notes})' in result.stdout
+    assert notes.read_text().count('PASS') == 1 + checked + bool(checked)
+
+
 def test_schedule_change_preserves_archived_source_view(rem_mail_threads):
     root = rem_mail_threads
     task = {"items": [{"source": "gmail:alpha-0"}], "before": {}}
@@ -1697,11 +1745,17 @@ def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
         '## Sources\n- [2] https://example.org/team — 2026-11-06\n'))
     audit = native.submit(trial, task['id'])
     assert audit['outcome'] == 'task' and audit['stage'] == 'claim-audit'
+    notes = directory / 'notes.md'
+    notes.write_text('[2] PASS — Avery leads Atlas.\n')
+    repeated = native.submit(trial, task['id'])
+    assert repeated['stage'] == 'claim-audit'
+    assert notes.read_text() == '[2] PASS — Avery leads Atlas.\n'
     Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     body.write_text('Avery left Atlas.')
     refreshed = native.submit(trial, task['id'])
     assert refreshed['outcome'] == 'task' and refreshed['stage'] == 'claim-audit'
     assert 'Avery left Atlas.' in Path(refreshed['material'], 'audit-material.md').read_text()
+    assert not notes.exists()
 
 
 @pytest.mark.parametrize('alive', [False, True])

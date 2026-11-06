@@ -1078,6 +1078,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                 report, audit_usage = check(saved["task"], {"result": json.dumps(read_json(output, None), ensure_ascii=False), "usage": None})
             else:
                 output.unlink(missing_ok=True)
+                if saved.get("sha256") != digest:
+                    (directory / "notes.md").unlink(missing_ok=True)
                 write_json(directory / "audit-task.json", {"sha256": digest, "task": audit})
                 return {"needs_review": audit["prompt"] + f"\nWrite the JSON decision to {output}.",
                         "candidate": str(output)}

@@ -1998,7 +1998,9 @@ def make_rem_app(factory):
                 return f"Task: {value['id']}\nStage: {value['stage']}\n" + repair
             lines = len(value['instructions'].splitlines())
             notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""
+            progress = "\n" + value['audit_progress'] if value.get('audit_progress') else ""
             return (f"Task: {value['id']}\nStage: {value['stage']}\nWorkspace: {value['material']}"
+                    + progress
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],

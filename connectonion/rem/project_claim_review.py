@@ -281,7 +281,7 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         "An unlabelled speculation still fails. Keep quotes exact. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
         + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "") +
-        ("Write only JSON" if native else "Return only JSON") +
+        ("Write the final decision as JSON" if native else "Return only JSON") +
         " with verdict PASS, FAIL or INSUFFICIENT and findings containing claim (the failing "
         "sentence copied exactly from the candidate, without its citation markers), issue, evidence and "
         "required_correction. No markdown fences.\n\n"
@@ -301,7 +301,18 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         views += [{"role": key, "text": material[key]} for key in
                   ("runner_facts", "unretained_citations", "unverified_lines")]
         (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
-        prompt = instruction + (f"Read the complete audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
+        prompt = instruction + (f"Read {directory / 'notes.md'} first if it exists and continue from the first unchecked citation. "
+                                "A large packet is normal; you must not end the turn because the packet is large. "
+                                "Check citations in Sources order, comparing every claim using that citation with its "
+                                "original and relevant later messages; save each verdict immediately to "
+                                f"{directory / 'notes.md'}, one line per checked citation starting with [N] PASS, [N] FAIL or [N] INSUFFICIENT "
+                                "(including W if present), followed by the checked claims and evidence; "
+                                "for each failure preserve the exact claim, issue, evidence and required_correction. "
+                                "Do not mark a citation checked until all its claims and relevant source sections are checked. "
+                                "If you must stop, save your notes first so the next turn keeps this progress. "
+                                "When every citation is checked, write audit-output.json from the notes using the decision "
+                                "schema above, keeping every finding, then run the printed submit command. "
+                                f"Read the remaining sections of the audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
                                 "Never cat the whole packet: tool output can truncate before later originals. "
                                 "The candidate's Sources list maps [N] to the source id. Each original is headed "
                                 "### <source id> · cited-original (or ### <source id> · later-message). "
