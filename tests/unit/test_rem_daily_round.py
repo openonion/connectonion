@@ -18,8 +18,24 @@ from connectonion.rem.investigate import NothingFound
 from connectonion.rem.refusals import refused_pages, remember_refusal
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 def no_change(root):
     return {"outcome": "no_change"}
+
+
+@pytest.mark.parametrize("enabled,consented,unsubscribed", [
+    (False, False, False), (True, False, False), (False, True, False),
+    (True, True, True), (True, True, False),
+])
+def test_daily_mail_clients_require_an_approved_subscription(monkeypatch, enabled, consented, unsubscribed):
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    monkeypatch.setattr(daily, "mail_client", lambda kind, **kwargs: kind)
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": enabled, "consented": consented, "unsubscribed": unsubscribed}}
+    expected = {"gmail", "outlook"} if enabled and consented and not unsubscribed else {"gmail"}
+    assert set(daily._clients(sources)) == expected
 
 
 @pytest.fixture
@@ -99,7 +115,7 @@ def test_a_refused_page_is_retried_by_a_later_run_with_its_refused_material(root
     assert daily.run_daily(root, maintain=no_change)["run"]["phase"] == "daily-investigation"
     remember_refusal(root, "orgs/unsw-edu-au.md", ["gmail:1"], "Candidate rejected: x", stage="investigate")
     ledger = refused_pages(root)
-    ledger["orgs/unsw-edu-au.md"]["at"] = (datetime.now(timezone.utc) - timedelta(hours=21)).isoformat()
+    ledger["orgs/unsw-edu-au.md"]["at"] = (daily.now() - timedelta(hours=21)).isoformat()
     from connectonion.rem.files import state_path, write_json
     write_json(state_path(root, "refused-investigations.json"), ledger)
     result = daily.run_daily(root, maintain=no_change)
@@ -150,7 +166,7 @@ def translation_root(tmp_path, monkeypatch):
     from connectonion.rem.config import set_config
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
     from rem_reader_notebook import build
-    root = build(tmp_path / 'rem')
+    root = build(tmp_path / 'rem', daily.now())
     monkeypatch.setattr(daily, 'subscriptions', lambda root: {})
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
     monkeypatch.setattr(daily.quota, 'read', lambda config, request=None: {'unknown': 'no meter'})
@@ -245,7 +261,7 @@ def test_a_later_run_refreshes_the_owners_page_once_a_day(root, monkeypatch):
         seen.update({record: (handles, kw.get("sent_only"), kw.get("days"))}),
         calls.append(("investigate", record, {})), {"changed": [record]})[-1])
     monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
-    record = _owner_page(root, (datetime.now(timezone.utc) - timedelta(days=24)).date().isoformat())
+    record = _owner_page(root, (daily.now() - timedelta(days=24)).date().isoformat())
     assert daily.run_daily(root, maintain=no_change)["run"]["phase"] == "daily-investigation"
     result = daily.run_daily(root, maintain=no_change)
     assert result["run"]["phase"] == "daily-update"
@@ -261,7 +277,7 @@ def test_a_later_run_refreshes_the_owners_page_once_a_day(root, monkeypatch):
 def test_the_owners_page_read_today_is_not_read_again(root, monkeypatch):
     calls = _investigators(monkeypatch)
     monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
-    _owner_page(root, datetime.now(timezone.utc).date().isoformat())
+    _owner_page(root, daily.now().date().isoformat())
     daily.run_daily(root, maintain=no_change)
     daily.run_daily(root, maintain=no_change)
     assert calls == []

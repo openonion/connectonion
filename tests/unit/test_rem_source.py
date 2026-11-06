@@ -10,14 +10,15 @@ from connectonion.rem.files import RemError
 from connectonion.rem.source import collect, pending_metadata
 
 
-def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs", session=""):
+def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs", session="",
+            timestamp="2026-09-07T05:00:00Z"):
     # The session id defaults to the file's own name: an item is identified by
     # kind:session:offset-hash; copied messages at the same offset deduplicate.
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [{"type": "session_meta", "payload": {
         "id": session or path.stem, "cwd": project, "originator": originator}}]
     for role, text in messages:
-        rows.append({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
+        rows.append({"timestamp": timestamp, "type": "response_item",
                      "payload": {"type": "message", "role": role,
                                  "content": [{"type": "input_text", "text": text}]}})
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))

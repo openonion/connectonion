@@ -10,6 +10,8 @@ from connectonion.rem.files import Notebook, RemError, read_json, state_path, wr
 from connectonion.rem.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_rem_source import rollout
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
 
 @pytest.fixture
 def rem(tmp_path, monkeypatch):
@@ -18,7 +20,6 @@ def rem(tmp_path, monkeypatch):
     sessions.mkdir()
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
     monkeypatch.setattr("connectonion.rem.service.claude_projects_root", lambda: tmp_path / "no-claude")
-    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
     monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
     prepare(root)
     approve_sources(root)
@@ -523,12 +524,12 @@ def test_stop_does_not_wait_for_a_running_batch(tmp_path, monkeypatch):
         holder.kill()
 
 
-def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch):
+def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch, rem_sydney_slot):
     """Otherwise the job's run-at-load batch and the foreground batch race for the lock."""
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
-    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")], timestamp=rem_sydney_slot.isoformat())
     order = []
 
     class Ordered(FakeScheduler):
@@ -541,6 +542,26 @@ def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch):
         return {"usage": None, "changed": []}
     start(root, confirm=lambda s: True, scheduler=Ordered(), runner=runner)
     assert order == ["batch", "install"]
+
+
+@pytest.mark.parametrize("zone", ["UTC", "Australia/Sydney"])
+@pytest.mark.parametrize("clock,items", [("04:59", 1), ("05:00", 1), ("05:01", 0),
+                                         ("05:35", 0), ("05:51", 0), ("06:05", 0)])
+def test_first_batch_respects_the_sixty_day_lookback_in_any_zone(tmp_path, monkeypatch, zone, clock, items):
+    """September 7 05:00Z material expires after November 6 05:00Z, independently of slots."""
+    from connectonion.rem.service import start
+
+    moment = datetime.fromisoformat(f"2026-11-06T{clock}+00:00")
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: moment)
+    monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: zone)
+    sessions = tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls = []
+    result = start(tmp_path / "rem", confirm=lambda summary: True, scheduler=FakeScheduler(),
+                   runner=_runner_recording(calls))
+    assert result["first_batch"]["items"] == items
+    assert len(calls) == items
 
 
 def test_sigterm_during_a_batch_is_recorded_as_interrupted(rem):
@@ -1423,11 +1444,13 @@ def test_stale_running_records_are_marked_abandoned_by_the_next_writer(tmp_path,
     """Two records said "running" for days on the owner's notebook."""
     import os
     from connectonion.rem.service import abandon_stale_runs, run_logs
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
     prepare(tmp_path)
     runs = state_path(tmp_path, "runs")
     runs.mkdir(parents=True, exist_ok=True)
-    old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    fresh = datetime.now(timezone.utc).isoformat()
+    from connectonion.rem.service import now
+    old = (now() - timedelta(days=3)).isoformat()
+    fresh = now().isoformat()
     write_json(runs / f"run_{'a' * 32}.json", {"id": f"run_{'a' * 32}", "started_at": old, "outcome": "running",
                                               "runner_attempts": 1})
     write_json(runs / f"run_{'b' * 32}.json", {"id": f"run_{'b' * 32}", "started_at": fresh, "outcome": "running",
@@ -1460,16 +1483,34 @@ def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path)
     assert report["by_model"]["m"]["input_tokens_per_1k_chars"] == 250.0
 
 
+@pytest.mark.parametrize("approved", [False, True])
+def test_stalled_archive_opens_only_approved_mailboxes(rem, monkeypatch, approved):
+    from connectonion.rem import service
+    root, _ = rem
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": approved, "consented": approved}}
+    monkeypatch.setattr(service, "subscriptions", lambda root: sources)
+    monkeypatch.setattr(service, "archive_state", lambda *a, **kw: {"stalled": True})
+    monkeypatch.setattr(service, "mail_available", lambda kind: True)
+    monkeypatch.setattr(service, "mail_client", lambda kind: kind)
+    monkeypatch.setattr(service, "resume_stalled", lambda root, clients, **kw: clients)
+    assert set(service._resume_archive(root)) == ({"gmail", "outlook"} if approved else {"gmail"})
+
+
 def test_a_sync_resumes_a_stalled_init_archive_and_status_stops_mentioning_it(rem, monkeypatch):
     """#2035: only `init` resumed the archive; a day of investigations asked the servers instead."""
     from connectonion.rem.mail_archive import archive_init
+    from connectonion.rem.source import Batch
     from tests.unit.test_rem_mail_archive import T0, Bodies, Clock, _inventory
     root, _ = rem
+    toggle_source(root, "gmail", True)
+    approve_sources(root)
     archive_init(root, _inventory(root), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
     mail = Bodies()
     monkeypatch.setattr("connectonion.rem.service.now", lambda: T0 + timedelta(hours=20))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
     monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: mail)
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch([], {}))
     assert status(root)["mail_archive"]["stalled"]                      # said before anything resumes it
     record = run_sync(root, runner=lambda *a, **kw: {"usage": {}})
     assert record["mail_archive"]["phase"] == "complete" and record["mail_archive"]["reused"] == 2
@@ -1532,6 +1573,7 @@ def test_a_job_launchd_never_started_is_not_reported_as_a_failed_investigation(t
     # A real Mac, 2026-10-07 to 10-11: the job was loaded, `runs = 0`, 18 slots
     # passed, and status said "the last scheduled investigation failed; run co rem logs".
     from connectonion.rem.schedule import Launchd
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 10, 11, 12, tzinfo=timezone.utc))
     root = tmp_path / "rem"
     prepare(root)
     write_json(state_path(root, "consent.json"), {})

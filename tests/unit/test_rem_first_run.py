@@ -376,6 +376,40 @@ def test_mailboxes_init_read_are_subscribed_for_start(first_run):
     assert consent_summary(root)["sources"]["gmail"]["state"].startswith("will be read")
 
 
+@pytest.mark.parametrize("selected", [("gmail",), ("outlook",), ("gmail", "outlook")])
+@pytest.mark.parametrize("background", [False, True])
+@pytest.mark.parametrize("investigate", [False, True])
+def test_init_mail_selection_limits_consent_and_subscription(first_run, monkeypatch, selected, background, investigate):
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    opened = []
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: opened.append(kind) or Mail())
+    flags = [flag for kind in selected for flag in ("--mail", kind)]
+    result = init("--yes", *([] if investigate else ["--no-investigate"]),
+                  *flags, *([] if background else ["--no-start"]))
+    assert result.exit_code == 0, result.output
+    assert set(opened) == set(selected)
+    sources = subscriptions(root)
+    for kind in ("gmail", "outlook"):
+        assert sources[kind]["enabled"] == (kind in selected)
+        assert sources[kind]["consented"] == (kind in selected)
+        if kind not in selected:
+            assert f"{kind}: connected; not selected (--mail)" in Text.from_ansi(result.output).plain
+    assert (root / ".state/worker.json").exists() == background
+
+
+def test_init_mail_selection_preserves_prior_mailbox_consent(first_run, monkeypatch):
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    assert init("--yes", "--no-investigate", "--no-start").exit_code == 0
+    before = subscriptions(root)["outlook"]
+    result = init("--yes", "--no-investigate", "--no-start", "--mail", "gmail")
+    assert result.exit_code == 0, result.output
+    assert subscriptions(root)["outlook"] == before
+
+
 # --------------------------------------------------------------- progress
 
 
@@ -1222,7 +1256,7 @@ def test_people_whose_backfill_found_older_mail_are_deepened_on_the_parts_before
         return future
 
     ran = []
-    monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows: [
+    monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows, **kwargs: [
         {"kind": "people", "record": row["record"], "mode": "full", "row": row, "run": lambda row=row: ran.append(row)}
         for row in rows])
     row = {"record": "people/a.md", "mode": "full", "days": 730}

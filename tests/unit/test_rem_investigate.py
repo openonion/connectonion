@@ -780,18 +780,21 @@ def test_an_investigation_the_user_starts_has_tools_authorized(tmp_path, co_ai, 
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner):
+def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner, rem_clock):
     from connectonion.rem.daily import run_daily
+    from connectonion.rem.service import approve_sources, toggle_source
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
     monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
     root = _pinned_notebook(tmp_path, runner)
+    toggle_source(root, "outlook", True)
+    approve_sources(root)
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
     assert result["run"]["outcome"] == "completed", result
     assert [argv[1:-1] for argv in co_ai] == [PINNED[runner]]
 
 
-def test_a_daily_run_says_each_step_as_it_starts(tmp_path, co_ai, monkeypatch):
+def test_a_daily_run_says_each_step_as_it_starts(tmp_path, co_ai, monkeypatch, rem_clock):
     """#2033: off a terminal, a sync printed nothing for 25 minutes, then everything."""
     from connectonion.rem.daily import run_daily
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
@@ -2253,7 +2256,7 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     assert not any(item["role"] == "owner-work-evidence" for item in seen)
 
 
-def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch):
+def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch, rem_clock):
     """#2044: outcomes appeared only in a 200-line dump at the end, and "Seconds: Unknown".
     #2043: a daily run's tokens had no stage in logs --usage."""
     from connectonion.rem.daily import outcome_line, run_daily

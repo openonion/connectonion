@@ -134,21 +134,23 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
     return changed
 
 
-def approve_sources(root: Path) -> None:
+def approve_sources(root: Path, *, mail=()) -> None:
     """Record approved sources and the source/schedule summary; never called by inspection."""
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
         sources = subscriptions(root)
         for source in sources.values():
+            if mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail:
+                continue
             if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat(),
-                                                      "summary": summary_fingerprint(root)})
+                                                      "summary": summary_fingerprint(root, mail=mail)})
 
 
-def summary_fingerprint(root: Path) -> str:
+def summary_fingerprint(root: Path, *, mail=()) -> str:
     """What the user agreed to, as one value: every line the consent summary shows.
 
     Consent used to be a bare timestamp, so after `stop`, switching the runner
@@ -157,7 +159,7 @@ def summary_fingerprint(root: Path) -> str:
     `start` ask again whenever the sources, runner, model, permissions or
     schedule are no longer what the user said yes to.
     """
-    shown = json.dumps(consent_summary(root), sort_keys=True, default=str)
+    shown = json.dumps(consent_summary(root, mail=mail), sort_keys=True, default=str)
     return hashlib.sha256(shown.encode()).hexdigest()
 
 
@@ -786,22 +788,31 @@ MODEL_ROUTE = {
 }
 
 
-def offered_mailboxes(root: Path) -> list[str]:
+def offered_mailboxes(root: Path, *, mail=()) -> list[str]:
     """Connected mailboxes the round does not read and the owner never removed: `start` offers them (#1974)."""
     sources = subscriptions(root)
     return [kind for kind in MAIL_KINDS if mail_available(kind)
+            and (not mail or kind in mail)
             and not sources.get(kind, {}).get("enabled") and not sources.get(kind, {}).get("unsubscribed")]
 
 
-def consent_summary(root: Path) -> dict:
-    """Everything `start` must show before a single source body is read."""
+def consent_summary(root: Path, *, mail=()) -> dict:
+    """Source access and schedule; init's --mail scopes new mailbox approval.
+
+    Without --mail, keep the summary identical so existing fingerprints match.
+    """
     from .runner import CONFINEMENT
     config = read_config(root)
     sources = {}
-    offered = offered_mailboxes(root)
+    offered = offered_mailboxes(root, mail=mail)
     for name, source in subscriptions(root).items():
         if source.get("adapter") == "deferred":
             state = "not implemented yet"
+        elif (mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail
+              and mail_available(source["kind"])):
+            state = "connected; not selected (--mail)"
+            if source.get("enabled") and source.get("consented"):
+                state += "; existing daily subscription kept"
         elif name in offered:
             state = ("connected; read from now on if you approve (automated senders skipped). "
                      f"Keep it out with co rem sources remove {name}")
@@ -849,33 +860,34 @@ def background_summary(config: dict) -> str:
     return "manual sync or cron; no supported background scheduler. Stop: co rem stop"
 
 
-def ensure_consent(root: Path, *, confirm) -> bool:
-    """The same source and schedule approval before init's map and start's batch."""
+def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
+    """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
     first = not state_path(root, "consent.json").is_file()
     # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
     # has not been agreed to. Asking only the first time meant it could never be
     # read; asking again whenever one is waiting means it is read only once shown.
     waiting = [name for name, source in subscriptions(root).items()
-               if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE]
+               if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE
+               and (not mail or source["kind"] not in MAIL_KINDS or source["kind"] in mail)]
     # A connected mailbox init did not subscribe (notebooks before #1946) is
     # offered, never switched on unasked: it is read only if this is approved.
-    offered = offered_mailboxes(root)
+    offered = offered_mailboxes(root, mail=mail)
     waiting += offered
     # The same holds for everything else the summary shows. A consent recorded
     # before the summary was, has no fingerprint and is asked for once more.
     agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
     changed = not first and (not isinstance(agreed, dict)
-                             or agreed.get("summary") != summary_fingerprint(root))
+                             or agreed.get("summary") != summary_fingerprint(root, mail=mail))
     if first or waiting or changed:
-        if not confirm(consent_summary(root)):
+        if not confirm(consent_summary(root, mail=mail)):
             return False
         subscribe_read_mail(root, offered)
-        approve_sources(root)
+        approve_sources(root, mail=mail)
     return True
 
 
 def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True,
-          history_progress=None) -> dict:
+          history_progress=None, mail=()) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -887,7 +899,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
         prepare(root)
         validate(read_config(root))
     first = not state_path(root, "consent.json").is_file()
-    if not ensure_consent(root, confirm=confirm):
+    if not ensure_consent(root, confirm=confirm, mail=mail):
         return {"started": False, "consented": False, "first_batch": None}
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
@@ -1133,15 +1145,17 @@ def _resume_archive(root: Path, say=None) -> dict | None:
     """A stalled init mail archive continues in the sync, for a bounded time (#2035).
 
     Only `init` ever resumed it, so on the 1.9.0a6 acceptance notebook every
-    investigation for a day asked the mail servers instead. A mailbox the owner
-    unsubscribed is not read; one that will not open is reported, not guessed.
+    investigation for a day asked the mail servers instead. Only enabled,
+    approved mailboxes are read; one that will not open is reported, not guessed.
     """
     state = archive_state(root, now=now())
     if not state or not state["stalled"]:
         return None
     sources, clients = subscriptions(root), {}
     for kind in MAIL_KINDS:
-        if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed"):
+        source = sources.get(kind, {})
+        if (source.get("enabled") and source.get("consented")
+                and not source.get("unsubscribed") and mail_available(kind)):
             try:
                 clients[kind] = mail_client(kind)
             except Exception:  # resume_stalled names the mailbox it could not open
