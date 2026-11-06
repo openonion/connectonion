@@ -42,7 +42,7 @@ from .source import TRUNCATION_NOTE, Batch, timestamp
 # newsletter platforms measured in a real 60-day mailbox (32 mails from two
 # platforms, none of them the user's knowledge).
 AUTOMATED_SENDER = re.compile(r"(no-?reply|do-?not-?reply|notification|notifications|newsletter|mailer-daemon|"
-                              r"postmaster|noreply|automated|alerts?|digest|updates?|info|marketing|support|team|hello)@"
+                              r"postmaster|noreply|automated|alerts?|digest|marketing)@"
                               r"|@(?:[a-z0-9-]+\.)*(?:substack\.com|beehiiv\.com)$",
                               re.IGNORECASE)
 LISTING_WINDOW = timedelta(days=7)   # one listing call covers this much of the timeline

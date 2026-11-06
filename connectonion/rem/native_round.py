@@ -44,7 +44,7 @@ def prepare(root, config, *, scheduled):
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 40),
               "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
-              "changed": basics_changed, "same_left": 3, "translations": [], "translated": 0, "sessions": imported}
+              "changed": basics_changed, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -56,15 +56,15 @@ def prepare(root, config, *, scheduled):
 
 
 def _jobs(root, first, logs, sources):
-    if first:
-        resting = daily._found_nothing_lately(root)
-        return [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting]
     from datetime import datetime, timedelta
     from .people_pages import correspondents_since, queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
-    found = correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous))
+    found = correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous), lock_held=True)
+    if first:
+        resting = daily._found_nothing_lately(root)
+        return [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting]
     rows = [{**row, "kind": "person"} for row in people_queue(root, since=previous)
             if row["mode"] == "update" or row["record"] in found["records"]]
     rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous)]
@@ -72,7 +72,7 @@ def _jobs(root, first, logs, sources):
     queued = {row["record"] for row in rows}
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in due_for_retry(root).items() if record not in queued and Notebook(root).exists(record)]
-    return (daily._owner_due(root) + sorted(rows, key=lambda row: row.get("last_activity", ""), reverse=True))[:daily.UPDATE_PAGES]
+    return (daily._owner_due(root) + rows)[:daily.UPDATE_PAGES]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -114,6 +114,12 @@ def prepare_task(root, cursor, config, directory):
         files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
         task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
         return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
+    from . import same_person
+    pair = next(iter(same_person.candidates(root, uninvestigated=True)), None) if cursor.get("same_new_left", 10) else None
+    if pair and cursor["current"] is None:
+        task = _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
+        task["early_pair"] = True
+        return task
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             remaining = service.daily_cap(root)["remaining"]
@@ -126,8 +132,7 @@ def prepare_task(root, cursor, config, directory):
         task = _prepare_job(root, cursor, config, directory)
         if task:
             return task
-    from . import same_person
-    pair = next(iter(same_person.candidates(root)), None) if cursor["same_left"] else None
+    pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] else None
     if pair:
         return _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
     if "translation_slot" not in cursor:
@@ -151,7 +156,8 @@ def translations_only(root, cursor):
     if (not cursor["batch"]["done"] or cursor["summaries"] or cursor["current"]
             or cursor["job_index"] < len(cursor["jobs"])):
         return False
-    return not (cursor["same_left"] and same_person.candidates(root))
+    return not ((cursor.get("same_new_left", 10) and same_person.candidates(root, uninvestigated=True))
+                or (cursor["same_left"] and same_person.candidates(root, uninvestigated=False)))
 
 
 def defer_translations(root, cursor, reason):
@@ -516,7 +522,16 @@ def advance(root, cursor, task, result):
     elif operation == "project-quote":
         _finish_project(root, cursor, task["record"], task["task"]["through"])
     elif operation == "same-person":
-        cursor["same_left"] -= 1
+        key = "same_new_left" if task.get("early_pair") else "same_left"
+        cursor[key] = cursor.get(key, 10) - 1
+        if task.get("early_pair") and result.get("kept"):
+            from .people_pages import FIRST_WINDOW_DAYS
+            jobs = {}
+            for job in cursor["jobs"][cursor["job_index"]:]:
+                if job["record"] in result["pages"]:
+                    job = {**job, "record": result["kept"], "days": FIRST_WINDOW_DAYS}
+                jobs.setdefault(job["record"], job)
+            cursor.update(jobs=list(jobs.values()), job_index=0)
     elif operation == "translate":
         cursor["translations"].append(task["record"])
         if not result.get("discarded"):

@@ -61,7 +61,7 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
     Which people, and over which window, is people_pages.queue's: a person
     investigated before is read only from the mail since then.
     """
-    from .people_pages import queue as people_queue
+    from .people_pages import queue as people_queue, rank
     from .project_material import page_state
     from .queue import order_all
     today = today or now()
@@ -91,7 +91,10 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
         stamp = row["last_activity"]
         return (not (stamp and stamp >= cutoff), -datetime.fromisoformat(stamp).timestamp() if stamp else 0.0,
                 row["position"])
-    return sorted(rows, key=key)
+    rows.sort(key=key)
+    people = iter(sorted((row for row in rows if row["path"].startswith("people/")),
+                         key=lambda row: rank(row, today)))
+    return [next(people) if row["path"].startswith("people/") else row for row in rows]
 
 
 def _clients(sources: dict) -> dict:
@@ -202,37 +205,50 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         # leaves the rest of the week to the owner's coding.
         meter = quota.read(config)
         stop = quota.blocks(meter, quota.points_spent(logs, meter), config['limits'])
+    from .people_pages import correspondents_since
+    previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES),
+                   default=(now() - timedelta(days=1)).isoformat())
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        found = correspondents_since(root, _clients(subscriptions(root)),
+                                     since=datetime.fromisoformat(previous), lock_held=True)
+    early = _same_person(root, config, remaining, say, uninvestigated=True) if not stop else []
+    remaining -= sum(row.get('runner_attempts', int('pages' in row)) for row in early)
+    if early:
+        meter = quota.read(config)
+        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config['limits'])
+    from .merge import resolve
+    found['records'] = sorted({resolve(root, record) for record in found['records']})
     if any(record.get('phase') == 'daily-investigation' for record in today):
         previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES), default='')
         result = _follow_new(root, config, maintenance, remaining, meter, stop, previous,
-                             person_one=person_one, project_one=project_one, say=say)
+                             person_one=person_one, project_one=project_one, say=say, found=found)
     else:
         result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
                              investigate_one=investigate_one, person_one=person_one, say=say)
     if not stop:
         left = remaining - ((result.get('run') or {}).get('runner_attempts') or 0)
-        result['same_person'] = _same_person(root, config, left, say)
+        result['same_person'] = early + _same_person(root, config, left, say)
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
 
 
-def _same_person(root, config, left, say) -> list[dict]:
+def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]:
     """Pages that look like one person are judged by a model, a few a run (#2724).
 
     A run of its own, so its calls are in `co rem logs --usage`, the day's call
     count and the week's points like every other model call (#2741)."""
     from . import same_person
-    limit = min(same_person.PAIRS_PER_RUN, left)
+    limit = min(same_person.NEW_PAIRS_PER_RUN if uninvestigated else same_person.PAIRS_PER_RUN, left)
     if limit <= 0:
         return []
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        if not same_person.candidates(root):
+        if not same_person.candidates(root, uninvestigated=uninvestigated):
             return []
         record, path = _reserve(root, 'same-person', limit, quota.read(config))
     rows = []
     try:
-        rows = same_person.judge(root, config, limit=limit, say=say)
+        rows = same_person.judge(root, config, limit=limit, say=say, uninvestigated=uninvestigated)
         record.update(outcome='completed')
     except RemError as error:
         record.update(outcome='failed', error=str(error)[:300])
@@ -518,7 +534,7 @@ def _project(root, record, *, config):
 
 
 def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one,
-                say=lambda text: None):
+                say=lambda text: None, found=None):
     """A later run: only people and projects with new material since the previous run."""
     from .people_pages import correspondents_since
     from .people_pages import queue as people_queue
@@ -530,7 +546,8 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     # Step 1, no model: who has new material. One mailbox listing since the
     # last run says who wrote; new session lines are filed under their
     # project pages. Each person's own mail is gathered by the investigation.
-    found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
+    if found is None:
+        found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
     extract(root, sources)
     rows = [{**row, 'kind': 'person'} for row in people_queue(root, since=since)
             if row['mode'] == 'update' or row['record'] in found['records']]
@@ -542,7 +559,6 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     rows += [{'record': record, 'kind': 'retry', 'mode': 'retry', 'last_activity': entry.get('at', ''),
               'entry': entry} for record, entry in due_for_retry(root).items()
              if record not in queued and Notebook(root).path(record).is_file()]
-    rows.sort(key=lambda row: row['last_activity'] or '', reverse=True)
     # The page pinned as You comes first: it is what the owner opens first.
     rows = _owner_due(root) + rows
     if not rows:
