@@ -525,7 +525,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'alone is not an insight. Each is about the project' in prompts[0]
     assert 'None: `- Unknown`.' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
-    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+    assert 'return the lead ledger with each lookup (tool, query, result)' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
@@ -1703,9 +1703,8 @@ def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(n
 
 
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
-    """The model has no network (its sandbox is the defence against mail that
-    carries instructions); it names searches, our code runs them read-only,
-    and the results come back as cited material for one more turn."""
+    """The optional read-only mail bridge adds requested searches and their
+    cited originals to one more turn; direct research is also available."""
     import json as jsonlib
     import re as regex
     from connectonion.rem.config import set_config

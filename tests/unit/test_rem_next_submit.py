@@ -1142,3 +1142,55 @@ def test_a_claim_by_a_dead_process_does_not_block_the_next_session(trial):
     again = native.next_task(trial)
     assert again['outcome'] == 'task' and again['id'] == task['id']
     assert read_json(path, {})['claimed_by']['pid'] == os.getpid()
+
+
+def test_one_native_claim_audit_finding_returns_to_writer_and_can_be_repaired(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    before = _canonical(trial)
+    audit = native.submit(trial, task['id'])
+    assert audit['outcome'] == 'task'
+    Path(audit['candidate']).write_text(json.dumps({'verdict': 'FAIL', 'findings': [{
+        'claim': 'Avery Lin requested a pilot review.', 'issue': 'Scope needs qualification',
+        'evidence': 'The source is the owner’s correction.',
+        'required_correction': 'Attribute the pilot review request to the owner’s record.'}]}))
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused'
+    assert _canonical(trial) == before
+    saved = native.pending(trial)[0]
+    assert saved['status'] == 'pending' and saved['candidate'] == task['candidate']
+    assert 'Required corrections' in saved['instructions']
+    assert 'Fix every audit finding' in saved['instructions'] and 'claim-review.json' in saved['instructions']
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('Avery Lin requested a pilot review.',
+                                                     'The owner recorded Avery’s pilot review request.'))
+    audit = native.submit(trial, task['id'])
+    assert audit['outcome'] == 'task'
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    assert 'The owner recorded' in Notebook(trial).read(record)
+
+
+def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    directory = Path(task['material'])
+    web = directory / 'web'
+    web.mkdir()
+    body = web / 'team.md'
+    body.write_text('Avery leads Atlas.')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/team', 'file': 'team.md', 'date': '2026-11-06'}]))
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('## Who they are\n',
+        '## Who they are\n- Avery leads Atlas. [2]\n').replace('## Sources\n',
+        '## Sources\n- [2] https://example.org/team — 2026-11-06\n'))
+    audit = native.submit(trial, task['id'])
+    assert audit['outcome'] == 'task' and audit['stage'] == 'claim-audit'
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    body.write_text('Avery left Atlas.')
+    refreshed = native.submit(trial, task['id'])
+    assert refreshed['outcome'] == 'task' and refreshed['stage'] == 'claim-audit'
+    assert 'Avery left Atlas.' in refreshed['instructions']

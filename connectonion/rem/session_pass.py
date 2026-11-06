@@ -23,6 +23,7 @@ class Prefetched:
     projects: dict = field(default_factory=dict)
     skills: dict = field(default_factory=dict)
     windows: dict = field(default_factory=dict)
+    missing: list[str] = field(default_factory=list)
 
 
 def read_sessions(root: Path, subscriptions: dict, *, now: datetime, days: int, progress=None,
@@ -38,6 +39,12 @@ def read_sessions(root: Path, subscriptions: dict, *, now: datetime, days: int, 
     for name, window in windows.items():
         if window is not None:
             result.windows[name] = _write_window(root, subscriptions[name], cutoffs["windows"], window)
+            missing = [Path(path).relative_to(subscriptions[name]["root"]).as_posix() for path in result.missing
+                       if Path(path).is_relative_to(subscriptions[name]["root"])]
+            if missing:
+                from .files import read_json
+                saved = read_json(result.windows[name], {})
+                write_json(result.windows[name], {**saved, "missing_files": missing})
     _write_skills(root, result.skills)
     return result
 
@@ -57,10 +64,18 @@ def _session_files(subscriptions, result):
 def _read_files(files, result, cutoffs, progress):
     windows = {name: [] for name in result.files}
     for number, (path, destinations) in enumerate(files.items(), 1):
-        stat = path.stat()
+        try:
+            stat = path.stat()
+            needed = datetime.fromtimestamp(stat.st_mtime, timezone.utc) >= min(cutoffs.values())
+            data = _needed_bytes(path, destinations) if needed else None
+        except FileNotFoundError:
+            # A live Codex rollout may vanish between enumeration and reading.
+            result.missing.append(str(path))
+            for name, sub in destinations:
+                result.files[name].remove(path)
+            continue
         result.stats[str(path)] = stat
-        if datetime.fromtimestamp(stat.st_mtime, timezone.utc) >= min(cutoffs.values()):
-            data = _needed_bytes(path, destinations)
+        if needed:
             for name, sub in destinations:
                 windows[name] = _feed_file(data, path, stat, sub, result, cutoffs, windows[name])
             del data

@@ -69,7 +69,7 @@ def test_company_uses_owner_sent_mail_sessions_and_context(tmp_path, monkeypatch
     sessions = [{'source': f'codex:session{i}:0', 'role': 'user', 'timestamp': '2026-10-20T00:00:00+00:00',
                  'project': path, 'text': 'Ship the next version.'}
                 for i, path in enumerate(['/work/example', '/work/mara', '/work/mia'])]
-    monkeypatch.setattr(inv, '_window_items', lambda *a: (sessions, 0))
+    monkeypatch.setattr(inv, '_window_items', lambda *a, **k: (sessions, 0))
     monkeypatch.setattr(inv, 'website_items', lambda *a, **kw: ([], []))
     monkeypatch.setattr(inv, 'project_mentions', lambda *a: ([], 'project documents: none'))
     monkeypatch.setattr(inv, 'quote_pass', lambda *a: None)

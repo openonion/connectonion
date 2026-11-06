@@ -274,6 +274,9 @@ def prepare(notebook, candidate, *, record=None, items=(), carried=""):
         "The Paths section preserves runner-mapped path and session metadata; structural validation checks it, "
         "so do not demand prose citations for those rows. The runner-owned Investigation: status "
         "line is also structurally checked; do not audit it as a prose claim. Audit other claims outside Paths. "
+        "Labelled Inference: conclusions are welcome when the cited evidence supports the stated reasoning; "
+        "the conclusion need not appear literally in a source. Judge the reasoning, not keyword overlap. "
+        "An unlabelled speculation still fails. Keep quotes exact. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
         + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "") +
         "Return only JSON with verdict PASS, FAIL or INSUFFICIENT and findings containing claim (the failing "

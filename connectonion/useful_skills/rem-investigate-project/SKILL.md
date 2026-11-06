@@ -5,6 +5,19 @@ description: The steps for investigating a project's page, composed after rem-in
 
 # Investigating a project
 
+## Research beyond the mailbox
+
+Follow `rem-investigate` for research tools, privacy, own browser tab, the
+LinkedIn prohibition and saved captures. Establish what the project actually is, its current state and collaborators through repository/public sources as well as the owner’s messages. Lead with the answers; preserve supported repository URL, status, start date, history and open threads.
+
+When the project serves an outside party, the 1–3 research questions must include
+who the customer/organisation is and what it does. Follow the public company name
+or domain to its official site; repository work alone does not answer this.
+The lookup ledger must include at least one outside lookup (tool, query/URL,
+result, including empty or unavailable results), or explicitly say why none
+applies. A private/internal project with no outside party may explain that;
+an existing repository snapshot is not an outside lookup.
+
 A project is told by two witnesses: the owner's messages say what they wanted,
 decided and saw; the repository's current line says what was built and when.
 Join them; neither alone is the page.
@@ -47,8 +60,9 @@ Join them; neither alone is the page.
   Use a message here only when it names a distinctive project, file, version
   or behaviour of this repository; an unnamed follow-up only when an earlier
   input in that session establishes this project.
-- With zero assigned session inputs, keep `Insight` and `Open threads` bare
-  `Unknown`; dated commits may still say where the code stands.
+- With zero assigned session inputs, keep `Open threads` bare `Unknown` unless
+  other originals establish an ask; `Insight` may use researched evidence or
+  labelled inference. Dated commits may still say where the code stands.
 - Keep actors, nouns and scope exact: "ask the owner" is not calling agents;
   more property listings are not more details per property.
 - A `Website` Fact needs an original that connects the site to this project.

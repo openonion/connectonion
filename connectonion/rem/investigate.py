@@ -1043,8 +1043,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
         try:
+            missing = set()
             window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}",
-                                               stage_progress, archive_root)
+                                               stage_progress, archive_root, missing=missing)
+            if missing:
+                coverage.append(f"{name}: {len(missing)} vanished session file(s) skipped during read")
             scanned, picked = len(window), [i for i in window if related(i)]
             if unfamiliar:
                 coverage.append(f"{name}: {unfamiliar} user-slot message(s) in an unfamiliar format were not read")
@@ -1111,15 +1114,17 @@ SESSION_REUSE_SECONDS = 600
 
 
 def _window_items(read, scoped: dict, label: str, stage_progress=None,
-                  archive_root: Path | None = None) -> tuple[list[dict], int]:
+                  archive_root: Path | None = None, missing: set | None = None) -> tuple[list[dict], int]:
     """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
+    missing = missing if missing is not None else set()
     if read is collect and archive_root is not None:
         with _WINDOWS_LOCK:
-            return _session_window(scoped, label, stage_progress, archive_root)
+            return _session_window(scoped, label, stage_progress, archive_root, missing=missing)
     key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
     with _WINDOWS_LOCK:
         kept = _WINDOWS.get(key)
         if kept and time.monotonic() - kept[0] < SESSION_REUSE_SECONDS:
+            missing.update(kept[2])
             return kept[1]
         items, cursor, told, unfamiliar = [], {}, 0, 0
         while True:
@@ -1129,6 +1134,7 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None,
             batch = read(scoped, cursor, 4_000, 20_000_000)
             items.extend(batch.items)
             unfamiliar += getattr(batch, 'unrecognised', 0)
+            missing.update(getattr(batch, "missing_files", []))
             if batch.progress == cursor:
                 break
             cursor = batch.progress
@@ -1139,7 +1145,7 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None,
                 told = len(items)
                 stage_progress(f"gathering {label}: {told:,} scanned", told)
         result = items, unfamiliar
-        _WINDOWS[key] = (time.monotonic(), result)
+        _WINDOWS[key] = (time.monotonic(), result, sorted(missing))
         return result
 
 
@@ -1149,22 +1155,23 @@ SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it
 SESSION_MEMO_SECONDS = 1800
 
 
-def _migrate_session_window(saved: dict, kind: str) -> dict:
+def _migrate_session_window(saved: dict, kind: str, *, root: Path) -> dict:
     """v1 -> v2 excludes Codex exec prompts as subagent messages; checkpoints stay valid."""
     from urllib.parse import unquote, urlsplit
+    from .source import _read_rollout
 
     # 2026-10-20: a full session-window rebuild took ~42 s even at one worker.
     # Only each referenced file's metadata changed how its cached items are accepted.
-    dropped = set()
+    dropped, missing = set(), set(saved.get("missing_files", []))
     for reference in dict.fromkeys(item["reference"] for item in saved["items"]):
         path = Path(unquote(urlsplit(reference).path))
-        if not path.is_file():
-            continue
-        with path.open("rb") as source:
-            meta = KINDS[kind]["meta"](json.loads(source.readline(1_000_000)))
-        if meta.get("subagent") or meta.get("skip"):
-            dropped.add(reference)
+        with _read_rollout(path, {}, kind) as (handle, meta, _, _digest):
+            if handle is None:
+                missing.add(path.relative_to(root).as_posix())
+            elif meta.get("subagent") or meta.get("skip"):
+                dropped.add(reference)
     return {**saved, "version": SESSION_WINDOW_VERSION,
+            **({"missing_files": sorted(missing)} if missing else {}),
             "items": [item for item in saved["items"] if item["reference"] not in dropped]}
 
 
@@ -1198,7 +1205,7 @@ def session_window_cache(root: Path, scoped: dict) -> tuple[str, Path]:
     return identity, path
 
 
-def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
+def _session_window(scoped: dict, label: str, stage_progress, root: Path, *, missing: set | None = None) -> tuple[list[dict], int]:
     """Reuse typed session messages across CLI runs; collect reads only changed files.
 
     Within one run the window is kept in memory for SESSION_MEMO_SECONDS: even
@@ -1206,10 +1213,12 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     three minutes on the owner's Mac, and each of a 16-worker init's people paid
     it in turn under the lock (1.9.1b3: 350 of a 363-second gather).
     """
+    missing = missing if missing is not None else set()
     identity, cache_path = session_window_cache(root, scoped)
     memo = ("session-window", str(root), identity)
     kept = _WINDOWS.get(memo)
     if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS and kept[1] <= timestamp(scoped["since"]):
+        missing.update(kept[4])
         since = timestamp(scoped["since"])
         return [item for item in kept[2] if timestamp(item["timestamp"]) >= since], kept[3]
     # Built once over the widest window any page asks for: a 180-day person and a
@@ -1226,23 +1235,27 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
         saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
                  "items": [], "progress": {}, "unfamiliar": 0}
     if saved["version"] == 1:
-        saved = _migrate_session_window(saved, scoped.get("kind", "codex"))
+        saved = _migrate_session_window(saved, scoped.get("kind", "codex"), root=Path(scoped["root"]))
         write_json(cache_path, saved)
     items, cursor = saved["items"], saved["progress"]
     unfamiliar, told = saved["unfamiliar"], len(items)
+    earlier_missing = set(saved.pop("missing_files", []))
+    missing.update(name for name in earlier_missing if not (Path(scoped["root"]) / name).is_file())
     while True:
         batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000)
         items.extend(batch.items)
         unfamiliar += batch.unrecognised
+        missing.update(batch.missing_files)
         if stage_progress and len(items) > told:
             told = len(items)
             stage_progress(f"gathering {label}: {told:,} scanned", told)
         if batch.progress == cursor:
             break
         cursor = batch.progress
-    if saved["progress"] != cursor or not cache_path.is_file():
-        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar})
-    _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar)
+    if saved["progress"] != cursor or not cache_path.is_file() or missing != earlier_missing:
+        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar,
+                                **({"missing_files": sorted(missing)} if missing else {})})
+    _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar, sorted(missing))
     if timestamp(saved["since"]) < requested:
         items = [item for item in items if timestamp(item["timestamp"]) >= requested]
     return items, unfamiliar
@@ -1255,8 +1268,9 @@ def mail_search(clients: dict, root: Path, known: set | None = None):
     """Read-only mail searches the model may ask for after its first turn (2026-10-01).
 
     The owner asked that a gap the gathered mail leaves (how two people met, a
-    role) can be searched for. The model has no network; this runs its queries
-    with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
+    role) can be searched for. The model can research directly with network
+    and read-only CLIs; this optional mail bridge runs requested queries with
+    `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
     the gathered mail's shape and source ids, so they cite like the rest.
     """
     from .mail_archive import retain_message
