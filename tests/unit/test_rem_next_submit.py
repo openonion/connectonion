@@ -126,11 +126,11 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)["data"] if json_mode else None
         text = data.get("continuation", "") if json_mode else result.stdout
-        assert ("Do not end the turn while a task is pending" in text) == scheduled
+        assert ("Do as many tasks as you can" in text) == scheduled
         if scheduled:
             reminder = data["continuation"] if json_mode else "\n".join(result.stdout.strip().splitlines()[-3:])
             assert len(reminder.splitlines()) <= 3
-            for rule in ("only one until the next slot hours away", "rg/sed", "write the candidate",
+            for rule in ("next follow-up continues within 15 minutes", "rg/sed", "write the candidate",
                          "submit", "next again", "round is done or stopped"):
                 assert rule in reminder
 
@@ -314,6 +314,7 @@ def test_quota_floor_stops_before_collecting(trial, monkeypatch):
 @pytest.mark.parametrize("scheduled", [False, True])
 @pytest.mark.parametrize("pending_review", [False, True])
 def test_daily_cap_records_only_scheduled_visits(trial, scheduled, pending_review):
+    write_json(state_path(trial, "worker.json"), {"enabled": True})
     if pending_review:
         from connectonion.rem.config import set_config
         set_config(trial, ["limits.runner_calls_per_day", "1"])
@@ -487,7 +488,7 @@ runner.run_task = runner.run_claim_task = forbidden
             break
         if prepared["stage"] == "investigate" and "audit-output.json" not in prepared["candidate"]:
             if numbers:
-                assert f"Round {numbers[-1]}: NO CHANGE" in prepared["instructions"]
+                assert f"Round {numbers[-1]}: NO CHANGE" in Path(prepared["material"], "material.md").read_text()
             numbers.append(prepared["round"])
             Path(prepared["material"], "report.md").write_text("NO CHANGE; the fixture has no new supported page claims.")
         result = process(f"native.submit(root, {prepared['id']!r})")
@@ -622,7 +623,7 @@ def test_later_round_retries_held_refused_material(trial):
         write_json(path, run)
     task = native.next_task(trial)
     assert task["stage"] == "maintain" and task["record"] == record
-    assert item["text"] in task["instructions"]
+    assert item["text"] in Path(task["material"], "material.md").read_text()
     Path(task["material"], "report.md").write_text("NO CHANGE")
     assert native.submit(trial, task["id"])["outcome"] == "accepted"
     assert record not in refused_pages(trial)
@@ -1118,12 +1119,12 @@ def test_same_slot_and_manual_next_keep_translation_tail(trial, monkeypatch, tra
 
 
 @pytest.mark.parametrize('hours', [1, 25])
-def test_later_scheduled_slot_leaves_live_translation_claim(trial, monkeypatch, translation_round, hours):
+def test_later_scheduled_slot_reoffers_advisory_translation_claim(trial, monkeypatch, translation_round, hours):
     task = native.next_task(trial)
     before = read_json(state_path(trial, 'round.json'), {})
     moment = service.now() + timedelta(hours=hours)
     monkeypatch.setattr(service, 'now', lambda: moment)
-    assert native.next_task(trial, scheduled=True)['outcome'] == 'claimed'
+    assert native.next_task(trial, scheduled=True)['id'] == task['id']
     assert read_json(state_path(trial, 'round.json'), {}) == before
     assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'pending'
 
@@ -1404,4 +1405,195 @@ def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
     body.write_text('Avery left Atlas.')
     refreshed = native.submit(trial, task['id'])
     assert refreshed['outcome'] == 'task' and refreshed['stage'] == 'claim-audit'
-    assert 'Avery left Atlas.' in refreshed['instructions']
+    assert 'Avery left Atlas.' in Path(refreshed['material'], 'audit-material.md').read_text()
+
+
+@pytest.mark.parametrize('alive', [False, True])
+def test_scheduled_followup_takes_over_advisory_claim(trial, monkeypatch, alive):
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    _feedback(trial)
+    task = native.next_task(trial, scheduled=True)
+    run_count = len(service.run_logs(trial))
+    monkeypatch.setattr(native, '_alive', lambda pid: alive)
+    moment = service.now() + timedelta(minutes=15)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    again = native.next_task(trial, scheduled=True)
+    assert again['outcome'] == 'task' and again['id'] == task['id']
+    assert len(service.run_logs(trial)) == run_count
+
+
+def test_scheduled_followup_after_finished_round_is_idle(trial, monkeypatch):
+    from connectonion.rem import native_round
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    cursor = native_round.prepare(trial, read_config(trial), scheduled=True)
+    native_round.finish(trial, cursor)
+    before = {path: path.read_bytes() for path in state_path(trial, 'runs').glob('*.json')}
+    def unexpected(*args, **kwargs):
+        pytest.fail('an idle follow-up must not read sources, check runner quota or reserve budget')
+    monkeypatch.setattr(service, 'prepare_sync', unexpected)
+    monkeypatch.setattr(quota, 'read', unexpected)
+    monkeypatch.setattr(daily, '_reserve', unexpected)
+    moment = service.now() + timedelta(minutes=15)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    assert native.next_task(trial, scheduled=True) == {'outcome': 'done', 'reason': 'not due', 'notices': []}
+    assert {path: path.read_bytes() for path in state_path(trial, 'runs').glob('*.json')} == before
+
+
+def test_scheduled_followup_continues_next_task_in_same_round(trial, monkeypatch):
+    from connectonion.rem import native_round
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    record, source = _feedback(trial)
+    task = native.next_task(trial, scheduled=True)
+    _candidate(trial, task, record, source)
+    assert _submit(trial, task)['outcome'] == 'accepted'
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    def same_round(root, state, config, directory):
+        assert state['started_at'] == cursor['started_at'] and state['slot'] == cursor['slot']
+        prepared = __import__('connectonion.rem.extract', fromlist=['prepare']).prepare(
+            [{'source': 'codex:fictional-next', 'text': 'Review Cedar pilot.', 'timestamp': service.now().isoformat()}],
+            config, root=root, directory=directory, native=True)
+        return native_round._task('extract', prepared, state, stage='extract', operation='batch')
+    moment = service.now() + timedelta(minutes=15)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(native_round, 'prepare_task', same_round)
+    monkeypatch.setattr(native_round, 'prepare', lambda *a, **kw: pytest.fail('must resume existing round'))
+    assert native.next_task(trial, scheduled=True)['stage'] == 'extract'
+
+
+@pytest.mark.parametrize('handler', ['extract', 'maintain', 'investigate', 'claim-audit', 'repair',
+                                    'same-person', 'translate', 'sessions', 'project', 'project-quote',
+                                    'inquiry-plan', 'inquiry-synthesize', 'skill-investigate'])
+def test_every_native_handler_has_readable_task_files(trial, monkeypatch, handler):
+    from uuid import uuid4
+    from connectonion.rem import extract, inquiry, native_round, project_claim_review, project_pages, same_person, sessions, translate
+    book = Notebook(trial)
+    record, _ = _feedback(trial)
+    page = book.read(record)
+    # Fictional archive excerpts include a long single-line mail and a multiline transcript.
+    body = 'Morgan Vale requested the Cedar pilot checklist; Avery Lin will review it on Friday. ' * 180
+    items = [{'role': 'page', 'record': record, 'one_page': True, 'source': 'investigation:page', 'text': page},
+             {'role': 'user', 'source': 'gmail:fictional-cedar', 'timestamp': service.now().isoformat(), 'text': body},
+             {'role': 'user', 'source': 'codex:fictional-cedar', 'timestamp': service.now().isoformat(),
+              'text': ('Check the pilot milestones and verify the draft.\n' * 300)}]
+    task_id = 'native-' + uuid4().hex
+    directory = state_path(trial, f'tasks/{task_id}')
+    directory.mkdir(parents=True)
+    config = read_config(trial)
+    cursor = native_round.prepare(trial, config, scheduled=False)
+    stage = handler
+    kind = 'runner'
+    if handler == 'extract':
+        prepared = extract.prepare(items, config, root=trial, directory=directory, native=True)
+        kind = 'extract'
+    elif handler == 'same-person':
+        other = 'people/avery-alias.md'
+        book.stub_person(other, 'Avery Lin', ['alias@example.test'], email='alias@example.test')
+        monkeypatch.setattr(same_person, '_own_mail', lambda *args: [{'text': body}])
+        prepared = same_person.prepare(trial, {'pages': [record, other], 'why': 'matching fictional names'}, directory=directory)
+        kind = 'same-person'
+    elif handler == 'translate':
+        book.write(record, page.replace('\n\n', '\n\n> ' + body + '\n\n', 1))
+        prepared = translate.prepare(trial, record, 'zh', directory=directory, native=True)
+        kind = 'translate'
+    elif handler == 'sessions':
+        rows = [{'key': 'codex:fictional', 'record': record, 'turns': 3, 'project': 'Cedar', 'agent': 'Codex',
+                 'date': '2026-11-06', 'messages': [{'time': '12:00', 'text': body}], 'reply': body,
+                 'artifacts': ['Review notes: ' + body]}]
+        prepared = sessions.prepare(trial, rows, config, directory=directory, native=True)
+        kind = 'sessions'
+    elif handler.startswith('inquiry-'):
+        stage = handler.removeprefix('inquiry-')
+        prepared = inquiry.prepare(trial, directory, items, config, stage, native=True)
+        kind = 'inquiry'
+    elif handler in ('project', 'project-quote'):
+        record = 'projects/cedar.md'
+        book.stub_project(record, 'Cedar', ['/fictional/cedar'])
+        items[0].update(record=record, text=book.read(record))
+        items.append({'role': 'attachment', 'snapshot_kind': 'git-file', 'source': 'project-source:fictional',
+                      'file': 'pilot.js', 'timestamp': service.now().isoformat(),
+                      'text': 'const pilot = ' + '"ready",' * 2000})
+        monkeypatch.setattr(project_pages, 'material', lambda *a, **kw: (items, service.now().isoformat()))
+        prepared = (project_pages.prepare(trial, record, config=config, directory=directory, native=True)
+                    if handler == 'project' else project_pages.prepare_quotes(book, record, items, (0, 2),
+                        directory=directory, config=config, native=True))
+        kind = 'project'
+    else:
+        stage = 'investigate' if handler in ('investigate', 'skill-investigate') else 'maintain'
+        if handler == 'skill-investigate':
+            from connectonion.rem.skill_runs import _record_index
+            samples = {'items': [], 'matched_invocations': 1, 'sample_limit': 10, 'missing': []}
+            items.append(_record_index(directory, [{'source': 'skill-eval:fictional', 'text': body,
+                          'timestamp': service.now().isoformat()}], samples, service.now().isoformat()))
+        prepared = runner.prepare(book, items, config, stage=stage, directory=directory, native=True)
+    task = {**native_round._task(kind, prepared, cursor, stage=stage, record=record),
+            'id': task_id, 'created_at': service.now().isoformat(), 'status': 'pending', 'directory': str(directory),
+            'run': {'id': task_id, 'quota': {}}, 'usage': None, 'round_started_at': cursor['started_at']}
+    native._save(trial, cursor, task)
+    if handler == 'claim-audit':
+        candidate = page.replace('## Sources\n', '## Sources\n- [1] gmail:fictional-cedar\n')
+        audit = project_claim_review.prepare(book, candidate, record=record, items=items, native=True, directory=directory)
+        native._request_review(trial, task, {'needs_review': audit['prompt'], 'candidate': str(directory / 'audit-output.json')})
+    elif handler == 'repair':
+        monkeypatch.setattr(native_round, 'check_task', lambda *a: (_ for _ in ()).throw(RemError('Evidence mismatch: ' + body)))
+        native._check_submission(trial, task)
+    oversized = [(str(path.relative_to(directory)), n, len(line)) for path in directory.rglob('*') if path.is_file()
+                 for n, line in enumerate(path.read_text().splitlines(), 1) if len(line) > 4000]
+    assert oversized == []
+    assert (directory / 'instructions.md').read_text() == task['instructions']
+    restored = read_json(directory / 'task.json', {})
+    assert restored['task'] == prepared, 'readable persistence must preserve exact strings for validation'
+
+
+@pytest.mark.parametrize('name', ['page.md', 'candidate.md'])
+def test_native_long_page_inputs_keep_exact_text_in_readable_json(trial, name):
+    directory = state_path(trial, 'tasks/native-fictional-long-page')
+    directory.mkdir(parents=True)
+    text = '# Cedar\n\n> ' + ('Avery requested the pilot checklist. ' * 250) + '\n'
+    path = directory / name
+    path.write_text(text)
+    task = {'prompt': f'Read {path} and preserve every quotation.'}
+    prompt = native._long_page_inputs(task, directory)
+    native._readable_files(directory)
+    original = directory / ('page.json' if name == 'page.md' else 'candidate-original.json')
+    assert read_json(original, None) == text
+    assert not path.exists()
+    assert str(original) in prompt
+    assert max(map(len, original.read_text().splitlines())) <= 4000
+
+
+def test_first_scheduled_fire_accepts_null_last_slot(trial):
+    write_json(state_path(trial, 'worker.json'), {'enabled': True, 'last_scheduled_slot': None})
+    _feedback(trial)
+    assert native.next_task(trial, scheduled=True)['outcome'] == 'task'
+
+
+def test_native_json_output_survives_readable_persistence(trial):
+    directory = state_path(trial, 'tasks/native-fictional-output')
+    directory.mkdir(parents=True)
+    candidate = directory / 'candidate.json'
+    value = {'sessions': [{'summary': 'Review Cedar pilot results. ' * 250}]}
+    write_json(candidate, value, readable=True)
+    task = {'directory': str(directory), 'candidate': str(candidate), 'handler': 'sessions',
+            'task': {'candidate': str(candidate)}}
+    assert json.loads(native._submission_output(task)['result']) == value
+
+
+@pytest.mark.parametrize('filename', ['candidate.json', 'audit-output.json', 'plan.json', 'synthesize.json', 'review-candidates.json', 'web/sources.json', 'web/material.json', 'web/originals.json'])
+def test_native_refusal_keeps_malformed_long_output_repairable(trial, filename):
+    task, _ = _summary_task(trial)
+    directory = Path(task['material'])
+    candidate = Path(task['candidate'])
+    valid = candidate.read_text()
+    bad = directory / filename
+    bad.parent.mkdir(exist_ok=True)
+    malformed = '{"sessions": [' + 'x' * 5000
+    bad.write_text(malformed)
+    # All malformed optional/output files survive refusal rendering without a second error.
+    if filename == 'candidate.json':
+        assert native.submit(trial, task['id'])['outcome'] == 'refused'
+    else:
+        native._write_instructions(native.pending(trial)[0])
+    assert bad.read_text() == malformed
+    bad.unlink()
+    candidate.write_text(valid)
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'

@@ -244,7 +244,8 @@ class Launchd:
     def install_wake(self, root: Path, config: dict, app: Path) -> Path:
         """Open Codex shortly before each saved local time; only Codex executes REM."""
         path = self.wake_path(root)
-        times = [wake_time(value) for value in config["schedule"]["times"]]
+        from .codex_schedule import fire_times
+        times = [wake_time(value) for value in fire_times(config)]
         job = {"Label": path.stem, "ProgramArguments": wake_command(app),
                "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
         self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())

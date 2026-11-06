@@ -241,7 +241,7 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
     return check(task, run(workspace, task["prompt"], config, "claim-audit"))
 
 
-def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False):
+def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False, directory=None):
     material, missing = packet(notebook, candidate, record, items)
     unretained = {key: material[key] for key in ("unretained_citations", "unverified_lines")
                   if material["unretained_citations"]}
@@ -288,7 +288,23 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
     )
     from .runner import today_note
     instruction += today_note(notebook.root).strip() + "\n\n"
-    prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
+    if native:
+        from .files import write_json
+        from .runner import readable_material
+        write_json(directory / "audit-material.json", material, readable=True)
+        views = [{"role": "candidate", "text": material["candidate"]}]
+        views += [{"role": "cited-original", "source": row["source_id"], "citation": row["citation"],
+                   "definition": row["definition"], "text": row["context"]["excerpt"],
+                   "context": {key: value for key, value in row["context"].items() if key != "excerpt"}}
+                  for row in material["sources"]]
+        views += [{"role": "later-message", **row} for row in material["later_messages"]]
+        views += [{"role": key, "text": material[key]} for key in
+                  ("runner_facts", "unretained_citations", "unverified_lines")]
+        (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
+        prompt = instruction + (f"Read the complete audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
+                                f"Exact strings are retained in {directory / 'audit-material.json'}. ")
+    else:
+        prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
     return {"prompt": prompt, "candidate": candidate, "carried": carried,
             "material": material, "missing": missing, "unretained": unretained}
 

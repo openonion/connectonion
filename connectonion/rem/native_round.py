@@ -9,11 +9,18 @@ from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
 
 
+def scheduled_slot(root, config):
+    worker = service.worker_state(root)
+    slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
+    if not worker.get("enabled") or slot is None or (worker.get("last_scheduled_slot") or "") >= slot.isoformat():
+        return None
+    return slot
+
+
 def prepare(root, config, *, scheduled):
-    worker, moment = service.worker_state(root), service.now()
-    slot = service.latest_slot(config, moment + service.EARLY_FIRE) if scheduled else None
-    if scheduled and (not worker.get("enabled") or slot is None or worker.get("last_scheduled_slot")
-                      and worker["last_scheduled_slot"] >= slot.isoformat()):
+    moment = service.now()
+    slot = scheduled_slot(root, config) if scheduled else None
+    if scheduled and slot is None:
         return {"reason": "not due"}
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run co rem start")
@@ -131,7 +138,7 @@ def prepare_task(root, cursor, config, directory):
     language = next((tag for tag in owner_languages(root)["languages"] if tag.split("-")[0] != "en"), None)
     for record in cursor["changed"] if language and translations_today < config["limits"]["translations_per_day"] else []:
         if record not in cursor["translations"] and translate.cached(root, record, language) is None:
-            task = translate.prepare(root, record, language, directory=directory)
+            task = translate.prepare(root, record, language, directory=directory, native=True)
             return _task("translate", task, cursor, stage="translate", record=record)
     finish(root, cursor)
     return None
@@ -191,7 +198,7 @@ def _prepare_job(root, cursor, config, directory):
     from . import inquiry
     inquiry_phase = state.get("inquiry", "plan")
     if inquiry.routing(root) and inquiry_phase != "render":
-        task = inquiry.prepare(root, directory, items, config, inquiry_phase, plan_path=state.get("plan_path"))
+        task = inquiry.prepare(root, directory, items, config, inquiry_phase, plan_path=state.get("plan_path"), native=True)
         task["before"] = {record: book.read(record)}
         return _task("inquiry", task, cursor, stage=inquiry_phase, record=record,
                      number=state["number"], operation="inquiry")
@@ -264,14 +271,14 @@ def _followup_items(book, state):
 def _project_task(root, cursor, config, directory, record):
     previous = cursor.get("project_quote")
     if not previous:
-        task = project_pages.prepare(root, record, config=config, directory=directory)
+        task = project_pages.prepare(root, record, config=config, directory=directory, native=True)
         return _task("project", task, cursor, stage="investigate", record=record)
     items = previous["items"]
     counts = project_pages.project_falls_short(Notebook(root).read(record), sum(i.get("role") == "user" for i in items))
     if counts is None:
         _finish_project(root, cursor, record, previous["through"])
         return None
-    task = project_pages.prepare_quotes(Notebook(root), record, items, counts, directory=directory, config=config)
+    task = project_pages.prepare_quotes(Notebook(root), record, items, counts, directory=directory, config=config, native=True)
     task["through"] = previous["through"]
     return _task("project", task, cursor, stage="investigate", record=record, operation="project-quote")
 

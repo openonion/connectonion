@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import sys
+import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -19,9 +20,9 @@ from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, mainten
 
 
 SCHEDULED_CONTINUATION = (
-    "This scheduled turn is the only one until the next slot hours away.\n"
-    "Do this task now: read large material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
-    "Do not end the turn while a task is pending; end only when next prints that the round is done or stopped."
+    "Do as many tasks as you can; if you stop, the next follow-up continues within 15 minutes.\n"
+    "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
+    "Continue until the round is done or stopped, or leave the pending task for the next follow-up."
 )
 
 
@@ -93,7 +94,7 @@ def _stop(root, config):
 
 def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
-    print("Preparing the next REM task (reading new mail and sessions; this can take a minute)…",
+    print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True) as waited_for, runner.private_task_mask():
         cursor = read_json(state_path(root, "round.json"), {})
@@ -109,7 +110,7 @@ def next_task(root, *, scheduled=False, discard=False):
         # A next or submit can publish a task just before its CLI exits (or is
         # reaped). That preparer's advisory claim must not hide the new task.
         preparer = waited_for.get("pid")
-        result = (_offer_pending(root, tasks[0], preparer=preparer) if tasks
+        result = (_offer_pending(root, tasks[0], preparer=preparer, takeover=scheduled) if tasks
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
@@ -152,23 +153,25 @@ def _defer_translation_tail(root, cursor, task):
     return notices
 
 
-def _offer_pending(root, task, *, preparer=None):
+def _offer_pending(root, task, *, preparer=None, takeover=False):
     if task.get("review_unreserved"):
         return _offer_review(root, task)
     claim = task.get("claimed_by")
-    if claim and claim["pid"] != preparer and _alive(claim["pid"]):
+    if not takeover and claim and claim["pid"] != preparer and _alive(claim["pid"]):
         return {"outcome": "claimed", "reason": f"task {task['id']} is being worked on since {claim['started_at']}; "
                 "co rem next --discard to take it over"}
     _write_instructions(task, check=True)
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
-    write_json(Path(task["directory"]) / "task.json", task)
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
     return {"outcome": "task", **_display(root, task)}
 
 
 def _next_round(root, cursor, *, scheduled, notices):
     from . import native_round
     config = read_config(root)
+    if scheduled and (not cursor or cursor.get("done")) and native_round.scheduled_slot(root, config) is None:
+        return {"outcome": "done", "reason": "not due", "notices": notices}
     if cursor and scheduled and cursor.get("investigation_left") == 0:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
         if slot and slot.isoformat() != cursor.get("portion_slot", cursor.get("slot")):
@@ -229,7 +232,7 @@ def _resume(root, cursor, task, *, discard, scheduled=False):
 def _discard(root, cursor, task, reason):
     from . import native_round
     task.update(status="discarded", reason=reason)
-    write_json(Path(task["directory"]) / "task.json", task)
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
     _log(root, task, "discarded", reason=reason)
     native_round.advance(root, cursor, task, {"discarded": reason})
     return [f"Discarded {task['id']}: {reason}"]
@@ -253,7 +256,7 @@ def _save(root, cursor, task):
     _claim(task)
     directory = Path(task["directory"])
     stage_task = task["task"]
-    prompt = stage_task["prompt"].replace("\0", "")
+    prompt = _long_page_inputs(stage_task, directory).replace("\0", "")
     # Slash expansion normally loads the core Skill in co ai. Native receives it explicitly.
     original = (directory / "instructions.md").read_text() if (directory / "instructions.md").is_file() else ""
     match = re.match(r"/rem-([\w-]+)\s+", prompt)
@@ -270,7 +273,9 @@ def _save(root, cursor, task):
     if task["handler"] not in ("runner", "project"):
         prompt += runner.today_note(root)
     prompt = f"Task workspace: {directory}. Resolve relative filenames against this directory.\n\n" + prompt
+    prompt = _readable_text(prompt)
     atomic_write(directory / "instructions.md", prompt)
+    _readable_files(directory)
     task.update(instructions=prompt, material=str(directory), candidate=stage_task["candidate"] or stage_task.get("task_root"),
                 submit=f"co rem --root {shlex.quote(str(root))} submit {task['id']}",
                 inputs=_inputs(root, stage_task, directory, handler=task["handler"]),
@@ -284,7 +289,7 @@ def _save(root, cursor, task):
     write_json(state_path(root, f"runs/{task['run']['id']}.json"), task["run"])
     cursor["pending"] = task["id"]
     write_json(state_path(root, "round.json"), cursor)
-    write_json(directory / "task.json", task)
+    write_json(directory / "task.json", task, readable=True)
     return _display(root, task)
 
 
@@ -341,7 +346,8 @@ def _submission_output(task):
     if task["handler"] in ("sessions", "translate", "same-person"):
         if not candidate.is_file():
             raise RemError(f"Write the output file: {candidate}")
-        output["result"] = candidate.read_text(encoding="utf-8")
+        output["result"] = (json.dumps(read_json(candidate, None), ensure_ascii=False) if candidate.suffix == ".json"
+                            else candidate.read_text(encoding="utf-8"))
     report = directory / "report.md"
     if report.is_file():
         output["result"] = report.read_text(encoding="utf-8")
@@ -365,13 +371,13 @@ def _check_submission(root, task):
         if task["handler"] in ("runner", "project") and task.get("record"):
             errors = read_json(directory / "review.json", {}).get("errors") or [str(error)]
             task["instructions"] += "\n\n## Required corrections\n" + runner.repair_instruction(
-                task["record"], errors, directory, Path(task["task"]["root"]))
+                task["record"], errors, directory, Path(task["task"]["root"]), native=True)
             atomic_write(directory / "repair-instructions.md", task["instructions"])
         task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
         task["review_unreserved"] = False
         task["last_result"] = {"outcome": "refused", "reason": str(error)}
         _write_instructions(task)
-        write_json(directory / "task.json", task)
+        write_json(directory / "task.json", task, readable=True)
         _log(root, task, "refused", reason=str(error))
         return task["last_result"]
 
@@ -384,8 +390,52 @@ def _request_review(root, task, result):
     _log(root, task, "pending", stage=task["render_stage"], pending_review=True)
     atomic_write(directory / "audit-instructions.md", task["instructions"])
     _write_instructions(task)
-    write_json(directory / "task.json", task)
+    write_json(directory / "task.json", task, readable=True)
     return _offer_review(root, task)
+
+
+def _readable_text(text):
+    return "\n".join(textwrap.fill(line, width=400, replace_whitespace=False, drop_whitespace=False)
+                     if len(line) > 4000 else line for line in text.split("\n"))
+
+
+def _long_page_inputs(task, directory):
+    """Keep an exceptional long page exact, without handing out an unreadable file."""
+    prompt = task["prompt"]
+    for name in ("page.md", "candidate.md"):
+        path = directory / name
+        if path.is_file() and any(len(line) > 4000 for line in path.read_text().splitlines()):
+            original = path.with_suffix(".json") if name == "page.md" else directory / "candidate-original.json"
+            write_json(original, path.read_text(), readable=True)
+            path.unlink()
+            if name == "page.md":
+                prompt = prompt.replace("page.md", "page.json")
+            else:
+                prompt += f"\nThe candidate has not been prefilled because its original has long lines. Read {original} and write the complete candidate to {path}."
+            prompt += "\nIn exact JSON, __rem_text_parts__ lists consecutive text pieces; only escaped \\n marks an original newline. Read the pieces directly; no reconstruction script is needed."
+    return prompt
+
+
+def _readable_files(directory):
+    """Bound generated display files; retain exact source/state strings in JSON."""
+    generated_json = {"material.json", "audit-material.json", "audit-task.json", "task.json", "originals.json",
+                      "review.json", "claim-review.json", "repair-findings.json", "translation-constraints.json",
+                      "commit.json", "promotion.json", "source-ids.json", "page.json", "candidate-original.json",
+                      "feedback-checkpoint.json"}
+    for path in directory.rglob("*"):
+        relative = path.relative_to(directory)
+        if relative.parts[0] in ("web", "notebook"):
+            continue
+        json_input = path.name in generated_json or path.suffix == ".json" and relative.parts[0] == "sessions"
+        display = (path.suffix == ".md" and path.name not in ("candidate.md", "page.md", "report.md", "notes.md")
+                   and relative.parts[0] not in ("web", "notebook"))
+        if (json_input or display) and path.is_file() and not path.is_symlink():
+            text = path.read_text(encoding="utf-8")
+            if any(len(line) > 4000 for line in text.splitlines()):
+                if json_input:
+                    write_json(path, read_json(path, None), readable=True)
+                else:
+                    atomic_write(path, _readable_text(text))
 
 
 def _write_instructions(task, *, check=False):
@@ -394,7 +444,9 @@ def _write_instructions(task, *, check=False):
     # Restore the active instructions only if the prepared file is intact.
     if check and _hash(path) != task["inputs"].get(str(path)):
         raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+    task["instructions"] = _readable_text(task["instructions"])
     atomic_write(path, task["instructions"])
+    _readable_files(Path(task["directory"]))
     task["inputs"][str(path)] = _hash(path)
 
 
@@ -407,9 +459,10 @@ def _promoted(root, task):
 
 def _accept(root, cursor, task, result):
     from . import native_round
+    _readable_files(Path(task["directory"]))
     task.update(status="accepted", last_result={"outcome": "accepted"}, accepted_result=result)
     _log(root, task, "completed", changed=result.get("changed", []))
-    write_json(Path(task["directory"]) / "task.json", task)
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
     native_round.advance(root, cursor, task, result)
     return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []),
             "same_turn": bool(cursor.get("slot") or cursor.get("scheduled"))}
@@ -429,7 +482,7 @@ def _offer_review(root, task):
     task["review_unreserved"] = False
     _claim(task)
     _log(root, task, "pending", stage="claim-audit")
-    write_json(Path(task["directory"]) / "task.json", task)
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
     return {"outcome": "task", **_display(root, task)}
 
 

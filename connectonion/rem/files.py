@@ -123,13 +123,35 @@ def read_json(path: Path, default):
     if not path.exists():
         return default
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"), object_hook=_text_parts)
     except (ValueError, UnicodeError) as error:
         raise RemError(f"Invalid operational file: {path.name}; preserve it for diagnosis") from error
 
 
-def write_json(path: Path, value) -> None:
-    atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+def _text_parts(value):
+    if set(value) == {"__rem_text_parts__"}:
+        return "".join(value["__rem_text_parts__"])
+    return value
+
+
+def _readable_json(value):
+    """Lossless strings in bounded lines, including escaped transcript newlines.
+
+    Native state still needs exact strings for hashes and validation. Merely
+    indenting JSON leaves a whole transcript on one physical line.
+    """
+    if isinstance(value, str) and len(json.dumps(value, ensure_ascii=False)) > 3000:
+        parts = [line[i:i + 400] for line in value.splitlines(keepends=True) for i in range(0, len(line), 400)]
+        return {"__rem_text_parts__": parts}
+    if isinstance(value, dict):
+        return {key: _readable_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_readable_json(item) for item in value]
+    return value
+
+
+def write_json(path: Path, value, *, readable=False) -> None:
+    atomic_write(path, json.dumps(_readable_json(value) if readable else value, ensure_ascii=False, indent=2) + "\n")
 
 
 def archive_path(root: Path, record: str, *, new: bool = False) -> Path:

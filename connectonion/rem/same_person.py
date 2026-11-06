@@ -109,7 +109,7 @@ def _own_mail(root: Path, record: str, emails: list[str]) -> list[dict]:
              "subject": item["subject"], "text": item["text"][:MAIL_CHARS]} for item in items[:MAILS_PER_PAGE]]
 
 
-def packet(root: Path, pair: dict) -> str:
+def packet(root: Path, pair: dict, *, directory=None) -> str:
     """The skill, then both pages and each one's own mail."""
     from ..skills_catalog import useful_skills_dir
     notebook = Notebook(root)
@@ -117,6 +117,12 @@ def packet(root: Path, pair: dict) -> str:
     pages = [{"record": record, "page": notebook.read(record),
               "own_mail": _own_mail(root, record, roster[record]["emails"])} for record in pair["pages"]]
     skill = (useful_skills_dir() / SKILL / "SKILL.md").read_text(encoding="utf-8")
+    if directory is not None:
+        from .runner import readable_material
+        write_json(directory / "material.json", pages, readable=True)
+        (directory / "material.md").write_text(readable_material([
+            {"record": page["record"], "text": page["page"], "own_mail": page["own_mail"]} for page in pages]), encoding="utf-8")
+        return skill + f"\nWhy code put them side by side: {pair['why']}\nRead {directory / 'material.md'} in pieces with sed/rg."
     return skill + "\n\n---\n\nWhy code put them side by side: " + pair["why"] + "\n\n" + json.dumps(
         pages, ensure_ascii=False, indent=1)
 
@@ -167,7 +173,7 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
 
 def prepare(root, pair, *, directory):
     output = directory / "candidate.json"
-    prompt = packet(root, pair).replace("Do not edit any file.", "Read the supplied material with tools; do not edit notebook pages.", 1)
+    prompt = packet(root, pair, directory=directory).replace("Do not edit any file.", "Read the supplied material with tools; do not edit notebook pages.", 1)
     return {"root": str(root), "pair": pair, "candidate": str(output),
             "before": {record: Notebook(root).read(record) for record in pair["pages"]},
             "prompt": prompt + f"\nWrite only the JSON answer to {output}."}
