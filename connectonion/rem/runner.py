@@ -713,7 +713,9 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
             "that support the claim; a quote must be copied character for character from the message its "
             "line cites, in its original language, or the line rewritten without quotation marks; a "
             "claim states only what its original proves, or goes. Keep supported detail. "
-            "Keep at most sixteen dated History lines. Save the same file and stop.")
+            "Keep at most sixteen dated History lines. ")
+    text += ("Save the same candidate file and run the printed submit command again in this turn." if native
+             else "Save the same file and stop.")
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
         text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
                  "clauses beside it; the audit is a correction guide, not a source.")

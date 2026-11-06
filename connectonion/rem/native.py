@@ -366,20 +366,31 @@ def _check_submission(root, task):
             _problem(root, proposal)
         return native_round.check_task(root, task, output)
     except (RemError, json.JSONDecodeError) as error:
-        task["stage"] = task["render_stage"]
-        task["instructions"] = task["render_instructions"]
-        if task["handler"] in ("runner", "project") and task.get("record"):
-            errors = read_json(directory / "review.json", {}).get("errors") or [str(error)]
-            task["instructions"] += "\n\n## Required corrections\n" + runner.repair_instruction(
-                task["record"], errors, directory, Path(task["task"]["root"]), native=True)
-            atomic_write(directory / "repair-instructions.md", task["instructions"])
-        task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
-        task["review_unreserved"] = False
-        task["last_result"] = {"outcome": "refused", "reason": str(error)}
-        _write_instructions(task)
-        write_json(directory / "task.json", task, readable=True)
-        _log(root, task, "refused", reason=str(error))
-        return task["last_result"]
+        return _refuse_submission(root, task, str(error))
+
+
+def _refuse_submission(root, task, reason):
+    directory = Path(task["directory"])
+    task["stage"] = task["render_stage"]
+    task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
+    fix = directory / "instructions.md"
+    corrections = reason + f"\nSave the candidate and run {task['submit']} again in this turn."
+    if task["handler"] in ("runner", "project") and task.get("record"):
+        errors = read_json(directory / "review.json", {}).get("errors") or [reason]
+        corrections = runner.repair_instruction(
+            task["record"], errors, directory, Path(task["task"]["root"]), native=True)
+        fix = directory / "repair-instructions.md"
+    task["instructions"] = task["render_instructions"] + "\n\n## Required corrections\n" + corrections
+    task["review_unreserved"] = False
+    display = _display(root, task)
+    task["last_result"] = {"outcome": "refused", "reason": reason, "fix": str(fix),
+                           **{key: display[key] for key in ("candidate", "submit", "continuation") if key in display}}
+    _write_instructions(task)
+    if fix.name == "repair-instructions.md":
+        atomic_write(fix, task["instructions"])
+    write_json(directory / "task.json", task, readable=True)
+    _log(root, task, "refused", reason=reason)
+    return task["last_result"]
 
 
 def _request_review(root, task, result):

@@ -1989,6 +1989,9 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
+        if value.get("outcome") == "refused":
+            return (f"Refused: {value['reason']}\nFix: {value['fix']} — \"Required corrections\" at the end"
+                    + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}")
         if value.get("outcome") == "task":
             lines = len(value['instructions'].splitlines())
             notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""

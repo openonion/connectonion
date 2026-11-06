@@ -281,6 +281,86 @@ def test_refused_candidate_keeps_notebook_bytes_and_pending_task(trial, bad):
     assert _submit(trial, task)["outcome"] == "accepted"
 
 
+def test_native_repair_instruction_resubmits_in_the_same_turn(tmp_path):
+    args = ('people/avery-lin.md', ['Unresolved citation'], tmp_path, tmp_path)
+    assert 'Save the same file and stop.' in runner.repair_instruction(*args)
+    instruction = runner.repair_instruction(*args, native=True)
+    assert 'stop' not in instruction
+    assert 'save' in instruction.lower() and 'submit command again in this turn' in instruction
+
+
+@pytest.mark.parametrize('failure', ['candidate', 'claim-audit'])
+@pytest.mark.parametrize('schedule', ['manual', 'slot', 'scheduled'])
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_native_refusal_prints_repair_files_and_same_turn_continuation(trial, failure, schedule, json_mode):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    if failure == 'claim-audit':
+        audit = native.submit(trial, task['id'])
+        Path(audit['candidate']).write_text(json.dumps({'verdict': 'FAIL', 'findings': [{
+            'claim': 'Avery Lin requested a pilot review.', 'issue': 'Scope needs qualification',
+            'evidence': 'The source is the owner’s correction.',
+            'required_correction': 'Attribute the request to the owner. ' * 300}]}))
+    else:
+        path = Path(task['candidate'])
+        path.write_text(path.read_text().replace(source, 'gmail:invented'))
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    cursor.update(slot='2026-09-07T12:00:00+00:00' if schedule == 'slot' else None,
+                  scheduled=schedule == 'scheduled')
+    write_json(state_path(trial, 'round.json'), cursor)
+    prefix = ['rem', '--root', str(trial), *(['--json'] if json_mode else [])]
+    result = CliRunner().invoke(app, [*prefix, 'submit', task['id']])
+    assert result.exit_code == 1, result.output
+    saved = native.pending(trial)[0]
+    data = json.loads(result.stdout)['data'] if json_mode else saved['last_result']
+    fix = Path(task['material']) / 'repair-instructions.md'
+    assert data['fix'] == str(fix)
+    assert data['candidate'] == task['candidate'] and data['submit'] == task['submit']
+    assert (data.get('continuation') == native.SCHEDULED_CONTINUATION) == (schedule != 'manual')
+    corrections = fix.read_text().split('## Required corrections\n', 1)[1]
+    assert 'submit command again in this turn' in corrections and 'and stop' not in corrections
+    assert saved['stage'] == task['stage'] and saved['candidate'] == task['candidate']
+    if failure == 'claim-audit':
+        assert 'Cited-claim audit did not pass; see claim-review.json' in data['reason']
+        assert 'Fix every audit finding' in corrections
+        assert 'Attribute the request to the owner.' not in data['reason']
+    if not json_mode:
+        for line in (f"Refused: {data['reason']}", f'Fix: {fix}', '"Required corrections" at the end',
+                     f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):
+            assert line in result.stdout
+        assert (native.SCHEDULED_CONTINUATION in result.stdout) == (schedule != 'manual')
+        assert len(result.stdout) < 2000
+    _candidate(trial, task, record, source)
+    if failure == 'claim-audit':
+        path = Path(task['candidate'])
+        path.write_text(path.read_text().replace('Avery Lin requested a pilot review.',
+                                                 'The owner recorded Avery’s pilot review request.'))
+    assert _submit(trial, task)['outcome'] == 'accepted'
+
+
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_native_refusal_without_page_repair_points_to_instructions(trial, json_mode):
+    write_json(state_path(trial, 'capture-queue/unrouted.json'),
+               {'role': 'user', 'source': 'codex:unrouted:1', 'timestamp': service.now().isoformat(),
+                'text': 'Store release notes in Markdown.', 'project': ''})
+    task = native.next_task(trial)
+    prefix = ['rem', '--root', str(trial), *(['--json'] if json_mode else [])]
+    result = CliRunner().invoke(app, [*prefix, 'submit', task['id']])
+    assert result.exit_code == 1, result.output
+    saved = native.pending(trial)[0]
+    data = json.loads(result.stdout)['data'] if json_mode else saved['last_result']
+    fix = Path(task['material']) / 'instructions.md'
+    assert data['fix'] == str(fix) and data['candidate'] == task['candidate']
+    assert data['submit'] == task['submit'] and 'continuation' not in data
+    assert not (fix.parent / 'repair-instructions.md').exists()
+    assert data['reason'] in fix.read_text().split('## Required corrections\n', 1)[1]
+    if not json_mode:
+        for line in (f'Fix: {fix}', '"Required corrections" at the end',
+                     f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):
+            assert line in result.stdout
+
+
 def test_changed_input_refuses_without_any_writes(trial):
     record, source = _feedback(trial)
     task = native.next_task(trial)
