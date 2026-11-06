@@ -40,7 +40,7 @@ def prepare(root, config, *, scheduled):
     first = not any(row.get("phase") == "daily-investigation" for row in recent)
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
-              "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 40),
+              "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
               "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
               "changed": [], "same_left": 3, "translations": [], "translated": 0, "sessions": imported}
     if not batch["done"] and batch["digested"] is not None:
@@ -54,10 +54,11 @@ def prepare(root, config, *, scheduled):
 
 
 def _jobs(root, first, logs, sources):
+    limit = read_config(root)["limits"]["jobs_per_round"]
     if first:
         resting = daily._found_nothing_lately(root)
         return [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting]
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting][:limit]
     from datetime import datetime, timedelta
     from .people_pages import correspondents_since, queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
@@ -70,7 +71,7 @@ def _jobs(root, first, logs, sources):
     queued = {row["record"] for row in rows}
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in due_for_retry(root).items() if record not in queued and Notebook(root).exists(record)]
-    return (daily._owner_due(root) + sorted(rows, key=lambda row: row.get("last_activity", ""), reverse=True))[:daily.UPDATE_PAGES]
+    return (daily._owner_due(root) + sorted(rows, key=lambda row: row.get("last_activity", ""), reverse=True))[:limit]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -105,6 +106,20 @@ def prepare_task(root, cursor, config, directory):
                 raise RemError("Source progress changed between tasks; run co rem next --discard")
             write_json(state_path(root, "progress.json"), batch["updated"])
         extract.forget_digest(root)
+    if cursor["current"] and cursor["current"].get("finalized"):
+        _finish_investigation(root, cursor)
+    while cursor["job_index"] < len(cursor["jobs"]):
+        if "investigation_left" not in cursor:
+            remaining = service.daily_cap(root)["remaining"]
+            cursor["investigation_left"] = min(remaining, max(1, min(remaining - 2, daily.INVESTIGATION_CALLS)))
+        if cursor["investigation_left"] <= 0:
+            if cursor["current"] or cursor.get("project_quote"):
+                return {"stop": "investigation portion cap reached; the next scheduled slot can resume this round"}
+            cursor["job_index"] = len(cursor["jobs"])
+            break
+        task = _prepare_job(root, cursor, config, directory)
+        if task:
+            return task
     if cursor["summaries"]:
         rows = cursor["summaries"][:1]
         task = sessions.prepare(root, rows, config, directory=directory, native=True)
@@ -112,18 +127,6 @@ def prepare_task(root, cursor, config, directory):
         files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
         task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
         return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
-    while cursor["job_index"] < len(cursor["jobs"]):
-        if "investigation_left" not in cursor:
-            remaining = service.daily_cap(root)["remaining"]
-            cursor["investigation_left"] = min(remaining, max(1, min(remaining - 2, daily.INVESTIGATION_CALLS)))
-        if cursor["investigation_left"] <= 0:
-            if cursor["current"]:
-                return {"stop": "investigation portion cap reached; the next scheduled slot can resume this round"}
-            cursor["job_index"] = len(cursor["jobs"])
-            break
-        task = _prepare_job(root, cursor, config, directory)
-        if task:
-            return task
     from . import same_person
     pair = next(iter(same_person.candidates(root)), None) if cursor["same_left"] else None
     if pair:
@@ -188,12 +191,19 @@ def _prepare_job(root, cursor, config, directory):
             cursor["job_index"] += 1
             return None
     state = cursor["current"]
-    items = investigate.prepare_round(book, state) if not state.get("tail") else None
+    state.setdefault("before", book.read(record))
+    if book.read(record) != state["before"]:
+        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+    page = {**state["page"], "text": state.get("draft", state["before"])}
+    items = investigate.prepare_round(book, state, page=page) if not state.get("tail") else None
     if items is None:
         items = _followup_items(book, state)
     if items is None:
+        if state.get("draft") and not state.get("finalized"):
+            return _final_investigation(book, cursor, config, directory, state)
         _finish_investigation(root, cursor)
         return None
+    items += state.get("research", [])
     task_inputs = state.get("input_paths", [])
     from . import inquiry
     inquiry_phase = state.get("inquiry", "plan")
@@ -203,6 +213,10 @@ def _prepare_job(root, cursor, config, directory):
         return _task("inquiry", task, cursor, stage=inquiry_phase, record=record,
                      number=state["number"], operation="inquiry")
     task = runner.prepare(book, items, config, stage="investigate", directory=directory, native=True)
+    task["draft_only"] = True
+    task["draft_before"] = state.get("draft", state["before"])
+    task["prior_items"] = [item for part in state["parts"][:state["number"] - 1] for item in part]
+    Path(task["candidate"]).write_text(state.get("draft", state["before"]), encoding="utf-8")
     task["input_paths"] = task_inputs
     if state.get("findings_path"):
         task["prompt"] += f"\nRead inquiry findings at {state['findings_path']}."
@@ -252,34 +266,66 @@ def _prepare_investigation(root, cursor, job, directory):
 
 def _followup_items(book, state):
     record = state["record"]
+    page = state.get("draft", book.read(record))
     if not state.get("tail"):
         state["tail"] = "editing" if state["multi"] else "quotes"
     if state["tail"] == "editing":
-        items = investigate.prepare_editing(book, record, state["context"])
+        items = investigate.prepare_editing(book, record, state["context"], page=page)
         if items:
             return items
         state["tail"] = "quotes"
     if state["tail"] == "quotes" and record.startswith("people/"):
         owner = (read_json(state_path(book.root, "map.json"), {}).get("owner") or {}).get("record")
         target = 3 if record == owner else 2
-        counts = investigate.falls_short(book.read(record), min_insight=target)
+        counts = investigate.falls_short(page, min_insight=target)
         if counts:
-            return investigate.prepare_quotes(book, record, state["parts"], counts, state["context"], insight_target=target)
+            return investigate.prepare_quotes(book, record, state["parts"], counts, state["context"], insight_target=target, page=page)
     return None
+
+
+def _final_investigation(book, cursor, config, directory, state):
+    record = state["record"]
+    items = [{**state["page"], "text": state["draft"]}, *state["context"],
+             {"role": "round", "source": "investigation:round", "text": "\n\n".join(state["ledgers"])},
+             *(item for part in state["parts"] for item in part), *state.get("research", [])]
+    task = runner.prepare(book, items, config, stage="investigate", directory=directory, native=True)
+    task["before"] = {record: state["before"]}
+    task["input_paths"] = state.get("input_paths", [])
+    Path(task["candidate"]).write_text(state["draft"], encoding="utf-8")
+    task["prompt"] = f"Investigation rounds are complete. Submit {task['candidate']} for the final claim audit. " + runner.today_note(book.root)
+    return {**_task("runner", task, cursor, stage="investigate", record=record,
+                   number=state["number"], operation="investigation"), "pass": "final"}
 
 
 def _project_task(root, cursor, config, directory, record):
     previous = cursor.get("project_quote")
     if not previous:
         task = project_pages.prepare(root, record, config=config, directory=directory, native=True)
+        task["draft_only"] = True
         return _task("project", task, cursor, stage="investigate", record=record)
+    if "draft" not in previous:  # A pre-upgrade task already passed its audit and wrote the page.
+        previous["draft"] = Notebook(root).read(record)
+        if previous["draft"] == previous["before"][record]:
+            cursor["job_index"] += 1
+            cursor["project_quote"] = None
+            return None
+        previous["before"] = {record: previous["draft"]}
+        if project_pages.project_falls_short(previous["draft"], sum(i.get("role") == "user" for i in previous["items"])) is None:
+            _finish_project(root, cursor, record, previous["through"])
+            return None
+    if Notebook(root).read(record) != previous["before"][record]:
+        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
     items = previous["items"]
-    counts = project_pages.project_falls_short(Notebook(root).read(record), sum(i.get("role") == "user" for i in items))
-    if counts is None:
-        _finish_project(root, cursor, record, previous["through"])
-        return None
-    task = project_pages.prepare_quotes(Notebook(root), record, items, counts, directory=directory, config=config, native=True)
+    counts = project_pages.project_falls_short(previous["draft"], sum(i.get("role") == "user" for i in items))
+    if counts is None or previous.get("quotes_done"):
+        task = {**previous, "directory": str(directory), "candidate": str(directory / "candidate.md"), "draft_only": False}
+        Path(task["candidate"]).write_text(previous["draft"], encoding="utf-8")
+        task["prompt"] = f"Investigation rounds are complete. Submit {task['candidate']} for the final claim audit. " + runner.today_note(root)
+        return _task("project", task, cursor, stage="investigate", record=record, operation="project-final")
+    task = project_pages.prepare_quotes(Notebook(root), record, items, counts, directory=directory, config=config,
+                                        native=True, page=previous["draft"])
     task["through"] = previous["through"]
+    task["draft_only"] = True
     return _task("project", task, cursor, stage="investigate", record=record, operation="project-quote")
 
 
@@ -288,7 +334,9 @@ def _finish_project(root, cursor, record, through):
     from .refusals import forget_refusal
     previous = cursor["project_quote"]
     items = previous["items"]
-    messages = sum(item.get("role") == "user" for item in items)
+    timestamps = [item["timestamp"] for item in items if item.get("role") == "user" and item.get("timestamp")]
+    through = min(through, max(timestamps))
+    messages = sum(item.get("role") == "user" and item.get("timestamp", "") <= through for item in items)
     project_pages.mark_written(root, record, through, inputs_read=messages,
                                inputs_available=len(project_pages.pending(root, record)[0]))
     forget_refusal(root, record)
@@ -317,7 +365,7 @@ def check_task(root, task, output):
         plan = same_person.prepare_verdict(prepared, output)
         return _commit(root, task, plan, plan["result"])
     if task.get("pass") == "editing":
-        before = prepared["before"][task["record"]]
+        before = prepared.get("draft_before", prepared["before"][task["record"]])
         candidate = Path(prepared["candidate"])
         if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text()):
             raise runner.RunFailed("Editing round cut the lead or a third of the page; fix the candidate")
@@ -329,6 +377,12 @@ def check_task(root, task, output):
         result = runner.check(prepared, output, maintenance_lock_held=True, automatic_repairs=False, native=True)
     if isinstance(result, dict) and result.get("needs_review"):
         return result
+    if isinstance(result, dict) and result.get("no_change"):
+        return {"changed": [], "no_change": True, "report": output["result"]}
+    if prepared.get("draft_only"):
+        from .evidence import additional_research
+        return {"changed": [], "draft": Path(prepared["candidate"]).read_text(encoding="utf-8"),
+                "research": additional_research(root, Path(task["directory"]), prepared["items"]), "report": output["result"]}
     record = task["record"]
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
     if not record and receipt:
@@ -469,6 +523,16 @@ def _advance_retry(root, cursor, task, result):
 
 def _advance_investigation(cursor, task, result):
     state = cursor["current"]
+    if task.get("pass") == "final":
+        state["changed"] = result.get("changed", [])
+        state["finalized"] = not result.get("discarded")
+        if result.get("discarded"):
+            state.pop("draft", None)
+        return
+    if "draft" in result:
+        state["draft"] = result["draft"]
+        state.setdefault("research", []).extend(result.get("research", []))
+        result = {**result, "changed": [state["record"]] if result["draft"] != state["before"] else []}
     if result.get("discarded"):
         from .refusals import material_sources
         if state["number"] <= len(state["parts"]):
@@ -507,12 +571,24 @@ def advance(root, cursor, task, result):
     elif operation == "investigation":
         _advance_investigation(cursor, task, result)
     elif operation == "project":
-        if result.get("discarded"):
+        if result.get("discarded") or result.get("no_change"):
             cursor["job_index"] += 1
         else:
-            cursor["project_quote"] = task["task"]
+            cursor["project_quote"] = dict(task["task"])
+            if "draft" in result:
+                cursor["project_quote"]["draft"] = result["draft"]
+            cursor["project_quote"]["items"] += result.get("research", [])
     elif operation == "project-quote":
-        _finish_project(root, cursor, task["record"], task["task"]["through"])
+        cursor["project_quote"].update(quotes_done=True)
+        if "draft" in result:
+            cursor["project_quote"]["draft"] = result["draft"]
+            cursor["project_quote"]["items"] += result.get("research", [])
+    elif operation == "project-final":
+        if result.get("changed") and not result.get("discarded"):
+            _finish_project(root, cursor, task["record"], task["task"]["through"])
+        else:
+            cursor["job_index"] += 1
+            cursor["project_quote"] = None
     elif operation == "same-person":
         cursor["same_left"] -= 1
     elif operation == "translate":

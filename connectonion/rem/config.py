@@ -61,9 +61,8 @@ def default_config() -> dict:
             # notebook (0.7-1.4M input tokens a call). A page per call costs about
             # 120k, so 6 left one batch a night against a backlog of hundreds of
             # sessions; 30 is less total spend than the old three batches.
-            # 50 since 2026-10-01 (#2032, the owner's choice): the scheduled
-            # slots used 26 of 30 by 06:00 and one manual sync takes about 9,
-            # so a sync started by hand during the day hit the cap.
+            # Native page rounds and their final audits share 200 calls/day;
+            # jobs_per_round bounds the pages offered before session summaries.
             # timeout_seconds is one model turn. Codex reads a large material file
             # piece by piece; at 600 two real turns timed out on 2026-09-23/24
             # (a 300k digest chunk, then a project's material).
@@ -71,7 +70,8 @@ def default_config() -> dict:
             # chunk is read through the same 600-second turn, and at 300k a Codex
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
-            "limits": {"runner_calls_per_day": 50, "translations_per_day": 10, "items_per_batch": 20,
+            "limits": {"runner_calls_per_day": 200, "jobs_per_round": 8,
+                       "translations_per_day": 10, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -145,7 +145,7 @@ def validate(config: dict) -> dict:
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
-              "limits.runner_calls_per_day": {6, 30},
+              "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},
               "limits.quota_floor_percent": {70}}
 EXPLICIT = "config-explicit.json"

@@ -681,9 +681,9 @@ def project_falls_short(page: str, messages: int) -> tuple[int, int] | None:
     return None
 
 
-def prepare_quotes(notebook, record, items, counts, *, directory, config, native=False):
+def prepare_quotes(notebook, record, items, counts, *, directory, config, native=False, page=None):
     from .runner import language_note, today_note
-    page = notebook.read(record)
+    page = notebook.read(record) if page is None else page
     candidate = directory / "candidate.md"
     candidate.write_text(page, encoding="utf-8")
     quote_items = [{**items[0], "text": f"The page as it stands, at {record}:\n\n{page}"},
@@ -763,10 +763,19 @@ def prepare(root, record, *, config, directory, now=None, native=False):
 def check(task, result, *, run=None, lock_held=False, native=False):
     from .runner import promote_with_repairs
     directory, record = Path(task["directory"]), task["record"]
+    if native and Path(task["candidate"]).is_file() and Path(task["candidate"]).read_text(encoding="utf-8") == task["before"][record]:
+        through = page_state(Path(task["root"]), record).get("written_through") or ""
+        newer = any(item.get("role") == "user" and item.get("timestamp", "") > through for item in task["items"])
+        reason = re.search(r"(?im)^\s*NO CHANGE\b[ \t:—–-]*(\w[^\n]*)", str(result.get("result") or ""))
+        if newer and not reason:
+            raise RemError("Unchanged candidate has inputs newer than the page's written_through; "
+                           "the new inputs must be read. Change the candidate or write NO CHANGE with a reason in report.md.")
+        return {"no_change": True}
     return promote_with_repairs(Notebook(Path(task["root"])), record, Path(task["candidate"]),
                                 task["before"][record], task["items"], directory, result,
                                 workdir=directory.parent, config=task["config"], stage="investigate", run=run,
-                                lock_held=lock_held, **({"repairs": 0, "native": True} if native else {}))
+                                lock_held=lock_held, **({"repairs": 0, "native": True,
+                                                       "draft_only": task.get("draft_only", False)} if native else {}))
 
 
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,

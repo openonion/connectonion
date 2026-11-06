@@ -1638,11 +1638,11 @@ def falls_short(page: str, *, min_insight: int = 2) -> tuple[int, int, int] | No
     return None
 
 
-def prepare_quotes(notebook, record, rounds, counts, context=(), *, insight_target=2):
+def prepare_quotes(notebook, record, rounds, counts, context=(), *, insight_target=2, page=None):
     from .page_review import prose
     from .reader_model import SOURCE
     from .runner import RunFailed
-    page = notebook.read(record)
+    page = notebook.read(record) if page is None else page
     cited = {source for _, source in SOURCE.findall(
         prose(page).partition('\n## Sources\n')[2].split('\n## ', 1)[0])}
     quotes, messages, insight = counts
@@ -1699,16 +1699,17 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
             "counts": {"quotes": [counts[0], quotes_after], "insight": [counts[2], insight_after]}}
 
 
-def prepare_editing(notebook, record, context=()):
+def prepare_editing(notebook, record, context=(), *, page=None):
     from .page_review import hedged_lines
-    before = hedged_lines(notebook.read(record))
+    page = notebook.read(record) if page is None else page
+    before = hedged_lines(page)
     if not before:
         return None
     note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
     items = [{"role": "page", "record": record, "source": "investigation:page",
               "timestamp": datetime.now(timezone.utc).isoformat(),
               "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
-                      f"note:\n\n{notebook.read(record)}"},
+                      f"note:\n\n{page}"},
              {"role": "round", "source": "investigation:round", "text": note},
              # The facts the audit judges contact dates against (see quote_turn).
              *[item for item in context if item.get("role") == "facts"]]

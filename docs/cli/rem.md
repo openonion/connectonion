@@ -503,6 +503,23 @@ the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
 claims pass the audit; review names problems back to the writer once at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
+
+Native scheduled rounds investigate pages before summarising sessions, with at
+most five summaries per round. Set `limits.jobs_per_round` (default 8 pages) and
+`limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
+`co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
+The weekly quota safety floor remains 90% by default.
+
+Intermediate native investigation rounds keep private candidates. One final
+claim audit gates page promotion; its packet omits sentences whose wording and
+citations were carried unchanged from the page before the task. Editing an
+unrelated notebook page does not invalidate a prepared task.
+
+A native project candidate left unchanged while its material contains inputs
+newer than the page's `written_through` is refused: the new inputs must be read.
+To record an intentional no-change assessment, write `NO CHANGE: <reason>` in
+the task's `report.md`. An unchanged assessment does not advance input coverage;
+an accepted changed page advances only through the inputs supplied to it.
 A model turn that times out is retried once in the same thread when available, and usage from the failed attempt is counted.
 
 ```bash
@@ -1074,7 +1091,7 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before, at most 5 pages. Both stop at the weekly budget or the floor and
+the run before, up to `limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 

@@ -148,25 +148,20 @@ def _claim_text(text: str) -> str:
     return " ".join(CITATION.sub("", text).split()).removeprefix("- ").removeprefix("* ")
 
 
-def _claim_contexts(page: str) -> list[tuple]:
+def _claim_blocks(page: str):
     """Complete prose blocks, their section path and ordered original identities.
 
     An unchanged fragment in a changed paragraph is not an unchanged claim:
     neighbouring conditions, attribution and temporal placement can qualify it.
     """
     body, _, tail = prose(page).partition("\n## Sources\n")
-    sources = {}
-    for number, source in SOURCE.findall(tail):
-        sources[number] = None if number in sources else source
-    contexts, section, lines = [], {}, []
+    section, lines = {}, []
     for line in [*body.splitlines(), ""]:
         heading = re.match(r"^(#{1,6}) (.+)$", line)
         if not line.strip() or heading or re.match(r"^[ \t]*[-*] ", line):
             if lines:
                 block = "\n".join(lines)
-                identities = tuple((len(_claim_text(block[:match.start()])), sources.get(match[1]))
-                                   for match in CITATION.finditer(block))
-                contexts.append((tuple(sorted(section.items())), _claim_text(block), identities))
+                yield tuple(sorted(section.items())), block
                 lines = []
         if heading:
             level = len(heading[1])
@@ -174,7 +169,57 @@ def _claim_contexts(page: str) -> list[tuple]:
             section[level] = heading[2].strip()
         elif line.strip():
             lines.append(line)
-    return contexts
+
+
+def _claim_contexts(page: str) -> list[tuple]:
+    sources = {}
+    for number, source in SOURCE.findall(prose(page).partition("\n## Sources\n")[2]):
+        sources[number] = None if number in sources else source
+    return [(section, _claim_text(block),
+             tuple((len(_claim_text(block[:match.start()])), sources.get(match[1]))
+                   for match in CITATION.finditer(block)))
+            for section, block in _claim_blocks(page)]
+
+
+def _changed_candidate(candidate, carried):
+    """Remove preserved claim spans and their now-unused source definitions."""
+    contexts = _claim_contexts(candidate)
+    preserved = _preserved_contexts(contexts, _claim_contexts(carried))
+    body, _, sources = prose(candidate).partition("\n## Sources\n")
+    blocks, position = [], 0
+    for context, (_, block) in zip(contexts, _claim_blocks(candidate)):
+        offset = body.index(block, position)
+        blocks.append((context, block, offset))
+        position = offset + len(block)
+    for context, block, offset in reversed(blocks):
+        changed = _without_carried(block, _context_spans(context, preserved))
+        body = body[:offset] + changed + body[offset + len(block):]
+    cited = set(CITATION.findall(body))
+    definitions = [line for line in sources.splitlines() if (match := SOURCE.match(line)) and match[1] in cited]
+    return body + "\n## Sources\n" + "\n".join(definitions) + "\n"
+
+
+def _without_carried(block, spans):
+    tokens = list(re.finditer(r"\S+", CITATION.sub(lambda m: " " * len(m[0]), block)))
+    if tokens and tokens[0][0] in ("-", "*"):
+        tokens = tokens[1:]
+    positions = []
+    for token in tokens:
+        if positions:
+            positions.append(token.start() - 1)
+        positions.extend(range(token.start(), token.end()))
+    merged = []
+    for start, end in sorted(set(spans)):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    for start, end in reversed(merged):
+        left, right = positions[start], positions[end - 1] + 1
+        suffix = re.match(r"(?:\s*\[W?\d+\])+", block[right:])
+        right += suffix.end() if suffix else 0
+        block = block[:left] + block[right:]
+    return block
 
 
 def _context_spans(context: tuple, before: list[tuple]):
@@ -242,7 +287,8 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
 
 
 def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False, directory=None):
-    material, missing = packet(notebook, candidate, record, items)
+    audited = _changed_candidate(candidate, carried) if native and carried else candidate
+    material, missing = packet(notebook, audited, record, items)
     unretained = {key: material[key] for key in ("unretained_citations", "unverified_lines")
                   if material["unretained_citations"]}
     # One citation without a readable original (a carried page, a URL) left
