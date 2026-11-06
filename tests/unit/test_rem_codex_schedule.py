@@ -115,7 +115,7 @@ def test_native_waiting_rules(native, tmp_path, source):
                      "do not start a second", "about a minute", "not a reason to end the turn",
                      "daily cap", "weekly floor", "nothing to do"):
             assert rule in text
-    for rule in ("Work through the printed Now step", "next again", "round is done or stopped", "rg/sed"):
+    for rule in ("Do the printed task (its Now step when shown)", "next again", "round is done or stopped", "rg/sed"):
         assert rule in text
     for deferral in ("follow-up", "if you stop", "next turn"):
         assert deferral not in text
@@ -150,7 +150,7 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
     assert "same command until it exits" in native.definition(root)["prompt"]
-    assert "Work through the printed Now step" in native.definition(root)["prompt"]
+    assert "Do the printed task (its Now step when shown)" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
     assert state_path(root, "consent.json").read_bytes() == consent

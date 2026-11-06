@@ -22,7 +22,7 @@ from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, mainten
 
 
 SCHEDULED_CONTINUATION = (
-    "Work through the printed Now step, then run next again.\n"
+    "Do the printed task (its Now step when shown), submit it, then run next again.\n"
     "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
     "Keep going until next says the round is done or stopped."
 )

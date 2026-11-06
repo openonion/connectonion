@@ -210,7 +210,7 @@ class CodexNative:
                           "co rem next can take several minutes to prepare. Keep waiting on the same command until it exits; "
                           "poll its output and do not start a second next while one is running. "
                           "If it says busy, wait about a minute and run next again; busy is not a reason to end the turn. "
-                          "Work through the printed Now step, then run next again. "
+                          "Do the printed task (its Now step when shown), submit it, then run next again. "
                           "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again. "
                           "Repeat " + shlex.join(command) + " and submit until the round is done or stopped "
                           "(daily cap, weekly floor, nothing to do). "

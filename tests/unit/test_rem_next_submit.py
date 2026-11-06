@@ -126,11 +126,11 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)["data"] if json_mode else None
         text = data.get("continuation", "") if json_mode else result.stdout
-        assert ("Work through the printed Now step" in text) == scheduled
+        assert ("Do the printed task (its Now step when shown)" in text) == scheduled
         if scheduled:
             reminder = data["continuation"] if json_mode else "\n".join(result.stdout.strip().splitlines()[-3:])
             assert len(reminder.splitlines()) <= 3
-            for rule in ("Work through the printed Now step", "rg/sed", "write the candidate",
+            for rule in ("Do the printed task (its Now step when shown)", "rg/sed", "write the candidate",
                          "submit", "next again", "round is done or stopped"):
                 assert rule in reminder
 
@@ -700,7 +700,7 @@ def test_native_insufficient_audit_continues_until_all_citations_checked(trial, 
     now = (f"Now: check {'[1]' if checked else '[W74] [1]'} "
            f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
     assert now in text
-    assert 'Work through the printed Now step' in text
+    assert 'Do the printed task (its Now step when shown)' in text
     saved = native.pending(trial)[0]
     assert saved['stage'] == 'claim-audit' and saved['candidate'] == audit['candidate']
     assert Path(task['candidate']).read_bytes() == candidate
