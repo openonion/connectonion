@@ -52,7 +52,7 @@ def answering_host(recorded_host, monkeypatch):
 
     def info(url, *, timeout, trust_env):
         assert url == f"http://127.0.0.1:{existing['port']}/info"
-        assert timeout == 1.0
+        assert timeout == httpx.Timeout(1.0)
         assert trust_env is False
         return httpx.Response(200, json={"address": identity["address"]})
 
@@ -91,28 +91,28 @@ def test_co_ai_refuses_another_live_host_on_its_global_identity(
     assert key.read_bytes() == original_key
 
 
-def test_a_dead_pid_is_replaced_quietly(recorded_host, live_process, capsys):
+def test_a_dead_pid_is_replaced_with_a_cross_folder_notice(recorded_host, live_process, capsys):
     co_dir, identity, record, _ = recorded_host
     live_process.stdin.close()
     live_process.wait(timeout=10)
 
     assert server.claim_identity(co_dir, identity, "maple", 8124) is None
 
-    assert capsys.readouterr().out == ""
+    assert "This address was last served from" in capsys.readouterr().out
     assert json.loads(record.read_text()) == {
         "address": identity["address"], "name": "maple",
         "project": str(Path.cwd()), "pid": os.getpid(), "port": 8124,
     }
 
 
-def test_a_live_unrelated_pid_with_no_answer_is_replaced_quietly(
+def test_a_live_unrelated_pid_with_no_answer_is_replaced_with_a_notice(
         recorded_host, live_process, capsys):
     co_dir, identity, record, _ = recorded_host
     assert live_process.poll() is None
 
     assert server.claim_identity(co_dir, identity, "maple", 8124) is None
 
-    assert capsys.readouterr().out == ""
+    assert "no matching Host verified now" in capsys.readouterr().out
     assert json.loads(record.read_text()) == {
         "address": identity["address"], "name": "maple",
         "project": str(Path.cwd()), "pid": os.getpid(), "port": 8124,
@@ -176,10 +176,11 @@ def test_an_answering_host_is_verified_regardless_of_pid(answering_host, pid):
     httpx.ReadTimeout("timed out"),
     httpx.Response(200, json={"address": "0xanother-address"}),
     httpx.Response(200, json={}),
+    httpx.Response(200, json=[]),
     httpx.Response(200, text="not JSON"),
     503,
 ])
-def test_an_unverified_host_is_replaced_quietly(recorded_host, monkeypatch, capsys, reply):
+def test_an_unverified_host_is_replaced_with_a_notice(recorded_host, monkeypatch, capsys, reply):
     co_dir, identity, record, _ = recorded_host
 
     def info(url, **kwargs):
@@ -192,7 +193,7 @@ def test_an_unverified_host_is_replaced_quietly(recorded_host, monkeypatch, caps
     monkeypatch.setattr(httpx, "get", info)
 
     assert server.claim_identity(co_dir, identity, "maple", 8124) is None
-    assert capsys.readouterr().out == ""
+    assert "no matching Host verified now" in capsys.readouterr().out
     assert json.loads(record.read_text())["name"] == "maple"
 
 

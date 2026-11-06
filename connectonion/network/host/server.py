@@ -560,22 +560,35 @@ def resolve_agent_identity(co_dir: Path) -> dict:
 SERVED_BY_FILE = "served_by.json"
 
 
+def _answers_as(port: int, address: str) -> bool:
+    """Verify a local Host; a failed probe cannot establish a live owner."""
+    try:
+        response = httpx.get(f"http://127.0.0.1:{port}/info",
+                             timeout=httpx.Timeout(1.0), trust_env=False)
+        info = response.json() if response.status_code == 200 else {}
+    except (json.JSONDecodeError, httpx.RequestError, httpx.InvalidURL):
+        return False
+    return isinstance(info, dict) and info.get("address") == address
+
+
+def _read_identity_claim(record: Path) -> dict:
+    """Missing or corrupt records cannot establish a previous owner."""
+    if not record.exists():
+        return {}
+    try:
+        existing = json.loads(record.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return existing if isinstance(existing, dict) else {}
+
+
 def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) -> Optional[str]:
     """Record who serves this key, or return a verified duplicate's details.
 
-    #642 caught two agents sharing one address: proximity sent calls meant for
-    the deployed agent to the laptop's agent, which answered with different
-    tools. Projects without their own key inherit the global identity, so the
-    record lives beside the key, where every project sharing it can see it.
-
-    A warning used to allow restarts despite stale records. A live duplicate
-    then let the relay split one session across two Hosts (oo-api #283), so the
-    caller now refuses if the recorded Host's /info answers with this address.
-    PIDs can be reused; they are only for the message. Unverified records are
-    replaced quietly, allowing restarts without changing the identity key.
-
-    The working folder is the process's cwd: for `co ai`, co_dir is global
-    ~/.co and its parent does not identify the coding task's folder.
+    Projects sharing the global key need a cross-folder notice (#642), and
+    verified live duplicates must stop to avoid splitting sessions (oo-api #283).
+    PIDs are only for the message. The folder is cwd, since co ai's co_dir is
+    global ~/.co. Unverified records allow restarts without changing the key.
     """
     source = Path(identity.get("source") or co_dir)
     if not source.is_dir():
@@ -585,26 +598,21 @@ def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) ->
     mine = {"name": name, "project": str(Path.cwd()), "address": identity["address"],
             "pid": os.getpid(), "port": port}
 
-    if record.exists():
-        try:
-            existing = json.loads(record.read_text(encoding="utf-8"))
-            if (isinstance(existing, dict)
-                    and existing.get("address") == mine["address"]
-                    and existing.get("port")):
-                response = httpx.get(f"http://127.0.0.1:{existing['port']}/info",
-                                     timeout=1.0, trust_env=False)
-                info = response.json() if response.status_code == 200 else {}
-                if isinstance(info, dict) and info.get("address") == mine["address"]:
-                    return (
-                        f"{identity['address']} is already served by '{existing.get('name')}' "
-                        f"(PID {existing.get('pid')}) in {existing.get('project')} "
-                        f"on port {existing['port']}. "
-                        f"Stop it with `kill {existing.get('pid')}`, then start this Host again."
-                    )
-        except (json.JSONDecodeError, httpx.RequestError, httpx.InvalidURL):
-            # Unreadable records and failed probes cannot establish a live owner.
-            existing = None
+    existing = _read_identity_claim(record)
+    if existing.get("address") == mine["address"]:
+        if existing.get("port") and _answers_as(existing["port"], mine["address"]):
+            return (
+                f"{identity['address']} is already served by '{existing.get('name')}' "
+                f"(PID {existing.get('pid')}) in {existing.get('project')} "
+                f"on port {existing['port']}. "
+                f"Stop it with `kill {existing.get('pid')}`, then start this Host again."
+            )
+        if existing.get("project") and existing["project"] != mine["project"]:
+            print(f"[host] This address was last served from {existing['project']} "
+                  f"(no matching Host verified now); serving it from {mine['project']}.")
 
+    # Check-then-write is not atomic: simultaneous starts can both pass. This
+    # best-effort repeat-start guard accepts that race to avoid stale-lock recovery.
     record.write_text(json.dumps(mine, indent=2), encoding="utf-8")
     return None
 

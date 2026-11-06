@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 
 from connectonion import address
@@ -22,6 +23,80 @@ def shared(tmp_path):
     for co in (first, second):
         co.mkdir(parents=True)
     return home_co, first, second
+
+
+@pytest.fixture
+def previous_project(shared, monkeypatch):
+    home_co, first, second = shared
+    monkeypatch.setattr(Path, "home", lambda: home_co.parent)
+
+    def no_listener(*args, **kwargs):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(httpx, "get", no_listener)
+    monkeypatch.chdir(first.parent)
+    claim_identity(first, resolve_agent_identity(first), "cedar")
+    monkeypatch.chdir(second.parent)
+    return shared
+
+
+class TestTheSecondAgentIsTold:
+
+    @pytest.mark.parametrize("name", ["cedar", "maple"])
+    def test_a_different_project_is_told_without_blocking(
+            self, previous_project, capsys, name):
+        home_co, first, second = previous_project
+
+        assert claim_identity(second, resolve_agent_identity(second), name) is None
+
+        notice = capsys.readouterr().out
+        assert "[host] This address was last served from" in notice
+        assert str(first.parent) in notice
+        assert f"serving it from {second.parent}" in notice
+        assert json.loads((home_co / "served_by.json").read_text())["project"] == str(second.parent)
+
+    @pytest.mark.parametrize("name", ["cedar", "renamed"])
+    def test_a_restart_or_rename_in_the_same_folder_is_quiet(
+            self, previous_project, monkeypatch, capsys, name):
+        _, first, _ = previous_project
+        monkeypatch.chdir(first.parent)
+
+        assert claim_identity(first, resolve_agent_identity(first), name) is None
+        assert capsys.readouterr().out == ""
+
+
+class TestTheWarningTellsTheTruth:
+
+    def test_it_reports_an_unverified_host_without_identity_replacement_advice(
+            self, previous_project, capsys):
+        home_co, _, second = previous_project
+        key = home_co / "keys" / "agent.key"
+        original_key = key.read_bytes()
+
+        assert claim_identity(second, resolve_agent_identity(second), "maple") is None
+
+        notice = capsys.readouterr().out
+        assert "no matching Host verified now" in notice
+        assert "not running" not in notice
+        assert "address.save" not in notice
+        assert "address.generate" not in notice
+        assert "co create" not in notice
+        assert key.read_bytes() == original_key
+
+    @pytest.mark.parametrize("change", ["another-address", "missing-project"])
+    def test_it_only_reports_a_known_project_for_this_address(
+            self, previous_project, capsys, change):
+        home_co, _, second = previous_project
+        record = home_co / "served_by.json"
+        existing = json.loads(record.read_text())
+        if change == "another-address":
+            existing["address"] = address.generate()["address"]
+        else:
+            del existing["project"]
+        record.write_text(json.dumps(existing))
+
+        assert claim_identity(second, resolve_agent_identity(second), "maple") is None
+        assert capsys.readouterr().out == ""
 
 
 class TestAProjectWithItsOwnKey:

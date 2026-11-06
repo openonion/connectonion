@@ -93,9 +93,11 @@ name and port. Stop that process with the shown `kill <pid>` command, then
 restart. This also applies in the same folder and to `co ai` using `~/.co`.
 The `served_by.json` record beside the identity key tracks the serving process.
 Startup verifies that `http://127.0.0.1:<recorded port>/info` answers with the
-same address, with a one-second timeout. Records that cannot be verified are
-replaced quietly, even if their PID is alive. Restarting does not require
-generating or replacing your identity key.
+same address, with a one-second timeout for each network phase, not a one-second
+total deadline. Records that cannot be verified are replaced, even if their PID
+is alive. If the same address was last served from a different working folder,
+a short notice names the old and current folders without blocking startup.
+Restarting does not require generating or replacing your identity key.
 
 **`co host` or `python agent.py`?** The same thing. `co host` runs `./agent.py`
 with the Python co itself runs on, so it works however co was installed. After
