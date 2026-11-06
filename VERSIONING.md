@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc50
+## Current Version: 1.9.3rc51
+
+REM investigations research beyond the mailbox (#2810): question-driven, with web search, co browser
+(never LinkedIn pages), gh and Feishu, verified captures, and pages edited rather than rewritten. The
+native schedule no longer loses a slot when next takes longer than the first tool yield (#2812).
+--mail limits mailbox consent and OS errors name the file (#2809). Clock-pinned REM tests (#2811).
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc51.md).
+
+- 1.9.3rc51 (REM researches beyond the mailbox; native slots wait for next).
+
+### Previous candidate: 1.9.3rc50
 
 Fictional people in fixtures, docs and examples (#2804): tests, the docs that ship in the wheel and
 source examples no longer use the maintainer's or other real people's names and addresses, and a
