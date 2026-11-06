@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc51
+## Current Version: 1.9.3rc52
+
+Scheduled REM keeps working after its saved time (#2814): 15-minute follow-ups continue the
+pending task, refusals print what to fix and resume as small repairs, schedule changes no longer
+invalidate a pending task, and the claim auditor jumps straight to each cited original.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc52.md).
+
+- 1.9.3rc52 (scheduled REM keeps working after its saved time).
+
+### Previous candidate: 1.9.3rc51
 
 REM investigations research beyond the mailbox (#2810): question-driven, with web search, co browser
 (never LinkedIn pages), gh and Feishu, verified captures, and pages edited rather than rewritten. The
