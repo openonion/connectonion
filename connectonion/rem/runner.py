@@ -1066,7 +1066,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
-            from .project_claim_review import prepare, check
+            from .project_claim_review import prepare, check, audit_progress
             audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True, directory=directory)
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
@@ -1075,7 +1075,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             if "report" in audit:
                 report = audit["report"]
             elif saved.get("sha256") == digest and output.is_file():
-                report, audit_usage = check(saved["task"], {"result": json.dumps(read_json(output, None), ensure_ascii=False), "usage": None})
+                decision = json.loads(output.read_text(encoding="utf-8"))
+                checked, total = audit_progress(text, directory)
+                # Only the model's own valid INSUFFICIENT decision needs checkpoints.
+                # Code-derived insufficient keeps the child runner's existing policy.
+                if (str(decision.get("verdict", "")).lower() == "insufficient"
+                        and isinstance(decision.get("findings"), list)
+                        and checked < total):
+                    return {"needs_review": audit["prompt"], "candidate": str(output),
+                            "continue_review": "Continue checking from the notes and submit when every citation is checked."}
+                report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
             else:
                 output.unlink(missing_ok=True)
                 if saved.get("sha256") != digest:

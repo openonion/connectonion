@@ -110,14 +110,14 @@ def _inputs(root, task, directory, *, handler):
 
 
 def _audit_progress(task):
+    from .project_claim_review import audit_progress
     directory = Path(task["material"])
     notes = directory / "notes.md"
-    if task["stage"] != "claim-audit" or not notes.is_file():
+    if task["stage"] != "claim-audit":
         return None
     candidate = read_json(directory / "audit-material.json", {})["candidate"]
-    citations = set(re.findall(r"^\s*[-*]\s+\[(W?\d+)\]\s+", candidate.partition("\n## Sources\n")[2], re.M))
-    checked = set(re.findall(r"^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b", notes.read_text(), re.M))
-    return f"Audit progress: {len(checked & citations)} of {len(citations)} citations checked ({notes})"
+    checked, total = audit_progress(candidate, directory)
+    return f"Audit progress: {checked} of {total} citations checked ({notes})"
 
 
 def _display(root, task):
@@ -125,6 +125,8 @@ def _display(root, task):
     refusal = task.get("last_result", {})
     if refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]:
         result.update(stage=task["stage"] + " (repair)", reason=refusal["reason"], fix=refusal.get("fix"))
+    elif refusal.get("outcome") == "refused" and task["stage"] == "claim-audit":
+        result["reason"] = refusal["reason"]
     cursor = read_json(state_path(root, "round.json"), {})
     if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
@@ -422,6 +424,9 @@ def _check_submission(root, task):
             _problem(root, proposal)
         return native_round.check_task(root, task, output)
     except (RemError, json.JSONDecodeError) as error:
+        if task["stage"] == "claim-audit" and isinstance(error, json.JSONDecodeError):
+            return _continue_review(root, task, "Write valid JSON to audit-output.json. "
+                                    "Continue checking from the notes and submit when every citation is checked.")
         return _refuse_submission(root, task, str(error))
 
 
@@ -475,7 +480,19 @@ def _refuse_submission(root, task, reason):
     return task["last_result"]
 
 
+def _continue_review(root, task, reason):
+    display = _display(root, task)
+    result = {"outcome": "refused", "reason": reason,
+              **{key: display[key] for key in ("id", "stage", "candidate", "submit", "audit_progress", "continuation") if key in display}}
+    task["last_result"] = result
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
+    _log(root, task, "pending", stage="claim-audit", reason=reason)
+    return result
+
+
 def _request_review(root, task, result):
+    if result.get("continue_review"):
+        return _continue_review(root, task, result["continue_review"])
     directory = Path(task["directory"])
     task["review_unreserved"] = True
     task["stage"] = "claim-audit"

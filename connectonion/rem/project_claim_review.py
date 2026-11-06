@@ -331,6 +331,15 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
             "material": material, "missing": missing, "unretained": unretained}
 
 
+def audit_progress(candidate, directory):
+    """Count citation checkpoints shared by native display and submission."""
+    citations = set(re.findall(r"^\s*[-*]\s+\[(W?\d+)\]\s+", candidate.partition("\n## Sources\n")[2], re.M))
+    notes = directory / "notes.md"
+    text = notes.read_text(encoding="utf-8") if notes.is_file() else ""
+    checked = set(re.findall(r"^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b", text, re.M))
+    return len(checked & citations), len(citations)
+
+
 def check(task, result):
     candidate, carried = task["candidate"], task["carried"]
     material, missing, unretained = task["material"], task["missing"], task["unretained"]

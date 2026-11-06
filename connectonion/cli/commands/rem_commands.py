@@ -1992,6 +1992,9 @@ def make_rem_app(factory):
         repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
                   + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
         if value.get("outcome") == "refused":
+            if value.get("stage") == "claim-audit":
+                return (f"Stage: claim-audit\n{value['audit_progress']}\n{value['reason']}"
+                        + f"\nSubmit: {value['submit']}")
             return repair
         if value.get("outcome") == "task":
             if repair:
@@ -1999,8 +2002,9 @@ def make_rem_app(factory):
             lines = len(value['instructions'].splitlines())
             notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""
             progress = "\n" + value['audit_progress'] if value.get('audit_progress') else ""
+            reason = "\n" + value['reason'] if value.get('reason') else ""
             return (f"Task: {value['id']}\nStage: {value['stage']}\nWorkspace: {value['material']}"
-                    + progress
+                    + progress + reason
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
