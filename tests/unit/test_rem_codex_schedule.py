@@ -53,9 +53,12 @@ def running(command, **kwargs):
 
 
 @pytest.fixture(autouse=True)
-def known_timezone(monkeypatch):
+def known_timezone(monkeypatch, rem_clock):
+    from connectonion.rem import service
+
     monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "Australia/Sydney")
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_timezone", lambda: "Australia/Sydney")
+    monkeypatch.setattr("connectonion.rem.codex_schedule.time.time", lambda: service.now().timestamp())
     initialize = CodexNative.__init__
 
     def isolated_native(self, *args, **kwargs):

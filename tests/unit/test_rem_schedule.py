@@ -12,6 +12,9 @@ from connectonion.rem.files import RemError
 from connectonion.rem.schedule import LABEL, Launchd, Unsupported, label_for
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 class Calls:
     def __init__(self):
         self.commands = []

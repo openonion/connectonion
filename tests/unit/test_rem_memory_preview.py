@@ -178,7 +178,7 @@ def test_daily_maintains_before_one_investigation(root, monkeypatch):
     assert calls == ['maintain', 'investigate', 'maintain']
 
 
-def test_scheduled_daily_waits_for_a_due_slot(root, monkeypatch):
+def test_scheduled_daily_waits_for_a_due_slot(root, monkeypatch, rem_clock):
     from connectonion.rem.daily import run_daily
     from connectonion.rem.config import prepare
     prepare(root)

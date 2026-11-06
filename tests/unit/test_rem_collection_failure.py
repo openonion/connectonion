@@ -15,6 +15,9 @@ from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import RemError, read_json, state_path, write_json
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 @pytest.fixture
 def notebook(tmp_path, monkeypatch):
     root = tmp_path / "rem"

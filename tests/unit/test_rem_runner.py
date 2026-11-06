@@ -1831,23 +1831,28 @@ def test_material_carries_local_times_without_changing_the_sources(notebook, del
     assert delegate[0][1]["material"] == shown
 
 
-def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
+def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate, monkeypatch):
     """Corin's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
     from connectonion.rem.config import set_config
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 5, 13, 1, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(runner, "datetime", Clock)
     set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
-    today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
-    assert f"Today is {today} (Australia/Sydney)" in note
+    assert "Today is 2026-11-06 (Australia/Sydney)" in note
     assert "never an open thread" not in note
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
     handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
-    assert f"Today is {today}" in handed
+    assert "Today is 2026-11-06" in handed
     assert "A past scheduled date alone does not establish occurrence or completion" in handed
     assert "an unanswered request remains dated with its outcome unknown" in handed
     assert "a promise past its due date with no delivery stays overdue and open" in handed
