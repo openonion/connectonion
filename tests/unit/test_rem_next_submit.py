@@ -99,6 +99,87 @@ def test_next_prepares_real_maintenance_without_model_or_notebook_copy(trial):
     assert native.next_task(trial)["outcome"] == "claimed"
 
 
+def test_next_prints_progress_before_collecting(trial, monkeypatch, capsys):
+    from connectonion.rem import native_round
+    prepare_round = native_round.prepare
+
+    def slow_prepare(*args, **kwargs):
+        assert "Preparing the next REM task" in capsys.readouterr().err
+        return prepare_round(*args, **kwargs)
+
+    monkeypatch.setattr(native_round, "prepare", slow_prepare)
+    native.next_task(trial, scheduled=True)
+
+
+def test_concurrent_next_waits_and_offers_the_prepared_task(trial, capsys):
+    _feedback(trial)
+    write_json(state_path(trial, "worker.json"), {"enabled": True})
+    script = """
+import sys, time
+from datetime import datetime
+from pathlib import Path
+from connectonion.rem import daily, native, native_round, quota, service
+service.now = lambda: datetime.fromisoformat(sys.argv[2])
+daily.now = service.now
+quota.read = lambda config: {"unknown": "fixture"}
+daily._clients = lambda sources: {}
+prepare = native_round.prepare
+def slow_prepare(*args, **kwargs):
+    print("collecting", flush=True)
+    time.sleep(0.5)
+    return prepare(*args, **kwargs)
+native_round.prepare = slow_prepare
+task = native.next_task(Path(sys.argv[1]), scheduled=True)
+print(task["id"], flush=True)
+"""
+    with subprocess.Popen([sys.executable, "-c", script, str(trial), service.now().isoformat()],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as first:
+        assert first.stdout.readline().strip() == "collecting"
+        task = native.next_task(trial, scheduled=True)
+        stdout, stderr = first.communicate(timeout=10)
+    assert first.returncode == 0, stderr
+    assert task["outcome"] == "task"
+    assert task["id"] == stdout.strip()
+    assert "Waiting for another co rem next" in capsys.readouterr().err
+
+
+def test_next_fails_fast_for_other_maintenance(trial):
+    with maintenance_lock(trial):
+        with pytest.raises(RemError, match="wait.*retry.*next"):
+            native.next_task(trial)
+
+
+def test_next_waits_for_submit_and_offers_its_audit_task(trial, capsys):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    script = """
+import sys, time
+from datetime import datetime
+from pathlib import Path
+from connectonion.rem import native, quota, service
+service.now = lambda: datetime.fromisoformat(sys.argv[2])
+quota.read = lambda config: {"unknown": "fixture"}
+check = native._check_submission
+def slow_check(*args, **kwargs):
+    print("checking", flush=True)
+    time.sleep(0.5)
+    return check(*args, **kwargs)
+native._check_submission = slow_check
+result = native.submit(Path(sys.argv[1]), sys.argv[3])
+assert result["outcome"] == "task", result
+"""
+    with subprocess.Popen([sys.executable, "-c", script, str(trial), service.now().isoformat(), task["id"]],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as first:
+        assert first.stdout.readline().strip() == "checking"
+        audit = native.next_task(trial)
+        stdout, stderr = first.communicate(timeout=10)
+    assert first.returncode == 0, stderr
+    assert audit["outcome"] == "task" and audit["stage"] == "claim-audit"
+    assert audit["id"] == task["id"]
+    assert "Waiting for another co rem next" in capsys.readouterr().err
+
+
 def test_submit_promotes_real_valid_candidate_and_logs_unknown_usage(trial):
     record, source = _feedback(trial)
     task = native.next_task(trial)
@@ -179,7 +260,7 @@ def test_daily_cap_records_only_scheduled_visits(trial, scheduled, pending_revie
     result = CliRunner().invoke(app, args)
     after = service.now()
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines()[0] == "daily cap reached"
+    assert result.stdout.splitlines()[0] == "daily cap reached"
     records = [row for row in service.run_logs(trial) if row["id"] not in existing]
     assert len(records) == int(scheduled)
     if scheduled:

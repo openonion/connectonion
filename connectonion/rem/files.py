@@ -159,20 +159,31 @@ class _InOrder:
         self._queue = deque()
         self._held = False
 
-    def acquire(self, timeout: float = 0) -> bool:
+    def acquire(self, timeout: float = 0, on_busy=None) -> bool:
         me = object()
         with self._changed:
             if not self._held and not self._queue:
                 self._held = True
                 return True
+            if on_busy:
+                on_busy()
             if timeout <= 0:
                 return False
             self._queue.append(me)
-            turn = self._changed.wait_for(lambda: not self._held and self._queue[0] is me, timeout)
-            self._queue.remove(me)
-            self._held = self._held or turn
-            self._changed.notify_all()
-            return turn
+            deadline = time.monotonic() + timeout
+            try:
+                while self._held or self._queue[0] is not me:
+                    if on_busy:
+                        on_busy()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._changed.wait(min(1, remaining) if on_busy else remaining)
+                self._held = True
+                return True
+            finally:
+                self._queue.remove(me)
+                self._changed.notify_all()
 
     def release(self) -> None:
         with self._changed:
@@ -185,21 +196,50 @@ class _InOrder:
 # while a waiter slept between tries: three organisation pages waited ten
 # minutes and failed (1.9.2b2 trial).
 _THREADS = _InOrder()
+MAINTENANCE_BUSY = "co rem is busy; wait for the active maintenance run, then retry co rem next (the round is not over)"
+
+
+def _native_waiter(root: Path, waited_for: dict):
+    announced = False
+    missing_since = None
+
+    def on_busy():
+        nonlocal announced, missing_since
+        owner = read_json(state_path(root, "maintenance-owner.json"), {})
+        # Metadata is published after acquisition and cleared before release.
+        # Give those windows one polling interval, including an older holder
+        # that cannot identify itself, rather than misclassify a native next.
+        if not owner and missing_since is None:
+            missing_since = time.monotonic()
+        if owner and owner.get("operation") not in ("next", "submit") or (
+                not owner and time.monotonic() - missing_since >= 1):
+            raise RemError(MAINTENANCE_BUSY)
+        if owner:
+            waited_for.update(owner)
+            missing_since = None
+        if not announced:
+            print("Waiting for another co rem next to finish preparing (or submit to finish)…",
+                  file=sys.stderr, flush=True)
+            announced = True
+
+    return on_busy
 
 
 @contextmanager
-def maintenance_lock(root: Path, wait: float = 0):
+def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False):
     """One OS-owned lock for every write path; process death releases it.
 
-    `wait` is how many seconds to keep trying. A scheduled tick gives up at
-    once and retries on the next one; a finished investigation has no next
-    tick, so it waits rather than lose a page it already paid for.
+    `wait` bounds the wait. Native next waits only for another next/submit;
+    other scheduled maintenance still gives up immediately.
     """
-    if not _THREADS.acquire(timeout=wait):
-        raise RemError("co rem is busy; wait for the active maintenance run")
+    deadline = time.monotonic() + wait
+    waited_for = {}
+    on_busy = _native_waiter(root, waited_for) if wait_for_native else None
+    if not _THREADS.acquire(timeout=wait, on_busy=on_busy):
+        raise RemError(MAINTENANCE_BUSY)
     try:
-        with _file_lock(root, wait):
-            yield
+        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy):
+            yield waited_for
     finally:
         _THREADS.release()
 
@@ -231,7 +271,7 @@ def _try_lock(fd: int) -> None:
 
 
 @contextmanager
-def _file_lock(root: Path, wait: float):
+def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None):
     """The lock other processes see: a scheduled tick, a second terminal."""
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -243,10 +283,18 @@ def _file_lock(root: Path, wait: float):
                 _try_lock(fd)
                 break
             except BlockingIOError as error:
+                if on_busy:
+                    on_busy()
                 if time.monotonic() >= deadline:
-                    raise RemError("co rem is busy; wait for the active maintenance run") from error
+                    raise RemError(MAINTENANCE_BUSY) from error
                 time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
-        yield
+        owner = state_path(root, "maintenance-owner.json")
+        write_json(owner, {"pid": os.getpid(), "operation": operation})
+        try:
+            yield
+        finally:
+            # Keep the path stable: deleting it races a waiter's read_json.
+            write_json(owner, {})
     finally:
         os.close(fd)
 
