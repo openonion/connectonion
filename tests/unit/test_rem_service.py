@@ -1460,16 +1460,34 @@ def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path)
     assert report["by_model"]["m"]["input_tokens_per_1k_chars"] == 250.0
 
 
+@pytest.mark.parametrize("approved", [False, True])
+def test_stalled_archive_opens_only_approved_mailboxes(rem, monkeypatch, approved):
+    from connectonion.rem import service
+    root, _ = rem
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": approved, "consented": approved}}
+    monkeypatch.setattr(service, "subscriptions", lambda root: sources)
+    monkeypatch.setattr(service, "archive_state", lambda *a, **kw: {"stalled": True})
+    monkeypatch.setattr(service, "mail_available", lambda kind: True)
+    monkeypatch.setattr(service, "mail_client", lambda kind: kind)
+    monkeypatch.setattr(service, "resume_stalled", lambda root, clients, **kw: clients)
+    assert set(service._resume_archive(root)) == ({"gmail", "outlook"} if approved else {"gmail"})
+
+
 def test_a_sync_resumes_a_stalled_init_archive_and_status_stops_mentioning_it(rem, monkeypatch):
     """#2035: only `init` resumed the archive; a day of investigations asked the servers instead."""
     from connectonion.rem.mail_archive import archive_init
+    from connectonion.rem.source import Batch
     from tests.unit.test_rem_mail_archive import T0, Bodies, Clock, _inventory
     root, _ = rem
+    toggle_source(root, "gmail", True)
+    approve_sources(root)
     archive_init(root, _inventory(root), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
     mail = Bodies()
     monkeypatch.setattr("connectonion.rem.service.now", lambda: T0 + timedelta(hours=20))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
     monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: mail)
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch([], {}))
     assert status(root)["mail_archive"]["stalled"]                      # said before anything resumes it
     record = run_sync(root, runner=lambda *a, **kw: {"usage": {}})
     assert record["mail_archive"]["phase"] == "complete" and record["mail_archive"]["reused"] == 2

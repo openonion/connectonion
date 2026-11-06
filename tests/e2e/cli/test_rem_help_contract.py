@@ -40,6 +40,14 @@ def help_of(words):
     return runner.invoke(app, ["rem", *words, "--help"], terminal_width=200).stdout
 
 
+def test_rem_init_options_document_repeatable_mail_selection():
+    options = help_of(["init"]).split("Options:", 1)[1].split("Output:", 1)[0]
+    line = next((line for line in options.splitlines() if "--mail " in line), "")
+    assert "gmail|outlook" in line
+    assert "repeatable" in line
+    assert "consent" in options and "subscribe" in options
+
+
 @pytest.mark.parametrize("name", sorted(pages()))
 def test_every_page_is_what_its_command_prints(name):
     words = name.split()[2:]

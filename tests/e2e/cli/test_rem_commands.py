@@ -26,6 +26,30 @@ def invoke(root, *args):
     return runner.invoke(app, ["rem", "--root", str(root), *args])
 
 
+@pytest.mark.parametrize("as_json", [False, True])
+@pytest.mark.parametrize("number,reason,second", [
+    (2, "No such file or directory", None),
+    (13, "Permission denied", None),
+    (18, "Invalid cross-device link", "destination.jsonl"),
+])
+def test_rem_os_errors_name_files_and_reason(tmp_path, monkeypatch, as_json, number, reason, second):
+    path = tmp_path / "sessions" / "vanished rollout.jsonl"
+    destination = str(tmp_path / second) if second else None
+
+    def fail(root, **kwargs):
+        raise OSError(number, reason, str(path), None, destination)
+
+    monkeypatch.setattr("connectonion.rem.service.status", fail)
+    result = invoke(tmp_path, *(["--json"] if as_json else []), "status")
+    assert result.exit_code == 1, result.output
+    message = json.loads(result.stdout)["data"] if as_json else Text.from_ansi(result.output).plain
+    assert str(path) in message
+    assert reason in message
+    if destination:
+        assert destination in message
+    assert "config" in (json.loads(result.stdout)["next"] if as_json else result.output)
+
+
 @pytest.mark.parametrize("args", [(), ("status",), ("config",), ("subscriptions",),
                                  ("list", "people"), ("logs",), ("search", "Alice")])
 def test_inspection_before_start_does_not_create_files(tmp_path, args):

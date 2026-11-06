@@ -120,6 +120,8 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
           one command that confirms the ones you keep.
 Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
+          --mail gmail|outlook  Select mailboxes to read, consent to and subscribe (repeatable).
+                              Omit to use connected mailboxes unless unsubscribed; prior consent is kept.
           --all-history    Discover all available mail years; recent bodies only.
           --investigate-all Scan history and select every eligible person and project; quota floor still applies.
           --estimate-only  Map and forecast, with no model turns or body archive.
