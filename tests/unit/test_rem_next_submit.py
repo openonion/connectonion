@@ -126,11 +126,11 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)["data"] if json_mode else None
         text = data.get("continuation", "") if json_mode else result.stdout
-        assert ("Do as many tasks as you can" in text) == scheduled
+        assert ("Do the printed task (its Now step when shown)" in text) == scheduled
         if scheduled:
             reminder = data["continuation"] if json_mode else "\n".join(result.stdout.strip().splitlines()[-3:])
             assert len(reminder.splitlines()) <= 3
-            for rule in ("next follow-up continues within 15 minutes", "rg/sed", "write the candidate",
+            for rule in ("Do the printed task (its Now step when shown)", "rg/sed", "write the candidate",
                          "submit", "next again", "round is done or stopped"):
                 assert rule in reminder
 
@@ -577,6 +577,169 @@ def test_schedule_change_and_start_accept_pending_audit(trial, monkeypatch):
     accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
     assert accepted.exit_code == 0, accepted.output
     assert "accepted" in accepted.output
+
+
+def test_audit_notes_are_not_task_inputs_and_edits_allow_submit(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    notes = Path(task['material']) / 'notes.md'
+    notes.write_text('Writer notes.\n')
+    saved = native.pending(trial)[0]
+    inputs = native._inputs(trial, saved['task'], notes.parent, handler=saved['handler'])
+    assert str(notes) not in inputs
+    assert str(notes) not in saved['inputs']
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    notes.write_text('[1] PASS — The original requests a pilot review.\n')
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+@pytest.mark.parametrize('scheduled', [False, True])
+@pytest.mark.parametrize('checked', [0, 1, 2, 12])
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, scheduled, checked, json_mode):
+    record, source = _feedback(trial)
+    extra_sources = []
+    for number in range(2, 12):
+        row = reflections.add(trial, record, f'Avery Lin requested pilot review {number}.', author='Morgan Vale',
+                              basis='Original request', kind='correction')
+        extra_sources.append((number, 'reflection:' + row['id']))
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    directory = Path(task['material'])
+    web = directory / 'web'
+    web.mkdir()
+    (web / 'team.md').write_text('Avery leads Atlas.')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/team', 'file': 'team.md', 'date': '2026-11-06'}]))
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('## Who they are\n',
+        '## Who they are\n- Avery leads Atlas. [W74]\n').replace('## Sources\n',
+        '## Sources\n- [W74] https://example.org/team — 2026-11-06\n'))
+    candidate.write_text(candidate.read_text().replace('## Who they are\n', '## Who they are\n' + ''.join(
+        f'- Avery Lin requested pilot review {number}. [{number}]\n' for number, _ in extra_sources))
+        + ''.join(f'- [{number}] {citation}\n' for number, citation in extra_sources))
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    ids = ['W74', '1', *[str(number) for number in range(2, 12)]]
+    notes = directory / 'notes.md'
+    first_now = (f"Now: check {' '.join(f'[{citation}]' for citation in ids[:8])} "
+                 f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
+    entries = ['[W74] PASS — The team page names Avery as lead.\n',
+               '[1] PASS — The original requests a pilot review.\n']
+    entries += [f'[{number}] PASS — The original requests pilot review {number}.\n' for number, _ in extra_sources]
+    notes.write_text('Audit notes: [1] is not checked by this heading.\n[999] PASS — Unrelated.\n'
+                     + ''.join(entries[:checked]) + (entries[0] if checked else ''))
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    result = CliRunner().invoke(app, ['rem', '--root', str(trial), *(['--json'] if json_mode else []), 'next',
+                                    *(['--scheduled'] if scheduled else [])])
+    assert result.exit_code == 0, result.output
+    text = json.loads(result.stdout)['data']['audit_progress'] if json_mode else result.stdout
+    assert f'Audit progress: {checked} of 12 citations checked ({notes})' in text
+    now = (f"Now: check {' '.join(f'[{citation}]' for citation in ids[checked:checked + 8])} "
+           f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.'
+           if checked < len(ids) else 'Now: all citations checked; write audit-output.json from the notes and run the Submit command.')
+    assert now in text
+    assert first_now in audit['audit_progress']
+    assert notes.read_text().count('PASS') == 1 + checked + bool(checked)
+
+
+@pytest.fixture
+def checkpoint_audit(trial):
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    record, source = _feedback(trial)
+    task = native.next_task(trial, scheduled=True)
+    _candidate(trial, task, record, source)
+    directory = Path(task['material'])
+    web = directory / 'web'
+    web.mkdir()
+    (web / 'team.md').write_text('Avery leads Atlas.')
+    write_json(web / 'sources.json', [
+        {'url': 'https://example.org/team', 'file': 'team.md', 'date': '2026-11-06'}])
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('## Who they are\n',
+        '## Who they are\n- Avery leads Atlas. [W74]\n').replace('## Sources\n',
+        '## Sources\n- [W74] https://example.org/team — 2026-11-06\n'))
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    return task, audit
+
+
+@pytest.mark.parametrize('checked', [None, 0, 1])
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_native_insufficient_audit_continues_until_all_citations_checked(trial, checkpoint_audit, checked, json_mode):
+    task, audit = checkpoint_audit
+    directory = Path(task['material'])
+    notes = directory / 'notes.md'
+    if checked is not None:
+        notes.write_text('Audit notes: [1] is not a checkpoint.\n[999] PASS — Unrelated.\n'
+                         + '[W74] PASS — Avery leads Atlas.\n' * checked)
+    before_notes = notes.read_bytes() if notes.exists() else None
+    candidate = Path(task['candidate']).read_bytes()
+    before = _canonical(trial)
+    Path(audit['candidate']).write_text('{"verdict":"INSUFFICIENT","findings":[],"reason":"source review remains incomplete"}')
+    cli = CliRunner()
+    result = cli.invoke(app, ['rem', '--root', str(trial), *(['--json'] if json_mode else []), 'submit', task['id']])
+    assert result.exit_code == 1, result.output
+    if json_mode:
+        data = json.loads(result.stdout)['data']
+        assert data['outcome'] == 'refused' and data['stage'] == 'claim-audit'
+        assert 'fix' not in data
+        assert 'instructions' not in data
+        text = '\n'.join(str(value) for value in data.values())
+    else:
+        text = result.stdout
+        assert 'Stage: claim-audit' in text
+        assert f'Submit: {audit["submit"]}' in text
+        assert len(text.splitlines()) <= 12
+    assert f'Audit progress: {checked or 0} of 2 citations checked' in text
+    assert 'Continue checking from the notes' in text
+    assert 'submit when every citation is checked' in text
+    now = (f"Now: check {'[1]' if checked else '[W74] [1]'} "
+           f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
+    assert now in text
+    assert 'Do the printed task (its Now step when shown)' in text
+    saved = native.pending(trial)[0]
+    assert saved['stage'] == 'claim-audit' and saved['candidate'] == audit['candidate']
+    assert Path(task['candidate']).read_bytes() == candidate
+    assert (notes.read_bytes() if notes.exists() else None) == before_notes
+    assert _canonical(trial) == before
+    # Finish the same audit without another writer or repair turn.
+    notes.write_text('[1] PASS — Pilot review requested.\n[W74] INSUFFICIENT — Original unverifiable.\n')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+def test_native_insufficient_audit_accepts_complete_notes(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    notes = Path(task['material']) / 'notes.md'
+    notes.write_text('[W74] INSUFFICIENT — Original unverifiable.\n[1] PASS — Pilot review requested.\n')
+    Path(audit['candidate']).write_text('{"verdict":"INSUFFICIENT","findings":[]}')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+@pytest.mark.parametrize('decision', [{'verdict': 'UNKNOWN', 'findings': []}, {'verdict': 'INSUFFICIENT'}])
+def test_native_code_normalized_insufficient_still_accepts_without_notes(trial, checkpoint_audit, decision):
+    task, audit = checkpoint_audit
+    Path(audit['candidate']).write_text(json.dumps(decision))
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+def test_native_invalid_audit_json_keeps_claim_audit_and_candidate(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    notes = Path(task['material']) / 'notes.md'
+    notes.write_text('[1] PASS — Pilot review requested.\n')
+    before_notes = notes.read_bytes()
+    candidate = Path(task['candidate']).read_bytes()
+    Path(audit['candidate']).write_text('{"verdict":')
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused' and result['stage'] == 'claim-audit'
+    assert 'fix' not in result
+    assert 'valid JSON' in result['reason']
+    assert native.pending(trial)[0]['stage'] == 'claim-audit'
+    assert notes.read_bytes() == before_notes
+    assert Path(task['candidate']).read_bytes() == candidate
 
 
 def test_schedule_change_preserves_archived_source_view(rem_mail_threads):
@@ -1697,11 +1860,17 @@ def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
         '## Sources\n- [2] https://example.org/team — 2026-11-06\n'))
     audit = native.submit(trial, task['id'])
     assert audit['outcome'] == 'task' and audit['stage'] == 'claim-audit'
+    notes = directory / 'notes.md'
+    notes.write_text('[2] PASS — Avery leads Atlas.\n')
+    repeated = native.submit(trial, task['id'])
+    assert repeated['stage'] == 'claim-audit'
+    assert notes.read_text() == '[2] PASS — Avery leads Atlas.\n'
     Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     body.write_text('Avery left Atlas.')
     refreshed = native.submit(trial, task['id'])
     assert refreshed['outcome'] == 'task' and refreshed['stage'] == 'claim-audit'
     assert 'Avery left Atlas.' in Path(refreshed['material'], 'audit-material.md').read_text()
+    assert not notes.exists()
 
 
 @pytest.mark.parametrize('alive', [False, True])

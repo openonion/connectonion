@@ -22,10 +22,11 @@ from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, mainten
 
 
 SCHEDULED_CONTINUATION = (
-    "Do as many tasks as you can; if you stop, the next follow-up continues within 15 minutes.\n"
+    "Do the printed task (its Now step when shown), submit it, then run next again.\n"
     "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
-    "Continue until the round is done or stopped, or leave the pending task for the next follow-up."
+    "Keep going until next says the round is done or stopped."
 )
+AUDIT_BATCH_SIZE = 8
 
 
 def pending(root):
@@ -109,14 +110,35 @@ def _inputs(root, task, directory, *, handler):
     return {str(path): _input_hash(root, path) for path in sorted(paths)}
 
 
+def _audit_progress(task):
+    from .project_claim_review import audit_progress
+    directory = Path(task["material"])
+    notes = directory / "notes.md"
+    if task["stage"] != "claim-audit":
+        return None
+    candidate = read_json(directory / "audit-material.json", {})["candidate"]
+    checked, total, unchecked = audit_progress(candidate, directory)
+    now = "Now: all citations checked; write audit-output.json from the notes and run the Submit command."
+    if unchecked:
+        batch = " ".join(f"[{citation}]" for citation in unchecked[:AUDIT_BATCH_SIZE])
+        now = (f"Now: check {batch} (next {AUDIT_BATCH_SIZE} unchecked, in Sources order) "
+               f"and append one line per citation to {notes} before doing anything else.")
+    return f"Audit progress: {checked} of {total} citations checked ({notes})\n{now}"
+
+
 def _display(root, task):
     result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
     refusal = task.get("last_result", {})
     if refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]:
         result.update(stage=task["stage"] + " (repair)", reason=refusal["reason"], fix=refusal.get("fix"))
+    elif refusal.get("outcome") == "refused" and task["stage"] == "claim-audit":
+        result["reason"] = refusal["reason"]
     cursor = read_json(state_path(root, "round.json"), {})
     if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
+    progress = _audit_progress(task)
+    if progress:
+        result["audit_progress"] = progress
     return result
 
 
@@ -408,6 +430,9 @@ def _check_submission(root, task):
             _problem(root, proposal)
         return native_round.check_task(root, task, output)
     except (RemError, json.JSONDecodeError) as error:
+        if task["stage"] == "claim-audit" and isinstance(error, json.JSONDecodeError):
+            return _continue_review(root, task, "Write valid JSON to audit-output.json. "
+                                    "Continue checking from the notes and submit when every citation is checked.")
         return _refuse_submission(root, task, str(error))
 
 
@@ -461,7 +486,19 @@ def _refuse_submission(root, task, reason):
     return task["last_result"]
 
 
+def _continue_review(root, task, reason):
+    display = _display(root, task)
+    result = {"outcome": "refused", "reason": reason,
+              **{key: display[key] for key in ("id", "stage", "candidate", "submit", "audit_progress", "continuation") if key in display}}
+    task["last_result"] = result
+    write_json(Path(task["directory"]) / "task.json", task, readable=True)
+    _log(root, task, "pending", stage="claim-audit", reason=reason)
+    return result
+
+
 def _request_review(root, task, result):
+    if result.get("continue_review"):
+        return _continue_review(root, task, result["continue_review"])
     directory = Path(task["directory"])
     task["review_unreserved"] = True
     task["stage"] = "claim-audit"

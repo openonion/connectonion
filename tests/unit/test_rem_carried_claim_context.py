@@ -160,7 +160,8 @@ def test_removing_an_adjacent_old_qualification_requires_review(tmp_path, qualif
 
 
 @pytest.mark.parametrize('verdict', ['FAIL', 'PASS'])
-def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_path, monkeypatch, verdict):
+@pytest.mark.parametrize('native', [False, True])
+def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_path, monkeypatch, verdict, native):
     from connectonion.rem import runner
     from connectonion.rem.config import prepare
 
@@ -180,8 +181,13 @@ def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_pa
                'evidence': '', 'required_correction': 'Remove'}
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
         'result': json.dumps({'verdict': verdict, 'findings': [finding]})})
+    if native:
+        pending = runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
+                                            claim_config={}, carried=original, native=True)
+        assert pending['needs_review']
+        (tmp_path / 'audit-output.json').write_text(json.dumps({'verdict': verdict, 'findings': [finding]}))
     runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
-                              claim_config={}, carried=original)
+                              claim_config={}, carried=original, native=native)
     report = json.loads((tmp_path / 'claim-review.json').read_text())
     assert report['verdict'] == 'insufficient' and report['carried_findings'] == [finding]
     saved = json.loads((tmp_path / 'review.json').read_text())

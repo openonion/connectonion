@@ -90,6 +90,36 @@ def test_native_audit_searches_before_treating_an_original_as_missing(tmp_path):
     assert 'If no original is supplied, leave the claim out, not failed' in task['prompt']
 
 
+def test_native_audit_checkpoints_each_citation_before_continuing(tmp_path):
+    candidate = '# Atlas\n\nReview requested [1].\n\n## Sources\n- [1] codex:atlas\n'
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+                                       items=[{'source': 'codex:atlas', 'text': 'Please review Atlas.'}])
+    prompt = task['prompt']
+    assert f'Read {tmp_path / "notes.md"} first if it exists' in prompt
+    assert 'continue from the first unchecked citation' in prompt
+    assert 'Read the remaining sections of the audit packet' in prompt
+    assert 'A large packet is normal' in prompt
+    assert 'must not end the turn because the packet is large' in prompt
+    assert 'Check citations in Sources order' in prompt
+    assert 'one line per checked citation starting with [N] PASS, [N] FAIL or [N] INSUFFICIENT' in prompt
+    assert 'save each verdict immediately' in prompt
+    assert 'every claim using that citation' in prompt
+    assert 'evidence and required_correction' in prompt
+    assert 'When every citation is checked' in prompt and 'audit-output.json' in prompt
+    assert prompt.startswith('Check the citations printed after Now:, appending each verdict to notes.md as soon as it is checked.')
+    assert 'If you must stop' not in prompt
+    assert 'next turn' not in prompt
+
+
+def test_audit_progress_returns_unchecked_ids_in_sources_order(tmp_path):
+    candidate = ('# Atlas\n\n## Sources\n- [W74] web\n- [11] eleven\n- [2] two\n'
+                 '- [1] one\n- [W3] web-three\n- [2] two again\n')
+    (tmp_path / 'notes.md').write_text('[2] FAIL — Incorrect.\n[W3] INSUFFICIENT — Missing.\n'
+                                        '[2] PASS — Duplicate.\n[999] PASS — Unrelated.\n'
+                                        'Heading mentions [1] PASS.\n')
+    assert project_claim_review.audit_progress(candidate, tmp_path) == (2, 5, ['W74', '11', '1'])
+
+
 @pytest.mark.parametrize('role', ['original_evidence', 'evidence-index'])
 def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path, role):
     prepare(tmp_path)

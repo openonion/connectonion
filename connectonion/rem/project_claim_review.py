@@ -281,7 +281,7 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         "An unlabelled speculation still fails. Keep quotes exact. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
         + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "") +
-        ("Write only JSON" if native else "Return only JSON") +
+        ("Write the final decision as JSON" if native else "Return only JSON") +
         " with verdict PASS, FAIL or INSUFFICIENT and findings containing claim (the failing "
         "sentence copied exactly from the candidate, without its citation markers), issue, evidence and "
         "required_correction. No markdown fences.\n\n"
@@ -301,7 +301,19 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         views += [{"role": key, "text": material[key]} for key in
                   ("runner_facts", "unretained_citations", "unverified_lines")]
         (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
-        prompt = instruction + (f"Read the complete audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
+        prompt = ("Check the citations printed after Now:, appending each verdict to notes.md as soon as it is checked.\n\n"
+                  + instruction + f"Read {directory / 'notes.md'} first if it exists and continue from the first unchecked citation. "
+                                "A large packet is normal; you must not end the turn because the packet is large. "
+                                "Check citations in Sources order, comparing every claim using that citation with its "
+                                "original and relevant later messages; save each verdict immediately to "
+                                f"{directory / 'notes.md'}, one line per checked citation starting with [N] PASS, [N] FAIL or [N] INSUFFICIENT "
+                                "(including W if present), followed by the checked claims and evidence; "
+                                "for each failure preserve the exact claim, issue, evidence and required_correction. "
+                                "Do not mark a citation checked until all its claims and relevant source sections are checked. "
+                                "After the printed batch, run next again and keep going until the round is done or stopped. "
+                                "When every citation is checked, write audit-output.json from the notes using the decision "
+                                "schema above, keeping every finding, then run the printed submit command. "
+                                f"Read the remaining sections of the audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
                                 "Never cat the whole packet: tool output can truncate before later originals. "
                                 "The candidate's Sources list maps [N] to the source id. Each original is headed "
                                 "### <source id> · cited-original (or ### <source id> · later-message). "
@@ -318,6 +330,16 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
     return {"prompt": prompt, "candidate": candidate, "carried": carried,
             "material": material, "missing": missing, "unretained": unretained}
+
+
+def audit_progress(candidate, directory):
+    """Count checkpoints and return unchecked ids in Sources order."""
+    citations = dict.fromkeys(re.findall(r"^\s*[-*]\s+\[(W?\d+)\]\s+", candidate.partition("\n## Sources\n")[2], re.M))
+    notes = directory / "notes.md"
+    text = notes.read_text(encoding="utf-8") if notes.is_file() else ""
+    checked = set(re.findall(r"^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b", text, re.M))
+    unchecked = [citation for citation in citations if citation not in checked]
+    return len(citations) - len(unchecked), len(citations), unchecked
 
 
 def check(task, result):
