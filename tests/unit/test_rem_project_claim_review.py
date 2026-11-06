@@ -3,6 +3,7 @@
 import json
 import importlib
 import hashlib
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -51,6 +52,45 @@ def test_truncated_original_is_shown_with_its_limit(tmp_path, monkeypatch):
     assert missing == []
     assert material['sources'][0]['context']['truncated'] is True
     assert material['sources'][0]['context']['excerpt'] == 'A question about filtering'
+
+
+@pytest.mark.parametrize('citation', ['74', 'W74'])
+def test_native_audit_guides_lookup_to_original_beyond_tool_output(tmp_path, citation):
+    source = 'outlook:atlas-review'
+    candidate = (f'# Atlas\n\nThe user requested a review [{citation}].\n\n## Sources\n'
+                 f'- [1] codex:atlas-background\n- [{citation}] {source}\n')
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+        items=[{'source': 'codex:atlas-background', 'text': 'Background detail.\n' * 2_100},
+               {'source': source, 'text': 'Please review Atlas.'}])
+    prompt = task['prompt']
+    assert "candidate's Sources list maps [N] to the source id" in prompt
+    assert '### <source id> · cited-original' in prompt
+    assert '### <source id> · later-message' in prompt
+    assert "rg -n '^\\[N\\]|^- \\[N\\] ' audit-material.md" in prompt
+    assert "rg -n -F '### <source id> · ' audit-material.md" in prompt
+    assert "sed -n 'L,ENDp' audit-material.md" in prompt
+    assert 'chunks of at most 80 lines' in prompt
+
+    # Follow the instructions on a real packet whose target is beyond a first tool read.
+    definition = subprocess.run(['rg', '-n', f'^\\[{citation}\\]|^- \\[{citation}\\] ',
+                                 'audit-material.md'], cwd=tmp_path, text=True, capture_output=True, check=True)
+    assert f'- [{citation}] {source}' in definition.stdout
+    heading = subprocess.run(['rg', '-n', '-F', f'### {source} · ', 'audit-material.md'],
+                             cwd=tmp_path, text=True, capture_output=True, check=True)
+    line = int(heading.stdout.partition(':')[0])
+    assert line > 2_000
+    excerpt = subprocess.run(['sed', '-n', f'{line},{line + 20}p', 'audit-material.md'],
+                             cwd=tmp_path, text=True, capture_output=True, check=True)
+    assert 'Please review Atlas.' in excerpt.stdout
+
+
+def test_native_audit_searches_before_treating_an_original_as_missing(tmp_path):
+    candidate = '# Atlas\n\nReview requested [1].\n\n## Sources\n- [1] codex:atlas\n'
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+                                       items=[{'source': 'codex:atlas', 'text': 'Please review Atlas.'}])
+    assert 'Never cat the whole packet' in task['prompt']
+    assert 'Before declaring an original missing, search for its source id heading' in task['prompt']
+    assert 'If no original is supplied, leave the claim out, not failed' in task['prompt']
 
 
 @pytest.mark.parametrize('role', ['original_evidence', 'evidence-index'])

@@ -302,6 +302,17 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
                   ("runner_facts", "unretained_citations", "unverified_lines")]
         (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
         prompt = instruction + (f"Read the complete audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
+                                "Never cat the whole packet: tool output can truncate before later originals. "
+                                "The candidate's Sources list maps [N] to the source id. Each original is headed "
+                                "### <source id> · cited-original (or ### <source id> · later-message). "
+                                "In the packet directory, replace N with the citation number (including W if present): "
+                                "`rg -n '^\\[N\\]|^- \\[N\\] ' audit-material.md`. Then replace <source id> with that id: "
+                                "`rg -n -F '### <source id> · ' audit-material.md`. "
+                                "Read that section with `sed -n 'L,ENDp' audit-material.md`, replacing L and END with "
+                                "line numbers; continue to the next heading in chunks of at most 80 lines, "
+                                "reducing the chunk if tool output truncates. "
+                                "Before declaring an original missing, search for its source id heading. "
+                                "If no original is supplied, leave the claim out, not failed. "
                                 f"Exact strings are retained in {directory / 'audit-material.json'}. ")
     else:
         prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
