@@ -724,7 +724,7 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     is useless if it forgets the root the user chose (#1635)."""
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: ([
-        {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
+        {'name': 'openonion ai', 'address': 'ellis.a@example.com', 'mails': 106, 'sent': 106,
          'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
@@ -734,13 +734,13 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     asked = json.loads(result.output)['data']['confirm_own_addresses']
     assert len(asked) == 1
     assert '106 sent, none received' in asked[0]
-    assert f"--root '{root}' init --mine aaronplus1996@gmail.com" in asked[0]
+    assert f"--root '{root}' init --mine ellis.a@example.com" in asked[0]
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
     assert '✓ mapped installed skills' in plain.output
     assert '✓ mapped projects' in plain.output
-    assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
+    assert 'ellis.a@example.com' in Text.from_ansi(plain.output).plain
 
 
 def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(tmp_path, monkeypatch):

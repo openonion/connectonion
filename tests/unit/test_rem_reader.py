@@ -1032,7 +1032,7 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
                           for name in ['threadEntries', 'threadGroups', 'obligationEvidence', 'obligationWords',
                                        'sameObligation', 'plainLine', 'threadWords', 'rawSection'])
     result = _run_reader_js(functions + r'''
-      const REM = {owner: 'people/aaron.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
+      const REM = {owner: 'people/ellis.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
       const youify = text => text;
       const records = [
         {path: REM.owner, title: 'Avery Lin', category: 'people'},

@@ -1338,7 +1338,7 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
     root = Path(tempfile.mkdtemp()) / "rem"
     prepare(root)
     notebook = Notebook(root)
-    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin"], email="zhouodywork@gmail.com")
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin"], email="corin.work@example.org")
     original = notebook.read("people/corin.md")
     chunk = [{"source": "gmail:3a7a430fcee5", "timestamp": "2026-08-01T00:00:00+00:00", "text": "a"},
              {"source": "gmail:db0abd133958:Draft_v8.docx", "timestamp": "2026-08-02T00:00:00+00:00", "text": "b"}]
@@ -1361,7 +1361,7 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
 
 
 def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monkeypatch):
-    """Briar's page listed xietianle@outlook.com -- the user's own Outlook -- as her
+    """Briar's page listed ellis@example.org -- the user's own Outlook -- as her
     email and handle, from mail the two of them exchanged. The owner's addresses
     are known; they are removed mechanically, the rest of the page is kept."""
     from pathlib import Path

@@ -227,7 +227,7 @@ def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_
 
 def test_the_owner_flag_on_the_page_item_is_what_composes_it(tmp_path):
     from connectonion.rem.runner import task_prompt
-    page = {"role": "page", "record": "people/aaron.md", "text": "# Aaron", "owner": True}
+    page = {"role": "page", "record": "people/ellis.md", "text": "# Ellis", "owner": True}
     task_prompt(tmp_path, [page], "investigate")
     assert "# Your own page" in (tmp_path / "instructions.md").read_text()
     task_prompt(tmp_path, [{**page, "owner": False}], "investigate")

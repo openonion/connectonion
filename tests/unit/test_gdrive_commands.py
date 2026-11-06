@@ -35,7 +35,7 @@ CONNECTED_ENV = {
     "GOOGLE_SCOPES": "gmail.send,gmail.readonly,gmail.modify,calendar,drive",
     "GOOGLE_ACCESS_TOKEN": "test-token",
     "GOOGLE_REFRESH_TOKEN": "test-refresh",
-    "GOOGLE_EMAIL": "aaron@example.com",
+    "GOOGLE_EMAIL": "ellis@example.com",
 }
 
 # A token issued before Drive was added to the OAuth scopes.

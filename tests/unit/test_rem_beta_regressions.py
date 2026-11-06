@@ -114,8 +114,8 @@ def test_show_me_before_init_says_how_to_get_a_page(tmp_path):
 
 def _people(root):
     nb=Notebook(root)
-    nb.write('people/corin-a.md','# Corin Marsh\n\n## Facts\n- Email: zhouody@gmail.com\n- Also known as: Corin; Zekai Marsh\n')
-    nb.write('people/corin-b.md','# Corin Marsh\n\n## Facts\n- Email: zhouodywork@gmail.com\n- Also known as: Corin\n')
+    nb.write('people/corin-a.md','# Corin Marsh\n\n## Facts\n- Email: corin@example.com\n- Also known as: Corin; Zekai Marsh\n')
+    nb.write('people/corin-b.md','# Corin Marsh\n\n## Facts\n- Email: corin.work@example.org\n- Also known as: Corin\n')
     nb.write('people/mia.md','# Mia Chen\n\n## Facts\n- Email: mia@harbour.example\n- Also known as: Mimi\n')
     return nb
 
@@ -136,9 +136,9 @@ def test_show_lists_every_match_instead_of_guessing(tmp_path):
     result=CliRunner().invoke(app,['rem','--root',str(root),'show','corin'])
     assert result.exit_code!=0
     assert 'people/corin-a.md' in result.output and 'people/corin-b.md' in result.output
-    assert 'zhouody@gmail.com' in result.output and 'zhouodywork@gmail.com' in result.output
-    one=CliRunner().invoke(app,['rem','--root',str(root),'show','zhouodywork@gmail.com'])
-    assert one.exit_code==0 and 'zhouodywork@gmail.com' in one.output
+    assert 'corin@example.com' in result.output and 'corin.work@example.org' in result.output
+    one=CliRunner().invoke(app,['rem','--root',str(root),'show','corin.work@example.org'])
+    assert one.exit_code==0 and 'corin.work@example.org' in one.output
 
 
 def test_show_names_searched_page_kinds_when_nobody_matches(tmp_path):

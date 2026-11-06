@@ -88,7 +88,7 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
 
 
 # Who said and who owes: the errors a person page made on a real first run
-# (Corin "approved" a scope Aaron approved; a cc'd person became a party; a
+# (Corin "approved" a scope Ellis approved; a cc'd person became a party; a
 # February check-in became a current debt; a past schedule looked upcoming).
 PEOPLE = (
     "Who did something is the sender of the cited message: a claim that someone asked, approved, "

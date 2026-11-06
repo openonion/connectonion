@@ -148,7 +148,7 @@ def test_list_projects_prints_titles_with_the_path_beside_them(tmp_path):
 # ------------------------------------------------ #10: what waits on you, the budget, the last run
 
 
-THREADS = ("## Open threads\n- Aaron owes Corin the signed contract by 2026-10-20. [1]\n"
+THREADS = ("## Open threads\n- Ellis owes Corin the signed contract by 2026-10-20. [1]\n"
            "- Corin promised the deck. [2]\n- Unknown — not investigated yet\n\n")
 
 
@@ -156,7 +156,7 @@ def test_open_threads_are_counted_as_the_reader_counts_them(tmp_path):
     from connectonion.rem.census import direction, open_threads
     prepare(tmp_path)
     book = Notebook(tmp_path)
-    book.stub_person("people/me.md", "Aaron Xie", ["me@example.org"], email="me@example.org")
+    book.stub_person("people/me.md", "Ellis Yew", ["me@example.org"], email="me@example.org")
     book.stub_person("people/corin.md", "Corin Marsh", ["corin@example.org"], email="corin@example.org")
     page = book.read("people/corin.md")
     book.write("people/corin.md", page.replace(page[page.index("## Open threads"):page.index("## ", page.index(

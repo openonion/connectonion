@@ -146,7 +146,7 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
     """Literal search cannot bridge a changed letter; the roster is what can."""
     _person(tmp_path, "people/corin-marsh.md", "\n".join([
         "# Corin Marsh", "", "## Contact",
-        "- Email: zhouodywork@gmail.com",
+        "- Email: corin.work@example.org",
         "- Also known as: Corin, Odi, 欧迪, 周泽凯",
         "- Phone: Unknown",
         "", "## Who they are",
@@ -159,7 +159,7 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
     assert entry["path"] == "people/corin-marsh.md" and entry["title"] == "Corin Marsh"
     # The spelling a coding session would use is here even though it is not in the title.
     assert "Odi" in entry["aliases"] and "欧迪" in entry["aliases"]
-    assert entry["emails"] == ["zhouodywork@gmail.com"]
+    assert entry["emails"] == ["corin.work@example.org"]
     # The opening line says who they are, not what is missing from their contact card.
     assert "partner" in entry["summary"].lower()
     assert "Unknown" not in entry["summary"]

@@ -163,7 +163,7 @@ def _count_owner_names(row: dict, own: bool, mine: set, names: dict) -> None:
     for name, address in getaddresses(headers):
         name = name.strip(' "')
         local = address.lower().split("@")[0]
-        # "xietianle <xietianle@...>" is the address again, not a name.
+        # "ellis <ellis@...>" is the address again, not a name.
         if (address.lower() in mine and name and "@" not in name and not _HEADER_WORD.match(name)
                 and name.casefold().replace(" ", "").replace(".", "") != local.replace(".", "")):
             names["addressed"][name] += 1
@@ -177,8 +177,8 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
     `own_names`, {"addressed": Counter, "sent": Counter}, is given what the
     owner is called (#2008): the display name others put on the owner's address
     in the To and Cc of mail they sent, and the From name of mail the owner
-    sent. A real account's configured name was "Aaron x", and Outlook stamps
-    it on every sent mail; correspondents wrote "Aaron Xie".
+    sent. For example, a mailbox's configured name is "Ellis y", and Outlook stamps
+    it on every sent mail; correspondents wrote "Ellis Yew".
     """
     mine = {a.lower() for a in own_addresses}
     if not own_addresses_complete:

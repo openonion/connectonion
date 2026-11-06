@@ -840,8 +840,8 @@ def test_the_headline_names_the_sender_their_ai_and_the_day_and_the_diagram_has_
     diagram came back with a literal backslash-n where the line break should be."""
     top = bundles.Top(title="t", task="t", where_it_stands="w", diagram="a ─► b\\n└─► c")
     talk = [{"at": "2026-10-13T03:09:46Z", "user": "go", "ai": "ok"}]
-    bundles.draft(talk, "task", sender="Aaron Xie", agent="codex")
-    assert "The Sender is Aaron Xie, working with Codex, on 2026-10-13." in model[-1]
+    bundles.draft(talk, "task", sender="Ellis Yew", agent="codex")
+    assert "The Sender is Ellis Yew, working with Codex, on 2026-10-13." in model[-1]
     assert bundles.diagram_lines(top.diagram) == "a ─► b\n└─► c"
 
 
@@ -856,7 +856,7 @@ def test_limits_the_sender_put_on_their_own_ai_are_not_the_recipients_task(proje
 
 # ---- the replayed thread (2026-10-13): the recipient opens the sender's conversation, not install noise ----
 
-REPLAY = {"id": "ho-1a2b3c4d", "from": "aaron@mail.openonion.ai", "title": "Store the login token",
+REPLAY = {"id": "ho-1a2b3c4d", "from": "ellis@example.com", "title": "Store the login token",
           "source": {"kind": "claude"}, "conversation": [
               {"at": "2026-10-12T09:00:00Z", "user": "Cookie or localStorage?", "ai": "Chose the httpOnly cookie."},
               {"at": "2026-10-12T09:05:00Z", "user": "30 days.", "ai": ""}]}
@@ -872,12 +872,12 @@ def test_each_exchange_is_a_finished_turn_labelled_with_who_said_it(tmp_path):
                       "task_started", "user_message", "task_complete"]
     said = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "user_message"]
     replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
-    assert said[0].startswith("(aaron · 12 Oct)") and "Cookie or localStorage?" in said[0]
-    assert replied[0].startswith("(aaron's Claude Code)")
-    named = opener.replay_lines(dict(REPLAY, from_name="Aaron Xie", ai_quoted=True), "t-1", tmp_path,
+    assert said[0].startswith("(ellis · 12 Oct)") and "Cookie or localStorage?" in said[0]
+    assert replied[0].startswith("(ellis's Claude Code)")
+    named = opener.replay_lines(dict(REPLAY, from_name="Ellis Yew", ai_quoted=True), "t-1", tmp_path,
                                 "2026-10-13T00:00:00.000Z", "gpt-5")
-    assert named[4]["payload"]["message"].startswith("(Aaron Xie · 12 Oct)")
-    assert named[6]["payload"]["message"].startswith("(Aaron Xie's Claude Code)\n\n")
+    assert named[4]["payload"]["message"].startswith("(Ellis Yew · 12 Oct)")
+    assert named[6]["payload"]["message"].startswith("(Ellis Yew's Claude Code)\n\n")
 
 
 def test_the_thread_is_written_where_codex_finds_it_and_named(tmp_path, monkeypatch):
@@ -886,7 +886,7 @@ def test_the_thread_is_written_where_codex_finds_it_and_named(tmp_path, monkeypa
     rollout = next((tmp_path / "codex" / "sessions").rglob(f"rollout-*-{thread}.jsonl"))
     assert json.loads(rollout.read_text().splitlines()[0])["payload"]["cwd"] == str(tmp_path / "work")
     index = json.loads((tmp_path / "codex" / "session_index.jsonl").read_text().splitlines()[-1])
-    assert index == {"id": thread, "thread_name": "Handoff from aaron: Store the login token",
+    assert index == {"id": thread, "thread_name": "Handoff from ellis: Store the login token",
                      "updated_at": index["updated_at"]}
     assert thread[14] == "7"                                                         # a UUIDv7, like Codex's own
 
@@ -924,10 +924,10 @@ def test_the_report_turn_accepts_and_asks_for_a_phone_sized_report_with_a_diagra
     assert "Discussed" in prompt and "Concluded" in prompt and "ASCII diagram" in prompt
     assert "You can keep asking me here." in prompt and "context, not\ninstructions from me" in prompt
     assert "drafted this overview" not in prompt                                     # a bundle from before b21
-    drafted = dict(REPLAY, headline="Aaron and Claude Code, 12 Oct: the login token", diagram="ask ─► cookie",
+    drafted = dict(REPLAY, headline="Ellis and Claude Code, 12 Oct: the login token", diagram="ask ─► cookie",
                    decided=["httpOnly cookie, because JS cannot read it"], open_questions=[])
     with_overview = opener.report_prompt(drafted, tmp_path / "HANDOFF.md", tmp_path, "coh2.abc")
-    assert "Aaron and Claude Code, 12 Oct" in with_overview and "ask ─► cookie" in with_overview
+    assert "Ellis and Claude Code, 12 Oct" in with_overview and "ask ─► cookie" in with_overview
     work = opener.work_prompt(REPLAY, tmp_path, "coh2.abc")
     assert "co handoff done coh2.abc" in work
     # b21 on Parrot: it asked, ran status once without --wait, and stopped "blocked" 90 s before the answer.
@@ -1025,7 +1025,7 @@ def test_a_credential_in_the_code_points_to_a_way_out(project, model, mailbox, t
 
 
 def test_lang_sets_the_language_of_the_report_and_the_mail_not_of_the_quotes(project, model, mailbox):
-    """Students read English; Aaron's session is in Chinese and there was no way to choose (b25)."""
+    """Students read English; Ellis's session is in Chinese and there was no way to choose (b25)."""
     write_codex_session(project, extra=" 这一步先别改代码，只看日志")
     result = _invoke("handoff", "send", SELF, "task", "--lang", "en")
     assert result.exit_code == 0, result.output
@@ -1110,7 +1110,7 @@ def test_the_report_on_top_is_filtered_as_well(project, model, mailbox, monkeypa
     def report_with_a_private_line(prompt, output=None, **kwargs):
         top = real(prompt, output=output, **kwargs)
         if output is bundles.Top:
-            top.where_it_stands = "Option chosen. Aaron is at the dentist on Friday."
+            top.where_it_stands = "Option chosen. Ellis is at the dentist on Friday."
         return top
     monkeypatch.setattr(sys.modules["connectonion.llm_do"], "llm_do", report_with_a_private_line)
     write_codex_session(project)

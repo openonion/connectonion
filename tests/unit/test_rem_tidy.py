@@ -139,34 +139,34 @@ def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(
     answer on other channels. Only addresses carrying the owner's words fold."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/aaron-xie.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _person(notebook, "people/confirmed.md", "xietianle@outlook.com", "xietianle@outlook.com")
-    _person(notebook, "people/fenwick.md", "Fenwick", "larryleework7@gmail.com")
-    _person(notebook, "people/aaron-smith.md", "Aaron Smith", "aaron.smith@firm.example")
-    rows = [{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108, "received": 0},
-            {"record": "people/fenwick.md", "address": "larryleework7@gmail.com", "name": "Fenwick", "sent": 17,
+    notebook.stub_person("people/ellis-yew.md", "Ellis Yew", ["team@example.org"], email="team@example.org")
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _person(notebook, "people/confirmed.md", "ellis@example.org", "ellis@example.org")
+    _person(notebook, "people/fenwick.md", "Fenwick", "fenwick.work@example.org")
+    _person(notebook, "people/ellis-smith.md", "Ellis Smith", "ellis.smith@example.org")
+    rows = [{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108, "received": 0},
+            {"record": "people/fenwick.md", "address": "fenwick.work@example.org", "name": "Fenwick", "sent": 17,
              "received": 0},
-            {"record": "people/aaron-smith.md", "address": "aaron.smith@firm.example", "name": "Aaron Smith",
+            {"record": "people/ellis-smith.md", "address": "ellis.smith@example.org", "name": "Ellis Smith",
              "sent": 9, "received": 3}]                                     # he replies: someone else
     asked = [{"address": row["address"], "sent": row["sent"], "record": row["record"]} for row in rows[:2]]
-    _state(tmp_path, owner={"record": "people/aaron-xie.md",
-                            "addresses": ["openonionai@gmail.com", "xietianle@outlook.com"]},
-           people=[{"record": "people/aaron-xie.md", "classification": "account owner"}, *rows],
+    _state(tmp_path, owner={"record": "people/ellis-yew.md",
+                            "addresses": ["team@example.org", "ellis@example.org"]},
+           people=[{"record": "people/ellis-yew.md", "classification": "account owner"}, *rows],
            possible_own_addresses=asked)
 
     done = tidy(tmp_path)
 
     assert done["folded into the owner's page"] == ["people/confirmed.md", "people/cx.md"]
-    assert sorted(notebook.list("people")) == ["people/aaron-smith.md", "people/aaron-xie.md", "people/fenwick.md"]
-    page = notebook.read("people/aaron-xie.md")
-    assert "- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2]" in page
+    assert sorted(notebook.list("people")) == ["people/ellis-smith.md", "people/ellis-yew.md", "people/fenwick.md"]
+    page = notebook.read("people/ellis-yew.md")
+    assert "- Email: team@example.org, ellis@example.org [1], ellis.a@example.com [2]" in page
     assert "classification unassessed" not in page                          # not a correspondent of their own
     state = read_json(state_path(tmp_path, "map.json"), {})
-    assert "aaronplus1996@gmail.com" in state["owner"]["addresses"]
+    assert "ellis.a@example.com" in state["owner"]["addresses"]
     assert state["possible_own_addresses"] == []                            # Fenwick is not offered to --mine
     aliases = read_json(state_path(tmp_path, "aliases.json"), {})
-    assert aliases["people/cx.md"]["into"] == "people/aaron-xie.md"
+    assert aliases["people/cx.md"]["into"] == "people/ellis-yew.md"
 
 
 def test_a_skill_named_by_its_folder_folds_into_the_named_skill(tmp_path):
@@ -217,7 +217,7 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
     from connectonion.rem.map import build_map
     prepare(tmp_path)
     (tmp_path / "installed").mkdir()
-    row = {"name": "", "address": "aaronplus1996@gmail.com", "mails": 106, "sent": 106, "received": 0, "one_way": True}
+    row = {"name": "", "address": "ellis.a@example.com", "mails": 106, "sent": 106, "received": 0, "one_way": True}
 
     def mail_rows(clients, days, mine, coverage, errors=None, progress=None, **kw):
         own = {address.lower() for address in mine}
@@ -225,9 +225,9 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
 
     monkeypatch.setattr("connectonion.rem.map._mail_rows", mail_rows)
     monkeypatch.setattr("connectonion.rem.map.scan_projects", lambda *a: [])
-    build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"], mine=["aaronplus1996@gmail.com"])
+    build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"], mine=["ellis.a@example.com"])
     again = build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"])   # no --mine this time
-    assert "aaronplus1996@gmail.com" in again["owner"]["addresses"]
+    assert "ellis.a@example.com" in again["owner"]["addresses"]
     assert again["possible_own_addresses"] == []
 
 
@@ -239,27 +239,27 @@ def test_the_owners_possibly_yours_lines_follow_what_is_still_asked(tmp_path):
     same three addresses at different counts, two already confirmed and folded."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/aaron.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
-    asked = ["aaronplus1996@gmail.com (108 sent", "aaron@openonion.ai (22 sent", "aaronplus1996@gmail.com (101 sent",
-             "aaron@openonion.ai (10 sent", "aaronchen@openonion.ai (10 sent", "aaronchen@openonion.ai (8 sent"]
+    notebook.stub_person("people/ellis.md", "Ellis Yew", ["team@example.org"], email="team@example.org")
+    asked = ["ellis.a@example.com (108 sent", "ellis.work@example.org (22 sent", "ellis.a@example.com (101 sent",
+             "ellis.work@example.org (10 sent", "ellischen@example.org (10 sent", "ellischen@example.org (8 sent"]
     lines = "".join(f"- Possibly also the owner's: {one}, none received). If it is yours: co rem init --mine x\n"
                     for one in asked)
-    page = notebook.read("people/aaron.md").replace("## Uncertainties\n", "## Uncertainties\n" + lines)
-    notebook.write("people/aaron.md", page.replace("- Unknown — not investigated yet\n\n## Sources", "\n## Sources"))
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _state(tmp_path, owner={"record": "people/aaron.md", "addresses": ["openonionai@gmail.com", "aaron@openonion.ai"]},
-           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+    page = notebook.read("people/ellis.md").replace("## Uncertainties\n", "## Uncertainties\n" + lines)
+    notebook.write("people/ellis.md", page.replace("- Unknown — not investigated yet\n\n## Sources", "\n## Sources"))
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _state(tmp_path, owner={"record": "people/ellis.md", "addresses": ["team@example.org", "ellis.work@example.org"]},
+           people=[{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108,
                     "received": 0}],
-           possible_own_addresses=[{"address": "aaronchen@openonion.ai", "sent": 10, "record": "people/ac.md"}])
+           possible_own_addresses=[{"address": "ellischen@example.org", "sent": 10, "record": "people/ac.md"}])
 
     tidy(tmp_path)
 
-    page = notebook.read("people/aaron.md")
+    page = notebook.read("people/ellis.md")
     kept = [line for line in page.splitlines() if line.startswith("- Possibly also the owner's:")]
-    assert kept == ["- Possibly also the owner's: aaronchen@openonion.ai (10 sent, none received). "
+    assert kept == ["- Possibly also the owner's: ellischen@example.org (10 sent, none received). "
                     "If it is yours: co rem init --mine x"]                   # confirmed ones gone, one line each
-    assert "- Email: openonionai@gmail.com, aaronplus1996@gmail.com" in page
-    assert tidy(tmp_path) == {} and notebook.read("people/aaron.md") == page  # idempotent
+    assert "- Email: team@example.org, ellis.a@example.com" in page
+    assert tidy(tmp_path) == {} and notebook.read("people/ellis.md") == page  # idempotent
 
 
 def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_path):
@@ -284,39 +284,39 @@ def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_pa
 
 
 def test_a_folded_address_carries_its_evidence_and_the_uncertainty_it_resolved_goes(tmp_path):
-    """#2028: `xietianle@outlook.com [1], aaron@openonion.ai, aaronplus1996@gmail.com` -- the
+    """#2028: `ellis@example.org [1], ellis.work@example.org, ellis.a@example.com` -- the
     folded two uncited -- and Uncertainties still calling them unresolved."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.write("people/aaron-xie.md", (
-        "# Aaron Xie\n\n## Contact\n- Email: openonionai@gmail.com, xietianle@outlook.com [1]\n"
+    notebook.write("people/ellis-yew.md", (
+        "# Ellis Yew\n\n## Contact\n- Email: team@example.org, ellis@example.org [1]\n"
         "- Handles: Unknown\n\n## Uncertainties\n"
-        "- Whether aaronplus1996@gmail.com and aaron@openonion.ai are his remains unresolved. [1]\n"
-        "- Whether aaronchen@openonion.ai is his remains unresolved. [1]\n- Role: not in the mail. [1]\n\n"
+        "- Whether ellis.a@example.com and ellis.work@example.org are his remains unresolved. [1]\n"
+        "- Whether ellischen@example.org is his remains unresolved. [1]\n- Role: not in the mail. [1]\n\n"
         "## Sources\n- [1] gmail:abc — a mail\n\nInvestigation: investigated 2026-09-30\n"))
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _person(notebook, "people/oo.md", "aaron@openonion.ai", "aaron@openonion.ai")
-    _state(tmp_path, owner={"record": "people/aaron-xie.md",
-                            "addresses": ["openonionai@gmail.com", "xietianle@outlook.com", "aaron@openonion.ai"]},
-           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _person(notebook, "people/oo.md", "ellis.work@example.org", "ellis.work@example.org")
+    _state(tmp_path, owner={"record": "people/ellis-yew.md",
+                            "addresses": ["team@example.org", "ellis@example.org", "ellis.work@example.org"]},
+           people=[{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108,
                     "received": 0}])
 
     tidy(tmp_path)
 
-    page = notebook.read("people/aaron-xie.md")
+    page = notebook.read("people/ellis-yew.md")
     email = next(line for line in page.split("\n") if line.startswith("- Email: "))
-    assert email == ("- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2], "
-                     "aaron@openonion.ai [3]")
+    assert email == ("- Email: team@example.org, ellis@example.org [1], ellis.a@example.com [2], "
+                     "ellis.work@example.org [3]")
     sources = page.split("## Sources\n", 1)[1]
     assert "- [2] .state/map.json — 108 sent, none received, carrying the owner's name" in sources
     assert "- [3] .state/map.json — confirmed as the owner's own address" in sources
-    assert "aaronplus1996@gmail.com and aaron@openonion.ai are his" not in page        # resolved: gone
-    assert "- Whether aaronchen@openonion.ai is his remains unresolved. [1]" in page   # still open: kept
+    assert "ellis.a@example.com and ellis.work@example.org are his" not in page        # resolved: gone
+    assert "- Whether ellischen@example.org is his remains unresolved. [1]" in page   # still open: kept
     assert "- Role: not in the mail. [1]" in page
     lines = [entry.get("line", "") for entry in read_json(state_path(tmp_path, "tidy.json"), [])]
-    assert any("aaronplus1996@gmail.com and aaron@openonion.ai" in line for line in lines)
+    assert any("ellis.a@example.com and ellis.work@example.org" in line for line in lines)
     assert tidy(tmp_path) == {}                                                   # idempotent
-    assert notebook.read("people/aaron-xie.md") == page
+    assert notebook.read("people/ellis-yew.md") == page
 
 
 # ------------------------------------------- fewer pages (#2057)

@@ -1913,16 +1913,16 @@ def email_setup(
 
 @email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="One of your own addresses, e.g. ellis@mail.openonion.ai"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy")
 def email_name(
-    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@mail.openonion.ai"),
+    name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
@@ -1956,7 +1956,7 @@ def email_unshare(
 def email_upgrade(
     tier: str = typer.Argument(..., help="Tier: plus or pro"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
-    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'aaron'"),
+    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'ellis'"),
     keep_address: bool = typer.Option(
         False,
         "--keep-address",

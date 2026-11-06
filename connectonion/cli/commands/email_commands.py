@@ -212,8 +212,8 @@ def handle_email_inbox(
     table.add_column("From")
     if show_to:
         # Fold, never ellipsize: a half-printed address is the one thing this
-        # column exists to disambiguate, and "aaron@mail.op…" and
-        # "aaron.xie@mail.op…" are the same string once Rich truncates them.
+        # column exists to disambiguate: the owner's aliases (e.g.
+        # ellis@example.com and ellis.yew@example.org) must stay readable.
         table.add_column("To", overflow="fold")
     table.add_column("Subject")
     table.add_column("Received")

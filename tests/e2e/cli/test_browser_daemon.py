@@ -336,14 +336,14 @@ def test_ago_formats_durations():
 def test_status_reports_last_command_and_tabs(tmp_path):
     """`status` shows browser state, the active tab, the last command, and tabs (with who/purpose)."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon.dispatch('go_to x.com --purpose=launch --who=aaron')
+    daemon.dispatch('go_to x.com --purpose=launch --who=ellis')
 
     ok, payload = daemon.dispatch("status")
     assert ok is True
     assert "Browser: open" in payload
     assert "targeting is per-command" in payload
     assert "go_to x.com" in payload
-    assert "who=aaron" in payload
+    assert "who=ellis" in payload
     assert "launch" in payload
     assert "Tabs (1):" in payload
 
@@ -361,7 +361,7 @@ def test_newtab_allocates_incrementing_tab_ids(tmp_path):
     """Each `newtab` occupies a fresh tab id and makes it active."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
 
-    ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=aaron')
+    ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=ellis')
     assert ok is True
     assert payload.startswith("[tab 1]")
 

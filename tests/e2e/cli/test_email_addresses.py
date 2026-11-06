@@ -30,7 +30,7 @@ def _resp(ok=True, json_data=None, status=200):
 ADDRESSES = {
     "addresses": [
         {"id": 1, "address": "0xabc123@mail.openonion.ai", "is_default": True, "created_at": "2026-07-01T00:00:00"},
-        {"id": 2, "address": "aaron@openonion.ai", "is_default": False, "created_at": "2026-08-01T00:00:00"},
+        {"id": 2, "address": "ellis.work@example.org", "is_default": False, "created_at": "2026-08-01T00:00:00"},
     ]
 }
 
@@ -41,7 +41,7 @@ def test_lists_addresses_and_marks_the_default(capsys):
         email_commands.handle_email_addresses()
     out = capsys.readouterr().out
     assert "0xabc123@mail.openonion.ai\tdefault" in out
-    assert "aaron@openonion.ai\t" in out
+    assert "ellis.work@example.org\t" in out
     assert "co email send" in out and "--from <address>" in out  # next step named
 
 

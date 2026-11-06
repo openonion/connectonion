@@ -201,7 +201,7 @@ def test_owner_promotion_drops_an_unknown_forbidden_section(owner_page, tmp_path
 
 def test_owner_promotion_refuses_a_substantive_forbidden_section_without_discarding_it(owner_page, tmp_path):
     notebook, record, original, page, items = owner_page
-    cited = '- Opens with “你好” and signs the notes “Aaron”. [1]'
+    cited = '- Opens with “你好” and signs the notes “Ellis”. [1]'
     page = page.replace('## How the user writes to them\n- Unknown',
                         '## How the user writes to them\n' + cited)
     candidate = tmp_path / 'candidate.md'
