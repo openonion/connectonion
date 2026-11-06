@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import shutil
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -14,7 +15,7 @@ from uuid import uuid4
 from . import quota, runner, service
 from .config import read_config
 from .daily import record_cap_stop
-from .files import Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
 
 
 def pending(root):
@@ -81,7 +82,9 @@ def _stop(root, config):
 
 def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
-    with maintenance_lock(root), runner.private_task_mask():
+    print("Preparing the next REM task (reading new mail and sessions; this can take a minute)…",
+          file=sys.stderr, flush=True)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True) as waited_for, runner.private_task_mask():
         cursor = read_json(state_path(root, "round.json"), {})
         previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get("pending") else {}
         notices = []
@@ -92,7 +95,10 @@ def next_task(root, *, scheduled=False, discard=False):
         if discard:
             cursor = {}
         tasks = pending(root)
-        result = (_offer_pending(root, tasks[0]) if tasks
+        # A next or submit can publish a task just before its CLI exits (or is
+        # reaped). That preparer's advisory claim must not hide the new task.
+        preparer = waited_for.get("pid")
+        result = (_offer_pending(root, tasks[0], preparer=preparer) if tasks
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
@@ -127,11 +133,11 @@ def _defer_translation_tail(root, cursor, task):
     return notices
 
 
-def _offer_pending(root, task):
+def _offer_pending(root, task, *, preparer=None):
     if task.get("review_unreserved"):
         return _offer_review(root, task)
     claim = task.get("claimed_by")
-    if claim and _alive(claim["pid"]):
+    if claim and claim["pid"] != preparer and _alive(claim["pid"]):
         return {"outcome": "claimed", "reason": f"task {task['id']} is being worked on since {claim['started_at']}; "
                 "co rem next --discard to take it over"}
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
@@ -273,7 +279,7 @@ def submit(root, task_id, *, usage=None):
     from . import native_round
     if not re.fullmatch(r"native-[0-9a-f]{32}", task_id):
         raise RemError("Invalid native task id")
-    with maintenance_lock(root), runner.private_task_mask():
+    with maintenance_lock(root, operation="submit"), runner.private_task_mask():
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
         if task.get("status") != "pending":
             raise RemError("Task does not exist or is not pending")

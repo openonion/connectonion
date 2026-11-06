@@ -92,6 +92,49 @@ def adopt(native, root, database_name="codex.db"):
                             1900000000000 if definition["status"] == "ACTIVE" else None, None))
 
 
+@pytest.mark.parametrize("source", ["prompt", "skill"])
+def test_native_waiting_rules(native, tmp_path, source):
+    from connectonion.skills_catalog import useful_skills_dir
+    text = (native.render(tmp_path / "notes", default_config())["prompt"] if source == "prompt"
+            else (useful_skills_dir() / "rem/SKILL.md").read_text())
+    for rule in ("several minutes", "same command until it exits", "poll its output",
+                 "do not start a second", "about a minute", "not a reason to end the turn",
+                 "daily cap", "weekly floor", "nothing to do"):
+        assert rule in " ".join(text.split())
+
+
+def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatch):
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare
+    root = tmp_path / "notes"
+    prepare(root)
+    atomic_write(root / "config.yaml", yaml.safe_dump(default_config()))
+    monkeypatch.setattr(service, "mail_available", lambda kind: False)
+    monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
+    service.approve_sources(root)
+    consent = state_path(root, "consent.json").read_bytes()
+    old = native.render(root, default_config())
+    old["prompt"] = "Run co rem next --scheduled and do the work it prints."
+    native._write(root, old)
+    adopt(native, root)
+    assert "co rem start" in native.describe(root)["reason"]
+    write = native._write
+    native.launcher.present = False
+
+    def desktop_write(root, data):
+        write(root, data)
+        adopt(native, root)
+
+    monkeypatch.setattr(native, "_write", desktop_write)
+    result = service.start(root, scheduler=native,
+                           confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
+    assert result["started"]
+    assert "same command until it exits" in native.definition(root)["prompt"]
+    assert native.definition(root)["updated_at"] > old["updated_at"]
+    assert native.describe(root)["active"]
+    assert state_path(root, "consent.json").read_bytes() == consent
+
+
 @pytest.mark.parametrize("desktop_table", ["active", "empty", "missing", "absent"])
 def test_desktop_index_is_authoritative_unless_its_table_is_missing(native, tmp_path, desktop_table):
     root = tmp_path / "notes"
