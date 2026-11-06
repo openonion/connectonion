@@ -70,3 +70,44 @@ def test_a_merged_fact_is_one_line_that_keeps_a_comma_inside_its_value_and_its_c
     assert "- Location: Sydney, Australia [1]; Melbourne, Australia [2]\n" in facts
     assert "- Email: a@x.example; b@y.example\n" in facts
     assert "- Also known as: Rob\n" in facts and "Unknown\n- Also" not in facts
+
+
+def test_merge_keeps_generated_blocks_without_importing_the_other_pages_blocks(tmp_path):
+    from connectonion.rem.merge import merge_into
+
+    nb = notebook(tmp_path)
+    kept, old = "skills/catalog/tide.md", "skills/catalog/tide-copy.md"
+    generated = "<!-- rem-usage -->\n## Usage\n- Own count: 12 [99]\n<!-- /rem-usage -->\n"
+    metadata = "<!-- wiki-source-metadata -->\n- Own source: /tide/SKILL.md\n<!-- /wiki-source-metadata -->\n"
+    quoted = f"```md\n{generated}```\n"
+    nb.write(kept, f"# Tide\n\n{quoted}\n{metadata}\n## Notes\n- Own finding [1]\n\n{generated}\n"
+                   "## Sources\n- [1] mail:one\n\nInvestigation: investigated 2026-11-01\n")
+    nb.write(old, "# Tide copy\n\n## Notes\n- Other finding [1]\n\n"
+                  "<!-- rem-usage -->\n- Stale count: 999\n<!-- /rem-usage -->\n\n"
+                  "## Sources\n- [1] mail:two\n")
+    merge_into(nb, kept, old, "one skill")
+    page = nb.read(kept)
+    assert generated in page and metadata in page and quoted in page
+    assert page.count(generated) == 2
+    assert "Stale count" not in page
+    assert "- Other finding [2]" in page and "- [2] mail:two" in page
+    from connectonion.rem.merge import sections
+    parts = dict(sections(page)[1])
+    assert "- Other finding [2]" in parts["Notes"]
+    assert "Other finding" not in parts["Usage"]
+
+
+def test_merge_stamps_and_aliases_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+    from connectonion.rem.merge import aliases, merge_into
+
+    nb = notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    nb.write("people/robin.md", "# Robin\n\n## History\n- Unknown\n\nInvestigation: mapped 2040-11-01\n")
+    nb.write("people/robin-copy.md", "# Robin copy\n\n## History\n- Builds sensors\n")
+    merge_into(nb, "people/robin.md", "people/robin-copy.md", "same person")
+    assert "merged 2040-11-05" in nb.read("people/robin.md")
+    assert aliases(tmp_path)["people/robin-copy.md"]["date"] == "2040-11-05"

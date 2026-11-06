@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from connectonion.rem import daily, people_pages
-from connectonion.rem.config import prepare as prepare_notebook
+from connectonion.rem.config import prepare as prepare_notebook, set_config
 from connectonion.rem.files import Notebook, state_path, write_json
 from connectonion.rem.people_pages import correspondents_since, estimate, queue, write_pages
 from connectonion.rem.runner import RunFailed
@@ -44,6 +44,7 @@ def mail(sender, to, date, subject="Hello"):
 def root(tmp_path):
     root = tmp_path / "rem"
     prepare_notebook(root)
+    set_config(root, ["schedule.timezone", "UTC"])
     notebook = Notebook(root)
     rows = []
     for slug, name, days in (("ada", "Ada Lovelace", 2), ("bob", "Bob Stone", 30), ("cy", "Cy Young", 5),
@@ -456,3 +457,36 @@ def test_a_company_left_unknown_before_its_organisation_page_existed_is_filled_a
     number = re.search(r"^- \[(\d+)\] gmail:\w{12} — ", page, re.M)[1]
     assert f"- Company: [The University](../{org}) [{number}]" in page
     assert people_pages.fill_companies(tmp_path) == []
+
+
+def test_people_update_window_uses_the_notebook_day(tmp_path):
+    from connectonion.rem.config import set_config
+
+    prepare_notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale", email="robin@tide.example")
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/robin.md", "last": "2026-11-06T00:30:00+00:00", "mails": 2, "sent": 1}]})
+    write_json(state_path(tmp_path, "people/investigated.json"), {
+        "people/robin.md": "2026-11-05T12:00:00+00:00"})
+    [row] = queue(tmp_path, now=datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    assert row["mode"] == "update" and row["days"] == 1
+
+
+@pytest.mark.parametrize("zone, hours, recent", [
+    ("Pacific/Honolulu", -5, False), ("Pacific/Kiritimati", 5, True),
+])
+def test_people_recency_compares_instants_across_notebook_zones(tmp_path, zone, hours, recent):
+    from connectonion.rem.config import set_config
+
+    prepare_notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", zone])
+    moment = datetime(2026, 11, 6, 1, tzinfo=timezone.utc)
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale", email="robin@tide.example")
+    last = (moment - timedelta(days=14) + timedelta(hours=hours)).isoformat()
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/robin.md", "last": last, "mails": 2, "sent": 1}]})
+    [row] = queue(tmp_path, now=moment)
+    assert row["recent"] is recent

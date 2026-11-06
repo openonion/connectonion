@@ -1181,7 +1181,7 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
     prepare(tmp_path)
     Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
-    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category: [
+    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category, today=None: [
         {'path': 'people/ada.md', 'recent': False, 'weight': 1, 'unknown': 1,
          'last_investigated': None}])
     from connectonion.rem.runner import RunFailed
@@ -1476,3 +1476,59 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text
     assert not (tmp_path / 'notebook').exists()
+
+
+@pytest.mark.parametrize("source", [[], ["--source", "codex"]])
+def test_not_due_sync_explains_served_slot_without_claiming_reads(lifecycle, monkeypatch, source):
+    from datetime import datetime, timezone
+    from connectonion.rem.config import set_config
+    root, _, calls = lifecycle
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "03:00,19:00"])
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 11, 4, 20, 0, tzinfo=timezone.utc))
+    assert invoke(root, "start", "--yes").exit_code == 0
+    calls.clear()
+    result = invoke(root, "sync", "--scheduled", *source)
+    assert result.exit_code == 0, result.output
+    assert "Reading new material" not in result.output
+    assert "Not due:" in result.stdout and "19:00" in result.stdout and "03:00" in result.stdout
+    assert "Due: No" not in result.stdout
+    assert not calls
+    data = json.loads(invoke(root, "--json", "sync", "--scheduled", *source).stdout)["data"]
+    assert data["due"] is False and "03:00" in data["reason"]
+
+
+@pytest.mark.parametrize("source", [[], ["--source", "codex"]])
+@pytest.mark.parametrize("json_output", [False, True])
+def test_stopped_scheduled_sync_restart_keeps_custom_root(tmp_path, source, json_output):
+    root = tmp_path / "custom notebook"
+    prepare(root)
+    result = invoke(root, *(["--json"] if json_output else []), "sync", "--scheduled", *source)
+    assert result.exit_code == 0, result.output
+    reason = json.loads(result.stdout)["data"]["reason"] if json_output else result.stdout
+    command = shlex.join(["co", "rem", "--root", str(root), "start"])
+    assert f"background upkeep is off; run {command} to enable it" in reason
+
+
+def test_sync_totals_session_summary_and_other_stage_usage(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    value = {"outcome": "completed", "maintenance": {
+        "outcome": "completed", "items": 40, "changed": [], "usage": None,
+        "sessions_summary": {"usage": {"input_tokens": 1200, "output_tokens": 20}},
+        "translations": {"usage": {"input_tokens": 400, "output_tokens": 10}}},
+        "run": {"usage": {"input_tokens": 200, "output_tokens": 30}},
+        "same_person": [{"usage": {"input_tokens": 100, "output_tokens": 5}}],
+        "depth": {"rounds": [{"usage": {"input_tokens": 100, "output_tokens": 5}}]}}
+    monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: value)
+    result = invoke(root, "sync")
+    assert result.exit_code == 0, result.output
+    assert "Tokens           2k in · 70 out" in result.stdout
+
+
+@pytest.mark.parametrize("left", [0, 3])
+def test_sync_reports_known_mail_queue_without_claiming_other_sources_empty(lifecycle, monkeypatch, left):
+    root, _, _ = lifecycle
+    value = {"outcome": "completed", "items": 40, "changed": [], "material_remaining": {"gmail": left}}
+    monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: value)
+    result = invoke(root, "sync")
+    assert result.exit_code == 0, result.output
+    assert f"{left} left in gmail for next time" in result.stdout

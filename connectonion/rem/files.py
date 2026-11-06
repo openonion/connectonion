@@ -268,9 +268,9 @@ def _warn_skipped(record: str, why: str) -> None:
     print(f"co rem: skipped {record}: {why}", file=sys.stderr)
 
 
-def _today() -> str:
-    from datetime import date
-    return date.today().isoformat()
+def _today(root: Path) -> str:
+    from .service import notebook_today
+    return notebook_today(root).isoformat()
 
 
 def _latest_passes(parts: list[str]) -> str:
@@ -389,7 +389,7 @@ class Notebook:
         for section in ("Insight", *self.PERSON_SECTIONS):
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     ORG_SECTIONS = ("Who they are", "Our relationship", "People here", "Terms",
@@ -418,7 +418,7 @@ class Notebook:
             else:
                 lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     # The first screen answers what, why, where it stands and what is next;
@@ -448,7 +448,7 @@ class Notebook:
             else:
                 lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     def stub_skill(self, record: str, name: str, source: str, description: str = "", location: str = "") -> bool:
@@ -468,7 +468,7 @@ class Notebook:
         lines += ["", "## Source", f"- File: {source}", f"- Discovery: {location}",
                   "- Status: mapped from metadata; behavior not verified"]
         lines += ["", "## Sources", f"- Skill metadata: {source}", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     def unfinished(self, category: str = "") -> list[dict]:
@@ -497,7 +497,7 @@ class Notebook:
         """
         text = self.read(record)
         lines = text.splitlines()
-        stamp = f"{verb} {_today()} ({what})"
+        stamp = f"{verb} {_today(self.root)} ({what})"
         for i, line in enumerate(lines):
             if line.startswith("Investigation:"):
                 parts = line.removeprefix("Investigation:").strip().split(" · ")

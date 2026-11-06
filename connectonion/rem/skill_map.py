@@ -373,12 +373,12 @@ def _alias(notebook: Notebook, old: str, new: str, reason: str = "one page per s
     """The base page moved to its name's record: the old record is an alias; nothing to merge."""
     from .files import read_json, state_path, write_json
     from .merge import ALIASES, _relink
-    from datetime import date
+    from .service import notebook_today
     table = read_json(state_path(notebook.root, ALIASES), {})
     for entry in table.values():
         if entry["into"] == old:
             entry["into"] = new
-    table[old] = {"into": new, "reason": reason, "date": date.today().isoformat(),
+    table[old] = {"into": new, "reason": reason, "date": notebook_today(notebook.root).isoformat(),
                   "archived": archive_path(notebook.root, old).relative_to(notebook.root).as_posix()}
     write_json(state_path(notebook.root, ALIASES), table)
     _relink(notebook, old, new)

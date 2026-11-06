@@ -166,7 +166,7 @@ def _dashboard(ctx, verbose=False):
 
 def _moved(ctx, old: str, new: list):
     """An old name still works, and says what it is called now (#1656)."""
-    rem_look.line(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.0.", err=True)
+    rem_look.line(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name remains a compatibility alias.", err=True)
 
 
 # What a queue weighs each kind of page by; a skill has no weight, so no unit ("0 s" in 1.9.2b3).
@@ -457,7 +457,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     skipped = "" if clients or not record.startswith("projects/") else \
         "not read for a project page; name its mail with --handle"
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
-        root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
+        root, record, title, handles, days=days or rem_investigate.window_since(text, root=root), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
         stage_progress=update, retry_refused=retry_refused, rounds=rounds), quiet=quiet)
 
@@ -1354,6 +1354,9 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             background = {"started": False, "reason": "Estimate only; no schedule installed."}
         elif not start_background:
             background = {"started": False, "reason": "Background upkeep left off by --no-start."}
+        elif write_mine is not False and "not installed" in ((result.get("runner") or {}).get("problem") or ""):
+            runner = result["runner"]
+            background = {"started": False, "reason": f"{runner['problem']}; run `{runner['fix']}`."}
         elif failed or (write_mine is not False and
                         (incomplete or (result.get("runner") or {}).get("problem"))):
             background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
@@ -1906,7 +1909,7 @@ def make_rem_app(factory):
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
         from ...rem.files import RemError
-        from ...rem.service import run_sync
+        from ...rem.service import run_sync, scheduled_skip
 
         finished = []
 
@@ -1933,7 +1936,7 @@ def make_rem_app(factory):
                                f"interrupted batch reads again next time. See {_next(ctx, ['logs'])}.", err=True)
                     raise typer.Exit(130)
                 if scheduled and record is None:
-                    return {"due": False, "ran": False}, ["status"]
+                    return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
                 if record.get("outcome") == "busy":
                     return record, ["status"]
                 if all_pending:
@@ -1963,13 +1966,15 @@ def make_rem_app(factory):
 
             result = run_scheduled(root, daily_round) if scheduled else daily_round()
             if result is None:
-                return {"due": False, "ran": False}, ["status"]
+                return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
             if result["outcome"] == "partial":
                 _emit(ctx, result, ["logs"], failed=True, draw=draw)
             return result, ["logs"]
         from .rem_output import sync_summary
 
         def draw(value):
+            if value.get("due") is False:
+                return "Not due: " + value["reason"]
             # The page lines above are stderr; a gap, then the summary.
             typer.echo(err=True)
             return sync_summary(value, lambda arguments: _next(ctx, arguments))
@@ -2371,9 +2376,9 @@ def make_rem_app(factory):
     from .rem_import import add_import_app
     add_import_app(rem, factory, _handle)
 
-    # ------------------------------------------------ Old names (until 1.9.0)
+    # ------------------------------------------------ Compatibility aliases
 
-    @rem.command("unfinished", help="Old name for `co rem investigate`; works until 1.9.0.")
+    @rem.command("unfinished", help="Old name for `co rem investigate`; retained as a compatibility alias.")
     def list_unfinished(ctx: typer.Context, category: str = typer.Argument("")):
         _moved(ctx, "unfinished", ["investigate", *([category] if category and category != "all" else [])])
         from ...rem.files import Notebook
@@ -2382,13 +2387,13 @@ def make_rem_app(factory):
             return pages, ["investigate", pages[0]["path"]] if pages else ["list"]
         _handle(ctx, operation, ["status"])
 
-    @rem.command("people", help="Old name for `co rem list people --aliases`; works until 1.9.0.")
+    @rem.command("people", help="Old name for `co rem list people --aliases`; retained as a compatibility alias.")
     def list_people(ctx: typer.Context):
         _moved(ctx, "people", ["list", "people", "--aliases"])
         from ...rem.files import Notebook
         _handle(ctx, lambda root: (Notebook(root).people(), ["list", "people"]), ["list", "people"])
 
-    @rem.command("daily", help="Old name for `co rem sync`; works until 1.9.0.")
+    @rem.command("daily", help="Old name for `co rem sync`; retained as a compatibility alias.")
     def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1),
                     scheduled: bool = typer.Option(False, "--scheduled")):
         # Installed launchd jobs still call `daily --scheduled`; the notice goes
@@ -2396,13 +2401,13 @@ def make_rem_app(factory):
         _moved(ctx, "daily", ["sync"])
         _sync(ctx, "", "", False, scheduled, False, days)
 
-    @rem.command("subscriptions", help="Old name for `co rem sources`; works until 1.9.0.")
+    @rem.command("subscriptions", help="Old name for `co rem sources`; retained as a compatibility alias.")
     def inspect_subscriptions(ctx: typer.Context):
         _moved(ctx, "subscriptions", ["sources"])
         from ...rem.service import subscriptions
         _handle(ctx, lambda root: (subscriptions(root), ["sources"]), ["config"])
 
-    @rem.command("subscribe", help="Old name for `co rem sources add`; works until 1.9.0.")
+    @rem.command("subscribe", help="Old name for `co rem sources add`; retained as a compatibility alias.")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(...),
                   chat: List[str] = typer.Option([], "--chat"),
                   project: str = typer.Option("", "--project"),
@@ -2413,13 +2418,13 @@ def make_rem_app(factory):
         _moved(ctx, "subscribe", ["sources", "add", name])
         _add_source(ctx, name, chat, project, about, since, only, force)
 
-    @rem.command("unsubscribe", help="Old name for `co rem sources remove`; works until 1.9.0.")
+    @rem.command("unsubscribe", help="Old name for `co rem sources remove`; retained as a compatibility alias.")
     def unsubscribe(ctx: typer.Context, name: str = typer.Argument(...),
                     chat: List[str] = typer.Option([], "--chat")):
         _moved(ctx, "unsubscribe", ["sources", "remove", name])
         _remove_source(ctx, name, chat)
 
-    @rem.command("route", help="Old name for `co rem config set route.<stage>`; works until 1.9.0.")
+    @rem.command("route", help="Old name for `co rem config set route.<stage>`; retained as a compatibility alias.")
     def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
                     runner: str = typer.Option("", "--runner"),
                     model: str = typer.Option("", "--model"),
@@ -2434,7 +2439,7 @@ def make_rem_app(factory):
             return value, ["config"]
         _handle(ctx, operation, ["config"])
 
-    @rem.command("usage", help="Old name for `co rem logs --usage`; works until 1.9.0.")
+    @rem.command("usage", help="Old name for `co rem logs --usage`; retained as a compatibility alias.")
     def usage(ctx: typer.Context, days: int = typer.Option(0, "--days")):
         _moved(ctx, "usage", ["logs", "--usage"])
         from ...rem.service import usage_report

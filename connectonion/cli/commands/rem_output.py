@@ -507,6 +507,9 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     material = f"{batch.get('items', 0)} items · {changed} page{'' if changed == 1 else 's'} changed"
     if batch.get('outcome') not in ('completed', None):
         material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
+    if batch.get('outcome') in ('completed', 'no_change'):
+        for source, left in batch.get('material_remaining', {}).items():
+            material += f" · {left} left in {source} for next time"
     lines = [rem_look.section('New material', said(material))]
     if batch.get('sessions'):
         from ...rem.sessions import summary
@@ -540,7 +543,11 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if archive:
         lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))
     lines += _store_lines(batch.get('store'), said, spell)
-    tokens = _tokens(batch.get('usage'), run.get('usage'))
+    tokens = _tokens(batch.get('usage'), run.get('usage'),
+                     (batch.get('sessions_summary') or {}).get('usage'),
+                     (batch.get('translations') or {}).get('usage'),
+                     *(row.get('usage') for row in value.get('same_person') or []),
+                     *(row.get('usage') for row in (value.get('depth') or {}).get('rounds', [])))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')

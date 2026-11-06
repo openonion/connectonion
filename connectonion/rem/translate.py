@@ -183,7 +183,7 @@ def checked(original: str, translation: str) -> str:
     return translation
 
 
-def translate(root: Path, record: str, language: str) -> str:
+def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
     from .runner import ready
@@ -194,10 +194,10 @@ def translate(root: Path, record: str, language: str) -> str:
     problem, fix = ready(config)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and translate again")
-    return _run_translation(root, record, language, config, text)
+    return _run_translation(root, record, language, config, text, on_run=on_run)
 
 
-def _run_translation(root, record, language, config, text):
+def _run_translation(root, record, language, config, text, *, on_run=None):
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")
@@ -208,6 +208,8 @@ def _run_translation(root, record, language, config, text):
     run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "failed",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+    if on_run:
+        on_run(run["id"])
     started = monotonic()
     try:
         translation = _translate_prose(workspace, prose, task["prompt"], config, run)

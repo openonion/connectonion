@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import re
 from contextlib import nullcontext
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import (WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock, notebook_path,
@@ -52,7 +52,8 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         if not actions:
             return {}
         log = read_json(state_path(root, LOG), [])
-        write_json(state_path(root, LOG), log + [{"date": date.today().isoformat(), **action} for action in actions])
+        from .service import notebook_today
+        write_json(state_path(root, LOG), log + [{"date": notebook_today(root).isoformat(), **action} for action in actions])
         summary = {}
         for action in actions:
             summary.setdefault(action["action"], []).append(action["page"])

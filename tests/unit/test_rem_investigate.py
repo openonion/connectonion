@@ -1539,11 +1539,11 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     from datetime import date, timedelta
     root = _notebook(tmp_path, "codex")
     notebook = inv.Notebook(root)
-    assert inv.window_since(notebook.read("people/rowan.md")) == 730        # never investigated: two years
+    assert inv.window_since(notebook.read("people/rowan.md"), root=root) == 730        # never investigated: two years
     ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
     page = notebook.read("people/rowan.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
     notebook.write("people/rowan.md", page)
-    assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
+    assert 10 <= inv.window_since(page, root=root) <= 12                               # UTC vs local date at the edges
 
     seen = {}
     # One new mail: with none, the run stops before the model (#1974).
@@ -1561,14 +1561,15 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
-def test_a_page_written_from_its_sources_starts_the_next_window_too():
+def test_a_page_written_from_its_sources_starts_the_next_window_too(tmp_path):
     """#1983: `projects write` stamped `written <date>`, which the window did not
     count, so the next investigation re-read 150 days (1.58M tokens)."""
     from datetime import date, timedelta
+    root = tmp_path
     written = (date.today() - timedelta(days=2)).isoformat()
     page = f"# Proj\n\nInvestigation: mapped 2026-09-01 · written {written} (own messages: codex)\n"
     assert inv.last_investigated(page) == date.fromisoformat(written)
-    assert 2 <= inv.window_since(page) <= 4
+    assert 2 <= inv.window_since(page, root=root) <= 4
 
 
 def test_only_whole_addresses_are_searched_on_the_mail_server():
@@ -3502,3 +3503,14 @@ def test_a_diary_session_line_naming_a_friend_never_reaches_the_friends_page(tmp
                           subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path), "enabled": True}},
                           record="people/mia-chen.md")
     assert [item["source"] for item in items] == ["claude-code:s:20"]
+
+
+def test_investigation_window_uses_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    assert inv.window_since("Investigation: investigated 2026-11-04", root=tmp_path) == 2

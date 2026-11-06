@@ -92,13 +92,15 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     is after it: what the daily round's later runs follow.
     """
     from .queue import excluded_people, last_investigated, order
+    from .service import notebook_zone
+    zone = notebook_zone(read_config(root))
     now = now or datetime.now(timezone.utc)
-    today = now.date()
+    today = now.astimezone(zone).date()
     cutoff = (now - timedelta(days=recent_days)).isoformat()
     state, activity = _map(root), _activity(root)
     done = read_json(state_path(root, "people/investigated.json"), {})
     excluded = excluded_people(state)
-    unfinished = {row["path"]: row for row in order(root, "people")}
+    unfinished = {row["path"]: row for row in order(root, "people", today=today)}
     from .merge import resolve
     mapped = {resolve(root, row.get("record") or ""): row for row in state.get("people", [])}
     excluded = {resolve(root, record) for record in excluded if record}
@@ -112,14 +114,14 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         investigated = last_investigated(status)
         # The exact time this code last investigated the page, when it did: the
         # status line keeps only a date, and mail later that day is still new.
-        at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), timezone.utc)
+        at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), zone)
                                           if investigated else None)
         hollow = unfinished.get(record, {}).get("hollow")
         if hollow:
             # Stamped by a run that read nothing (#1974): read again in full.
             mode, window, investigated = "full", FIRST_WINDOW_DAYS, None
         elif at and last and _stamp(last) > at:
-            mode, window = "update", max(1, (today - at.date()).days + 1)
+            mode, window = "update", max(1, (today - at.astimezone(zone).date()).days + 1)
         elif record in unfinished and not unfinished[record]["recent"]:
             mode, window = "full", FIRST_WINDOW_DAYS
         else:

@@ -11,7 +11,7 @@ Jump to [Start here](#start-here) · [Commands](#commands) ·
 Check your installed release. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
-`unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
+`unsubscribe`, `route`, `usage`) remain compatibility aliases and print their new name.
 
 ## What it is
 
@@ -62,12 +62,12 @@ co init                     # Approve sources and upkeep, then build the first n
 co rem status               # Check notebook coverage and upkeep
 co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
-co rem start                # Reapprove changed sources or resume a stopped daily round
+co rem start                # Approve sources if needed and install or resume upkeep
 ```
 
-Global `co init` offers mailbox login, asks once for source/model/schedule consent,
-installs Codex Scheduled task or launchd upkeep on macOS and builds the first
-notebook in the foreground. Both init commands pause after the total estimate,
+Global `co init` offers mailbox login and asks for source/model/schedule consent.
+With a supported scheduler, it installs upkeep before building the first notebook
+in the foreground. Without one, it prints `co rem init` to build manually. Both init commands pause after the total estimate,
 before model spending: `Build the first map now? [Y/n]`. Enter builds; `n` keeps
 installed upkeep and prints `co rem init` to continue. The final summary reports
 mapped and written pages and names the scheduler; read with `co rem open`.
@@ -78,15 +78,27 @@ reads, consent or scheduler; connect later with `co auth google` or
 init leaves existing REM unchanged, `--background` uses this same REM step,
 and project setup (`co init ./`) does not initialize REM.
 
-The full first run is one command (#1943). `co rem init` first maps 180 days of
-mail and your local Codex / Claude Code sessions, saves the private mail
-material, and prints your own page's facts — who you write to most, how much
-mail, which projects you have been coding in — with the page's path, within the
-first minutes. Then it uses the configured model to write your own page: the whole
-`investigate me`, from everything you sent and your coding sessions of the last
-30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-It writes a quick first pass of your page in about 4 minutes, then the whole
-page alongside the selected pages. Next come all eligible mapped people, recent
+The full first run is one command (#1943). Before mapping, `co rem init`
+checks runner availability and asks for source/model/schedule consent if it has
+not been recorded or the consent summary has changed. Enter declines this
+consent prompt: local Codex / Claude Code sessions stay unread and upkeep stays
+off; connected mail can still be mapped and archived. `--yes` explicitly
+approves; without a terminal, new consent requires `--yes`.
+
+Init maps 180 days of connected mail and approved local Codex / Claude Code
+sessions, saves the private mail material, then prints your own page's header
+facts — who you write to most, how much mail, and which projects you have been
+coding in — with the page's path. These facts appear after the map and archive
+finish; their timing depends on source volume and mailbox response times.
+After the estimate confirmation, init summarises pending sessions, checks model
+access and writes a quick first pass of your page. The full owner pass then shares the worker queue with
+the selected pages. Both owner passes use your sent mail and coding sessions
+from the last 30 days by default, or the window given with `--days`. There is
+no fixed completion time: evidence volume, model throughput, repairs, configured
+per-turn timeout, and worker contention affect it. The full pass can read the
+evidence in several model turns, so the per-turn timeout is not a deadline for
+the whole owner page.
+Next come all eligible mapped people, recent
 first, each investigated from up to two years of their mail; queued projects
 already listed in the map, recent first; all pending mapped organisations; and
 installed skills from source and retained run evidence: 16 pages at a time.
@@ -198,11 +210,11 @@ The agent-session summary includes skip reasons, for example `3 skipped
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
 received; spellings that differ only in case are one name, and a name that is
-just the address, `ellis`, is not one), else the From name of mail you
-sent, else the name a mailbox has configured (#2008). For example, a mailbox's
-configured name can be "Ellis y", and Outlook stamps it on every sent
-mail too; correspondents wrote "Ellis Yew". A new notebook names the file after
-you (`people/ellis-yew-….md`); an existing page keeps its path.
+just the address is not one), else the From name of mail you sent, else the
+name a mailbox has configured (#2008). For example, a fictional mailbox may
+be configured as "Rowan A", while correspondents write "Rowan Ashdown".
+A new notebook names the file after you (`people/rowan-ashdown-….md` in that
+example); an existing page keeps its path.
 
 Progress shows the mail scan and body archive counts, then a live total bar and
 completed counts for You, People, Projects, Organisations and Skills. Each page
@@ -210,8 +222,12 @@ prints a result line. The scan steps are kept in `.state/init-progress.log`.
 Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
 you keep: `co rem init --mine a@example.org,b@example.org`. Mailboxes init read
-are subscribed, so `co rem start`'s summary lists them as sources to read; start
-still asks before anything is read in the background.
+are subscribed, so they appear in the source summary. `co rem start` reuses
+unchanged consent recorded by init; it asks again when sources or anything
+else in the consent summary changes. On a notebook without prior consent,
+start approves access, runs one bounded sync, then installs the schedule.
+With consent already recorded, start installs or resumes upkeep without an
+immediate batch; run `co rem sync` for an update now.
 
 To fill other pages, `co rem investigate` lists what is left, by category, and
 runs no model. Copy the `Next:` command printed by `investigate` to investigate one existing
@@ -257,13 +273,15 @@ Piping human output does not hide the next step. Grouped help covers:
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
-After the first run, `init` offers the same source and schedule approval as
-`start`, then installs background maintenance without repeating the first sync.
-In a script, `init --yes` supplies that approval; without it the foreground
-result remains available and scheduling is deferred. `init --no-start` leaves
-background work off, and `init --estimate-only` never grants consent or schedules.
-If a selected page fails or is refused, init reports a nonzero exit and leaves
-nightly upkeep off until the unfinished pages are repaired.
+`co rem init` reviews consent before the map and installs upkeep after a
+successful first run, without repeating the first sync. Global `co init`
+installs upkeep before building the notebook. In a script, `co rem init --yes`
+supplies approval; without it, new consent is deferred. `init --no-start` leaves
+background work off, and `init --estimate-only` skips model work and schedule
+installation but still reviews source consent before mapping.
+If a selected page fails or is refused, init reports a nonzero exit. When upkeep
+was off, `co rem init` leaves it off until the unfinished pages are repaired.
+An already installed schedule stays on.
 `start` can reapprove changed sources or resume a stopped schedule. The daily
 round investigates at most one unfinished page per local day when its call
 budget allows.
@@ -1188,7 +1206,7 @@ own domain ("Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.c
 "X" <notify@x.com>) and who writes at least three times as often as the owner
 answers is a service: listed with the notice senders, no people page, and an
 older map's page for it that holds only map output is archived. Someone writing
-from their own name at a domain named after them (ellis@ellis.dev) stays a person.
+from their own name at a domain named after them (aaron@aaron.dev) stays a person.
 Skills and projects are one page per skill name and per repository (below). With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.

@@ -17,7 +17,6 @@ folds the others into it:
 from __future__ import annotations
 
 import re
-from datetime import date
 from pathlib import Path
 
 from .files import Notebook, archive_path, read_json, state_path, write_json
@@ -105,14 +104,13 @@ def _renumber(text: str, offset: dict) -> str:
     return CITE.sub(lambda m: f"[{m[1]}{int(m[2]) + offset[m[1]]}]", text)
 
 
-def merge_text(kept: str, other: str) -> str:
-    """`kept` with every written line of `other` added to the same section."""
-    return _merged(kept, other)[0]
-
-
 def _merged(kept: str, other: str) -> tuple[str, int]:
     """(merged page, lines added outside Paths and Sources)."""
-    kept, other = strip_generated(kept), strip_generated(other)
+    # Keep map-owned blocks verbatim and out of section/citation merging.
+    blocks = [(m.start(), m.end(), kept[m.start():m.end()]) for m in GENERATED.finditer(prose(kept))]
+    for i, (start, end, _) in reversed(list(enumerate(blocks))):
+        kept = kept[:start] + f"<!-- kept-generated-{i} -->\n" + kept[end:]
+    other = strip_generated(other)
     carried = CARRIED.search(other)
     other = CARRIED.sub("", other)
     head, parts, status = sections(kept)
@@ -153,7 +151,10 @@ def _merged(kept: str, other: str) -> tuple[str, int]:
             last = max((i for i, line in enumerate(mine) if line.startswith("- /")), default=-1)
             body = mine[:last + 1] + new + mine[last + 1:]
         else:
-            body = mine + new
+            # A restored generated block may open another section. Keep the
+            # imported lines under this heading, before any such block.
+            at = next((i for i, line in enumerate(mine) if line.startswith("<!-- kept-generated-")), len(mine))
+            body = mine[:at] + new + mine[at:]
         parts[index[heading]] = (heading, "\n".join(body))
     page = render(head, parts, status)
     if carried and "<!-- rem-skill-runs:start -->" not in page:
@@ -161,12 +162,14 @@ def _merged(kept: str, other: str) -> tuple[str, int]:
         at = at if at >= 0 else len(page)
         page = page[:at].rstrip() + "\n\n" + carried[0] + "\n" + page[at:]
         added += 1
+    for i, (_, _, block) in enumerate(blocks):
+        page = page.replace(f"<!-- kept-generated-{i} -->\n", block, 1)
     return page, added
 
 
-def _note(page: str, old: str) -> str:
+def _note(page: str, old: str, day: str) -> str:
     """The kept page's status line records the merge, without claiming an investigation."""
-    stamp = f"merged {date.today().isoformat()} ({Path(old).stem})"
+    stamp = f"merged {day} ({Path(old).stem})"
     lines = page.splitlines()
     for i, line in enumerate(lines):
         if line.startswith("Investigation:"):
@@ -180,16 +183,18 @@ def _note(page: str, old: str) -> str:
 
 def prepare_merge(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
     """Fix every postimage before the first write so a native merge can resume."""
+    from .service import notebook_today
+    day = notebook_today(notebook.root).isoformat()
     theirs, ours = notebook.read(old), notebook.read(kept)
     page, added = _merged(ours, theirs)
     page = _one_line_per_fact(page)
     if added:
-        page = _note(page, old)
+        page = _note(page, old, day)
     table = aliases(notebook.root)
     for entry in table.values():
         if entry["into"] == old:
             entry["into"] = kept
-    table[old] = {"into": kept, "reason": reason, "date": date.today().isoformat(),
+    table[old] = {"into": kept, "reason": reason, "date": day,
                   "archived": archive_path(notebook.root, old, new=True).relative_to(notebook.root).as_posix()}
     relinked = {}
     for record in notebook.list():

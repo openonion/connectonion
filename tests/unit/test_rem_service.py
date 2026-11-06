@@ -19,6 +19,7 @@ def rem(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
     monkeypatch.setattr("connectonion.rem.service.claude_projects_root", lambda: tmp_path / "no-claude")
     monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
     prepare(root)
     approve_sources(root)
     return root, sessions
@@ -1571,3 +1572,199 @@ def test_usage_report_survives_a_run_whose_instruction_size_is_one_number(tmp_pa
     stages = usage_report(tmp_path)["by_stage"]
 
     assert stages["investigate"]["instructions_chars_mean"] == 13_000
+
+
+@pytest.mark.parametrize("count", [2, 5])
+def test_sync_reports_mail_still_queued_after_bounded_batch(rem, monkeypatch, count):
+    from connectonion.rem.source import Batch
+    root, _ = rem
+    set_config(root, ["limits.extract_items_per_batch", "2"])
+    monkeypatch.setattr("connectonion.rem.service._selected_sources", lambda *a: {
+        "gmail": {"kind": "gmail", "enabled": True, "consented": True}})
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind: object())
+    items = [{"source": f"gmail:{n}", "role": "user", "text": "Fictional project note"} for n in range(2)]
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch(
+        items, {"pending": {"rowan@example.org": [{"id": str(n)} for n in range(count - 2)]}}))
+    record = run_sync(root, runner=lambda *a, **kw: {"changed": [], "usage": None})
+    assert record["items"] == 2
+    assert record["material_remaining"] == {"gmail": count - 2}
+
+
+def test_not_due_reason_skips_the_slot_already_served_early(rem):
+    from connectonion.rem.service import scheduled_skip
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "03:00,19:00"])
+    write_json(state_path(root, "worker.json"), {
+        "enabled": True, "last_scheduled_slot": "2026-09-07T19:00:00+00:00"})
+    result = scheduled_skip(root)
+    assert "19:00 slot was already served" in result["reason"]
+    assert "next slot 2026-09-08T03:00+00:00" in result["reason"]
+
+
+@pytest.mark.parametrize("boot_known", [True, False])
+def test_live_run_does_not_expire_without_progress(tmp_path, monkeypatch, boot_known):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    moment = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    boot = moment - timedelta(days=4) if boot_known else None
+    monkeypatch.setattr(service, "_boot_time", lambda: boot)
+    record = {"id": "run_live", "started_at": (moment - timedelta(days=3)).isoformat(),
+              "outcome": "running", **service.running_marker()}
+    path = state_path(tmp_path, "runs/run_live.json")
+    write_json(path, record)
+
+    assert service.abandon_stale_runs(tmp_path) == []
+    assert read_json(path, {}) == record
+
+
+@pytest.mark.parametrize("progress", [False, True])
+def test_live_pid_from_before_boot_is_abandoned_even_with_recent_progress(tmp_path, monkeypatch, progress):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    moment = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    monkeypatch.setattr(service, "_boot_time", lambda: moment - timedelta(minutes=10))
+    record = {"id": "run_reused", "started_at": (moment - timedelta(minutes=30)).isoformat(),
+              "outcome": "running", **service.running_marker()}
+    if progress:
+        record["stage_updated_at"] = moment.isoformat()
+    path = state_path(tmp_path, "runs/run_reused.json")
+    write_json(path, record)
+
+    assert service.abandon_stale_runs(tmp_path) == ["run_reused"]
+    assert read_json(path, {})["outcome"] == "abandoned"
+    assert "restart" in read_json(path, {})["reason"]
+
+
+@pytest.mark.parametrize("minute", [49, 50, 59])
+def test_next_slot_keeps_an_unserved_slot_during_its_early_window(monkeypatch, minute):
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 2, minute, tzinfo=timezone.utc))
+    config = {"schedule": {"times": ["03:00", "17:00"], "timezone": "UTC"}}
+    assert service.next_slot(config, timezone.utc) == "2026-11-06T03:00+00:00"
+
+
+@pytest.mark.parametrize("location", ["worker", "runs"])
+def test_live_pid_from_before_boot_does_not_block_the_next_round(rem, monkeypatch, location):
+    from connectonion.rem import service
+
+    root, _ = rem
+    moment = service.now()
+    monkeypatch.setattr(service, "_boot_time", lambda: moment - timedelta(minutes=10))
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    record = {"id": "run_reused", "phase": "daily-sync", "outcome": "running",
+              "started_at": (moment - timedelta(minutes=30)).isoformat(), **service.running_marker()}
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    if location == "worker":
+        worker["scheduled_run"] = record
+    else:
+        write_json(state_path(root, "runs/run_reused.json"), record)
+    write_json(state_path(root, "worker.json"), worker)
+    assert service.run_scheduled(root, lambda: {"outcome": "no_change"}) == {"outcome": "no_change"}
+    assert "scheduled_run" not in service.worker_state(root)
+
+
+@pytest.mark.parametrize("boot_known", [True, False])
+def test_long_scheduled_round_keeps_its_claim_while_session_summaries_run(rem, monkeypatch, boot_known):
+    from connectonion.rem import service
+
+    root, _ = rem
+    started = service.now()
+    boot = started - timedelta(days=4) if boot_known else None
+    monkeypatch.setattr(service, "_boot_time", lambda: boot)
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00,14:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True})
+
+    def summarize():
+        worker = service.worker_state(root)
+        monkeypatch.setattr(service, "now", lambda: started + timedelta(minutes=150))
+        summary = {"id": "run_summary", "phase": "sessions-summary", "outcome": "running",
+                   "started_at": started.isoformat(), **service.running_marker()}
+        path = state_path(root, "runs/run_summary.json")
+        write_json(path, summary)
+        result = service.run_scheduled(root, lambda: pytest.fail("overlapping scheduled round"))
+        assert result["outcome"] == "busy"
+        assert service.worker_state(root) == worker
+        assert read_json(path, {}) == summary
+        return {"outcome": "completed"}
+
+    assert service.run_scheduled(root, summarize) == {"outcome": "completed"}
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_next_slot_keeps_tomorrows_midnight_slot_after_its_early_window_opens(monkeypatch):
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 23, 58, tzinfo=timezone.utc))
+    config = {"schedule": {"times": ["00:05"], "timezone": "UTC"}}
+    assert service.next_slot(config, timezone.utc) == "2026-11-07T00:05+00:00"
+
+
+@pytest.mark.parametrize("served, expected", [(False, "03:00"), (True, "17:00")])
+def test_status_next_run_respects_an_early_served_slot(tmp_path, monkeypatch, served, expected):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "UTC", "schedule.times", "03:00,17:00"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 2, 59, tzinfo=timezone.utc))
+    write_json(state_path(tmp_path, "consent.json"), {})
+    worker = {"enabled": True, "scheduler": "fake"}
+    if served:
+        worker["last_scheduled_slot"] = "2026-11-06T03:00:00+00:00"
+    write_json(state_path(tmp_path, "worker.json"), worker)
+    assert bool(service._scheduled_slot(tmp_path)) is not served
+    assert service.status(tmp_path)["next_run"] == f"2026-11-06T{expected}+00:00"
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_boot_time_reads_the_platform_source(monkeypatch, platform):
+    from subprocess import CompletedProcess
+    from connectonion.rem import service
+
+    moment = datetime(2026, 11, 6, 10, tzinfo=timezone.utc)
+    seconds = int(moment.timestamp())
+    monkeypatch.setattr(service.sys, "platform", platform)
+    if platform == "darwin":
+        def sysctl(args, **kwargs):
+            assert args == ["sysctl", "-n", "kern.boottime"]
+            return CompletedProcess(args, 0, f"{{ sec = {seconds}, usec = 123 }} Fri Nov 6 10:00:00 2026\n")
+        monkeypatch.setattr(service.subprocess, "run", sysctl)
+    else:
+        def proc_stat(path):
+            assert str(path) == "/proc/stat"
+            return f"cpu 1 2 3 4\nbtime {seconds}\nprocesses 900\n"
+        monkeypatch.setattr(service.Path, "is_file", lambda path: str(path) == "/proc/stat")
+        monkeypatch.setattr(service.Path, "read_text", proc_stat)
+    assert service._boot_time() == moment
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_boot_time_unavailable_leaves_live_pids_trusted(monkeypatch, platform):
+    from connectonion.rem import service
+
+    def never(*args, **kwargs):
+        raise AssertionError("no boot-time source should be read")
+
+    monkeypatch.setattr(service.sys, "platform", platform)
+    monkeypatch.setattr(service.shutil, "which", lambda name: None)
+    monkeypatch.setattr(service.Path, "is_file", lambda path: False)
+    monkeypatch.setattr(service.subprocess, "run", never)
+    monkeypatch.setattr(service.Path, "read_text", never)
+    assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform):
+    from subprocess import CompletedProcess
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service.sys, "platform", platform)
+    monkeypatch.setattr(service.subprocess, "run", lambda *a, **kw: CompletedProcess(a, 1, ""))
+    monkeypatch.setattr(service.shutil, "which", lambda name: "/usr/sbin/sysctl")
+    monkeypatch.setattr(service.Path, "is_file", lambda path: True)
+    monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
+    assert service._boot_time() is None
