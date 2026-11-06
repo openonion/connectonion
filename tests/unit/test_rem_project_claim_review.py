@@ -106,7 +106,18 @@ def test_native_audit_checkpoints_each_citation_before_continuing(tmp_path):
     assert 'every claim using that citation' in prompt
     assert 'evidence and required_correction' in prompt
     assert 'When every citation is checked' in prompt and 'audit-output.json' in prompt
-    assert 'If you must stop' in prompt and 'submit' in prompt
+    assert prompt.startswith('Check the citations printed after Now:, appending each verdict to notes.md as soon as it is checked.')
+    assert 'If you must stop' not in prompt
+    assert 'next turn' not in prompt
+
+
+def test_audit_progress_returns_unchecked_ids_in_sources_order(tmp_path):
+    candidate = ('# Atlas\n\n## Sources\n- [W74] web\n- [11] eleven\n- [2] two\n'
+                 '- [1] one\n- [W3] web-three\n- [2] two again\n')
+    (tmp_path / 'notes.md').write_text('[2] FAIL — Incorrect.\n[W3] INSUFFICIENT — Missing.\n'
+                                        '[2] PASS — Duplicate.\n[999] PASS — Unrelated.\n'
+                                        'Heading mentions [1] PASS.\n')
+    assert project_claim_review.audit_progress(candidate, tmp_path) == (2, 5, ['W74', '11', '1'])
 
 
 @pytest.mark.parametrize('role', ['original_evidence', 'evidence-index'])

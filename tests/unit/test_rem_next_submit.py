@@ -126,11 +126,11 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)["data"] if json_mode else None
         text = data.get("continuation", "") if json_mode else result.stdout
-        assert ("Do as many tasks as you can" in text) == scheduled
+        assert ("Work through the printed Now step" in text) == scheduled
         if scheduled:
             reminder = data["continuation"] if json_mode else "\n".join(result.stdout.strip().splitlines()[-3:])
             assert len(reminder.splitlines()) <= 3
-            for rule in ("next follow-up continues within 15 minutes", "rg/sed", "write the candidate",
+            for rule in ("Work through the printed Now step", "rg/sed", "write the candidate",
                          "submit", "next again", "round is done or stopped"):
                 assert rule in reminder
 
@@ -597,9 +597,15 @@ def test_audit_notes_are_not_task_inputs_and_edits_allow_submit(trial):
 
 
 @pytest.mark.parametrize('scheduled', [False, True])
-@pytest.mark.parametrize('checked', [0, 1, 2])
-def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, scheduled, checked):
+@pytest.mark.parametrize('checked', [0, 1, 2, 12])
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, scheduled, checked, json_mode):
     record, source = _feedback(trial)
+    extra_sources = []
+    for number in range(2, 12):
+        row = reflections.add(trial, record, f'Avery Lin requested pilot review {number}.', author='Morgan Vale',
+                              basis='Original request', kind='correction')
+        extra_sources.append((number, 'reflection:' + row['id']))
     task = native.next_task(trial)
     _candidate(trial, task, record, source)
     directory = Path(task['material'])
@@ -612,18 +618,31 @@ def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, s
     candidate.write_text(candidate.read_text().replace('## Who they are\n',
         '## Who they are\n- Avery leads Atlas. [W74]\n').replace('## Sources\n',
         '## Sources\n- [W74] https://example.org/team — 2026-11-06\n'))
+    candidate.write_text(candidate.read_text().replace('## Who they are\n', '## Who they are\n' + ''.join(
+        f'- Avery Lin requested pilot review {number}. [{number}]\n' for number, _ in extra_sources))
+        + ''.join(f'- [{number}] {citation}\n' for number, citation in extra_sources))
     audit = native.submit(trial, task['id'])
     assert audit['stage'] == 'claim-audit'
+    ids = ['W74', '1', *[str(number) for number in range(2, 12)]]
     notes = directory / 'notes.md'
+    first_now = (f"Now: check {' '.join(f'[{citation}]' for citation in ids[:8])} "
+                 f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
     entries = ['[W74] PASS — The team page names Avery as lead.\n',
                '[1] PASS — The original requests a pilot review.\n']
+    entries += [f'[{number}] PASS — The original requests pilot review {number}.\n' for number, _ in extra_sources]
     notes.write_text('Audit notes: [1] is not checked by this heading.\n[999] PASS — Unrelated.\n'
                      + ''.join(entries[:checked]) + (entries[0] if checked else ''))
     monkeypatch.setattr(native, '_alive', lambda pid: False)
-    result = CliRunner().invoke(app, ['rem', '--root', str(trial), 'next',
+    result = CliRunner().invoke(app, ['rem', '--root', str(trial), *(['--json'] if json_mode else []), 'next',
                                     *(['--scheduled'] if scheduled else [])])
     assert result.exit_code == 0, result.output
-    assert f'Audit progress: {checked} of 2 citations checked ({notes})' in result.stdout
+    text = json.loads(result.stdout)['data']['audit_progress'] if json_mode else result.stdout
+    assert f'Audit progress: {checked} of 12 citations checked ({notes})' in text
+    now = (f"Now: check {' '.join(f'[{citation}]' for citation in ids[checked:checked + 8])} "
+           f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.'
+           if checked < len(ids) else 'Now: all citations checked; write audit-output.json from the notes and run the Submit command.')
+    assert now in text
+    assert first_now in audit['audit_progress']
     assert notes.read_text().count('PASS') == 1 + checked + bool(checked)
 
 
@@ -678,7 +697,10 @@ def test_native_insufficient_audit_continues_until_all_citations_checked(trial, 
     assert f'Audit progress: {checked or 0} of 2 citations checked' in text
     assert 'Continue checking from the notes' in text
     assert 'submit when every citation is checked' in text
-    assert 'Do as many tasks as you can' in text
+    now = (f"Now: check {'[1]' if checked else '[W74] [1]'} "
+           f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
+    assert now in text
+    assert 'Work through the printed Now step' in text
     saved = native.pending(trial)[0]
     assert saved['stage'] == 'claim-audit' and saved['candidate'] == audit['candidate']
     assert Path(task['candidate']).read_bytes() == candidate

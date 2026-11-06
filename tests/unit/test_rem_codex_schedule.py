@@ -102,17 +102,23 @@ def adopt(native, root, database_name="codex.db"):
                             1900000000000 if definition["status"] == "ACTIVE" else None, None))
 
 
-@pytest.mark.parametrize("source", ["prompt", "skill"])
+@pytest.mark.parametrize("source", ["prompt", "skill", "continuation"])
 def test_native_waiting_rules(native, tmp_path, source):
     from connectonion.skills_catalog import useful_skills_dir
-    text = (native.render(tmp_path / "notes", default_config())["prompt"] if source == "prompt"
-            else (useful_skills_dir() / "rem/SKILL.md").read_text())
-    for rule in ("several minutes", "same command until it exits", "poll its output",
-                 "do not start a second", "about a minute", "not a reason to end the turn",
-                 "daily cap", "weekly floor", "nothing to do"):
-        assert rule in " ".join(text.split())
-    for rule in ("Do as many tasks as you can", "if you stop", "next follow-up continues within 15 minutes", "rg/sed"):
-        assert rule in " ".join(text.split())
+    from connectonion.rem.native import SCHEDULED_CONTINUATION
+    texts = {"prompt": native.render(tmp_path / "notes", default_config())["prompt"],
+             "skill": (useful_skills_dir() / "rem/SKILL.md").read_text(),
+             "continuation": SCHEDULED_CONTINUATION}
+    text = " ".join(texts[source].split())
+    if source != "continuation":
+        for rule in ("several minutes", "same command until it exits", "poll its output",
+                     "do not start a second", "about a minute", "not a reason to end the turn",
+                     "daily cap", "weekly floor", "nothing to do"):
+            assert rule in text
+    for rule in ("Work through the printed Now step", "next again", "round is done or stopped", "rg/sed"):
+        assert rule in text
+    for deferral in ("follow-up", "if you stop", "next turn"):
+        assert deferral not in text
 
 
 def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatch):
@@ -144,7 +150,7 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
     assert "same command until it exits" in native.definition(root)["prompt"]
-    assert "next follow-up continues within 15 minutes" in native.definition(root)["prompt"]
+    assert "Work through the printed Now step" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
     assert state_path(root, "consent.json").read_bytes() == consent

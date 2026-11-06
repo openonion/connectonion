@@ -1076,7 +1076,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                 report = audit["report"]
             elif saved.get("sha256") == digest and output.is_file():
                 decision = json.loads(output.read_text(encoding="utf-8"))
-                checked, total = audit_progress(text, directory)
+                checked, total, _ = audit_progress(text, directory)
                 # Only the model's own valid INSUFFICIENT decision needs checkpoints.
                 # Code-derived insufficient keeps the child runner's existing policy.
                 if (str(decision.get("verdict", "")).lower() == "insufficient"
