@@ -101,6 +101,9 @@ def test_native_waiting_rules(native, tmp_path, source):
                  "do not start a second", "about a minute", "not a reason to end the turn",
                  "daily cap", "weekly floor", "nothing to do"):
         assert rule in " ".join(text.split())
+    for rule in ("only one until the next slot hours away", "large material is normal; never stop because a task looks big",
+                 "rg/sed", "Do not end the turn while a task is pending"):
+        assert rule in " ".join(text.split())
 
 
 def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatch):
@@ -113,6 +116,7 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
     monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
     service.approve_sources(root)
     consent = state_path(root, "consent.json").read_bytes()
+    fingerprint = service.summary_fingerprint(root)
     old = native.render(root, default_config())
     old["prompt"] = "Run co rem next --scheduled and do the work it prints."
     native._write(root, old)
@@ -130,9 +134,11 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
     assert "same command until it exits" in native.definition(root)["prompt"]
+    assert "never stop because a task looks big" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
     assert state_path(root, "consent.json").read_bytes() == consent
+    assert service.summary_fingerprint(root) == fingerprint
 
 
 @pytest.mark.parametrize("desktop_table", ["active", "empty", "missing", "absent"])

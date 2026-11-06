@@ -111,6 +111,51 @@ def test_next_prints_progress_before_collecting(trial, monkeypatch, capsys):
     native.next_task(trial, scheduled=True)
 
 
+@pytest.mark.parametrize("scheduled", [False, True])
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(trial, monkeypatch, scheduled, json_mode):
+    write_json(state_path(trial, "worker.json"), {"enabled": True})
+    record, source = _feedback(trial)
+    cli = CliRunner()
+    prefix = ["rem", "--root", str(trial), *(["--json"] if json_mode else [])]
+    result = cli.invoke(app, [*prefix, "next", *(["--scheduled"] if scheduled else [])])
+    assert result.exit_code == 0, result.output
+    task = native.pending(trial)[0]
+
+    def check_task_output(result):
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)["data"] if json_mode else None
+        text = data.get("continuation", "") if json_mode else result.stdout
+        assert ("Do not end the turn while a task is pending" in text) == scheduled
+        if scheduled:
+            reminder = data["continuation"] if json_mode else "\n".join(result.stdout.strip().splitlines()[-3:])
+            assert len(reminder.splitlines()) <= 3
+            for rule in ("only one until the next slot hours away", "rg/sed", "write the candidate",
+                         "submit", "next again", "round is done or stopped"):
+                assert rule in reminder
+
+    check_task_output(result)
+    monkeypatch.setattr(native, "_alive", lambda pid: False)
+    # A pending task from an older installation must receive the rule too.
+    check_task_output(cli.invoke(app, [*prefix, "next", *(["--scheduled"] if scheduled else [])]))
+    _candidate(trial, task, record, source)
+    audit = cli.invoke(app, [*prefix, "submit", task["id"]])
+    check_task_output(audit)
+    review = native.pending(trial)[0]
+    Path(review["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
+    accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
+    assert accepted.exit_code == 0, accepted.output
+    if json_mode:
+        data = json.loads(accepted.stdout)
+        assert data["data"]["outcome"] == "accepted"
+        assert data["data"].get("same_turn", False) == scheduled
+        assert data["next"].endswith(" next")
+    else:
+        assert "accepted" in accepted.stdout
+        expected = f"Next: run co rem --root {trial} next now (same turn)" if scheduled else f"Next: co rem --root {trial} next"
+        assert expected in accepted.stdout
+
+
 def test_concurrent_next_waits_and_offers_the_prepared_task(trial, capsys):
     _feedback(trial)
     write_json(state_path(trial, "worker.json"), {"enabled": True})
@@ -649,13 +694,14 @@ def test_refused_submit_points_to_resubmitting_the_pending_task(trial):
     assert f'Next: co rem --root {trial} next' in accepted.output
 
 
-def _summary_task(root):
+def _summary_task(root, *, text='Build the pilot reader.', repeats=1, scheduled=False):
     from connectonion.rem import sessions, native_round
     transcript = root.parent / 'rollout-fictional.jsonl'
     rows = [{'type': 'session_meta', 'payload': {'id': 'fictional-session', 'cwd': '/work/cedar',
                                                'source': 'cli', 'originator': 'codex_cli_rs'}},
-            {'type': 'response_item', 'timestamp': service.now().isoformat(), 'payload': {
-                'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': 'Build the pilot reader.'}]}}]
+            *[{'type': 'response_item', 'timestamp': service.now().isoformat(), 'payload': {
+                'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}}
+              for _ in range(repeats)]]
     transcript.write_text(''.join(json.dumps(row) + '\n' for row in rows))
     from zoneinfo import ZoneInfo
     progress = {'files': {}, 'sessions': {}, 'settings': {'timezone': 'UTC'}}
@@ -665,7 +711,7 @@ def _summary_task(root):
     assert counts['imported'] == 1
     write_json(state_path(root, 'sessions.json'), progress)
     with maintenance_lock(root):
-        cursor = native_round.prepare(root, read_config(root), scheduled=False)
+        cursor = native_round.prepare(root, read_config(root), scheduled=scheduled)
         write_json(state_path(root, 'sessions.json'), progress)
         cursor.update(jobs=[], same_left=0)
         write_json(state_path(root, 'round.json'), cursor)
@@ -674,6 +720,36 @@ def _summary_task(root):
     Path(task['candidate']).write_text(json.dumps({'sessions': [{'id': 's1', 'title': 'Pilot reader',
         'summary': 'Avery requested a pilot reader.', 'tags': ['pilot'], 'decisions': [], 'followups': []}]}))
     return task, transcript
+
+
+@pytest.mark.parametrize('json_mode', [False, True])
+def test_large_scheduled_session_material_continues_until_round_done(trial, monkeypatch, json_mode):
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    task, transcript = _summary_task(trial, text='Build the pilot reader.\n' * 100, repeats=40, scheduled=True)
+    assert transcript.stat().st_size > 78_000
+    assert sum(path.stat().st_size for path in Path(task['material']).rglob('*') if path.is_file()) > 78_000
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    cli = CliRunner()
+    prefix = ['rem', '--root', str(trial), *(['--json'] if json_mode else [])]
+    result = cli.invoke(app, [*prefix, 'next', '--scheduled'])
+    assert result.exit_code == 0, result.output
+    if json_mode:
+        assert json.loads(result.stdout)['data']['continuation'] == native.SCHEDULED_CONTINUATION
+    else:
+        assert result.stdout.rstrip().endswith(native.SCHEDULED_CONTINUATION)
+    accepted = cli.invoke(app, [*prefix, 'submit', task['id']])
+    assert accepted.exit_code == 0, accepted.output
+    if json_mode:
+        assert json.loads(accepted.stdout)['data']['same_turn'] is True
+    else:
+        assert 'now (same turn)' in accepted.stdout
+    done = cli.invoke(app, [*prefix, 'next', '--scheduled'])
+    assert done.exit_code == 0, done.output
+    if json_mode:
+        assert json.loads(done.stdout)['data']['reason'] == 'round done'
+    else:
+        assert done.stdout.startswith('round done\n')
+        assert native.SCHEDULED_CONTINUATION not in done.stdout
 
 
 @pytest.mark.parametrize('boundary', ['summary', 'page', 'tags', 'accept'])

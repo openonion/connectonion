@@ -96,7 +96,10 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
         rem_look.say(printable(drawn), hanging=True)
-        rem_look.say(next_line(command))
+        tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
+        rem_look.say(next_line(tip))
+        if isinstance(value, dict) and value.get("continuation"):
+            rem_look.say(value["continuation"])
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:

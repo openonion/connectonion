@@ -18,6 +18,13 @@ from .daily import record_cap_stop
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
 
 
+SCHEDULED_CONTINUATION = (
+    "This scheduled turn is the only one until the next slot hours away.\n"
+    "Do this task now: read large material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
+    "Do not end the turn while a task is pending; end only when next prints that the round is done or stopped."
+)
+
+
 def pending(root):
     task_id = read_json(state_path(root, "round.json"), {}).get("pending")
     task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {}) if task_id else {}
@@ -68,8 +75,11 @@ def _inputs(root, task, directory, *, handler):
     return {str(path): _hash(path) for path in sorted(paths)}
 
 
-def _display(task):
-    return {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
+def _display(root, task):
+    result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
+    if read_json(state_path(root, "round.json"), {}).get("slot"):
+        result["continuation"] = SCHEDULED_CONTINUATION
+    return result
 
 
 def _stop(root, config):
@@ -102,6 +112,8 @@ def next_task(root, *, scheduled=False, discard=False):
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
+        if scheduled and result.get("outcome") == "task":
+            result["continuation"] = SCHEDULED_CONTINUATION
         return result
 
 
@@ -143,7 +155,7 @@ def _offer_pending(root, task, *, preparer=None):
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
     write_json(Path(task["directory"]) / "task.json", task)
-    return {"outcome": "task", **_display(task)}
+    return {"outcome": "task", **_display(root, task)}
 
 
 def _next_round(root, cursor, *, scheduled, notices):
@@ -265,7 +277,7 @@ def _save(root, cursor, task):
     cursor["pending"] = task["id"]
     write_json(state_path(root, "round.json"), cursor)
     write_json(directory / "task.json", task)
-    return _display(task)
+    return _display(root, task)
 
 
 def _log(root, task, outcome, **fields):
@@ -379,7 +391,8 @@ def _accept(root, cursor, task, result):
     _log(root, task, "completed", changed=result.get("changed", []))
     write_json(Path(task["directory"]) / "task.json", task)
     native_round.advance(root, cursor, task, result)
-    return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", [])}
+    return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []),
+            "same_turn": bool(cursor.get("slot"))}
 
 
 def _offer_review(root, task):
@@ -396,7 +409,7 @@ def _offer_review(root, task):
     _claim(task)
     _log(root, task, "pending", stage="claim-audit")
     write_json(Path(task["directory"]) / "task.json", task)
-    return {"outcome": "task", **_display(task)}
+    return {"outcome": "task", **_display(root, task)}
 
 
 def _source_view(root, task, *, handler):
