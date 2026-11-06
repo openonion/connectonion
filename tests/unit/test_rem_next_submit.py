@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 from connectonion.rem import daily, native, quota, reflections, runner, service
-from connectonion.rem.config import prepare, read_config
+from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 
 
@@ -478,6 +478,114 @@ def test_changed_input_refuses_without_any_writes(trial):
     with pytest.raises(RemError, match="input changed"):
         native.submit(trial, task["id"])
     assert {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()} == before
+
+
+def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
+    monkeypatch.chdir(trial.parent)
+    root = Path(trial.name)
+    record, source = _feedback(root)
+    task = native.next_task(root)
+    _candidate(root, task, record, source)
+    assert _submit(root, task)["outcome"] == "accepted"
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("key,value", [
+    ("schedule.times", "09:00,21:00"), ("schedule.timezone", "Pacific/Honolulu"),
+    ("limits.runner_calls_per_day", "100"), ("limits.translations_per_day", "20"),
+    ("limits.timeout_seconds", "1800"), ("limits.workers", "8"),
+    ("limits.investigation_quota_points", "40"), ("limits.quota_floor_percent", "95"),
+    ("limits.depth_quota_points", "40"), ("limits.depth_workers", "4"),
+    ("limits.depth_pages_per_slot", "4"), ("limits.depth_slot_minutes", "90"),
+])
+def test_run_control_config_change_accepts_pending_task(trial, legacy, key, value):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    if legacy:
+        saved = native.pending(trial)[0]
+        saved["inputs"][str(trial / "config.yaml")] = native._hash(trial / "config.yaml")
+        write_json(Path(task["material"]) / "task.json", saved)
+    cursor = read_json(state_path(trial, "round.json"), {})
+    set_config(trial, [key, value])
+    assert _submit(trial, task)["outcome"] == "accepted"
+    after = read_json(state_path(trial, "round.json"), {})
+    assert after["started_at"] == cursor["started_at"]
+    assert after["pending"] is None and not after.get("done")
+    assert "Avery Lin requested a pilot review." in Notebook(trial).read(record)
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("key,value", [
+    ("language", "zh"), ("languages", "zh,en"), ("model", "default"),
+    ("limits.input_chars_per_batch", "100000"), ("limits.items_per_batch", "10"),
+    ("limits.extract_chars_per_batch", "100000"), ("limits.extract_items_per_batch", "20"),
+    ("limits.investigation_rounds", "4"),
+])
+def test_content_config_change_refuses_without_any_writes(trial, legacy, key, value):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    if legacy:
+        saved = native.pending(trial)[0]
+        saved["inputs"][str(trial / "config.yaml")] = native._hash(trial / "config.yaml")
+        write_json(Path(task["material"]) / "task.json", saved)
+    set_config(trial, ["schedule.times", "09:00,21:00", key, value])
+    before = {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()}
+    with pytest.raises(RemError, match="input changed"):
+        native.submit(trial, task["id"])
+    assert {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_legacy_config_without_recoverable_snapshot_requires_original_bytes(trial, changed):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    saved["inputs"][str(trial / "config.yaml")] = native._hash(trial / "config.yaml")
+    saved["task"]["config"]["language"] = "zh"  # Cannot reproduce the original raw digest.
+    write_json(Path(task["material"]) / "task.json", saved)
+    if changed:
+        set_config(trial, ["schedule.times", "09:00"])
+        before = {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()}
+        with pytest.raises(RemError, match="input changed"):
+            native.submit(trial, task["id"])
+        assert {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()} == before
+    else:
+        assert _submit(trial, task)["outcome"] == "accepted"
+
+
+def test_schedule_change_and_start_accept_pending_audit(trial, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
+    scheduler = SimpleNamespace(install=lambda root, config: {"scheduler": "fixture"})
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *a, **kw: scheduler)
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    audit = native.submit(trial, task["id"])
+    assert audit["stage"] == "claim-audit"
+    cli = CliRunner()
+    prefix = ["rem", "--root", str(trial)]
+    changed = cli.invoke(app, [*prefix, "config", "set", "schedule.times", "09:00,21:00"])
+    assert changed.exit_code == 0, changed.output
+    started = cli.invoke(app, [*prefix, "start", "--yes"])
+    assert started.exit_code == 0, started.output
+    Path(audit["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
+    accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
+    assert accepted.exit_code == 0, accepted.output
+    assert "accepted" in accepted.output
+
+
+def test_schedule_change_preserves_archived_source_view(rem_mail_threads):
+    root = rem_mail_threads
+    task = {"items": [{"source": "gmail:alpha-0"}], "before": {}}
+    before = native._source_view(root, task, handler="runner")
+    set_config(root, ["schedule.times", "09:00", "schedule.timezone", "Pacific/Honolulu"])
+    service.approve_sources(root)
+    assert native._source_view(root, task, handler="runner") == before
 
 
 def test_manual_sync_refuses_before_import_tidy_or_scrub(trial):

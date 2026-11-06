@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import yaml
+
 from . import quota, runner, service
 from .config import read_config
 from .daily import record_cap_stop
@@ -44,6 +46,37 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
+def _config_hash(config):
+    # Scheduling, concurrency and budgets govern future work. Prepared material
+    # (including its local dates) is already saved. Keep evidence-sizing limits.
+    run_limits = {"runner_calls_per_day", "translations_per_day", "timeout_seconds", "workers",
+                  "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
+                  "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
+    content = {key: value for key, value in config.items() if key != "schedule"}
+    content["limits"] = {key: value for key, value in config["limits"].items() if key not in run_limits}
+    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+
+def _input_hash(root, path):
+    digest = _hash(path)
+    return _config_hash(read_config(root)) if path == root / "config.yaml" and digest is not None else digest
+
+
+def _input_matches(root, task, path, digest):
+    if _input_hash(root, path) == digest:
+        return True
+    if path != root / "config.yaml":
+        return False
+    if _hash(path) == digest:  # Legacy task whose raw config is unchanged.
+        return True
+    # Old tasks saved only a raw digest. Recover the original config only when
+    # its saved stage config reproduces that digest; never guess missing inputs.
+    previous = task["task"].get("config")
+    return (previous is not None
+            and hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest() == digest
+            and _config_hash(previous) == _input_hash(root, path))
+
+
 def _inputs(root, task, directory, *, handler):
     paths = {root / "config.yaml", state_path(root, "map.json"), state_path(root, "languages.json"),
              state_path(root, "progress.json"), state_path(root, "routing.json"),
@@ -73,7 +106,7 @@ def _inputs(root, task, directory, *, handler):
                 paths.add(path)
                 if item.get("role") == "evidence-index" and key == "file":
                     paths.update(child for child in path.parent.rglob("*") if child.is_file())
-    return {str(path): _hash(path) for path in sorted(paths)}
+    return {str(path): _input_hash(root, path) for path in sorted(paths)}
 
 
 def _display(root, task):
@@ -312,6 +345,7 @@ def submit(root, task_id, *, usage=None):
     from . import native_round
     if not re.fullmatch(r"native-[0-9a-f]{32}", task_id):
         raise RemError("Invalid native task id")
+    root = root.resolve()
     with maintenance_lock(root, operation="submit"), runner.private_task_mask():
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
         if task.get("status") != "pending":
@@ -325,7 +359,7 @@ def submit(root, task_id, *, usage=None):
             return _accept(root, cursor, task, committed)
         if _promoted(root, task):
             return _accept(root, cursor, task, _recovered_result(root, task))
-        if (any(_hash(Path(path)) != digest for path, digest in task["inputs"].items())
+        if (any(not _input_matches(root, task, Path(path), digest) for path, digest in task["inputs"].items())
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
