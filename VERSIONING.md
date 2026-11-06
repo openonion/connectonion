@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc49
+## Current Version: 1.9.3rc50
+
+Fictional people in fixtures, docs and examples (#2804): tests, the docs that ship in the wheel and
+source examples no longer use the maintainer's or other real people's names and addresses, and a
+test keeps them out. No behaviour change.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc50.md).
+
+- 1.9.3rc50 (fictional people in fixtures, docs and examples).
+
+### Previous candidate: 1.9.3rc49
 
 REM audit follow-ups (#2802): a run whose PID was reused after a reboot no longer shows as running,
 dates use the notebook zone, merges keep generated blocks and section placement, and status shows
