@@ -1062,7 +1062,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
             from .project_claim_review import prepare, check
-            audit = prepare(notebook, text, record=record, items=items, carried=carried)
+            audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True)
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
                                                sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -1497,7 +1497,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
 
     from .tier import current, summary_prompt
     # The tier recorded for this model by `co rem config set model` (#1847).
-    summary = bool(candidate) and stage == "investigate" and current(notebook.root, config) == "summary"
+    summary = not native and bool(candidate) and stage == "investigate" and current(notebook.root, config) == "summary"
     if summary:
         prompt = summary_prompt(directory) + POLICY
 

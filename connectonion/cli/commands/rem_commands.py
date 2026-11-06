@@ -1990,9 +1990,11 @@ def make_rem_app(factory):
 
     def native_text(value):
         if value.get("outcome") == "task":
-            return ("\n".join(value.get("notices", [])) + "\n" + value["instructions"]
-                    + f"\n\nMaterial: {value['material']}\nWrite: {value['candidate']}"
-                    + f"\nSubmit: {value['submit']}").strip()
+            lines = len(value['instructions'].splitlines())
+            notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""
+            return (f"Task: {value['id']}\nStage: {value['stage']}\nWorkspace: {value['material']}"
+                    + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
+                    + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
                            *(value.get("changed") or [])])
 

@@ -167,9 +167,10 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
 
 def prepare(root, pair, *, directory):
     output = directory / "candidate.json"
+    prompt = packet(root, pair).replace("Do not edit any file.", "Read the supplied material with tools; do not edit notebook pages.", 1)
     return {"root": str(root), "pair": pair, "candidate": str(output),
             "before": {record: Notebook(root).read(record) for record in pair["pages"]},
-            "prompt": packet(root, pair) + f"\nWrite only the JSON answer to {output}."}
+            "prompt": prompt + f"\nWrite only the JSON answer to {output}."}
 
 
 def prepare_verdict(task, result, *, say=lambda text: None):

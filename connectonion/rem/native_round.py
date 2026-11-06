@@ -79,8 +79,7 @@ def prepare_task(root, cursor, config, directory):
         if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
             raise RemError("Source progress changed between tasks; run co rem next --discard")
         if batch["record"]["extracted"] and batch["digested"] is None:
-            task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory)
-            task["summary"] = False
+            task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
             return _task("extract", task, cursor, stage="extract", operation="batch")
         leads = batch["leads"] or [None]
         if cursor["batch_index"] < len(leads) and batch["items"]:
@@ -101,8 +100,7 @@ def prepare_task(root, cursor, config, directory):
         extract.forget_digest(root)
     if cursor["summaries"]:
         rows = cursor["summaries"][:1]
-        task = sessions.prepare(root, rows, config, directory=directory)
-        task["prompt"] += f"\nWrite the requested JSON to {task['candidate']}."
+        task = sessions.prepare(root, rows, config, directory=directory, native=True)
         task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
         files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
         task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]

@@ -142,6 +142,8 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
     audit = cli.invoke(app, [*prefix, "submit", task["id"]])
     check_task_output(audit)
     review = native.pending(trial)[0]
+    assert 'Do not use tools, browse, or edit files.' not in review['instructions']
+    assert (Path(review['material']) / 'instructions.md').read_text() == review['instructions']
     Path(review["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
     assert accepted.exit_code == 0, accepted.output
@@ -154,6 +156,31 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
         assert "accepted" in accepted.stdout
         expected = f"Next: run co rem --root {trial} next now (same turn)" if scheduled else f"Next: co rem --root {trial} next"
         assert expected in accepted.stdout
+
+
+@pytest.mark.parametrize('tampered', [False, True])
+def test_pending_legacy_audit_updates_the_linked_instructions_safely(trial, monkeypatch, tampered):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    instructions = Path(task['material']) / 'instructions.md'
+    original_hash = native._hash(instructions)
+    _candidate(trial, task, record, source)
+    audit = native.submit(trial, task['id'])
+    # Previous versions kept the writer file and only saved audit-instructions.md.
+    instructions.write_text(task['instructions'])
+    saved = native.pending(trial)[0]
+    saved['inputs'][str(instructions)] = original_hash
+    write_json(Path(task['material']) / 'task.json', saved)
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    if tampered:
+        instructions.write_text('Changed outside the prepared task.')
+        with pytest.raises(RemError, match='input changed'):
+            native.next_task(trial)
+        return
+    offered = native.next_task(trial)
+    assert instructions.read_text() == audit['instructions'] == offered['instructions']
+    Path(offered['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
 
 def test_concurrent_next_waits_and_offers_the_prepared_task(trial, capsys):
@@ -752,6 +779,113 @@ def test_large_scheduled_session_material_continues_until_round_done(trial, monk
         assert native.SCHEDULED_CONTINUATION not in done.stdout
 
 
+def test_native_task_header_survives_a_small_tool_output_limit(trial, monkeypatch):
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    task, _ = _summary_task(trial, text='Build the pilot reader.\n' * 100, repeats=40, scheduled=True)
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    cli = CliRunner()
+    args = ['rem', '--root', str(trial), 'next']
+    result = cli.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    header = result.stdout
+    assert len(header) < 2500
+    instructions = Path(task['material']) / 'instructions.md'
+    for text in (task['id'], task['stage'], task['material'], task['candidate'], task['submit'],
+                 f'Instructions: {instructions} ({len(instructions.read_text().splitlines())} lines)',
+                 native.SCHEDULED_CONTINUATION):
+        assert text in header
+    assert 'Summarise these owner conversations' not in header
+    structured = cli.invoke(app, [*args, '--json'])
+    assert structured.exit_code == 0, structured.output
+    data = json.loads(structured.stdout)['data']
+    for field in ('id', 'stage', 'record', 'round', 'created_at', 'instructions', 'material', 'candidate', 'submit'):
+        assert data[field] == task[field]
+
+
+def test_native_session_material_can_be_read_in_line_ranges(trial):
+    task, _ = _summary_task(trial, text='Build the pilot reader.\n' * 100, repeats=40)
+    material = Path(task['material']) / 'sessions' / 's1.json'
+    assert material.is_file()
+    lines = material.read_text().splitlines()
+    assert len(lines) > 40 and max(map(len, lines)) < 2000
+    session = json.loads(material.read_text())
+    assert session['id'] == 's1'
+    assert 'Build the pilot reader.' in '\n'.join(session['typed'])
+    for text in ('1 session', 'sessions/s1.json', "sed -n '1,40p'", 'read', task['candidate']):
+        assert text in task['instructions']
+    assert 'Build the pilot reader.' not in task['instructions']
+    material.write_text(material.read_text() + '\n')
+    with pytest.raises(RemError, match='input changed'):
+        native.submit(trial, task['id'])
+
+
+def test_native_session_files_preserve_multiline_replies_and_separate_sessions(trial):
+    from connectonion.rem import sessions
+    directory = trial / 'summary-task'
+    directory.mkdir()
+    row = {'project': 'Cedar', 'agent': 'Codex', 'date': '2026-11-06',
+           'messages': [{'time': '09:12', 'text': 'Build the pilot reader.'}],
+           'reply': 'Completed a pilot item.\n' * 60, 'artifacts': ['- Commands: build\nverify']}
+    task = sessions.prepare(trial, [row, row], read_config(trial), directory=directory, native=True)
+    assert '2 session' in task['prompt']
+    for name in ('s1', 's2'):
+        material = directory / 'sessions' / f'{name}.json'
+        data = json.loads(material.read_text())
+        assert data['id'] == name
+        assert data['final_reply'] == row['reply'].splitlines()
+        assert data['artifacts'] == ['- Commands: build', 'verify']
+
+
+@pytest.mark.parametrize('handler', ['sessions', 'extract', 'same-person'])
+def test_native_prompts_allow_reading_and_writing_with_tools(trial, monkeypatch, handler):
+    from connectonion.rem import extract
+    monkeypatch.setattr(extract, 'current', lambda *args: 'summary')
+    task = {'sessions': lambda root: _summary_task(root)[0], 'extract': _extraction_task,
+            'same-person': _same_person_task}[handler](trial)
+    for forbidden in ('no prose, fences or tools', 'do not call tools or write files', 'Do not edit any file.'):
+        assert forbidden not in task['instructions']
+    assert task['candidate'] in task['instructions']
+
+
+def test_native_investigation_uses_tools_even_for_a_summary_tier_notebook(trial, monkeypatch):
+    from connectonion.rem import tier
+    record, source = _feedback(trial)
+    monkeypatch.setattr(tier, 'current', lambda *args: 'summary')
+    directory = trial / 'investigation-task'
+    directory.mkdir()
+    items = [{'role': 'page', 'record': record, 'source': source, 'one_page': True,
+              'timestamp': service.now().isoformat(), 'text': Notebook(trial).read(record)}]
+    task = runner.prepare(Notebook(trial), items, read_config(trial), stage='investigate',
+                          directory=directory, native=True)
+    assert task['summary'] is False
+    assert 'Do not call tools' not in task['prompt']
+
+
+def test_scheduled_resume_keeps_same_turn_for_a_manual_round(trial, monkeypatch):
+    task, _ = _summary_task(trial)
+    assert read_json(state_path(trial, 'round.json'), {})['slot'] is None
+    monkeypatch.setattr(native, '_alive', lambda pid: False)
+    assert 'continuation' in native.next_task(trial, scheduled=True)
+    # The following CLI invocations need not repeat --scheduled.
+    assert 'continuation' in native.next_task(trial)
+    assert native.submit(trial, task['id'])['same_turn'] is True
+
+
+def test_fresh_scheduled_round_saves_the_early_fire_slot(trial, monkeypatch):
+    from datetime import timezone
+    from connectonion.rem.config import set_config
+    set_config(trial, ['schedule.timezone', 'Australia/Sydney',
+                       'schedule.times', '19:40,19:55,20:10,20:25'])
+    moment = datetime(2026, 11, 6, 8, 40, 57, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    write_json(state_path(trial, 'worker.json'), {'enabled': True})
+    _feedback(trial)
+    task = native.next_task(trial, scheduled=True)
+    assert task['outcome'] == 'task'
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    assert cursor['slot'] == '2026-11-06T19:40:00+11:00'
+
+
 @pytest.mark.parametrize('boundary', ['summary', 'page', 'tags', 'accept'])
 def test_summary_promotion_recovers_every_write_boundary(trial, monkeypatch, boundary):
     from connectonion.rem import sessions
@@ -1238,6 +1372,7 @@ def test_one_native_claim_audit_finding_returns_to_writer_and_can_be_repaired(tr
     assert saved['status'] == 'pending' and saved['candidate'] == task['candidate']
     assert 'Required corrections' in saved['instructions']
     assert 'Fix every audit finding' in saved['instructions'] and 'claim-review.json' in saved['instructions']
+    assert (Path(saved['material']) / 'instructions.md').read_text() == saved['instructions']
     candidate = Path(task['candidate'])
     candidate.write_text(candidate.read_text().replace('Avery Lin requested a pilot review.',
                                                      'The owner recorded Avery’s pilot review request.'))

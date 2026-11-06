@@ -77,7 +77,8 @@ def _inputs(root, task, directory, *, handler):
 
 def _display(root, task):
     result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
-    if read_json(state_path(root, "round.json"), {}).get("slot"):
+    cursor = read_json(state_path(root, "round.json"), {})
+    if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
     return result
 
@@ -113,6 +114,12 @@ def next_task(root, *, scheduled=False, discard=False):
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
         if scheduled and result.get("outcome") == "task":
+            # Taking over a manual round must keep later submit/next calls in
+            # this turn without claiming a slot that did not start the round.
+            cursor = read_json(state_path(root, "round.json"), {})
+            if not cursor.get("slot"):
+                cursor["scheduled"] = True
+                write_json(state_path(root, "round.json"), cursor)
             result["continuation"] = SCHEDULED_CONTINUATION
         return result
 
@@ -152,6 +159,7 @@ def _offer_pending(root, task, *, preparer=None):
     if claim and claim["pid"] != preparer and _alive(claim["pid"]):
         return {"outcome": "claimed", "reason": f"task {task['id']} is being worked on since {claim['started_at']}; "
                 "co rem next --discard to take it over"}
+    _write_instructions(task, check=True)
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
     write_json(Path(task["directory"]) / "task.json", task)
@@ -362,6 +370,7 @@ def _check_submission(root, task):
         task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
         task["review_unreserved"] = False
         task["last_result"] = {"outcome": "refused", "reason": str(error)}
+        _write_instructions(task)
         write_json(directory / "task.json", task)
         _log(root, task, "refused", reason=str(error))
         return task["last_result"]
@@ -374,8 +383,19 @@ def _request_review(root, task, result):
     task["instructions"], task["candidate"] = result["needs_review"], result["candidate"]
     _log(root, task, "pending", stage=task["render_stage"], pending_review=True)
     atomic_write(directory / "audit-instructions.md", task["instructions"])
+    _write_instructions(task)
     write_json(directory / "task.json", task)
     return _offer_review(root, task)
+
+
+def _write_instructions(task, *, check=False):
+    path = Path(task["directory"]) / "instructions.md"
+    # Older pending audits/repairs kept writer instructions in this file.
+    # Restore the active instructions only if the prepared file is intact.
+    if check and _hash(path) != task["inputs"].get(str(path)):
+        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+    atomic_write(path, task["instructions"])
+    task["inputs"][str(path)] = _hash(path)
 
 
 def _promoted(root, task):
@@ -392,13 +412,14 @@ def _accept(root, cursor, task, result):
     write_json(Path(task["directory"]) / "task.json", task)
     native_round.advance(root, cursor, task, result)
     return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []),
-            "same_turn": bool(cursor.get("slot"))}
+            "same_turn": bool(cursor.get("slot") or cursor.get("scheduled"))}
 
 
 def _offer_review(root, task):
     reason, meter = _stop(root, read_config(root))
     if reason:
         return {"outcome": "done", "reason": reason}
+    _write_instructions(task, check=True)
     from .daily import _reserve
     _log(root, task, "completed", changed=[], pending_review=True)
     task.setdefault("runs", []).append(task["run"]["id"])
