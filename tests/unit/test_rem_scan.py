@@ -259,6 +259,11 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
         # Read while the turn runs: a finished task keeps no copy of it (#1958).
         handed.extend(__import__("json").loads(next(Path(cwd).glob("investigate-*/material.json")).read_text()))
         candidate = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        web = candidate.parent / 'web'
+        web.mkdir()
+        (web / 'contact.md').write_text('Rowan’s phone: +61 2 9385 1000')
+        (web / 'sources.json').write_text(__import__('json').dumps([{
+            'url': 'https://example.org/contact', 'file': 'contact.md', 'date': '2026-09-19'}]))
         candidate.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]").replace(
             '- (none yet)', '- [W1] https://example.org/contact — observed 2026-09-19')
             .replace('- Unknown — not investigated yet', '- Unknown'))

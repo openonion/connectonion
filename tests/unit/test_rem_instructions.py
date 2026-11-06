@@ -127,7 +127,8 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 
 # 16.5k until 1.9.3rc7: quote-first page rules (2026-10-20 trial: quotes per
 # first-run person page 6.8 -> 9.8-17.2 over four reruns, First contact filled 1/5 -> 5/5).
-INSTRUCTION_BUDGET = 18_500
+# Additive research/tool and capture rules preserve every existing rule (owner, 2026-11-06).
+INSTRUCTION_BUDGET = 22_500
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])

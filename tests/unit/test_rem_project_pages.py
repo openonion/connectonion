@@ -444,7 +444,7 @@ def test_project_quote_round_carries_saved_page_note_and_whole_first_write_mater
     turns, directories, saved = [], [], []
 
     def page_from(prompt):
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        candidate = Path(re.search(r"existing page at (\S+candidate\.md)", prompt)[1])
         directory = candidate.parent
         directories.append(directory)
         turns.append(json.loads((directory / "material.json").read_text()))

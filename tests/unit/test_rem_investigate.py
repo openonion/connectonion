@@ -11,6 +11,15 @@ from connectonion.rem import investigate as inv
 from connectonion.rem.config import prepare, read_config, set_config
 
 
+def _save_web_capture(directory):
+    """The fake investigator saves its synthetic lookup exactly as a real writer must."""
+    web = directory / 'web'
+    web.mkdir(exist_ok=True)
+    (web / 'team.md').write_text('Rowan works at UNSW.')
+    (web / 'sources.json').write_text(json.dumps([{
+        'url': 'https://www.unsw.edu.au/staff/rowan-ashdown', 'file': 'team.md', 'date': '2026-09-23'}]))
+
+
 class Quiet:
     """One mail from Rowan: an investigation with nothing about its subject stops before the model (#1974)."""
     def my_addresses(self): return {"me@x.y"}
@@ -405,12 +414,13 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         # The least a finished page is (#2008): one cited fact, every other section a bare Unknown.
         path.write_text(page.replace("## Who they are\n- Unknown — not investigated yet",
                                      "## Who they are\n- Rowan works at UNSW. [W1]", 1)
                         .replace("## Sources\n- (none yet)",
-                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
                         .replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -1306,12 +1316,13 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Rowan works at UNSW. [W1]", 1)
         page = page.replace("## Sources\n- (none yet)",
                             "## Sources\n- [1] Existing page people/rowan.md, prior context only.\n"
-                            "- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+                            "- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
         path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -1370,12 +1381,13 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         page = re.sub(r'^- Email: .*$', '- Email: rowan.ashdown@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
         page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Rowan works at UNSW. [W1]", 1).replace(
-            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
         path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -2297,7 +2309,7 @@ def test_gather_clamps_only_coding_sessions_to_the_cached_window(tmp_path, monke
 
     seen = []
     before = datetime.now(timezone.utc)
-    monkeypatch.setattr(inv, "_window_items", lambda read, scoped, *args: seen.append(scoped) or ([], 0))
+    monkeypatch.setattr(inv, "_window_items", lambda read, scoped, *args, **kwargs: seen.append(scoped) or ([], 0))
     _, coverage = inv.gather("Rowan", ["Rowan"], days=days, clients={}, subscriptions={
         kind: {"kind": kind, "root": str(tmp_path), "chats": ["Rowan"]}})
     since = datetime.fromisoformat(seen[0]["since"])

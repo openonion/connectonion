@@ -117,3 +117,8 @@ Unknown — historical requests alone do not establish a current obligation. [2]
   not establish first direct contact, employment, attendance or completion.
 - **Notebook pages are context, not primary evidence.** Cite original headers
   for domains and named contacts; do not cite `investigation:page` as proof.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

@@ -84,9 +84,9 @@ Rules:
   (`2024-02 (internship began, per the user) [n]`). `Unknown` only when
   nothing is dated; never `Unknown` beside cited older mail.
 - **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`,
-  `Changed:`, `At stake:` or `Pattern:`**: a finding no single message shows:
+  `Changed:`, `At stake:`, `Pattern:` or `Inference:`**: a finding no single message shows:
   what moved, what is at risk, a pattern over time (reply speed, topics, who
-  chases whom). Each rests on two or more messages or dates; one message
+  chases whom). Each rests on two or more messages, dates or outside sources; one message
   retold is the lead's or `Open threads`' job. At most one `Now:`. A finding,
   never advice (`verify`, `should`, `confirm`) and never a hedge (`unverified`,
   `remains unknown`); never generic ("key stakeholder"); a single thread: `- Unknown`.
@@ -142,3 +142,8 @@ Rules:
 
 Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
 `Investigation:` line unchanged.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

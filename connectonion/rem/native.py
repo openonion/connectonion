@@ -336,6 +336,11 @@ def _check_submission(root, task):
     except (RemError, json.JSONDecodeError) as error:
         task["stage"] = task["render_stage"]
         task["instructions"] = task["render_instructions"]
+        if task["handler"] in ("runner", "project") and task.get("record"):
+            errors = read_json(directory / "review.json", {}).get("errors") or [str(error)]
+            task["instructions"] += "\n\n## Required corrections\n" + runner.repair_instruction(
+                task["record"], errors, directory, Path(task["task"]["root"]))
+            atomic_write(directory / "repair-instructions.md", task["instructions"])
         task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
         task["review_unreserved"] = False
         task["last_result"] = {"outcome": "refused", "reason": str(error)}
