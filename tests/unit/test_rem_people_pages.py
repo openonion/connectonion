@@ -269,7 +269,7 @@ def test_later_runs_follow_only_what_is_new(root, monkeypatch, now):
                              project_one=lambda root, record, **kw: projects.append(record) or {})
     assert second["run"]["phase"] == "daily-update" and second["run"]["runner_attempts"] == 1
     assert followed == [("people/bob.md", "update", 5)] and projects == []
-    assert len(client.listings) == 1                                  # one listing, not a search per person
+    assert len(client.listings) == 2                                  # one listing per round, including the first
     third = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: pytest.fail("nothing is new"))
     assert third["reason"] == "nothing_new"
 

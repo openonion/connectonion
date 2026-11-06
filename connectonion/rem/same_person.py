@@ -25,6 +25,7 @@ SKILL = "rem-same-person"
 VERDICTS = "same-person.json"
 # Pairs judged per daily run: one model call each.
 PAIRS_PER_RUN = 2
+NEW_PAIRS_PER_RUN = 10
 # Each page's own mail shown to the judge: enough to see how they write.
 MAILS_PER_PAGE = 6
 MAIL_CHARS = 1500
@@ -55,7 +56,7 @@ def _alike(one: dict, other: dict) -> str:
     return ""
 
 
-def candidates(root: Path) -> list[dict]:
+def candidates(root: Path, *, uninvestigated: bool | None = None) -> list[dict]:
     """Pairs of people pages that look alike and have not been judged, by code alone."""
     from .merge import aliases
     state = read_json(state_path(root, "map.json"), {})
@@ -65,6 +66,8 @@ def candidates(root: Path) -> list[dict]:
     judged = read_json(state_path(root, VERDICTS), {})
     folded = aliases(root)
     roster = [person for person in Notebook(root).people() if person["path"] != owner and person["path"] not in folded]
+    new = {person["path"] for person in roster
+           if uninvestigated is not None and "· not investigated yet" in Notebook(root).read(person["path"])}
     pairs = {}
     for i, one in enumerate(roster):
         for other in roster[i + 1:]:
@@ -73,7 +76,8 @@ def candidates(root: Path) -> list[dict]:
                 email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
             why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
                 or _alike(one, other)
-            if why and _due(root, judged.get(key)):
+            has_new = one["path"] in new or other["path"] in new
+            if why and (uninvestigated is None or has_new == uninvestigated) and _due(root, judged.get(key)):
                 pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
 
@@ -135,12 +139,13 @@ def _verdict(result: dict) -> dict:
         answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
     except json.JSONDecodeError as error:
         raise RunFailed("Same-person judgement returned invalid JSON", result.get("usage")) from error
-    if not isinstance(answer, dict) or not isinstance(answer.get("same"), bool) or answer.get("address_role") not in ROLES:
+    if not isinstance(answer, dict) or not isinstance(answer.get("same"), bool) or not isinstance(answer.get("address_role"), str):
         raise RunFailed("Same-person judgement returned an invalid answer", result.get("usage"))
     return answer
 
 
-def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None) -> list[dict]:
+def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None,
+          uninvestigated: bool | None = None) -> list[dict]:
     """Ask about up to `limit` pairs; fold the ones answered yes. Returns one row per pair asked."""
     from .runner import RunFailed, run_claim_task
     run = run or run_claim_task
@@ -148,7 +153,7 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
     for _ in range(limit):
         # Found again after every answer: a fold removes a page that later pairs named.
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-            pair = next(iter(candidates(root)), None)
+            pair = next(iter(candidates(root, uninvestigated=uninvestigated)), None)
         if not pair:
             break
         say(f"Same person? {pair['pages'][0]} and {pair['pages'][1]}")
@@ -187,6 +192,7 @@ def prepare_verdict(task, result, *, say=lambda text: None):
         return {"merge": None, "verdicts": verdicts,
                 "result": _skipped(pair, result.get("usage"), say, asked=True)}
     answer = _verdict(result)
+    answer["same"] = answer["same"] and answer["address_role"] == "their own"
     row = {**pair, **answer, "date": notebook_today(root).isoformat(), "usage": result.get("usage")}
     notebook, merge = Notebook(root), None
     if answer["same"]:
