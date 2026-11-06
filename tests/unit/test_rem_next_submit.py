@@ -16,6 +16,9 @@ from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 def test_source_view_digest_is_stable_across_hash_seeds(rem_mail_threads):
     task_path = state_path(rem_mail_threads, "fixture-task.json")
     write_json(task_path, {"items": [{"source": "gmail:alpha-0"}, {"source": "gmail:beta-0"}], "before": {}})

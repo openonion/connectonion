@@ -10,6 +10,9 @@ import pytest
 
 from connectonion.rem import quota
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 WEEK = 10080
 RESETS = 1_791_067_743  # 2026-10-04, a week after the runs below
 WINDOW_START = RESETS - WEEK * 60

@@ -13,6 +13,9 @@ from connectonion.rem import depth, quota, runner, service
 from connectonion.rem.config import default_config, prepare, read_config, set_config, validate
 from connectonion.rem.files import Notebook, RemError, read_json, state_path, write_json
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 RECORD = "people/avery-lin.md"
 PAGE = '# Avery Lin\n\nThey said “Keep the original words”. [1]\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n'
 TODAY = datetime(2026, 10, 20, tzinfo=timezone.utc)

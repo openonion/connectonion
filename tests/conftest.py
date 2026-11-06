@@ -52,6 +52,37 @@ from connectonion.core.usage import TokenUsage
 from tests.utils.mock_helpers import MockLLM
 
 
+@pytest.fixture
+def rem_clock(monkeypatch):
+    """Keep REM's schedules, lookback and daily cap on one explicit clock.
+
+    rollout() uses September 7 material; a real clock aged it out of the
+    60-day subscription after 2026-11-06 05:00 UTC (16:00 in Sydney).
+    Tests of particular slots/zones can override these defaults.
+    """
+    from datetime import datetime, timezone
+    from connectonion.rem import daily, service
+
+    moment = datetime(2026, 9, 7, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    monkeypatch.setattr(daily, "now", lambda: service.now())
+    monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "UTC")
+    return moment
+
+
+@pytest.fixture(params=["02:55", "16:35", "16:51", "17:05"])
+def rem_sydney_slot(request, monkeypatch, rem_clock):
+    """Exercise manual work before, inside and after a slot's early window."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from connectonion.rem import service
+
+    moment = datetime.fromisoformat(f"2026-11-06T{request.param}").replace(tzinfo=ZoneInfo("Australia/Sydney"))
+    monkeypatch.setattr(service, "now", lambda: moment)
+    monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "Australia/Sydney")
+    return moment
+
+
 @pytest.fixture(autouse=True)
 def _isolate_selected_environment(request, monkeypatch):
     """Auth/refresh and CLI selection cannot leak process state to another test."""

@@ -19,6 +19,8 @@ from connectonion.cli.main import app
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
 runner = CliRunner()
 
 
@@ -520,24 +522,24 @@ def test_sync_all_is_the_backfill(lifecycle):
 def _spend_the_day(root):
     """A run record that used the whole day's cap, as a busy real day leaves."""
     import uuid
-    from datetime import datetime, timezone
-
+    from datetime import timedelta
     from connectonion.rem.config import read_config
     from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.service import now
     record_id = "run_" + uuid.uuid4().hex
     cap = read_config(root)["limits"]["runner_calls_per_day"]   # the cap itself moved (#2032)
     write_json(state_path(root, f"runs/{record_id}.json"),
-               {"id": record_id, "started_at": datetime.now(timezone.utc).isoformat(),
+               {"id": record_id, "started_at": (now() - timedelta(minutes=1)).isoformat(),
                 "runner_attempts": cap, "outcome": "completed", "items": 1})
 
 
-def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle):
+def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle, rem_sydney_slot):
     """#1957: "Next: co rem logs" pointed at a listing with nothing in it."""
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     _spend_the_day(root)
-    rollout(sessions / "rollout-a.jsonl", [("user", "one more thing")])
+    rollout(sessions / "rollout-a.jsonl", [("user", "one more thing")], timestamp=rem_sydney_slot.isoformat())
     refused = invoke(root, "sync")
     assert refused.exit_code == 1 and calls == []
     assert "resets" in refused.output and "limits.runner_calls_per_day" in refused.output
@@ -558,7 +560,7 @@ def _recording_runner(monkeypatch, calls, stop_after=None):
     monkeypatch.setattr("connectonion.rem.runner.run_stage", run_stage)
 
 
-def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch):
+def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch, rem_sydney_slot):
     from connectonion.rem.config import set_config
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
@@ -566,20 +568,22 @@ def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch
     assert invoke(root, "start", "--yes").exit_code == 0
     set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
                       "limits.runner_calls_per_day", "2"])
-    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)],
+            timestamp=rem_sydney_slot.isoformat())
     result = invoke(root, "sync", "--all")
     assert len(calls) == 2 and result.exit_code == 1
     assert "Batch 1:" in result.stderr and "Batch 2:" in result.stderr
     assert "2 batches" in result.output and "resets" in result.output
 
 
-def test_ctrl_c_during_sync_all_says_what_finished(lifecycle, monkeypatch):
+def test_ctrl_c_during_sync_all_says_what_finished(lifecycle, monkeypatch, rem_sydney_slot):
     from connectonion.rem.config import set_config
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
-    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)],
+            timestamp=rem_sydney_slot.isoformat())
     _recording_runner(monkeypatch, calls, stop_after=1)
     result = invoke(root, "sync", "--all")
     assert result.exit_code == 130
