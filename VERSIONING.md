@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc48
+## Current Version: 1.9.3rc49
+
+REM audit follow-ups (#2802): a run whose PID was reused after a reboot no longer shows as running,
+dates use the notebook zone, merges keep generated blocks and section placement, and status shows
+the slot the scheduler will serve. Sync, status and docs say what happened (#2803). A Windows-safe
+egress budget test (#2800). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc49.md).
+
+- 1.9.3rc49 (REM audit follow-ups; clearer sync and status output).
+
+### Previous candidate: 1.9.3rc48
 
 `co rem doctor` (#2798) now names an install command that fixes the running co: on a uv tool it
 keeps the receipt's --with packages and --python. The macOS remote-browser-egress CI checks (#2797)
