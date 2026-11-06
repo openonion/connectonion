@@ -289,6 +289,114 @@ def test_native_repair_instruction_resubmits_in_the_same_turn(tmp_path):
     assert 'save' in instruction.lower() and 'submit command again in this turn' in instruction
 
 
+@pytest.fixture
+def refused_investigation(trial):
+    from uuid import uuid4
+    from connectonion.rem import native_round
+    record, source = _feedback(trial)
+    task_id = 'native-' + uuid4().hex
+    directory = state_path(trial, f'tasks/{task_id}')
+    directory.mkdir(parents=True)
+    config = read_config(trial)
+    cursor = native_round.prepare(trial, config, scheduled=False)
+    items = [{'role': 'page', 'record': record, 'one_page': True,
+              'source': 'investigation:page', 'text': Notebook(trial).read(record)},
+             {'role': 'user', 'source': source, 'text': 'Avery Lin requested a pilot review.'}]
+    prepared = runner.prepare(Notebook(trial), items, config, stage='investigate', directory=directory, native=True)
+    task = {**native_round._task('runner', prepared, cursor, stage='investigate', record=record),
+            'id': task_id, 'created_at': service.now().isoformat(), 'status': 'pending', 'directory': str(directory),
+            'run': {'id': task_id, 'quota': {}}, 'usage': None, 'round_started_at': cursor['started_at']}
+    native._save(trial, cursor, task)
+    _candidate(trial, task, record, source)
+    audit = native.submit(trial, task_id)
+    assert audit['stage'] == 'claim-audit', audit
+    Path(audit['candidate']).write_text(json.dumps({'verdict': 'FAIL', 'findings': [{
+        'claim': 'Avery Lin requested a pilot review.', 'issue': 'Scope needs qualification',
+        'evidence': 'The source is the owner’s correction.',
+        'required_correction': 'Attribute the pilot review request to the owner’s record.'}]}))
+    assert native.submit(trial, task_id)['outcome'] == 'refused'
+    return task
+
+
+@pytest.mark.parametrize('scheduled', [False, True])
+def test_next_resumes_refusal_with_repair_stage_and_actions(trial, refused_investigation, scheduled):
+    task = refused_investigation
+    path = Path(task['material']) / 'task.json'
+    saved = read_json(path, {})
+    saved.pop('claimed_by')  # A later session offers the saved task again.
+    write_json(path, saved)
+    args = ['rem', '--root', str(trial), 'next', *(['--scheduled'] if scheduled else [])]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert 'Stage: investigate (repair)' in result.stdout
+    for line in (f"Task: {task['id']}", f"Refused: {saved['last_result']['reason']}",
+                 f"Fix: {saved['last_result']['fix']}", f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):
+        assert line in result.stdout
+    assert (native.SCHEDULED_CONTINUATION in result.stdout) == scheduled
+    assert f"Next: {task['submit']}" in result.stdout
+    assert len(result.stdout) < 2000
+    again = native.next_task(trial, scheduled=True)
+    assert again['stage'] == 'investigate (repair)' and again['outcome'] == 'task'
+    assert again['fix'] == saved['last_result']['fix'] and again['reason'] == saved['last_result']['reason']
+
+
+@pytest.mark.parametrize('filename', ['instructions.md', 'repair-instructions.md'])
+def test_next_refreshes_legacy_refusal_before_offering_repair(trial, refused_investigation, filename):
+    task = native.pending(trial)[0]
+    directory = Path(task['material'])
+    task['instructions'] = task['render_instructions'] + '\n\n## Required corrections\n' + task['last_result']['reason']
+    native._write_instructions(task)
+    (directory / 'repair-instructions.md').write_text(task['instructions'])
+    write_json(directory / 'task.json', task)
+    run = state_path(trial, f"runs/{task['run']['id']}.json")
+    before = run.read_bytes(), Path(task['candidate']).read_bytes(), _canonical(trial)
+    again = native.next_task(trial, scheduled=True)
+    instructions = (directory / filename).read_text()
+    assert instructions.startswith('## Required corrections\n')
+    assert 'Required correction: Attribute the pilot review request to the owner’s record.' in instructions.split(
+        '## Reference: full render instructions')[0]
+    assert again['id'] == task['id'] and again['stage'] == 'investigate (repair)'
+    assert again['instructions'] == instructions
+    assert (run.read_bytes(), Path(task['candidate']).read_bytes(), _canonical(trial)) == before
+
+
+@pytest.mark.parametrize('filename', ['instructions.md', 'repair-instructions.md'])
+def test_refusal_instructions_put_small_repair_before_reference(refused_investigation, filename):
+    task = refused_investigation
+    instructions = (Path(task['material']) / filename).read_text()
+    first = '\n'.join(instructions.splitlines()[:8])
+    assert instructions.startswith('## Required corrections\n')
+    for text in ('page is already written', 'Fix only the named problems',
+                 'Do not redo the investigation or outside research', 'Save the candidate', task['submit']):
+        assert text in first
+    assert instructions.index('## Reference: full render instructions') < instructions.index(task['render_instructions'])
+
+
+def test_claim_audit_findings_are_inline_in_refusal_instructions(refused_investigation):
+    instructions = (Path(refused_investigation['material']) / 'instructions.md').read_text()
+    corrections = instructions.split('## Reference: full render instructions')[0]
+    assert 'Claim: Avery Lin requested a pilot review.' in corrections
+    assert 'Required correction: Attribute the pilot review request to the owner’s record.' in corrections
+
+
+def test_refusal_inlines_bounded_audit_findings_and_short_errors(trial, refused_investigation):
+    task = native.pending(trial)[0]
+    directory = Path(task['material'])
+    write_json(directory / 'claim-review.json', {'findings': [
+        {'claim': f'Fictional claim {i}. ' + 'c' * 2000, 'required_correction': f'Correction {i}. ' + 'x' * 2000}
+        for i in range(6)]})
+    write_json(directory / 'review.json', {'errors': ['Qualify the fictional request.', 'Preserve the cited date.']})
+    native._refuse_submission(trial, task, 'Cited-claim audit did not pass; see claim-review.json')
+    instructions = (directory / 'instructions.md').read_text()
+    corrections = instructions.split('## Reference: full render instructions')[0]
+    assert 'Qualify the fictional request.' in corrections and 'Preserve the cited date.' in corrections
+    for i in range(5):
+        assert f'Claim: Fictional claim {i}.' in corrections and f'Required correction: Correction {i}.' in corrections
+    assert 'Fictional claim 5.' not in corrections and 'Correction 5.' not in corrections
+    assert 'c' * 501 not in corrections and 'x' * 501 not in corrections
+    assert 'claim-review.json' in corrections and len(corrections) < 7000
+
+
 @pytest.mark.parametrize('failure', ['candidate', 'claim-audit'])
 @pytest.mark.parametrize('schedule', ['manual', 'slot', 'scheduled'])
 @pytest.mark.parametrize('json_mode', [False, True])
@@ -318,7 +426,7 @@ def test_native_refusal_prints_repair_files_and_same_turn_continuation(trial, fa
     assert data['fix'] == str(fix)
     assert data['candidate'] == task['candidate'] and data['submit'] == task['submit']
     assert (data.get('continuation') == native.SCHEDULED_CONTINUATION) == (schedule != 'manual')
-    corrections = fix.read_text().split('## Required corrections\n', 1)[1]
+    corrections = fix.read_text().split('## Required corrections\n', 1)[1].split('## Reference: full render instructions')[0]
     assert 'submit command again in this turn' in corrections and 'and stop' not in corrections
     assert saved['stage'] == task['stage'] and saved['candidate'] == task['candidate']
     if failure == 'claim-audit':
@@ -326,7 +434,7 @@ def test_native_refusal_prints_repair_files_and_same_turn_continuation(trial, fa
         assert 'Fix every audit finding' in corrections
         assert 'Attribute the request to the owner.' not in data['reason']
     if not json_mode:
-        for line in (f"Refused: {data['reason']}", f'Fix: {fix}', '"Required corrections" at the end',
+        for line in (f"Refused: {data['reason']}", f'Fix: {fix}', '"Required corrections" first',
                      f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):
             assert line in result.stdout
         assert (native.SCHEDULED_CONTINUATION in result.stdout) == (schedule != 'manual')
@@ -356,7 +464,7 @@ def test_native_refusal_without_page_repair_points_to_instructions(trial, json_m
     assert not (fix.parent / 'repair-instructions.md').exists()
     assert data['reason'] in fix.read_text().split('## Required corrections\n', 1)[1]
     if not json_mode:
-        for line in (f'Fix: {fix}', '"Required corrections" at the end',
+        for line in (f'Fix: {fix}', '"Required corrections" first',
                      f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):
             assert line in result.stdout
 

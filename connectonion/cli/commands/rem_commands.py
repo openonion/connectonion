@@ -1989,10 +1989,13 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
+        repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
+                  + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
         if value.get("outcome") == "refused":
-            return (f"Refused: {value['reason']}\nFix: {value['fix']} — \"Required corrections\" at the end"
-                    + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}")
+            return repair
         if value.get("outcome") == "task":
+            if repair:
+                return f"Task: {value['id']}\nStage: {value['stage']}\n" + repair
             lines = len(value['instructions'].splitlines())
             notices = "\n" + "\n".join(value['notices']) if value.get('notices') else ""
             return (f"Task: {value['id']}\nStage: {value['stage']}\nWorkspace: {value['material']}"
@@ -2008,8 +2011,10 @@ def make_rem_app(factory):
                     json_out: bool = typer.Option(False, "--json")):
         from ...rem.native import next_task
         ctx.obj["json"] = ctx.obj["json"] or json_out
-        _handle(ctx, lambda root: (next_task(root, scheduled=scheduled, discard=discard), ["next"]),
-                ["next"], draw=lambda value: escape(native_text(value)))
+        def operation(root):
+            value = next_task(root, scheduled=scheduled, discard=discard)
+            return value, ["submit", value["id"]] if value.get("fix") else ["next"]
+        _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
 
     @rem.command("submit", cls=V("co rem submit"))
     def native_submit(ctx: typer.Context, task_id: str = typer.Argument(...),

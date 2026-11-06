@@ -78,6 +78,9 @@ def _inputs(root, task, directory, *, handler):
 
 def _display(root, task):
     result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
+    refusal = task.get("last_result", {})
+    if refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]:
+        result.update(stage=task["stage"] + " (repair)", reason=refusal["reason"], fix=refusal["fix"])
     cursor = read_json(state_path(root, "round.json"), {})
     if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
@@ -161,6 +164,11 @@ def _offer_pending(root, task, *, preparer=None, takeover=False):
         return {"outcome": "claimed", "reason": f"task {task['id']} is being worked on since {claim['started_at']}; "
                 "co rem next --discard to take it over"}
     _write_instructions(task, check=True)
+    refusal = task.get("last_result", {})
+    if (refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]
+            and not task["instructions"].startswith("## Required corrections\n")):
+        refusal["fix"] = str(_repair_instructions(task, refusal["reason"]))
+        _write_instructions(task)
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
@@ -369,25 +377,51 @@ def _check_submission(root, task):
         return _refuse_submission(root, task, str(error))
 
 
-def _refuse_submission(root, task, reason):
+def _repair_findings(directory, reason):
+    lines = []
+    for error in read_json(directory / "repair-findings.json", [])[:5]:
+        lines.append(f"- Error: {error[:500]}")
+    if "Cited-claim audit did not pass" in reason:
+        findings = read_json(directory / "claim-review.json", {}).get("findings", [])
+        for finding in findings[:5]:
+            lines.append(f"- Claim: {finding['claim'][:500]}\n  Required correction: {finding['required_correction'][:500]}")
+        if len(findings) > 5:
+            lines.append("Further findings: see claim-review.json.")
+    return "\n".join(lines)
+
+
+def _repair_instructions(task, reason):
     directory = Path(task["directory"])
     task["stage"] = task["render_stage"]
     task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
     fix = directory / "instructions.md"
-    corrections = reason + f"\nSave the candidate and run {task['submit']} again in this turn."
+    corrections = reason
     if task["handler"] in ("runner", "project") and task.get("record"):
         errors = read_json(directory / "review.json", {}).get("errors") or [reason]
         corrections = runner.repair_instruction(
             task["record"], errors, directory, Path(task["task"]["root"]), native=True)
         fix = directory / "repair-instructions.md"
-    task["instructions"] = task["render_instructions"] + "\n\n## Required corrections\n" + corrections
+    task["instructions"] = (
+        "## Required corrections\n"
+        "The page is already written. Fix only the named problems in the existing candidate.\n"
+        "Do not redo the investigation or outside research.\n"
+        f"Save the candidate: {task['candidate']}\n"
+        f"Run {task['submit']} again in this turn.\n\n"
+        f"Refused: {reason}\n" + _repair_findings(directory, reason) + "\n\n" + corrections
+        + "\n\n## Reference: full render instructions\n" + task["render_instructions"])
+    if fix.name == "repair-instructions.md":
+        atomic_write(fix, _readable_text(task["instructions"]))
+    return fix
+
+
+def _refuse_submission(root, task, reason):
+    directory = Path(task["directory"])
+    fix = _repair_instructions(task, reason)
     task["review_unreserved"] = False
     display = _display(root, task)
     task["last_result"] = {"outcome": "refused", "reason": reason, "fix": str(fix),
                            **{key: display[key] for key in ("candidate", "submit", "continuation") if key in display}}
     _write_instructions(task)
-    if fix.name == "repair-instructions.md":
-        atomic_write(fix, task["instructions"])
     write_json(directory / "task.json", task, readable=True)
     _log(root, task, "refused", reason=reason)
     return task["last_result"]
