@@ -22,6 +22,19 @@ def no_change(root):
     return {"outcome": "no_change"}
 
 
+@pytest.mark.parametrize("enabled,consented,unsubscribed", [
+    (False, False, False), (True, False, False), (False, True, False),
+    (True, True, True), (True, True, False),
+])
+def test_daily_mail_clients_require_an_approved_subscription(monkeypatch, enabled, consented, unsubscribed):
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    monkeypatch.setattr(daily, "mail_client", lambda kind, **kwargs: kind)
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": enabled, "consented": consented, "unsubscribed": unsubscribed}}
+    expected = {"gmail", "outlook"} if enabled and consented and not unsubscribed else {"gmail"}
+    assert set(daily._clients(sources)) == expected
+
+
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     root = tmp_path / "rem"

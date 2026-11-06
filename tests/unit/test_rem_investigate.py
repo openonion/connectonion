@@ -772,9 +772,12 @@ def test_an_investigation_the_user_starts_has_tools_authorized(tmp_path, co_ai, 
 @pytest.mark.parametrize("runner", sorted(PINNED))
 def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner):
     from connectonion.rem.daily import run_daily
+    from connectonion.rem.service import approve_sources, toggle_source
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
     monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
     root = _pinned_notebook(tmp_path, runner)
+    toggle_source(root, "outlook", True)
+    approve_sources(root)
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
     assert result["run"]["outcome"] == "completed", result

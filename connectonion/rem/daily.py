@@ -95,12 +95,11 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
 
 
 def _clients(sources: dict) -> dict:
-    # The same mailboxes `co rem investigate` reads: every connected one the
-    # user did not unsubscribe. Reading only subscribed mailboxes here left the
-    # scheduled investigation with no mail -- the #1628 failure, one path over.
+    # Background investigations use only subscriptions the owner approved.
     from .service import mail_available
     return {kind: mail_client(kind, attachments=True) for kind in ('outlook', 'gmail')
-            if mail_available(kind) and not sources.get(kind, {}).get('unsubscribed')}
+            if sources.get(kind, {}).get('enabled') and sources[kind].get('consented')
+            and not sources[kind].get('unsubscribed') and mail_available(kind)}
 
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None) -> tuple[dict, Path]:

@@ -148,6 +148,8 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
         _interrupted(ctx, resume or retry or recovery)
     except (RemError, OSError, UnicodeError) as error:
         message = str(error) if isinstance(error, RemError) else "Cannot read or write the selected co rem files"
+        if isinstance(error, OSError):
+            message += f": {error}"
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co rem start" and then printed "Next: co rem logs".
         named = re.search(r"`co rem ([^`<>]+)`", message)
@@ -354,22 +356,22 @@ def _interactive() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _mail_clients(root):
+def _mail_clients(root, *, mail=()):
     """Investigating is an explicit request, so any mailbox this machine can
     already read is read, whether or not background sync is subscribed to it --
     `init` read the same mailboxes to build the map. Only a mailbox the user
-    explicitly unsubscribed is left alone."""
+    explicitly unsubscribed is left alone. Init's --mail limits this run's clients."""
     from ...rem.service import mail_available, mail_client, subscriptions
     sources = subscriptions(root)
     return {kind: mail_client(kind, attachments=True) for kind in ("outlook", "gmail")
-            if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed")}
+            if (not mail or kind in mail) and mail_available(kind) and not sources.get(kind, {}).get("unsubscribed")}
 
 
 def _mail_progress(kind, stop, count):
     rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
-def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None):
+def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None, mail=()):
     """The owner's page from what they sent: `investigate me`, and init's last step (#1943)."""
     from ...rem.files import Notebook, RemError, read_json, state_path
     from ...rem.investigate import investigate
@@ -390,7 +392,7 @@ def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None):
                  "Account owner")
     result = _logged(root, record, "investigate me", lambda update: investigate(
         root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
-        clients=_mail_clients(root), subscriptions=subscriptions(root), progress=_mail_progress,
+        clients=_mail_clients(root, mail=mail), subscriptions=subscriptions(root), progress=_mail_progress,
         sent_only=True, stage_progress=update, quick=quick, rounds=rounds), quiet=quiet)
     return result, record
 
@@ -436,7 +438,7 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
 
 
 def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
-                      quiet=False, retry_refused=False, rounds=None):
+                      quiet=False, retry_refused=False, rounds=None, mail=()):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError
@@ -451,7 +453,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         raise RemError("--eval-dir applies only to skills pages")
     text = notebook.read(record)
     title, handles = rem_investigate.page_handles(notebook, record, handle)
-    clients = _mail_clients(root)
+    clients = _mail_clients(root, mail=mail)
     if record.startswith("projects/"):
         clients = {kind: client for kind, client in clients.items() if handle}
     skipped = "" if clients or not record.startswith("projects/") else \
@@ -582,19 +584,19 @@ def _in_parallel(jobs, *, workers, gate, done):
     return outcomes, stopped
 
 
-def _people_jobs(root, rows) -> list[dict]:
+def _people_jobs(root, rows, *, mail=()) -> list[dict]:
     from ...rem import people_pages
     from ...rem.service import subscriptions
 
     def job(row):
         investigate = lambda update: people_pages.investigate_person(  # noqa: E731
-            root, row, clients=_mail_clients(root), subscriptions=subscriptions(root), stage_progress=update)
+            root, row, clients=_mail_clients(root, mail=mail), subscriptions=subscriptions(root), stage_progress=update)
         return {"kind": "people", "record": row["record"], "mode": row["mode"], "row": row,
                 "run": lambda: _logged(root, row["record"], "investigate", investigate, quiet=True)}
     return [job(row) for row in rows]
 
 
-def _project_jobs(root, config, rows) -> list[dict]:
+def _project_jobs(root, config, rows, *, mail=()) -> list[dict]:
     from ...rem.files import Notebook
     from ...rem import project_pages
 
@@ -602,29 +604,29 @@ def _project_jobs(root, config, rows) -> list[dict]:
         if row['mode'] == 'full':
             return {'kind': 'projects', 'record': row['record'], 'mode': 'full', 'row': row,
                     'run': lambda: _investigate_page(root, Notebook(root), row['record'], quiet=True,
-                                                     rounds=FIRST_RUN_ROUNDS)}
+                                                     rounds=FIRST_RUN_ROUNDS, mail=mail)}
         write = lambda update: project_pages.write_page(root, row["record"], config=config)  # noqa: E731
         return {"kind": "projects", "record": row["record"], "mode": row["mode"], "row": row,
                 "run": lambda: _logged(root, row["record"], "projects write", write, quiet=True)}
     return [job(row) for row in rows]
 
 
-def _org_jobs(root, rows) -> list[dict]:
+def _org_jobs(root, rows, *, mail=()) -> list[dict]:
     from ...rem.files import Notebook
 
     def job(row):
         return {"kind": "orgs", "record": row["path"], "mode": "full", "row": row,
                 "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True,
-                                                 rounds=FIRST_RUN_ROUNDS)}
+                                                 rounds=FIRST_RUN_ROUNDS, mail=mail)}
     return [job(row) for row in rows]
 
 
-def _owner_full_job(root, days) -> dict:
+def _owner_full_job(root, days, *, mail=()) -> dict:
     """Your whole page, from everything you sent, after the quick pass wrote the first one."""
     from ...rem.files import read_json, state_path
     record = read_json(state_path(root, "map.json"), {})["owner"]["record"]
     return {"kind": "me", "record": record, "mode": "full",
-            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True, rounds=FIRST_RUN_ROUNDS)}
+            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True, rounds=FIRST_RUN_ROUNDS, mail=mail)}
 
 
 KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages",
@@ -632,7 +634,8 @@ KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages
 LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": "Organisation", "skills": "Skill"}
 
 
-def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills=(), me_days=None, owner_full=False) -> dict:
+def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills=(), me_days=None, owner_full=False,
+                 mail=()) -> dict:
     """After your own page: your whole page, people, projects and organisations, sharing limits.workers.
 
     One line per page as it finishes. Returns owner_full, people_pages,
@@ -649,14 +652,14 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     # Attachments too: a fresh notebook asked the provider once per archived mail.
     first = [{**row, "rounds": FIRST_RUN_ROUNDS, **({"days": MAP_DAYS, "attachments": False} if row in deep else {})}
              for row in people]
-    backfill = _start_backfill(root, deep)
+    backfill = _start_backfill(root, deep, mail=mail)
     before = (date.today() - timedelta(days=MAP_DAYS)).isoformat()
     deep_rows = {row["record"]: row for row in deep}
     if deep:
         say(f"Fetching up to two years of mail for {len(deep)} people in the background…")
-    kinds = {"me": [_owner_full_job(root, me_days)] if owner_full else [],
-             "people": _people_jobs(root, first), "projects": _project_jobs(root, config, projects),
-             "orgs": _org_jobs(root, orgs), "skills": _skill_jobs(root, skills)}
+    kinds = {"me": [_owner_full_job(root, me_days, mail=mail)] if owner_full else [],
+             "people": _people_jobs(root, first, mail=mail), "projects": _project_jobs(root, config, projects, mail=mail),
+             "orgs": _org_jobs(root, orgs, mail=mail), "skills": _skill_jobs(root, skills)}
 
     from itertools import zip_longest
     from .rem_output import FirstRunProgress
@@ -676,7 +679,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
             f"{'written' if not why else 'not written' + why}")
         row = deep_rows.get(job["record"])
         if job["kind"] == "people" and row and outcome["outcome"] == "accepted":
-            return [_deepen_job(root, row, backfill[row["record"]], before)]
+            return [_deepen_job(root, row, backfill[row["record"]], before, mail=mail)]
         return []
 
     from ...rem.investigate import warm_session_windows
@@ -704,7 +707,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     return result
 
 
-def _start_backfill(root, rows) -> dict:
+def _start_backfill(root, rows, *, mail=()) -> dict:
     """Each person's older mail, fetched into the archive in the background, four people at a time."""
     from concurrent.futures import ThreadPoolExecutor
     from ...rem.people_pages import backfill_person
@@ -712,16 +715,16 @@ def _start_backfill(root, rows) -> dict:
     if not rows:
         return {}
     pool = ThreadPoolExecutor(max_workers=4)
-    futures = {row["record"]: pool.submit(backfill_person, root, row, clients=_mail_clients(root),
+    futures = {row["record"]: pool.submit(backfill_person, root, row, clients=_mail_clients(root, mail=mail),
                                           subscriptions=subscriptions(root)) for row in rows}
     pool.shutdown(wait=False)
     return futures
 
 
-def _deepen_job(root, row, backfill, before: str) -> dict:
+def _deepen_job(root, row, backfill, before: str, *, mail=()) -> dict:
     """A second pass on one person once their older mail has arrived: the parts dated before the mapped window."""
     older = lambda: backfill.exception() is None and backfill.result() > 0  # noqa: E731 -- waits for the fetch
-    person = _people_jobs(root, [{**row, "rounds": FIRST_RUN_ROUNDS, "read_before": before}])[0]
+    person = _people_jobs(root, [{**row, "rounds": FIRST_RUN_ROUNDS, "read_before": before}], mail=mail)[0]
     return {**person, "kind": "deepen", "older": older, "run": lambda: person["run"]() if older() else None}
 
 
@@ -1060,7 +1063,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                             if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
         subscribe_read_mail(root, selected)
         run_state["consented"] = ensure_consent(
-            root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes))
+            root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes), mail=mail)
         sources = subscriptions(root)
         clients, errors = {}, []
         for kind in sorted(selected):
@@ -1300,7 +1303,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                 # Quick first, so your page is there in minutes; the whole page runs
                 # with the others (2026-10-01: the full pass alone was refused in two
                 # of seven real first runs and nearly empty in a third).
-                _investigate_me(root, days=days if window else None, quick=True)
+                _investigate_me(root, days=days if window else None, quick=True, mail=mail)
             except KeyboardInterrupt:
                 result.update(investigation="interrupted",
                               investigate_me={"started": True, "outcome": "interrupted"})
@@ -1320,7 +1323,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
                                        projects=project_rows, orgs=org_rows, skills=skill_rows,
                                        me_days=days if window else None,
-                                       owner_full=result.get("investigation") == "completed"))
+                                       owner_full=result.get("investigation") == "completed", mail=mail))
         except KeyboardInterrupt:
             result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
             _interrupted(ctx, ["investigate", "all"], result)
@@ -1370,7 +1373,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             try:
                 background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
                                    scheduler=rem_schedule.default_scheduler(root, for_start=True), run_first_batch=False,
-                                   history_progress=_history_progress)
+                                   history_progress=_history_progress, mail=mail)
                 if not background["started"]:
                     background["reason"] = ("Background upkeep needs approval. Run "
                                             + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
