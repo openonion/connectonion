@@ -80,7 +80,7 @@ def _display(root, task):
     result = {key: task[key] for key in ("id", "stage", "record", "round", "created_at", "instructions", "material", "candidate", "submit")}
     refusal = task.get("last_result", {})
     if refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]:
-        result.update(stage=task["stage"] + " (repair)", reason=refusal["reason"], fix=refusal["fix"])
+        result.update(stage=task["stage"] + " (repair)", reason=refusal["reason"], fix=refusal.get("fix"))
     cursor = read_json(state_path(root, "round.json"), {})
     if cursor.get("slot") or cursor.get("scheduled"):
         result["continuation"] = SCHEDULED_CONTINUATION
