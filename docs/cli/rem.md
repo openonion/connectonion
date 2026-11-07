@@ -1609,6 +1609,24 @@ sync (the daily round and `co rem sync`), under the notebook lock. It is
 idempotent: a tidy notebook is left exactly as it is, and nothing is written
 when nothing needs tidying. No model is called. What it does:
 
+Tidy also removes accepted and discarded native task workspaces once their
+round finishes, and removes abandoned empty task folders after six hours.
+Fresh workspaces may still be preparing a task. An active round retains its
+workspaces because later tasks can still read earlier outputs. Run logs stay.
+Attachments are deleted only when no current or archived page cites them and
+both their filesystem access and modification times are older than 30 days.
+The `.fetched` markers stay, so pruning does not download those attachments
+again. Evidence copies older than a finished run are removed, while copies
+from unfinished runs stay. Tidy records its deletions in `.state/tidy.json`;
+native task completion stays in run logs. Deleted copies cannot be restored
+locally.
+
+An organisation-shaped page filed under People (with a Domains section) moves
+to Orgs, keeping its text, citations and relative links. Existing destination
+pages and the owner's page are left for an explicit decision.
+Written service or automated-sender pages recognised by the map's existing
+rules move to Notes with their content intact.
+
 | Found | Done | Undo |
 |---|---|---|
 | A people page for a service or automated sender, never investigated (the map's `automated_correspondents`, the #1987 service rule, or an automated address) | moved to `.state/archived/people/…` | move the file back |

@@ -260,6 +260,7 @@ def _new_task(root, cursor, config, meter, notices):
     if prepared is None or prepared.get("stop"):
         shutil.rmtree(directory)
         write_json(state_path(root, "round.json"), cursor)
+        runner.scrub_finished_tasks(directory.parent)
         return {"outcome": "done", "reason": prepared["stop"] if prepared else "round done", "notices": notices}
     if prepared["phase"] in ("daily-investigation", "daily-update") and "investigation_left" in cursor:
         cursor["investigation_left"] -= 1
@@ -298,6 +299,7 @@ def _discard(root, cursor, task, reason):
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
     _log(root, task, "discarded", reason=reason)
     native_round.advance(root, cursor, task, {"discarded": reason})
+    runner.scrub_task(Path(task["directory"]))
     return [f"Discarded {task['id']}: {reason}"]
 
 
@@ -580,6 +582,7 @@ def _accept(root, cursor, task, result):
     _log(root, task, "completed", changed=result.get("changed", []))
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
     native_round.advance(root, cursor, task, result)
+    runner.scrub_task(Path(task["directory"]))
     return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []),
             "same_turn": bool(cursor.get("slot") or cursor.get("scheduled"))}
 
