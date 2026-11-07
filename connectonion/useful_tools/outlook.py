@@ -1110,7 +1110,7 @@ class Outlook:
         params = {
             "$search": f'"participants:{address} AND received>={start[:10]}"',
             "$top": 250,
-            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,replyTo,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         raw, endpoint = [], "/me/messages"
         while endpoint and len(raw) < max_results:
@@ -1124,6 +1124,7 @@ class Outlook:
             row['thread_id'] = msg.get('conversationId', '')
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
             row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
+            row['reply_to'] = ', '.join(self._recipient(r) for r in msg.get('replyTo', []))
         return sorted(rows, key=lambda row: (str(row.get('date', '')), row['id']))
 
     def list_between(self, start: str, end: str, max_results: int = 200,
@@ -1145,7 +1146,7 @@ class Outlook:
             "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
             "$orderby": f"receivedDateTime {'desc' if newest_first else 'asc'}",
             "$top": max_results,
-            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,replyTo,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         result = self._request("GET", "/me/messages", params=params, headers={"Prefer": 'IdType="ImmutableId"'})
         rows = self._email_dicts(result.get('value', []))
@@ -1159,6 +1160,7 @@ class Outlook:
         for row, msg in zip(rows, result.get('value', [])):
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
             row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
+            row['reply_to'] = ', '.join(self._recipient(r) for r in msg.get('replyTo', []))
         # Ascending either way: the flag chose which messages, not their order,
         # and every caller including co rem importer reads them oldest first.
         return sorted(rows, key=lambda row: str(row.get('date', '')))

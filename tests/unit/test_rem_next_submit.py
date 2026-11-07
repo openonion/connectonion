@@ -901,6 +901,8 @@ def test_changed_original_candidate_cannot_become_a_symlink_during_audit(trial):
     assert _canonical(trial) == before
 
 
+# Multiple independent interpreter startups exceed 60s on a loaded parallel runner.
+@pytest.mark.timeout(300)
 def test_three_investigation_parts_resume_across_fresh_processes(trial):
     import subprocess
     import sys
@@ -1509,7 +1511,7 @@ def translation_round(trial, monkeypatch):
 @pytest.mark.parametrize('pending', [False, True])
 @pytest.mark.parametrize('manual_round', [False, True])
 @pytest.mark.parametrize('legacy', [False, True])
-def test_later_scheduled_slot_defers_old_translations_and_reads_new_material(
+def test_later_scheduled_slot_keeps_translation_backlog_in_progress(
         trial, monkeypatch, translation_round, pending, manual_round, legacy):
     cursor = translation_round
     if manual_round:
@@ -1535,29 +1537,15 @@ def test_later_scheduled_slot_defers_old_translations_and_reads_new_material(
         write_json(state_path(trial, 'round.json'), saved_cursor)
     record, source = _feedback(trial)
     result = native.next_task(trial, scheduled=True)
-    assert result['outcome'] == 'task' and result['record'] == record, result
+    assert result['outcome'] == 'task' and result['stage'] == 'translate', result
     current = read_json(state_path(trial, 'round.json'), {})
-    assert current['started_at'] == moment.isoformat()
-    assert current['run']['id'] != cursor['run']['id']
-    assert source in (Path(result['material']) / 'material.md').read_text()
-    old_run = read_json(state_path(trial, f"runs/{cursor['run']['id']}.json"), {})
-    assert old_run['outcome'] == 'completed' and old_run['finished_at'] == moment.isoformat()
-    assert old_run['changed'] == cursor['changed']
-    rows = old_run['translations']['pages']
-    assert [row['page'] for row in rows] == cursor['changed'][1:]
-    assert all(row['outcome'] == 'skipped' and 'slot' in row['reason'] for row in rows)
-    worker = service.worker_state(trial)
-    if not manual_round:
-        assert worker['last_scheduled_slot'] == cursor['slot']
-        assert worker['last_scheduled_outcome'] == 'completed'
+    assert current['started_at'] == cursor['started_at']
+    assert current['run']['id'] == cursor['run']['id']
+    assert current['translations'] == [cursor['changed'][0]]
     if pending:
-        discarded = read_json(Path(task['material']) / 'task.json', {})
-        assert discarded['status'] == 'discarded'
-        assert any(row.get('task_id') == task['id'] and row['outcome'] == 'discarded'
-                   for row in service.run_logs(trial))
-    logs = CliRunner().invoke(app, ['rem', '--root', str(trial), 'logs', cursor['run']['id']])
-    assert logs.exit_code == 0, logs.output
-    assert 'skipped' in logs.output and 'notes/review.md' in logs.output
+        assert result['id'] == task['id']
+        assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'pending'
+
 
 
 @pytest.mark.parametrize('scheduled,later', [(True, False), (False, True)])
@@ -1607,7 +1595,7 @@ def test_translation_tail_started_this_slot_keeps_older_round(trial, monkeypatch
     assert read_json(state_path(trial, 'round.json'), {})['run']['id'] == translation_round['run']['id']
 
 
-def test_later_slot_recovers_accepted_translation_then_starts_new_round(trial, monkeypatch, translation_round):
+def test_later_slot_recovers_accepted_translation_and_continues_backlog(trial, monkeypatch, translation_round):
     from connectonion.rem import native_round
     task = native.next_task(trial)
     Path(task['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
@@ -1622,10 +1610,10 @@ def test_later_slot_recovers_accepted_translation_then_starts_new_round(trial, m
     monkeypatch.setattr(service, 'now', lambda: moment)
     record, _ = _feedback(trial)
     result = native.next_task(trial, scheduled=True)
-    assert result['outcome'] == 'task' and result['record'] == record, result
-    old_run = service.run_logs(trial, translation_round['run']['id'])[0]
-    assert old_run['outcome'] == 'completed'
-    assert len(old_run['translations']['pages']) == 2
+    assert result['outcome'] == 'task' and result['record'] == translation_round['changed'][1], result
+    recovered = read_json(state_path(trial, 'round.json'), {})
+    assert recovered['run']['id'] == translation_round['run']['id']
+    assert recovered['translations'] == translation_round['changed'][:1]
 
 
 def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, translation_round):
@@ -1634,8 +1622,10 @@ def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, t
     cursor.update(jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], current={'record': 'notes/pilot.md'},
                   investigation_left=0)
     write_json(state_path(trial, 'round.json'), cursor)
-    stopped = native.next_task(trial, scheduled=True)
-    assert 'investigation portion cap reached' in stopped['reason']
+    translation = native.next_task(trial, scheduled=True)
+    assert translation['stage'] == 'translate'
+    Path(translation['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
+    assert native.submit(trial, translation['id'])['outcome'] == 'accepted'
     def resume_job(root, state, config, directory):
         prepared = runner.prepare(Notebook(root), [{'role': 'user', 'source': 'codex:fixture:1',
             'text': 'Review the fictional pilot.'}], config, directory=directory, native=True)

@@ -85,7 +85,7 @@ def test_status_names_only_pages_its_command_would_write(tmp_path):
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/avery.md", "addresses": ["avery@maralabs.example"]},
                                                   "people": [], "projects": [], "orgs": []})
     assert notebook(tmp_path)["orgs"] == {"mapped": 1, "written": 0}
-    assert next_to_write(tmp_path, notebook(tmp_path)) == ("1 organisations page not written", ["investigate", "orgs"])
+    assert next_to_write(tmp_path, notebook(tmp_path)) == ("1 organisations page queued for tonight", [])
 
 
 # ------------------------------------------------ #7: the People table

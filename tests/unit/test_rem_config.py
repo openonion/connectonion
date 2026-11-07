@@ -171,7 +171,7 @@ def test_daily_translations_limit_defaults_and_validates(tmp_path):
     old = default_config()
     del old['limits']['translations_per_day']
     (tmp_path / 'config.yaml').write_text(yaml.safe_dump(old))
-    assert read_config(tmp_path)['limits']['translations_per_day'] == 10
+    assert read_config(tmp_path)['limits']['translations_per_day'] == 100
     assert set_config(tmp_path, ['limits.translations_per_day', '3'])['limits']['translations_per_day'] == 3
     with pytest.raises(RemError, match='positive integers'):
         set_config(tmp_path, ['limits.translations_per_day', '0'])

@@ -86,7 +86,12 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
-    command = _next(ctx, arguments)
+    human_init = bool(arguments) and arguments[0] == "init" and any(
+        flag in arguments for flag in ("--name", "--mine", "--yes"))
+    automatic = bool(arguments) and not human_init and arguments[0] in (
+        "init", "investigate", "translate", "sync", "projects", "import")
+    command = "" if automatic or not arguments else _next(ctx, arguments)
+    queued = "Work queued for the next scheduled run."
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
@@ -97,7 +102,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         from .rem_output import printable
         rem_look.say(printable(drawn), hanging=True)
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
-        rem_look.say(next_line(tip))
+        rem_look.say(next_line(tip) if command else queued if automatic else "")
         if isinstance(value, dict) and value.get("continuation"):
             rem_look.say(value["continuation"])
     else:
@@ -107,7 +112,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
             parent = parent.parent
         text = render(value, " ".join(path), failed=failed)
         rem_look.say(rem_look.result(text, titled=not isinstance(value, str)), err=failed, plain=text)
-        rem_look.say(next_line(command), err=failed)
+        rem_look.say(next_line(command) if command else queued if automatic else "", err=failed)
     if failed:
         raise typer.Exit(1)
 
@@ -388,8 +393,8 @@ def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None, m
         # A page made from --name alone has no address to find your own
         # mail by, and investigating it would run a model on nothing.
         raise RemError(f"Your page {record} has no mail address yet, and investigate me reads what "
-                        "you sent. Connect a mailbox with co auth google or co auth microsoft, then "
-                        "run `co rem init`")
+                        "you sent. Connect a mailbox with co auth google or co auth microsoft; "
+                        "background updates prepare your page after sign-in.")
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines()
                   if line.startswith("# ")),
                  "Account owner")
@@ -409,22 +414,21 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
     page is already written), or when --no-investigate was explicitly requested.
     """
     from ...rem.files import Notebook
-    manual = _next(ctx, retry)
     owner = result.get("owner") or {}
     if not owner.get("record") or not owner.get("addresses"):
         return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
-                "what you sent. Connect one with co auth google or co auth microsoft, then run "
-                + _next(ctx, init) + ".")
+                "what you sent. Connect one with co auth google or co auth microsoft; "
+                "background updates prepare your page after sign-in.")
     if want is False or problem:
         return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
-               f"Write it with {manual}."
+               "Queued for the next scheduled run."
     page = Notebook(root).path(owner["record"])
     status = next((line for line in page.read_text(encoding="utf-8").splitlines()
                    if line.startswith("Investigation:")), "") if page.is_file() else ""
     if status and "not investigated" not in status:
-        return f"Your page was already written; nothing spent. Refresh it with {manual}."
+        return "Your page was already written; scheduled runs handle refreshes. Nothing spent."
     shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix)
-    return f"Your page was not written: {shared} Write it with {manual}." if shared else ""
+    return f"Your page was not written: {shared} Queued for the next scheduled run." if shared else ""
 
 
 def _spending_skipped(ctx, *, want, problem, fix) -> str:
@@ -868,7 +872,7 @@ def _translation_line(ctx, report: dict) -> list[str]:
     done = report["translated"] + report["cached"]
     line = f"Translated into {report['language']}: {done} of {len(report['pages'])} pages."
     if report["failed"]:
-        line += f" {report['failed']} failed; retry with {_next(ctx, ['translate', '--all'])}."
+        line += f" {report['failed']} failed; queued for the next translation pass."
     return [line]
 
 
@@ -972,8 +976,7 @@ def _people_table(ctx, root, category, *, company, open_only, sort):
     if category != "people":
         raise RemError("--table goes with people")
     if not db_path(root).is_file():
-        return ("No people table yet: it is built at the end of a map or a sync. Run "
-                + _next(ctx, ["sync"]) + " to build it."), ["sync"]
+        return "No people table yet; the next scheduled run builds it.", []
     rows = people_table(root, company=company, open_only=open_only, sort=sort,
                         descending=sort in ("last_contact", "first_contact", "mails", "open_threads"))
     return rows, (["show", rows[0]["record"]] if rows else ["list", "people"])
@@ -1100,12 +1103,12 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             # A cache miss, not a mailbox problem: a real first run lost every
             # page to one body that timed out of 1,880 (2026-10-01).
             tips.append(f"{unsaved} mail bod{'y' if unsaved == 1 else 'ies'} could not be saved; the "
-                        "rest of the first run goes on, and the next init retries "
+                        "rest of the first run goes on, and the next scheduled run retries "
                         f"{'it' if unsaved == 1 else 'them'}.")
         for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
             if kind not in available:
-                tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
-                            + _next(ctx, ["init", *init_window]) + ".")
+                tips.append(f"Connect {provider.title()} for People: co auth {provider}; "
+                            "background updates pick up the mailbox after sign-in.")
         if result.get("needs_review"):
             tips.append(f"Held for review, not investigated or listed (no name, never replied): "
                         f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
@@ -1212,10 +1215,10 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                                "source_coverage": "incomplete" if result.get("errors") else "complete"}
         if not total["pages"]:
             result["nothing_to_write"] = ("Nothing to write yet: connect a mailbox (co auth google|microsoft) "
-                                          "or work in a project with Codex, then run co rem init")
+                                          "or work in a project with Codex. Background updates pick up new material.")
             if estimate_only:
                 result["estimate_only"] = True
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], bool(result.get("errors"))
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), [], bool(result.get("errors"))
         if skipped and not estimate_only:
             result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
             result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
@@ -1263,7 +1266,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
         if (not yes and sys.stdin.isatty()
                 and not typer.confirm("Build the first map now?", default=True, err=ctx.obj["json"])):
             result["build_deferred"] = True
-            say("First pages deferred. Continue with " + _next(ctx, ["init", *init_window]) + ".")
+            say("First pages deferred. Background updates pick them up when enabled.")
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window]
         _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
         if not problem:
@@ -1766,8 +1769,8 @@ def make_rem_app(factory):
                 if state_path(root, "map.json").is_file() and not any(
                         mail_available(kind) for kind in ("gmail", "outlook")):
                     return ("No people yet: people pages come from a connected mailbox, and none is "
-                            "connected. Connect one with co auth google or co auth microsoft, then run "
-                            + _next(ctx, ["init"]) + "."), ["sources"]
+                            "connected. Connect one with co auth google or co auth microsoft; "
+                            "background updates prepare people pages after sign-in."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
         from .rem_table import draw, names
         order = "most recent contact first" if sort == "last_contact" else "by " + sort.replace("_", " ")
@@ -1873,8 +1876,7 @@ def make_rem_app(factory):
                 _emit(ctx, result, ["logs", first["id"]], failed=True)
             if result.get("first_batch") is None and not ctx.obj["json"]:
                 # Global setup can record consent without a first batch.
-                result["first_batch"] = ("Not run on this start. "
-                                         f"{_next(ctx, ['sync'])} runs an update now.")
+                result["first_batch"] = "Queued for the next scheduled run."
             return result, ["status"]
 
         _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])
@@ -1992,6 +1994,12 @@ def make_rem_app(factory):
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
                            *(value.get("changed") or [])])
+
+    @rem.command("exec", hidden=True)
+    def native_exec(ctx: typer.Context, scheduled: bool = typer.Option(False, "--scheduled")):
+        from ...rem.schedule import exec_round
+        _handle(ctx, lambda root: (exec_round(root, scheduled=scheduled), []), [],
+                draw=lambda value: escape(native_text(value)))
 
     @rem.command("next", cls=V("co rem next"))
     def native_next(ctx: typer.Context,
@@ -2450,7 +2458,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync next submit sources config logs doctor history "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs doctor history "
              "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

@@ -91,9 +91,9 @@ def test_start_after_global_setup_reports_deferred_first_batch(rem_setup, monkey
     rem_commands.init_global_rem()
     result = CliRunner().invoke(app, ["rem", "start"])
     assert result.exit_code == 0, result.output
-    assert "Not run on this start" in result.output
+    assert "Queued for the next scheduled run" in result.output
     assert "first start already ran" not in result.output
-    assert "co rem sync" in result.output
+    assert "co rem sync" not in result.output
 
 
 @pytest.mark.parametrize("flags", [[], ["--no-rem"]])

@@ -15,7 +15,7 @@ import yaml
 from connectonion.rem.codex_schedule import CodexNative, automation_id, recurrence
 from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, atomic_write, state_path, write_json
-from connectonion.rem.schedule import Launchd, default_scheduler, label_for, wake_command
+from connectonion.rem.schedule import CodexExec, Launchd, default_scheduler, label_for, wake_command
 
 
 def _rule_pairs(rule):
@@ -878,12 +878,12 @@ def test_stopped_worker_cannot_claim_account_authority_from_a_cached_pause(tmp_p
     assert "needs confirmation" in text and "Stopped" not in text
 
 
-def test_default_prefers_native_for_codex_with_app_and_stop_finds_saved_provider(tmp_path, monkeypatch):
+def test_default_prefers_exec_for_codex_and_stop_finds_saved_provider(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     root = tmp_path / "notes"
-    assert isinstance(default_scheduler(root, for_start=True), CodexNative)
+    assert isinstance(default_scheduler(root, for_start=True), CodexExec)
     config = default_config()
     config["runner"] = "coai"
     atomic_write(root / "config.yaml", yaml.safe_dump(config))
@@ -898,7 +898,7 @@ def test_different_desktop_timezone_retains_the_existing_os_scheduler(tmp_path, 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_timezone", lambda: "Asia/Kathmandu")
-    assert isinstance(default_scheduler(tmp_path / "notes", for_start=True), Launchd)
+    assert isinstance(default_scheduler(tmp_path / "notes", for_start=True), CodexExec)
 
 
 @pytest.mark.parametrize("moment,expected", [

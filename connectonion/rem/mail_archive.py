@@ -50,7 +50,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
         saved = read_json(path, {}) if path.is_file() else {
             "provider": provider, "id": row["id"], "body": body,
             **{key: row.get(key) or ([] if key in ("to", "cc") else "")
-               for key in ("date", "from", "to", "cc", "subject")},
+               for key in ("date", "from", "to", "cc", "subject", "reply_to")},
             "body_format": "provider-rendered text, not original MIME",
             "fetched_at": fetched_at, "retained_at": _utcnow().isoformat(), "input_scope": input_scope}
         if saved.get("provider") != provider or saved.get("id") != row["id"]:
@@ -61,7 +61,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
             write_json(path, saved)
         if not metadata.is_file():
             write_json(metadata, {"type": "mail", "source": provider, "id": row["id"],
-                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject")},
+                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject", "reply_to")},
                 "thread": row.get("thread_id") or row.get("thread") or ""})
     return saved
 
@@ -465,7 +465,7 @@ def archive_state(root: Path, now: datetime | None = None) -> dict | None:
     if stalled:
         summary = (f"Mail archive incomplete: {on_disk} of {target} bodies saved, no progress since "
                    f"{updated[:16]}; investigations ask the mail servers until it is done. The next "
-                   f"`co rem sync` resumes it from the saved bodies.")
+                   f"scheduled run resumes it from the saved bodies.")
     else:
         summary = f"Mail archive saving: {on_disk} of {target} bodies so far."
     return {"phase": manifest["phase"], "target": target, "on_disk": on_disk, "updated": updated,

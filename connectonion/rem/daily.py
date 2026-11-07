@@ -188,6 +188,7 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+    _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
         outcome = 'budget_exhausted' if maintenance['outcome'] == 'budget_exhausted' else 'partial'
@@ -199,7 +200,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         logs = run_logs(root)
         today = [record for record in logs if record.get('phase') in PHASES and
                  datetime.fromisoformat(record['started_at']).astimezone(zone).date().isoformat() == state['date']]
-        remaining = config['limits']['runner_calls_per_day'] - state['runner_attempts_today']
+        from .service import daily_cap
+        remaining = daily_cap(root)['remaining']
         # The Codex week (#1843): investigation's own budget, and a floor that
         # leaves the rest of the week to the owner's coding.
         meter = quota.read(config)
@@ -230,6 +232,31 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
+
+
+def _draft_replies(root, config, maintenance):
+    from tempfile import TemporaryDirectory
+    from . import drafts, runner
+    from .service import daily_cap, notebook_zone, runs_today
+    if runner.ready(config)[0]:
+        return
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        _, runs = runs_today(run_logs(root), notebook_zone(config))
+        spent = sum(row.get('runner_attempts', 0) for row in runs if row.get('phase') == 'reply-draft')
+        rows = drafts.queue(root)[:max(0, config['limits']['drafts_per_night'] - spent)]
+        for row in rows:
+            if not daily_cap(root)['remaining'] or quota.floor_block(quota.read(config), config['limits']):
+                break
+            record, log = _reserve(root, 'reply-draft', 1, {})
+            state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
+            with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+                task = drafts.prepare(root, row, config, directory=Path(directory))
+                result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
+                plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
+                drafts.promote(root, plan)
+            record.update(outcome='completed', usage=result.get('usage'), finished_at=now().isoformat())
+            write_json(log, record)
+            maintenance.setdefault('drafts', []).append(plan['id'])
 
 
 def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]:
@@ -267,30 +294,24 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
-    """Cache this run's changed pages, sharing the existing maintenance lock."""
+    """Work through missing and stale translations under their own daily budget."""
     from .languages import owner_languages
     from .runner import ready
-    from .translate import cached, translate
-    language = next((tag for tag in owner_languages(root)['languages'] if tag.split('-')[0].lower() != 'en'), None)
-    if not language or not changed or ready(config)[0]:
+    from .translate import attempts_today, backlog, cached, translate
+    from .translate import languages
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
-        today = now().astimezone(zone).date()
-        spent = sum(sum(row['outcome'] != 'cached' for row in log['pages']) if 'pages' in log
-                    else log.get('runner_attempts', 0) for log in run_logs(root)
-                    if log.get('phase') == 'daily-translation'
-                    and datetime.fromisoformat(log['started_at']).astimezone(zone).date() == today)
-        remaining = min(config['limits']['translations_per_day'] - spent,
-                        config['limits']['runner_calls_per_day'] - status(root)['runner_attempts_today'])
+        remaining = config['limits']['translations_per_day'] - attempts_today(root)
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in dict.fromkeys(changed):
+        for page in backlog(root, language, changed=changed):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining or status(root)['runner_attempts_today'] >= config['limits']['runner_calls_per_day']:
+            if attempts >= remaining or attempts_today(root) >= config['limits']['translations_per_day'] or quota.floor_block(quota.read(config), config['limits']):
                 continue
             attempts += 1
             write_json(path, record)
@@ -312,7 +333,7 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             _add_usage(usage, run_logs(root, run_id)[0].get('usage'))
         report = {'language': language, 'pages': rows, 'attempted': attempts, 'usage': usage or None}
         maintenance['translations'] = report
-        record.update(language=language, pages=rows, attempted=attempts, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
+        record.update(language=language, pages=rows, attempted=attempts, runner_attempts=0 if translation_runs else attempts, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
                       finished_at=now().isoformat())
         write_json(path, record)
 
@@ -534,7 +555,7 @@ def _project(root, record, *, config):
 
 def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one,
                 say=lambda text: None, found=None):
-    """A later run: only people and projects with new material since the previous run."""
+    """A later run: unfinished pages plus written pages with new material."""
     from .people_pages import correspondents_since
     from .people_pages import queue as people_queue
     from .project_material import extract
@@ -548,16 +569,16 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if found is None:
         found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
     extract(root, sources)
-    rows = [{**row, 'kind': 'person'} for row in people_queue(root, since=since)
-            if row['mode'] == 'update' or row['record'] in found['records']]
-    rows += [{**row, 'kind': 'project'} for row in project_queue(root, since=since)]
+    rows = [{**row, 'kind': 'person'} for row in people_queue(root)
+            if row['mode'] == 'full' or row['last_activity'] > since]
+    rows += [{**row, 'kind': 'project'} for row in project_queue(root, since=since, include_backlog=True, now=now())]
     # Refused pages are retried once a day: from the material held for them when
     # a sync's maintenance refused them, otherwise by their own investigator.
     from .refusals import due_for_retry
-    queued = {row['record'] for row in rows}
+    retries = due_for_retry(root)
+    rows = [row for row in rows if row['record'] not in retries]
     rows += [{'record': record, 'kind': 'retry', 'mode': 'retry', 'last_activity': entry.get('at', ''),
-              'entry': entry} for record, entry in due_for_retry(root).items()
-             if record not in queued and Notebook(root).path(record).is_file()]
+              'entry': entry} for record, entry in retries.items() if Notebook(root).path(record).is_file()]
     # The page pinned as You comes first: it is what the owner opens first.
     rows = _owner_due(root) + rows
     if not rows:

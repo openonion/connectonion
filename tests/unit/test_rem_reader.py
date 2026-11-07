@@ -1355,38 +1355,28 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
     assert result['rendered'] == 2 and result['records'] == 6
 
 
-def test_thread_prompt_keeps_citations_root_and_public_text_only_in_both_languages():
+def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
-    names = ['threadPrompt', 'sourceList', 'sourceId', 'listItems', 'rawSection', 'plainLine', 'obligationWords', 'obligationEvidence']
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
-    command = re.search(r'function remCommand\(args\).*', page).group(0)
-    interface = page[page.index('const UI ='):page.index('function t(')]
-    result = _run_reader_js(functions + command + interface.replace('const UI =', 'const TRANSLATED_UI =') + r'''
-      UI.zh = TRANSLATED_UI.zh;
-      const REM = {root: '/fixture/notebook', default_root: false}, DIRECTION_LABEL = {mine: 'You owe'};
-      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/, youify = text => text;
-      const r = {path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', text: '# Mara Ostrowski\n\n## Sources\n'
-        + '- [4] outlook:e4a2c1907bd3 — addendum; observed 2026-10-11.\n'
-        + '- [5] outlook:unused — unused; observed 2026-10-10.\n'
-        + '- [6] Hidden source [personal]\n'};
-      const entry = {r, t: {text: 'Sign the capstone agreement [4]. Secret payment [personal] [5]. Public ending. [6]',
-        dir: 'mine', since: '2026-10-11', due: '2026-10-23'}, also: [{path: 'orgs/fernhill-labs.md'}]};
-      const en = threadPrompt(entry);
-      uiLanguage = 'zh'; entry.t.text = '请签署协议 [4]。秘密付款[personal] [5]。公开结尾。 [6]';
-      console.log(JSON.stringify({en, zh: threadPrompt(entry)}));
+    function = re.search(r'function threadActions\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared'}], status: {worker: {enabled: true}}};
+      const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const replyDraftCard = draft => ({kind: 'mail-card', provider: draft.provider});
+      const entry = {t: {dir: 'mine'}};
+      const prepared = threadActions(entry);
+      REM.drafts[0].status = 'discarded';
+      const discarded = threadActions(entry);
+      REM.drafts[0].status = 'pending';
+      const pending = threadActions(entry);
+      REM.status.worker.enabled = false;
+      console.log(JSON.stringify({prepared, discarded, pending, paused: threadActions(entry)}));
     ''')
-    en, zh = result['en'], result['zh']
-    assert 'Sign the capstone agreement [4]' in en
-    assert 'Page: people/mara-ostrowski.md (Mara Ostrowski)' in en
-    assert "co rem --root '/fixture/notebook' show people/mara-ostrowski.md" in en
-    assert 'Also on: orgs/fernhill-labs.md' in en
-    assert '- [4] outlook:e4a2c1907bd3 — 2026-10-11' in en
-    assert 'Cited sources:' in en and 'do not send, sign, pay or contact anyone without my approval' in en
-    assert '请帮我处理' in zh and '请签署协议 [4]' in zh and '引用来源：' in zh and '未经我批准' in zh
-    for prompt in (en, zh):
-        assert 'Secret' not in prompt and '秘密' not in prompt
-        assert 'outlook:unused' not in prompt and 'Hidden source' not in prompt
-        assert "co rem --root '/fixture/notebook' search" in prompt
+    assert result['prepared']['children'][1] == {'kind': 'mail-card', 'provider': 'gmail'}
+    assert result['discarded']['children'][1]['text'] == 'Draft discarded'
+    assert result['pending']['children'][1]['text'] == 'Reply draft queued for tonight'
+    assert result['paused']['children'][1]['text'] == 'Reply draft pending — background updates off'
+    assert 'Copy prompt' not in json.dumps(result)
 
 
 def test_brief_header_distinguishes_overdue_from_due_soon_and_translates_find():
@@ -1904,7 +1894,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert result['recall'] is None
     assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：读取 ')
     assert result['notice']['children'][0] == '大部分页面还没有中文版本，目前显示英文原文。'
-    assert result['notice']['children'][1]['command'] == 'co rem translate --all'
+    assert result['notice']['children'][1]['text'] == '翻译待处理，已排入今晚队列'
     assert result['enough'] is None
 
 
@@ -2071,7 +2061,7 @@ def test_translation_fallback_counts_only_written_pages_and_reports_last_failure
     assert result['mapped'] is None and result['english'] is None
     assert result['missing']['children'][0].startswith('Most pages have no Chinese version')
     assert result['failed']['children'][0] == '1 page could not be translated.'
-    assert result['failed']['children'][1]['command'] == 'co rem translate --all'
+    assert result['failed']['children'][1]['text'] == 'Translation pending — queued for tonight'
     assert result['last']['children'][0].startswith('Most pages have no Chinese version')
 
 

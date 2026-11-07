@@ -439,6 +439,48 @@ class Systemd:
         return info
 
 
+class CodexExec(Launchd):
+    """The OS wakes the existing native task loop through the Codex CLI."""
+
+    def render(self, root, config):
+        job = plistlib.loads(super().render(root, config).encode())
+        job["ProgramArguments"][-2:] = ["exec", "--scheduled"]
+        return plistlib.dumps(job, sort_keys=False).decode()
+
+    def _install(self, root, config):
+        from .codex_schedule import CodexNative
+        lagging = CodexNative(launcher=self, run=self.run).pause_for_exec(root)
+        path = self.plist_path(root)
+        self._write_plist(path, self.render(root, config))
+        self._remove_legacy(root)
+        self._load(path)
+        note = ("Desktop task paused in its definition; Codex will pick it up." if lagging else "")
+        return {"scheduler": "codex-exec", "label": label_for(root), "plist": str(path),
+                "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
+    def describe(self, root):
+        return {**super().describe(root), "scheduler": "codex-exec"}
+
+
+def exec_round(root, *, scheduled=True):
+    from . import native, runner
+    from .codex_schedule import CodexNative
+    from .config import read_config
+    if scheduled and CodexNative().recent_desktop_fire(root):
+        return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+    task = native.next_task(root, scheduled=scheduled)
+    while task.get("outcome") == "task":
+        if scheduled and CodexNative().recent_desktop_fire(root):
+            return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+        result = runner.run_task(Path(task["material"]), task["instructions"], read_config(root), task["stage"])
+        task = native.submit(root, task["id"], usage=result.get("usage"))
+        if task.get("outcome") == "refused":
+            return task
+        if task.get("outcome") != "task":
+            task = native.next_task(root, scheduled=scheduled)
+    return task
+
+
 class Unsupported:
     """Platforms without a supported OS scheduler still work by hand."""
 
@@ -462,6 +504,10 @@ def default_scheduler(root=None, *, for_start=False):
     if sys.platform != "darwin":
         return Unsupported()
     if root is not None:
+        from .config import read_config
+        from .service import worker_state
+        if read_config(root).get("runner") == "codex" and (for_start or worker_state(root).get("scheduler") == "codex-exec"):
+            return CodexExec()
         from .codex_schedule import CodexNative, app_installed, desktop_timezone
         from .config import read_config
         native = CodexNative()

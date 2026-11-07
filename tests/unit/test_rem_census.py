@@ -92,12 +92,12 @@ def test_the_last_run_is_in_the_notebooks_zone(tmp_path):
     assert "2026-10-01 06:02" in line and "20:02" not in line
 
 
-def test_status_next_is_the_first_thing_to_write(tmp_path):
+def test_status_next_does_not_delegate_scheduled_writing_to_owner(tmp_path):
     from connectonion.cli.commands.rem_status import status_next
     _notebook(tmp_path)
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/gret.md", "addresses": []}})
     value = {"configured": True, "root": str(tmp_path), "state": "Running in background (launchd)"}
-    assert status_next(value) == ["investigate", "me"]
+    assert status_next(value) == ["logs"]
 
 
 def test_a_progress_line_prints_above_the_spinner_not_over_it():
