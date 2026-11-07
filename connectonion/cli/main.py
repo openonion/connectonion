@@ -251,7 +251,7 @@ def init(
         console.print(codex["summary"], markup=False, soft_wrap=True)
         console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
         if not codex["ready"]:
-            console.print(f"Codex login pending. Run: {codex['login_command']}", markup=False, soft_wrap=True)
+            console.print("Codex login pending. Run: codex login; REM starts after that", markup=False, soft_wrap=True)
         if background:
             from .mac_bootstrap import prepare_mac_host
             from .host_service import HostServiceError

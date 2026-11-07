@@ -1,6 +1,8 @@
-"""Global init installs and signs into Codex without touching the real HOME."""
+"""Global init installs Codex and leaves sign-in to the owner."""
 import importlib
 import subprocess
+import time
+import webbrowser
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -113,27 +115,14 @@ def test_failed_install_reports_recovery_without_login(monkeypatch):
     run.assert_not_called()
 
 
-@pytest.mark.parametrize("login_result", [1, "timeout", "cancelled", 0])
-def test_login_attempt_is_bounded_and_rechecked(tmp_path, monkeypatch, login_result):
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_setup_only_checks_login_status(tmp_path, monkeypatch, logged_in):
     path = executable(codex_cli.BUNDLED_CODEX[0])
-    calls = []
-
-    def run(command, **kwargs):
-        calls.append(command)
-        if command[-1] == "status":
-            code = 0 if len(calls) > 1 and login_result == 0 else 1
-            return subprocess.CompletedProcess(command, code)
-        assert kwargs["timeout"] <= 60
-        if login_result == "timeout":
-            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        if login_result == "cancelled":
-            raise KeyboardInterrupt
-        return subprocess.CompletedProcess(command, login_result)
-
+    run = Mock(return_value=subprocess.CompletedProcess([], 0 if logged_in else 1))
     monkeypatch.setattr(codex_setup.subprocess, "run", run)
     result = codex_setup.setup_codex()
-    assert calls == [[path, "login", "status"], [path, "login"], [path, "login", "status"]]
-    assert result["ready"] == (login_result == 0)
+    assert [call.args[0] for call in run.call_args_list] == [[path, "login", "status"]]
+    assert result["ready"] == logged_in
     assert result["login_command"] == f"{path} login"
     assert result["summary"] == f"Codex CLI: found at {path}"
 
@@ -141,8 +130,15 @@ def test_login_attempt_is_bounded_and_rechecked(tmp_path, monkeypatch, login_res
 def test_global_init_finishes_with_login_pending(tmp_path, monkeypatch):
     path = executable(tmp_path / "bundled CLI/codex")
     monkeypatch.setattr(codex_cli, "BUNDLED_CODEX", (Path(path),))
-    run = Mock(return_value=subprocess.CompletedProcess([], 1))
+    monkeypatch.setattr(codex_cli, "signed_in", lambda command: False)
+    monkeypatch.setattr(codex_setup, "claude_ready", lambda: False)
+    run = Mock()
     monkeypatch.setattr(codex_setup.subprocess, "run", run)
+    spawn = Mock()
+    monkeypatch.setattr(codex_setup.subprocess, "Popen", spawn)
+    browser = Mock()
+    for method in ("open", "open_new", "open_new_tab"):
+        monkeypatch.setattr(webbrowser, method, browser)
     monkeypatch.setattr(init_commands, "handle_global_init", lambda **kwargs: None)
     monkeypatch.setattr(service, "mail_available", lambda kind: False)
     monkeypatch.setattr(config, "first_runner", lambda value: value)
@@ -151,8 +147,16 @@ def test_global_init_finishes_with_login_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: installer)
     build = Mock(return_value={})
     monkeypatch.setattr(rem_commands, "init_rem_flow", build)
-    result = CliRunner().invoke(app, ["init"])
+    started = time.monotonic()
+    result = CliRunner().invoke(app, ["init", "--yes"])
+    elapsed = time.monotonic() - started
     assert result.exit_code == 0, result.output
+    assert elapsed < 1
+    run.assert_not_called()
+    spawn.assert_not_called()
+    browser.assert_not_called()
+    assert result.output.splitlines().count("Codex login pending. Run: codex login; REM starts after that") == 1
+    assert "Opening Codex login" not in result.output
     assert f"Codex CLI: found at {path}" in result.output
     assert f"'{path}' login" in result.output
     assert "waiting for Codex login" in result.output
