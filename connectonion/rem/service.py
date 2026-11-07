@@ -673,6 +673,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage
+    from .night import summary as night_summary
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -696,7 +697,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
-    return {"state": state,
+    return {"state": state, "tonight": night_summary(root),
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": f"Work: {config['model']} · standalone summaries: {config['models']['summary']}",
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",

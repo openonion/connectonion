@@ -143,15 +143,13 @@ def prepare_task(root, cursor, config, directory):
         task = _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
         task["early_pair"] = True
         return task
-    from . import drafts
-    _, today_runs = service.runs_today(service.run_logs(root), service.notebook_zone(config))
-    drafted = sum(row.get("runner_attempts", 0) for row in today_runs if row.get("phase") == "reply-draft")
-    if drafted < config["limits"]["drafts_per_night"]:
-        attempted = cursor.get("draft_attempts", [])
-        row = next((row for row in drafts.queue(root) if [row["id"], row["version"]] not in attempted), None)
-        if row:
-            task = drafts.prepare(root, row, config, directory=directory)
-            return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
+    from . import drafts, night
+    rows = night.prepare(root, config, attempted=cursor.get("draft_attempts", []),
+                         fetches=cursor.setdefault("night_fetches", {}))
+    if rows:
+        row = rows[0]
+        task = drafts.prepare(root, row, config, directory=directory)
+        return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             remaining = service.daily_cap(root)["remaining"]
@@ -187,7 +185,7 @@ def prepare_task(root, cursor, config, directory):
 def _reset_attempts(root, cursor):
     day = service.notebook_today(root).isoformat()
     if cursor.get("task_day") != day:
-        cursor.update(task_day=day, draft_attempts=[], translation_attempts=[])
+        cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
 
 
 def prepare_translation(root, cursor, config, directory):

@@ -254,7 +254,14 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "owner": owner}
     from .today import queue as today_queue
     data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    from .night import listing as night_outcomes
+    data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
+    outcomes = {row['key']: row for row in data['night_outcomes']}
+    for row in data['today_queue']:
+        if row['key'] in outcomes:
+            row['outcome'] = outcomes[row['key']]
     if not local:
+        data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:
             row.pop('reply', None)
     return _today_data(data) if today else data

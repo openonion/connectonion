@@ -113,7 +113,7 @@ def test_rem_drafts_one_per_owner_thread_and_regenerates_for_new_mail(notebook):
     mail_thread(notebook, latest='two')
     assert drafts.queue(notebook)[0]['in_reply_to'] == 'two'
     assert not drafts.listing(notebook), 'stale drafts must never be actionable'
-    assert read_config(notebook)['limits']['drafts_per_night'] == 10
+    assert read_config(notebook)['limits']['drafts_per_night'] == 30
 
 
 @pytest.mark.parametrize('provider', ['gmail', 'outlook'])
@@ -180,6 +180,7 @@ def test_rem_native_round_prepares_and_accepts_reply_without_sending(notebook, m
 def test_rem_native_round_caps_reply_drafts_across_rounds(notebook, monkeypatch):
     from connectonion.rem import drafts
     mail_thread(notebook)
+    set_config(notebook, ['limits.drafts_per_night', '10'])
     write_json(state_path(notebook, 'runs/run_drafts.json'), {'phase': 'reply-draft', 'runner_attempts': 10, 'started_at': service.now().isoformat()})
     monkeypatch.setattr(drafts, 'prepare', lambda *a, **k: pytest.fail('Draft budget was exceeded'))
     cursor = {'phase': 'daily-update', 'batch': {'done': True}, 'current': None,
@@ -904,3 +905,332 @@ def test_waiting_on_someone_else_is_not_advertised_as_draftable(notebook):
     book.write('people/fern.md', book.read('people/fern.md').replace('You owe Fern a pilot review.', 'You asked Fern for a pilot review.'))
     assert drafts.queue(notebook) == []
     assert queue(notebook)[0]['reply']['state'] == 'waiting'
+
+
+# Night outcomes: fictional notebook, never the owner's ~/.co.
+def night_item(root, number, *, provider='gmail', body='Please review the pilot.', archived=True, owner=False):
+    from connectonion.rem.mail_archive import retain_message
+    record = f'people/fern-{number}.md'
+    identity = f'ask-{number}'
+    Notebook(root).write(record, f'# Fern {number}\n\n## Open threads\n'
+        f'- You owe Fern {number} a pilot review due 2026-11-{number + 1:02d}. [1]\n\n## Sources\n'
+        f'- [1] {provider}:{identity}\n')
+    write_json(state_path(root, 'map.json'), {'owner': {'record': 'people/me.md', 'addresses': ['owner@example.test']}})
+    row = {'id': identity, 'from': 'owner@example.test' if owner else f'fern-{number}@example.test',
+           'to': [f'fern-{number}@example.test'] if owner else ['owner@example.test'],
+           'thread': f'pilot-{number}', 'date': '2026-11-07T01:00:00+00:00', 'subject': 'Pilot review'}
+    if archived:
+        retain_message(root, provider, row, body, fetched_at=service.now().isoformat())
+    else:
+        write_json(state_path(root, f'mail/observed-metadata/{provider}/{identity}.json'),
+                   {**row, 'type': 'mail', 'source': provider})
+    return row
+
+
+def fake_night_writer(monkeypatch):
+    from connectonion.rem import runner
+    seen = []
+    monkeypatch.setattr(runner, 'ready', lambda config: (False, 'fixture'))
+    monkeypatch.setattr(daily.quota, 'read', lambda config: {'unknown': 'fixture'})
+    def run(directory, prompt, config, stage):
+        row = read_json(directory / 'reply-material.json', {})
+        seen.append(row['version'])
+        write_json(directory / 'candidate.json', {'body': 'Here is the pilot review.', 'sources': [row['version']]})
+        return {}
+    monkeypatch.setattr(runner, 'run_task', run)
+    return seen
+
+
+@pytest.mark.parametrize('engine', ['daily', 'native'])
+def test_night_covers_seventeen_in_today_order(notebook, monkeypatch, engine):
+    from connectonion.rem import drafts, today
+    from connectonion.rem.store import refresh
+    seen = fake_night_writer(monkeypatch)
+    for number in reversed(range(17)):
+        night_item(notebook, number)
+    refresh(notebook)
+    expected = [row['reply']['source'] for row in today.queue(notebook)]
+    if engine == 'daily':
+        daily._draft_replies(notebook, read_config(notebook), {})
+    else:
+        cursor = {'phase': 'daily-update', 'batch': {'done': True}, 'current': None, 'same_new_left': 0,
+                  'jobs': [], 'job_index': 0, 'summaries': [], 'same_left': 0, 'slot': None, 'changed': []}
+        monkeypatch.setattr(native_round, 'finish', lambda *a: None)
+        for number in range(18):
+            directory = notebook / f'native-{number}'
+            directory.mkdir()
+            task = native_round.prepare_task(notebook, cursor, read_config(notebook), directory)
+            if not task:
+                break
+            row = task['task']['row']
+            seen.append(row['version'])
+            drafts.promote(notebook, {**row, 'body': 'Here is the pilot review.', 'sources': [row['version']]})
+            write_json(state_path(notebook, f'runs/run_draft-{number}.json'), {'phase': 'reply-draft',
+                       'started_at': service.now().isoformat(), 'runner_attempts': 1})
+            native_round.advance(notebook, cursor, task, {'draft': row['id']})
+    assert seen == expected
+    assert service.status(notebook)['tonight']['drafts'] == 17
+
+
+@pytest.mark.parametrize('provider', ['outlook', 'gmail'])
+@pytest.mark.parametrize('owner', [False, True])
+def test_night_fetches_missing_body_before_classifying_and_drafting(notebook, monkeypatch, provider, owner):
+    from connectonion.rem import today
+    from connectonion.rem.store import refresh
+    from connectonion.rem.store_messages import archived_message
+    row = night_item(notebook, 0, provider=provider, archived=False, owner=owner)
+    refresh(notebook)
+    assert today.queue(notebook)[0]['reply']['state'] == 'unarchived'
+    write_json(state_path(notebook, 'subscriptions.json'), {provider: {'enabled': True, 'consented': True}})
+    client = Mock(get_email_body=Mock(return_value='I have sent the pilot review.' if owner else 'Please review the pilot.'))
+    monkeypatch.setattr(service, 'mail_client', lambda kind: client)
+    seen = fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    client.get_email_body.assert_called_once_with(row['id'])
+    with sqlite3.connect(state_path(notebook, 'rem.db')) as db:
+        db.row_factory = sqlite3.Row
+        saved = archived_message(notebook, dict(db.execute('select * from messages').fetchone()))
+    assert saved['body']
+    from connectonion.rem.reader import snapshot
+    outcome = snapshot(notebook, local=True, today=True)['night_outcomes'][0]
+    assert outcome['kind'] == ('already_handled' if owner else 'prepared')
+    assert seen == ([] if owner else [provider + ':' + row['id']])
+
+
+@pytest.mark.parametrize('permission', ['unconsented', 'disabled', 'unsubscribed', 'allowed'])
+def test_night_fetch_failure_or_denied_consent_is_named_on_card(notebook, monkeypatch, permission):
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0, archived=False)
+    source = {'enabled': permission != 'disabled', 'consented': permission != 'unconsented',
+              'unsubscribed': permission == 'unsubscribed'}
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': source})
+    client = Mock(get_email_body=Mock(side_effect=TimeoutError('private provider URL')))
+    factory = Mock(return_value=client)
+    monkeypatch.setattr(service, 'mail_client', factory)
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    data = snapshot(notebook, local=True, today=True)
+    outcome = data['night_outcomes'][0]
+    assert outcome['kind'] == 'could_not_prepare'
+    assert ('TimeoutError' if permission == 'allowed' else 'consent') in outcome['reason']
+    assert 'private provider URL' not in outcome['reason']
+    assert data['today_queue'][0]['outcome'] == outcome
+    assert factory.call_count == int(permission == 'allowed')
+
+
+def test_night_owner_verdict_task_prompt_and_private_snapshot(notebook, monkeypatch):
+    from connectonion.rem.reader import snapshot
+    from connectonion.rem import threads, today
+    night_item(notebook, 0, owner=True, body='I have sent the pilot review.')
+    night_item(notebook, 1, owner=True, body="I'll review the pilot and send feedback tomorrow.")
+    Notebook(notebook).write('projects/report.md', '# Pilot report\n\n## Open threads\n- You owe a pilot report.\n')
+    seen = fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    data = snapshot(notebook, local=True, today=True)
+    outcomes = data['night_outcomes']
+    assert len(outcomes) == 3 and not seen
+    handled = next(row for row in outcomes if row['kind'] == 'already_handled')
+    assert handled['owner_quote'] == 'I have sent the pilot review.'
+    tasks = [row for row in outcomes if row['kind'] == 'task']
+    assert len(tasks) == 2
+    assert all(row['task']['status'] == 'ready' and row['text'] in row['task']['prompt'] for row in tasks)
+    assert any("I'll review the pilot and send feedback tomorrow." in row['task']['prompt'] for row in tasks)
+    assert not threads.listing(notebook), 'completion still needs the morning confirmation'
+    shared = snapshot(notebook, local=False)
+    assert shared['night_outcomes'] == []
+    assert all('outcome' not in row for row in shared['today_queue'])
+    assert 'owner_quote' not in json.dumps(shared['status'])
+    # New evidence invalidates the verdict before the next run.
+    night_item(notebook, 0, body='Another review please.', archived=False)
+    Notebook(notebook).write('people/fern-0.md', '# Fern 0\n\n## Open threads\n- You owe Fern another review. [1]\n\n## Sources\n- [1] gmail:new\n')
+    assert not any(row['kind'] == 'already_handled' for row in snapshot(notebook, local=True)['night_outcomes'])
+
+
+def test_night_cap_names_every_leftover_and_status_counts(notebook, monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.reader import snapshot
+    for number in range(4):
+        night_item(notebook, number)
+    set_config(notebook, ['limits.drafts_per_night', '2'])
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcomes = snapshot(notebook, local=True)['night_outcomes']
+    assert [row['kind'] for row in outcomes] == ['prepared', 'prepared', 'could_not_prepare', 'could_not_prepare']
+    assert all('cap' in row['reason'] for row in outcomes[2:])
+    output = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'status'])
+    assert output.exit_code == 0, output.output
+    assert 'tonight: 4 items · 2 drafts · 0 already handled · 0 tasks · 2 could not be prepared' in output.output
+    assert all(row['text'] in output.output for row in outcomes[2:])
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+def test_night_hash_citation_fetches_latest_native_id(notebook, monkeypatch, provider):
+    import hashlib
+    from connectonion.rem.reader import snapshot
+    first = night_item(notebook, 0, provider=provider, archived=False)
+    newest = {**first, 'id': 'latest-native-id', 'date': '2026-11-08T01:00:00+00:00'}
+    write_json(state_path(notebook, f'mail/observed-metadata/{provider}/latest.json'),
+               {**newest, 'type': 'mail', 'source': provider})
+    book = Notebook(notebook)
+    digest = hashlib.sha256(first['id'].encode()).hexdigest()[:12]
+    book.write('people/fern-0.md', book.read('people/fern-0.md').replace(first['id'], digest))
+    write_json(state_path(notebook, 'subscriptions.json'), {provider: {'enabled': True, 'consented': True}})
+    client = Mock(get_email_body=Mock(return_value='Please review the updated pilot.'))
+    monkeypatch.setattr(service, 'mail_client', lambda kind: client)
+    seen = fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    client.get_email_body.assert_called_once_with('latest-native-id')
+    assert seen == [provider + ':latest-native-id']
+    assert snapshot(notebook, local=True)['night_outcomes'][0]['kind'] == 'prepared'
+
+
+@pytest.mark.parametrize('body', ['I have not sent the pilot review yet.', "I haven't finished the review.",
+                                  'Which pilot should I review?', '我还没发反馈。'])
+def test_night_does_not_call_unfinished_owner_message_already_handled(notebook, monkeypatch, body):
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0, owner=True, body=body)
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcome = snapshot(notebook, local=True)['night_outcomes'][0]
+    assert outcome['kind'] == 'task'
+    assert body in outcome['task']['prompt']
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+def test_night_recovers_unindexed_second_citation_before_owner_verdict(notebook, monkeypatch, provider):
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0, provider=provider, owner=True, body='I have sent the pilot review.')
+    book = Notebook(notebook)
+    book.write('people/fern-0.md', book.read('people/fern-0.md').replace('[1]\n\n## Sources', '[1] [2]\n\n## Sources')
+               + f'- [2] {provider}:unindexed\n')
+    write_json(state_path(notebook, 'subscriptions.json'), {provider: {'enabled': True, 'consented': True}})
+    client = Mock(get_email_body=Mock(return_value='Please review the second pilot as well.'))
+    client._get_service.return_value.users.return_value.messages.return_value.get.return_value.execute.return_value = {
+        'threadId': 'second-pilot', 'payload': {'headers': [
+            {'name': 'From', 'value': 'fern-0@example.test'}, {'name': 'To', 'value': 'owner@example.test'},
+            {'name': 'Subject', 'value': 'Second pilot'}, {'name': 'Date', 'value': '2026-11-08T02:00:00+00:00'}]}}
+    client._request.return_value = {'conversationId': 'second-pilot',
+        'from': {'emailAddress': {'address': 'fern-0@example.test'}},
+        'toRecipients': [{'emailAddress': {'address': 'owner@example.test'}}],
+        'subject': 'Second pilot', 'receivedDateTime': '2026-11-08T02:00:00+00:00'}
+    monkeypatch.setattr(service, 'mail_client', lambda kind: client)
+    seen = fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    client.get_email_body.assert_called_once_with('unindexed')
+    assert seen == [provider + ':unindexed']
+    assert snapshot(notebook, local=True)['night_outcomes'][0]['kind'] == 'prepared'
+
+
+def test_night_task_prompt_preserves_full_promise_and_quote_provenance(notebook, monkeypatch):
+    from connectonion.rem.reader import snapshot
+    promise = "I'll review the pilot's operating assumptions and all the supporting documents, including the updated timeline, and deliver a cost breakdown."
+    night_item(notebook, 0, owner=True, body=promise)
+    Notebook(notebook).write('projects/report.md', '# Pilot report\n\n## Open threads\n- You owe a pilot report.\n')
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcomes = snapshot(notebook, local=True)['night_outcomes']
+    mail = next(row for row in outcomes if row['source'])
+    local = next(row for row in outcomes if not row['source'])
+    assert promise in mail['task']['prompt']
+    assert not local.get('owner_quote')
+
+
+def test_night_missing_mail_scope_is_a_card_failure_not_a_round_failure(notebook, monkeypatch):
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0, archived=False)
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': {'enabled': True, 'consented': True}})
+    factory = Mock(side_effect=ValueError('Missing gmail.readonly scope; private credential context'))
+    monkeypatch.setattr(service, 'mail_client', factory)
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcome = snapshot(notebook, local=True)['night_outcomes'][0]
+    assert outcome['kind'] == 'could_not_prepare'
+    assert 'mailbox configuration' in outcome['reason']
+    assert 'private credential context' not in outcome['reason']
+
+
+@pytest.mark.parametrize('verdict', ['reply', 'no_reply'])
+def test_night_native_fetch_submit_exposes_accepted_outcome(notebook, monkeypatch, verdict):
+    from connectonion.rem import quota
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0, archived=False)
+    write_json(state_path(notebook, 'consent.json'), {'authorized_at': service.now().isoformat()})
+    write_json(state_path(notebook, 'subscriptions.json'), {})
+    monkeypatch.setattr(quota, 'read', lambda config: {'unknown': 'fixture'})
+    monkeypatch.setattr('connectonion.rem.project_material.extract', lambda *a, **kw: {})
+    cursor = native_round.prepare(notebook, read_config(notebook), scheduled=False)
+    cursor.update(batch={'done': True}, jobs=[], summaries=[], same_new_left=0, same_left=0)
+    write_json(state_path(notebook, 'round.json'), cursor)
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': {'enabled': True, 'consented': True}})
+    client = Mock(get_email_body=Mock(return_value='Please review the pilot.'))
+    monkeypatch.setattr(service, 'mail_client', lambda kind: client)
+    task = native.next_task(notebook)
+    assert task['stage'] == 'reply-draft'
+    write_json(Path(task['candidate']), {'verdict': verdict, 'body': 'Here is the review.' if verdict == 'reply' else '',
+                                        'sources': ['gmail:ask-0'], 'why': 'The question is answered.'})
+    assert native.submit(notebook, task['id'])['outcome'] == 'accepted'
+    outcome = snapshot(notebook, local=True, today=True)['night_outcomes'][0]
+    assert outcome['kind'] == ('prepared' if verdict == 'reply' else 'no_reply')
+    assert service.status(notebook)['tonight']['no_reply'] == int(verdict == 'no_reply')
+    client.get_email_body.assert_called_once_with('ask-0')
+    client.reply.assert_not_called()
+
+
+def test_night_writer_failure_does_not_abandon_later_items(notebook, monkeypatch):
+    from connectonion.rem import runner
+    from connectonion.rem.reader import snapshot
+    for number in range(2):
+        night_item(notebook, number)
+    seen = fake_night_writer(monkeypatch)
+    good = runner.run_task
+    def run(directory, prompt, config, stage):
+        if read_json(directory / 'reply-material.json', {})['version'] == 'gmail:ask-0':
+            raise runner.RunFailed('The model did not finish.', usage={'input_tokens': 30})
+        return good(directory, prompt, config, stage)
+    monkeypatch.setattr(runner, 'run_task', run)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcomes = snapshot(notebook, local=True)['night_outcomes']
+    assert [row['kind'] for row in outcomes] == ['could_not_prepare', 'prepared']
+    assert 'RunFailed' in outcomes[0]['reason']
+    assert seen == ['gmail:ask-1']
+    assert service.status(notebook)['runner_attempts_today'] == 2
+
+
+@pytest.mark.parametrize('engine', ['daily', 'native'])
+def test_night_daily_cap_records_remaining_item(notebook, monkeypatch, engine):
+    from connectonion.rem.reader import snapshot
+    for number in range(2):
+        night_item(notebook, number)
+    set_config(notebook, ['limits.runner_calls_per_day', '1'])
+    fake_night_writer(monkeypatch)
+    if engine == 'daily':
+        daily._draft_replies(notebook, read_config(notebook), {})
+    else:
+        write_json(state_path(notebook, 'runs/run_spent.json'), {'started_at': service.now().isoformat(),
+                   'phase': 'daily-investigation', 'runner_attempts': 1})
+        assert native.next_task(notebook)['outcome'] == 'done'
+    outcomes = snapshot(notebook, local=True)['night_outcomes']
+    assert outcomes[-1]['kind'] == 'could_not_prepare'
+    assert 'cap' in outcomes[-1]['reason'].lower()
+
+
+@pytest.mark.parametrize('body,kind', [("I will review the pilot tomorrow.", 'task'),
+                                      ('Could you resend the recording?', 'task'),
+                                      ('I have sent the pilot review.', 'already_handled')])
+def test_night_sent_reply_promise_is_still_work(notebook, monkeypatch, body, kind):
+    from connectonion.rem import drafts
+    from connectonion.rem.reader import snapshot
+    night_item(notebook, 0)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': body, 'sources': [row['version']]})
+    saved = read_json(drafts.path(notebook, row['id']), {})
+    write_json(drafts.path(notebook, row['id']), {**saved, 'status': 'sent', 'sent_at': service.now().isoformat(),
+                                               'sent_receipt': {'id': 'sent-native-id'}})
+    fake_night_writer(monkeypatch)
+    daily._draft_replies(notebook, read_config(notebook), {})
+    outcome = snapshot(notebook, local=True)['night_outcomes'][0]
+    assert outcome['kind'] == kind
+    assert outcome['owner_quote'] == body
+    if kind == 'task':
+        assert body in outcome['task']['prompt']

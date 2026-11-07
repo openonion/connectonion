@@ -548,7 +548,9 @@ Schedule: Updates run automatically through the OS at saved local times
           Keep this computer awake. Status shows the saved schedule and runs.
           Unwritten pages, reply drafts and missing/stale translations are queued
           automatically. Translations have their own daily limit (default 100);
-          reply drafts are capped at 10 a night. Nothing is sent by REM.
+          reply drafts default to 30 a night, in Today order. Every leftover is named
+          in status. Missing originals are fetched from consented mailboxes; owner-last
+          answers and promised work get morning outcomes. Nothing is sent by REM.
 Access:   Background models can write only under the notebook's .state/tasks,
           with no shell commands or network access.
           Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.

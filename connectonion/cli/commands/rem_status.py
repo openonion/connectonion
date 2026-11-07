@@ -50,11 +50,24 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
-    lines += [*_budget(root, value, verbose), *_last_runs(root)]
+    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
+
+
+def _tonight(value):
+    night = value.get('tonight')
+    if night is None:
+        return []
+    line = (f"tonight: {night['items']} items · {night['drafts']} drafts · "
+            f"{night['already_handled']} already handled · {night['tasks']} tasks · "
+            f"{night['could_not_prepare']} could not be prepared")
+    if night['no_reply']:
+        line += f" · {night['no_reply']} no reply needed"
+    return [highlight(line), *(highlight(f"  {row['title']}: {row['text']} — {row['reason']}")
+                              for row in night['unprepared']), '']
 
 
 def _waiting(root, found: dict) -> list[str]:

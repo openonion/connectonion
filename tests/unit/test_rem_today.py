@@ -50,8 +50,9 @@ def test_reply_uses_newest_message_across_all_cited_threads(tmp_path, rem_clock,
     write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/avery.md', 'addresses': ['avery@example.test']}})
     Notebook(tmp_path).write('people/fern.md', '# Fern Vale\n\n## Open threads\n'
         '- You owe Fern written feedback on Demo A. ' + citations + '\n\n## Sources\n'
-        '- [1] ' + provider + ':promise\n- [2] ' + provider + ':followup\n- [3] ' + provider + ':missing\n')
+        '- [1] ' + provider + ':promise\n- [2] ' + provider + ':followup\n- [3] ' + provider + ':older\n')
     messages = [
+        ('older', 'earlier', 'fern', '2026-10-20', 'Please review Demo A.'),
         ('promise', 'original', 'avery', '2026-10-28', "I'll watch it and send written feedback that week."),
         ('followup', 'feedback', 'fern', '2026-11-01', 'Could you please share your feedback on Demo A?'),
         ('latest', 'original' if owner_latest else 'feedback', 'avery' if owner_latest else 'fern', '2026-11-03',
