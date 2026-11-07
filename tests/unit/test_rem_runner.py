@@ -1284,7 +1284,7 @@ def test_unretained_original_records_unverified_status_without_refusal(notebook,
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['accepted'] is True
     assert review['factual_quality'] == ('bounded citation audit insufficient; '
-                                         '1 citations unverified (originals not retained)')
+                                         '1 citations unverified (originals unavailable)')
 
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])

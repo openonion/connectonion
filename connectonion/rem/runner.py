@@ -1071,6 +1071,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                if source.startswith(("http://", "https://")) and source not in carried_urls and source not in readable]
     audit_usage = {}
     audit_status = "not automatically assessed"
+    audit_unavailable = []
     if last_resort and (directory / "claim-review.json").is_file():
         audit_status = (f"bounded citation audit failed; {len(refuted) - len(unlocated)} refuted claims removed"
                         + (f", {len(unlocated)} already gone" if unlocated else ""))
@@ -1098,7 +1099,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                     return {"needs_review": audit["prompt"], "candidate": str(output),
                             "continue_review": "Write a valid audit decision: verdict PASS, FAIL or INSUFFICIENT and a findings list; then submit again."}
                 report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
-                # The packet omits carried claims, so count only its candidate's citations.
+                # Require checkpoints only for originals the packet can supply.
                 checked, total, _ = audit_progress(audit["material"]["candidate"], directory)
                 # Normalization can turn an empty/filtered FAIL into PASS or INSUFFICIENT.
                 verdict = str(decision.get("verdict", "")).lower()
@@ -1121,8 +1122,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
-        if report.get("unretained_citations"):
-            audit_status += f"; {len(report['unretained_citations'])} citations unverified (originals not retained)"
+        audit_unavailable = report.get("sources_unavailable", [])
+        if audit_unavailable:
+            audit_status += f"; {len(audit_unavailable)} citations unverified (originals unavailable)"
         if report.get("carried_findings"):
             audit_status += f"; {len(report['carried_findings'])} unchanged findings deferred"
         # Insufficient source coverage and deferred old findings stay explicit;
@@ -1149,7 +1151,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "factual_quality": audit_status})
+                   "sources_unavailable": audit_unavailable, "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
