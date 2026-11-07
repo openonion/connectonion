@@ -163,10 +163,11 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
+    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
                       (provider, f"mail/messages/{provider}/{digest}%.json",
                        f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
+    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    if len(rows) == 1:
         return rows[0]
     return None
 

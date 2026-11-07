@@ -10,12 +10,11 @@ An undrafted card explains its state in the interface language:
 
 - A draftable reply is queued for tonight, or waiting while background updates
   are off. In the live reader, **Draft now / 现在起草** prepares it immediately.
-- A missing original names its mailbox and reports a failed last read when
-  status records one. A resolved message opens its provider thread; an unresolved
-  citation opens the recorded source.
-- When the last message was the owner's, the card is a task. It shows a bounded
-  excerpt of that message and its date. A thread waiting on someone else opens
-  the original conversation for follow-up.
+- The nightly round fetches missing originals from already-consented mailboxes
+  and records any failure on the card outcome.
+- Owner-last answers receive an already-handled verdict with quoted words;
+  promised work receives a ready task prompt. The snapshot exposes these for
+  the morning confirmation; see the [outcome contract](rem-night-outcomes.md).
 
 Only `【需要你：<what> — <by when or date not agreed>】` is accepted as bracketed
 text in a new draft. The reader highlights these parts with **Fill in / 需要你填**.

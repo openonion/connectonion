@@ -220,6 +220,9 @@ def _next_round(root, cursor, *, scheduled, notices):
             cursor["investigation_left"] = min(service.daily_cap(root)["remaining"], 8)
             cursor["portion_slot"] = slot.isoformat()
     reason, meter = _stop(root, config)
+    if reason:
+        from . import night
+        night.prepare(root, config, stop=reason)
     translation_only = bool(reason) or (cursor.get("investigation_left") == 0 and bool(cursor.get("current") or cursor.get("project_quote")))
     if translation_only:
         translation_reason, meter = _stop(root, config, phase="daily-translation")

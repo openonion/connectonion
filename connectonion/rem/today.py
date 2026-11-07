@@ -90,6 +90,9 @@ def _reply(root, sources, text, owner, db, direction):
         return {'state': 'task', 'last_word_yours': False, 'promise': text}
     result = {'state': 'unarchived', 'provider': mail[0].partition(':')[0], 'source': mail[0]}
     cited = [_cited_row(db, source) for source in mail] if db is not None else []
+    missing = next((source for source, row in zip(mail, cited) if row is None), None)
+    if missing:
+        return {**result, 'provider': missing.partition(':')[0], 'source': missing}
     cited_threads = sorted({row['thread'] for row in cited if row is not None})
     latest = db.execute('select * from messages where thread in (' + ','.join('?' for _ in cited_threads)
                         + ') order by time desc, id desc limit 1', cited_threads).fetchone() if cited_threads else None
@@ -97,9 +100,12 @@ def _reply(root, sources, text, owner, db, direction):
         return result
     saved = archived_message(root, dict(latest)) or {}
     result.update(provider=latest['source'], thread=latest['thread'], source=latest['id'], since=(latest['time'] or '')[:10])
+    if not isinstance(saved.get('body'), str) or not saved['body'].strip():
+        return result
     if latest['sender'].casefold() in owner:
         body = saved.get('body') or ''
-        return {**result, 'state': 'task' if _future_commitment(_owner_words(body)) else 'replied',
+        words = _owner_words(body)
+        return {**result, 'state': 'task' if _future_commitment(words) or _unanswered(words) else 'replied',
                 'last_word_yours': True, 'promise': _owner_quote(body)}
     if isinstance(saved.get('body'), str):
         from .mail import _address, _addresses
@@ -107,6 +113,11 @@ def _reply(root, sources, text, owner, db, direction):
                 _addresses(saved.get('to')) + _addresses(saved.get('cc'))):
             result['state'] = 'queued' if direction == 'mine' else 'waiting'
     return result
+
+
+def _unanswered(words):
+    """A clarification or explicit noncompletion is not evidence for batch completion."""
+    return bool(re.search(r'[?？]|\b(?:not|never|haven[’\x27]t|hasn[’\x27]t|didn[’\x27]t)\b|还没|尚未|未完成', words, re.I))
 
 
 def _items(records, found, first):
