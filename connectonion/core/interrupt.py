@@ -282,3 +282,32 @@ def run_interruptible(
     if "error" in box:
         raise box["error"]
     return box["result"], False
+
+
+def user_stop_outcome(trace: list[dict], messages: list[dict]) -> dict:
+    """Return recorded progress only; interrupted side effects may be partial."""
+    results = [entry for entry in trace if entry.get("type") == "tool_result"]
+    steps = [entry for entry in trace if entry.get("type") in ("tool_result", "llm_result")
+             and not entry.get("source")]
+    boundary = {"type": "iteration_boundary", "iteration": next(
+        (entry["iteration"] for entry in reversed(steps) if "iteration" in entry), 0)}
+    stopped = next((entry for entry in reversed(steps)
+                    if entry.get("status") == "interrupted"), boundary)
+    tool_id = stopped.get("tool_id")
+    requested = next((message["tool_calls"] for message in reversed(messages)
+                      if tool_id and any(call.get("id") == tool_id
+                                         for call in message.get("tool_calls", []))), [])
+    recorded = {entry.get("tool_id") for entry in results}
+    not_run = [call for call in requested if call.get("id") not in recorded]
+    location_keys = ("tool_id", "name") if tool_id else ("type",)
+    return {
+        **({"total_steps": len(results) + len(not_run)} if requested else {}),
+        "stopped_by": "user",
+        "stopped_at": {**{key: stopped[key] for key in location_keys if key in stopped},
+                       "iteration": stopped.get("iteration", boundary["iteration"]),
+                       "step": len(results) if tool_id else len(results) + 1},
+        "completed": [{"tool_id": entry.get("tool_id"), "name": entry.get("name")}
+                      for entry in results if entry.get("status") == "success"],
+        "not_run": [{"tool_id": call.get("id"), "name": call["function"]["name"]}
+                    for call in not_run],
+    }

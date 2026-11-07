@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...core.events import before_each_tool
-from ...core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_id, mode_of, set_mode
+from ...core.mode import ASK_FIRST_DESCRIPTION, AUTO, FULL_ACCESS, READ_ONLY, MODE_NAMES, mode_id, mode_of, set_mode
 from ...project import project_root
 from .approval import matches_permission_pattern
 from .bash_parser import _extract_subcommands, check_bash_chain_permitted, segment_permitted
@@ -377,7 +377,7 @@ def ensure_approval_mode(agent: "Agent") -> str:
 
 
 def set_approval_mode(agent: "Agent", mode: str, source: str = "user") -> str:
-    """Set Read only or Auto; Host transactions remain remote authority."""
+    """Set Ask first or Auto; Host transactions remain remote authority."""
     del source
     canonical = mode_id(mode)
     if canonical not in {READ_ONLY, AUTO}:
@@ -392,13 +392,13 @@ def advertised_mode_state(
     del new_session
     current = mode_of(session or {})
     available = [
-        {"id": READ_ONLY, "name": "Read only"},
-        {"id": AUTO, "name": "Auto", "recommended": True},
+        {"id": READ_ONLY, "name": MODE_NAMES[READ_ONLY], "description": ASK_FIRST_DESCRIPTION},
+        {"id": AUTO, "name": MODE_NAMES[AUTO], "recommended": True},
     ]
     if allow_full_access:
         available.append({
             "id": FULL_ACCESS,
-            "name": "Full access",
+            "name": MODE_NAMES[FULL_ACCESS],
             "dangerous": True,
             "bound": "host-configured",
         })

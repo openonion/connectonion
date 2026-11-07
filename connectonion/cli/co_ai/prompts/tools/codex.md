@@ -31,12 +31,16 @@ the frontend.
 
 ## Permission boundary
 
-The current co ai permission profile determines Codex's policy. Read only
-starts read-only and asks if Codex requests more permission. Auto allows workspace
-writes while retaining approval for untrusted commands and requests outside
-that sandbox. Full access runs without prompts using Codex's
-`danger-full-access` sandbox. The tool reapplies the current policy when
-resuming.
+The current co ai mode determines Codex's policy. Ask first (protocol
+ID `read-only`) starts in the read-only sandbox; requests for more permission
+ask the operator. A non-admin requester or no approval UI gets declined.
+Hosted Auto uses the `workspace-write` sandbox with no approval prompts.
+Full access uses the `danger-full-access` sandbox without routine prompts.
+The tool reapplies the current policy when resuming.
+
+When a result has status `blocked` or contains declined actions, tell the user
+which actions were declined and why; never say the work was done. Report only
+work supported by the recorded results.
 
 ## Example
 
