@@ -6,8 +6,9 @@ description: Run a REM notebook round in this session with co rem next and submi
 Run `co rem next` (or `co rem next --scheduled` in a Scheduled task).
 `co rem next` can take several minutes to prepare. Keep waiting on the same
 command until it exits; poll its output and do not start a second `next` while
-one is running. If it says "busy", wait about a minute and run `next` again;
-busy is not a reason to end the turn.
+one is running.
+For scheduled runs, keep waiting on the same command while it waits up to 10 minutes total for the maintenance lock.
+If it exits with MAINTENANCE_BUSY after that limit, report its busy message verbatim and end the turn without retrying.
 Do the printed task (its Now step when shown), submit it, then run next again.
 Read material in pieces with rg/sed, write the candidate, run the
 submit command, then run next again.

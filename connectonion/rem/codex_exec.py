@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -12,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..codex_cli import resolve_codex
-from .files import RemError, state_path, write_json
+from .files import RemError, read_json, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
 STARTUP_TIMEOUT_S = 300
@@ -128,17 +129,49 @@ def run_turn(root: Path, *, run=_execute) -> str:
         return _run_locked(root, run, held.fileno())
 
 
+def _reap_orphan_maintenance(root):
+    """Only a detached next/submit whose own turn finished can be reaped."""
+    owner = read_json(state_path(root, 'maintenance-owner.json'), {})
+    turn_id, pid = owner.get('turn_id'), owner.get('pid')
+    if not turn_id or not pid or owner.get('operation') not in ('next', 'submit'):
+        return []
+    turn = read_json(state_path(root, f'turns/{turn_id}.json'), {})
+    if not turn.get('finished_at') or turn.get('result') not in ('completed', 'failed', 'timed-out'):
+        return []
+    with state_path(root, 'maintenance.lock').open('a') as held:
+        locked = True
+        with suppress(BlockingIOError):
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = False
+        if not locked:
+            return []
+    process = subprocess.run(['ps', '-p', str(pid), '-o', 'ppid=,command='],
+                             capture_output=True, text=True).stdout.strip().split(maxsplit=1)
+    if len(process) != 2 or process[0] != '1':
+        return []
+    command = process[1]
+    # A stale owner file must not authorize killing an unrelated reused PID.
+    words = shlex.split(command)
+    if 'rem' not in words or not any(word in words for word in ('next', 'submit')):
+        return []
+    with suppress(ProcessLookupError):
+        os.kill(pid, signal.SIGKILL)
+        return [f'Terminated orphan maintenance pid {pid}: {command} (finished turn {turn_id})']
+    return []
+
+
 def _run_locked(root, run, lock_fd):
     started = datetime.now(timezone.utc)
     directory = state_path(root, 'turns')
     directory.mkdir(exist_ok=True, mode=0o700)
     name = started.strftime('%Y%m%dT%H%M%S.%fZ')
     log, last = directory / f'{name}.jsonl', directory / f'{name}.last.md'
-    receipt = {'started_at': started.isoformat(), 'result': 'running',
+    receipt = {'turn_id': name, 'started_at': started.isoformat(), 'result': 'running',
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
     result, skipped = None, False
     try:
+        receipt['terminated_orphans'] = _reap_orphan_maintenance(root)
         from .codex_schedule import CodexNative
         if CodexNative().recent_desktop_fire(root):
             skipped = True
@@ -152,7 +185,7 @@ def _run_locked(root, run, lock_fd):
             # Inherit the lock so killing the launcher cannot overlap a still
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                         cwd=root, pass_fds=(lock_fd,))
+                         cwd=root, pass_fds=(lock_fd,), env={**os.environ, 'CO_REM_TURN_ID': name})
     except Exception as error:
         # Persist the failure for unattended users, then preserve the traceback.
         receipt['reason'] = str(error) or type(error).__name__
@@ -162,6 +195,14 @@ def _run_locked(root, run, lock_fd):
         outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
         if code == 124:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
+        # Only the protocol's terminal busy line is a blocker, never a recovered narrative.
+        message = last.read_text().strip() if last.is_file() else ''
+        busy = bool(re.fullmatch(
+            r'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid (?:\d+|unknown): '
+            r'[^\n]+\. Report this message and end the turn without retrying\.', message))
+        receipt['blocked'] = busy or (result is None and not skipped)
+        if busy:
+            receipt['reason'] = message
         receipt.update(result=outcome, exit_code=code, killed_descendants=getattr(result, 'killed_descendants', 0),
                        finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)

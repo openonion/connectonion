@@ -393,7 +393,7 @@ def check_task(root, task, output):
         from . import drafts
         plan = drafts.check(prepared, output)
         current = next((row for row in drafts.candidates(root) if row["id"] == plan["id"]), None)
-        if not current or current["version"] != plan["version"]:
+        if not current or current["version"] != plan["version"] or drafts.closed(root, current):
             return {"discarded": "Reply thread changed; a fresh draft is queued", "changed": []}
         return _commit(root, task, plan, {"draft": plan["id"]})
     if handler == "extract":
@@ -478,7 +478,7 @@ def _commit(root, task, plan, result):
     from .native import _hash
     if task["handler"] == "draft":
         from . import drafts
-        plan = {**plan, "status": "prepared", "prepared_at": service.now().isoformat()}
+        plan = {**plan, "status": drafts.prepared_status(plan), "prepared_at": service.now().isoformat()}
         outputs = {drafts.path(root, plan["id"]): [_json_text(plan)]}
     else:
         outputs = _summary_outputs(root, plan) if task["handler"] == "sessions" else _merge_outputs(root, plan)

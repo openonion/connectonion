@@ -893,22 +893,23 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     """Use the same visible source and schedule approval in init and start."""
     import sys
 
-    if ctx is not None and ctx.obj["json"]:
+    terminal = sys.stdin.isatty()
+    if ctx is not None and ctx.obj["json"] and not terminal:
         return yes
     message = render(summary, "start — source access and schedule")
     if ctx is not None:
         message = message.replace("co rem config", _next(ctx, ["config"]))
         message = message.replace("co rem stop", _next(ctx, ["stop"]))
-    if yes:
-        rem_look.say(rem_look.result(message), err=True, plain=message)
-        return True
-    if not sys.stdin.isatty():
+    if not yes and not terminal:
         rem_look.say(rem_look.result(message), err=True, plain=message)
         rem_look.line("A noninteractive run cannot consent silently. Run with --yes after reading "
                       "the source and schedule summary, or use a terminal.", err=True)
         return False
-    rem_look.say(rem_look.result(message), plain=message)
-    return typer.confirm("Read these sources with this model and schedule?", default=False)
+    err = yes or bool(ctx and ctx.obj["json"])
+    rem_look.say(rem_look.result(message), err=err, plain=message)
+    if 'changes' not in summary:
+        _init_undo(Path(summary['root']), ctx=ctx, err=err)
+    return True
 
 
 def _scheduler_name(result: dict) -> str:
@@ -995,12 +996,16 @@ def _init_runner_waiting(root, codex):
     return reason
 
 
-def _init_undo(root) -> None:
-    typer.echo(f"Undo REM setup:\n"
+def _init_undo(root, *, ctx=None, err=False) -> None:
+    message = (f"Undo REM setup:\n"
                "  co rem stop — turn scheduling off\n"
                "  co rem sources — see sources; co rem sources remove SOURCE — remove one\n"
                "  co auth logout — remove OpenOnion credentials; revoke mailbox access in your Google/Microsoft account\n"
                f"  Delete the notebook folder: {root}")
+    if ctx is not None:
+        message = message.replace('co rem stop', _next(ctx, ['stop']))
+        message = message.replace('co rem sources', _next(ctx, ['sources']))
+    typer.echo(message, err=err)
 
 
 def _install_upkeep(root, confirm, scheduler) -> dict:
@@ -1110,7 +1115,8 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                             if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
         subscribe_read_mail(root, selected)
         run_state["consented"] = ensure_consent(
-            root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes), mail=mail)
+            root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes), mail=mail,
+            report_unchanged=sys.stdin.isatty())
         sources = subscriptions(root)
         clients, errors = {}, []
         for kind in sorted(selected):
@@ -1321,11 +1327,6 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             say(state + "No model turn or mail body archive was started. The map and coverage are saved.")
             return ((result if ctx.obj["json"] else _init_done(ctx, result)),
                     ["init", *init_window], bool(result.get("errors")))
-        if (not yes and sys.stdin.isatty()
-                and not typer.confirm("Build the first map now?", default=True, err=ctx.obj["json"])):
-            result["build_deferred"] = True
-            say("First pages deferred. Background updates pick them up when enabled.")
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window]
         _init_session_summary(root, result, progress, problem=problem, estimate_only=estimate_only)
         if not problem:
             say("Checking access to the selected model before the page queue…")
@@ -1494,7 +1495,7 @@ def make_rem_app(factory):
                   investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project"),
                   estimate_only: bool = typer.Option(False, "--estimate-only", help="Map and estimate the selected work without model turns or body archive"),
                   start_background: bool = typer.Option(True, "--start/--no-start", help="Install nightly upkeep after the first run"),
-                  yes: bool = typer.Option(False, "--yes", help="Approve source access and skip the estimate confirmation"),
+                  yes: bool = typer.Option(False, "--yes", help="Approve source access in a noninteractive run"),
                   first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
@@ -1924,7 +1925,7 @@ def make_rem_app(factory):
 
         def operation(root):
             result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler(root, for_start=True),
-                           history_progress=_history_progress)
+                           history_progress=_history_progress, report_unchanged=sys.stdin.isatty())
             if not result["started"]:
                 raise RemError("Start was not confirmed; nothing was read or installed")
             first = result.get("first_batch") or {}

@@ -342,8 +342,8 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator("#nav").get_by_role("link", name="People").click()
     expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
     expect(button).to_have_attribute("aria-expanded", "false")
-    assert page.locator('#main .empty .lead').inner_text() == 'Not mapped yet'
-    assert page.locator('#main .empty a').inner_text() == 'Copy setup command'
+    assert page.locator('#main .empty .lead').inner_text() == 'No contacts yet'
+    assert page.locator('#main .empty a').inner_text() == 'Explore memory →'
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
@@ -406,7 +406,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert page.locator('#nav a[href="#c=all"] .n').inner_text() == '1'
+        page.wait_for_function("document.querySelector('#nav a[href=\"#c=all\"] .n')?.textContent === '1'")
         page.locator('#nav a[href="#c=all"]').click()
         assert page.locator('.hits > li').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
@@ -417,9 +417,12 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         page.evaluate('''() => {
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
-        page.locator('#main .empty a').click()
+        # Setup-copy actions were removed from empty reading surfaces. The
+        # People review command in settings must still target this notebook.
+        page.locator('.reader-settings > summary').click()
+        page.get_by_role('button', name='Copy the command', exact=True).click()
         command = page.evaluate('window.copiedCommand', isolated_context=False)
-        assert shlex.split(command)==['co','rem','--root',str(root),'init','--mail','outlook']
+        assert shlex.split(command)==['co','rem','--root',str(root),'list','people','--review']
         browser.close()
 
 

@@ -37,7 +37,7 @@ def test_reader_keeps_old_deadlines_in_active_counts_and_today():
         '- You owe a letter since 2026-07-01; due 2026-10-23.\n' +
         '- You owe a plan since 2026-07-01; due 2026-10-24.\n' +
         '- You owe an undated reply since 2026-07-01.\n';
-      const r = {path:'people/avery.md', category:'people', original,
+      const r = {path:'people/avery.md', category:'people', original, shown:'zh',  // a page shown in translation keeps its English source
         text:original.replace('You owe a draft', 'Translated draft')};
       const items = threads(r).items, threadEntries = () => items.map(t => ({r,t}));
       const isDone = entry => entry.t.due === '2026-10-20';

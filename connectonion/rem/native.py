@@ -155,7 +155,8 @@ def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True) as waited_for, runner.private_task_mask():
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
+                          scheduled=scheduled) as waited_for, runner.private_task_mask():
         cursor = read_json(state_path(root, "round.json"), {})
         previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get("pending") else {}
         notices = []

@@ -52,8 +52,13 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             assert "/work/journal" not in statement
             assert "Needs your explicit request" in page.locator(".focus-kicker").inner_text()
             assert "This private project waits for your request." in page.locator(".missing").inner_text()
-            assert "investigate 'projects/journal.md'" in page.locator(".missing .cmd").inner_text()
-            assert page.get_by_role("button", name="Copy the command").is_visible()
+            # Primary reading surfaces no longer expose terminal commands.
+            assert page.locator(".missing .cmd").count() == 0
+            if width < 720:
+                page.locator(".nav-toggle").click()
+            page.locator(".reader-settings > summary").click()
+            assert "investigate 'projects/journal.md'" in page.locator(".reader-settings .cmd").inner_text()
+            assert page.get_by_role("button", name="Copy the command", exact=True).is_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
         browser.close()
@@ -84,7 +89,7 @@ def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_pat
             page.goto(path.as_uri() + "#r=projects%2Fbrowser.md")
             statement = page.locator(".focus-statement").inner_text()
             assert "/work/browser" not in statement
-            assert statement == "Not written yet: 13 sessions, last on Aug 2, 2026."
+            assert statement == "Not written yet: 13 sessions, last on Aug 2."
             assert "Where the work stands" not in page.locator(".focus-kicker").inner_text()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
@@ -186,8 +191,8 @@ def reader(tmp_path, monkeypatch):
     frozen = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
     snapshot = rem_reader.snapshot
 
-    def fixed_snapshot(root, local=False):
-        data = snapshot(root, local)
+    def fixed_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
         data["as_of"] = frozen.isoformat()
         return data
 
@@ -281,7 +286,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('.waiting-ledger > li').count() == 3
     assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
-    assert page.locator('.today-thread .waiting-age b').inner_text().startswith('due Oct 3, 2026')
+    assert page.locator('.today-thread .waiting-age b').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.waiting-ledger .waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
@@ -346,14 +351,12 @@ def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(read
     directory.get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
     assert directory.locator("tbody tr").count() == 1
     assert "leah@old-friends.example" in directory.locator("tbody").inner_text()
-    directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").click()
-    assert "stub person" in directory.locator(".directory-action code").inner_text()
-    assert directory.locator("tbody tr").first.evaluate(
-        "row => row.nextElementSibling.classList.contains('directory-action')")
+    assert directory.locator("tbody td").last.inner_text()
+    assert directory.locator('a[href="mailto:leah@old-friends.example"]').is_visible()
+    assert directory.locator(".directory-action").count() == 0
     page.set_viewport_size({"width": 390, "height": 844})
     assert directory.locator("tbody tr").first.evaluate(
         "row => getComputedStyle(row).display === 'grid'")
-    assert directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").bounding_box()["height"] >= 44
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -503,7 +506,7 @@ def test_people_phone_cards_keep_contact_metadata_and_sorting(reader, width):
     assert not row.locator('.c-phone').is_visible()
     assert row.locator('.c-open').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
     assert row.locator('.people-card-meta').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
-    assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
+    assert page.locator('.sheet td.c-last .mono[title="Last contact in map"]').first.inner_text() == 'Sep 16'
     page.get_by_role('combobox', name='Sort by').select_option('last')
     assert page.locator('.sheet th.c-last').get_attribute('aria-sort') == 'descending'
     assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
@@ -518,7 +521,7 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     data["records"].extend({**example, "path": f"people/example-{i}.md",
                             "title": f"Alexandria Margaret Historical Correspondent {i:03d}"}
                            for i in range(570))
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "large-roster.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -540,7 +543,7 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
         assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
         assert page.get_by_role('combobox', name='Sort by').is_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-        assert any("· map" in text for text in page.locator(".sheet td.c-last .mono").all_inner_texts())
+        assert page.locator('.sheet td.c-last .mono[title="Last contact in map"]').first.inner_text() == 'Sep 16'
         page.get_by_role('combobox', name='Sort by').select_option('last')
         assert page.locator(".sheet th.c-last").get_attribute("aria-sort") in ("ascending", "descending")
 
@@ -559,7 +562,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     visible_people = sum(r["category"] == "people" and r["path"] != data["owner"]
                          and not r.get("needs_review") and not r.get("service")
                          for r in data["records"])
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "first-map.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -600,8 +603,8 @@ def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
     assert "Head of Partnerships" in value("Role").inner_text()
     assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
     role_source = value('Role').locator('.cite')
-    assert role_source.inner_text() == 'Aug 22, 2026'
-    assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, 2026, original not in this snapshot'
+    assert role_source.inner_text() == 'Aug 22'
+    assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, original not in this snapshot'
     assert 'title and company in signature' in page.locator('#src-2').inner_text()
     role_source.click()
     assert "The original isn't in this snapshot." in page.locator('#evidence-panel').inner_text()
@@ -651,7 +654,7 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
     for index, expected, other in ((0, first, second), (1, second, first)):
         chips.nth(index).click()
         claim = page.locator(".evidence-claim > div").inner_text()
-        assert claim == expected
+        assert claim == expected.removesuffix(" (2026-10-14)")
         assert other not in claim
         page.get_by_role("button", name="Close source context").click()
 
@@ -998,7 +1001,10 @@ def test_investigation_command_targets_the_notebook_being_viewed(reader):
       r.original = r.text; KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     root = page.evaluate('REM.root', isolated_context=False)
-    command = page.locator('.missing .cmd code').inner_text()
+    # Private investigation commands now live in Reader settings.
+    assert page.locator('.missing .cmd').count() == 0
+    page.locator('.reader-settings > summary').click()
+    command = page.locator('.reader-settings .cmd code').inner_text()
     assert '--root' in command and root in command
     assert "investigate 'projects/harbour.md'" in command
 
@@ -1108,7 +1114,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
     assert purpose.bounding_box()['y'] < 812
     assert page.locator('.scope-note').count() == 0
     purpose_source = page.locator('.project-purpose-cites a.cite').first
-    assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2, 2026')
+    assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
     sources = page.locator('.focus-source').bounding_box()
     assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
@@ -1414,12 +1420,13 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
       const r = byPath('people/mara-ostrowski.md');
       r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
         '- You owe Mara a scope decision, requested 2026-10-01; due 2026-10-03 [5].' + String.fromCharCode(10));
+      REM.source_context['outlook:77c09ad1e3f0'].time = '2026-10-01T10:00:00Z';
       KNOWN.clear(); render();
     }""", isolated_context=False)
     row = page.locator('.ledger-column.mine .ledger-row').first
-    assert row.locator('.ledger-meta').inner_text() == 'due Oct 3, 2026'
+    assert row.locator('.ledger-meta').inner_text().endswith('due Today')
     page.evaluate("REM.as_of = '2026-10-03T14:30:00Z'; render()", isolated_context=False)
-    assert page.locator('.ledger-column.mine .ledger-meta').first.inner_text() == 'overdue · Oct 3, 2026'
+    assert page.locator('.ledger-column.mine .ledger-meta').first.inner_text().endswith('overdue · Yesterday')
     dates = page.evaluate("threads(byPath('people/mara-ostrowski.md')).items[0]", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == '2026-10-03'
     dates = page.evaluate(r"""() => {
@@ -1439,6 +1446,7 @@ def test_phone_open_preview_names_elapsed_age_and_keeps_the_full_thread(reader):
       const r = byPath('people/mara-ostrowski.md');
       r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
         '- Mara asked Avery to confirm the scope on 2026-09-29, followed up twice, and offered several detailed ways to answer before a time-sensitive proposal, while the exact due day still needs confirmation [5].' + String.fromCharCode(10));
+      REM.source_context['outlook:77c09ad1e3f0'].time = '2026-09-29T10:00:00Z';
       KNOWN.clear(); render();
     }""", isolated_context=False)
     ledger = page.locator('.ledger-column.mine')
@@ -1459,11 +1467,11 @@ def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone
       r.text = r.text.replace(/Last contact:[^\\n]+/g, 'Last contact: 2026-10-02 [1]');
       KNOWN.delete(r.path); FACTS.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last contact Oct 2, 2026' in other.locator('.contact-line').inner_text()
-    assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1, 2026'
-    assert other.evaluate("fmtDate('2026-07-31')", isolated_context=False) == 'Jul 31, 2026'
+    assert 'Last contact Yesterday' in other.locator('.contact-line').inner_text()
+    assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1'
+    assert other.evaluate("fmtDate('2026-07-31')", isolated_context=False) == 'Jul 31'
     other.evaluate("REM.as_of = '2026-12-31T14:00:00Z'", isolated_context=False)
-    assert other.evaluate("shortDate('2026-12-31')", isolated_context=False) == 'Dec 31, 2026'
+    assert other.evaluate("shortDate('2026-12-31')", isolated_context=False) == 'Yesterday'  # notebook calendar, not the browser's
     other.evaluate("REM.as_of = '2026-10-03T15:30:00Z'", isolated_context=False)
     assert other.evaluate("daysSince('2026-10-03')", isolated_context=False) == 1
     other.close()
@@ -1480,7 +1488,7 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.activity-day').all_inner_texts() == ['Sep 4, 2026', 'Sep 3, 2026', 'Sep 2, 2026', 'Sep 1, 2026']
+    assert page.locator('.activity-day').all_inner_texts() == ['Sep 4', 'Sep 3', 'Sep 2', 'Sep 1']
     assert page.locator('.activity-text').count() == 4
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.activity-text').all_inner_texts())
     assert page.locator('.activity-list').evaluate('e => e.scrollHeight <= e.clientHeight')
@@ -1729,7 +1737,8 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.reload()
         page.goto(uri + '#r=people%2Fquinn-alder.md')
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
-        assert 'Last contact in map' in page.locator('.leadrow').inner_text()
+        assert page.locator('.contact-line').inner_text() == 'Last contact Sep 16'
+        assert page.locator('.contact-line [title="Last contact in map"]').count() == 1
         assert page.locator('.focus-facts').count() == 0
         assert page.locator('details.deep-note').get_attribute('open') is None
         assert page.locator('.deep-note .factlist').count() == 1
@@ -1742,7 +1751,8 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.goto(uri + '#c=people')
         page.get_by_role('heading', name='People', exact=True).wait_for()
         quinn = page.locator('.sheet tbody tr').filter(has_text='Quinn Alder')
-        assert 'map' in quinn.locator('.c-last').inner_text()
+        assert quinn.locator('.c-last .mono').inner_text() == 'Sep 16'
+        assert quinn.locator('.c-last .mono').get_attribute('title') == 'Last contact in map'
 
         page.goto(uri + '#r=people%2Fmara-ostrowski.md')
         page.get_by_role('heading', name='Mara Ostrowski', exact=True).wait_for()
@@ -1906,7 +1916,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
         {'started_at': '2026-10-07T11:01:00+00:00', 'outcome': 'failed',
          'error': 'TimeoutError: private payload must not appear here', 'changed': []},
     ]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'blocked.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -1944,7 +1954,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     ]
     # fbdd25e3: replacing the run window does not replace the notebook's age.
     data['first_run_at'] = data['as_of']
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'partial.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.goto(path.as_uri())
@@ -2053,7 +2063,7 @@ def test_activity_lists_each_run_with_pages_changed_and_refused(reader, tmp_path
                      'usage': {'input_tokens': 1200, 'output_tokens': 300}, 'changed': ['people/mara-ostrowski.md'],
                      'refusals': [{'record': 'projects/harbour.md',
                                    'errors': ['Candidate rejected, kept at /private/c.md: Changed page has no numbered evidence references']}]}]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'runs.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -2089,8 +2099,8 @@ def test_citations_name_the_source_and_open_marked_margin_or_sheet(reader):
           KNOWN.clear(); FACTS.clear(); render();
         }""", isolated_context=False)
         chip = page.locator('.person-insight a.cite[href$="src-5"]').first
-        assert chip.inner_text() == 'Oct 14, 2026'
-        assert 'Mara, Outlook, Oct 14, 2026' in chip.get_attribute('title')
+        assert chip.inner_text() == '5'  # Quiet superscript; source date remains in the accessible label.
+        assert 'Mara, Outlook, Oct 14' in chip.get_attribute('title')
         assert 'subject “Harbour renewal”' in chip.get_attribute('aria-label')
         assert 'data-tip' not in chip.evaluate('e => e.outerHTML')
         box = chip.bounding_box()
@@ -2147,7 +2157,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
       return [chipLabel(r, '5'), chipLabel(r, '1'), chipLabel(r, '99'),
         sourceChannel('claude-session'), sourceChannel('project-source'), sourceChannel('whatsapp')];
     }""", isolated_context=False)
-    assert values == ['you, Outlook, Oct 14, 2026', 'Outlook, Aug 22, 2026', 'source 99', 'Session', 'Repo', 'WhatsApp']
+    assert values == ['you, Outlook, Oct 14', 'Outlook, Aug 22', 'source 99', 'Session', 'Repo', 'WhatsApp']
     page.locator('details.deep-note > summary').click()
     missing = page.locator('.factlist a.cite[href$="src-1"]').first
     assert 'missing' in missing.get_attribute('class')
@@ -2157,7 +2167,9 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
     assert panel.locator('.evidence-unavailable').inner_text() == "The original isn't in this snapshot."
     page.get_by_role('button', name='Close source context').click()
     grouped = page.locator('.person-insight .cite.run[data-sources="4 5 6"]')
-    assert grouped.inner_text().endswith(' +2')
+    assert grouped.inner_text() == '4'
+    assert grouped.get_attribute('data-sources') == '4 5 6'
+    assert '3 sources for this line' in grouped.get_attribute('aria-label')
     grouped.click()
     assert 'Source 1 of 3 for this line' in panel.locator('.evidence-top').inner_text()
     panel.get_by_role('combobox', name='Source for this line').select_option('5')
@@ -2171,6 +2183,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
     }""", isolated_context=False)
     absent = page.locator('#missing-citation a.cite')
     assert absent.inner_text() == 'source 99'
+    assert absent.get_attribute('aria-label') == 'Source: source 99, original not in this snapshot'
     absent.click()
     assert panel.locator('.evidence-unavailable').inner_text() == "The original isn't in this snapshot."
     page.get_by_role('button', name='Close source context').click()
@@ -2212,6 +2225,8 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
       ];
       r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads\n' + rows.join('\n') + '\n');
       r.text = r.text.replace(/- Now:/, '- **Now**:').replace(/- At stake:/, '- **At stake**:');
+      REM.source_context['outlook:e4a2c1907bd3'].time = '2026-10-08T10:00:00Z';
+      REM.source_context['gmail:0f9be4c12a55'].time = '2026-07-22T10:00:00Z';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     mine = page.locator('.ledger-column.mine')
@@ -2219,7 +2234,8 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
     assert mine.locator('.ledger-rows').first.locator(':scope > li').count() == 3
     assert mine.locator('.ledger-row').filter(has_text='fourth answer').is_visible() is False
     assert 'You owe' not in mine.locator('.ledger-row p').first.inner_text()
-    assert 'A scope decision; due:' in mine.inner_text()
+    assert 'A scope decision' in mine.inner_text()
+    assert mine.locator('.ledger-meta').filter(has_text='due Oct 22').count() == 1
     assert '7 days' in mine.inner_text() and '85 days, gone quiet' in mine.inner_text()
     assert page.locator('.ledger-column.theirs .ledger-count').inner_text() == '1'
     assert 'Quinn owes Tomás' not in page.locator('.between-ledger').inner_text()
@@ -2251,11 +2267,11 @@ def test_morning_rows_quote_only_original_words_and_format_overdue_dates(reader)
         morningWords('You owe Liesel Voss "ok" and a draft [5].', r),
         dueLabel({due: '2026-09-10'}), direction('You said you would send what Liesel owes the bank')];
     }""", isolated_context=False)
-    assert values[0] == {'words': 'A draft', 'context': 'send questions afterward. [5]'}
-    assert values[1]['words'] == 'A draft' and 'due: 2026-10-22' in values[1]['context']
-    assert values[2]['words'] == '“Send the draft and questions.”' and '[5]' in values[2]['context']
+    assert values[0] == {'words': 'A draft; send questions afterward.', 'context': '[5]'}
+    assert values[1] == {'words': 'A draft; due: 2026-10-22.', 'context': '[5]'}
+    assert values[2] == {'words': 'Liesel asked “Send the draft and questions.”.', 'context': '[5]'}
     assert not values[3]['words'].startswith('“')
-    assert values[4] == 'overdue · Sep 10, 2026'
+    assert values[4] == 'overdue · Sep 10'
     assert values[5] != 'third'
 
 
@@ -2399,7 +2415,7 @@ def session_reader(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     original = rem_reader.snapshot
 
-    def fixed_snapshot(root, local=False):
+    def fixed_snapshot(root, local=False, today=False):
         data = original(root, local)
         data["as_of"] = "2026-10-15T14:30:00+00:00"  # Already Friday in the notebook.
         data["status"]["timezone"] = "Australia/Sydney"
@@ -2524,7 +2540,7 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
         expect(page.get_by_role("button", name="Filter · 2", exact=True)).to_be_visible()
     page.get_by_role("button", name="By project", exact=True).click()
     expect(page.locator(".session-group > summary")).to_have_text(["Alpha2"])
-    expect(page.locator(".session-meta").first).to_contain_text("Oct")
+    expect(page.locator(".session-meta").first).to_contain_text("Today 09:12")
     page.get_by_role("button", name="Clear", exact=True).click()
     expect(page.locator(".session-group > summary")).to_have_text(["Alpha3", "Beta2", "No project1"])
     assert "by=project" in page.url
@@ -2859,7 +2875,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
       KNOWN.clear(); FACTS.clear(); render();
       document.documentElement.classList.add('hide-private');
     }''', labelled, isolated_context=False)
-    assert page.locator('.between-you .empty-line').inner_text() == 'Nothing open as of 2026-10-01.'
+    assert page.locator('.between-you .empty-line').inner_text() == 'Nothing open.'
     assert page.locator('.activity-list > li:visible').count() == 0
     assert page.locator('.recent-activity .private-history-notice').inner_text() == '1 private entry hidden'
     assert page.locator('.contact-strip dt').filter(has_text='Phone').count() == 0
@@ -3120,7 +3136,7 @@ def test_project_threads_only_label_explicit_direction_and_deduplicate_date(read
     assert rows.locator('.dir').all_inner_texts() == ['Open', 'You owe', 'They owe']
     assert rows.first.locator('.what').inner_text().startswith('You asked to revisit')
     assert '2026-09-13' not in rows.first.locator('.what').inner_text()
-    assert 'since Sep 13, 2026' in rows.first.locator('.when').get_attribute('title')
+    assert 'since Sep 13' in rows.first.locator('.when').get_attribute('title')
 
 
 @pytest.mark.parametrize('path', ['people/quinn-alder.md', 'skills/catalog/weekly-brief.md'])
@@ -3265,10 +3281,10 @@ def test_partial_project_status_explains_the_uninvestigated_sections(reader):
     }''', isolated_context=False)
     tooltip = 'Some sections are filled from sources; the rest are not investigated yet.'
     row = page.locator('.sheet tbody tr').filter(has_text='Harbour')
-    assert row.locator('.pill.status').inner_text() == 'Partly investigated'
+    assert row.locator('.pill.status').inner_text() == 'More to learn'
     assert row.locator('.pill.status').get_attribute('title') == tooltip
     row.get_by_role('link', name='Harbour', exact=True).click()
-    assert page.locator('.eyebrow .pill.status').inner_text() == 'Partly investigated'
+    assert page.locator('.eyebrow .pill.status').inner_text() == 'More to learn'
     assert page.locator('.eyebrow .pill.status').get_attribute('title') == tooltip
 
 
@@ -3333,7 +3349,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     data = rem_reader.snapshot(tmp_path / 'rem', local=True)
     data['your_languages'] = notebook_languages
     page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False, today=False: data)
     path = tmp_path / 'chinese-reader.html'
     path.write_text(rem_reader.render(tmp_path / 'rem', local=True), encoding='utf-8')
     page.evaluate(r'''() => localStorage.removeItem('co-rem-ui-language')''')
@@ -3584,11 +3600,11 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
     }''', language, isolated_context=False)
     assert page.locator('.lede').inner_text().startswith(
         '可复用的操作流程，仅记录，未安装 · ' if language == 'zh' else 'Repeatable procedures, recorded not installed. ')
-    assert re.fullmatch(r'已撰写 \d+ / \d+ 项' if language == 'zh' else r'\d+ written of \d+',
+    assert re.fullmatch(r'\d+ 项中，\d+ 项有内容' if language == 'zh' else r'\d+ written of \d+',
                         page.locator('.lede .mono').inner_text())
     assert page.locator('.hits .bar').count() == 0
     assert page.locator('.hits .usage').first.inner_text().endswith(
-        '最近 2026年9月30日' if language == 'zh' else 'last Sep 30, 2026')
+        '最近 昨天' if language == 'zh' else 'last Yesterday')
     assert page.evaluate(r"byPath('skills/catalog/weekly-brief.md').text", isolated_context=False) == original
     page.evaluate(r"""() => {
       const r = byPath('skills/catalog/weekly-brief.md');
@@ -3653,7 +3669,7 @@ def test_decision_memory_starts_collapsed_and_sources_use_readable_ids(reader, l
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
     chip = page.locator('.block-sources .id')
-    assert chip.inner_text() == ('Claude Code 会话 · 2026年9月3日' if language == 'zh' else 'Claude Code session · Sep 3, 2026')
+    assert chip.inner_text() == ('Claude Code 会话 · 9月3日' if language == 'zh' else 'Claude Code session · Sep 3')
     assert chip.get_attribute('title') == source
     page.evaluate(r'''source => { delete REM.source_context[source]; render(); }''', source, isolated_context=False)
     page.locator('details.deep-note > summary').click()
@@ -3729,12 +3745,12 @@ def test_chinese_waiting_summary_splits_and_trims_detail(reader, separator):
       setInterfaceLanguage('zh');
       return morningWords('请签署试点协议' + separator + ' ，、；：— 后续安排明天讨论 [4]', byPath('people/mara-ostrowski.md'));
     }''', separator, isolated_context=False)
-    assert result == {'words': '请签署试点协议', 'context': '后续安排明天讨论 [4]'}
+    assert result == {'words': '请签署试点协议' + separator + ' ，、；：— 后续安排明天讨论', 'context': '[4]'}
     assert page.evaluate(r'''() => {
       setInterfaceLanguage('en');
       return morningWords('Review the draft: keep this clause — and this one; discuss tomorrow [4]', byPath('people/mara-ostrowski.md'));
     }''', isolated_context=False) == {
-        'words': 'Review the draft: keep this clause — and this one', 'context': 'discuss tomorrow [4]'}
+        'words': 'Review the draft: keep this clause — and this one; discuss tomorrow', 'context': '[4]'}
 
 
 @pytest.mark.parametrize('width', [375, 1440])
@@ -3756,8 +3772,9 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     waiting = page.locator('.waiting-ledger > li').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
     assert '理学院教授' in waiting.locator('.waiting-person .meta').inner_text()
     assert 'Fernhill Labs 科研团队' in waiting.locator('.waiting-person .meta').inner_text()
-    assert waiting.locator('.waiting-ask .words').inner_text() == '你需要签署试点协议'
-    assert waiting.locator('.waiting-ask .context').inner_text().startswith('后续安排明天讨论')
+    assert waiting.locator('.waiting-ask .words').inner_text() == '你需要签署试点协议；后续安排明天讨论4'
+    assert waiting.locator('.waiting-ask .words .cite').get_attribute('data-sources') == '4'
+    assert waiting.locator('.waiting-ask .context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     row = page.locator('.people-sheet tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
     if width > 600:
@@ -3930,8 +3947,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
     monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en'], 'from': 'detected'})
     snapshot = rem_reader.snapshot
 
-    def frozen_snapshot(root, local=False):
-        data = snapshot(root, local)
+    def frozen_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
         data['as_of'] = now.isoformat()
         data['shared'] = True  # Default hidden-labelled mode, without a local storage override.
         return data
@@ -4026,10 +4043,11 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.overnight-change').count() == 3
     assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
     assert page.locator('.today-thread').count() == 5
-    assert 'overdue · Oct 18, 2026' in page.locator('.today-thread').first.inner_text()
+    assert 'overdue · 2 days ago' in page.locator('.today-thread').first.inner_text()  # one date grammar: within a week, relative
     # 108ac316 separates the overdue request from the five due today.
     assert '1 overdue · 5 due soon' in page.locator('.brief-header h1').inner_text()
-    assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 7
+    # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
+    assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
     assert page.locator('.today-thread .btn-act').count() == 5
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
@@ -4065,11 +4083,11 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.locator('.done-details summary').wait_for()
     assert page.locator('.done-details').get_attribute('open') is None
     page.locator('.done-details summary').click()
-    assert 'Only this browser remembers this.' in page.locator('.done-details').inner_text()
+    assert 'sync pending' in page.locator('.done-details').inner_text()
     assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     row = page.locator('.ledger-row').filter(has_text='Data-sharing addendum')
-    assert row.locator('.done-tag').inner_text() == 'marked done here'
+    assert row.locator('.done-tag').inner_text().startswith('Marked done ·')
     row.get_by_role('button', name='Undo', exact=True).click()
     assert row.locator('.done-tag').count() == 0
     page.goto(uri)
@@ -4454,14 +4472,15 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert page.locator('.overnight .quiet-line').inner_text() == (
         '笔记本刚刚建立。下次更新后，这里会显示夜间变化。' if language == 'zh'
         else 'Your notebook was just built. Overnight changes appear here after the next update.')
-    page.locator('.overnight .cmd button').click()
-    assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem start'
+    assert page.locator('.overnight .cmd').count() == 0  # commands left the primary surface
+    page.locator('.reader-settings > summary').click()
+    assert 'co rem start' in page.locator('.reader-settings').inner_text()
+    page.locator('.reader-settings > summary').click()
     notice = page.locator('#main > .translation-note')
     if language == 'zh':
-        assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+        assert notice.inner_text() == '打开页面时会翻译成中文。'
         # The notice follows the queue: nothing about the reader's own upkeep sits above what needs you.
         assert notice.bounding_box()['y'] > page.locator('.today-brief').bounding_box()['y']
-        assert notice.locator('span').inner_text() == '翻译待处理，后台更新未开启'
         assert notice.locator('button, code').count() == 0
     else:
         assert notice.count() == 0
@@ -4479,7 +4498,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
     if language == 'zh':
-        assert notice.locator('span').inner_text() == '翻译待处理，已排入今晚队列'
+        assert notice.inner_text() == '打开页面时会翻译成中文。'
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
@@ -4491,7 +4510,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert page.locator('#main > .translation-note span').inner_text() == '翻译待处理，已排入今晚队列'
+    assert page.locator('#main > .translation-note').inner_text() == '打开页面时会翻译成中文。'
     assert page.locator('#main > .translation-note button, #main > .translation-note code').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -4553,7 +4572,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
           return [s.fontFamily, s.fontSize, s.color, s.borderTopWidth, s.marginTop];
         }'''))
         if record.startswith('people/'):
-            assert page.locator('.empty-line').inner_text() == 'Nothing open as of 2026-10-17.'
+            assert page.locator('.empty-line').inner_text() == 'Nothing open.'
         else:
             assert page.locator('.empty-line').inner_text() == 'Nothing open.'
         if record.startswith('projects/'):
@@ -4696,16 +4715,16 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
       delete REM.records[0].translations;
       render();
     }''', isolated_context=False)
-    assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+    assert notice.inner_text() == '打开页面时会翻译成中文。'
     page.evaluate(r'''() => {
       REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
       render();
     }''', isolated_context=False)
     assert notice.inner_text().startswith('1 个页面未能翻译。')
-    assert notice.locator('span').inner_text() == '翻译待处理，后台更新未开启'
+    assert notice.inner_text() == '1 个页面未能翻译。 打开页面时会翻译成中文。'
     assert notice.locator('button, code').count() == 0
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
-    assert notice.locator('span').inner_text() == '翻译待处理，已排入今晚队列'
+    assert notice.inner_text() == '1 个页面未能翻译。 打开页面时会翻译成中文。'
     assert notice.locator('button, code').count() == 0
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
@@ -4803,8 +4822,8 @@ def test_reader_copy_uses_one_local_date_format_and_omits_owner_and_redundant_ba
       return [fmtDate('2026-10-27'), shortDate('2026-10-27'), citationDate(r, '5'), chipLabel(r, '5'),
         fmtTime('2026-10-26T13:17:00Z'), messageMeta(REM.source_context['outlook:77c09ad1e3f0'])];
     }""", isolated_context=False)
-    assert values[:3] == ['Oct 27, 2026'] * 3
-    assert all('Oct 27, 2026' in text for text in values[3:])
+    assert values[:3] == ['Yesterday'] * 3
+    assert all('Yesterday' in text for text in values[3:])
     page.goto(uri + '#c=people')
     lede = page.locator('.lede').inner_text()
     assert 'qualifying correspondents have a page' in lede
