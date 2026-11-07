@@ -162,3 +162,37 @@ the agent to stop after about 30 tool calls) wrote the same person's page in
 0.67M input tokens and 5 min 40 s of model time, with 52 citations. It was
 dropped so that there is one investigation path, #1942's; the gap is mostly
 the quoted threads and attachments #1942 keeps whole.
+
+### Mail relationship stats
+
+The reader's People table and each person header show a 52-week contact
+sparkline and warming/cooling. **More columns** also shows who writes first
+and reply times; the header shows all four. The default People order uses
+newest indexed mail first, regardless of whether a page has been investigated.
+People whose last indexed mail is over 90 days old appear under **Quiet**.
+People without indexed mail appear separately; missing history is not inactivity.
+
+These are deterministic recounts of `.state/rem.db`, available immediately
+after the existing map/sync refresh. Reading the table recomputes the windows
+without a model call, so quiet periods keep aging between syncs. Only mail
+between a person's indexed email addresses and an owner mailbox counts
+(including To/Cc recipients); third-party messages in the same thread do not.
+Multiple matching addresses count a message once per person.
+
+- **Contact**: messages in both directions, in 52 rolling seven-day UTC bins,
+  oldest first, through the notebook's current day (UTC midnight boundaries).
+- **Who writes first**: the percentage of threads whose first indexed message
+  was a direct exchange from them versus you, for threads starting in the
+  last 90 days. Threads beginning outside that exchange (for example, with a
+  third party) are excluded rather than assigned an inferred initiator.
+- **Reply times**: median elapsed time each way across all indexed history.
+  A reply is a change of sender direction within a thread, measured from the
+  preceding message. Unanswered messages have no reply time. Missing medians
+  are shown as a dash.
+- **Warming/cooling**: daily message rate in the last 30 days versus the
+  preceding 90 days: `(recent * 3 / prior - 1) * 100`. With no prior messages,
+  show **New contact** or **No recent mail** instead of inventing a percentage.
+
+Counts describe retained indexed mail, not the entire relationship. Provider
+thread IDs are used when available; older mail may use the existing subject
+and correspondent fallback. Partial history can miss a thread's real start.
