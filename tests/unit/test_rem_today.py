@@ -18,7 +18,7 @@ from test_rem_reader import _run_reader_js
 @pytest.mark.parametrize('body,state,quote', [
     ('--- Email Body ---\nHi Mara,\nFriday works. I have sent a calendar invite.\n'
      'https://meet.example.test/mara\n\nThanks,\nAvery\nOn Tuesday Fern wrote:\nI will send feedback.',
-     'replied', 'Friday works. I have sent a calendar invite.'),
+     'replied', 'Friday works.'),
     ("Hi Fern,\nIntroducing Mara (cc’d), a student interested in the project.\nBest,\nAvery",
      'replied', 'Introducing Mara (cc’d), a student interested in the project.'),
     ("--- Message Body ---\nHi Mara,\nI'll watch it and send feedback that week.\n> Already done.",
@@ -40,6 +40,34 @@ def test_latest_owner_words_determine_reply_state(tmp_path, rem_clock, provider,
     assert reply['since'] == '2026-10-28'
     assert reply['promise'] == quote
     assert reply['source'] == provider + ':answer'
+
+
+@pytest.mark.parametrize('provider', ['outlook', 'gmail'])
+@pytest.mark.parametrize('owner_latest', [False, True])
+@pytest.mark.parametrize('citations', ['[1] [2]', '[2] [1]', '[3] [1] [2]'])
+def test_reply_uses_newest_message_across_all_cited_threads(tmp_path, rem_clock, provider, owner_latest, citations):
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/avery.md', 'addresses': ['avery@example.test']}})
+    Notebook(tmp_path).write('people/fern.md', '# Fern Vale\n\n## Open threads\n'
+        '- You owe Fern written feedback on Demo A. ' + citations + '\n\n## Sources\n'
+        '- [1] ' + provider + ':promise\n- [2] ' + provider + ':followup\n- [3] ' + provider + ':missing\n')
+    messages = [
+        ('promise', 'original', 'avery', '2026-10-28', "I'll watch it and send written feedback that week."),
+        ('followup', 'feedback', 'fern', '2026-11-01', 'Could you please share your feedback on Demo A?'),
+        ('latest', 'original' if owner_latest else 'feedback', 'avery' if owner_latest else 'fern', '2026-11-03',
+         "I will send feedback tomorrow." if owner_latest else 'Could you send feedback and your meeting availability?'),
+    ]
+    for identity, thread, sender, stamp, body in messages:
+        retain_message(tmp_path, provider, {'id': identity, 'from': sender + '@example.test',
+            'to': ['avery@example.test', 'fern@example.test'], 'thread': thread, 'date': stamp + 'T03:00:00+00:00'},
+            body, fetched_at='2026-11-08T00:00:00+00:00')
+    refresh(tmp_path)
+    reply = today.queue(tmp_path, as_of=date(2026, 11, 8))[0]['reply']
+    assert reply['state'] == ('task' if owner_latest else 'queued')
+    assert bool(reply.get('last_word_yours')) is owner_latest
+    assert reply['source'] == provider + ':latest'
+    assert reply['thread'] == 'mail:' + provider + (':original' if owner_latest else ':feedback')
+    assert reply['since'] == '2026-11-03'
 
 
 @pytest.mark.parametrize('words,promised', [
@@ -66,7 +94,40 @@ def test_quote_removes_scaffolding_history_signatures_and_urls(history):
     body = ('From: Avery <avery@example.test>\nSubject: Fern\n--- Email Body ---\nHi Mara,\n'
             'Friday works. See [the invite](https://example.test/meeting). A third sentence.\n'
             '\nKind regards,\nAvery\nhttps://example.test/signature\n' + history)
-    assert today._owner_quote(body) == 'Friday works. See the invite.'
+    assert today._owner_quote(body) == 'Friday works.'
+
+
+@pytest.mark.parametrize('promise', [
+    "I'll watch it and send written feedback that week.",
+    'I’ll watch it and send written feedback that week.',
+    'I will watch it and send written feedback that week.',
+    'Will send written feedback that week.',
+    '我会看完演示后发书面反馈。',
+])
+def test_promise_quote_selects_the_commitment_sentence(tmp_path, rem_clock, promise):
+    body = ('--- Email Body ---\nHi Fern,\nThank you for the Demo A recording. '
+            "I'm in Singapore this week. " + promise + '\n\nBest,\nAvery\n> I will send an unrelated file.')
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/avery.md', 'addresses': ['avery@example.test']}})
+    Notebook(tmp_path).write('people/fern.md', '# Fern Vale\n\n## Open threads\n'
+        '- You owe Fern written feedback on Demo A. [1]\n\n## Sources\n- [1] outlook:promise\n')
+    retain_message(tmp_path, 'outlook', {'id': 'promise', 'from': 'avery@example.test',
+        'to': ['fern@example.test'], 'thread': 'demo', 'date': '2026-11-03T03:00:00+00:00'},
+        body, fetched_at='2026-11-08T00:00:00+00:00')
+    refresh(tmp_path)
+    reply = today.queue(tmp_path, as_of=date(2026, 11, 8))[0]['reply']
+    assert reply['state'] == 'task'
+    assert reply['promise'] == promise
+
+
+def test_promise_quote_cleans_and_clips_the_selected_sentence():
+    promise = 'I will send ' + 'the detailed feedback on Demo A and the revised meeting availability ' * 3 + '.'
+    quote = today._owner_quote('Hi Fern,\nThank you for [Demo A](https://example.test/demo). ' + promise)
+    assert quote.startswith('I will send ')
+    assert len(quote) <= 91 and quote.endswith('…')
+    assert promise.startswith(quote[:-1] + ' ')
+    assert today._owner_quote('谢谢你发来演示。我会看完后给你反馈。下周再聊。') == '我会看完后给你反馈。'
+    assert today._owner_quote('Hi Fern,\nFriday works. See you then.') == 'Friday works.'
 
 
 def test_quote_clips_at_a_word_boundary_and_handles_chinese():
@@ -92,11 +153,11 @@ def reader_functions(*names):
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-@pytest.mark.parametrize('status', [None, 'prepared', 'no_reply', 'pending'])
+@pytest.mark.parametrize('status', [None, 'pending'])
 def test_replied_card_offers_completion_first_and_localized_explanation(language, status):
     page = TEMPLATE.read_text()
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(reader_functions('primaryAction', 'threadActions', 'draftNote') + '\nUI.zh = ' + ui
+    result = _run_reader_js(reader_functions('primaryAction', 'threadActions', 'threadDraft', 'draftNote') + '\nUI.zh = ' + ui
         + '; uiLanguage = ' + json.dumps(language) + '; const status = ' + json.dumps(status) + ';\n' + r'''
       const REM = {as_of:'2026-11-08', drafts:[], today_queue:[{key:'mara', reply:{state:'replied', last_word_yours:true,
         provider:'outlook', thread:'mail:outlook:meeting', source:'outlook:answer', since:'2026-10-28',
@@ -146,16 +207,29 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 
 
 @pytest.mark.parametrize('state', ['replied', 'task'])
-def test_owner_last_card_never_offers_to_send_a_stale_prepared_reply(state):
-    result = _run_reader_js(reader_functions('queueCard') + 'const state = ' + json.dumps(state) + ';\n' + r'''
-      const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback.'}};
-      const REM = {owner:'people/avery.md', today_queue:[{key:'fern', reply:{state, last_word_yours:true}}]};
-      const doneKey = () => 'fern', threadDraft = () => ({status:'prepared'});
+@pytest.mark.parametrize('status', ['prepared', 'no_reply'])
+def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
+    functions = reader_functions('queueCard', 'threadDraft', 'threadActions', 'primaryAction', 'draftNote')
+    result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
+      const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
+      const draft = {status, provider:'outlook', thread:'feedback', body:'Here is my feedback on Demo A.', gist:'Fern needs no further reply.'};
+      const REM = {owner:'people/avery.md', drafts:[{status:'pending', provider:'outlook', thread:'original'},
+        {status:'prepared', provider:'gmail', thread:'unrelated'}, draft],
+        today_queue:[{key:'fern', reply:{state, last_word_yours:true, provider:'outlook',
+          thread:'mail:outlook:original', promise:'I will send feedback.', since:'2026-10-28'}}]};
+      const doneKey = () => 'fern', threadKind = () => ({kind:'outlook', mail:true});
+      const obligationEvidence = () => ({ids:new Set(['thread:outlook:original', 'thread:outlook:feedback'])});
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';
       const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null;
-      const kindBadge = () => null, alsoOn = () => null, isDone = () => false, draftNote = () => null;
-      const replyDraftCard = () => ({sendable:true}), threadActions = () => ({ownerActions:true});
+      const kindBadge = () => null, alsoOn = () => null, isDone = () => false, setDone = () => {}, fmtDate = day => day;
+      const replyDraftCard = draft => ({sendable:true, body:draft.body});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      console.log(JSON.stringify(queueCard(entry, '5 days').children[3]));
+      const card = queueCard(entry, '5 days');
+      console.log(JSON.stringify({action:card.children[3], note:card.children[4]}));
     ''')
-    assert result == {'ownerActions': True}
+    if status == 'prepared':
+        assert result['action'] == {'sendable': True, 'body': 'Here is my feedback on Demo A.'}
+        assert result['note'] is None
+    else:
+        assert result['note']['text'] == 'No reply needed: Fern needs no further reply.'
+        assert [node['text'] for node in result['action']['children'] if node] == ['Mark done']

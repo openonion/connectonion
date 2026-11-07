@@ -62,7 +62,7 @@ def _owner_words(body):
 def _owner_quote(body):
     words = _owner_words(body)
     sentences = re.split(r'(?<=[.!?。！？])(?:\s+|(?=[\u4e00-\u9fff]))', words)
-    quote = ' '.join(sentences[:2])
+    quote = next((sentence for sentence in sentences if _future_commitment(sentence)), sentences[0])
     if len(quote) <= 90:
         return quote
     cut = quote[:90]
@@ -84,31 +84,29 @@ def _future_commitment(words):
 def _reply(root, sources, text, owner, db, direction):
     from .reader_model import _cited_row
     from .store_messages import archived_message
-    for number in census.CITATION.findall(text):
-        source = sources.get(number, '')
-        provider = source.partition(':')[0]
-        if provider not in ('gmail', 'outlook'):
-            continue
-        result = {'state': 'unarchived', 'provider': provider, 'source': source}
-        cited = _cited_row(db, source) if db is not None else None
-        if cited is None:
-            return result
-        latest = db.execute('select * from messages where thread = ? order by time desc, id desc limit 1', (cited['thread'],)).fetchone()
-        if latest is None:
-            return result
-        saved = archived_message(root, dict(latest)) or {}
-        result.update(thread=latest['thread'], source=latest['id'], since=(latest['time'] or '')[:10])
-        if latest['sender'].casefold() in owner:
-            body = saved.get('body') or ''
-            return {**result, 'state': 'task' if _future_commitment(_owner_words(body)) else 'replied',
-                    'last_word_yours': True, 'promise': _owner_quote(body)}
-        if isinstance(saved.get('body'), str):
-            from .mail import _address, _addresses
-            if _address(saved.get('reply_to') or saved.get('from', '')) and owner.intersection(
-                    _addresses(saved.get('to')) + _addresses(saved.get('cc'))):
-                result['state'] = 'queued' if direction == 'mine' else 'waiting'
+    mail = [sources.get(number, '') for number in census.CITATION.findall(text)
+            if sources.get(number, '').partition(':')[0] in ('gmail', 'outlook')]
+    if not mail:
+        return {'state': 'task', 'last_word_yours': False, 'promise': text}
+    result = {'state': 'unarchived', 'provider': mail[0].partition(':')[0], 'source': mail[0]}
+    cited = [_cited_row(db, source) for source in mail] if db is not None else []
+    cited_threads = sorted({row['thread'] for row in cited if row is not None})
+    latest = db.execute('select * from messages where thread in (' + ','.join('?' for _ in cited_threads)
+                        + ') order by time desc, id desc limit 1', cited_threads).fetchone() if cited_threads else None
+    if latest is None:
         return result
-    return {'state': 'task', 'last_word_yours': False, 'promise': text}
+    saved = archived_message(root, dict(latest)) or {}
+    result.update(provider=latest['source'], thread=latest['thread'], source=latest['id'], since=(latest['time'] or '')[:10])
+    if latest['sender'].casefold() in owner:
+        body = saved.get('body') or ''
+        return {**result, 'state': 'task' if _future_commitment(_owner_words(body)) else 'replied',
+                'last_word_yours': True, 'promise': _owner_quote(body)}
+    if isinstance(saved.get('body'), str):
+        from .mail import _address, _addresses
+        if _address(saved.get('reply_to') or saved.get('from', '')) and owner.intersection(
+                _addresses(saved.get('to')) + _addresses(saved.get('cc'))):
+            result['state'] = 'queued' if direction == 'mine' else 'waiting'
+    return result
 
 
 def _items(records, found, first):

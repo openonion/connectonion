@@ -1443,7 +1443,8 @@ def test_no_reply_draft_note_shows_the_reason_instead_of_a_pending_draft(enabled
 
 
 def test_no_reply_actions_offer_completion_without_another_reply():
-    function = re.search(r'function threadActions\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                         for name in ['threadActions', 'threadDraft'])
     result = _run_reader_js(function + r'''
       const REM = {drafts: [{status: 'no_reply', provider: 'gmail', thread: 'mail:gmail:pilot'}]};
       const isDone = () => false, setDone = () => {}, primaryAction = () => ({text: 'Draft the reply'});

@@ -3595,10 +3595,9 @@ function threadActions(entry) {
   const undo = isDone(entry);
   const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
   done.onclick = () => setDone(entry, !undo);
-  const ids = obligationEvidence(entry).ids;
-  const draft = (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
+  const draft = threadDraft(entry);
   const replied = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply?.state === "replied";
-  if (!undo && replied) {
+  if (!undo && replied && draft?.status !== "prepared" && draft?.status !== "no_reply") {
     const open = primaryAction(entry, false);
     return el("div", {class: "thread-actions"}, [primaryAction(entry), open]);
   }
@@ -3649,17 +3648,19 @@ function openWriter(draft, who, onSend) {
 }
 function threadDraft(entry) {
   const ids = obligationEvidence(entry).ids;
-  return (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
+  const drafts = (REM.drafts || []).filter(d => ids.has("thread:" + d.provider + ":" + d.thread));
+  return drafts.find(d => d.status === "prepared" || d.status === "no_reply") || drafts[0];
 }
 function draftNote(draft, entry) {
   const reply = entry && (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
+  if (draft?.status === "prepared") return null;
+  if (draft?.status === "no_reply") return el("p", { class: "quiet-line", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
   if (reply?.last_word_yours) {
     const values = {promise: unlabelled(reply.promise || t("message text unavailable")), since: fmtDate(reply.since)};
     return el("p", {class: "quiet-line draft-reason", text: t(reply.state === "task"
       ? "You promised: “{promise}” ({since}) — this is a task, not a reply."
       : "You replied on {since}: “{promise}” — if this is handled, mark it done.", values)});
   }
-  if (draft?.status === "prepared") return null;
   if ((!draft || draft.status === "pending") && reply) {
     const channel = reply.provider === "outlook" ? "Outlook" : "Gmail";
     const state = REM.status?.mailboxes?.[reply.provider] || "";
@@ -3673,7 +3674,6 @@ function draftNote(draft, entry) {
     return el("p", {class: "quiet-line draft-reason", text});
   }
   if (!draft) return null;
-  if (draft.status === "no_reply") return el("p", { class: "quiet-line", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
   return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
 }
@@ -4691,7 +4691,6 @@ function queueCard(entry, dateText) {
   const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
   const overdue = thread.due && thread.due < calendarDay(REM.as_of);
   const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join(""), draft = threadDraft(entry);
-  const reply = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
   const fold = el("button", { type: "button", class: "fold", "aria-expanded": "true", text: t("Less") });
   const card = el("li", { class: "qcard" + (overdue ? " overdue" : "") + (draft?.status === "prepared" ? " has-mail" : "") }, [
     el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: r.path === REM.owner ? t("You") : initials }),
@@ -4699,7 +4698,7 @@ function queueCard(entry, dateText) {
         metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
     el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, r.path) }) : null]), alsoOn(also)]),
-    draft?.status === "prepared" && !reply?.last_word_yours && reply?.state !== "replied" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), fold]);
+    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), fold]);
   fold.onclick = () => {
     const open = card.classList.toggle("folded");
     fold.textContent = t(open ? "More" : "Less");
