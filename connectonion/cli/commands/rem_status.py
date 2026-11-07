@@ -273,15 +273,16 @@ def _today(root, value: dict) -> list[str]:
     changed = len({page for record in recent for page in record.get("changed") or []})
     items = sum(record.get("items") or 0 for record in recent if isinstance(record.get("items"), int))
     runs = value.get("batches_today", 0)
+    failure = [highlight(value['schedule_failure'])] if value.get('schedule_failure') else []
     if not runs:
-        return [rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
+        return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
     spent = ("tokens unknown" if usage.get("input_tokens") is None else
              f"{_compact(usage['input_tokens'])} tokens in · {_compact(usage.get('output_tokens') or 0)} out")
     missing = usage.get("runs_without_usage") or 0
     if missing and usage.get("input_tokens") is not None:
         spent += f" ({_plural(missing, 'run')} without usage)"
-    return [rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
+    return [*failure, rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
                              f"{_plural(runs, 'run')}"),
             rem_look.follow(spent, glyph="")]
 

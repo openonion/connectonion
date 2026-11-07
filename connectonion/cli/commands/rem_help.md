@@ -49,7 +49,7 @@ A mailbox connected later joins the next scheduled round automatically.
 Undo: co rem stop; co rem sources remove SOURCE; co auth logout for OpenOnion.
 Revoke mailbox access in your provider account; stop upkeep before deleting ~/.co/rem.
 co init --no-rem skips REM. Repeated global init keeps existing REM unchanged.
-Use co rem init to rebuild; it retains its terminal estimate pause unless --yes.
+Use co rem init to rebuild; a terminal prints its summary, undo block and estimate, then proceeds.
 Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
@@ -83,7 +83,8 @@ Create pages, then use a model to fill them from your sources.
 
 Global co init performs this build without prompts, records an init source grant
 and installs upkeep. This command reruns the build and reuses the grant, including
-mailboxes connected later. In a terminal it pauses at the estimate unless --yes.
+mailboxes connected later. In a terminal it prints the summary, undo block and estimate, then proceeds.
+Consent changes print a diff without prompting; noninteractive first consent uses --yes.
 Undo: co rem stop disables scheduling; co rem sources lists sources and
 co rem sources remove SOURCE removes one. co auth logout removes OpenOnion
 credentials; revoke mailbox access in your Google/Microsoft account. After stopping
@@ -124,7 +125,7 @@ material, it has no estimated cost. Without your email address, your page is lef
 out of the estimate.
 If no people or projects are found, skills are not investigated alone. Connect mail
 with co auth google or co auth microsoft, or work in a project with Codex, then run
-co rem init. In that case there is no estimate pause. Session summaries include
+co rem init. Session summaries include
 skip reasons, such as "3 skipped (program prompt)".
 
 Ctrl-C stops the run, lists the pages written and keeps them and the source list.
@@ -150,9 +151,9 @@ Options:  --investigate     Explicitly request the default investigation.
           --all-history    Discover all available mail years; recent bodies only.
           --investigate-all Scan history and select every eligible person and project; quota floor still applies.
           --estimate-only  Map and forecast, with no model turns or body archive.
-          --start         Offer the source and schedule approval after the first run (default).
+          --start         Install nightly upkeep after the first run (default).
           --no-start      Do not install background updates; an existing schedule stays on.
-          --yes           Approve the estimate, source access and schedule without prompts.
+          --yes           Approve source access and schedule in a noninteractive run.
           --first-people N    Cap eligible people (default all selected; 0 for none).
           --first-projects N  Cap queued projects (default all selected; 0 for none).
           --first-orgs N     Cap pending mapped organisations (default all; 0 for none).
@@ -522,15 +523,15 @@ Back:     co rem --help
 ## co rem start
 
 ```
-Turn on daily upkeep. Shows exactly which sources will be read and which model will
-run, asks you to approve, installs the schedule, and runs the first update. It asks
-again whenever the sources, runner, model or schedule changed since you approved.
+Turn on daily upkeep. In a terminal, show the source/model/schedule summary and undo
+block, then install the schedule and run the first update without prompting.
+Consent changes print a diff instead of the full summary.
 The first update runs on the first start only; a start after stop resumes the
 schedule, and co rem sync runs an update now.
 
 Usage:    co rem start [--yes]
 Example:  co rem start
-          --yes approves without the prompt. Use it only after you have read the summary once.
+          --yes approves a noninteractive first run after you have read the summary.
 
 Effects:  Saves your approval, installs daily updates and runs the first update
           on first start. Each run reads new mail bodies and coding sessions,

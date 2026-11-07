@@ -48,6 +48,13 @@ def test_rem_init_options_document_repeatable_mail_selection():
     assert "consent" in options and "subscribe" in options
 
 
+def test_rem_start_and_init_help_match_terminal_no_prompt_behavior():
+    assert 'diff' in help_of(['start'])
+    assert 'without prompting' in help_of(['start'])
+    assert 'pauses at the estimate' not in help_of(['init'])
+    assert 'estimate pause unless' not in help_of([])
+
+
 @pytest.mark.parametrize("name", sorted(pages()))
 def test_every_page_is_what_its_command_prints(name):
     words = name.split()[2:]
