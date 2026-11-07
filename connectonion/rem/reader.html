@@ -4528,7 +4528,7 @@ function failureSummary(pass) {
   return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
 }
 // Remove presentation metadata only; commitments and quoted evidence keep their dates.
-function withoutDateClutter(text, { since = "" } = {}) {
+function withoutDateClutter(text, { since = "", due = "" } = {}) {
   const quotes = [];
   text = text.replace(/"(?:[^"\\]|\\.)*"|“[^”]*”|‘.*?’(?!\p{L})|「[^」]*」|『[^』]*』|(?<!\p{L})'.*?'(?!\p{L})/gu,
     quote => { quotes.push(quote); return "\u0005" + (quotes.length - 1) + "\u0005"; });
@@ -4537,6 +4537,8 @@ function withoutDateClutter(text, { since = "" } = {}) {
     .replace(/\s*(?:since\s*[:：]?\s*|(?:从|自)\s*)(\d{4}-\d{2}-\d{2})(?:\s*(?:起|开始))?/gi,
       (clause, day) => since && day === since ? "" : clause)
     .replace(/\s*[—–-]\s*\d+\s+days\b/gi, clause => since ? "" : clause)
+    .replace(/\s*[—–-]?\s*[（(]\d{4}-\d{2}-\d{2}[)）]/g, "")
+    .replace(/\s*[—–-]\s*due\s+\d{4}-\d{2}-\d{2}(?:,\s*overdue)?/gi, clause => due ? "" : clause)
     .replace(/[,，]?\s*已过\s*\d+\s*天/g, clause => since ? "" : clause)
     .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "")
     .replace(/\s*[—–:：;,，；-]+\s*(?=[.!?。！？]|$)/g, "")

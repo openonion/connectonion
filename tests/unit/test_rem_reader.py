@@ -1665,7 +1665,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     assert 'Letter of Support draft' in quoted[0]['text']
     assert '“Please include the contribution details.”' in quoted[0]['text']
     assert quoted[0]['children'][0]['html'] == '[4]'
-    assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot (2026-10-30) — due 2026-11-02, overdue'
+    assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot'
     assert result['dated']['children'][1]['children'][1]['text'] == 'due 2026-11-02'
 
 
@@ -2515,9 +2515,9 @@ def test_plain_words_date_grammar_uses_notebook_year_and_week_boundary():
 
 @pytest.mark.parametrize('text, expected', [
     ('2026-10-23: You owe Mara the signed plan — (2026-10-23) — due 2026-10-25, overdue; open as of 2026-11-03 [2].',
-     '2026-10-23: You owe Mara the signed plan — (2026-10-23) — due 2026-10-25, overdue.'),
+     '2026-10-23: You owe Mara the signed plan — due 2026-10-25, overdue.'),
     ('Acceptance is not recorded — open as of 2026-10-27 [3].', 'Acceptance is not recorded.'),
-    ('请确认计划 (2026-10-23) [W4]。', '请确认计划 (2026-10-23)。'),
+    ('请确认计划 (2026-10-23) [W4]。', '请确认计划。'),
 ])
 def test_plain_words_headlines_remove_dates_status_and_inline_citation_numbers(text, expected):
     function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
@@ -2607,6 +2607,15 @@ def test_person_and_today_use_the_same_merged_obligation_and_source_record():
     ''')
     assert result == [{'dir': 'mine', 'text': 'You owe Mara the signed plan [2].',
                        'since': '2026-10-23', 'record': {'path': 'people/avery.md'}}]
+
+
+def test_plain_words_drops_observation_stamps_and_the_due_suffix_the_card_header_already_shows():
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    text = 'Feedback on the Sprint 1 demo — “I will watch the demo and send feedback that week.” (2026-10-23) — due 2026-10-25, overdue.'
+    script = function + '\nconsole.log(JSON.stringify([withoutDateClutter(' + json.dumps(text) + ', {since: "2026-10-23", due: "2026-10-25"}), withoutDateClutter(' + json.dumps(text) + ')]));'
+    with_header, bare = _run_reader_js(script)
+    assert with_header == 'Feedback on the Sprint 1 demo — “I will watch the demo and send feedback that week.”.'
+    assert 'due 2026-10-25' in bare and '(2026-10-23)' not in bare
 
 
 @pytest.mark.parametrize('text, expected', [
