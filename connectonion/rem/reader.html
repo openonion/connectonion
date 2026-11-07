@@ -1627,6 +1627,10 @@
     .session-home-indicator { display: block; width: 72px; height: 4px; border-radius: 5px; background: var(--ink-3); margin: 18px auto 9px; opacity: .5; }
   }
 
+  .cite-number { display: none; }
+  :is(.qcard, .thread, .person-head, .person-focus) .cite :is(.cite-full, .cite-short) { display: none; }
+  :is(.qcard, .thread, .person-head, .person-focus) .cite-number { display: inline; }
+  :is(.qcard, .thread, .person-head, .person-focus) .cite { border: 0; background: none; padding: 0; }
 </style>
 </head>
 <body>
@@ -1666,6 +1670,12 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Translating": "翻译中",
+    "Pages are translated when you open them.": "打开页面时会翻译成中文。",
+    "Getting to know them": "待了解",
+    "More to learn": "还有待了解",
+    "No contacts yet": "还没有联系人",
+    "No memory yet": "还没有记忆",
     "Contact · 52 weeks": "联系频率 · 52周",
     "Who writes first": "谁先联系",
     "Reply times": "回复用时",
@@ -1866,7 +1876,7 @@ const UI = {
     "Updated in last night's pass": "昨夜整理时更新",
     "last activity": "最近动态",
     "file updated": "文件更新于",
-    "last mapped session": "最近映射的会话",
+    "last mapped session": "最近会话",
     "last name match": "最近名称匹配",
     "archived messages": "条存档消息",
     "Changed last night: {before} → {now}": "昨夜变更：{before} → {now}",
@@ -1939,9 +1949,9 @@ const UI = {
     "Only mapped so far": "仅已映射",
     "Copy the command": "复制命令",
     "Copy": "复制",
-    "Mapped": "仅已映射",
-    "Mapped only": "仅看已映射",
-    "Partly investigated": "部分已调查",
+    "Mapped": "待了解",
+    "Mapped only": "待了解",
+    "Partly investigated": "还有待了解",
     "Investigated": "已调查",
     "Source reviewed": "已核对来源",
     "Nothing is waiting on you": "目前没有事项等你处理",
@@ -1986,7 +1996,7 @@ const UI = {
     "All": "全部",
     "Something open": "有待办",
     "Yours to answer": "等你处理",
-    "Written": "已撰写",
+    "Written": "有内容",
     "Sort by": "排序方式",
     "Show": "显示",
     "Nothing matches. Clear the filter to see every page.": "没有匹配结果，清除筛选可查看全部页面。",
@@ -2084,8 +2094,8 @@ const UI = {
     "What this is": "项目简介",
     "View all decisions →": "查看全部决定 →",
     "Local path": "本地路径",
-    "Last mapped session": "最近映射的会话",
-    "Mapped sessions": "映射的会话数",
+    "Last mapped session": "最近会话",
+    "Mapped sessions": "会话数",
     "Not investigated yet: ": "尚未调查：",
     "Still unknown: ": "仍不明确：",
     "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.": "co rem 根据来源的元数据映射了此页，尚未阅读内容。发起一次调查即可阅读材料并补全。",
@@ -2276,7 +2286,7 @@ const UI = {
     "Model's inspection report": "模型检查报告",
     "Inputs supplied to this run (including context; not proof of inspection)": "本次运行的输入（含背景材料，不代表均已检查）",
     "Who is this, and where did we leave off?": "这是谁？上次聊到哪了？",
-    "{n} written of {m}": "已撰写 {n} / {m}{unit}",
+    "{n} written of {m}": "{m}{unit}中，{n}{unit}有内容",
     "{n} pages": "{n} 页",
     "{n} other contacts": "另有 {n} 位联系人",
     "Last activity": "最近动态",
@@ -2620,7 +2630,14 @@ function calendarDay(iso) {
 function fmtDate(iso) {
   if (!iso) return "";
   const day = calendarDay(iso), d = new Date(day + "T00:00:00Z");
-  return isNaN(d) ? iso : d.toLocaleDateString(uiLocale(), { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
+  if (isNaN(d)) return "";
+  const today = calendarDay(REM.as_of || new Date().toISOString());
+  const days = Math.round((new Date(today + "T00:00:00Z") - d) / 86400000);
+  if (days >= 0 && days <= 7) {
+    if (uiLanguage === "zh") return days === 0 ? "今天" : days === 1 ? "昨天" : days + " 天前";
+    return days === 0 ? "Today" : days === 1 ? "Yesterday" : days + " days ago";
+  }
+  return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
 }
 function fmtTime(iso) {
   if (!iso) return "—";
@@ -2729,7 +2746,7 @@ function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n
   const tip = "Source: " + label + (subject ? ", subject “" + subject + "”" : "")
     + (missing ? ", original not in this snapshot" : "") + (ns.length > 1 ? ", " + ns.length + " sources for this line" : "");
   return '<a class="cite' + (ns.length > 1 ? " run" : "") + (missing ? " missing" : "") + '" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() +
-    '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + '<span class="cite-full">' + esc(full) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + '</span><span class="cite-short">' + esc(when) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</span></a>";
+    '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + '<span class="cite-full">' + esc(full) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + '</span><span class="cite-short">' + esc(when) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</span><sup class=\"cite-number\">" + esc(n) + "</sup></a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -3160,7 +3177,7 @@ function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
   if (st === "Investigated" && r.category !== "skills") return null;
-  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
+  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : ({Mapped: "Getting to know them", "Partly investigated": "More to learn"})[st] || st;
   return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? t("Some sections are filled from sources; the rest are not investigated yet.") : known(r).stamp || label }, [moon(st), t(label)]);
 }
 
@@ -3250,7 +3267,8 @@ function threads(r) {
   const calm = calmAt < 0 ? "" : displayed[calmAt] || all[calmAt];
   const today = calendarDay(REM.as_of);
   const items = all.map((text, i) => ({ text, displayed: displayed[i] || text })).filter(({ text: t }) => !isCalm(t) && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(({ text, displayed }) => {
-    const days = [...(text.match(/\d{4}-\d{2}-\d{2}/g) || []), ...writtenDates(text)];
+    const dated = text.replace(/(?:open as of|last moved(?: on)?)\s+\d{4}-\d{2}-\d{2}/gi, "");
+    const days = [...(dated.match(/\d{4}-\d{2}-\d{2}/g) || []), ...writtenDates(dated)];
     const after = words => {
       const date = new RegExp("\\b(?:" + words + ")\\s*[:：]?\\s*(\\d{4}-\\d{2}-\\d{2}|" + writtenDatePattern() + ")", "i").exec(text)?.[1] || "";
       return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : writtenDates(date)[0] || "";
@@ -3258,8 +3276,10 @@ function threads(r) {
     // Only a date immediately after a deadline word establishes a deadline.
     const due = after("due(?:\\s+(?:on|is))?|deadline(?:\\s+(?:on|is))?|by");
     const requested = after("since|requested(?:\\s+on)?|asked(?:\\s+on)?");
-    const moved = after("last moved(?:\\s+on)?");
-    const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
+    const sources = new Map([...rawSection({ ...r, text: r.original ?? r.text }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+    const messages = [...text.matchAll(/\[(W?\d+)\]/g)].map(m => REM.source_context?.[sources.get(m[1])]?.time)
+      .filter(Boolean).map(calendarDay).filter(day => day && (!today || day <= today)).sort();
+    const since = messages.at(-1) || requested || days.filter(d => d !== due && (!today || d <= today)).sort().at(-1) || "";
     const quiet = !!since && !due && daysSince(since) > 60;
     return { text: displayed, originalText: text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
@@ -3775,11 +3795,11 @@ const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
 function openCell(f) {
   if (!f.open.length) return f.calm ? el("span", { class: "unk", text: t("nothing open") }) : el("span", { class: "unk", text: "—" });
   const thread = f.open[0];
-  return el("span", { class: "open-cell " + thread.dir, title: displayLine(thread.text) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
-    el("span", { class: "txt", text: displayLine(thread.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
+  return el("span", { class: "open-cell " + thread.dir, title: withoutDateClutter(displayLine(thread.text)) }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
+    el("span", { class: "txt", text: withoutDateClutter(displayLine(thread.text)) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? t("Last contact in map") : "",
-  text: shortDate(day) + (fromMap ? t(" · map") : "") }) : el("span", { class: "unk", text: "—" }); }
+  text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
 function privateFallback(node) {
   const visible = node.cloneNode(true);
   visible.querySelectorAll(".private, .cite, .privacy-tag").forEach(span => span.remove());
@@ -3824,9 +3844,10 @@ function peopleContact(values, kind) {
 }
 function nameCell(r, f, withSummary) {
   const k = known(r);
+  if (translationPending(r)) return el("div", { class: "name-cell" }, [el("a", { href: href(r), text: r.title }),
+    el("span", { class: "quiet-line", role: "status", text: t("Translating") })]);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", role: "img", title: t(k.status), "aria-label": t(k.status) }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
-    r.category === "projects" && k.status !== "Investigated" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
-    withSummary && k.summary ? el("span", { class: "sum", text: summaryLine(k.summary) }) : null,
+    withSummary && k.summary ? el("span", { class: "sum", text: withoutDateClutter(summaryLine(k.summary)) }) : null,
     r.category === "people" ? peopleCardMeta(r, f) : null]);
 }
 const COLUMNS = {
@@ -3931,6 +3952,11 @@ function sheet(c, items) {
         lastGroup = group;
       }
       const row = el("tr", { "data-href": href(r) });
+      if (translationPending(r)) {
+        row.appendChild(el("td", { colspan: String(visibleCols.length), class: "c-name name" }, [nameCell(r, facts(r), false)]));
+        tbody.appendChild(row);
+        continue;
+      }
       for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(c2.key) ? " extra-column" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
@@ -4219,6 +4245,9 @@ function renderRail(active) {
   const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
     el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
   settings.appendChild(notebookLanguages());
+  const settingsRecord = byPath(route().record);
+  if (settingsRecord?.private_project) settings.appendChild(commandChip(investigateCommand(settingsRecord)));
+  if (route().category === "people") settings.appendChild(commandChip(remCommand("list people --review")));
   foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
@@ -4234,6 +4263,8 @@ function renderRail(active) {
 
 // One page as one row: its name, what it is to you, what is open, when.
 function row(r, opts) {
+  if (translationPending(r)) return el("li", {}, [el("a", { href: href(r), text: r.title }),
+    el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const k = known(r);
   const meta = (opts && opts.kind) ? singular(r.category) : r.category === "people" ? company(r) : "";
   const li = el("li", {}, [
@@ -4259,17 +4290,21 @@ function threadWho(r) {
   return r.path === REM.owner ? t("Your page") : r.title;
 }
 function threadRow(r, thread, withPage, also = [], grouped = false) {
-  const text = thread.text.replace(/^(\d{4}-\d{2}-\d{2})[:：]\s*/, (prefix, day) => day === thread.since ? "" : prefix);
+  if (translationPending(r)) return el("li", { class: "thread" }, [el("a", { href: href(r), text: threadWho(r) }),
+    el("span", { class: "quiet-line", role: "status", text: t("Translating") })]);
+  const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
+  const text = withoutDateClutter(thread.text) + " " + cites;
   return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
-    el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
+    el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also })]),
     el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
 function emptyLine(thread) {
-  return el("p", { class: "empty-line", text: thread.calm || t("Nothing open.") });
+  const calm = thread.calm ? withoutDateClutter(thread.calm) : "";
+  return el("p", { class: "empty-line", text: !calm || calm === "Nothing" ? t("Nothing open.") : calm });
 }
 function emptyState(lead, action = "Explore memory →", href = "#c=all", clear = null) {
   const link = el("a", { href, text: t(action) });
@@ -4325,6 +4360,7 @@ function originalMark(pending = false) {
   return el("span", { class: "lang-status", text: t(pending ? "Translation pending" : "Original"), title: t(pending ? REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off" : "No Chinese translation yet; showing original") });
 }
 function claimValue(claim, r, after, compact = false) {
+  if (translationPending(r)) return el("span", { class: "quiet-line", role: "status", text: t("Translating") });
   let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
   if (after && original && r.translations?.[uiLanguage]
       && plainLine(factText({ ...r, readLanguage: "" }, claim.field)) === plainLine(claim.after)) {
@@ -4382,7 +4418,7 @@ function morningBrief() {
   if (first) {
     if (pass.changed.length) brief.appendChild(el("p", { class: "quiet-line", text: t("Your notebook was just built. Overnight changes appear here after the next update.") }));
     if (!pass.failed.length && nightlyUpdatesOff()) brief.appendChild(el("div", { class: "translation-note" }, [
-      el("p", { text: t("Nightly updates are off.") }), commandChip(remCommand("start"))]));
+      el("p", { text: t("Nightly updates are off.") })]));
   } else if (claims.length) {
     brief.appendChild(el("ul", { class: "overnight-changes" }, claims.slice(0, 3).map(overnightChange).filter(Boolean)));
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
@@ -4403,25 +4439,29 @@ function failureSummary(pass) {
   if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
   return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
 }
-// Quotes stay verbatim; a summary never acquires someone's quotation marks.
+// Clean display text only; the notebook and original evidence keep their dates.
 function withoutDateClutter(text) {
-  return text.replace(/\s*[—–-]?\s*\(\d{4}-\d{2}-\d{2}\)/g, "")
+  return text.replace(/(?:最近联系|Last contact)[:：]\s*\d{4}-\d{2}-\d{2}[^.!?。！？\n]*(?:[.!?。！？]|$)/gi, "")
+    .replace(/\s*[—–-]\s*\d+\s+days\b/gi, "")
+    .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "")
+    .replace(/\s*[—–-]?\s*[（(]\d{4}-\d{2}-\d{2}[)）]/g, "")
     .replace(/\s*[—–-]\s*due\s+\d{4}-\d{2}-\d{2}(?:,\s*overdue)?/gi, "")
-    .replace(/;?\s*open as of\s+\d{4}-\d{2}-\d{2}/gi, "")
-    .replace(/\s*[—–-]\s*$/, "").trim();
+    .replace(/[;；]?\s*(?:open as of|last moved(?: on)?|since|requested(?: on)?|asked(?: on)?)\s*[:：]?\s*\d{4}-\d{2}-\d{2}/gi, "")
+    .replace(/(?:从|自)\s*\d{4}-\d{2}-\d{2}\s*(?:起|开始)?/g, "")
+    .replace(/(?:承诺于|将于|于|在)\s*\d{4}-\d{2}-\d{2}\s*(?:前|后)?/g, "")
+    .replace(/[,，]?\s*已过\s*\d+\s*天/g, "")
+    .replace(/\b(?:by|on|from|since|before|after|until)\s+\d{4}-\d{2}-\d{2}\b/gi, "")
+    .replace(/\d{4}-\d{2}-\d{2}[:：]?\s*/g, "")
+    .replace(/\s*[—–:：;,，；-]+\s*(?=[.!?。！？]|$)/g, "")
+    .replace(/[;；]\s*with you(?=[.!?。！？]?$)/gi, "")
+    .replace(/[;；]\s*(?=[.!?。！？]?$)/g, "")
+    .replace(/\s+([.!?。！？])/g, "$1").trim();
 }
 function morningWords(text, r) {
   text = unlabelled(text);
-  const quote = /“([^”\n]{6,})”|"([^"\n]{6,})"/.exec(text);
-  if (quote) return { words: "“" + (quote[1] || quote[2]).replace(/\s*\[W?\d{1,3}\]/g, "") + "”",
-    context: [text.replace(quote[0], "").replace(/[:：—–]\s*([.;；]|$)/g, "$1").trim(),
-      (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
-  const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const summary = withoutDateClutter(plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, ""))));
-  const separator = uiLanguage === "zh" ? /[;；:：—]|(?<=[.!?])\s|(?<=[。！？])\s*/ : /[;；]|(?<=[.!?])\s|(?<=[。！？])\s*/;
-  const clause = summary.split(separator)[0];
-  const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
-  return { words, context: [summary.slice(words.length).replace(/^[；;：:，,、—\s]+/, ""), cites].filter(Boolean).join(" ") };
+  const cites = [...new Set(text.match(/\[W?\d{1,3}\]/g) || [])].join(" ");
+  const words = withoutDateClutter(plainLine(capFirst(threadWords(text, r))));
+  return { words, context: cites };
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
 function morningEntries(entries) {
@@ -4455,6 +4495,8 @@ function dueLabel(thread) {
 
 function queueCard(entry, dateText) {
   const { r, t: thread, also } = entry;
+  if (translationPending(r)) return el("li", { class: "qcard" }, [
+    el("a", { href: href(r), text: threadWho(r) }), el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const { words, context } = morningWords(thread.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
@@ -4466,8 +4508,7 @@ function queueCard(entry, dateText) {
       el("div", {}, [el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
         metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
     el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
-    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
-      context ? privateFallback(el("p", { class: "context", html: inline(context, r.path) })) : null, alsoOn(also)]),
+    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, r.path) }) : null]), alsoOn(also)]),
     draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft), fold]);
   fold.onclick = () => {
     const open = card.classList.toggle("folded");
@@ -4482,7 +4523,7 @@ function foldAfterFirst(lists) {
 }
 function morningThread(entry) {
   const { t: thread } = entry;
-  return queueCard(entry, thread.due ? dueLabel(thread) : t(thread.dir === "mine" ? "waiting on you" : "waiting on them") + " · " + age(thread.since));
+  return queueCard(entry, threadAge(thread));
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
@@ -4490,7 +4531,7 @@ function quietThreads(entries, count, home = false) {
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
+      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: translationPending(r) ? t("Translating") : threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
 }
@@ -4540,6 +4581,8 @@ function recallPrompt() {
   candidates.sort((a, b) => Number(!!section(b, "our relationship")) - Number(!!section(a, "our relationship")) || byActivity(a, b));
   const r = candidates[0];
   if (!r) return null;
+  if (translationPending(r)) return el("section", { class: "recall" }, [el("a", { href: href(r), text: r.title }),
+    el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const relationship = section(r, "our relationship");
   const answerText = summaryLine(relationship?.text || known(r).summary);
   const card = el("section", { class: "recall", "aria-label": t("Recall a memory") });
@@ -4582,7 +4625,7 @@ function todayEntries(entries) {
 
 function todayThread(entry) {
   const { t: thread } = entry;
-  const date = thread.due && thread.due !== calendarDay(REM.as_of) ? dueLabel(thread) : t(thread.due ? "due today" : "new today");
+  const date = threadAge(thread);
   const card = queueCard(entry, date);
   card.classList.add("today-thread");
   return card;
@@ -4635,15 +4678,20 @@ function notebookLanguages() {
     el("div", { text: t("Notebook languages") + (uiLanguage === "zh" ? "：" : ": ") + (languages.map(nativeName).join(" · ") || t("Unknown")) + " — " + t(REM.languages_from || "detected") }),
     changeLanguages]);
 }
+function translationPending(r) {
+  if (uiLanguage !== "zh" || r.translations?.zh || /^zh(?:-|$)/i.test(r.written_in || "")) return false;
+  if (REM.live && !r.translationRequested) {
+    r.translationRequested = true;
+    fetch("/rem/translation-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page: r.path, language: "zh" }) });
+  }
+  return true;
+}
 function translationNotice() {
   if (uiLanguage !== "zh") return null;
   const pages = listedRecords().filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "skills"].includes(r.category));
-  const last = (REM.logs || []).find(log => ["init-translation", "daily-translation"].includes(log.phase));
-  const failed = (last?.pages || []).filter(row => row.outcome === "failed" && pages.some(r => r.path === row.page && !r.translations?.zh)).length;
-  if (!pages.length || (!failed && pages.filter(r => r.translations?.zh).length >= pages.length / 2)) return null;
-  return el("div", { class: "translation-note" }, [
-    failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) : t("Most pages have no Chinese version yet; showing the English originals."),
-    el("span", { text: t(REM.status?.worker?.enabled ? "Translation pending — queued for tonight" : "Translation pending — background updates off") })]);
+  const missing = pages.filter(r => !r.translations?.zh && !/^zh(?:-|$)/i.test(r.written_in || ""));
+  if (!missing.length) return null;
+  return el("p", { class: "translation-note quiet-line", text: t("Pages are translated when you open them.") });
 }
 
 function overview() {
@@ -4668,7 +4716,7 @@ function overview() {
       el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
         el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
         el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-          known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
+          known(r).summary ? el("span", { class: "s", text: translationPending(r) ? t("Translating") : summaryLine(known(r).summary) }) : null])])))]));
   }
 
   const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
@@ -4682,7 +4730,7 @@ function overview() {
 
 function maintenance(s) {
   const maint = el("details", { class: "maint" });
-  const state = t(scheduleState(s));
+  const state = t(scheduleState(s).startsWith("Background updates off") ? "Nightly updates are off." : scheduleState(s));
   maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: t("Maintenance") })]), el("span", { class: "n", text: state ? plainLine(state) : "" })]));
   maint.appendChild(el("p", { class: "state", html: inline(state, "") }));
   const usage = s.usage_today || {};
@@ -4803,7 +4851,6 @@ function contactDirectory() {
   table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: t(name) })))]));
   const tbody = el("tbody"); table.appendChild(tbody);
   const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": t("Other contacts table") }, [table]);
-  const action = el("tr", { class: "directory-action" }, [el("td", { colspan: "5" })]);
   const more = el("button", { type: "button", class: "directory-more", text: t("Show more contacts") });
   let limit = 100;
   const draw = () => {
@@ -4812,24 +4859,11 @@ function contactDirectory() {
     tbody.textContent = "";
     for (const row of matched.slice(0, limit)) {
       const name = row.name || row.email;
-      const prepare = el("button", { type: "button", text: t("Prepare in terminal"), "aria-label": t("Show the command to prepare a memory for {name}", { name }) });
-      prepare.onclick = () => {
-        const command = remCommand("stub person " + shellArg(name)
-          + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email));
-        const cell = action.firstChild;
-        cell.textContent = t("Run this in a terminal, then follow the next investigation command:");
-        const copy = el("button", { type: "button", text: t("Copy command") });
-        copy.onclick = () => copyToClipboard(command, copy, t("Copied — paste in a terminal"));
-        cell.appendChild(copy);
-        cell.appendChild(el("code", { text: command }));
-        const selected = prepare.closest("tr");
-        selected.after(action);
-      };
       tbody.appendChild(el("tr", {}, [
         el("td", { class: "candidate-name", text: name }),
         el("td", {}, [el("a", { class: "candidate-email", href: "mailto:" + row.email, text: row.email })]),
         el("td", { text: row.last ? shortDate(row.last) : "—" }),
-        el("td", { text: String(row.mails) }), el("td", {}, [prepare])]));
+        el("td", { text: String(row.mails) }), el("td", { text: t("No memory yet") })]));
     }
     body.querySelector(".empty")?.remove();
     scroller.hidden = !matched.length;
@@ -4879,15 +4913,10 @@ function category(c) {
     const note = el("p", { class: "held-note" }, [el("span", { text:
       (held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "") +
       (service ? (held ? " " : "") + t("{n} service or institutional senders are excluded from People.", { n: service }) : "") })]);
-    if (held) {
-      const review = el("button", { type: "button", text: t("Copy review list command") });
-      review.onclick = () => copyToClipboard(remCommand("list people --review"), review, t("Copied — paste it in a terminal"));
-      note.appendChild(review);
-    }
     main.appendChild(note);
   }
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
-    main.appendChild(emptyState(c === "people" ? "Not mapped yet" : "No pages yet", "Copy setup command", "#", link => copyToClipboard(initCommand(), link)));
+    main.appendChild(emptyState(c === "people" ? "No contacts yet" : "No pages yet"));
     return;
   }
   if (c === "people") {
@@ -5006,8 +5035,18 @@ function sessionHighlight(text, terms) {
   }
   return html + esc(text.slice(at));
 }
+function sessionPreview(text) {
+  const links = [];
+  return unlabelled(text || "")
+    .replace(/https?:\/\/[^\s<>"'`]+/g, url => { links.push(url); return "\u0007" + (links.length - 1) + "\u0007"; })
+    .replace(/([`"'])(?:\/(?!\/)|~\/|[A-Za-z]:[\\/])[^\n]*?\1/g, "")
+    .replace(/(?:file:\/\/)?(?:\/(?!\/)|~\/|[A-Za-z]:[\\/])[^\s<>"'`]+/g, "")
+    .replace(/(?:\.\.?\/|\b[\w.-]+\/)[^\s<>"'`]+/g, "")
+    .replace(/\u0007(\d+)\u0007/g, (_, i) => links[i]).replace(/\s+/g, " ").trim();
+}
+
 function sessionExcerpt(r, terms) {
-  const text = sessionText(r);
+  const text = Object.fromEntries(Object.entries(sessionText(r)).map(([key, value]) => [key, sessionPreview(value)]));
   if (terms.length && !terms.some(term => text.title.toLowerCase().includes(term))) {
     for (const key of ["summary", "tags", "you", "agent", "artifacts"]) {
       const positions = terms.map(term => text[key].toLowerCase().indexOf(term)).filter(at => at >= 0);
@@ -5108,7 +5147,7 @@ function sessionRow(r, terms) {
   meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 })].filter(Boolean).join(" · ")));
   const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
     href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
-  return el("li", { class: "session-row" }, [sessionToolMark(r), el("div", { class: "session-card-content" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
+  return el("li", { class: "session-row" }, [sessionToolMark(r), el("div", { class: "session-card-content" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(sessionPreview(text.title), terms) }),
     el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
       el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta, el("div", { class: "session-card-foot" }, [
       el("span", { text: sessionDuration(r) }),
@@ -5299,8 +5338,8 @@ function sessionOrder(a, b) {
 
 function sessionContextRow(r, find = "") {
   return el("li", { class: "session-context-row" }, [
-    el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: r.title }),
-    el("span", { class: "session-context-summary", text: unlabelled(r.session_summary || r.session_reply || sessionText(r).agent) }),
+    el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: sessionPreview(r.title) }),
+    el("span", { class: "session-context-summary", text: sessionPreview(r.session_summary || r.session_reply || sessionText(r).agent) }),
     el("time", { text: fmtDate(r.session_date) }),
     el("span", { class: "session-tags" }, (r.session_tags || []).slice(0, 3).map(tag => el("a", {
       href: sessionHash({ project: r.session_project, tag }), text: tag })))]);
@@ -5687,10 +5726,10 @@ function blockerTag(thread) {
 }
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
-  return t.due ? dueLabel(t) : age(t.since);
+  return [age(t.since), t.due ? dueLabel(t) : ""].filter(Boolean).join(" · ");
 }
 function threadPreview(text) {
-  const summary = plainLine(text).replace(/\s*[—–-]\s.*$/, "");
+  const summary = withoutDateClutter(plainLine(text));
   return summary.length > 100 ? summary.slice(0, 97).replace(/\s+\S*$/, "") + "…" : summary;
 }
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
@@ -5713,8 +5752,8 @@ function leadRow(r) {
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
       [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
-  } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) })]));
-  if (k.last && r.category === "projects") row.appendChild(el("span", { class: "lead-meta", text: t("Last mapped session") + " " + fmtDate(k.last) + " · " + age(k.last) + (daysSince(k.last) === 0 ? "" : t(" ago")) }));
+  } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) })]));
+  if (k.last && r.category === "projects") row.appendChild(el("span", { class: "lead-meta", text: t("Last mapped session") + " " + fmtDate(k.last) }));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
     el("span", { class: "lead-meta usage-scope", text: t("Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome.") }));
@@ -5868,17 +5907,12 @@ function contactStrip(r) {
   const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
   const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
   const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
-  const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
-    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => knownValue(v));
+  const rows = [["Email", value("Email")], ["Phone", value("Phone")], ["Also known as", aka],
+    ["Company", company], ["Role", f.role ? String(f.role) : ""]].filter(([, v]) => knownValue(v));
   if (!rows.length) return null;
-  return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
+  return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v]) => {
     const dd = el("dd", {}, [changedValue(el("span", { html: inline(v, r.path) }), r, label)]);
     if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
-    if (copyable) {
-      const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
-      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, t("Copied"));
-      dd.appendChild(btn);
-    }
     return el("div", { class: "focus-fact" }, [el("dt", { text: t(label) }), softBreaks(dd)]);
   }));
 }
@@ -5898,14 +5932,16 @@ function personLead(r) {
   const passages = [];
   const protectedText = privatePassages(text, passage => { passages.push(passage); return "\u0006" + (passages.length - 1) + "\u0006"; });
   const sentences = protectedText.match(/(?:[^“「.!?。！？]|“[^”]*”|「[^」]*」)*?(?:[.!?](?:\s*[\[［]W?\d{1,3}[\]］])*(?=\s|$)|[。！？](?:\s*[\[［]W?\d{1,3}[\]］])*)|.+$/g) || [];
-  const lead = sentences.slice(0, 2).join(" ").replace(/\u0006(\d+)\u0006/g, (_, i) => passages[i]);
+  const citations = [];
+  const prose = sentences.slice(0, 2).join(" ").replace(/\[W?\d{1,3}\]/g, cite => { citations.push(cite); return "\u0007" + (citations.length - 1) + "\u0007"; });
+  const lead = withoutDateClutter(prose).replace(/\u0007(\d+)\u0007/g, (_, i) => citations[i]).replace(/\u0006(\d+)\u0006/g, (_, i) => passages[i]);
   return privateFallback(el("p", { class: "person-lead", html: inline(lead, r.path) }));
 }
 function contactLine(r) {
   const f = facts(r);
   const fields = [["Role", f.role], ["Company", f.company]].filter(([, v]) => v && !/^Unknown\b/i.test(String(v)));
   const meta = el("span", { class: "lead-meta" });
-  if (f.last) meta.appendChild(changedValue(el("span", { text: t(mappedContact(r) ? "Last contact in map" : "Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
+  if (f.last) meta.appendChild(changedValue(el("span", { text: t("Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
   for (const [label, value] of fields) {
     if (meta.childNodes.length) meta.append(" · ");
     meta.appendChild(changedValue(label === "Role" ? el("span", {}, [roleSummary(String(value), r.path)]) : el("span", { html: inline(String(value), r.path) }), r, label));
@@ -5921,12 +5957,15 @@ function threadWords(text, r) {
   return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
 }
 function ledgerRow(r, thread) {
-  const text = threadWords(thread.text, r);
-  const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : thread.due ? dueLabel(thread) : age(thread.since);
+  const origin = thread.record || r;
+  if (translationPending(origin)) return el("li", { class: "ledger-row" }, [el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
+  const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
+  const text = withoutDateClutter(threadWords(thread.text, r)) + " " + cites;
+  const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : threadAge(thread);
   return el("li", { class: "ledger-row" + (thread.quiet ? " quiet" : "") }, [
-    privateFallback(el("p", { html: inline(capFirst(text), r.path) })),
+    privateFallback(el("p", { html: inline(capFirst(text), origin.path) })),
     el("span", { class: "ledger-meta" + (!thread.quiet && thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta }),
-    !thread.quiet || isDone({ r, t: thread }) ? threadActions({ r, t: thread }) : null]);
+    !thread.quiet || isDone({ r: origin, t: thread }) ? threadActions({ r: origin, t: thread }) : null]);
 }
 function ledgerColumn(r, items, dir) {
   if (!items.length) return null;
@@ -5938,7 +5977,10 @@ function ledgerColumn(r, items, dir) {
       el("ul", { class: "ledger-rows" }, items.slice(3).map(t => ledgerRow(r, t)))]) : null]);
 }
 function betweenYou(r) {
-  const thread = threads(r), mine = thread.items.filter(thread => thread.dir === "mine"), theirs = thread.items.filter(thread => thread.dir === "theirs");
+  const parsed = threads(r);
+  const entries = parsed.items.length ? threadEntries().filter(entry => entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) : [];
+  const thread = { ...parsed, items: [...entries.map(entry => ({ ...entry.t, record: entry.r })), ...parsed.items.filter(t => t.dir === "third")] };
+  const mine = thread.items.filter(thread => thread.dir === "mine"), theirs = thread.items.filter(thread => thread.dir === "theirs");
   const other = thread.items.filter(thread => !["mine", "theirs"].includes(thread.dir));
   return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: t("Between you") }),
     !thread.items.length ? emptyLine(thread) : !mine.length && !theirs.length ? null : el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")]),
@@ -6239,6 +6281,11 @@ function record(path, heading) {
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
+  if (translationPending(r)) {
+    main.appendChild(el("h1", { text: r.title }));
+    main.appendChild(el("p", { class: "quiet-line", role: "status", text: t("Translating") }));
+    return;
+  }
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
@@ -6352,13 +6399,10 @@ function record(path, heading) {
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: t(r.private_project ? "Private project — waiting for your request" : !REM.status?.worker?.enabled ? "Page pending — background updates off" : mapped ? "Page queued for tonight" : "Unresolved sections queued for a future pass") }),
       r.private_project ? el("p", { text: t("This private project waits for your request.") }) : null,
-      r.private_project ? commandChip(investigateCommand(r)) : null,
       el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.join(", ")) + "." })]);
     if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
 
-  if (REM.live && uiLanguage !== "en" && !r.translations?.[uiLanguage])
-    fetch("/rem/translation-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page: r.path, language: uiLanguage }) });
   const foot = el("div", { class: "page-foot" });
   const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, t("Path copied"));

@@ -159,7 +159,7 @@ def test_this_week_project_rows_strip_the_now_label():
     script = "\n".join([
         parsing, functions,
         'const youify = text => text;',
-        'const el = (tag, attrs, children = []) => ({tag, ...attrs, children});',
+        'const translationPending = () => false; const el = (tag, attrs, children = []) => ({tag, ...attrs, children});',
         'const shortDate = day => day, moon = () => null, href = r => r.path;',
         'const singular = () => "project", sectionHead = text => ({text});',
         'let r; const weekChanges = () => [{r, day: "2026-10-16"}];',
@@ -516,13 +516,14 @@ def test_empty_between_you_keeps_one_calm_line_and_real_threads_remain():
     page = TEMPLATE.read_text(encoding="utf-8")
     function = re.search(r"function betweenYou\(.*?\n\}", page, re.S).group(0)
     result = _run_reader_js("\n".join([
-        function, re.search(r"function emptyLine\(.*?\n\}", page, re.S).group(0), 'const threads = r => r;',
+        function, re.search(r"function emptyLine\(.*?\n\}", page, re.S).group(0),
+        re.search(r"function withoutDateClutter\(.*?\n\}", page, re.S).group(0), 'const threads = r => r; const threadEntries = () => [{r: {}, t: {dir: "mine"}}];',
         'const el = (tag, attrs, children) => ({tag, ...attrs, children});',
         'const ledgerColumn = (r, items, dir) => ({dir, count: items.length});',
         'console.log(JSON.stringify([betweenYou({items: [], calm: "Nothing open as of 2026-10-20"}),',
         'betweenYou({items: [{dir: "mine"}], calm: ""})]));',
     ]))
-    assert result[0]["children"][1] == {"tag": "p", "class": "empty-line", "text": "Nothing open as of 2026-10-20"}
+    assert result[0]["children"][1] == {"tag": "p", "class": "empty-line", "text": "Nothing open."}
     assert result[1]["children"][1]["children"] == [{"dir": "mine", "count": 1}, {"dir": "theirs", "count": 0}]
 
 
@@ -641,7 +642,7 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
         'console.log(JSON.stringify(' + json.dumps(cases)
         + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
     ]))
-    assert [row["age"] for row in result] == ["3 days"] * 5 + ["due Oct 23, 2026", "overdue · Sep 10, 2026"]
+    assert [row["age"] for row in result] == ["3 days"] * 5 + ["3 days · due Oct 23", "49 days · overdue · Sep 10"]
     assert [bool(row["tag"]) for row in result] == [False, True, True, True, True, False, False]
 
 
@@ -727,10 +728,10 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
         'const en = labels(); uiLanguage = "zh"; const zh = labels();',
         'console.log(JSON.stringify({en, zh})); })();',
     ]))
-    assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · Oct 19, 2026', 'due Oct 21, 2026',
+    assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · Yesterday', 'due Oct 21',
                             'Read 240 items', 'Rewrote 7 pages', '10 runs', '3 written of 6']
-    assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 2026年10月19日', '到期 2026年10月21日',
-                            '阅读了 240 项', '改写了 7 页', '10 次运行', '已撰写 3 / 6 人']
+    assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 昨天', '到期 10月21日',
+                            '阅读了 240 项', '改写了 7 页', '10 次运行', '6 人中，3 人有内容']
 
 
 @pytest.mark.parametrize('source', ['unbroken' * 80 + ':fixture', 'gmail:fixture', ''],
@@ -747,7 +748,7 @@ def test_undated_quiet_citation_uses_number_instead_of_source_label(source):
         'REM.source_context[' + json.dumps(source) + '] = {time: "2026-10-20"};',
         'labels.push(citationDate({}, "99")); console.log(JSON.stringify(labels));',
     ]))
-    assert result == ['source 99', 'Oct 20, 2026']
+    assert result == ['source 99', 'Oct 20']
 
 
 def test_reader_browser_evaluate_strings_compile():
@@ -857,7 +858,7 @@ def test_record_freshness_labels_translate_without_changing_english():
         'console.log(JSON.stringify({en, zh: labels.map(label => t(label))})); })();',
     ]))
     assert result['en'] == labels
-    assert result['zh'] == ['最近动态', '文件更新于', '最近映射的会话', '最近名称匹配',
+    assert result['zh'] == ['最近动态', '文件更新于', '最近会话', '最近名称匹配',
                             '条存档消息', '昨夜', '昨夜整理时更新']
 
 
@@ -882,11 +883,11 @@ def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
         'console.log(JSON.stringify({zh, emptyCounts, labels, en, englishReason: refusalReason("Missing or duplicate citation: 22")})); })();',
     ]))
     units = ['人', '个组织', '个项目', '项', '项', '条']
-    assert result['zh'] == [f'已撰写 3 / 6 {unit}' for unit in units]
+    assert result['zh'] == [f'6 {unit}中，3 {unit}有内容' for unit in units]
     assert result['emptyCounts'] == [f'3 {unit}' for unit in units]
     assert result['en'] == ['3 written of 6'] * 6
-    assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 2026年10月10日 · 版本未验证',
-                                '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 2026年9月3日', 'claude-code:aaaaaaaa…']
+    assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 10月10日 · 版本未验证',
+                                '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 9月3日', 'claude-code:aaaaaaaa…']
     assert result['englishReason'] == 'Missing or duplicate citation: 22'
 
 
@@ -917,8 +918,8 @@ def test_activity_translates_known_refusals_before_joining_separate_errors():
      'outlook:' + 'a' * 40 + ':Returned client agreement.pdf'),
     ('gmail:123456789abc', True, 'gmail:123456789abc'),
     ('claude-code:human-readable-session-name:1', True, 'claude-code:human-readable-session-name:1'),
-    ('codex:12345678-1234-1234-1234-123456789abc:2', True, 'Codex session · Sep 3, 2026'),
-    ('claude-code:12345678-1234-1234-1234-123456789abc:2', True, 'Claude Code session · Sep 3, 2026'),
+    ('codex:12345678-1234-1234-1234-123456789abc:2', True, 'Codex session · Sep 3'),
+    ('claude-code:12345678-1234-1234-1234-123456789abc:2', True, 'Claude Code session · Sep 3'),
     ('codex:12345678-1234-1234-1234-123456789abc:2', False, 'codex:12345678…:2'),
     ('file:' + 'b' * 32, True, 'file:bbbbbbbb…'),
     ('gmail:' + 'c' * 31, False, 'gmail:' + 'c' * 31),
@@ -1057,8 +1058,8 @@ def test_reader_waiting_summary_trims_chinese_separators(separator):
       console.log(JSON.stringify([chinese,
         morningWords('Review the draft: keep this clause — and this one; discuss tomorrow [4]', r)]));
     ''')
-    assert result == [{'words': '请签署试点协议', 'context': '后续安排明天讨论 [4]'},
-                      {'words': 'Review the draft: keep this clause — and this one', 'context': 'discuss tomorrow [4]'}]
+    assert result == [{'words': '请签署试点协议' + separator + ' ，、；：— 后续安排明天讨论', 'context': '[4]'},
+                      {'words': 'Review the draft: keep this clause — and this one; discuss tomorrow', 'context': '[4]'}]
 
 
 def test_reader_parsed_facts_cache_follows_language_override_and_text_changes():
@@ -1210,7 +1211,7 @@ def test_reader_evidence_boundaries_preserve_english_and_add_cjk(text, expected)
     ('公开介绍。秘密信息[personal]。公开结尾。', '公开介绍。 秘密信息[personal]。公开结尾。'),
 ])
 def test_reader_person_lead_keeps_english_punctuation_and_private_passages(text, expected):
-    function = re.search(r'function personLead\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in ['personLead', 'withoutDateClutter'])
     result = _run_reader_js(function + r'''
       const section = () => null, listItems = () => [], known = () => ({intro: ''' + json.dumps(text) + r'''});
       const el = (tag, attrs) => attrs.html, privateFallback = node => node, inline = text => text;
@@ -1272,7 +1273,7 @@ def test_reader_privacy_does_not_split_quotes_decimals_or_addresses(secret):
 def test_reader_session_search_removes_labelled_passages_before_indexing_and_truncating():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['sessionText', 'sessionExcerpt'])
+                          for name in ['sessionPreview', 'sessionText', 'sessionExcerpt'])
     result = _run_reader_js(functions + r'''
       const SESSION_TEXT = new Map();
       const r = {path: 'sessions/fixture.md', title: 'Public session',
@@ -1431,7 +1432,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
-    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + r'''
+    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
       const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
@@ -1474,7 +1475,7 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['queueCard', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
                                        'threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton'])
-    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
+    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
@@ -1570,7 +1571,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(language):
     page = TEMPLATE.read_text()
-    notice = page[page.index('  if (k.missing.length) {'):page.index('\n  if (REM.live && uiLanguage')]
+    notice = page[page.index('  if (k.missing.length) {'):page.index('\n  const foot = el("div", { class: "page-foot"')]
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('UI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
       const REM = {status: {worker: {enabled: true}}}, r = {}, deep = {};
@@ -1594,8 +1595,8 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayEntries', 'todayThread', 'queueCard', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + r'''
+                          for name in ['todayEntries', 'todayThread', 'threadAge', 'queueCard', 'morningWords', 'withoutDateClutter'])
+    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -1611,7 +1612,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
       const contactFields = () => [], company = () => '', blockerTag = () => null;
       const threadDraft = () => null, draftNote = () => null;
-      const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const age = () => ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
       const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
       const dated = make('Review the pilot (2026-10-30) — due 2026-11-02, overdue; open as of 2026-10-30', '2026-11-02');
       console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
@@ -1619,11 +1620,11 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     ''')
     assert result['selected'] == ['overdue', 'today', 'three days', 'new']
     assert result['row']['children'][1]['children'][1]['text'] == 'due 2026-11-02'  # [0] is the kind badge
-    assert result['row']['children'][2]['children'][2]['also'] == [{'path': 'orgs/northgate-university.md'}]
+    assert result['row']['children'][2]['children'][1]['also'] == [{'path': 'orgs/northgate-university.md'}]
     quoted = result['quoted']['children'][2]['children']
-    assert quoted[0]['text'] == '“Please include the contribution details.”'
-    assert 'Letter of Support draft' in quoted[1]['html']
-    assert '[4]' in quoted[1]['html']
+    assert 'Letter of Support draft' in quoted[0]['text']
+    assert '“Please include the contribution details.”' in quoted[0]['text']
+    assert quoted[0]['children'][0]['html'] == '[4]'
     assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot'
     assert result['dated']['children'][1]['children'][1]['text'] == 'due 2026-11-02'
 
@@ -1636,7 +1637,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
     result = _run_reader_js(functions + r'''
       UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, youify = text => text;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const translationPending = () => false; const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const r = {path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', readLanguage: '',
         text: '# Mara Ostrowski\n\n## Facts\n- Role: **Head of Partnerships** (work); Pilot lead [2]\n',
         translations: {zh: '# Mara Ostrowski\n\n## Facts\n- Role: 合作负责人（工作）; 试点负责人 [2]\n'}};
@@ -1836,12 +1837,12 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'contactLine',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'morningThread', 'queueCard', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'morningThread', 'queueCard', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -1906,7 +1907,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
       }
       console.log(JSON.stringify(output));
     ''')
-    for language, date in [('en', 'Oct 17, 2026'), ('zh', '2026年10月17日')]:
+    for language, date in [('en', '3 days ago'), ('zh', '3 天前')]:
         for record in result[language][:2]:
             header = json.dumps([record['eyebrow'], record['lead']], ensure_ascii=False)
             assert header.count(date) == 1
@@ -2059,7 +2060,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const byActivity = () => 0, sourceName = value => value, calendarDay = value => value.slice(0, 10);
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
+      const translationPending = () => false; const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
       const remCommand = args => 'co rem ' + args;
@@ -2084,12 +2085,11 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert result['header']['children'][2]['children'][0].startswith('Built today: read ')
     assert 'overnight' not in result['header']['children'][1]['text']
     assert result['brief']['children'][1]['text'] == 'Your notebook was just built. Overnight changes appear here after the next update.'
-    assert result['brief']['children'][2]['children'][1]['command'] == 'co rem start'
+    assert result['brief']['children'][2]['children'] == [{'tag': 'p', 'text': 'Nightly updates are off.', 'children': []}]
     assert len(result['scheduled']['children']) == 2
     assert result['recall'] is None
     assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：读取 ')
-    assert result['notice']['children'][0] == '大部分页面还没有中文版本，目前显示英文原文。'
-    assert result['notice']['children'][1]['text'] == '翻译待处理，后台更新未开启'
+    assert result['notice']['text'] == '打开页面时会翻译成中文。'
     assert result['enough'] is None
 
 
@@ -2141,9 +2141,9 @@ def test_schedule_reader_states_are_short_and_translated():
 def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'threadRow'])
+                          for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'threadRow', 'withoutDateClutter'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, classList: {add() {}}});
       const href = r => '#r=' + r.path, morningWords = () => ({words: 'Review the pilot.', context: ''});
@@ -2236,7 +2236,7 @@ def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(orig
     assert 'settings.appendChild(notebookLanguages())' in page
 
 
-def test_translation_fallback_counts_only_written_pages_and_reports_last_failures():
+def test_translation_notice_is_one_quiet_line_for_missing_written_pages():
     function = re.search(r'function translationNotice\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(function + r'''
       UI.zh = {};
@@ -2259,11 +2259,9 @@ def test_translation_fallback_counts_only_written_pages_and_reports_last_failure
       console.log(JSON.stringify({mapped, missing, failed, last, queued, english: translationNotice()}));
     ''')
     assert result['mapped'] is None and result['english'] is None
-    assert result['missing']['children'][0].startswith('Most pages have no Chinese version')
-    assert result['failed']['children'][0] == '1 page could not be translated.'
-    assert result['failed']['children'][1]['text'] == 'Translation pending — background updates off'
-    assert result['last']['children'][0].startswith('Most pages have no Chinese version')
-    assert result['queued']['children'][1]['text'] == 'Translation pending — queued for tonight'
+    for state in ['missing', 'failed', 'last', 'queued']:
+        assert result[state]['text'] == 'Pages are translated when you open them.'
+        assert 'children' not in result[state]
 
 
 def test_reader_keeps_latest_translation_summary_after_many_page_runs(tmp_path, monkeypatch):
@@ -2320,8 +2318,8 @@ def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
       console.log(JSON.stringify([fmtDate('2026-10-27'), shortDate('2026-10-27'), citationDate({}, '1'),
         chipLabel({}, '1'), fmtTime('2026-10-26T13:17:00Z'), messageMeta(REM.source_context['outlook:example'])]));
     ''')
-    assert result[:3] == ['Oct 27, 2026'] * 3
-    assert all('Oct 27, 2026' in text for text in result[3:])
+    assert result[:3] == ['Yesterday'] * 3
+    assert all('Yesterday' in text for text in result[3:])
 
 
 def test_conversation_windows_are_scoped_to_sources_on_the_current_page():
@@ -2424,13 +2422,13 @@ def test_owner_stays_in_obligation_inputs_when_removed_from_people_rows():
 def test_project_mobile_row_omits_the_redundant_investigated_label():
     function = re.search(r'function nameCell\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(function + r'''
-      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const translationPending = () => false; const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const known = r => ({status: r.status}), moon = () => null, href = () => '#', updatedMarker = () => null;
       const labels = ['Investigated', 'Mapped'].map(status => nameCell({category: 'projects', title: 'Example', status}, {}, false)
         .children.filter(n => n?.class === 'mobile-status-label').map(n => n.text));
       console.log(JSON.stringify(labels));
     ''')
-    assert result == [[], ['Mapped']]
+    assert result == [[], []]
 
 
 def test_conversation_reopens_at_the_cited_message_instead_of_old_scroll_position():
@@ -2460,3 +2458,145 @@ def test_omitted_status_leaves_no_empty_field_or_header_separator():
         fields: sidePanels(r, {}).flatMap(p => p.children[0].children.filter(n => n?.tag === 'dt').map(n => n.text))}));
     ''')
     assert result == {'separators': [], 'fields': []}
+
+
+def test_plain_words_date_grammar_uses_notebook_year_and_week_boundary():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['calendarDay', 'fmtDate', 'threadDate', 'shortDate'])
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-11-07T01:00:00Z', status: {timezone: 'Australia/Sydney'}};
+      uiLanguage = 'zh';
+      const dates = ['2026-11-07', '2026-11-06', '2026-11-04', '2026-10-31', '2026-10-30', '2025-10-23'];
+      console.log(JSON.stringify([fmtDate, threadDate, shortDate].map(format => dates.map(format))));
+    ''')
+    assert result == [['今天', '昨天', '3 天前', '7 天前', '10月30日', '2025年10月23日']] * 3
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('2026-10-23: You owe Mara the signed plan — (2026-10-23) — due 2026-10-25, overdue; open as of 2026-11-03 [2].',
+     'You owe Mara the signed plan.'),
+    ('Acceptance is not recorded — open as of 2026-10-27 [3].', 'Acceptance is not recorded.'),
+    ('请确认计划 (2026-10-23) [W4]。', '请确认计划。'),
+])
+def test_plain_words_headlines_remove_dates_status_and_inline_citation_numbers(text, expected):
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    assert _run_reader_js(function + '\nconsole.log(JSON.stringify(withoutDateClutter(' + json.dumps(text) + ')));') == expected
+
+
+def test_debt_age_ignores_observation_dates_and_uses_latest_request_evidence():
+    page = TEMPLATE.read_text()
+    names = ['threads', 'writtenDates', 'writtenDatePattern', 'calendarDay', 'daysSince', 'rawSection', 'listItems', 'isCalm']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-11-07', source_context: {
+        'gmail:request': {time: '2026-10-08T10:00:00Z'},
+        'gmail:reminder': {time: '2026-10-23T10:00:00Z'}}}, DAY_MS = 86400000;
+      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
+      const direction = () => 'mine';
+      const record = text => ({path: 'people/mara.md', category: 'people', text: '# Mara\n\n## Open threads\n- ' + text +
+        '\n\n## Sources\n- [1] gmail:request\n- [2] gmail:reminder\n'});
+      console.log(JSON.stringify([
+        threads(record('You owe Mara a signed plan; requested on 2026-10-08; last moved 2026-11-03; open as of 2026-11-07 [1].')).items[0].since,
+        threads(record('You owe Mara a signed plan; requested on 2026-10-08; open as of 2026-11-07 [1] [2].')).items[0].since
+      ]));
+    ''')
+    assert result == ['2026-10-08', '2026-10-23']
+
+
+def test_primary_surfaces_have_no_command_copy_controls():
+    page = TEMPLATE.read_text()
+    for name in ['morningBrief', 'category', 'contactDirectory', 'record', 'threadActions', 'translationNotice']:
+        function = re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+        assert 'commandChip(' not in function, name
+        assert not re.search(r't\("(?:Copy (?:prompt|command|setup|review)|Prepare in terminal)', function), name
+    strip = re.search(r'function contactStrip\(.*?\n\}', page, re.S).group(0)
+    assert 'copyToClipboard' not in strip
+
+
+def test_session_previews_hide_paths_including_paths_with_spaces():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['sessionExcerpt', 'sessionText', 'sessionPreview'])
+    result = _run_reader_js(functions + r'''
+      const SESSION_TEXT = new Map();
+      const r = {path: 'sessions/fiction.md', title: 'Plan review', text: '',
+        session_summary: 'Reviewed `/Users/fiction/Library/Application Support/work/plan.md` and /private/tmp/fiction.txt with Mara.'};
+      console.log(JSON.stringify([sessionExcerpt(r, []), sessionExcerpt(r, ['Mara'])]));
+    ''')
+    assert all('/Users' not in row['text'] and '/private' not in row['text'] and 'Application Support' not in row['text'] for row in result)
+    assert all('Mara' in row['text'] for row in result)
+
+
+def test_chinese_missing_page_requests_translation_once_and_hides_english():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['record', 'translationPending'])
+    result = _run_reader_js(functions + r'''
+      uiLanguage = 'zh'; UI.zh = {'Translating': '翻译中'};
+      const REM = {live: true}, requests = [], fetch = (url, options) => requests.push({url, ...JSON.parse(options.body)});
+      const r = {path: 'people/mara.md', category: 'people', title: 'Mara', text: 'English obligation sentence.'};
+      const byPath = () => r, main = {children: [], appendChild(node) {this.children.push(node)}};
+      const document = {getElementById: () => main};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      record(r.path); record(r.path);
+      console.log(JSON.stringify({nodes: main.children, requests}));
+    ''')
+    assert result['requests'] == [{'url': '/rem/translation-request', 'page': 'people/mara.md', 'language': 'zh'}]
+    assert 'English obligation' not in json.dumps(result['nodes'])
+    assert '翻译中' in json.dumps(result['nodes'], ensure_ascii=False)
+
+
+def test_session_preview_preserves_web_links_while_hiding_local_paths():
+    function = re.search(r'function sessionPreview\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    text = 'Reviewed https://example.test/plan with Mara; files: /work/plan.md ~/notes/plan.md ./src/plan.py src/plan.py C:\\work\\plan.md.'
+    result = _run_reader_js(function + '\nconsole.log(JSON.stringify(sessionPreview(' + json.dumps(text) + ')));')
+    assert 'https://example.test/plan' in result
+    assert all(path not in result for path in ['/work', '~/notes', './src', 'src/plan.py', 'C:\\work'])
+
+
+def test_person_and_today_use_the_same_merged_obligation_and_source_record():
+    function = re.search(r'function betweenYou\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const r = {path: 'people/mara.md'}, origin = {path: 'people/avery.md'};
+      const current = {dir: 'mine', text: 'You owe Mara the signed plan [2].', since: '2026-10-23'};
+      const threads = () => ({items: [{...current, since: '2026-10-08'}], calm: ''});
+      const threadEntries = () => [{r: origin, t: current, also: [r]}];
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const ledgerColumn = (r, items) => items, threadRow = () => null;
+      console.log(JSON.stringify(betweenYou(r).children[1].children[0]));
+    ''')
+    assert result == [{'dir': 'mine', 'text': 'You owe Mara the signed plan [2].',
+                       'since': '2026-10-23', 'record': {'path': 'people/avery.md'}}]
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('她在等你提供收据；从 2026-10-08 起尚未交齐，她将在 2026-11-09 前报税。', '她在等你提供收据；尚未交齐，她将报税。'),
+    ('等 Fernhill 提供测试收件箱；承诺于 2026-10-23。', '等 Fernhill 提供测试收件箱。'),
+    ('她负责合作事务 [1]。最近联系：2026-11-06，邮件 [2]。', '她负责合作事务。'),
+    ('You owe Mara the signed plan — 9 days [4]. Last contact: 2026-11-06 [6].', 'You owe Mara the signed plan.'),
+])
+def test_plain_words_removes_date_connectors_and_redundant_contact_clauses(text, expected):
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    assert _run_reader_js(function + '\nconsole.log(JSON.stringify(withoutDateClutter(' + json.dumps(text) + ')));') == expected
+
+
+def test_missing_chinese_prose_is_hidden_on_cards_people_and_open_threads():
+    page = TEMPLATE.read_text()
+    names = ['translationPending', 'queueCard', 'nameCell', 'row', 'threadRow']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      uiLanguage = 'zh'; UI.zh = {'Translating': '翻译中'};
+      const REM = {live: true}, requests = [], fetch = (url, options) => requests.push(JSON.parse(options.body));
+      const r = {path: 'people/mara.md', title: 'Mara', category: 'people'};
+      const thread = {text: 'English obligation sentence.', since: '2026-10-23'};
+      const known = () => ({summary: 'English background prose.'}), href = r => '#r=' + r.path, threadWho = r => r.title;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const nodes = [queueCard({r, t: thread}, '15 days'), nameCell(r, {}, true), row(r), threadRow(r, thread, true)];
+      const native = ['zh', 'zh-CN', 'zh-TW'].map(written_in => translationPending({...r, written_in}));
+      console.log(JSON.stringify({nodes, requests, native}));
+    ''')
+    assert result['requests'] == [{'page': 'people/mara.md', 'language': 'zh'}]
+    assert result['native'] == [False] * 3
+    assert 'English' not in json.dumps(result['nodes'])
+    assert all('翻译中' in json.dumps(node, ensure_ascii=False) for node in result['nodes'])
