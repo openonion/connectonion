@@ -276,8 +276,13 @@ def test_client_interrupt_has_interrupted_reason(tmp_path):
         co_dir=tmp_path / ".co",
     )
 
-    assert agent.input("work") == "What would you like me to do?"
+    assert agent.input("work") == "Stopped by you after step 2."
     assert outcomes(agent)[0]['reason'] == 'interrupted'
+
+    interruption = outcomes(agent)[0]['interruption']
+    assert interruption['stopped_by'] == 'user'
+    assert interruption['stopped_at']['type'] == 'iteration_boundary'
+    assert [step['name'] for step in interruption['completed']] == ['noop']
 
 
 def test_exception_records_type_without_message_then_reraises(tmp_path):

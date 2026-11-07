@@ -1008,3 +1008,39 @@ def test_tool_is_exported_and_copyable():
     assert root_claude_code is claude_code
     assert ClaudeCode is UsefulClaudeCode
     assert TOOLS["claude_code"] == "claude_code.py"
+
+
+def test_claude_code_discovers_the_official_user_install(monkeypatch, tmp_path):
+    monkeypatch.delenv("CLAUDE_CODE_CMD", raising=False)
+    monkeypatch.setattr(claude_module.shutil, "which", lambda _: None)
+    executable = tmp_path / ".local/bin/claude"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o755)
+    monkeypatch.setattr(claude_module.Path, "home", lambda: tmp_path)
+
+    assert claude_module._claude_command() == ([str(executable)], "")
+
+
+def test_claude_code_missing_cli_names_the_search_locations(monkeypatch, tmp_path):
+    monkeypatch.delenv("CLAUDE_CODE_CMD", raising=False)
+    monkeypatch.setattr(claude_module.shutil, "which", lambda _: None)
+    monkeypatch.setattr(claude_module.Path, "home", lambda: tmp_path)
+
+    command, error = claude_module._claude_command()
+
+    assert command is None
+    assert "PATH" in error
+    assert str(tmp_path / ".local/bin/claude") in error
+
+
+def test_claude_code_user_install_must_be_executable(monkeypatch, tmp_path):
+    monkeypatch.delenv("CLAUDE_CODE_CMD", raising=False)
+    monkeypatch.setattr(claude_module.shutil, "which", lambda _: None)
+    executable = tmp_path / ".local/bin/claude"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("not executable")
+    executable.chmod(0o644)
+    monkeypatch.setattr(claude_module.Path, "home", lambda: tmp_path)
+
+    assert claude_module._base_command() is None

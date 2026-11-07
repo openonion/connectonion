@@ -48,6 +48,9 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'is_build': entry.get('is_build'),
         }
 
+    if entry_type == 'turn_result' and entry.get('reason') == 'interrupted':
+        return {key: value for key, value in entry.items() if key != 'ts'}
+
     if entry_type == 'eval':
         return {
             'id': entry.get('id') or f"eval-{idx}",

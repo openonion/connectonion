@@ -20,7 +20,7 @@ def test_fresh_and_unknown_host_state_is_auto_for_every_participant():
             "currentModeId": "auto",
             "turnsLeft": None,
             "availableModes": [
-                {"id": "read-only", "name": "Read only"},
+                {"id": "read-only", "name": "Ask first", "description": "Asks you before every change."},
                 {"id": "auto", "name": "Auto"},
             ],
         }
@@ -113,7 +113,7 @@ def test_remote_client_accepts_one_canonical_connected_state():
         "currentModeId": "full-access",
         "turnsLeft": 4,
         "availableModes": [
-            {"id": "read-only", "name": "Read only"},
+            {"id": "read-only", "name": "Ask first", "description": "Asks you before every change."},
             {"id": "auto", "name": "Auto"},
             {"id": "full-access", "name": "Full access"},
         ],
@@ -153,7 +153,7 @@ def test_remote_client_accepts_one_canonical_connected_state():
         {
             "currentModeId": "auto",
             "turnsLeft": None,
-            "availableModes": [{"id": "read-only", "name": "Read only"}],
+            "availableModes": [{"id": "read-only", "name": "Ask first", "description": "Asks you before every change."}],
         },
     ],
 )
@@ -163,3 +163,22 @@ def test_remote_client_rejects_invalid_connected_mode_state(advertised):
 
     with pytest.raises(PermissionModeError, match="invalid|inconsistent"):
         agent._consume_connected_mode_state({"session_modes": advertised})
+
+
+def test_compatibility_mode_advertisement_names_the_approval_behavior():
+    from connectonion.useful_plugins.tool_approval.policy import advertised_mode_state
+
+    state = advertised_mode_state({}, new_session=True, allow_full_access=False)
+    assert state["availableModes"][0] == {
+        "id": "read-only", "name": "Ask first", "description": "Asks you before every change.",
+    }
+
+
+def test_disabled_provider_options_name_the_host_ask_first_authority():
+    from connectonion.core.provider_permissions import provider_permission_state
+
+    state = provider_permission_state("codex", "codex:read-only", "read-only")
+    options = {option["id"]: option for option in state["options"]}
+    assert options["codex:workspace-ask"]["disabledReason"] == "Host permission ceiling is Ask first."
+    assert options["codex:workspace-ask"]["label"] == "Ask for approval"
+    assert options["codex:read-only"]["label"] == "Read Only"

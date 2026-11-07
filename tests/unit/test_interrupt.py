@@ -781,3 +781,94 @@ def test_pending_tool_is_cleared_when_gate_interrupts():
 
     assert trace["status"] == "interrupted"
     assert "pending_tool" not in agent.current_session
+
+
+def test_user_stop_result_keeps_completed_interrupted_and_unrun_steps():
+    from connectonion.core.llm import LLMResponse, ToolCall
+    from connectonion.core.usage import TokenUsage
+
+    io = MailboxIO()
+    ran = []
+
+    def first() -> str:
+        ran.append("first")
+        return "first completed"
+
+    def stopped(content: str) -> str:
+        ran.append("stopped")
+        return "should not run"
+
+    def later() -> str:
+        ran.append("later")
+        return "should not run"
+
+    @before_each_tool
+    def stop_before_second(agent):
+        if agent.current_session["pending_tool"]["name"] == "stopped":
+            io.send_to_agent({"type": "INTERRUPT"})
+
+    llm = MockLLM(responses=[LLMResponse(
+        content="", tool_calls=[ToolCall(name=name, arguments={"content": "private file body"} if name == "stopped" else {}, id=name)
+                                 for name in ("first", "stopped", "later")],
+        raw_response={}, usage=TokenUsage())])
+    agent = Agent("stop-outcome", llm=llm, tools=[first, stopped, later],
+                  on_events=[stop_before_second], quiet=True, log=False)
+    io.send = lambda event: None
+    agent.io = io
+
+    result = agent.input("run three steps")
+
+    assert result == "Stopped by you after step 2 of 3."
+    assert ran == ["first"]
+    terminal = agent.current_session["trace"][-1]
+    assert terminal["reason"] == "interrupted"
+    outcome = terminal["interruption"]
+    interrupted = next(entry for entry in agent.current_session["trace"]
+                       if entry.get("type") == "tool_result" and entry.get("name") == "stopped")
+    assert interrupted["args"] == {"content": "private file body"}
+    assert "result" in interrupted
+    assert "args" not in outcome["stopped_at"]
+    assert "result" not in outcome["stopped_at"]
+    assert outcome["stopped_at"] == {
+        "tool_id": "stopped", "name": "stopped", "iteration": 1, "step": 2,
+    }
+    assert outcome["stopped_by"] == "user"
+    assert outcome["stopped_at"]["name"] == "stopped"
+    assert outcome["stopped_at"]["step"] == 2
+    assert outcome["completed"] == [{"tool_id": "first", "name": "first"}]
+    assert outcome["not_run"] == [{"tool_id": "later", "name": "later"}]
+
+    from connectonion.network.host.session import session_to_chat_items
+
+    replay = session_to_chat_items(agent.current_session)
+    assert replay[-1]["interruption"] == outcome
+
+
+def test_user_stop_during_llm_has_no_invented_future_steps():
+    from connectonion.core.interrupt import user_stop_outcome
+
+    outcome = user_stop_outcome([
+        {"type": "tool_result", "tool_id": "old", "name": "read", "status": "success", "result": "data"},
+        {"type": "llm_result", "id": "thinking", "iteration": 2, "status": "interrupted"},
+    ], [])
+
+    assert outcome["stopped_at"]["type"] == "llm_result"
+    assert outcome["stopped_at"]["iteration"] == 2
+    assert outcome["not_run"] == []
+    assert outcome["completed"] == [{"tool_id": "old", "name": "read"}]
+
+
+def test_user_stop_at_iteration_boundary_does_not_point_at_runtime_input_or_eval():
+    from connectonion.core.interrupt import user_stop_outcome
+
+    outcome = user_stop_outcome([
+        {"type": "llm_result", "id": "answer", "iteration": 1, "status": "success"},
+        {"type": "user_input", "content": "follow-up", "iteration": 1},
+        {"type": "eval", "id": "score", "passed": True},
+    ], [])
+
+    assert outcome["stopped_at"] == {
+        "type": "iteration_boundary", "iteration": 1, "step": 1,
+    }
+    assert outcome["completed"] == []
+    assert outcome["not_run"] == []
