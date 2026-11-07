@@ -17,9 +17,20 @@ def test_rem_draft_endpoint_creates_only_after_authenticated_owner_click(host, m
     assert json.loads(body)['url'].endswith('#drafts')
 
 
-def test_rem_draft_endpoint_rejects_send_and_form_posts(host, monkeypatch):
+def test_rem_draft_endpoint_sends_only_for_the_authenticated_owner_and_carries_edits(host, monkeypatch):
+    sent = []
+    monkeypatch.setattr(drafts, 'send', lambda root, key, body=None: sent.append((key, body)) or {'status': 'sent'})
+    payload = json.dumps({'id': 'a' * 32, 'action': 'send', 'body': 'Edited by hand.'}).encode()
+    status, _, _ = call(host.routes, 'POST', '/rem/draft', body=payload)
+    assert status == 401 and sent == []
+    status, _, body = call(host.routes, 'POST', '/rem/draft', cookie=f'co_rem={host.token}', body=payload)
+    assert status == 200 and sent == [('a' * 32, 'Edited by hand.')]
+    assert json.loads(body) == {'status': 'sent'}
+
+
+def test_rem_draft_endpoint_rejects_unknown_actions_and_form_posts(host, monkeypatch):
     monkeypatch.setattr(drafts, 'open_provider', lambda *args: (_ for _ in ()).throw(AssertionError('unexpected call')))
-    for action, content_type, expected in [('send', 'application/json', 400), ('open', 'application/x-www-form-urlencoded', 415)]:
+    for action, content_type, expected in [('forward', 'application/json', 400), ('open', 'application/x-www-form-urlencoded', 415)]:
         status, _, _ = call(host.routes, 'POST', '/rem/draft', cookie=f'co_rem={host.token}',
                            body=json.dumps({'id': 'a' * 32, 'action': action}).encode(), content_type=content_type)
         assert status == expected

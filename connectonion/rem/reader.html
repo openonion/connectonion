@@ -35,6 +35,7 @@
     --fresh: #6871b5; --fresh-soft: #dde0f4; --unsure: var(--ink-3);
     --said: #674624; --said-soft: #f8f0e4;
     --mark: #fde7b0; --quiet: #646a80;
+    --act: #22d27a; --act-hover: #1bbf6c; --act-ink: #05301b; --act-text: #0b7a42; --act-tint: #e3faee;
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
     --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
     --shadow: 0 10px 30px -18px rgba(21, 26, 51, .35);
@@ -55,6 +56,8 @@
       --fresh: #a3abdf; --fresh-soft: #343c60; --unsure: var(--ink-3);
       --said: #efd6b0; --said-soft: rgba(239,214,176,.06);
       --mark: #4d3c12; --quiet: #8a91ab;
+    --act: #3be38f; --act-hover: #58ea9f; --act-ink: #05301b; --act-text: #5fe3a0; --act-tint: #16301f;
+      --act: #3be38f; --act-hover: #58ea9f; --act-ink: #05301b; --act-text: #5fe3a0; --act-tint: #16301f;
       --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
       --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
       --shadow: 0 10px 30px -18px rgba(21, 26, 51, .35);
@@ -199,42 +202,92 @@
 
   /* Waiting comes before rewrites; quieter context stays in the margin (UI audit #1–4). */
   nav a .n.waiting { color: var(--waiting); }
-  .morning-layout, .morning-primary, .morning-side { min-width: 0; }
+  .morning-layout, .morning-primary { min-width: 0; }
   .morning-primary h1 { font: 500 34px/1.15 var(--display); margin: 0 0 8px; }
   .waiting-intro, .quiet-line { color: var(--ink-2); font-size: 14px; }
-  .waiting-ledger { list-style: none; padding: 0; margin: 22px 0 12px; }
-  .waiting-ledger > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 18px 0; border-top: 1px solid var(--line); }
-  .waiting-person { display: flex; align-items: start; gap: 10px; min-width: 0; font-size: 14px; }
+  .morning-primary { max-width: 760px; }
+  .today-brief .section { margin-top: 0; }
+  .today-threads, .waiting-ledger { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .today-threads + .waiting-ledger { margin-top: 12px; }
+  .qcard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 18px 20px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); box-shadow: 0 1px 2px rgba(21, 26, 51, .04); }
+  .qcard.overdue { border-color: var(--lamp-line); }
+  .waiting-person { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
   .waiting-person a { color: var(--ink); font-weight: 600; }
-  .waiting-person .meta { display: block; margin: 3px 0 0; color: var(--ink-3); font-size: 12px; }
+  .waiting-person .meta { display: block; margin: 1px 0 0; color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
   .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; font-size: 12px; color: var(--ink-2); background: var(--line-2); }
+  .waiting-age { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; font: 12px/1.5 var(--ui); color: var(--ink-3); white-space: nowrap; }
+  .waiting-age b { font-weight: 600; color: var(--ink-2); }
+  .waiting-age.overdue b { color: var(--lamp); }
   .waiting-ask { grid-column: 1 / -1; min-width: 0; }
-  .waiting-ask .words { font: 19px/1.45 var(--text); margin: 0 0 8px; }
+  .waiting-ask .words { font: 18px/1.45 var(--text); margin: 0 0 6px; color: var(--ink); }
   .waiting-ask .context { color: var(--ink-2); font: 13px/1.55 var(--ui); margin: 0; }
-  .waiting-age { grid-column: 2; grid-row: 1; text-align: right; font: 12px/1.5 var(--ui); color: var(--ink-3); }
-  .waiting-age b { display: block; color: var(--waiting); font-weight: 600; }
-  .waiting-age span { white-space: nowrap; }
+  .qcard .thread-actions { grid-column: 1 / -1; margin-top: 4px; }
+  .btn-act { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border-radius: 8px; background: var(--act); color: var(--act-ink) !important; font: 600 14px var(--ui); text-decoration: none !important; white-space: nowrap; }
+  .btn-act:hover { background: var(--act-hover); }
+  .btn-quiet { min-height: 40px; padding: 0 10px; border: 0; background: transparent; color: var(--ink-3); font: 500 13px var(--ui); cursor: pointer; border-radius: 8px; }
+  .btn-quiet:hover { color: var(--ink); background: var(--well); }
+  .thread-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
+  /* ---- the writer: full screen, one letter ---- */
+  .writer { width: min(1180px, 96vw); height: min(860px, 94vh); max-width: none; max-height: none; padding: 0; border: 0; border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 30px 80px -30px rgba(0,0,0,.45); display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); overflow: hidden; }
+  .writer::backdrop { background: rgba(21, 26, 51, .55); backdrop-filter: blur(2px); }
+  .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+  .writer-letter .mail-head { padding: 18px 24px 12px; }
+  .writer-body { flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 20px 24px; font: 16px/1.65 var(--ui); color: var(--ink); background: var(--sheet); }
+  .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--line); }
+  .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: 14px/1.6 var(--ui); color: var(--ink-2); }
+  .writer-side h3 { margin: 0 0 6px; font: 600 18px/1.3 var(--ui); color: var(--ink); }
+  .writer-side h3 a { color: inherit; }
+  .writer-side h4 { margin: 20px 0 6px; font: 600 12px/1.4 var(--ui); color: var(--ink-3); }
+  .writer-side p { margin: 0; white-space: pre-wrap; }
+  .writer-brief { color: var(--ink-2); }
+  .writer-msg { padding: 10px 0; border-top: 1px solid var(--line); }
+  .writer-msg-head { font: 600 12px/1.4 var(--ui); color: var(--ink-3); margin-bottom: 4px; }
+  .writer-msg-text { white-space: pre-wrap; font: 13px/1.55 var(--ui); color: var(--ink-2); max-height: 14em; overflow: hidden; }
+  @media (max-width: 719px) {
+    .writer { width: 100vw; height: 100dvh; border-radius: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    .writer-letter { border-right: 0; }
+    .writer-side { max-height: 38dvh; border-top: 1px solid var(--line); }
+  }
+  /* ---- a reply shown as the mail it becomes ---- */
+  .mail-channels { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--well); margin-bottom: 6px; }
+  .mail-channels .channel { border: 0; background: transparent; padding: 3px 10px; border-radius: 6px; font: 500 12px var(--ui); color: var(--ink-2); cursor: pointer; }
+  .mail-channels .channel.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.1); cursor: default; }
+  .mailcard.chat .mail-text { font-size: 15px; border-radius: 0 14px 14px 14px; margin: 12px 16px; padding: 12px 14px; background: var(--act-tint); color: var(--ink); }
+  .mailcard.chat .mail-body { background: var(--sheet); }
+  .qcard.has-mail .waiting-ask .words { font: 15px/1.5 var(--ui); color: var(--ink-2); }
+  .mailcard { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); overflow: hidden; }
+  .mail-head { padding: 10px 16px 8px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+  .mail-row { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 8px; font: 13px/1.5 var(--ui); min-width: 0; }
+  .mail-row .k, .mail-gist .k, .mail-why .k { color: var(--ink-3); }
+  .mail-row .v { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-row .addr { color: var(--ink-3); }
+  .mail-row .subject { font-weight: 600; }
+  .mail-body { display: grid; gap: 0; }
+  .mail-body.bilingual { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .mail-text { padding: 14px 16px; white-space: pre-wrap; font: 15px/1.6 var(--ui); color: var(--ink); background: var(--sheet); }
+  .mail-gist { padding: 14px 16px; border-left: 1px solid var(--line); font: 13.5px/1.6 var(--ui); color: var(--ink-2); }
+  .mail-gist .k { display: block; font-size: 12px; margin-bottom: 4px; }
+  .mail-gist p { margin: 0; white-space: pre-wrap; }
+  .mail-why { margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); font: 13px/1.55 var(--ui); color: var(--ink-2); }
+  .mail-why .k { font-weight: 600; }
+  .mail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--sheet); }
+  .mail-note { margin-left: auto; font: 12px var(--ui); color: var(--ink-3); }
+  .mail-status { margin: 0; padding: 0 16px 10px; background: var(--sheet); }
+  .mail-status:empty { display: none; }
+  .mail-done { margin: 0; padding: 14px 16px; font: 600 14px var(--ui); color: var(--act-text); }
+  @media (max-width: 719px) {
+    .mail-body.bilingual { grid-template-columns: minmax(0, 1fr); }
+    .mail-gist { border-left: 0; border-top: 1px solid var(--line); }
+    .mail-note { flex-basis: 100%; margin-left: 0; }
+  }
   .waiting-more { color: var(--ink-2); font-size: 13px; }
   .overnight .claim-grid { display: block; }
   .overnight .claim-card { border: 0; border-radius: 0; background: transparent; border-top: 0; padding: 16px 0; }
-  .morning-side .recall { display: block; margin-top: 28px; padding: 0; border: 0; background: transparent; }
-  .morning-side .recall .label { font: 600 17px var(--display); color: var(--ink); text-transform: none; letter-spacing: 0; }
-  .morning-side .recall h2 { font: 19px/1.4 var(--text); margin: 14px 0 10px; }
-  .morning-side .recall-toggle { margin-top: 14px; }
   .gone-quiet { margin-top: 28px; color: var(--ink-2); }
   .quiet-list { list-style: none; padding: 0; font-size: 13px; }
   .quiet-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .quiet-list p { margin: 4px 0 0; color: var(--ink-2); font: 13px/1.4 var(--text); }
   .quiet-list span { white-space: nowrap; color: var(--ink-3); }
-  @media (min-width: 1100px) {
-    .morning-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px; }
-    .morning-side .recall { margin-top: 0; }
-  }
-  @media (min-width: 1550px) {
-    .waiting-ledger > li { grid-template-columns: 160px minmax(0, 1fr) auto; }
-    .waiting-ask { grid-column: 2; grid-row: 1; }
-    .waiting-age { grid-column: 3; }
-  }
   /* Morning recall: the foreground is what the notebook retained, not its run log. */
   .morning { margin: 24px 0 0; padding: 24px 0; border-top: 1px solid var(--line); color: var(--ink); }
 
@@ -262,7 +315,7 @@
   .memory-connection a { color: var(--ink-2); }
   .memory-connection .relation { color: var(--ink-2); }
   .memory-connection .basis { color: var(--ink-2); }
-  .recall { margin-top: 22px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
+  .recall { margin-top: 36px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 0; }
   .recall .label { font: 600 10px/1.4 var(--ui); letter-spacing: 0; text-transform: none; color: var(--blue); }
   .recall h2 { grid-column: 1; font: 500 23px/1.28 var(--display); margin: 6px 0; }
   .recall .why { grid-column: 1; color: var(--ink-2); font-size: 13px; margin: 0; }
@@ -1425,18 +1478,8 @@
   .claim-values { color: var(--ink-2); }
   .claim-values del { color: var(--ink-3); }
   .brief-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; font-size: 13px; }
-  .today-thread { padding: 12px 0; border-bottom: 1px solid var(--line-2); overflow-wrap: anywhere; }
-  .today-who { color: var(--ink); font: 500 14px var(--ui); }
-  .today-words { font: 16px/1.5 var(--text); margin: 5px 0; }
-  .today-context { color: var(--ink-2); font: 13px/1.55 var(--ui); margin: 0 0 5px; }
-  .today-meta { color: var(--ink-3); font-size: 12px; }
-  .thread-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; color: var(--ink-3); font: 12px var(--ui); }
-  .thread-actions button, .done-notice button { border: 0; background: transparent; color: var(--ink-3); padding: 4px 0; font: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; cursor: pointer; }
-  .thread-actions button:hover, .thread-actions button:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
+  .done-notice button { border: 0; background: transparent; color: var(--ink-3); padding: 4px 0; font: inherit; text-decoration: underline; cursor: pointer; }
   .done-notice { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; z-index: 50; padding: 12px 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13px/1.5 var(--ui); }
-  .home-find input { box-sizing: border-box; width: 100%; max-width: 520px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--sheet); color: var(--ink); font: 16px var(--ui); }
-  .task-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13px; }
-  .task-links a { min-height: 24px; }
   .week-details, .done-details { margin-top: 28px; }
   :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { display: list-item; cursor: pointer; color: var(--ink-2); font: 400 14px/1.5 var(--ui); padding: 8px 0; }
   @media (min-width: 900px) {
@@ -1709,8 +1752,36 @@ const UI = {
     "legal entity": "法律主体",
     "your contacts": "你的联系人",
     "All {n} changes →": "查看全部 {n} 项变化 →",
-    "Copy prompt": "复制提示词",
     "Mark done": "标为完成",
+    "Needs you": "等你处理",
+    "Reply to {name}": "回复 {name}",
+    "Follow up with {name}": "跟进 {name}",
+    "Open the page": "打开页面",
+    "waiting on them": "等对方",
+    "waiting on you": "待你处理",
+    "{name}'s memory": "{name} 的记忆",
+    "Send": "发送",
+    "Mail": "邮件",
+    "Reply channel": "回复渠道",
+    "Rewriting for {channel}…": "正在按 {channel} 重新起草…",
+    "Sends as you via {tool}": "以你的身份经 {tool} 发出",
+    "Close": "关闭",
+    "Write full screen": "全屏写",
+    "Reply body": "回信正文",
+    "The thread": "往来邮件",
+    "Skip": "跳过",
+    "Sent": "已发送",
+    "Skipped": "已跳过",
+    "Sent to {name}": "已发给 {name}",
+    "Edit in {provider}": "在 {provider} 里修改",
+    "To": "收件人",
+    "CC": "抄送",
+    "Subject": "主题",
+    "In your words": "中文对照",
+    "Why this reply": "为什么这样写",
+    "Reply draft": "回信草稿",
+    "Sends from {mailbox} via {provider}": "将从 {mailbox} 经 {provider} 发出",
+    "Open the live reader on this computer to send or edit this draft.": "在这台电脑上打开实时阅读器才能发送或修改。",
     "Undo": "撤销",
     "marked done here": "已在此标为完成",
     "Marked done on this device — ": "已在此设备标为完成 — ",
@@ -3256,56 +3327,151 @@ function doneNotice(entry) {
   undo.focus({ preventScroll: true });
   setTimeout(() => notice.remove(), 6000);
 }
+
+// The one thing to do next: write to the person the thread is with. The address and
+// subject come from the cited message, never guessed; without them the page opens.
+function threadContact(entry) {
+  const { r, t: thread } = entry;
+  const owner = byPath(REM.owner);
+  for (const [, n] of thread.text.matchAll(/\[(W?\d{1,3})\]/g)) {
+    const context = (REM.source_context || {})[citationId(r, n)];
+    if (!context) continue;
+    const from = context.participants?.from, to = context.participants?.to || [];
+    const candidates = [...(Array.isArray(from) ? from : [from]), ...(Array.isArray(to) ? to : [to])].filter(Boolean);
+    for (const raw of candidates) {
+      const who = mailbox(raw);
+      if (!who.address || personByAddress(who.address) === owner) continue;
+      const subject = context.subject || REM.conversations?.[context.thread]?.subject || "";
+      return { address: who.address, subject, name: personByAddress(who.address)?.title.split(/\s+/)[0] || who.name };
+    }
+  }
+  // No archived message: the address the page itself records for this person.
+  if (r.category !== "people") return null;
+  const listed = (parseFacts(r).get("Email") || []).flatMap(item => item.value.toLowerCase().match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []);
+  const address = listed.find(candidate => personByAddress(candidate) !== owner);
+  return address ? { address, subject: "", name: r.title.split(/\s+/)[0] } : null;
+}
+function primaryAction(entry) {
+  const { r, t: thread } = entry, contact = threadContact(entry);
+  if (contact && r.path !== REM.owner) {
+    const subject = contact.subject ? (/^re:/i.test(contact.subject) ? contact.subject : "Re: " + contact.subject) : "";
+    const label = thread.dir === "theirs" ? "Follow up with {name}" : "Reply to {name}";
+    return el("a", { class: "btn-act", href: "mailto:" + contact.address + (subject ? "?subject=" + encodeURIComponent(subject) : ""),
+      text: t(label, { name: contact.name }) });
+  }
+  return el("a", { class: "btn-act", href: href(r) + "&h=open-threads", text: t("Open the page") });
+}
 function threadActions(entry) {
   const undo = isDone(entry);
-  const done = el("button", { type: "button", text: t(undo ? "Undo" : "Mark done") });
+  const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
   done.onclick = () => setDone(entry, !undo);
   const ids = obligationEvidence(entry).ids;
   const draft = (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return el("div", { class: "thread-actions" }, [
-    undo ? el("span", { class: "done-tag", text: t("marked done here") }) : null,
-    draft?.status === "discarded" ? el("span", { class: "quiet-line", text: t("Draft discarded") })
-      : draft?.status === "pending" ? el("span", { class: "quiet-line", text: t(REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") })
-      : draft ? replyDraftCard(draft) : null, done]);
+    undo ? el("span", { class: "done-tag", text: t("marked done here") }) : primaryAction(entry), done]);
 }
+// Full-screen writing: the letter on the left, editable; on the right what the
+// owner needs to remember, the Chinese reading, and the cited messages.
+function openWriter(draft, who, onSend) {
+  const to = mailbox(draft.to);
+  const body = el("textarea", { class: "writer-body", "aria-label": t("Reply body") });
+  body.value = draft.body;
+  const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
+  const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
+  const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
+  const dialog = el("dialog", { class: "writer" }, [
+    el("div", { class: "writer-letter" }, [
+      el("div", { class: "mail-head" }, [
+        el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + " <" + to.address + ">" })]),
+        draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
+        el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]),
+      body,
+      el("div", { class: "writer-actions" }, [send, close, el("span", { class: "mail-note", text: t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" }) })])]),
+    el("aside", { class: "writer-side" }, [
+      who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
+      who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
+      draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
+      draft.gist ? el("section", {}, [el("h4", { text: t("In your words") }), el("p", { text: draft.gist })]) : null,
+      cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
+        el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
+        el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
+  send.onclick = () => { dialog.close(); onSend(body.value.trim() === draft.body.trim() ? undefined : body.value); };
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  body.focus();
+}
+function threadDraft(entry) {
+  const ids = obligationEvidence(entry).ids;
+  return (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
+}
+function draftNote(draft) {
+  if (!draft || draft.status === "prepared") return null;
+  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded"
+    : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
+}
+// A reply is shown as the mail it will become: who it goes to, the subject, the
+// words, and beside them the owner's-language reading. One button sends it.
 function replyDraftCard(draft) {
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
-  const status = el("p", { class: "quiet-line", role: "status" });
-  const open = el("button", { type: "button", text: t("Open in {provider} drafts", { provider }) });
-  const discard = el("button", { type: "button", text: t("Discard") });
-  const card = el("section", { class: "reply-draft", "aria-label": t("Prepared reply draft") }, [
-    el("strong", { text: t("Prepared reply draft") }),
-    ...[["From", draft.from], ["To", draft.to], ["CC", draft.cc || "—"], ["Subject", draft.subject]].map(([name, value]) =>
-      el("p", {}, [el("strong", { text: t(name) + ": " }), el("span", { text: value })])),
-    el("div", {}, [el("strong", { text: t("Body") }), el("pre", { text: draft.body })]),
-    el("details", {}, [el("summary", { text: t("Cited sources") }), el("p", { text: (draft.sources || []).join(" · ") })]),
-    el("p", { class: "quiet-line", text: t("Nothing is sent until you send it in your mailbox.") }),
-    el("div", {}, [open, discard]), status]);
+  const status = el("p", { class: "quiet-line mail-status", role: "status" });
+  const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
+  const edit = el("button", { type: "button", class: "btn-quiet", text: t("Edit in {provider}", { provider }) });
+  const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip") });
+  const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen") });
+  const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
+  const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
+    const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
+    if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
+    return pill;
+  }));
+  const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
+    el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
+      el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
+        who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }), el("span", { class: "addr", text: " <" + to.address + ">" })])]),
+      draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
+      el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]
+      : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
+          el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
+    el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
+      el("div", { class: "mail-text", text: draft.body }),
+      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist })]) : null]),
+    draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null,
+    el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip,
+      el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
+        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]), status]);
   if (!REM.live) {
-    open.disabled = discard.disabled = true;
-    status.textContent = t("Open the live reader on this computer to manage this draft.");
+    send.disabled = edit.disabled = skip.disabled = true;
+    status.textContent = t("Open the live reader on this computer to send or edit this draft.");
   }
-  const act = async action => {
-    open.disabled = discard.disabled = true;
-    status.textContent = t("Working…");
-    const response = await fetch("/rem/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draft.id, action }) });
+  const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; };
+  const act = async (action, body, channel) => {
+    busy(true);
+    status.textContent = t(action === "redraft" ? "Rewriting for {channel}…" : "Working…", { channel: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[channel] || "") });
+    const response = await fetch("/rem/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draft.id, action, ...(body ? { body } : {}), ...(channel ? { channel } : {}) }) });
     const result = await response.json();
-    open.disabled = discard.disabled = false;
+    busy(false);
     if (!response.ok) { status.textContent = result.error || t("Could not update draft"); return; }
     if (action === "open") {
       status.replaceChildren(el("a", { href: result.url, target: "_blank", rel: "noopener", text: t("Continue in {provider} drafts", { provider }) }));
       window.open(result.url, "_blank", "noopener");
-    } else {
-      REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: "discarded" } : d);
-      card.replaceChildren(el("p", { text: t("Draft discarded") }));
+      return;
     }
+    if (action === "redraft") {
+      REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
+      card.replaceWith(replyDraftCard(result));
+      return;
+    }
+    const next = action === "send" ? "sent" : "discarded";
+    REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: next } : d);
+    card.replaceChildren(el("p", { class: "mail-done", text: t(next === "sent" ? "Sent to {name}" : "Skipped", { name: who?.title || to.name }) }));
   };
-  const run = action => act(action).catch(() => {
-    open.disabled = discard.disabled = false;
-    status.textContent = t("Could not update draft. Check the connection and try again.");
-  });
-  open.onclick = () => run("open");
-  discard.onclick = () => run("discard");
+  const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); status.textContent = t("Could not update draft. Check the connection and try again."); });
+  send.onclick = () => run("send");
+  write.onclick = () => openWriter(draft, who, body => run("send", body));
+  edit.onclick = () => run("open");
+  skip.onclick = () => run("discard");
   return draft.private ? privateFallback(el("div", {}, [el("div", { class: "private" }, [card])])) : card;
 }
 function markedDone(entries) {
@@ -3990,7 +4156,8 @@ function renderRail(active) {
   settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
     el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
   foot.appendChild(settings);
-  document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
+  const ownerPage = byPath(REM.owner);
+  document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
 }
 
 // One page as one row: its name, what it is to you, what is open, when.
@@ -4165,6 +4332,12 @@ function failureSummary(pass) {
   return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
 }
 // Quotes stay verbatim; a summary never acquires someone's quotation marks.
+function withoutDateClutter(text) {
+  return text.replace(/\s*[—–-]?\s*\(\d{4}-\d{2}-\d{2}\)/g, "")
+    .replace(/\s*[—–-]\s*due\s+\d{4}-\d{2}-\d{2}(?:,\s*overdue)?/gi, "")
+    .replace(/;?\s*open as of\s+\d{4}-\d{2}-\d{2}/gi, "")
+    .replace(/\s*[—–-]\s*$/, "").trim();
+}
 function morningWords(text, r) {
   text = unlabelled(text);
   const quote = /“([^”\n]{6,})”|"([^"\n]{6,})"/.exec(text);
@@ -4172,7 +4345,7 @@ function morningWords(text, r) {
     context: [text.replace(quote[0], "").replace(/[:：—–]\s*([.;；]|$)/g, "$1").trim(),
       (quote[0].match(/\[W?\d{1,3}\]/g) || []).join(" ")].filter(Boolean).join(" ") };
   const cites = (text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const summary = plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, "")));
+  const summary = withoutDateClutter(plainLine(capFirst(threadWords(text, r).replace(/^you owe\s+\S+\s*/i, ""))));
   const separator = uiLanguage === "zh" ? /[;；:：—]|(?<=[.!?])\s|(?<=[。！？])\s*/ : /[;；]|(?<=[.!?])\s|(?<=[。！？])\s*/;
   const clause = summary.split(separator)[0];
   const words = clause.length > 140 ? clause.slice(0, 141).replace(/\s+\S*$/, "") : clause;
@@ -4207,20 +4380,26 @@ function threadDate(day) {
 function dueLabel(thread) {
   return t(thread.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(thread.due);
 }
-function morningThread(entry) {
+
+function queueCard(entry, dateText) {
   const { r, t: thread, also } = entry;
   const { words, context } = morningWords(thread.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
-  const meta = r.path === REM.owner ? "" : [company(r), role ? plainLine(role) : ""].filter(Boolean).join(" · ");
-  const metaParts = [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
-  const label = /\b(?:promised|agreed|offered to)\b/i.test(thread.text) ? "you promised" : /\?|\bquestion\b/i.test(thread.text) ? "a question" : "a request";
-  const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("");
-  return el("li", {}, [el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: r.path === REM.owner ? t("You") : initials }),
-    el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), meta ? el("span", { class: "meta", title: meta }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
+  const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
+  const overdue = thread.due && thread.due < calendarDay(REM.as_of);
+  const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join(""), draft = threadDraft(entry);
+  return el("li", { class: "qcard" + (overdue ? " overdue" : "") + (draft?.status === "prepared" ? " has-mail" : "") }, [
+    el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: r.path === REM.owner ? t("You") : initials }),
+      el("div", {}, [el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
+        metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
+    el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [el("b", { text: dateText }), blockerTag(thread)]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }),
-      privateFallback(el("p", { class: "context", html: inline(context, r.path) })), alsoOn(also), threadActions(entry)]),
-    el("div", { class: "waiting-age" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : "") },
-      [el("b", {}, [threadAge(thread), blockerTag(thread)]), el("span", { text: t(label) })])]);
+      context ? privateFallback(el("p", { class: "context", html: inline(context, r.path) })) : null, alsoOn(also)]),
+    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft)]);
+}
+function morningThread(entry) {
+  const { t: thread } = entry;
+  return queueCard(entry, thread.due ? dueLabel(thread) : t(thread.dir === "mine" ? "waiting on you" : "waiting on them") + " · " + age(thread.since));
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
@@ -4317,20 +4496,21 @@ function todayEntries(entries) {
   return entries.filter(entry => !entry.t.quiet && !isDone(entry) && ["mine", "theirs"].includes(entry.t.dir)
     && (entry.t.due ? entry.t.due <= soon : entry.t.since === today));
 }
+
 function todayThread(entry) {
-  const { r, t: thread } = entry;
-  const { words, context } = morningWords(thread.text, r);
+  const { t: thread } = entry;
   const date = thread.due && thread.due !== calendarDay(REM.as_of) ? dueLabel(thread) : t(thread.due ? "due today" : "new today");
-  return el("li", { class: "today-thread" }, [el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
-    el("p", { class: "today-words", text: words }),
-    context ? privateFallback(el("p", { class: "today-context", html: inline(context, r.path) })) : null,
-    el("div", { class: "today-meta" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : "") }, [
-      el("span", { text: date }), " · ", el("span", { text: t(thread.dir === "mine" ? "you owe" : "they owe") })]), alsoOn(entry.also), threadActions(entry)]);
+  const card = queueCard(entry, date);
+  card.classList.add("today-thread");
+  return card;
 }
-function todayBrief(entries, counts) {
-  const section = el("section", { class: "today-brief" }, [sectionHead("Today")]);
-  section.appendChild(entries.length ? el("ul", { class: "today-threads" }, entries.slice(0, 5).map(todayThread))
-    : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") }));
+
+function todayBrief(entries, counts, waiting) {
+  const n = entries.length + waiting.length;
+  const section = el("section", { class: "today-brief" }, [sectionHead(n ? "Needs you" : "Today")]);
+  if (entries.length) section.appendChild(el("ol", { class: "today-threads" }, entries.slice(0, 5).map(todayThread)));
+  if (waiting.length) section.appendChild(el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)));
+  if (!n) section.appendChild(el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") }));
   if (entries.length > 5) section.appendChild(el("a", { class: "brief-more", href: "#view=open", text: t("All open threads →") }));
   section.appendChild(waitingMore(counts));
   return section;
@@ -4360,16 +4540,6 @@ function briefHeader(counts, today) {
   }
   return header;
 }
-function homeFind() {
-  const find = el("input", { type: "search", placeholder: t("Search people, projects, mail…"), "aria-label": t("Search the notebook") });
-  find.onkeydown = event => {
-    if (event.key === "Enter" && find.value.trim()) location.hash = "q=" + encodeURIComponent(find.value.trim());
-  };
-  const links = [["Who do I owe?", "#view=open", threadCounts().mine], ["What changed this week?", "#view=changes", weekChanges().length],
-    ["People", "#c=people", inCategory("people").length], ["Projects", "#c=projects", inCategory("projects").length], ["Everything", "#c=all", listedRecords().length]];
-  return el("section", { class: "home-find" }, [sectionHead("Find"), find,
-    el("div", { class: "task-links" }, links.filter(([, , count]) => count).map(([title, href]) => el("a", { href, text: t(title) })))]);
-}
 function notebookLanguages() {
   const languages = REM.your_languages || [];
   // The sidebar is narrow: a button copies the whole command instead of showing a wrapped path.
@@ -4390,6 +4560,7 @@ function translationNotice() {
     failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) : t("Most pages have no Chinese version yet; showing the English originals."),
     el("span", { text: t(REM.status?.worker?.enabled ? "Translation pending — queued for tonight" : "Translation pending — background updates off") })]);
 }
+
 function overview() {
   const main = document.getElementById("main");
   main.textContent = "";
@@ -4397,18 +4568,13 @@ function overview() {
   const shownToday = new Set(today.slice(0, 5).map(doneKey));
   const waiting = morningEntries(entries.filter(entry => !shownToday.has(doneKey(entry))));
   main.append(briefHeader(counts, today));
+  // One column, one order: what needs you, then what changed, then what is worth remembering.
+  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayBrief(today, counts, waiting), morningBrief()]);
+  const recall = recallPrompt(), quiet = quietThreads(entries, counts.quiet, true), review = connectionReview();
+  for (const block of [recall, review, quiet]) if (block) primary.appendChild(block);
+  main.appendChild(el("div", { class: "morning-layout" }, [primary]));
   const translations = translationNotice();
   if (translations) main.appendChild(translations);
-  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), morningBrief(), todayBrief(today, counts),
-    el("section", { class: "open-brief" }, [sectionHead("Open threads", "the three most important"),
-      waiting.length ? el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)) : el("p", { class: "quiet-line", text: t("No other threads waiting on you.") })]), homeFind()]);
-  const side = el("aside", { class: "morning-side" });
-  const recall = recallPrompt(), quiet = quietThreads(entries, counts.quiet, true);
-  if (recall) side.appendChild(recall);
-  if (quiet) side.appendChild(quiet);
-  main.appendChild(el("div", { class: "morning-layout" }, [primary, side]));
-  const review = connectionReview();
-  if (review) main.appendChild(review);
 
   // This week: what the nightly passes rewrote, newest first, each with its one line.
   const week = weekChanges();
