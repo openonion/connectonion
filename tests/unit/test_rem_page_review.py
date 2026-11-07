@@ -2118,3 +2118,114 @@ def test_strip_hedge_leaves_a_line_whose_quote_marks_do_not_pair():
     from connectonion.rem.page_review import strip_hedge
     line = "- 2026-09-12: Avery wrote “not confirmed. Friday [2]; whether it moved is unknown [3]."
     assert strip_hedge(line) == line
+
+
+@pytest.mark.parametrize('record', ['people/ivy.md', 'orgs/partner.md', 'projects/pilot.md'])
+def test_review_drops_identifiers_of_another_entity(tmp_path, record):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/lantern.md', 'Lantern Labs', ['lantern.example'])
+    notebook.write('orgs/lantern.md', notebook.read('orgs/lantern.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Lantern Labs Pty Ltd; ABN 12 345 678 901; ACN 345 678 901 [1]'))
+    page = ('# Partner\n\n## Facts\n- Legal entity: ABN 12345678901 [1]\n\n'
+            '## Terms\n- Company number 345678901 [1]\n- Pilot costs $200. [2]\n\n'
+            '## Sources\n- [1] gmail:invoice\n- [2] gmail:pilot\n')
+    cleaned, removed = drop_foreign_identifiers(notebook, record, page)
+    assert '12345678901' not in cleaned and '345678901' not in cleaned
+    assert '- Legal entity: Unknown' in cleaned
+    assert '- Pilot costs $200. [2]' in cleaned
+    assert set(removed) == {'ABN 12345678901', 'Company number 345678901'}
+    assert drop_foreign_identifiers(notebook, 'orgs/lantern.md', page) == (page, [])
+
+
+def test_review_keeps_target_identifiers_and_unlabelled_amounts(tmp_path):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/lantern.md', 'Lantern Labs', ['lantern.example'])
+    notebook.write('orgs/lantern.md', notebook.read('orgs/lantern.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Lantern Labs; ABN 12 345 678 901 [1]'))
+    page = ('# Partner\n\n## Facts\n- Legal entity: Partner; ABN 98 765 432 109 [1]\n\n'
+            '## Terms\n- Reference 12345678901; amount $345678901. [1]\n')
+    assert drop_foreign_identifiers(notebook, 'orgs/partner.md', page) == (page, [])
+
+
+def test_attachment_metadata_is_not_citable_document_evidence():
+    from connectonion.rem.page_review import drop_unresolved
+    source = 'investigation:attachments-index:gmail:0123456789ab'
+    page = f'# Lantern\n\n## Terms\n- Fee is $200. [1]\n\n## Sources\n- [1] {source}\n'
+    items = [{'role': 'attachments-index', 'source': source, 'text': 'agreement.pdf, application/pdf, 2048 bytes'}]
+    cleaned, dropped = drop_unresolved('orgs/lantern.md', page, '# Lantern\n', items)
+    assert 'Fee is $200' not in cleaned
+    assert dropped['citations'] == ['1']
+
+
+def test_promotion_removes_carried_foreign_identifiers_and_records_reason(tmp_path):
+    from connectonion.rem import runner
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/northstar.md', 'Northstar Studio', ['northstar.example'])
+    notebook.write('orgs/northstar.md', notebook.read('orgs/northstar.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Northstar Studio; ABN 12 345 678 901 [1]'))
+    record = 'orgs/lantern.md'
+    notebook.stub_org(record, 'Lantern Labs', ['lantern.example'])
+    original = notebook.read(record).replace('- Legal entity: Unknown', '- Legal entity: ABN 12345678901 [1]')
+    original = original.replace('## Sources\n', '## Sources\n- [1] gmail:buyer\n')
+    notebook.write(record, original)
+    directory = tmp_path / '.state/tasks/identifiers'
+    directory.mkdir(parents=True)
+    candidate = directory / 'candidate.md'
+    text = original.replace('Unknown — not investigated yet', 'Unknown')
+    text = text.replace('## Terms\n', '## Terms\n“Pilot fee is $200.” [2]\n')
+    candidate.write_text(text.replace('## Sources\n', '## Sources\n- [2] gmail:pilot\n'))
+    items = [{'source': 'gmail:buyer', 'text': 'Buyer Northstar Studio ABN 12345678901.'},
+             {'source': 'gmail:pilot', 'text': 'Pilot fee is $200.'}]
+    runner._promote_candidate(notebook, record, candidate, original, items, directory, None, carried=original)
+    saved = notebook.read(record)
+    assert '- Legal entity: Unknown' in saved and '12345678901' not in saved
+    assert 'Pilot fee is $200.' in saved
+    review = json.loads((directory / 'review.json').read_text())
+    assert review['foreign_identifiers_removed'] == ['ABN 12345678901']
+
+
+def test_review_keeps_owner_company_identifier_despite_existing_wrong_copy(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/ellis.md', 'Ellis Reed', email='ellis@northstar.example')
+    notebook.write('people/ellis.md', notebook.read('people/ellis.md').replace('- Company: Unknown', '- Company: Northstar'))
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/ellis.md', 'addresses': ['ellis@northstar.example']}})
+    for record, title, domain in [('orgs/northstar.md', 'Northstar', 'northstar.example'),
+                                  ('orgs/lantern.md', 'Lantern', 'lantern.example')]:
+        notebook.stub_org(record, title, [domain])
+        notebook.write(record, notebook.read(record).replace(
+            '- Legal entity: Unknown', '- Legal entity: ABN 12 345 678 901 [1]'))
+    own = notebook.read('orgs/northstar.md')
+    assert drop_foreign_identifiers(notebook, 'orgs/northstar.md', own) == (own, [])
+    other, removed = drop_foreign_identifiers(notebook, 'orgs/lantern.md', notebook.read('orgs/lantern.md'))
+    assert '12 345 678 901' not in other and removed == ['ABN 12 345 678 901']
+
+
+def test_attachment_index_stays_uncitable_inside_evidence_wrapper():
+    from connectonion.rem.page_review import drop_unresolved
+    source = 'investigation:attachments-index:gmail:0123456789ab'
+    page = f'# Lantern\n\n## Terms\n- Fee is $200. [1]\n\n## Sources\n- [1] {source}\n'
+    items = [{'role': 'evidence-index', 'source': 'investigation:original-evidence',
+              'sources': [source], 'text': 'Read the indexed files.'}]
+    cleaned, dropped = drop_unresolved('orgs/lantern.md', page, '# Lantern\n', items)
+    assert 'Fee is $200' not in cleaned
+    assert dropped['citations'] == ['1']
+
+
+def test_review_preserves_target_entity_and_terms_beside_foreign_identifier(tmp_path):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/northstar.md', 'Northstar', ['northstar.example'])
+    notebook.write('orgs/northstar.md', notebook.read('orgs/northstar.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Northstar; ABN 12 345 678 901 [1]'))
+    page = ('# Lantern\n\n## Facts\n- Legal entity: Lantern; ABN 98 765 432 109; ABN 12 345 678 901 [1]\n\n'
+            '## Terms\n- Pilot fee is $200; Company number 12345678901 [1]\n\n'
+            '## Sources\n- [1] gmail:pilot\n')
+    cleaned, removed = drop_foreign_identifiers(notebook, 'orgs/lantern.md', page)
+    assert '- Legal entity: Lantern; ABN 98 765 432 109 [1]' in cleaned
+    assert '- Pilot fee is $200 [1]' in cleaned
+    assert '12 345 678 901' not in cleaned and '12345678901' not in cleaned

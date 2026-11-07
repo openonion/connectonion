@@ -841,11 +841,13 @@ Model turns and the launchd job both run the installation that is running
 PATH. Starting from a non-activated venv with an older `co` in `~/.local/bin`
 used to install a job, and route every model turn, through the older one.
 
-co rem's own code fetches the mail and attachments before the model starts, so
-the model needs nothing more than to read that material and write the page
-copy it is given. The cost is the web: investigation no longer looks up a
-role or a switchboard number with `co browser`, and says so in the page's
-`Uncertainties`. Before 1.8.8 investigation ran Codex with
+co rem gathers mail bodies and an attachment index (name, MIME type, size and
+mail ID) before the model starts. Investigation selects documents bearing on
+terms, money or identity and downloads them with `co gmail download` or
+`co outlook download` into its task directory. Each PDF and DOCX is cited or
+skipped with a reason in the run's lead ledger. Existing cached files are kept.
+The investigation Skill also supports read-only research and records unavailable
+sources in the lead ledger. Before 1.8.8 investigation ran Codex with
 `danger-full-access` and Claude with `bypassPermissions`, which gave anyone
 who could email the user an unattended agent with a shell, the network and
 the user's mailbox; a line in the prompt was the only defence.
@@ -915,11 +917,17 @@ reads from Claude Code itself. What you type after an import is read. The Codex
 CLI's plain three-key message is read as before. `$skill-name` counts in a
 skill page's Usage history use the same reading.
 
-PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
-attachments are read; XLSX needs `pip install 'connectonion[rem]'`, and
+Selected PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
+attachments can be read; XLSX needs `pip install 'connectonion[rem]'`, and
 without it a spreadsheet is named as unread with that command. Investigation passes full extracted text to chronological
 digest chunks instead of dropping a long attachment's tail. Unreadable
-formats/errors remain visible. The Skill supplements from the account's
+formats/errors remain visible. Attachment text is saved as a research capture
+and cited as `gmail:<short mail id>:<filename>` or
+`outlook:<short mail id>:<filename>`; the metadata index is a reading guide,
+not evidence. Billing notices from an organisation's domain enter its material
+when their subjects concern invoices, receipts, ABNs, billing or payment.
+Legal identifiers belong only on the page of the entity they name, including
+the owner's own company. The Skill supplements from the account's
 `co email` service, known documents and public sites, and reports what it
 could not search. Own-mail sent history currently has no paginated CLI;
 Jira discovery/auth is not connected to this co rem entry point yet.

@@ -99,6 +99,10 @@ Unknown — historical requests alone do not establish a current obligation. [2]
 - **`Our relationship` is with the entity**, not the sum of individual ones.
 - **`Terms` holds the numbers**: rates, dates, notice periods, what was signed
   and when. A changed term keeps both values and the date it changed.
+- **`Legal entity` holds that entity's ABN, ACN or company number**, with its
+  legal name and original citation. In invoices distinguish supplier, buyer and
+  payment recipient: each identifier belongs only on the page of the entity it
+  names. Remove the user's own company identifiers from other pages.
 - **Two parts of one organisation that never touch may be two pages.** Say so in
   `Uncertainties`; split only when the mail shows separate relationships.
 - **A company's own marketing is not knowledge about it.** Keep what the user

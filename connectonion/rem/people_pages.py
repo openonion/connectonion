@@ -231,6 +231,9 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
                                     record=row["record"])
     cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
     for item in items:
+        if item.get("role") == "attachments-index":
+            older += len(item["attachments"])
+            continue
         if item.get("role") == "attachment":
             older += 1
             continue

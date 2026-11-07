@@ -121,6 +121,10 @@ def org_mail(row: dict, domains: list[str], own: set, notices: set, known: set, 
     # 2026-10-20: the owner's company gathered 983 items in 505–816 s for 0–4
     # quotes; most of 577 resolved sources were notices to the owner's address.
     addresses = set(participants(row))
+    sender = _address(row.get('from', ''))
+    if (sender not in own and on_domains({'from': sender}, domains)
+            and re.search(r'\b(?:invoice|receipts?|ABN|billing|payment)\b', row.get('subject', ''), re.I)):
+        return True
     if _address(row.get('from', '')) in notices and not (known - own).intersection(addresses):
         return False
     if on_domains(row, domains):
