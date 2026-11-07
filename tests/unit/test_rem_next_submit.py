@@ -883,6 +883,45 @@ def test_native_insufficient_audit_accepts_complete_notes(trial, checkpoint_audi
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
 
+def test_native_unavailable_original_is_logged_after_round_cleanup(trial, monkeypatch):
+    from connectonion.rem import native_round
+    record, source = _feedback(trial)
+    book = Notebook(trial)
+    book.write(record, book.read(record).replace('## Open threads\n- Unknown — not investigated yet',
+        '## Open threads\n- Budget pending. [22]').replace('## Sources\n',
+        '## Sources\n- [22] gmail:not-archived\n'))
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('Budget pending. [22]',
+                                                       'Budget approval unconfirmed. [1][22]'))
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    assert '1 unavailable (not verified): [22]' in audit['audit_progress']
+    assert '[22]' not in audit['audit_progress'].partition('Now:')[2]
+    _audit_notes(audit)
+    Path(audit['candidate']).write_text(json.dumps({'verdict': 'INSUFFICIENT', 'findings': [{
+        'claim': 'Budget approval unconfirmed.', 'issue': 'Original [22] is unavailable',
+        'evidence': 'No excerpt supplied', 'required_correction': 'Provide [22] or remove the claim'}]}))
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    assert 'Budget approval unconfirmed.' in book.read(record)
+    assert 'gmail:not-archived' in book.read(record)
+
+    def finish(root, cursor, config, directory):
+        native_round.finish(root, cursor)
+
+    monkeypatch.setattr(native_round, 'prepare_task', finish)
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    assert native._new_task(trial, cursor, read_config(trial), {}, [])['outcome'] == 'done'
+    assert not Path(task['material']).exists()
+    completed = [row for row in service.run_logs(trial)
+                 if row.get('task_id') == task['id'] and row.get('sources_unavailable')]
+    assert len(completed) == 1
+    assert completed[0]['sources_unavailable'] == [{'citation': '22', 'source_id': 'gmail:not-archived',
+                                                   'reason': 'No readable original supplied'}]
+    assert 'insufficient' in completed[0]['factual_quality']
+
+
 @pytest.mark.parametrize('decision', [None, [], {'verdict': 'UNKNOWN', 'findings': []},
                                       {'verdict': 'INSUFFICIENT'}, {'verdict': 'PASS', 'findings': {}}])
 def test_native_invalid_decision_stays_in_claim_audit(trial, checkpoint_audit, decision):

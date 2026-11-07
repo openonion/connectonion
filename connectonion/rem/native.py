@@ -110,7 +110,8 @@ def _audit_progress(task):
     notes = directory / "notes.md"
     if task["stage"] != "claim-audit":
         return None
-    candidate = read_json(directory / "audit-material.json", {})["candidate"]
+    material = read_json(directory / "audit-material.json", {})
+    candidate = material["candidate"]
     checked, total, unchecked = audit_progress(candidate, directory)
     now = "Now: all citations checked; write audit-output.json from the notes and run the Submit command."
     if unchecked:
@@ -118,7 +119,10 @@ def _audit_progress(task):
         now = (f"Now: check {batch} (next {AUDIT_BATCH_SIZE} unchecked, in Sources order) "
                f"and append one line per citation to {notes} before doing anything else.")
     rejected = rejected_checkpoints(directory)
-    return f"Audit progress: {checked} of {total} citations checked ({notes}); {rejected} rejected\n{now}"
+    unavailable = material.get("unavailable_originals", [])
+    skipped = (f"; {len(unavailable)} unavailable (not verified): "
+               + " ".join(f"[{row['citation']}]" for row in unavailable)) if unavailable else ""
+    return f"Audit progress: {checked} of {total} citations checked ({notes}); {rejected} rejected{skipped}\n{now}"
 
 
 def _display(root, task):
@@ -581,8 +585,11 @@ def _accept(root, cursor, task, result):
     from . import native_round
     _readable_files(Path(task["directory"]))
     task.update(status="accepted", last_result={"outcome": "accepted"}, accepted_result=result)
+    review = read_json(Path(task["directory"]) / "review.json", {})
+    audit = {key: review[key] for key in ("sources_unavailable", "factual_quality")
+             if review.get("sources_unavailable")}
     _log(root, task, "completed", changed=result.get("changed", []),
-         record=task["record"], report=result.get("report", ""), render_stage=task["render_stage"])
+         record=task["record"], report=result.get("report", ""), render_stage=task["render_stage"], **audit)
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
     native_round.advance(root, cursor, task, result)
     runner.scrub_task(Path(task["directory"]))
