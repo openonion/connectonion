@@ -987,6 +987,9 @@ co rem start
 Both modes fire at the saved starts plus the same 15-minute follow-ups.
 The saved timezone must match this computer for these Codex modes. Exec runs
 with the PATH captured at installation, including user command directories.
+The resolved Codex executable is pinned in the job's `CODEX_CMD`; set this to
+the CLI executable itself, then run `co rem start` to apply a change. Python,
+shell and REM launcher commands are rejected to prevent recursive launches.
 Each turn has a process lock: a fire during a running turn is skipped. A turn
 ends after at most 50 minutes, terminating its child tools too. Keep the computer
 awake. No desktop app is needed for exec.
@@ -997,6 +1000,9 @@ job. Account-managed desktop tasks still require a confirmed pause before switch
 `co rem status` shows the installed runner and last exec turn result. Exec logs,
 last messages and receipts are under `.state/turns/`; `.state/last-turn.json`
 points to the latest turn. `co rem stop` removes the clock; a running turn can finish.
+Startup has a 30-second deadline. Configuration, command resolution and spawn
+errors leave a failed receipt with the reason, which `co rem status` displays
+alongside the turn log and the command to restart after fixing the cause.
 
 For `codex-app`, the desktop adopts a private local automation definition.
 Its wake job opens Codex 15 minutes before each fire. Keep the app open and the
