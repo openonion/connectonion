@@ -1,12 +1,12 @@
-"""Dashboard delivery — push the agent's ``dashboard.html`` to the browser.
+"""Control Center delivery — push the agent's HTML to the browser.
 
 The browser can't read a file inside the agent's container, so the Host reads
-``dashboard.html`` from the agent's project directory and sends it over the
+``.co/control-center.html`` (or a legacy alias) from the project directory and sends it over the
 already-authenticated WebSocket: once on connect, and again after each run. Kept
 deliberately dead simple — no filesystem watcher, no hashing, no plugin.
 
 The file is read off the event loop and capped at ``MAX_DASHBOARD_BYTES``: it is
-agent-authored, so load failures render an explanatory Home without stalling
+agent-authored, so load failures render an explanatory Control Center without stalling
 the host or exceeding the relay envelope. The post-run push is skipped when the file hasn't
 changed since this connection last saw it.
 """
@@ -22,7 +22,8 @@ from string import Template
 from ....console import Console
 from ....project import project_root
 
-DASHBOARD_FILE = "dashboard.html"
+CONTROL_CENTER_FILE = "control-center.html"
+DASHBOARD_FILE = "dashboard.html"  # compatibility alias
 CO_DIR = ".co"
 # An operator's own starting point for every agent they host. Optional; the bundled
 # template is used when it isn't there.
@@ -35,11 +36,11 @@ from ...transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
 
 
 def dashboard_error(message, session_id=None):
-    """Keep Home visible when loading fails, without exposing file contents."""
+    """Keep Control Center visible when loading fails, without exposing file contents."""
     Console().print(f"[yellow]Control Center: {message}[/yellow]")
     frame = {"type": "DASHBOARD_SNAPSHOT", "html":
              "<!doctype html><meta charset='utf-8'><h1>Control Center could not load</h1><p>"
-             + escape(message) + "</p><p>Correct the dashboard and reconnect to retry.</p>"}
+             + escape(message) + "</p><p>Correct the Control Center and reconnect to retry.</p>"}
     if session_id:
         frame["session_id"] = session_id
     return frame
@@ -50,12 +51,12 @@ def dashboard_error(message, session_id=None):
 # happened to be in the new directory.
 _project_dir = None
 
-# What to render when the agent has not written a Home page of its own. Set once
+# What to render when the agent has not written a Control Center page of its own. Set once
 # at host startup, for the same reason as _project_dir.
 _agent_metadata = None
 
 
-# Who a rendered Home is for. The starter's activity sections are read from
+# Who a rendered Control Center is for. The starter's activity sections are read from
 # .co/session_results.jsonl, which holds every caller's turns, prompt text
 # verbatim. Rendered once for everyone, a stranger on `trust: open` -- or any
 # contact on `careful` -- connected and read the owner's recent prompts in the
@@ -64,7 +65,7 @@ _agent_metadata = None
 # verified address: its own turns only, and the schedule (operator config, whose
 # rows can be a prompt and a failure reason) only for an admin.
 #
-# Admins see their own turns too, not everyone's: the page is a Home, not an
+# Admins see their own turns too, not everyone's: the page is a Control Center, not an
 # audit view, and "an identity sees only its own sessions" is a rule with no
 # exception to reason about. The operator's full history is in the log.
 #
@@ -80,28 +81,19 @@ def viewer_for(address, is_admin=False):
 
 
 def dashboard_path():
-    """Where this agent's Home page lives.
-
-    ``.co/dashboard.html``, beside ``.co/skills/`` — both are what the agent *is*,
-    as opposed to the logs and evals it accumulates.
-
-    A ``dashboard.html`` in the project root is the older location. One that is
-    already there is still served, and never moved or overwritten: an agent whose
-    Home silently disappeared on upgrade would be a worse bug than an inconsistent
-    path. New ones are written to ``.co/``.
-    """
+    """Prefer the Control Center filename, then the two legacy locations."""
     root = _project_dir or project_root()
-    preferred = root / CO_DIR / DASHBOARD_FILE
-    if preferred.exists():
-        return preferred
-    legacy = root / DASHBOARD_FILE
-    return legacy if legacy.exists() else preferred
+    preferred = root / CO_DIR / CONTROL_CENTER_FILE
+    for path in (preferred, root / CO_DIR / DASHBOARD_FILE, root / DASHBOARD_FILE):
+        if path.exists():
+            return path
+    return preferred
 
 
 def read_dashboard_snapshot(session_id=None, *, viewer):
-    """Build a ``DASHBOARD_SNAPSHOT`` frame for the current ``dashboard.html``.
+    """Build a ``DASHBOARD_SNAPSHOT`` frame for the current Control Center file.
 
-    Returns an explanatory Home page for unreadable or oversized files.
+    Returns an explanatory Control Center page for unreadable or oversized files.
     ``session_id`` is stamped so the relay routes it to the right client, matching
     every other server→client frame. ``viewer`` is who the page is rendered for
     (see ``EVERYONE``); it is keyword-only with no default so no socket path can
@@ -111,9 +103,9 @@ def read_dashboard_snapshot(session_id=None, *, viewer):
     if not path.exists():
         if _agent_metadata is None:
             # ensure_dashboard has not run, so there is nothing to render *about*.
-            # An embedder that never starts a host gets no Home, as before.
+            # An embedder that never starts a host gets no Control Center, as before.
             return None
-        # No file means "not customised", not "no Home": render the starter.
+        # No file means "not customised", not "no Control Center": render the starter.
         html = render_starter(_agent_metadata, viewer=viewer)
         frame = {"type": "DASHBOARD_SNAPSHOT", "html": html}
         if session_id:
@@ -122,17 +114,17 @@ def read_dashboard_snapshot(session_id=None, *, viewer):
     try:
         size = path.stat().st_size
     except OSError as e:
-        return dashboard_error(f"Could not inspect dashboard.html: {e}", session_id)
+        return dashboard_error(f"Could not inspect Control Center: {e}", session_id)
     if size > MAX_DASHBOARD_BYTES:
         return dashboard_error(
-            f"dashboard.html is {size:,} bytes; the limit is {MAX_DASHBOARD_BYTES:,} bytes (128 MiB).",
+            f"Control Center is {size:,} bytes; the limit is {MAX_DASHBOARD_BYTES:,} bytes (128 MiB).",
             session_id)
     try:
         html = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
         # The file is agent-authored: it can be a directory, a broken symlink, or
-        # binary. Any of those means "no Home", and the operator should hear why.
-        return dashboard_error(f"Could not read dashboard.html: {e}", session_id)
+        # binary. Any of those means "no Control Center", and the operator should hear why.
+        return dashboard_error(f"Could not read Control Center: {e}", session_id)
     frame = {"type": "DASHBOARD_SNAPSHOT", "html": html}
     if session_id:
         frame["session_id"] = session_id
@@ -140,7 +132,7 @@ def read_dashboard_snapshot(session_id=None, *, viewer):
     # Reserve a small envelope for session/counter fields and encryption tags.
     wire_bytes = len(json.dumps(frame, ensure_ascii=False).encode('utf-8'))
     if ((wire_bytes + 16 + 2) // 3) * 4 + 65536 > MAX_WEBSOCKET_MESSAGE_BYTES:
-        return dashboard_error("Dashboard exceeds the 256 MiB transport envelope after encoding.", session_id)
+        return dashboard_error("Control Center exceeds the 256 MiB transport envelope after encoding.", session_id)
     return frame
 
 
@@ -157,8 +149,9 @@ async def send_dashboard(send_msg, session_id, conn, force=False):
     The read runs in a worker thread — it's file I/O on the event loop otherwise.
     """
     try:
-        stat = dashboard_path().stat()
-        stamp = (stat.st_mtime_ns, stat.st_size)
+        path = dashboard_path()
+        stat = path.stat()
+        stamp = (str(path), stat.st_mtime_ns, stat.st_size)
     except OSError:
         # No file: the starter is rendered from metadata fixed at startup, so it
         # cannot change within a run. One stamp for the whole run means each
@@ -176,19 +169,19 @@ async def send_dashboard(send_msg, session_id, conn, force=False):
 
 
 def ensure_dashboard(agent_metadata, project_dir=None):
-    """Anchor the project directory, and remember what to render a Home from.
+    """Anchor the project directory, and remember what to render a Control Center from.
 
     Called once at host startup. **No file is written.** An agent that has not
-    written its own Home gets the bundled starter, rendered fresh on every read.
+    written its own Control Center gets the bundled starter, rendered fresh on every read.
 
     This used to write ``dashboard.html`` on first boot and then never touch it
     again, which sounds harmless and is not: the file froze whatever the starter
     looked like the first time that agent ever started, and no later improvement
-    to the starter could reach it. Every agent's Home was a fossil of the version
+    to the starter could reach it. Every agent's Control Center was a fossil of the version
     that happened to be installed on its first day, and the only way to see a
     change was to delete the file and remember why.
 
-    An agent that wants its own Home still writes ``.co/dashboard.html``; from
+    An agent that wants its own Control Center writes ``.co/control-center.html``; from
     that moment the file wins and nothing here overwrites it. The difference is
     that not having one is now a state rather than a one-time event.
     """
@@ -206,21 +199,6 @@ def published_skills(skills):
     """
     from ....useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     return [s for s in skills if s.get("location") in PUBLISHED_SKILL_LOCATIONS]
-
-
-# A flat list stays readable to about a dozen rows in a 440px pane. Past that,
-# show the first PREVIEW_ROWS and fold the rest behind one control.
-FLAT_MAX = 12
-
-# Eight, because the fold decides it rather than the content. A row is 56px plus
-# a 2px gap; the header block is ~135px and the disclosure ~44px, so 135 + 8x58 +
-# 44 lands the "more" control itself above the fold of a 440x800 pane. At nine
-# rows the escape hatch sits below the fold — something you must scroll to
-# discover, which is the problem it exists to solve.
-#
-# The gap to FLAT_MAX is deliberate: a fold can never hold fewer than four items,
-# so the page never offers "1 more skill" behind a click.
-PREVIEW_ROWS = 8
 
 
 def _parse_starter(path):
@@ -251,7 +229,7 @@ def _starter_templates():
     styling" needs no per-project copy. It replaces the *template*, not the page:
     every agent still renders its own name and its own skills, which a shared
     finished page could not do — the client validates each button against that
-    agent's published skills, so someone else's Home renders as dead buttons.
+    agent's published skills, so someone else's Control Center renders as dead buttons.
 
     An override only has to carry the parts it wants to change. Its fragments are
     layered over the bundled ones, so restyling the page shell — the common case —
@@ -275,7 +253,7 @@ def first_sentence(text, limit=None):
     """The human-facing part of a description.
 
     Skill descriptions are written for a model: a sentence of purpose followed by
-    paragraphs of instruction. Only the first sentence belongs on a Home page.
+    paragraphs of instruction. Only the first sentence belongs on a Control Center page.
     Clamping by pixels instead gave every row a different height and every
     description a mid-word ellipsis — "Use only for…", "verify exact…" — which is
     noise exactly where the page most needs to be read.
@@ -289,68 +267,84 @@ def first_sentence(text, limit=None):
     return head[:limit].rsplit(" ", 1)[0] + "…"
 
 
-def _skill_row(skill):
-    """One skill as a button: its real name, and what it does underneath.
+TITLE_ACRONYMS = frozenset({
+    "pr", "api", "ci", "cli", "pdf", "url", "ui", "ux", "ai", "llm", "sql", "seo", "http", "id", "sms",
+})
 
-    The name is shown verbatim — it is what you type (``/lark-base``), and
-    title-casing it turns ``nano-banana-us`` into "Nano Banana Us", which names
-    nothing. The description is what makes a list of 115 names usable at all.
+
+def skill_title(skill):
+    """What a person reads: SKILL.md's ``title:``, else the slug in sentence case.
+
+    Only the first letter is raised, so ``nano-banana-us`` becomes "Nano banana
+    us" -- plain, where title case made "Nano Banana Us" look like a brand name.
+    One-letter words are capitals: ``post-to-x`` reads "Post to X", and so are
+    the known acronyms in ``TITLE_ACRONYMS``: ``review-pr`` reads "Review PR".
+    The list is fixed on purpose; guessing from length would turn "to" into "TO".
+    """
+    title = " ".join(str(skill.get("title") or "").split())
+    if title:
+        return title
+    words = [w.upper() if len(w) == 1 or w.lower() in TITLE_ACRONYMS else w
+             for w in re.split(r"[-_\s]+", str(skill.get("name", ""))) if w]
+    text = " ".join(words)
+    return text[:1].upper() + text[1:]
+
+
+def _skill_row(skill, fragment="skill"):
+    """One skill as a button: its title, and what it does underneath.
+
+    ``data-ochat-skill`` keeps the slug, which is what runs it. The All skills
+    rows also show ``/slug``, because that is what you type, and it puts the slug
+    in the row's text so the filter finds ``/lark`` too.
     """
     _, fragments = _starter_templates()
-    return fragments["skill"].substitute(
+    return fragments[fragment].substitute(
         name=escape(str(skill.get("name", "")), quote=True),
+        title=escape(skill_title(skill)),
         description=escape(first_sentence(skill.get("description"))),
     ).strip()
 
 
 def _skill_sections(skills):
-    """The body of the starter dashboard: every published skill, reachable.
-
-    One alphabetical list. Past ``FLAT_MAX`` the first ``PREVIEW_ROWS`` are shown
-    and the rest sit behind a single disclosure.
-
-    This used to group by the prefix in the names — lark-*, stripe-* — an
-    inferred taxonomy built on a naming coincidence, and it was paid for at full
-    structural price: fifteen skills rendered as four group headers, three
-    visible rows, and a bucket called "other" holding the skills that belonged to
-    no family, sorted last. The page showed a fifth of its content and spent four
-    rows describing drawers.
-
-    Sorting alphabetically clusters those families anyway — ``lark-base`` and
-    ``lark-doc`` land next to each other with no header, no bucket and nothing
-    hidden. The taxonomy bought a label nobody needed and cost twelve skills of
-    visibility.
-    """
+    """Every published skill in the searchable All skills disclosure."""
     _, fragments = _starter_templates()
     if not skills:
-        return "  " + fragments["empty"].template.strip()
+        return fragments["empty"].template.strip()
+    rows = "\n".join(_skill_row(skill, "skill_all")
+                     for skill in sorted(skills, key=lambda s: s["name"]))
+    return fragments["list"].substitute(rows=rows)
 
-    ordered = sorted(skills, key=lambda s: s["name"])
 
-    def rows(members, indent):
-        return "\n".join(indent + _skill_row(s) for s in members)
+def _all_skills(skills):
+    """The All skills disclosure, or one plain line when there is nothing in it."""
+    _, fragments = _starter_templates()
+    if not skills:
+        return fragments["no_skills"].template.strip()
+    return fragments["capabilities"].substitute(
+        count=len(skills), rows=_skill_sections(skills)).strip()
 
-    if len(ordered) <= FLAT_MAX:
-        return "  " + fragments["list"].substitute(rows=rows(ordered, "    ")).strip()
 
-    head, tail = ordered[:PREVIEW_ROWS], ordered[PREVIEW_ROWS:]
-    return ("  " + fragments["list"].substitute(rows=rows(head, "    ")).strip()
-            + "\n  " + fragments["more"].substitute(
-                count=len(tail),
-                plural="s" if len(tail) != 1 else "",
-                rows=rows(tail, "      "),
-            ).strip())
+def suggested_prompts():
+    """The new-agent suggestions, shared with the statically served app."""
+    path = Path(__file__).parents[3] / "cli" / "assets" / "control-center" / "suggestions.json"
+    with path.open(encoding="utf-8") as source:
+        return json.load(source)
 
 
 def _quick_actions(skills):
-    """Up to three real skills, prominent without inventing unsupported actions."""
-    if not skills:
-        return ""
+    """Four published skills, or honest prompt suggestions for a new agent."""
     _, fragments = _starter_templates()
-    rows = "\n".join("      " + _skill_row(skill) for skill in sorted(
-        skills, key=lambda item: item["name"]
-    )[:3])
-    return "    " + fragments["quick"].safe_substitute(rows=rows).strip()
+    ordered = sorted(skills, key=lambda skill: skill["name"])[:4]
+    rows = [_skill_row(skill) for skill in ordered]
+    if not rows:
+        rows = [fragments["suggestion"].substitute(
+            # name: what operator templates written before titles still say.
+            title=escape(s["title"]), name=escape(s["title"]), description=escape(s["description"]),
+            prompt=escape(s["prompt"], quote=True),
+        ).strip() for s in suggested_prompts()]
+    return fragments["quick"].substitute(
+        title="Pinned skills" if ordered else "Suggested", rows="\n".join(rows)
+    ).strip()
 
 
 def _diagnostics(agent_metadata, skill_count):
@@ -358,6 +352,7 @@ def _diagnostics(agent_metadata, skill_count):
     _, fragments = _starter_templates()
     facts = []
     for label, value, class_name in (
+        ("Address", agent_metadata.get("address"), "addr"),
         ("Model", agent_metadata.get("model"), ""),
         ("Trust", agent_metadata.get("trust"), ""),
         ("Tools", len(agent_metadata.get("tools") or []), ""),
@@ -368,8 +363,6 @@ def _diagnostics(agent_metadata, skill_count):
         facts.append(fragments["diag"].safe_substitute(
             label=escape(str(label)), value=escape(str(value)), **{"class": class_name}
         ).strip())
-    if not facts:
-        return ""
     rows = "\n".join("      " + item for item in facts)
     return "    " + fragments["diagnostics"].safe_substitute(rows=rows).strip()
 
@@ -411,18 +404,23 @@ def _address_line(agent_metadata):
     return '<p class="addr">' + escape(str(address)) + '</p>'
 
 
+
+def _short_address(agent_metadata):
+    """Compact identity; the full address stays selectable under Host details."""
+    address = str(agent_metadata.get("address") or "")
+    if not address:
+        return ""
+    short = address[:6] + "…" + address[-4:] if len(address) > 14 else address
+    return ('<div class="address-row"><span class="address-short">' + escape(short)
+            + '</span><button class="copy" type="button" data-ochat-copy="'
+            + escape(address, quote=True) + '" aria-label="Copy agent address">Copy</button></div>')
+
+
 def render_starter(agent_metadata, viewer=EVERYONE):
-    """Build the day-zero dashboard HTML: who this agent is (name, address, one
-    line), with every skill it publishes folded under Capabilities.
+    """Render identity, a Run box, four shortcuts and folded detail sections.
 
-    Written once, then owned by the agent — so it has to be worth keeping, and it
-    has to hold up at both ends of the range. The pane it renders into is ~440px
-    wide (oo-chat's Home column), full-width on mobile, and occasionally a whole
-    browser window, which is why the layout is a single centred column with a
-    max-width rather than anything that stretches.
-
-    The markup and CSS live in ``starter/*.html`` — this function only decides what
-    goes in them. Design notes are in those files, next to the rules they explain.
+    The page is regenerated from current Host metadata. Markup and inline Fresh
+    tokens live in starter.html; old operator templates retain their placeholders.
     """
     skills = published_skills(agent_metadata.get("skills") or [])
     page, _ = _starter_templates()
@@ -431,18 +429,18 @@ def render_starter(agent_metadata, viewer=EVERYONE):
         name=escape(name),
         initial=escape(name.strip()[:1] or "A"),
         tagline=_tagline(agent_metadata),
+        short_address=_short_address(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
         # Compatibility for operator starter overrides written before Control
         # Center. The bundled template uses diagnostics; old templates may
         # still contain $address.
         address=_address_line(agent_metadata),
-        activity=_activity_sections(viewer),
-        # Owner, 2026-09-29: the page opens on a card (name, address, one
-        # line), not on the agent's skills. Kept for operator overrides that
-        # still name $quick_actions; the bundled page no longer does.
+        now=_now_section(viewer),
+        activity=_activity_sections(viewer) or '<p>No recent runs yet.</p>',
         quick_actions=_quick_actions(skills),
-        capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
-                          if skills else "None published"),
+        all_skills=_all_skills(skills),
+        # $capability_count and $body: operator templates from before $all_skills.
+        capability_count=len(skills),
         diagnostics=_diagnostics(agent_metadata, len(skills)),
         body=_skill_sections(skills),
     )
@@ -676,6 +674,43 @@ def _collapse(runs, scheduled):
                        "run": r})
     return folded
 
+# A run in one of these states is waiting on someone now, so it leads the page
+# instead of sitting in the closed Recent fold.
+LIVE = ("running", "waiting_approval", "waiting_input", "waiting_sign_in")
+
+
+def _pill(status):
+    """One status word and its mark (design standard section 4)."""
+    word, mark, tone = {
+        # Running's dot is drawn, 6px like the presence dot, not a glyph.
+        "running": ("Running", '<span class="dot" aria-hidden="true"></span>', "live"),
+        "waiting_approval": ("Needs approval", "!", "wait"),
+        "waiting_input": ("Needs input", "!", "wait"),
+        "waiting_sign_in": ("Needs sign-in", "!", "wait"),
+        "failed": ("Failed", "✕", "bad"),
+        "interrupted": ("Stopped", "■", ""),
+        "stopped": ("Stopped", "■", ""),
+        "declined": ("Declined", "⊘", ""),
+        "skipped": ("Skipped", "»", ""),
+    }.get(status, ("Done", "✓", "done"))
+    gap = "" if tone == "live" else " "
+    return f'<span class="pill {tone}">{mark}{gap}{word}</span>'
+
+
+def _now_section(viewer=EVERYONE):
+    """Runs waiting on someone right now, each with a way to it; nothing when idle."""
+    _, fragments = _starter_templates()
+    owner = EVERYONE if viewer is EVERYONE else viewer["address"]
+    live = [r for r in recent_runs(owner=owner) if r.get("status") in LIVE]
+    if not live:
+        return ""
+    rows = [fragments["now_row"].substitute(
+        pill=_pill(r.get("status")),
+        what=escape(_why(r.get("prompt") or "", limit=120) or "A task started in Chat"),
+    ).strip() for r in live]
+    return fragments["now"].substitute(rows="\n".join(rows)).strip()
+
+
 def _activity_sections(viewer=EVERYONE):
     """Both sections, or nothing at all.
 
@@ -751,35 +786,25 @@ def _activity_sections(viewer=EVERYONE):
             title="Schedule problems",
             rows="\n".join("      " + r for r in rows)).strip())
 
-    runs = recent_runs(owner=EVERYONE if everyone else viewer["address"])
+    runs = [r for r in recent_runs(owner=EVERYONE if everyone else viewer["address"])
+            if r.get("status") not in LIVE]     # those are in Now, above
     if runs:
         rows = []
         for item in _collapse(runs, scheduled):
             r = item["run"]          # the newest of a folded group
-            status = r.get("status")
-            if status == "running":
-                meta, tone = "running", "live"
-            elif status == "waiting_approval":
-                # It stopped and asked. Saying "done" here invites nobody to answer.
-                meta, tone = "waiting on you", "live"
-            elif status == "interrupted":
-                # Killed with its process — usually by a deploy. It may have
-                # finished its work first; nothing recorded how far it got, and
-                # "done" would claim it did. This is the same lie #536 took out
-                # of the Scheduled row, arriving through the other door.
-                meta, tone = "interrupted", "bad"
-            else:
-                ms = r.get("duration_ms")
-                meta = _took(ms) if isinstance(ms, (int, float)) else "done"
-                tone = ""
+            # Spans wrap as units; spaces keep old operator CSS readable too.
+            meta = _pill(r.get("status"))
+            ms = r.get("duration_ms")
+            if isinstance(ms, (int, float)):
+                meta += f" <span>{_took(ms)}</span>"
             created = r.get("created")
             if created:
-                meta += " · " + _ago(now.timestamp() - float(created))
+                meta += f" <span>{_ago(now.timestamp() - float(created))}</span>"
             what = item["label"][:80]
             if item["count"] > 1:
                 what += f"  ×{item['count']}"
             rows.append(row.safe_substitute(
-                what=escape(what), meta=escape(meta), tone=tone).strip())
+                what=escape(what), meta=meta, tone="").strip())
         out.append(section.safe_substitute(
             title="Recent", rows="\n".join("      " + r for r in rows)).strip())
 

@@ -28,8 +28,8 @@ def project(tmp_path, monkeypatch):
     return tmp_path
 
 
-def turn(project, prompt, address):
-    record = {"session_id": prompt, "status": "done", "prompt": prompt,
+def turn(project, prompt, address, status="done"):
+    record = {"session_id": prompt, "status": status, "prompt": prompt,
               "duration_ms": 900, "created": datetime.now(timezone.utc).timestamp(),
               "session": {"requester": {"address": address, "level": "contact"}}}
     with open(project / ".co" / "session_results.jsonl", "a", encoding="utf-8") as f:
@@ -69,7 +69,34 @@ def test_the_owner_sees_their_own_prompts_and_not_the_visitors(project):
 def test_a_visitor_with_no_turns_gets_no_recent_section(project):
     turn(project, "the code word is OCELOT", OWNER)
 
-    assert "Recent" not in snapshot_for(VISITOR)
+    html = snapshot_for(VISITOR)
+    assert "No recent runs yet." in html
+    assert "OCELOT" not in html
+
+
+@pytest.mark.parametrize("status", dash.LIVE)
+def test_a_visitor_does_not_see_the_owners_running_task_in_now(project, status):
+    turn(project, "the code word is OCELOT", OWNER, status=status)
+
+    visitor = snapshot_for(VISITOR)
+    assert "OCELOT" not in visitor
+    assert '<h2 id="now-title">Now</h2>' not in visitor
+    owner = snapshot_for(OWNER, is_admin=True)
+    assert '<h2 id="now-title">Now</h2>' in owner
+    assert "OCELOT" in owner
+
+
+@pytest.mark.parametrize("status", dash.LIVE)
+def test_a_non_admin_contact_sees_only_their_own_task_in_now(project, status):
+    turn(project, "the code word is OCELOT", OWNER, status=status)
+    turn(project, "another contact's private task", "0x" + "c" * 64, status=status)
+    turn(project, "prepare my own briefing", VISITOR, status=status)
+
+    contact = snapshot_for(VISITOR, is_admin=False)
+    now = contact.split('<h2 id="now-title">Now</h2>', 1)[1].split('</section>', 1)[0]
+    assert "prepare my own briefing" in now
+    assert "OCELOT" not in contact
+    assert "another contact" not in contact
 
 
 def test_the_schedule_is_shown_to_an_admin_only(project):

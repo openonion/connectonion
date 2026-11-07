@@ -1,5 +1,6 @@
 ---
 name: cli-skill-design
+title: Design a CLI and its skill
 description: Design a `co <thing>` CLI surface and its SKILL.md together so an agent can drive it without guessing — help teaches the workflow and serves as the skill source of truth, every command names the next step, and failures explain recovery; every page passes the CI help contract (example, what it changes, a way back). Use when adding a new CLI command group, writing or rewriting a SKILL.md for one, or auditing an existing one.
 ---
 

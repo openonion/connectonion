@@ -162,6 +162,6 @@ def test_a_session_still_waiting_says_so(tmp_path, monkeypatch):
                     "prompt": "zzasked-you", "created": time.time() - 60},
                    ensure_ascii=False) + "\n", encoding="utf-8")
 
-    html = dashboard._activity_sections()
+    html = dashboard._now_section()      # waiting on someone: Now, not Recent
     assert "zzasked-you" in html
     assert "done" not in html.lower().split("zzasked-you")[1][:120]

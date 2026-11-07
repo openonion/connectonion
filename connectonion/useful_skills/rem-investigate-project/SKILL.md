@@ -1,5 +1,6 @@
 ---
 name: rem-investigate-project
+title: "REM: investigate a project"
 description: The steps for investigating a project's page, composed after rem-investigate when the subject is under projects/.
 ---
 

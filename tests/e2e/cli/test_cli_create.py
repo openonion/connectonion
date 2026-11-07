@@ -54,6 +54,14 @@ class TestCliCreate:
             assert os.path.exists('my-agent')
             assert os.path.exists('my-agent/agent.py')
             assert os.path.exists('my-agent/.co/host.yaml')
+            app = Path('my-agent/.co/control-center/index.html').read_text()
+            assert '<title>Control Center</title>' in app
+            assert app.count('<textarea ') == 1
+            assert '>Run</button>' in app
+            assert 'All skills' in app and 'Host details' in app
+            assert not any(name in app for name in ('Workspace', 'Dashboard', 'Connect AI'))
+            assert Path('my-agent/.co/control-center/control-center.js').is_file()
+
 
     def test_create_without_name_prompts(self):
         """Test that create without name auto-generates directory name from template."""

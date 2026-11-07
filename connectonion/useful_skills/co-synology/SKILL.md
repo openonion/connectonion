@@ -1,5 +1,6 @@
 ---
 name: co-synology
+title: Synology NAS
 description: Inspect a configured Synology NAS and manage its ordinary files and sharing links with the twenty-command co syno core.
 ---
 

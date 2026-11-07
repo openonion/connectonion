@@ -1,283 +1,278 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$name · Control Center</title>
 <style>
-  /* Shared Control Center tokens. The page is self-contained: no remote assets,
-     scripts, inline handlers, or navigation. The chat bridge owns declarative
-     data-ochat-* controls; plain HTML remains usable when that bridge is absent. */
-  :root {
-    color-scheme: light dark;
-    --cc-bg: #f7f8f6;
-    --cc-surface: #ffffff;
-    --cc-surface-raised: #f0f2ee;
-    --cc-text: #171a17;
-    --cc-muted: #505650;
-    --cc-subtle: #626962;
-    --cc-border: #d9ddd7;
-    --cc-accent: #14733a;
-    --cc-accent-soft: #e2f3e7;
-    --cc-danger: #b42318;
-    --cc-focus: #075985;
-    --cc-radius-sm: 10px;
-    --cc-radius-md: 14px;
-    --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --cc-bg: #111411;
-      --cc-surface: #191d19;
-      --cc-surface-raised: #222722;
-      --cc-text: #f1f5f1;
-      --cc-muted: #bbc4bb;
-      --cc-subtle: #aeb7ae;
-      --cc-border: #343b34;
-      --cc-accent: #62d68a;
-      --cc-accent-soft: #173d25;
-      --cc-danger: #ff8a80;
-      --cc-focus: #7dd3fc;
-      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
-    }
-  }
-  * { box-sizing: border-box; }
-  html { background: var(--cc-bg); }
-  body {
-    margin: 0;
-    padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
-    background: var(--cc-bg);
-    color: var(--cc-text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
-  html, body { max-width: 100%; overflow-x: clip; }
-  main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
-  main { width: min(100%, 860px); margin: 0 auto; }
-  button, input, summary { font: inherit; }
-  button, summary { min-height: 44px; }
-  :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+/* from chat-ui/tokens.css v1, do not edit here */
+/* OpenOnion tokens v1. Canonical copy: chat-ui/tokens.css.
+   Copies elsewhere start with: from chat-ui/tokens.css v1, do not edit here.
 
-  .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
-  .eyebrow {
-    margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .11em; text-transform: uppercase;
-  }
-  .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .mark {
-    flex: none; display: grid; place-items: center; width: 42px; height: 42px;
-    border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
-    font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
-  }
-  h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
-  .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
-  .tagline:empty { display: none; }
-  .sub { margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+   Light is the only default. Dark is opt-in per product, once its sweep is done:
+     <html data-theme="auto">  follow the OS
+     <html data-theme="dark">  always dark
+   Importing this file alone never changes a page to dark. */
+:root {
+  /* Brand green "Fresh". The fill is only for the one action per card or region,
+     with --co-on-green on it. Dots, icons, links, identity marks and green words
+     use --co-green-text, never the fill. */
+  --co-green: #22d27a;
+  --co-green-hover: #1bbf6c;
+  --co-on-green: #05301b;
+  --co-green-soft: #e3faee;
+  --co-green-text: #0b7a42;
 
-  .grid { display: grid; gap: 14px; }
-  .stack { margin-top: 14px; }
-  .card {
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
-    background: var(--cc-surface); box-shadow: var(--cc-shadow);
-  }
-  .card-pad { padding: 16px; }
-  .section-title {
-    margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .09em; text-transform: uppercase;
-  }
+  --co-bg: #f6f8f7;
+  --co-surface: #ffffff;
+  --co-raised: #f0f4f2;
+  --co-ink: #101814;
+  --co-muted: #55605a;
+  --co-line: #dde4e0;
 
-  .now { display: flex; align-items: flex-start; gap: 11px; }
-  .now strong { display: block; font-size: 15px; }
-  .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
+  --co-warning: #8a5300;  --co-warning-soft: #fff2d4;
+  --co-danger:  #b42318;  --co-danger-soft:  #fdecea;
+  --co-neutral: #4f5a54;  --co-neutral-soft: #eceff0;
 
-  /* One action per row. At the pane width this page is written for the three
-     columns already collapsed; at desktop width they did not, and the card there
-     is about 460px — roughly 150px per action, which wrapped the names and cut
-     every description mid-word, an ellipsis landing wherever the pixels ran out.
-     A row fits the name and two readable lines under it at every width this page
-     is served at. */
-  .quick { display: grid; gap: 6px; align-content: start; }
-  .quick .skill {
-    min-height: 62px; padding: 11px 32px 11px 13px;
-    border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
-  }
-  .quick .skill::after { right: 14px; }
-  .quick .skill .desc {
-    white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  }
+  --co-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --co-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  .skill {
-    position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
-    border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-    color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
-  }
-  .skill::after {
-    content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-    border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
-    transform: translateY(-50%) rotate(45deg);
-  }
-  .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
-  .skill:active { background: var(--cc-accent-soft); }
-  .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
-  .skill .desc {
-    min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
-    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .skill .desc:empty { display: none; }
+  --co-radius-sm: 8px;   /* buttons, inputs */
+  --co-radius-md: 12px;  /* cards, tiles */
+  --co-radius-lg: 16px;  /* panes, sheets, dialogs */
+  --co-shadow-float: 0 8px 28px rgba(16, 24, 20, .12), 0 1px 2px rgba(16, 24, 20, .06);
+  /* Offset ring: a surface-coloured gap, then green. Visible on a green fill too. */
+  --co-focus: 0 0 0 2px var(--co-surface), 0 0 0 4px var(--co-green-text);
+}
 
-  details.card { overflow: clip; }
-  details.card > summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
+:root[data-theme="dark"] {
+  --co-green: #3be38f; --co-green-hover: #5ceca4; --co-on-green: #04291a;
+  --co-green-soft: #123826; --co-green-text: #5bea9e;
+  --co-bg: #0e1411; --co-surface: #161e1a; --co-raised: #1d2722;
+  --co-ink: #ecf3ef; --co-muted: #a3b0a8; --co-line: #2a3530;
+  --co-warning: #f5c56b; --co-warning-soft: #3a2a0b;
+  --co-danger: #ff9a8f;  --co-danger-soft: #3b1715;
+  --co-neutral: #b8c2bc; --co-neutral-soft: #26302b;
+  --co-shadow-float: 0 12px 32px rgba(0, 0, 0, .4);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --co-green: #3be38f; --co-green-hover: #5ceca4; --co-on-green: #04291a;
+    --co-green-soft: #123826; --co-green-text: #5bea9e;
+    --co-bg: #0e1411; --co-surface: #161e1a; --co-raised: #1d2722;
+    --co-ink: #ecf3ef; --co-muted: #a3b0a8; --co-line: #2a3530;
+    --co-warning: #f5c56b; --co-warning-soft: #3a2a0b;
+    --co-danger: #ff9a8f;  --co-danger-soft: #3b1715;
+    --co-neutral: #b8c2bc; --co-neutral-soft: #26302b;
+    --co-shadow-float: 0 12px 32px rgba(0, 0, 0, .4);
   }
-  details.card > summary::-webkit-details-marker { display: none; }
-  details.card > summary::after {
-    content: ""; flex: none; width: 8px; height: 8px;
-    border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
-    transform: rotate(45deg) translate(-2px, 2px);
-  }
-  details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
-  .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
-  .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
-  co-filter { display: block; min-height: 44px; margin-top: 12px; }
-  .rows { display: grid; gap: 2px; margin-top: 8px; }
-  .more { margin-top: 7px; }
-  .more > summary {
-    display: flex; align-items: center; justify-content: center; padding: 8px 12px;
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
-    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 680;
-  }
-  .more > summary::-webkit-details-marker { display: none; }
-  .more[open] > .rows { margin-top: 7px; }
-  .lbl-less { display: none; }
-  .more[open] .lbl-more { display: none; }
-  .more[open] .lbl-less { display: inline; }
-  .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
-  .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
-  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+}
 
-  .activity { display: grid; gap: 10px; }
-  .sec { padding: 14px 16px; }
-  .sec > h2 { margin: 0 0 6px; font-size: 12px; }
-  .act { display: flex; align-items: baseline; gap: 8px; min-height: 38px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .act:first-of-type { border-top: 0; }
-  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .act .meta { flex: none; color: var(--cc-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-  .act .bad { color: var(--cc-danger); }
-  .act .live { color: var(--cc-accent); font-weight: 680; }
+* { box-sizing: border-box; }
+html { color-scheme: light; background: var(--co-bg); }
+html[data-theme="dark"] { color-scheme: dark; }
+body { margin: 0; padding: 24px 16px 48px; color: var(--co-ink); background: var(--co-bg); font: 14px/1.5 var(--co-font); -webkit-font-smoothing: antialiased; }
+main { max-width: 640px; margin: 0 auto; }
+button, input, textarea, summary { font: inherit; color: inherit; }
+button, summary { min-height: 44px; cursor: pointer; }
+button { border: 0; background: transparent; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: none; box-shadow: var(--co-focus); }
+[hidden] { display: none !important; }
 
-  .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
-  .diag { display: grid; grid-template-columns: minmax(76px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
-  .diag:first-child { border-top: 0; }
-  .diag dt { color: var(--cc-subtle); }
-  .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
-  .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
+/* Identity: one quiet line. The name lives in the question below, once. */
+.identity { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.mark { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--co-green-soft); color: var(--co-green-text); font-size: 14px; font-weight: 700; text-transform: uppercase; }
+.address-row { display: flex; align-items: center; min-width: 0; color: var(--co-muted); }
+.address-short { font: 12px/1 var(--co-font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy { padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--co-muted); }
+.copy:hover:enabled { color: var(--co-ink); background: var(--co-raised); }
+.copy:disabled { color: var(--co-muted); }
+.presence { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--co-green-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.presence::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.presence.offline, .presence.connecting { color: var(--co-neutral); }
+.presence.offline::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; width: 7px; height: 7px; }
+.presence.failed { color: var(--co-danger); }
+.presence.failed::before { content: "✕"; width: auto; height: auto; background: transparent; font-size: 12px; }
+.retry { padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--co-ink); box-shadow: inset 0 0 0 1px var(--co-line); }
 
-  @media (min-width: 640px) {
-    .masthead { grid-template-columns: 1fr auto; align-items: end; }
-    /* Two columns only when there are two cards. An Agent that has published
-       nothing renders no Quick actions card, and the second column stayed
-       declared: the Workspace note sat at 40% width beside an empty half. Day
-       zero is exactly when an Agent has no published skills, so that was the
-       first thing `co host` showed most people. */
-    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; }
-    .overview:not(:has(.quick)) { grid-template-columns: 1fr; }
-    .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
-  }
-  @media (max-width: 520px) {
-    body { padding-inline: 10px; }
-    .quick .skill { min-height: 56px; }
-    .act { align-items: flex-start; flex-direction: column; gap: 1px; }
-    .act .what { white-space: normal; }
-    .diag { grid-template-columns: 1fr; gap: 2px; }
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .skill, summary { transition: background-color .14s ease, border-color .14s ease; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-  }
+/* The ask is the hero: the question is the page's headline and the field's label. */
+.ask { margin: 20px 0 32px; }
+.ask h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
+/* Docked beside O Chat (<html data-co-embed="docked">): the chat composer is the one
+   place to type, so the question and its field step aside and the name heads the page. */
+.docked-name { display: none; }
+html[data-co-embed="docked"] .ask h1 label, html[data-co-embed="docked"] .ask .tagline, html[data-co-embed="docked"] .ask .collapse { display: none; }
+html[data-co-embed="docked"] .ask h1 .docked-name { display: inline; font-size: 20px; }
+html[data-co-embed="docked"] .ask { margin-bottom: 24px; }
+.tagline { margin: 4px 0 0; color: var(--co-muted); overflow-wrap: anywhere; }
+.tagline:empty { display: none; }
+.collapse { display: grid; grid-template-rows: 1fr; }
+.collapse > * { min-height: 0; overflow: hidden; }
+.field { margin-top: 16px; border: 2px solid var(--co-line); border-radius: 12px; background: var(--co-surface); }
+.field:focus-within { border-color: var(--co-green-text); }
+textarea { display: block; width: 100%; min-height: 96px; resize: none; border: 0; padding: 18px 18px 8px; font-size: 16px; line-height: 1.5; color: var(--co-ink); background: transparent; }
+textarea:focus-visible { box-shadow: none; }
+textarea::placeholder { color: var(--co-muted); }
+.run-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px 10px 18px; }
+.hint { margin: 0; font-size: 13px; color: var(--co-muted); min-width: 0; }
+.hint[data-state="error"] { color: var(--co-danger); }
+.hint[data-state="success"] { color: var(--co-green-text); }
+.run { flex: none; min-width: 88px; border-radius: 8px; padding: 0 20px; background: var(--co-green); color: var(--co-on-green); font-size: 14px; font-weight: 600; }
+.run:hover:enabled { background: var(--co-green-hover); }
+.run:disabled { background: var(--co-neutral-soft); color: var(--co-muted); }
+/* The one secondary action: a line, never a second fill. */
+.open-chat { flex: none; padding: 0 12px; border-radius: 8px; background: var(--co-surface); box-shadow: inset 0 0 0 1px var(--co-line); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.open-chat:hover { background: var(--co-raised); }
+.open-chat:focus-visible { box-shadow: inset 0 0 0 1px var(--co-line), var(--co-focus); }
+@media (hover: hover) and (pointer: fine) { .run, .open-chat { min-height: 36px; } }
+
+/* Pressing Run: the ask folds away and its run takes the stage as one row. */
+.running-row, .now-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 12px 12px 12px 16px; border: 1px solid var(--co-line); border-radius: 12px; background: var(--co-surface); }
+.running-row { display: none; margin-top: 16px; }
+.running-row .what, .now-row .what { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ask[data-ochat-state="running"] .running-row { display: flex; }
+.ask[data-ochat-state="running"] .collapse { grid-template-rows: 0fr; }
+.ask[data-ochat-state="running"] .field { visibility: hidden; }
+
+/* Now: runs waiting on someone, above everything else that can wait. */
+.now { margin: 0 0 32px; }
+.now h2 { margin-bottom: 8px; }
+.now-row + .now-row { margin-top: 8px; }
+
+/* While a run is going the pins are disabled; say why, only then. */
+.pins-note { display: none; margin: -4px 0 8px; font-size: 12px; color: var(--co-muted); }
+body:has(.ask[data-ochat-state="running"]) .pins-note { display: block; }
+body:has(.ask[data-ochat-state="running"]) .pins .skill { pointer-events: none; }
+body:has(.ask[data-ochat-state="running"]) .pins .name { color: var(--co-muted); }
+
+/* Sections */
+h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--co-muted); }
+.pins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; margin: 0 -12px; }
+.skill { display: flex; flex-direction: column; justify-content: flex-start; align-items: start; width: 100%; min-width: 0; min-height: 56px; padding: 8px 12px; border-radius: 8px; text-align: left; }
+.skill:hover:enabled { background: var(--co-raised); }
+.skill:hover:enabled .name { color: var(--co-green-text); }
+.skill:disabled { opacity: 1; }
+.skill:disabled .name { color: var(--co-muted); }
+.name { max-width: 100%; font-size: 14px; font-weight: 600; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc { max-width: 100%; font-size: 13px; line-height: 1.4; color: var(--co-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.desc:empty { display: none; }
+.title-row { display: flex; align-items: baseline; gap: 8px; max-width: 100%; min-width: 0; }
+.slug { flex: none; font: 12px var(--co-font-mono); color: var(--co-muted); }
+.no-skills { display: flex; align-items: center; min-height: 52px; margin: 0; border-bottom: 1px solid var(--co-line); color: var(--co-muted); font-size: 13px; }
+.no-skills code { margin-left: 4px; font: 12px var(--co-font-mono); color: var(--co-ink); }
+
+/* Folds: the rest, one row each, a count where there is one. */
+.folds { margin-top: 24px; border-top: 1px solid var(--co-line); }
+details { border-bottom: 1px solid var(--co-line); }
+summary { position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 28px 0 0; font-weight: 600; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { position: absolute; right: 6px; top: 50%; content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--co-muted); border-bottom: 1.5px solid var(--co-muted); transform: translateY(-70%) rotate(45deg); }
+details[open] > summary::after { transform: translateY(-20%) rotate(225deg); }
+summary:hover::after { border-color: var(--co-ink); }
+.count { margin-left: auto; color: var(--co-muted); font-size: 13px; font-weight: 400; }
+.details-body { padding: 0 0 16px; }
+.capability-rows { display: grid; margin: 0 -12px; }
+.filter, co-filter { display: block; width: 100%; margin-bottom: 8px; }
+.filter { min-height: 44px; border: 1px solid var(--co-line); border-radius: 8px; padding: 0 12px; background: var(--co-surface); color: var(--co-ink); }
+.filter::placeholder { color: var(--co-muted); }
+.empty, .details-body > p { margin: 0; color: var(--co-muted); font-size: 13px; }
+.empty code { font: 12px var(--co-font-mono); color: var(--co-ink); }
+
+/* Recent */
+.sec + .sec { margin-top: 16px; }
+.sec h2 { font-size: 12px; margin-bottom: 0; }
+.sec:only-child h2 { display: none; }
+.act { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; font-size: 13px; }
+.act + .act { border-top: 1px solid var(--co-line); }
+.what { min-width: 0; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 4px 8px; flex-shrink: 0; max-width: 55%; color: var(--co-muted); font-size: 12px; text-align: right; }
+.meta.live { color: var(--co-green-text); }
+.meta.bad { color: var(--co-danger); }
+.pill .dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+.pill { display: inline-block; flex: none; border-radius: 999px; padding: 2px 8px; background: var(--co-neutral-soft); color: var(--co-neutral); font-size: 12px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.pill.live, .pill.done { color: var(--co-green-text); background: var(--co-green-soft); }
+.pill.bad { color: var(--co-danger); background: var(--co-danger-soft); }
+.pill.wait { color: var(--co-warning); background: var(--co-warning-soft); }
+
+/* Host details */
+.diagnostics { margin: 0; padding: 0 0 16px; }
+.diag { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 6px 0; font-size: 13px; }
+.diag dt { color: var(--co-muted); }
+.diag dd { margin: 0; overflow-wrap: anywhere; }
+.recent p { margin: 0; padding: 10px 0; font-size: 13px; overflow-wrap: anywhere; }
+.recent p + p { border-top: 1px solid var(--co-line); }
+.recent b { font-weight: 600; }
+.addr, .revision { font: 12px/1.6 var(--co-font-mono); user-select: all; }
+
+/* Phone: pill and button share the top line; the task gets the full width under them. */
+@media (max-width: 480px) {
+  .running-row, .now-row { flex-wrap: wrap; row-gap: 4px; align-items: flex-start; }
+  .running-row .pill, .now-row .pill { margin-top: 10px; }
+  .running-row .open-chat, .now-row .open-chat { margin-left: auto; align-self: flex-start; }
+  .running-row .what, .now-row .what { order: 3; flex-basis: 100%; }
+}
+@media (max-width: 400px) {
+  body { padding-top: 16px; }
+  .ask { margin-top: 16px; }
+  .ask h1 { font-size: 20px; }
+  .pins { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pill.live .dot, .presence.connecting::before { animation: pulse 1.6s ease-in-out infinite; }
+  .collapse { transition: grid-template-rows 180ms ease; }
+  .field { transition: visibility 0s; }
+  .ask[data-ochat-state="running"] .field { transition: visibility 0s 180ms; }
+  .ask[data-ochat-state="running"] .running-row { animation: arrive 180ms ease-out both; }
+}
+@keyframes pulse { 50% { opacity: .5; } }
+@keyframes arrive { from { transform: translateY(-12px); opacity: 0; } }
 </style>
 </head>
 <body>
-  <main>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Control Center</p>
-        <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
-        $address
-        <p class="tagline">$tagline</p>
-      </div>
-    </header>
-
-    <div class="grid overview">
-      <section class="card card-pad" aria-labelledby="workspace-title">
-        <h2 class="section-title" id="workspace-title">Workspace</h2>
-        <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
-      </section>
-    </div>
-
-    <div class="grid stack">
-$activity
-      <details class="card capabilities">
-        <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
-        <div class="details-body">
-          <co-filter target="#capability-list" placeholder="Search capabilities"></co-filter>
-          <div class="capability-rows" id="capability-list">
-$body
-          </div>
-        </div>
-      </details>
+<main>
+<header class="identity"><span class="mark" aria-hidden="true">$initial</span>$short_address<span class="presence">Online</span></header>
+<form class="ask" data-ochat-prompt>
+  <h1><label for="run-prompt">What should $name do?</label><span class="docked-name">$name</span></h1>
+  <p class="tagline">$tagline</p>
+  <div class="collapse"><div><div class="field">
+    <textarea id="run-prompt" name="prompt" rows="3" placeholder="Describe a task" required maxlength="10000"></textarea>
+    <div class="run-actions"><p class="hint">Opens in Chat so you can follow it</p><button class="run" type="submit">Run</button></div>
+  </div></div></div>
+  <div class="running-row"><span class="pill live"><span class="dot" aria-hidden="true"></span>Running</span><span class="what" data-ochat-task></span><button class="open-chat" type="button" data-ochat-open="chat">Open in Chat</button></div>
+</form>
+$now
+$quick_actions
+<div class="folds">
+  $all_skills
+  <details><summary>Recent</summary><div class="details-body">$activity</div></details>
 $diagnostics
-    </div>
-  </main>
+</div>
+</main>
 </body>
 </html>
-
 <!--FRAGMENTS
-Everything below this marker is render scaffolding and never reaches the page.
-Placeholders use string.Template syntax; do not use dollar signs elsewhere.
+Render scaffolding. Only the page above is sent to the client.
 -->
-
-<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
-
-<template id="list"><div class="rows">
-$rows
-  </div></template>
-
-<template id="more"><details class="more">
-    <summary><span class="lbl-more">$count more skill$plural</span><span class="lbl-less">Show fewer</span></summary>
-    <div class="rows">
-$rows
+<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$title</span><span class="desc">$description</span></button></template>
+<template id="skill_all"><button class="skill" type="button" data-ochat-skill="$name"><span class="title-row"><span class="name">$title</span><span class="slug">/$name</span></span><span class="desc">$description</span></button></template>
+<template id="suggestion"><button class="skill" type="button" data-ochat-prompt="$prompt"><span class="name">$title</span><span class="desc">$description</span></button></template>
+<template id="capabilities"><details class="capabilities">
+    <summary><span>All skills</span><span class="count">$count</span></summary>
+    <div class="details-body">
+      <co-filter target="#capability-list" placeholder="Search skills"></co-filter>
+      <div class="capability-rows" id="capability-list">$rows</div>
     </div>
   </details></template>
-
-<template id="empty"><section class="empty">
-    <p>No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p>
-  </section></template>
-
-<template id="quick"><section class="card card-pad" aria-labelledby="quick-title">
-    <h2 class="section-title" id="quick-title">Quick actions</h2>
-    <div class="quick">
+<template id="no_skills"><p class="no-skills">No skills yet. Add one to<code>.co/skills/</code></p></template>
+<template id="now"><section class="now" aria-labelledby="now-title"><h2 id="now-title">Now</h2>
 $rows
-    </div>
-  </section></template>
-
-<template id="activity"><section class="card sec">
-    <h2 class="section-title">$title</h2>
-$rows
-  </section></template>
-
+</section></template>
+<template id="now_row"><div class="now-row">$pill<span class="what">$what</span><button class="open-chat" type="button" data-ochat-open="chat">Open in Chat</button></div></template>
+<template id="list">$rows</template>
+<template id="empty"><p class="empty">No published skills yet. Add one to <code>.co/skills/</code>.</p></template>
+<template id="quick"><section aria-labelledby="quick-title"><h2 id="quick-title">$title</h2><p class="pins-note">Available when the current task finishes.</p><div class="pins">$rows</div></section></template>
+<template id="activity"><section class="sec"><h2>$title</h2>$rows</section></template>
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
-
-<template id="diagnostics"><details class="card diagnostics-card">
-    <summary><span>Diagnostics</span><span class="count">Host details</span></summary>
-    <dl class="diagnostics">
-$rows
-    </dl>
-  </details></template>
-
+<template id="diagnostics"><details><summary>Host details</summary><dl class="diagnostics">$rows</dl></details></template>
 <template id="diag"><div class="diag"><dt>$label</dt><dd class="$class">$value</dd></div></template>

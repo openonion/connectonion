@@ -81,3 +81,34 @@ and still require browser/user grants. Do not put credentials in the public bund
 For a visual preview, serve this directory with a static server. It has no Agent
 authority until opened in an approved O Chat session. Focus/fullscreen preserve the
 existing iframe; **New tab** opens an O Chat session shell that restores Host state.
+
+## First screen and identity
+
+Use the name Control Center (控制中心) everywhere, including phone navigation.
+The first screen uses inline `chat-ui/tokens.css` v1 Fresh tokens, light by default;
+set `data-theme="dark"` or `"auto"` on the root to opt into dark mode. It contains
+one Run box, four pinned published skills (alphabetical shortcuts), or four prompt
+suggestions when none are published, then folded All skills, Recent and Host details.
+Do not add a second composer. All actions use the existing SDK connection.
+
+The question "What should {name} do?" is the page's headline and the Run box's label,
+so the agent's name appears once. Pinned items are a quiet list, not cards. Keep the
+standard's scale: sizes 12/13/14/16/20/24, weights 400/600/700, radius 8 for buttons
+and inputs, 12 for cards, one Fresh fill (Run) per region, 44px touch targets and one
+column under 400px. While a run is in flight the form carries `data-ochat-state="running"`
+and folds into a single "● Running" row showing the task; it unfolds when the agent is
+idle again. That is the page's one motion (180ms), and it is off under
+`prefers-reduced-motion`. Its "Open in Chat" button posts
+`{type: 'connectonion.control-center/open-chat'}` to the parent origin.
+Skills read as their `title` (else the slug in sentence case); All skills adds `/slug`.
+New-agent suggestions live in `suggestions.json`, which the Host's starter page also reads.
+
+Presence maps `connected` to Online, `reconnecting` to Connecting… and `disconnected`
+to Offline. Task state remains separate. Buttons are disabled while offline/busy.
+The copy button copies the full address; Host details retains selectable full text.
+The current bridge supplies `agentAddress` but does not guarantee an agent name;
+this starter reads optional `agentName`, falling back to Agent. O Chat/SDK should
+supply the profile name and pass its theme to finish identity/theme integration.
+The snapshot's declarative `data-ochat-prompt`/`data-ochat-copy` contract is described
+in `docs/network/control-center.md`; this app uses `sendMessage` and the Clipboard
+API instead. Clipboard permission may need declaring for the approved iframe.

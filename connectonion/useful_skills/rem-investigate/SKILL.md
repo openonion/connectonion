@@ -1,5 +1,6 @@
 ---
 name: rem-investigate
+title: "REM: investigate a subject"
 description: Investigate one subject and write a complete, cited page.
 ---
 

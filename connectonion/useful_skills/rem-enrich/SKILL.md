@@ -1,5 +1,6 @@
 ---
 name: rem-enrich
+title: "REM: follow open leads"
 description: Find the leads a page has not followed — links, attachments, names, older threads — follow them, and add what they establish.
 ---
 

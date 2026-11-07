@@ -248,6 +248,7 @@ include = [
     "connectonion/**/*.example",
     "connectonion/**/*.html",
     "connectonion/**/*.js",
+    "connectonion/cli/assets/control-center/*.json",
     "connectonion/cli/templates/**/Dockerfile",
 ]
 

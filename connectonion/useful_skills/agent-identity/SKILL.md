@@ -1,5 +1,6 @@
 ---
 name: agent-identity
+title: Check agent identity
 description: Verify an agent's live address and billing account before sharing a chat link, diagnosing a deploy mismatch, or deciding why two hosts share an identity.
 ---
 

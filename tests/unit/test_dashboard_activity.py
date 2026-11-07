@@ -44,7 +44,8 @@ class TestNothingToSay:
         """The day-zero page must not grow an empty box."""
         html = dash.render_starter({"name": "billing", "skills": []})
 
-        assert "Recent" not in html
+        assert "<summary>Recent</summary>" in html
+        assert "No recent runs yet." in html
         assert "Scheduled" not in html
 
     def test_an_agent_with_a_schedule_but_no_runs_still_shows_the_schedule(self, project):
@@ -60,6 +61,30 @@ class TestNothingToSay:
 
 
 class TestRecentRuns:
+    def test_old_operator_act_template_keeps_recent_metadata_readable(self, project, monkeypatch):
+        from html.parser import HTMLParser
+
+        class Text(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.parts = []
+
+            def handle_data(self, data):
+                self.parts.append(data)
+
+        override = project / 'starter.html'
+        override.write_text(
+            '$activity\n<!--FRAGMENTS\n<template id="activity">$rows</template>\n'
+            '<template id="act"><div class="act"><span>$what</span>'
+            '<small>$meta</small></div></template>', encoding='utf-8')
+        monkeypatch.setattr(dash, 'STARTER_OVERRIDE', override)
+        dash._starter_templates.cache_clear()
+        sessions(project, done('zzfinished', ms=3000, ago_s=120))
+        text = Text()
+        text.feed(dash.render_starter({'name': 'billing', 'skills': []}))
+        assert '✓ Done 3.0s 2m ago' in ''.join(text.parts)
+        dash._starter_templates.cache_clear()
+
     def test_the_last_runs_appear_newest_first(self, project):
         # Distinctive prompts on purpose. "first"/"second" would match the
         # stylesheet — `.act:first-child` — and the assertion would be about
@@ -88,7 +113,7 @@ class TestRecentRuns:
         html = dash.render_starter({"name": "billing", "skills": []})
 
         assert "long one" in html
-        assert "running" in html
+        assert '<span class="dot" aria-hidden="true"></span>Running' in html
 
     def test_the_newest_state_of_a_session_wins(self, project):
         """The log is append-only: one line for running, another for done. The
@@ -283,3 +308,42 @@ class TestDoneDoesNotClaimSuccess:
 
         assert "failed" in scheduled
         assert "bad" in scheduled          # carries the error tone
+
+
+@pytest.mark.parametrize('status, label', [
+    ('running', '<span class="dot" aria-hidden="true"></span>Running'), ('waiting_approval', '! Needs approval'),
+    ('waiting_input', '! Needs input'), ('waiting_sign_in', '! Needs sign-in'),
+    ('failed', '✕ Failed'), ('interrupted', '■ Stopped'),
+    ('declined', '⊘ Declined'), ('skipped', '» Skipped'), ('done', '✓ Done'),
+])
+def test_recent_statuses_use_standard_words_and_marks(project, status, label):
+    sessions(project, {'session_id': 's', 'status': status, 'prompt': '<script>private</script>'})
+    html = dash.render_starter({'name': 'billing', 'skills': []})
+    assert label in html
+    assert '<script>private</script>' not in html
+    assert '&lt;script&gt;private&lt;/script&gt;' in html
+
+
+class TestNow:
+    """A run waiting on someone leads the page; the closed Recent fold is for the rest."""
+
+    def test_live_runs_sit_in_now_above_pinned_with_a_way_to_chat(self, project):
+        sessions(project,
+                 {"session_id": "a", "status": "waiting_approval", "prompt": "clean the build folder"},
+                 {"session_id": "b", "status": "running", "prompt": "release notes"},
+                 done("zzfinished"))
+        html = dash.render_starter({"name": "billing", "skills": [
+            {"name": "daily-brief", "description": "d", "location": "project"}]})
+        now = html.split('<h2 id="now-title">Now</h2>', 1)[1].split("</section>", 1)[0]
+
+        assert "! Needs approval" in now and "clean the build folder" in now
+        assert '<span class="dot" aria-hidden="true"></span>Running' in now
+        assert now.count('data-ochat-open="chat"') == 2
+        assert html.index('id="now-title"') < html.index('id="quick-title"')
+        recent = html.split("<summary>Recent</summary>", 1)[1]
+        assert "zzfinished" in recent and "clean the build folder" not in recent
+
+    def test_an_idle_agent_has_no_now_section(self, project):
+        sessions(project, done("zzfinished"))
+        html = dash.render_starter({"name": "billing", "skills": []})
+        assert "now-title" not in html

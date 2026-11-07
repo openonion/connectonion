@@ -1,5 +1,6 @@
 ---
 name: rem-investigate-skill
+title: "REM: investigate a skill"
 description: The steps for investigating a skill catalog page, composed after rem-investigate when the subject is under skills/.
 ---
 

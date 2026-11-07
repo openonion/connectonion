@@ -963,12 +963,12 @@ contract is documented in `oo-api/docs/relay-announce-profile.md`.
 
 #### DASHBOARD_SNAPSHOT
 
-The agent's Control Center HTML (customized through the compatible
-`dashboard.html` filename) for the client to render beside chat. Sent right after
-`CONNECTED` so the Control Center paints before any input, and again after
-`OUTPUT` when the run changed the file. Agents without a `dashboard.html` never send
-it, and the frame is skipped when the file hasn't changed since this connection last
-saw it.
+The agent's Control Center HTML, customized through `.co/control-center.html`
+(with `dashboard.html` aliases), for the client to render beside chat. Sent right
+after `CONNECTED` so the Control Center paints before any input, and again after
+`OUTPUT` when the run changed the file. Agents without a custom snapshot receive
+the bundled starter. The frame is skipped when the custom file has not changed
+since this connection last saw it.
 
 ```json
 {

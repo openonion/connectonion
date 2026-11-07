@@ -1,5 +1,6 @@
 ---
 name: rem-investigate-org
+title: "REM: investigate an organisation"
 description: The steps for investigating an organisation's page, composed after rem-investigate when the subject is under orgs/.
 ---
 

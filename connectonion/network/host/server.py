@@ -271,7 +271,8 @@ def _extract_agent_metadata(create_agent: Callable,
         "name": name or sample.name,
         "tools": sample.tools.names(),
         "model": sample.llm.model,
-        "skills": [{"name": s.name, "description": s.description, "location": s.location}
+        "skills": [{"name": s.name, "title": s.title,
+                    "description": s.description, "location": s.location}
                    for s in raw_skills],
     }
     # Managed-key (co/*) agents have an OpenOnion account balance; publish it so

@@ -1,5 +1,6 @@
 ---
 name: asr
+title: Transcribe audio
 description: Transcribe an existing audio file with configurable Codex or ConnectOnion cloud ASR.
 ---
 

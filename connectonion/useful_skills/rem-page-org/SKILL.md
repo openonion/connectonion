@@ -1,5 +1,6 @@
 ---
 name: rem-page-org
+title: "REM: organisation page"
 description: What an organisation's page in the notebook is made of — the fixed sections, when a company earns a page at all instead of staying a field on a person's, and the rules that keep it from becoming a second copy of everyone who works there. Composed into every stage that writes one.
 ---
 

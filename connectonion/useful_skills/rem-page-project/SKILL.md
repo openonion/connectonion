@@ -1,5 +1,6 @@
 ---
 name: rem-page-project
+title: "REM: project page"
 description: 'A project page a new teammate understands in one screen: what it is, why, where it stands, what is next.'
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: co-linear
+title: Linear issues
 description: Work with the user's Linear issues through `co linear` — list their open issues for a standup, file a bug from a report, comment on an issue and close it. Use when the user mentions Linear, a Linear issue id like ENG-123, "my tickets", "file this bug", or closing an issue.
 ---
 

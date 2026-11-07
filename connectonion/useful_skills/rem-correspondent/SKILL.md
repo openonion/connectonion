@@ -1,5 +1,6 @@
 ---
 name: rem-correspondent
+title: "REM: investigate someone else"
 description: Rules for investigating someone other than the user — composed after rem-investigate-person for every person page except the user's own.
 ---
 

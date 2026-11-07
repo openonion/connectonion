@@ -4,6 +4,7 @@ from pathlib import Path
 
 EXPECTED_DEFAULTS = {
     "dashboard",
+    "control-center",
     "topup",
     "install-connectonion",
     "co-browser",
@@ -44,7 +45,7 @@ def test_both_skill_readers_expose_the_same_defaults(tmp_path, monkeypatch):
 def test_default_library_skills_have_one_canonical_body():
     from connectonion.skills_catalog import default_skill_path
 
-    for name in EXPECTED_DEFAULTS - {"dashboard", "topup"}:
+    for name in EXPECTED_DEFAULTS - {"dashboard", "control-center", "topup"}:
         path = default_skill_path(name)
         assert path is not None
         assert "useful_skills" in path.parts
@@ -67,3 +68,29 @@ def test_release_skill_is_neither_default_nor_auto_approved():
     body = (useful_skills_dir() / "ship-feature" / "SKILL.md").read_text(encoding="utf-8")
     frontmatter, _ = _parse_skill_content(body)
     assert not frontmatter.get("tools")
+
+
+def test_dashboard_is_a_short_redirect_to_control_center():
+    from connectonion.useful_plugins.skills import _load_skill
+    preferred = _load_skill('control-center')
+    alias = _load_skill('dashboard')
+    assert preferred['frontmatter']['name'] == 'control-center'
+    assert alias['frontmatter']['name'] == 'dashboard'
+    assert alias['instructions'] == 'Renamed: use control-center.'
+    assert alias['frontmatter']['description'].startswith('Renamed: use control-center.')
+    for trigger in ('update my dashboard', 'redesign my home', 'update my Control Center',
+                    'redesign my Control Center', '/dashboard', '/control-center'):
+        assert trigger in alias['frontmatter']['description']
+    assert len(Path(alias['path']).read_text().splitlines()) == 5
+    assert '.co/control-center.html' in preferred['instructions']
+
+
+def test_co_ai_lists_one_full_control_center_skill_and_a_short_redirect(tmp_path, monkeypatch):
+    from connectonion.cli.co_ai.skills.loader import discover_skills
+
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path / 'home'))
+    skills = {skill.name: skill for skill in discover_skills(tmp_path)}
+    alias = skills['dashboard']
+    assert alias.description.startswith('Renamed: use control-center.')
+    assert alias.description != skills['control-center'].description
+    assert alias.load_content().splitlines()[-1] == 'Renamed: use control-center.'

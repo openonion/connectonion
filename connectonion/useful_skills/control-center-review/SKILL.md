@@ -1,5 +1,6 @@
 ---
 name: control-center-review
+title: Review a Control Center build
 description: Review one captured Control Center build before runtime activation.
 ---
 

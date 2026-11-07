@@ -1,5 +1,6 @@
 ---
 name: rem-owner-page
+title: "REM: the owner's page"
 description: The owner's work, commitments and next decisions.
 ---
 

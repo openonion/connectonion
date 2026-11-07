@@ -1,5 +1,6 @@
 ---
 name: rem-project-sessions
+title: "REM: project from sessions"
 description: Write or update one project page from the owner's messages and a bounded packet of local project evidence.
 ---
 

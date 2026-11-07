@@ -1,5 +1,6 @@
 ---
 name: rem-page-skill
+title: "REM: skill page"
 description: A skill page for judging usefulness, observed reliability and how to start, grounded in run evidence.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: oo
+title: Connect to another agent
 description: Connect to a remote ConnectOnion agent, set up a publishable identity, publish selected skills, or follow and sync another publisher. Use for a 0x agent address, /oo, co announce, or co sub workflows; not for ordinary local-agent tasks.
 ---
 

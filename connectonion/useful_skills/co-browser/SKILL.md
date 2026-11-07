@@ -1,5 +1,6 @@
 ---
 name: co-browser
+title: Browser
 description: Drive one persistent, logged-in browser from the shell with `co browser`. Use when the user asks to open a page, log into a site, scrape/extract page content, fill forms, upload files, take screenshots, or automate any browser task — solo or with multiple agents sharing the browser.
 ---
 

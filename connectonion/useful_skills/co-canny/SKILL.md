@@ -1,5 +1,6 @@
 ---
 name: co-canny
+title: Canny feedback
 description: Work with Canny customer feedback through `co canny` — a weekly feedback digest, the top-voted open requests, finding duplicates, and marking a request planned while telling its voters. Use when the user mentions Canny, feature requests, feedback boards, votes, roadmap status or the Canny changelog.
 ---
 

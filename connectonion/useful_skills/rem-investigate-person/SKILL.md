@@ -1,5 +1,6 @@
 ---
 name: rem-investigate-person
+title: "REM: investigate a person"
 description: Read a person’s identity, relationship and obligations from gathered evidence.
 ---
 

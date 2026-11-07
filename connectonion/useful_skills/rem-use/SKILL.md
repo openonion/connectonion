@@ -1,5 +1,6 @@
 ---
 name: rem-use
+title: "REM: look something up"
 description: Retrieve context from an existing co rem through the local co rem inspection commands. Use to answer questions about its recorded people, projects, decisions, knowledge or commitments; this preview does not start collection or edit notes.
 ---
 

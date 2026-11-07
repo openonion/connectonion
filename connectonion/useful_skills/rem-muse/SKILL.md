@@ -1,5 +1,6 @@
 ---
 name: rem-muse
+title: "REM: think a page through"
 description: Think one page through slowly over several turns in one thread — ask many questions, pick the five worth pursuing, study each, and write only when a question yields an insight.
 ---
 

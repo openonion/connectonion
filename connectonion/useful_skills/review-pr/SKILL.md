@@ -1,5 +1,6 @@
 ---
 name: review-pr
+title: Review a pull request
 description: Review GitHub pull requests. Use when user says "review PR", "review pull request", or "/review-pr".
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: rem-source-codex
+title: "REM: Codex sessions"
 description: Where the user's own words are inside Codex CLI sessions, how that store is laid out, and what this source has already taught us. Loaded alongside whichever stage Skill is running when the material comes from Codex.
 ---
 

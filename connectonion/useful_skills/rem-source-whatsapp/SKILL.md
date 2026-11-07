@@ -1,5 +1,6 @@
 ---
 name: rem-source-whatsapp
+title: "REM: WhatsApp chats"
 description: What is true of WhatsApp chats as a co rem source — who is speaking, why the agent's own replies are missing, how a group differs from a person, and what a photo in the batch means. Loaded alongside whichever stage Skill is running when the material comes from WhatsApp.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: co-inbox
+title: Feishu and Lark inbox
 description: Drive `co feishu` / `co lark` — a chat bot as a directory of files. Use when an agent must receive messages from a Feishu or Lark group, reply to them, or run a command per message. Covers setup by QR, the nine verbs, the queue's guarantees, and every exit code.
 ---
 

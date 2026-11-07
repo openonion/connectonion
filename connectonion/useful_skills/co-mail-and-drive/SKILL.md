@@ -1,5 +1,6 @@
 ---
 name: co-mail-and-drive
+title: Mail and Drive
 description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts and the Outlook calendar, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, a meeting on their Outlook calendar, or a file in Drive.
 ---
 

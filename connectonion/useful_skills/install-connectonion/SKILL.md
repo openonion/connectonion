@@ -1,5 +1,6 @@
 ---
 name: install-connectonion
+title: Install ConnectOnion
 description: Install and set up ConnectOnion on Windows, macOS, or Linux, initialize global credentials, and verify the requested CLI capabilities. Use for "install connectonion", "set up connectonion", "get me started with co", or missing installation/configuration. Project scaffolding requires an explicit project path.
 ---
 

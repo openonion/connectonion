@@ -1,5 +1,6 @@
 ---
 name: oo-subscribe
+title: Follow published skills
 description: Follow, refresh, inspect, or remove another publisher's ConnectOnion skills with co sub. Use for published agent subscriptions; use co skills for importing local skills.
 ---
 

@@ -95,6 +95,8 @@ class SkillInfo:
     description: str
     location: str  # project | claude-project | user | claude-user | builtin
     path: Optional[Path] = None
+    # What a person reads ("Post to X"); `name` stays what they type (/post-to-x).
+    title: str = ""
     requirements: Optional[SkillRequirements] = None
 
 
@@ -268,13 +270,13 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
 # the strict reader won: "neither invents a reading of a file that has a syntax
 # error in it", and `tools:` is fed to _grant_skill_permissions — guessing it
 # from a file that does not parse would widen an agent's permissions on the
-# strength of a line split. These two only decide whether the model is told the
-# skill exists and what it is for.
-_RECOVERABLE_KEYS = ('name', 'description')
+# strength of a line split. These only decide whether the model is told the
+# skill exists, what it is for and what a person sees it called.
+_RECOVERABLE_KEYS = ('name', 'title', 'description')
 
 
 def _read_frontmatter(yaml_text: str) -> Dict[str, Any]:
-    """Frontmatter as YAML; if YAML refuses, rescue the name and description.
+    """Frontmatter as YAML; if YAML refuses, rescue name, title and description.
 
     This returned `{}` on a YAMLError, which was chosen on purpose — the strict
     reader replaced a line splitter, and `co doctor` was taught to name the file
@@ -404,6 +406,7 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
             result.append(SkillInfo(
                 name=name, description=description, location=location,
                 path=skill_file, requirements=requirements,
+                title=str(frontmatter.get('title') or ''),
             ))
 
     return result

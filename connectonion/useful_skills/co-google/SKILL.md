@@ -1,5 +1,6 @@
 ---
 name: co-google
+title: Google account
 description: Route Google account work to Gmail, Drive, Calendar, and YouTube CLI commands using one locally saved login.
 ---
 

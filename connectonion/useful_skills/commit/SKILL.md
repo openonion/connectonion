@@ -1,5 +1,6 @@
 ---
 name: commit
+title: Commit changes
 description: Create git commits with good messages. Use when user says "commit", "create commit", or asks to commit changes.
 ---
 

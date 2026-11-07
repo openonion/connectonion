@@ -1,5 +1,6 @@
 ---
 name: rem
+title: REM notebook round
 description: Run a REM notebook round in this session with co rem next and submit.
 ---
 

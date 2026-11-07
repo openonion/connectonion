@@ -1,5 +1,6 @@
 ---
 name: find-selling-points
+title: Find selling points
 description: Mine the codebase for capabilities worth telling people about — the surprising, user-facing ones — and prove each against source before it may be published. Use when writing or auditing marketing copy, a landing page, a README, a launch post, or when asked "what is actually good about this" / "找卖点" / "提炼宣传点".
 tools:
   - read_file

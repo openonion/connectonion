@@ -1,280 +1,259 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Connect AI · Control Center</title>
-  <style>
-    /* This is the interactive version of CO AI's canonical starter.html.
-       Keep its tokens, landmarks, and responsive structure in sync with
-       connectonion/network/host/ws_router/starter.html. */
-    :root {
-      color-scheme: light dark;
-      --cc-bg: #f7f8f6;
-      --cc-surface: #ffffff;
-      --cc-surface-raised: #f0f2ee;
-      --cc-text: #171a17;
-      --cc-muted: #505650;
-      --cc-subtle: #626962;
-      --cc-border: #d9ddd7;
-      --cc-accent: #14733a;
-      --cc-accent-soft: #e2f3e7;
-      --cc-danger: #b42318;
-      --cc-focus: #075985;
-      --cc-radius-sm: 10px;
-      --cc-radius-md: 14px;
-      --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --cc-bg: #111411;
-        --cc-surface: #191d19;
-        --cc-surface-raised: #222722;
-        --cc-text: #f1f5f1;
-        --cc-muted: #bbc4bb;
-        --cc-subtle: #aeb7ae;
-        --cc-border: #343b34;
-        --cc-accent: #62d68a;
-        --cc-accent-soft: #173d25;
-        --cc-danger: #ff8a80;
-        --cc-focus: #7dd3fc;
-        --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
-      }
-    }
-    * { box-sizing: border-box; }
-    html { background: var(--cc-bg); }
-    body {
-      margin: 0;
-      padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
-      background: var(--cc-bg);
-      color: var(--cc-text);
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
-    }
-    html, body { max-width: 100%; overflow-x: clip; }
-    main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
-    main { width: min(100%, 920px); margin: 0 auto; }
-    button, input, textarea, summary { font: inherit; }
-    button, input, summary { min-height: 48px; }
-    :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
-    [hidden] { display: none !important; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Center</title>
+<style>
+/* from chat-ui/tokens.css v1, do not edit here */
+/* OpenOnion tokens v1. Canonical copy: chat-ui/tokens.css.
+   Copies elsewhere start with: from chat-ui/tokens.css v1, do not edit here.
 
-    .masthead { display: grid; gap: 14px; margin-bottom: 22px; }
-    .eyebrow {
-      margin: 0 0 6px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-      letter-spacing: .11em; text-transform: uppercase;
-    }
-    .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .mark {
-      flex: none; display: grid; place-items: center; width: 42px; height: 42px;
-      border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
-      font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
-    }
-    h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
-    .tagline { margin: 8px 0 0; max-width: 58ch; font-size: 14px; color: var(--cc-muted); }
-    /* The connection state is the one live fact in the header, so it sits in the
-       masthead's second column as a pill rather than as a fourth stacked line of
-       text under the tagline. */
-    .sub {
-      display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 7px 12px;
-      border: 1px solid var(--cc-border); border-radius: 999px; background: var(--cc-surface);
-      color: var(--cc-muted); font-size: 12px; font-weight: 620; white-space: nowrap;
-      justify-self: start;  /* a grid item would otherwise stretch the pill to the column */
-    }
-    .connection-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cc-subtle); }
-    .sub.connected { border-color: color-mix(in srgb, var(--cc-accent) 38%, var(--cc-border)); color: var(--cc-text); }
-    .sub.connected .connection-dot { background: var(--cc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cc-accent) 16%, transparent); }
+   Light is the only default. Dark is opt-in per product, once its sweep is done:
+     <html data-theme="auto">  follow the OS
+     <html data-theme="dark">  always dark
+   Importing this file alone never changes a page to dark. */
+:root {
+  /* Brand green "Fresh". The fill is only for the one action per card or region,
+     with --co-on-green on it. Dots, icons, links, identity marks and green words
+     use --co-green-text, never the fill. */
+  --co-green: #22d27a;
+  --co-green-hover: #1bbf6c;
+  --co-on-green: #05301b;
+  --co-green-soft: #e3faee;
+  --co-green-text: #0b7a42;
 
-    .grid { display: grid; gap: 14px; }
-    .stack { margin-top: 22px; gap: 8px; }
-    .card {
-      border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
-      background: var(--cc-surface); box-shadow: var(--cc-shadow);
-    }
-    .card-pad { padding: 18px; }
-    .section-title {
-      margin: 0 0 12px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-      letter-spacing: .09em; text-transform: uppercase;
-    }
+  --co-bg: #f6f8f7;
+  --co-surface: #ffffff;
+  --co-raised: #f0f4f2;
+  --co-ink: #101814;
+  --co-muted: #55605a;
+  --co-line: #dde4e0;
 
-    .composer { display: grid; gap: 10px; }
-    textarea {
-      display: block; width: 100%; min-height: 88px; max-height: 240px; resize: vertical;
-      padding: 11px 12px; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
-      background: var(--cc-surface-raised); color: var(--cc-text); line-height: 1.45;
-    }
-    textarea::placeholder { color: var(--cc-subtle); }
-    textarea:hover { border-color: var(--cc-subtle); }
-    .composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .send {
-      display: inline-flex; min-width: 88px; min-height: 48px; align-items: center; justify-content: center;
-      padding: 9px 15px; border: 1px solid var(--cc-accent); border-radius: var(--cc-radius-sm);
-      background: var(--cc-accent); color: var(--cc-bg); font-weight: 760; cursor: pointer;
-    }
-    .send:hover:not(:disabled) { filter: brightness(1.06); }
-    .send:active:not(:disabled) { transform: translateY(1px); }
-    button:disabled { cursor: not-allowed; opacity: .48; }
-    .status { margin: 0; color: var(--cc-muted); font-size: 12px; }
-    .status[data-state="pending"] { color: var(--cc-focus); }
-    .status[data-state="success"] { color: var(--cc-accent); }
-    .status[data-state="error"] { color: var(--cc-danger); }
+  --co-warning: #8a5300;  --co-warning-soft: #fff2d4;
+  --co-danger:  #b42318;  --co-danger-soft:  #fdecea;
+  --co-neutral: #4f5a54;  --co-neutral-soft: #eceff0;
 
-    /* One action per row, not three across. This card is about 460px wide, so
-       three columns gave each action ~150px: every name wrapped ("reconcile-
-       payments") and every description was cut mid-word, the ellipsis landing
-       wherever the pixel budget ran out. A full-width row fits the name and a
-       readable line of its description, and it fills the card instead of leaving
-       a dead band under three short tiles. */
-    .quick { display: grid; gap: 6px; }
-    .quick .skill {
-      min-height: 62px; padding: 11px 32px 11px 13px;
-      border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
-    }
-    .quick .skill::after { right: 14px; }
-    .quick .skill .desc {
-      white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    }
+  --co-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --co-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    .skill {
-      position: relative; display: flex; flex-direction: column; justify-content: center;
-      width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
-      border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-      color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
-    }
-    .skill::after {
-      content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-      border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
-      transform: translateY(-50%) rotate(45deg);
-    }
-    .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
-    .skill:active { background: var(--cc-accent-soft); }
-    .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
-    .skill .desc {
-      min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
-      line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .skill .desc:empty { display: none; }
+  --co-radius-sm: 8px;   /* buttons, inputs */
+  --co-radius-md: 12px;  /* cards, tiles */
+  --co-radius-lg: 16px;  /* panes, sheets, dialogs */
+  --co-shadow-float: 0 8px 28px rgba(16, 24, 20, .12), 0 1px 2px rgba(16, 24, 20, .06);
+  /* Offset ring: a surface-coloured gap, then green. Visible on a green fill too. */
+  --co-focus: 0 0 0 2px var(--co-surface), 0 0 0 4px var(--co-green-text);
+}
 
-    /* The three closed panels are reference, not the task. They share one quieter
-       surface so the eye goes to the workspace above them, and the group reads as
-       one block instead of three identical bars competing with it. */
-    details.card { overflow: clip; box-shadow: none; background: var(--cc-surface); }
-    details.card > summary {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 13px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
-    }
-    details.card > summary:hover { background: var(--cc-surface-raised); }
-    details[open].card { box-shadow: var(--cc-shadow); }
-    details.card > summary::-webkit-details-marker { display: none; }
-    details.card > summary::after {
-      content: ""; flex: none; width: 8px; height: 8px;
-      border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
-      transform: rotate(45deg) translate(-2px, 2px);
-    }
-    details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
-    .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
-    .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
-    .filter {
-      width: 100%; margin-top: 12px; padding: 9px 12px; border: 1px solid var(--cc-border);
-      border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); color: var(--cc-text);
-    }
-    .rows { display: grid; gap: 2px; margin-top: 8px; }
-    .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
-    .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
-    code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+:root[data-theme="dark"] {
+  --co-green: #3be38f; --co-green-hover: #5ceca4; --co-on-green: #04291a;
+  --co-green-soft: #123826; --co-green-text: #5bea9e;
+  --co-bg: #0e1411; --co-surface: #161e1a; --co-raised: #1d2722;
+  --co-ink: #ecf3ef; --co-muted: #a3b0a8; --co-line: #2a3530;
+  --co-warning: #f5c56b; --co-warning-soft: #3a2a0b;
+  --co-danger: #ff9a8f;  --co-danger-soft: #3b1715;
+  --co-neutral: #b8c2bc; --co-neutral-soft: #26302b;
+  --co-shadow-float: 0 12px 32px rgba(0, 0, 0, .4);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --co-green: #3be38f; --co-green-hover: #5ceca4; --co-on-green: #04291a;
+    --co-green-soft: #123826; --co-green-text: #5bea9e;
+    --co-bg: #0e1411; --co-surface: #161e1a; --co-raised: #1d2722;
+    --co-ink: #ecf3ef; --co-muted: #a3b0a8; --co-line: #2a3530;
+    --co-warning: #f5c56b; --co-warning-soft: #3a2a0b;
+    --co-danger: #ff9a8f;  --co-danger-soft: #3b1715;
+    --co-neutral: #b8c2bc; --co-neutral-soft: #26302b;
+    --co-shadow-float: 0 12px 32px rgba(0, 0, 0, .4);
+  }
+}
 
-    .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
-    .diag { display: grid; grid-template-columns: minmax(92px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
-    .diag:first-child { border-top: 0; }
-    .diag dt { color: var(--cc-subtle); }
-    .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-    .addr, .revision { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
-    .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
+* { box-sizing: border-box; }
+html { color-scheme: light; background: var(--co-bg); }
+html[data-theme="dark"] { color-scheme: dark; }
+body { margin: 0; padding: 24px 16px 48px; color: var(--co-ink); background: var(--co-bg); font: 14px/1.5 var(--co-font); -webkit-font-smoothing: antialiased; }
+main { max-width: 640px; margin: 0 auto; }
+button, input, textarea, summary { font: inherit; color: inherit; }
+button, summary { min-height: 44px; cursor: pointer; }
+button { border: 0; background: transparent; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: none; box-shadow: var(--co-focus); }
+[hidden] { display: none !important; }
 
-    @media (min-width: 640px) {
-      .masthead { grid-template-columns: 1fr auto; align-items: end; }
-      #connection { justify-self: end; }
-      .overview { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
-      .overview.single { grid-template-columns: 1fr; }
-      /* The two cards stay the same height and the composer spends the
-         difference on the textarea. Letting them find their own heights left an
-         L-shaped hole beside the shorter one; padding the shorter one out with
-         empty space would have been worse. The quick list keeps its rows at
-         their natural height, so a card with one skill does not stretch it. */
-      .overview > .card { display: flex; flex-direction: column; }
-      .overview .composer { flex: 1; grid-template-rows: minmax(88px, 1fr) auto; }
-      .quick { align-content: start; }
-      .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
-    }
-    @media (max-width: 520px) {
-      body { padding-inline: 10px; }
-      .quick .skill { min-height: 56px; }
-      .composer-actions { align-items: stretch; flex-direction: column; }
-      .send { width: 100%; }
-      .diag { grid-template-columns: 1fr; gap: 2px; }
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      .skill, summary, .send { transition: background-color .14s ease, border-color .14s ease, filter .14s ease; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-    }
-  </style>
+/* Identity: one quiet line. The name lives in the question below, once. */
+.identity { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.mark { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--co-green-soft); color: var(--co-green-text); font-size: 14px; font-weight: 700; }
+.address-row { display: flex; align-items: center; min-width: 0; color: var(--co-muted); }
+.address-short { font: 12px/1 var(--co-font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy { padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--co-muted); }
+.copy:hover:enabled { color: var(--co-ink); background: var(--co-raised); }
+.copy:disabled { color: var(--co-muted); }
+.presence { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--co-green-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.presence::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.presence.offline, .presence.connecting { color: var(--co-neutral); }
+.presence.offline::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; width: 7px; height: 7px; }
+.presence.failed { color: var(--co-danger); }
+.presence.failed::before { content: "✕"; width: auto; height: auto; background: transparent; font-size: 12px; }
+.retry { padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--co-ink); box-shadow: inset 0 0 0 1px var(--co-line); }
+
+/* The ask is the hero: the question is the page's headline and the field's label. */
+.ask { margin: 20px 0 32px; }
+.ask h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.tagline { margin: 4px 0 0; color: var(--co-muted); overflow-wrap: anywhere; }
+.tagline:empty { display: none; }
+.collapse { display: grid; grid-template-rows: 1fr; }
+.collapse > * { min-height: 0; overflow: hidden; }
+.field { margin-top: 16px; border: 2px solid var(--co-line); border-radius: 12px; background: var(--co-surface); }
+.field:focus-within { border-color: var(--co-green-text); }
+textarea { display: block; width: 100%; min-height: 96px; resize: none; border: 0; padding: 18px 18px 8px; font-size: 16px; line-height: 1.5; color: var(--co-ink); background: transparent; }
+textarea:focus-visible { box-shadow: none; }
+textarea::placeholder { color: var(--co-muted); }
+.run-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px 10px 18px; }
+.hint { margin: 0; font-size: 13px; color: var(--co-muted); min-width: 0; }
+.hint[data-state="error"] { color: var(--co-danger); }
+.hint[data-state="success"] { color: var(--co-green-text); }
+.run { flex: none; min-width: 88px; border-radius: 8px; padding: 0 20px; background: var(--co-green); color: var(--co-on-green); font-size: 14px; font-weight: 600; }
+.run:hover:enabled { background: var(--co-green-hover); }
+.run:disabled { background: var(--co-neutral-soft); color: var(--co-muted); }
+/* The one secondary action: a line, never a second fill. */
+.open-chat { flex: none; padding: 0 12px; border-radius: 8px; background: var(--co-surface); box-shadow: inset 0 0 0 1px var(--co-line); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.open-chat:hover { background: var(--co-raised); }
+.open-chat:focus-visible { box-shadow: inset 0 0 0 1px var(--co-line), var(--co-focus); }
+@media (hover: hover) and (pointer: fine) { .run, .open-chat { min-height: 36px; } }
+
+/* Pressing Run: the ask folds away and its run takes the stage as one row. */
+.running-row, .now-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 12px 12px 12px 16px; border: 1px solid var(--co-line); border-radius: 12px; background: var(--co-surface); }
+.running-row { display: none; margin-top: 16px; }
+.running-row .what, .now-row .what { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ask[data-ochat-state="running"] .running-row { display: flex; }
+.ask[data-ochat-state="running"] .collapse { grid-template-rows: 0fr; }
+.ask[data-ochat-state="running"] .field { visibility: hidden; }
+
+/* Now: runs waiting on someone, above everything else that can wait. */
+.now { margin: 0 0 32px; }
+.now h2 { margin-bottom: 8px; }
+.now-row + .now-row { margin-top: 8px; }
+
+/* While a run is going the pins are disabled; say why, only then. */
+.pins-note { display: none; margin: -4px 0 8px; font-size: 12px; color: var(--co-muted); }
+body:has(.ask[data-ochat-state="running"]) .pins-note { display: block; }
+body:has(.ask[data-ochat-state="running"]) .pins .skill { pointer-events: none; }
+body:has(.ask[data-ochat-state="running"]) .pins .name { color: var(--co-muted); }
+
+/* Sections */
+h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--co-muted); }
+.pins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; margin: 0 -12px; }
+.skill { display: flex; flex-direction: column; justify-content: flex-start; align-items: start; width: 100%; min-width: 0; min-height: 56px; padding: 8px 12px; border-radius: 8px; text-align: left; }
+.skill:hover:enabled { background: var(--co-raised); }
+.skill:hover:enabled .name { color: var(--co-green-text); }
+.skill:disabled { opacity: 1; }
+.skill:disabled .name { color: var(--co-muted); }
+.name { max-width: 100%; font-size: 14px; font-weight: 600; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc { max-width: 100%; font-size: 13px; line-height: 1.4; color: var(--co-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.desc:empty { display: none; }
+.title-row { display: flex; align-items: baseline; gap: 8px; max-width: 100%; min-width: 0; }
+.slug { flex: none; font: 12px var(--co-font-mono); color: var(--co-muted); }
+.no-skills { display: flex; align-items: center; min-height: 52px; margin: 0; border-bottom: 1px solid var(--co-line); color: var(--co-muted); font-size: 13px; }
+.no-skills code { margin-left: 4px; font: 12px var(--co-font-mono); color: var(--co-ink); }
+
+/* Folds: the rest, one row each, a count where there is one. */
+.folds { margin-top: 24px; border-top: 1px solid var(--co-line); }
+details { border-bottom: 1px solid var(--co-line); }
+summary { position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 28px 0 0; font-weight: 600; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { position: absolute; right: 6px; top: 50%; content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--co-muted); border-bottom: 1.5px solid var(--co-muted); transform: translateY(-70%) rotate(45deg); }
+details[open] > summary::after { transform: translateY(-20%) rotate(225deg); }
+summary:hover::after { border-color: var(--co-ink); }
+.count { margin-left: auto; color: var(--co-muted); font-size: 13px; font-weight: 400; }
+.details-body { padding: 0 0 16px; }
+.capability-rows { display: grid; margin: 0 -12px; }
+.filter, co-filter { display: block; width: 100%; margin-bottom: 8px; }
+.filter { min-height: 44px; border: 1px solid var(--co-line); border-radius: 8px; padding: 0 12px; background: var(--co-surface); color: var(--co-ink); }
+.filter::placeholder { color: var(--co-muted); }
+.empty, .details-body > p { margin: 0; color: var(--co-muted); font-size: 13px; }
+.empty code { font: 12px var(--co-font-mono); color: var(--co-ink); }
+
+/* Recent */
+.sec + .sec { margin-top: 16px; }
+.sec h2 { font-size: 12px; margin-bottom: 0; }
+.sec:only-child h2 { display: none; }
+.act { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; font-size: 13px; }
+.act + .act { border-top: 1px solid var(--co-line); }
+.what { min-width: 0; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 4px 8px; flex-shrink: 0; max-width: 55%; color: var(--co-muted); font-size: 12px; text-align: right; }
+.meta.live { color: var(--co-green-text); }
+.meta.bad { color: var(--co-danger); }
+.pill .dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+.pill { display: inline-block; flex: none; border-radius: 999px; padding: 2px 8px; background: var(--co-neutral-soft); color: var(--co-neutral); font-size: 12px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.pill.live, .pill.done { color: var(--co-green-text); background: var(--co-green-soft); }
+.pill.bad { color: var(--co-danger); background: var(--co-danger-soft); }
+.pill.wait { color: var(--co-warning); background: var(--co-warning-soft); }
+
+/* Host details */
+.diagnostics { margin: 0; padding: 0 0 16px; }
+.diag { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 6px 0; font-size: 13px; }
+.diag dt { color: var(--co-muted); }
+.diag dd { margin: 0; overflow-wrap: anywhere; }
+.recent p { margin: 0; padding: 10px 0; font-size: 13px; overflow-wrap: anywhere; }
+.recent p + p { border-top: 1px solid var(--co-line); }
+.recent b { font-weight: 600; }
+.addr, .revision { font: 12px/1.6 var(--co-font-mono); user-select: all; }
+
+/* Phone: pill and button share the top line; the task gets the full width under them. */
+@media (max-width: 480px) {
+  .running-row, .now-row { flex-wrap: wrap; row-gap: 4px; align-items: flex-start; }
+  .running-row .pill, .now-row .pill { margin-top: 10px; }
+  .running-row .open-chat, .now-row .open-chat { margin-left: auto; align-self: flex-start; }
+  .running-row .what, .now-row .what { order: 3; flex-basis: 100%; }
+}
+@media (max-width: 400px) {
+  body { padding-top: 16px; }
+  .ask { margin-top: 16px; }
+  .ask h1 { font-size: 20px; }
+  .pins { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pill.live .dot, .presence.connecting::before { animation: pulse 1.6s ease-in-out infinite; }
+  .collapse { transition: grid-template-rows 180ms ease; }
+  .field { transition: visibility 0s; }
+  .ask[data-ochat-state="running"] .field { transition: visibility 0s 180ms; }
+  .ask[data-ochat-state="running"] .running-row { animation: arrive 180ms ease-out both; }
+}
+@keyframes pulse { 50% { opacity: .5; } }
+@keyframes arrive { from { transform: translateY(-12px); opacity: 0; } }
+</style>
 </head>
 <body>
-  <main>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Control Center</p>
-        <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">C</span><h1 id="agent-name">Connect AI</h1></div>
-        <p id="card-address" class="addr" hidden></p>
-        <p class="tagline">Message this Agent or run one of its published skills.</p>
-      </div>
-      <p id="connection" class="sub"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Open through O Chat to connect</span></p>
-    </header>
-
-    <div id="overview" class="grid overview single">
-      <section class="card card-pad" aria-labelledby="workspace-title">
-        <h2 class="section-title" id="workspace-title">Workspace</h2>
-        <form id="message-form" class="composer">
-          <textarea id="message" name="message" autocomplete="off" placeholder="What should this Agent do?" required maxlength="10000" aria-label="Message to Agent"></textarea>
-          <div class="composer-actions">
-            <p id="status" class="status" data-state="idle" role="status" aria-live="polite">Waiting for O Chat.</p>
-            <button class="send" type="submit" disabled>Send</button>
-          </div>
-        </form>
-      </section>
-
+<main>
+<header class="identity"><span id="agent-initial" class="mark" aria-hidden="true">A</span><div class="address-row"><span id="card-address" class="address-short">Not connected</span><button id="copy-address" class="copy" type="button" disabled>Copy</button></div><span id="connection" class="presence offline"><span id="connection-label">Offline</span></span><button id="retry-connection" class="retry" type="button" hidden>Retry</button></header>
+<form id="message-form" class="ask">
+  <h1><label id="run-label" for="message">What should this agent do?</label></h1>
+  <div class="collapse"><div><div class="field">
+    <textarea id="message" name="message" rows="3" placeholder="Describe a task" required maxlength="10000"></textarea>
+    <div class="run-actions"><p id="status" class="hint" role="status" aria-live="polite">Open through O Chat to run tasks</p><button class="run" type="submit" disabled>Run</button></div>
+  </div></div></div>
+  <div class="running-row" aria-live="polite"><span class="pill live"><span class="dot" aria-hidden="true"></span>Running</span><span id="running-what" class="what"></span><button id="open-chat" class="open-chat" type="button">Open in Chat</button></div>
+</form>
+<section aria-labelledby="quick-title"><h2 id="quick-title">Suggested</h2><p class="pins-note">Available when the current task finishes.</p><div id="pinned-skills" class="pins"></div></section>
+<div class="folds">
+  <p id="no-skills" class="no-skills" hidden>No skills yet. Add one to<code>.co/skills/</code></p>
+  <details id="all-skills" class="capabilities">
+    <summary><span>All skills</span><span id="capability-count" class="count">0</span></summary>
+    <div class="details-body">
+      <input id="skill-filter" class="filter" type="search" placeholder="Search skills" aria-label="Search skills">
+      <div id="capability-list" class="capability-rows"></div>
+      <p id="search-empty" hidden>No skills match this search.</p>
     </div>
-
-    <div class="grid stack">
-      <details class="card capabilities">
-        <summary><span>Capabilities</span><span id="capability-count" class="count">Waiting for Agent</span></summary>
-        <div class="details-body">
-          <input id="skill-filter" class="filter" type="search" placeholder="Search capabilities" aria-label="Search capabilities" hidden>
-          <div id="capability-list" class="capability-rows rows">
-            <section class="empty"><p>Connect through O Chat to see this Agent's published skills.</p></section>
-          </div>
-          <section id="search-empty" class="empty" hidden><p>No capabilities match this search.</p></section>
-        </div>
-      </details>
-
-      <details class="card">
-        <summary>Recent Chat</summary>
-        <div class="details-body"><p id="history-note">Connect through O Chat to see the conversation.</p><div id="recent-chat" aria-live="polite" style="overflow-wrap:anywhere"></div></div>
-      </details>
-      <details class="card diagnostics-card">
-        <summary><span>Diagnostics</span><span class="count">Agent identity</span></summary>
-        <dl class="diagnostics">
-          <div class="diag"><dt>Address</dt><dd id="agent-address" class="addr">Available after connection</dd></div>
-          <div class="diag"><dt>Skills</dt><dd id="diagnostic-skills">Unknown</dd></div>
-          <div class="diag"><dt>Conversation</dt><dd id="diagnostic-conversation">Not connected</dd></div>
-          <div class="diag"><dt>App revision</dt><dd id="app-revision" class="revision">Not connected</dd></div>
-        </dl>
-      </details>
-    </div>
-  </main>
-  <script type="module" src="./control-center.js"></script>
+  </details>
+  <details><summary>Recent</summary><div class="details-body"><p id="history-note">Connect through O Chat to see the conversation.</p><div id="recent-chat" class="recent" aria-live="polite"></div></div></details>
+  <details><summary>Host details</summary><dl class="diagnostics">
+    <div class="diag"><dt>Address</dt><dd id="agent-address" class="addr">Available after connection</dd></div>
+    <div class="diag"><dt>Skills</dt><dd id="diagnostic-skills">Unknown</dd></div>
+    <div class="diag"><dt>Conversation</dt><dd id="diagnostic-conversation">Offline</dd></div>
+    <div class="diag"><dt>App revision</dt><dd id="app-revision" class="revision">Local preview</dd></div>
+  </dl></details>
+</div>
+</main>
+<script type="module" src="./control-center.js"></script>
 </body>
 </html>

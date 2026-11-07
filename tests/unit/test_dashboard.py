@@ -85,7 +85,7 @@ def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
     assert "Maren" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
-    assert ">daily-brief<" in html        # the name you actually type
+    assert ">/daily-brief<" in html       # the name you actually type
     assert "<script" not in html.lower()  # no scripting in agent HTML
 
 
@@ -107,17 +107,17 @@ def test_every_published_skill_is_reachable():
     skills = [{"name": f"skill-{i:03d}", "description": "", "location": "project"} for i in range(115)]
     html = render_starter({"name": "Many", "skills": skills})
     # Every capability is in the searchable disclosure, once.
-    assert html.count('data-ochat-skill="') == 115
+    assert html.split('id="capability-list"', 1)[1].count('data-ochat-skill="') == 115
 
 
-def test_a_short_list_is_not_hidden_behind_a_disclosure():
+def test_a_short_list_has_no_nested_disclosure():
     skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Few", "skills": skills})
-    assert '<details class="card capabilities">' in html
+    assert '<details class="capabilities">' in html
     assert '<details class="more">' not in html
 
 
-def test_a_long_list_shows_the_first_few_and_folds_the_rest():
+def test_a_long_list_has_one_searchable_disclosure():
     """One fold, not a taxonomy. Grouping by name prefix rendered fifteen skills
     as four headers, three visible rows and a bucket called "other" — a page
     showing a fifth of its content."""
@@ -125,8 +125,9 @@ def test_a_long_list_shows_the_first_few_and_folds_the_rest():
     skills += [{"name": f"x-{i}", "description": "", "location": "project"} for i in range(5)]
     html = render_starter({"name": "Many", "skills": skills})
 
-    assert html.count('<details class="more">') == 1
-    assert "17 more skills" in html          # 25 total, 8 shown
+    assert '<details class="more">' not in html
+    assert '<span class="count">25</span>' in html
+    assert html.split('id="capability-list"', 1)[1].count('data-ochat-skill="') == 25
     assert "other" not in html.lower()
 
 
@@ -159,13 +160,14 @@ def test_skill_rows_carry_their_description():
     assert "release a version" in html
 
 
-def test_skill_names_are_shown_verbatim():
-    """Title-casing turned nano-banana-us into "Nano Banana Us", which names nothing
-    and is not what you type to run it."""
+def test_skill_slugs_are_shown_verbatim_where_you_type_them():
+    """Title-casing turned nano-banana-us into "Nano Banana Us", which names nothing.
+    Without a title: sentence case for reading, and /slug in All skills for typing."""
     html = render_starter({"name": "N", "skills": [
         {"name": "nano-banana-us", "description": "", "location": "project"},
     ]})
-    assert ">nano-banana-us<" in html
+    assert ">/nano-banana-us<" in html
+    assert ">Nano banana us<" in html
     assert "Nano Banana Us" not in html
 
 
@@ -192,8 +194,8 @@ def test_control_center_semantic_golden_layout_is_present():
     })
 
     for landmark in (
-        "Control Center", 'id="workspace-title"', "Capabilities",
-        "Recent", "Diagnostics", "Host details",
+        "Control Center", 'data-ochat-prompt', "All skills",
+        "Recent", "Pinned skills", "Host details",
     ):
         # Recent is allowed to be absent without history; all other day-zero
         # landmarks are stable. Test the explicit activity implementation name
@@ -212,25 +214,19 @@ def test_control_center_never_claims_a_static_runtime_state():
 
     assert "Available for a new task" not in html
     assert "<strong>Ready</strong>" not in html
-    assert "Use Chat for live status" in html
+    assert "Use Chat for live status" not in html
+    assert 'class="presence">Online' in html
+    assert "What should Operations do?" in html
 
 
-def test_quick_actions_cannot_set_the_iframe_minimum_width():
-    template = (Path(dashboard_module.__file__).parent / "starter.html").read_text()
-
-    assert "html, body { max-width: 100%; overflow-x: clip; }" in template
-    assert "width: 100%; min-width: 0; max-width: 100%;" in template
-    assert "min-width: 0; max-width: 100%; margin-top" in template
-
-
-def test_control_center_accessibility_contract_is_in_the_shipped_template():
+def test_control_center_accessibility_and_self_containment():
     template = (Path(dashboard_module.__file__).parent / "starter.html").read_text()
     assert "min-height: 44px" in template
-    assert "prefers-reduced-motion: reduce" in template
+    assert "prefers-reduced-motion: no-preference" in template
     assert ":focus-visible" in template
-    assert "@media (max-width: 520px)" in template
-    assert "@media (min-width: 640px)" in template
+    assert 'label for="run-prompt"' in template
     assert "https://" not in template and "http://" not in template
+    assert '<html lang="en">' in template  # light default, no implicit OS theme
 
 
 def _contrast(hex_a, hex_b):
@@ -245,12 +241,14 @@ def _contrast(hex_a, hex_b):
 
 def test_control_center_text_tokens_meet_wcag_aa_in_light_and_dark():
     for foreground, background in (
-        ("#171a17", "#f7f8f6"),
-        ("#505650", "#f7f8f6"),
-        ("#626962", "#ffffff"),
-        ("#f1f5f1", "#111411"),
-        ("#bbc4bb", "#111411"),
-        ("#aeb7ae", "#191d19"),
+        ("#101814", "#f6f8f7"),
+        ("#55605a", "#ffffff"),
+        ("#0b7a42", "#e3faee"),
+        ("#05301b", "#22d27a"),
+        ("#ecf3ef", "#0e1411"),
+        ("#a3b0a8", "#161e1a"),
+        ("#5bea9e", "#123826"),
+        ("#04291a", "#3be38f"),
     ):
         assert _contrast(foreground, background) >= 4.5
 
@@ -443,7 +441,7 @@ def test_starter_lists_published_skills_past_unpublished_ones():
     skills = [{"name": f"personal-{i}", "description": "", "location": "user"} for i in range(5)]
     skills += [{"name": f"shipped-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count('data-ochat-skill="') == 6
+    assert html.split('id="capability-list"', 1)[1].count('data-ochat-skill="') == 6
     assert "personal-" not in html
 
 
@@ -493,7 +491,7 @@ def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
     ensure_dashboard({"name": "Explicit", "skills": []}, project_dir=project)
 
     assert dashboard_module._project_dir == project
-    assert dashboard_module.dashboard_path() == project / ".co" / "dashboard.html"
+    assert dashboard_module.dashboard_path() == project / ".co" / "control-center.html"
 
 
 def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
@@ -548,7 +546,7 @@ def test_the_project_is_found_from_a_subdirectory(in_tmp, monkeypatch):
 
     ensure_dashboard({"name": "Maren", "skills": []})
 
-    assert dashboard_module.dashboard_path() == in_tmp / ".co" / "dashboard.html"
+    assert dashboard_module.dashboard_path() == in_tmp / ".co" / "control-center.html"
 
 
 def test_an_existing_root_dashboard_is_still_served(in_tmp):
@@ -642,12 +640,14 @@ def test_the_home_page_shows_the_agents_address():
     assert ADDRESS in html
 
 
-def test_the_address_is_shown_in_full():
-    """A truncated address is decoration: half of it does not save the trip."""
+def test_short_address_has_copy_and_full_address_in_host_details():
+    """Keep identity compact while retaining the complete address."""
     html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
 
-    assert "…" not in html and "..." not in html
-    assert html.count(ADDRESS) == 1
+    assert ADDRESS[:6] + "…" + ADDRESS[-4:] in html
+    assert f'data-ochat-copy="{ADDRESS}"' in html
+    details = html.split("<summary>Host details</summary>", 1)[1]
+    assert ADDRESS in details
 
 
 def test_an_agent_with_no_address_gets_no_empty_line():
@@ -680,19 +680,21 @@ def test_an_operator_override_without_the_new_field_still_renders(tmp_path,
     their layout's business; raising KeyError is ours."""
     from connectonion.network.host.ws_router import dashboard
 
-    home = tmp_path / "home"
-    (home / ".co").mkdir(parents=True)
-    (home / ".co" / "starter.html").write_text(
-        "<html><body><h1>$name</h1><p>$subtitle</p>$body</body></html>",
+    # STARTER_OVERRIDE is fixed at import, so patching Path.home never reached it;
+    # the test passed only because the bundled page also said <h1>$name</h1>.
+    override = tmp_path / "home" / ".co" / "starter.html"
+    override.parent.mkdir(parents=True)
+    override.write_text(
+        '<html><body><h1 class="mine">$name</h1><p>$subtitle</p>$body</body></html>',
         encoding="utf-8")
-    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setattr(dashboard, "STARTER_OVERRIDE", override)
     dashboard._starter_templates.cache_clear()
     try:
         html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
     finally:
         dashboard._starter_templates.cache_clear()
 
-    assert "<h1>A</h1>" in html
+    assert '<h1 class="mine">A</h1>' in html     # only the override renders this
 
 
 def test_dashboard_above_old_limit_preserves_unicode_and_scripts(in_tmp):
@@ -706,7 +708,8 @@ def test_dashboard_above_old_limit_preserves_unicode_and_scripts(in_tmp):
 def test_encoding_expansion_returns_visible_error(in_tmp, monkeypatch):
     monkeypatch.setattr(dashboard_module, 'MAX_WEBSOCKET_MESSAGE_BYTES', 65540)
     (in_tmp / 'dashboard.html').write_text('<p>large envelope</p>')
-    assert 'transport envelope' in read_dashboard_snapshot(viewer=OWNER_VIEW)['html']
+    html = read_dashboard_snapshot(viewer=OWNER_VIEW)['html']
+    assert 'Control Center exceeds' in html and 'Dashboard' not in html
 
 
 @pytest.mark.asyncio
@@ -720,17 +723,126 @@ async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
     deliver.assert_awaited_once()
 
 
-def test_the_page_opens_on_a_card_not_on_skills():
-    """Owner, 2026-09-29: "默认显示 skills 信息干嘛". The page opens on the
-    agent's name, address and one line; every skill is folded under
-    Capabilities and nothing about skills or tools sits in the header."""
-    import re
-    skills = [{"name": f"s-{i}", "description": "", "location": "project"} for i in range(5)]
-    html = render_starter({"name": "Ops", "address": ADDRESS, "tagline": "Answers guests.",
-                           "skills": skills, "tools": ["read"], "model": "co/gemini-3.8-flash"})
-    header = html.split('<header class="masthead">', 1)[1].split("</header>", 1)[0]
-    assert "Ops" in header and ADDRESS in header and "Answers guests." in header
-    assert "skill" not in header and "tool" not in header and "gemini" not in header
-    folded = html.split('<details class="card capabilities">', 1)[1].split("</details>", 1)[0]
-    assert html.count('data-ochat-skill="') == folded.count('data-ochat-skill="') == 5
-    assert 'id="quick-title"' not in re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)
+def test_first_screen_has_one_run_box_four_pins_and_three_closed_sections():
+    skills = [{"name": f"s-{i}", "description": "A useful skill.", "location": "project"} for i in range(5)]
+    html = render_starter({"name": "Ops", "address": ADDRESS, "skills": skills})
+    assert html.count('<form ') == 1
+    assert 'What should Ops do?' in html
+    assert html.split('class="pins"', 1)[1].split('</section>', 1)[0].count('data-ochat-skill=') == 4
+    assert '<summary><span>All skills</span><span class="count">5</span>' in html
+    assert '<summary>Recent</summary>' in html and '<summary>Host details</summary>' in html
+    assert '<details open' not in html
+    assert not any(word in html for word in ('Workspace', 'Dashboard', 'Use Chat for live status', 'CONTROL CENTER'))
+
+
+def test_new_filename_wins_then_both_legacy_aliases(in_tmp):
+    co = in_tmp / '.co'
+    co.mkdir()
+    root = in_tmp / 'dashboard.html'
+    alias = co / 'dashboard.html'
+    preferred = co / 'control-center.html'
+    for path, content in ((root, 'root'), (alias, 'alias'), (preferred, 'preferred')):
+        path.write_text(content)
+    for path, content in ((preferred, 'preferred'), (alias, 'alias'), (root, 'root')):
+        frame = read_dashboard_snapshot('sid', viewer=OWNER_VIEW)
+        assert frame == {'type': 'DASHBOARD_SNAPSHOT', 'html': content, 'session_id': 'sid'}
+        path.unlink()
+
+
+def test_day_zero_suggestions_are_prompts_not_invented_skills():
+    html = render_starter({'name': 'New', 'skills': []})
+    assert 'data-ochat-skill=' not in html
+    assert html.count('data-ochat-prompt="') == 4
+    assert '<h2 id="quick-title">Suggested</h2>' in html
+
+
+def test_suggestions_are_shared_json_shipped_with_the_static_app():
+    import json
+
+    root = Path(__file__).resolve().parents[2]
+    assets = root / 'connectonion/cli/assets/control-center'
+    with (assets / 'suggestions.json').open(encoding='utf-8') as source:
+        suggestions = json.load(source)
+    assert dashboard_module.suggested_prompts() == suggestions
+    html = render_starter({'name': 'New', 'skills': []})
+    for suggestion in suggestions:
+        assert suggestion['title'] in html
+        assert suggestion['prompt'] in html
+    script = (assets / 'control-center.js').read_text(encoding='utf-8')
+    assert "fetch('./suggestions.json')" in script
+    assert not (assets / 'suggestions.js').exists()
+    assert '"connectonion/cli/assets/control-center/*.json"' in (root / 'pyproject.toml').read_text()
+
+
+@pytest.mark.asyncio
+async def test_switching_to_new_filename_resends_even_with_same_stat(in_tmp):
+    import os
+    co = in_tmp / '.co'
+    co.mkdir()
+    alias = co / 'dashboard.html'
+    alias.write_text('old')
+    send = AsyncMock()
+    conn = {}
+    await send_dashboard(send, 's', conn)
+    preferred = co / 'control-center.html'
+    preferred.write_text('new')
+    os.utime(preferred, ns=(alias.stat().st_atime_ns, alias.stat().st_mtime_ns))
+    await send_dashboard(send, 's', conn)
+    assert send.await_count == 2
+    assert send.call_args.args[0]['html'] == 'new'
+
+
+@pytest.mark.parametrize("skill, title", [
+    ({"name": "post-to-x"}, "Post to X"),
+    ({"name": "daily-brief"}, "Daily brief"),
+    ({"name": "lark_base"}, "Lark base"),
+    ({"name": "post-to-x", "title": "  Post   to X "}, "Post to X"),
+    ({"name": "daily-brief", "title": "Morning brief"}, "Morning brief"),
+])
+def test_a_skill_reads_as_its_title_or_its_slug_in_sentence_case(skill, title):
+    assert dashboard_module.skill_title(skill) == title
+
+
+def test_pinned_shows_titles_and_all_skills_adds_the_slug():
+    html = render_starter({"name": "N", "skills": [
+        {"name": "post-to-x", "title": "Post to X", "description": "d", "location": "project"}]})
+    pinned = html.split('class="pins"', 1)[1].split("</section>", 1)[0]
+    assert ">Post to X<" in pinned and "/post-to-x" not in pinned
+    every = html.split('id="capability-list"', 1)[1]
+    assert '>Post to X</span><span class="slug">/post-to-x</span>' in every
+    assert 'data-ochat-skill="post-to-x"' in every
+
+
+def test_a_title_fallback_capitalises_known_acronyms_only():
+    from connectonion.network.host.ws_router.dashboard import skill_title
+    assert skill_title({"name": "review-pr"}) == "Review PR"
+    assert skill_title({"name": "api-docs"}) == "API docs"
+    assert skill_title({"name": "export_pdf"}) == "Export PDF"
+    assert skill_title({"name": "post-to-x"}) == "Post to X"
+    # Short ordinary words stay words: only the fixed list is upper-cased.
+    assert skill_title({"name": "go-to-my-inbox"}) == "Go to my inbox"
+    assert skill_title({"name": "review-pr", "title": "Review a pull request"}) == "Review a pull request"
+
+
+def test_docked_beside_chat_the_name_replaces_the_question():
+    """O Chat marks the frame data-co-embed="docked"; the starter's own CSS then
+    hides the Run field and shows the name, so the page has one place to type."""
+    html = render_starter({"name": "Maren", "skills": []})
+    assert '<span class="docked-name">Maren</span>' in html
+    assert 'html[data-co-embed="docked"] .ask .collapse' in html
+
+
+def test_a_skill_title_comes_from_its_frontmatter(tmp_path):
+    from connectonion.useful_plugins.skills import _discover_all_skills
+    skill_dir = tmp_path / ".co" / "skills" / "post-to-x"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: post-to-x\ntitle: Post to X\ndescription: Post.\n---\nBody\n", encoding="utf-8")
+    found = {s.name: s for s in _discover_all_skills(co_dir=tmp_path / ".co", project_dir=tmp_path)}
+    assert found["post-to-x"].title == "Post to X"
+
+
+def test_no_skills_is_one_plain_line_not_an_empty_fold():
+    html = render_starter({"name": "New", "skills": []})
+    assert '<details class="capabilities">' not in html
+    assert 'class="no-skills">No skills yet. Add one to<code>.co/skills/</code>' in html

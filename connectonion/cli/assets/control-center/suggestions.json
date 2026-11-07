@@ -1,0 +1,6 @@
+[
+  {"title": "Plan my day", "description": "Put today's tasks in order", "prompt": "Help me plan my day. Ask what I need to accomplish."},
+  {"title": "Research a topic", "description": "Sources and a one-page summary", "prompt": "Help me research a topic. Ask what I want to learn."},
+  {"title": "Draft a reply", "description": "Paste a message, get a reply", "prompt": "Help me draft a reply. Ask for the message and intended tone."},
+  {"title": "Review a file", "description": "Notes on what to fix first", "prompt": "Help me review a file. Ask which file and what to check."}
+]

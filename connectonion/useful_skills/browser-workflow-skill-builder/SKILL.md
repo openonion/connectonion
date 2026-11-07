@@ -1,5 +1,6 @@
 ---
 name: browser-workflow-skill-builder
+title: Build a browser workflow skill
 description: Create robust browser automation skills for sites like LinkedIn, X/Twitter, YouTube, Stripe, or other logged-in web apps by saving page context, analyzing HTML/CSS, writing skill-local JS extract/verify scripts, and using CSS selector actions with screenshot verification.
 tools:
   - Bash

@@ -1,5 +1,6 @@
 ---
 name: rem-init
+title: "REM: set up a notebook"
 description: Run REM initialization and check useful, cited findings about people, projects, organizations and installed skills.
 ---
 

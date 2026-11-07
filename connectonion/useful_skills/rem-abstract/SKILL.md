@@ -1,5 +1,6 @@
 ---
 name: rem-abstract
+title: "REM: lift a layer"
 description: Lift the notebook one layer — settled questions out of what happened, and recurring reasons out of settled questions. Reads pages, never sources, so it loads no source Skill.
 ---
 

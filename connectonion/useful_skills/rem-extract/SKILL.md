@@ -1,5 +1,6 @@
 ---
 name: rem-extract
+title: "REM: extract notes"
 description: Read one batch of authorized session messages or mail and write the extraction notes the rem-maintain runner will organize — every durable fact with who said it, when, and its source id. Read the supplied material file and write the complete notes to the requested output file.
 ---
 

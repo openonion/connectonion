@@ -1,5 +1,6 @@
 ---
 name: ship-feature
+title: Ship a feature
 description: Ship a feature end-to-end — update tests, docs, docs-site, then release to PyPI. Use when user says "ship", "ship feature", "release", or asks to publish a new version.
 ---
 

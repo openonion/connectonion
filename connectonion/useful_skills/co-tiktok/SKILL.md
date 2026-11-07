@@ -1,5 +1,6 @@
 ---
 name: co-tiktok
+title: TikTok post plan
 description: Prepare a local TikTok post plan and check, with saved browser evidence, whether a co browser tab is logged in to TikTok Studio. TikTok upload and publish are not implemented; YouTube lives in co-google.
 ---
 

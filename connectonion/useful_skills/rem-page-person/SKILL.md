@@ -1,5 +1,6 @@
 ---
 name: rem-page-person
+title: "REM: person page"
 description: Fixed sections, roster labels and evidence rules for a person's page; composed into every stage that writes one.
 ---
 

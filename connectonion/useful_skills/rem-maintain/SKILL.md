@@ -1,5 +1,6 @@
 ---
 name: rem-maintain
+title: "REM: maintain the notebook"
 description: Maintain an AI-owned co rem from explicitly authorized source messages through co ai and ordinary Markdown file operations. Use for organizing, correcting, and consolidating that notebook, not for changing source apps or installing learned Skills.
 ---
 

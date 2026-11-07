@@ -1,5 +1,6 @@
 ---
 name: co-slack
+title: Slack
 description: Read and answer Slack with `co slack` — what a channel said, a thread, a search across the workspace, and a reply in the right thread. Use for "what did #ops say today", "find the message about X and reply in its thread", "is the Slack bot set up", or any Slack channel, thread or message the user names. Experimental; routes to `co slack --help`.
 ---
 

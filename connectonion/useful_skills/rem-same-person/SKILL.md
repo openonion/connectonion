@@ -1,5 +1,6 @@
 ---
 name: rem-same-person
+title: "REM: same person?"
 description: Decide whether two people pages in the notebook are one person. Code found the pair as similar (a shared address, or the same name); you reason over both pages and answer yes or no. Yes merges them; no keeps them apart, with your reason recorded.
 ---
 
