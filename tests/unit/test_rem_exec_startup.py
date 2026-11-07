@@ -183,7 +183,7 @@ def test_exec_turn_is_ephemeral_and_falls_back_to_the_app_bundled_cli(tmp_path, 
     bundled.chmod(0o755)
     monkeypatch.delenv('CODEX_CMD', raising=False)
     monkeypatch.setattr(codex_exec.shutil, 'which', lambda name: None)
-    monkeypatch.setattr(codex_exec, 'BUNDLED_CODEX', ('/missing/codex', str(bundled)))
+    monkeypatch.setattr('connectonion.codex_cli.BUNDLED_CODEX', (Path('/missing/codex'), bundled))
     monkeypatch.setattr('connectonion.rem.codex_schedule.automation_prompt', lambda root: 'prompt')
     argv = codex_exec.exec_command(tmp_path, {'effort': 'medium', 'model': 'default'}, last_message=tmp_path / 'last.md')
     assert argv[0] == str(bundled)

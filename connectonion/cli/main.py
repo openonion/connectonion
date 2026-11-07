@@ -245,7 +245,13 @@ def init(
         if background and sys.platform != 'darwin':
             console.print('Background Mac setup requires macOS. Next: co init', markup=False)
             raise typer.Exit(2)
+        from .codex_setup import setup_codex
+        codex = setup_codex()
         handle_global_init(key=key)
+        console.print(codex["summary"], markup=False, soft_wrap=True)
+        console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
+        if not codex["ready"]:
+            console.print(f"Codex login pending. Run: {codex['login_command']}", markup=False, soft_wrap=True)
         if background:
             from .mac_bootstrap import prepare_mac_host
             from .host_service import HostServiceError
@@ -260,7 +266,7 @@ def init(
             from .commands.rem_commands import init_global_rem
             from ..rem.files import RemError
             try:
-                init_global_rem(yes=yes)
+                init_global_rem(yes=yes, codex=codex)
             except RemError as error:
                 # The one place co init calls REM outside _handle: say it in one line,
                 # not a traceback (#2758). Consent is recorded, so the retry is cheap.
@@ -268,7 +274,8 @@ def init(
                 raise typer.Exit(1) from None
         if background and not result['codex_ready']:
             console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
-            raise typer.Exit(1)
+            if codex['ready']:
+                raise typer.Exit(1)
         return
     if background:
         console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)

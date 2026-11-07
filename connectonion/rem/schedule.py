@@ -151,6 +151,7 @@ class Launchd:
         dirs += os.environ.get("PATH", "").split(os.pathsep)
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
         pythonpath = _checkout_path()
         if pythonpath:
             # The job must run the same connectonion the user is running now; a
@@ -375,6 +376,7 @@ class Systemd:
                 dirs.append(str(Path(binary).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
         pythonpath = _checkout_path()
         if pythonpath:
             env["PYTHONPATH"] = pythonpath

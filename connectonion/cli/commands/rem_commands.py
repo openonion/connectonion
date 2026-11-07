@@ -905,7 +905,7 @@ def _scheduler_name(result: dict) -> str:
             "systemd": "systemd user timer"}.get(scheduler, scheduler)
 
 
-def init_global_rem(*, yes: bool = False) -> None:
+def init_global_rem(*, yes: bool = False, codex: dict | None = None) -> None:
     """Grant source access, install upkeep and build without questions."""
     if sys.platform not in ("darwin", "linux"):
         typer.echo(f"REM upkeep is not installed yet: No supported background scheduler on {sys.platform}. "
@@ -925,14 +925,22 @@ def init_global_rem(*, yes: bool = False) -> None:
     grant_init_sources(root)
     if not any(mail_available(kind) for kind in MAIL_KINDS):
         typer.echo("No mailbox connected; using local sessions. Connect: co auth google or co auth microsoft; mail joins the next scheduled round.")
-    result = _init_upkeep(root)
+    waiting = _init_runner_waiting(root, codex)
+    if waiting:
+        typer.echo(waiting)
+        result = {"scheduler": "none"}
+    else:
+        result = _init_upkeep(root)
     from click import Command
     ctx = typer.Context(Command("init"), info_name="init",
                         obj={"root": root, "default_root": True, "json": False})
-    built = init_rem_flow(ctx, yes=True, start_background=False)
+    deferred = {"runner_problem": (waiting, codex["next_action"])} if waiting else {}
+    built = init_rem_flow(ctx, yes=True, start_background=False, **deferred)
     summary = _init_done(ctx, built).strip().replace("\n", " ")
     installed = _scheduler_name(result) + (f" ({result['fallback']})" if result.get("fallback") else "")
-    typer.echo(f"REM ready; {summary} Scheduler installed: {installed}. Next: co rem open. Watch: co rem status")
+    state = "REM initialized" if waiting else "REM ready"
+    clock = "Scheduler waiting for Codex login" if waiting else f"Scheduler installed: {installed}"
+    typer.echo(f"{state}; {summary} {clock}. Next: co rem open. Watch: co rem status")
     _init_undo(root)
 
 
@@ -952,6 +960,27 @@ def _init_upkeep(root) -> dict:
         reason = " ".join(str(error).split())
     typer.echo(f"REM upkeep is not installed yet: {reason}. Next: co rem start")
     return {"scheduler": "none"}
+
+
+def _init_runner_waiting(root, codex):
+    """Keep a missing OAuth click from aborting the rest of global setup."""
+    if codex is None or codex["ready"]:
+        return ""
+    from ..codex_setup import claude_ready
+    from ...rem.config import default_config, read_config, set_config
+    from ...rem.files import state_path, write_json
+    from ...rem.runner import ready
+    config = read_config(root)
+    if config["runner"] == "coai" and not ready(config)[0]:
+        return ""
+    if claude_ready():
+        set_config(root, ["runner", "claude-code", "model", "claude-sonnet-5-5"])
+        typer.echo("Codex login pending; using signed-in Claude Code for REM.")
+        return ""
+    set_config(root, ["runner", "codex", "model", default_config()["model"], "schedule.runner", "codex-exec"])
+    reason = f"REM schedule waiting for Codex login. Run: {codex['next_action']}; then co rem start"
+    write_json(state_path(root, "worker.json"), {"enabled": False, "waiting_for": reason})
+    return reason
 
 
 def _init_undo(root) -> None:
@@ -1028,7 +1057,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                   languages=None, no_translate=False, archive_mail=True, write_mine=None,
                   all_history=False, investigate_all=False, estimate_only=False,
                   start_background=True, yes=False, first_people=None, first_projects=None,
-                  first_orgs=None, first_skills=None):
+                  first_orgs=None, first_skills=None, runner_problem=None):
     """Build the first notebook in-process for both global setup and co rem init."""
     from ...rem.config import prepare, read_config, set_config
     from ...rem.languages import native_name, owner_languages
@@ -1050,7 +1079,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
         # Before the ten-minute map, not after it: a missing or signed-out
         # runner used to surface only when the first model turn failed.
         config = read_config(root)
-        problem, fix = rem_runner.ready(config)
+        problem, fix = runner_problem or rem_runner.ready(config)
         window = [] if days == MAP_DAYS else ["--days", str(days)]
         init_window = [*window, *(["--all-history"] if all_history else [])]
         map_days = 36500 if all_history else days
@@ -2212,6 +2241,12 @@ def make_rem_app(factory):
                   # This exact version, never `--pre`, which also takes pre-release
                   # dependencies (httpx 1.0.dev6 crashed 1.8.8b7).
                   f"python -m pip install --upgrade 'connectonion=={__version__}'")
+            from ...codex_cli import INSTALL_COMMAND
+            from ...useful_tools.codex import _base_command
+            codex = _base_command()
+            check("Codex CLI", bool(codex),
+                  f"Codex CLI: found at {codex[0]}" if codex else "Codex CLI: not installed",
+                  INSTALL_COMMAND)
             config = None
             try:
                 config = read_config(root)

@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..codex_cli import resolve_codex
 from .files import RemError, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
@@ -31,22 +32,12 @@ def _codex_command() -> list[str]:
     if (not command or any('connectonion.rem.codex_exec' in arg or 'codex_exec.py' in arg for arg in command)
             or Path(command[0]).name in launchers or Path(command[0]).name.startswith('python')):
         raise RemError('CODEX_CMD must name the Codex CLI, never the REM launcher or an interpreter')
-    binary = shutil.which(os.path.expanduser(command[0])) or (None if override else _bundled_codex())
+    binary = shutil.which(os.path.expanduser(command[0])) if override else resolve_codex()
     if not binary:
         raise RemError('Codex CLI not found; install Codex, fix CODEX_CMD and run co rem start')
     if Path(binary).resolve().name.startswith('python') or Path(binary).resolve().name in launchers:
         raise RemError('CODEX_CMD must name the Codex CLI, never the REM launcher or an interpreter')
     return [os.path.abspath(binary), *command[1:]]
-
-
-# The ChatGPT and Codex desktop apps ship the CLI and share their login. These
-# paths are not a documented interface, so they are looked up on every turn.
-BUNDLED_CODEX = ('/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
-                 '/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex')
-
-
-def _bundled_codex() -> str | None:
-    return next((path for path in BUNDLED_CODEX if os.access(path, os.X_OK)), None)
 
 
 def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:

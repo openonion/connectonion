@@ -646,10 +646,10 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr(codex, "_base_command", lambda: None)
     problem, fix = rem_runner.ready(config)
-    assert "not installed" in problem and "npm install -g @openai/codex" in fix
+    assert "not installed" in problem and "https://chatgpt.com/codex/install.sh" in fix
     monkeypatch.setattr(codex, "_base_command", lambda: ["/bin/codex", "app-server"])
     problem, fix = rem_runner.ready(config)
-    assert "not signed in" in problem and fix == "codex login"
+    assert "not signed in" in problem and fix == "/bin/codex login"
     (tmp_path / "codex").mkdir()
     (tmp_path / "codex/auth.json").write_text("{}")
     assert rem_runner.ready(config) == ("", "")

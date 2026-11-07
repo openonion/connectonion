@@ -502,6 +502,8 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = _status_worker(worker_state(root))
+    if worker.get("waiting_for") and not worker.get("enabled"):
+        return worker["waiting_for"], None
     native = {}
     if worker.get("scheduler") == "codex-native" or (sys.platform == "darwin" and worker.get("scheduler") != "codex-exec"):
         from .codex_schedule import CodexNative
@@ -956,6 +958,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
     # to before the clock existed. The next saved time is the first one served.
     previous = worker_state(root)
     served = latest_slot(read_config(root), now())
+    previous.pop("waiting_for", None)
     write_json(state_path(root, "worker.json"), {**previous, "enabled": True, **installed,
                                                  "installed_at": now().isoformat(), "stopped_at": None,
                                                  "last_scheduled_slot": previous.get("last_scheduled_slot")

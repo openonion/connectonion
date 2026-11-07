@@ -16,6 +16,7 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 
+from ..codex_cli import INSTALL_COMMAND
 from ..skills_catalog import useful_skills_dir
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import with_local_times
@@ -197,7 +198,7 @@ def check_skill(root: Path, stage: str) -> None:
                        "or absolute.")
 
 
-INSTALL = {"codex": "npm install -g @openai/codex",
+INSTALL = {"codex": INSTALL_COMMAND,
            "claude-code": "npm install -g @anthropic-ai/claude-code"}
 
 # Whose money a run spends, said before init starts the owner's page (#1943).
@@ -209,9 +210,9 @@ PLAN = {"codex": "on your own Codex plan (your ChatGPT sign-in), not ConnectOnio
 def ready(config: dict) -> tuple[str, str]:
     """(problem, fix) for the configured runner, or ("", "") when it can run.
 
-    Checked with no model and no subprocess: the binary on PATH (or its
-    CODEX_CMD / CLAUDE_CODE_CMD override) and, for Codex, the sign-in file the
-    quota meter reads. A missing or signed-out Codex used to surface only when
+    Checked without a model: the resolved CLI (or its CODEX_CMD /
+    CLAUDE_CODE_CMD override) and, for Codex, login status from the CLI. A
+    missing or signed-out Codex used to surface only when
     the first investigation failed, ten minutes into a first run (#1943).
     Claude Code keeps its login in the system keychain, so only its binary is
     checked; ConnectOnion's own loop needs neither.
@@ -219,11 +220,13 @@ def ready(config: dict) -> tuple[str, str]:
     runner = config.get("runner")
     if runner == "codex":
         from ..useful_tools.codex import _base_command
-        from .quota import _codex_auth
-        if not _base_command():
+        from ..codex_cli import signed_in
+        command = _base_command()
+        if not command:
             return "Codex is not installed", INSTALL["codex"]
-        if not _codex_auth().is_file():
-            return "Codex is not signed in", "codex login"
+        if not signed_in(command[:-1]):
+            import shlex
+            return "Codex is not signed in", shlex.join([*command[:-1], "login"])
     elif runner == "claude-code":
         from ..useful_tools.claude_code import _base_command
         if not _base_command():
