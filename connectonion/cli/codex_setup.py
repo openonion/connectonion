@@ -59,7 +59,10 @@ def install_codex() -> tuple[str, str, str]:
     failures = []
     try:
         return _install_standalone()
-    except (httpx.HTTPError, OSError, subprocess.SubprocessError, RuntimeError) as error:
+    except httpx.HTTPError as error:
+        # No network for the official installer: a package manager would wait on the same network.
+        raise RuntimeError(f"no network for the installer ({error})")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
         failures.append(str(error))
     managers = [("npm", ["install", "-g", "@openai/codex"], "npm uninstall -g @openai/codex")]
     if sys.platform == "darwin":

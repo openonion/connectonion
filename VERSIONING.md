@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc56
+## Current Version: 1.9.3rc57
+
+Hotfix on 1.9.3rc56 (tagged, never published): offline `co init --yes` spent 80 s in `npm install`
+through a dead proxy and the release workflow's installed-wheel check timed out; the installer
+fallback now stops when the official installer cannot be downloaded. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc57.md).
+
+- 1.9.3rc57 (hotfix: offline init is fast).
+
+### Previous candidate: 1.9.3rc56 (tagged, not published)
 
 Done and Skip decisions persist in the notebook; the reader opens before the notebook is parsed;
 one date grammar and plain labels; overrunning scheduled turns end with their process tree and
